@@ -163,9 +163,11 @@ async fn csrf_explicit_allowed_origin_enforced() {
 #[tokio::test]
 async fn rate_limit_blocks_after_burst() {
     let (app, _db) = make_app(None).await;
-    // 10 allowed, then 429. All with matching origin so CSRF doesn't interfere.
+    // Weighted limiter: login costs 20 tokens, capacity 500.
+    // 25 logins = 500 tokens → 26th should be 429.
+    // Fire 30 to be sure.
     let mut statuses = Vec::new();
-    for _ in 0..15 {
+    for _ in 0..30 {
         let resp = app
             .clone()
             .oneshot(

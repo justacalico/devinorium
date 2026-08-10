@@ -13,10 +13,8 @@ pub mod security;
 
 use std::sync::Arc;
 
-use axum::middleware::{from_fn, from_fn_with_state, Next};
-use axum::response::IntoResponse;
+use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::get;
-use axum::extract::Request;
 use axum::Router;
 use tower_http::{compression::CompressionLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 
@@ -37,24 +35,23 @@ pub fn build_app(state: AppState) -> Router {
     let allowed_origin = state.config.allowed_origin.clone();
     let max_body = state.config.max_body_bytes;
 
-    // Rate limiter for unauthenticated auth endpoints (10/min per IP).
-    let auth_limiter = security::RateLimiter::new(10, 1.0 / 60.0);
+    // Global weighted rate limiter.
+    //
+    // Capacity 500 tokens, refill 2/sec. Each endpoint class has a cost:
+    //   - login/register: 20 tokens (25 attempts before throttle)
+    //   - TOTP verify:    15 tokens
+    //   - unauth probe:   25 tokens (20 attempts before throttle)
+    //   - auth write:      2 tokens (250 writes before throttle)
+    //   - invite create:   5 tokens
+    //   - auth read/logout: 0 tokens (free, never throttled)
+    //
+    // This means a brute-force attacker depletes the bucket in ~25 tries,
+    // while a normal authenticated user can browse freely and send many
+    // messages before being throttled. After depletion, 1 login every 10s.
+    let limiter = security::RateLimiter::new(500, 2.0);
 
-    // Public routes (no auth), rate-limited.
-    let public = api::auth::router().route_layer(from_fn(move |req: Request, next: Next| {
-        let limiter = auth_limiter.clone();
-        async move {
-            let ip = security::ip_from_req(&req);
-            if !limiter.check("auth", &ip).await {
-                return (
-                    axum::http::StatusCode::TOO_MANY_REQUESTS,
-                    "rate limited",
-                )
-                    .into_response();
-            }
-            next.run(req).await
-        }
-    }));
+    // Public routes (no auth).
+    let public = api::auth::router();
 
     // Protected routes (require auth + role=user).
     let protected = api::threads::router()
@@ -81,6 +78,12 @@ pub fn build_app(state: AppState) -> Router {
         .layer(from_fn(move |req, next| {
             let ao = allowed_origin.clone();
             async move { security::csrf_origin_check(ao, req, next).await }
+        }))
+        // Global weighted rate limiter — runs after IP extraction (so it can
+        // read the client IP from extensions) but before body limit/trace.
+        .layer(from_fn(move |req, next| {
+            let lim = limiter.clone();
+            async move { security::global_weighted_rate_limit(lim, req, next).await }
         }))
         .layer(from_fn(move |req, next| {
             let tp = trust_proxy;
