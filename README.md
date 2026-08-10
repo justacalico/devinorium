@@ -59,11 +59,11 @@ See [docs/providers.md](docs/providers.md).
 ## Quick start
 
 ```bash
-# Prerequisites: Rust 1.75+, the devin CLI on PATH, authenticated (`devin auth login`)
+# Prerequisites: Rust 1.83+, the devin CLI on PATH, authenticated (`devin login`)
 
 git clone https://gitlab.com/HttpAnimations/devinorium.git
 cd devinorium
-cp .env.example .env          # edit settings, set a strong ADMIN_BOOTSTRAP_PASSWORD
+cp .env.example .env          # edit settings, set a strong DEVINORIUM_BOOTSTRAP_PASSWORD
 cargo run --release
 ```
 
@@ -72,6 +72,38 @@ Then open `http://localhost:7878` and log in with the bootstrap credentials.
 ## Configuration
 
 All configuration is via environment variables (see `.env.example`).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DEVINORIUM_HOST` | `127.0.0.1` | Bind address |
+| `DEVINORIUM_PORT` | `7878` | Listen port |
+| `DEVINORIUM_SESSION_KEY` | (required) | ≥64-char secret for signing session cookies |
+| `DEVINORIUM_DB_URL` | `sqlite:data/devinorium.db?mode=rwc` | SQLite connection string |
+| `DEVINORIUM_BOOTSTRAP_USERNAME` | `owner` | First-run owner account username |
+| `DEVINORIUM_BOOTSTRAP_PASSWORD` | (required) | First-run owner account password |
+| `DEVINORIUM_WORKSPACE_ROOTS` | (required) | Comma-separated absolute paths; file manager is sandboxed to these |
+| `DEVINORIUM_DEVIN_BIN` | `devin` | Path to the devin CLI |
+| `DEVINORIUM_DEFAULT_MODEL` | `glm-5-2` | Default model for new threads |
+| `DEVINORIUM_TRUST_PROXY` | `false` | Trust `X-Forwarded-For` (enable behind a reverse proxy) |
+| `DEVINORIUM_MAX_BODY_BYTES` | `16777216` | Max request body size |
+| `DEVINORIUM_SECURE_COOKIE` | `false` | Set the `Secure` flag on session cookies (enable over HTTPS) |
+| `DEVINORIUM_ALLOWED_ORIGIN` | (unset) | Explicit allowed origin for CSRF checks |
+
+## Testing
+
+```bash
+# Unit + integration tests (no devin CLI needed)
+cargo test --lib --test auth --test security --test api --test provider
+
+# glm-5-2 provider tests (requires devin CLI + auth)
+./scripts/test-glm.sh
+```
+
+## Deployment
+
+Devinorium serves HTTP only. For public exposure, terminate TLS with a
+reverse proxy or Cloudflare Tunnel. See **[docs/deployment.md](docs/deployment.md)**
+for nginx, Cloudflare Tunnel, systemd, and port-forward safety guides.
 
 ## License
 
