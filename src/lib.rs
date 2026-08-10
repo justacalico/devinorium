@@ -4,6 +4,7 @@
 //! The binary target (`src/main.rs`) is a thin wrapper around this library.
 
 pub mod api;
+pub mod assets;
 pub mod auth;
 pub mod config;
 pub mod db;
@@ -71,6 +72,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .merge(public)
         .merge(protected)
+        .merge(assets::router())
         .layer(from_fn(security::security_headers))
         .layer(from_fn(move |req, next| {
             let ao = allowed_origin.clone();
