@@ -430,6 +430,8 @@ async function newThread() {
     state.threads.unshift(t);
     await openThread(t.id);
     renderThreadList();
+    // Focus the composer so the user can immediately start typing.
+    $("#prompt-input")?.focus();
   } catch (err) {
     alert("Failed to create thread: " + err.message);
   }
