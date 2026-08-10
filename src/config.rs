@@ -19,6 +19,7 @@ pub struct Config {
     pub default_model: String,
     pub trust_proxy: bool,
     pub max_body_bytes: usize,
+    pub secure_cookie: bool,
 }
 
 impl Config {
@@ -65,6 +66,7 @@ impl Config {
         let max_body_bytes = env_or("DEVINORIUM_MAX_BODY_BYTES", "16777216")
             .parse::<usize>()
             .context("DEVINORIUM_MAX_BODY_BYTES must be a valid usize")?;
+        let secure_cookie = env_or("DEVINORIUM_SECURE_COOKIE", "false").eq_ignore_ascii_case("true");
 
         Ok(Self {
             host,
@@ -78,6 +80,7 @@ impl Config {
             default_model,
             trust_proxy,
             max_body_bytes,
+            secure_cookie,
         })
     }
 
