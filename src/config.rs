@@ -20,6 +20,7 @@ pub struct Config {
     pub trust_proxy: bool,
     pub max_body_bytes: usize,
     pub secure_cookie: bool,
+    pub allowed_origin: Option<String>,
 }
 
 impl Config {
@@ -67,6 +68,7 @@ impl Config {
             .parse::<usize>()
             .context("DEVINORIUM_MAX_BODY_BYTES must be a valid usize")?;
         let secure_cookie = env_or("DEVINORIUM_SECURE_COOKIE", "false").eq_ignore_ascii_case("true");
+        let allowed_origin = std::env::var("DEVINORIUM_ALLOWED_ORIGIN").ok().filter(|s| !s.is_empty());
 
         Ok(Self {
             host,
@@ -81,6 +83,7 @@ impl Config {
             trust_proxy,
             max_body_bytes,
             secure_cookie,
+            allowed_origin,
         })
     }
 
