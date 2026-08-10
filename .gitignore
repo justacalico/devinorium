@@ -1,0 +1,32 @@
+# Build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+data/
+!migrations/**/data
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db

@@ -1,0 +1,73 @@
+[package]
+name = "devinorium"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "AGPL-3.0-only"
+description = "A secure, self-hostable Material 3 web UI for managing Devin work from anywhere."
+repository = "https://gitlab.com/HttpAnimations/devinorium"
+homepage = "https://gitlab.com/HttpAnimations/devinorium"
+
+[[bin]]
+name = "devinorium"
+path = "src/main.rs"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "compression-gzip", "fs", "cors", "limit", "set-header"] }
+hyper = { version = "1", features = ["full"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "macros", "chrono", "uuid", "migrate"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Auth & crypto
+argon2 = "0.5"
+rand = "0.8"
+totp-rs = { version = "5", features = ["qr"] }
+base64 = "0.22"
+subtle = "2"
+constant_time_eq = "0.3"
+
+# Sessions / tokens
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Templating / utils
+once_cell = "1"
+mime_guess = "2"
+percent-encoding = "2"
+async-trait = "0.1"
+regex = "1"
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
+tokio-tungstenite = "0.23"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1
