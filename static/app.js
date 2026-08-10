@@ -273,7 +273,7 @@ function renderThreadList() {
     html += `<div class="thread-group-header" data-group-id="${g.id}">`;
     html += `<svg class="icon-sm thread-group-chevron"><use href="#icon-menu"/></svg>`;
     html += `<span class="thread-group-name">${escapeHtml(g.name)}</span>`;
-    html += `<span class="thread-group-del" data-group-del="${g.id}" title="Delete group"><svg class="icon-xs"><use href="#icon-trash"/></svg></span>`;
+    html += `<span class="thread-group-del" data-group-del="${g.id}" title="Delete group (Shift+click to skip confirmation)"><svg class="icon-xs"><use href="#icon-trash"/></svg></span>`;
     html += `</div>`;
     html += `<div class="thread-group-items" data-group-id="${g.id}">`;
     html += g.threads.map((t) => threadItemHtml(t)).join("");
@@ -292,7 +292,7 @@ function threadItemHtml(t) {
     <div class="thread-item ${t.id === state.activeThreadId ? "active" : ""}" data-id="${t.id}" draggable="true">
       <svg class="icon-sm"><use href="#icon-chat"/></svg>
       <span class="thread-title-text">${escapeHtml(t.title)}</span>
-      <span class="thread-del" data-del="${t.id}" title="Delete"><svg class="icon-sm"><use href="#icon-trash"/></svg></span>
+      <span class="thread-del" data-del="${t.id}" title="Delete (Shift+click to skip confirmation)"><svg class="icon-sm"><use href="#icon-trash"/></svg></span>
     </div>`;
 }
 
@@ -302,7 +302,7 @@ function wireThreadItems() {
       const delBtn = e.target.closest(".thread-del");
       if (delBtn) {
         e.stopPropagation();
-        deleteThread(delBtn.dataset.del);
+        deleteThread(delBtn.dataset.del, e.shiftKey);
       } else {
         openThread(el.dataset.id);
       }
@@ -401,7 +401,7 @@ function wireGroupActions() {
       if (delBtn) {
         e.stopPropagation();
         const gid = Number(delBtn.dataset.groupDel);
-        if (await customConfirm("Delete group", "Delete this group? Threads will become ungrouped.")) {
+        if (e.shiftKey || await customConfirm("Delete group", "Delete this group? Threads will become ungrouped.")) {
           deleteGroup(gid).then(() => loadThreads());
         }
         return;
@@ -452,8 +452,8 @@ async function openThread(id) {
   }
 }
 
-async function deleteThread(id) {
-  if (!await customConfirm("Delete thread", "Delete this thread? This cannot be undone.")) return;
+async function deleteThread(id, skipConfirm = false) {
+  if (!skipConfirm && !await customConfirm("Delete thread", "Delete this thread? This cannot be undone.")) return;
   try {
     await api("DELETE", `/api/threads/${id}`);
     state.threads = state.threads.filter((t) => t.id !== id);
@@ -659,7 +659,7 @@ function renderFiles(entries) {
           <span class="file-size">${sizeStr}</span>
           <span class="file-actions">
             <button data-act="view" data-name="${escapeHtml(e.name)}" title="View"><svg class="icon-sm"><use href="#icon-eye"/></svg></button>
-            <button data-act="del" data-name="${escapeHtml(e.name)}" title="Delete"><svg class="icon-sm"><use href="#icon-trash"/></svg></button>
+            <button data-act="del" data-name="${escapeHtml(e.name)}" title="Delete (Shift+click to skip confirmation)"><svg class="icon-sm"><use href="#icon-trash"/></svg></button>
           </span>
         </div>`;
     })
@@ -671,7 +671,7 @@ function renderFiles(entries) {
         e.stopPropagation();
         const act = btn.dataset.act;
         const name = btn.dataset.name;
-        if (act === "del") deleteFile(name);
+        if (act === "del") deleteFile(name, e.shiftKey);
         else if (act === "view") viewFile(name);
         return;
       }
@@ -725,8 +725,8 @@ function isTextFile(name) {
   return ["txt", "md", "rs", "js", "ts", "py", "go", "java", "c", "cpp", "rb", "json", "yaml", "yml", "toml", "log", "html", "css", "sh"].includes(ext);
 }
 
-async function deleteFile(name) {
-  if (!await customConfirm("Delete file", `Delete ${name}?`)) return;
+async function deleteFile(name, skipConfirm = false) {
+  if (!skipConfirm && !await customConfirm("Delete file", `Delete ${name}?`)) return;
   const path = [...filesCurrentPath, name].join("/");
   try {
     await api("DELETE", `/api/files/delete?path=${encodeURIComponent(path)}`);
