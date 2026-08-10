@@ -3,6 +3,10 @@
 **/*.rs.bk
 Cargo.lock
 
+# Frontend build output (ignore built assets, keep placeholder)
+/frontend/dist/assets/
+/frontend/dist/wasm/
+
 # SQLite databases
 *.db
 *.db-shm

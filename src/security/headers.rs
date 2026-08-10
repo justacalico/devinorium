@@ -8,11 +8,13 @@ use axum::middleware::Next;
 use axum::extract::Request;
 
 /// A strict CSP. `connect-src 'self'` allows fetch/XHR/WebSocket to the same
-/// origin. `img-src 'self' data: blob:` allows inline image previews. No
-/// `unsafe-inline` for scripts.
+/// origin. `img-src 'self' data: blob:` allows inline image previews.
+/// `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'` allows the Dioxus
+/// WASM bootstrap loader (which uses an inline import() script) and WASM
+/// execution.
 pub fn csp_value() -> &'static str {
     "default-src 'self'; \
-     script-src 'self'; \
+     script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; \
      style-src 'self' 'unsafe-inline'; \
      img-src 'self' data: blob:; \
      font-src 'self'; \
