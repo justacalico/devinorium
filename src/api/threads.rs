@@ -31,7 +31,7 @@ pub fn router() -> Router<AppState> {
 pub struct ThreadOut {
     pub id: String,
     pub title: String,
-    pub workspace_id: Option<i64>,
+    pub thread_group_id: Option<i64>,
     pub devin_session_id: Option<String>,
     pub model: String,
     pub permission_mode: String,
@@ -44,7 +44,7 @@ impl From<ThreadRow> for ThreadOut {
         Self {
             id: t.id,
             title: t.title,
-            workspace_id: t.workspace_id,
+            thread_group_id: t.thread_group_id,
             devin_session_id: t.devin_session_id,
             model: t.model,
             permission_mode: t.permission_mode,
@@ -87,7 +87,7 @@ async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> 
 #[derive(Debug, Deserialize)]
 pub struct CreateThread {
     pub title: Option<String>,
-    pub workspace_id: Option<i64>,
+    pub thread_group_id: Option<i64>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
 }
@@ -97,12 +97,12 @@ async fn create(
     CurrentUser(user): CurrentUser,
     Json(req): Json<CreateThread>,
 ) -> Response {
-    // Validate workspace ownership if provided.
-    if let Some(wid) = req.workspace_id {
-        match state.db.get_workspace(wid, user.id).await {
+    // Validate group ownership if provided.
+    if let Some(gid) = req.thread_group_id {
+        match state.db.get_thread_group(gid, user.id).await {
             Ok(Some(_)) => {}
             _ => {
-                return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid workspace"))).into_response();
+                return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid thread_group_id"))).into_response();
             }
         }
     }
@@ -113,7 +113,7 @@ async fn create(
     let new = NewThread {
         id: Uuid::new_v4().to_string(),
         user_id: user.id,
-        workspace_id: req.workspace_id,
+        thread_group_id: req.thread_group_id,
         title: req.title.unwrap_or_else(|| "New thread".into()),
         model: req.model.unwrap_or_else(|| state.config.default_model.clone()),
         permission_mode,
@@ -144,23 +144,48 @@ async fn get_one(
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RenameThread {
-    pub title: String,
+pub struct UpdateThread {
+    pub title: Option<String>,
+    /// Distinguish between:
+    ///   - field absent: don't change group
+    ///   - field null: ungroup (set thread_group_id to NULL)
+    ///   - field is a number: move to that group
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub thread_group_id: Option<Option<i64>>,
+}
+
+/// Custom deserializer that maps `null` → `Some(None)` and a number → `Some(Some(n))`.
+/// With `#[serde(default)]`, an absent field → `None` (outer).
+fn deserialize_optional_field<'de, D>(deserializer: D) -> Result<Option<Option<i64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<i64>::deserialize(deserializer)?;
+    Ok(Some(opt))
 }
 
 async fn rename(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
-    Json(req): Json<RenameThread>,
+    Json(req): Json<UpdateThread>,
 ) -> Response {
-    if req.title.trim().is_empty() || req.title.len() > 200 {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("title must be 1-200 chars"))).into_response();
+    // Update title if provided.
+    if let Some(title) = &req.title {
+        if title.trim().is_empty() || title.len() > 200 {
+            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("title must be 1-200 chars"))).into_response();
+        }
+        if let Err(e) = state.db.rename_thread(&id, user.id, title).await {
+            return crate::api::map_err_internal(e).into_response();
+        }
     }
-    match state.db.rename_thread(&id, user.id, &req.title).await {
-        Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
-        Err(e) => crate::api::map_err_internal(e).into_response(),
+    // Move to group if the field was present.
+    if let Some(group_id) = req.thread_group_id {
+        if let Err(e) = state.db.move_thread_to_group(&id, user.id, group_id).await {
+            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new(e.to_string()))).into_response();
+        }
     }
+    Json(serde_json::json!({"ok": true})).into_response()
 }
 
 async fn delete(
@@ -243,14 +268,12 @@ async fn send(
         return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("prompt too long (max 64 KiB)"))).into_response();
     }
 
-    // Determine working directory from the thread's workspace.
-    let working_dir = match thread.workspace_id {
-        Some(wid) => match state.db.get_workspace(wid, user.id).await {
-            Ok(Some(w)) => PathBuf::from(&w.path),
-            _ => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("workspace missing"))).into_response(),
-        },
-        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    };
+    // Determine working directory: use the first configured file root, or cwd.
+    let working_dir = state
+        .config
+        .file_root
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     // Persist the user message.
     let user_msg = match state

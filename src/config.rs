@@ -14,7 +14,7 @@ pub struct Config {
     pub db_url: String,
     pub bootstrap_username: String,
     pub bootstrap_password: String,
-    pub workspace_roots: Vec<PathBuf>,
+    pub file_root: Option<PathBuf>,
     pub devin_bin: String,
     pub default_model: String,
     pub trust_proxy: bool,
@@ -54,12 +54,10 @@ impl Config {
             tracing::warn!("DEVINORIUM_BOOTSTRAP_PASSWORD is not set to a real password; bootstrap account creation will be skipped. Set it to create the first user.");
         }
 
-        let workspace_roots = env::var("DEVINORIUM_WORKSPACE_ROOTS")
-            .unwrap_or_default()
-            .split(',')
+        let file_root = env::var("DEVINORIUM_FILE_ROOT")
+            .ok()
             .filter(|s| !s.trim().is_empty())
-            .map(|s| PathBuf::from(s.trim()))
-            .collect();
+            .map(|s| PathBuf::from(s.trim()));
 
         let devin_bin = env_or("DEVINORIUM_DEVIN_BIN", "devin");
         let default_model = env_or("DEVINORIUM_DEFAULT_MODEL", "glm-5-2");
@@ -77,7 +75,7 @@ impl Config {
             db_url,
             bootstrap_username,
             bootstrap_password,
-            workspace_roots,
+            file_root,
             devin_bin,
             default_model,
             trust_proxy,

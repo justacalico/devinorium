@@ -4,8 +4,8 @@ pub mod auth;
 pub mod files;
 pub mod invites;
 pub mod models;
+pub mod thread_groups;
 pub mod threads;
-pub mod workspaces;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

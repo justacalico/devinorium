@@ -310,6 +310,38 @@ html, body {
 .thread-item .thread-del { opacity: 0; transition: opacity var(--dur-fast); display: inline-flex; }
 .thread-item:hover .thread-del { opacity: 0.6; }
 .thread-item .thread-del:hover { opacity: 1; color: var(--md-error); }
+.thread-item.dragging { opacity: 0.4; }
+.thread-item.drag-over { background: rgba(103,80,164,0.18); outline: 2px dashed var(--md-primary); }
+
+/* Thread groups */
+.thread-group-section { margin-bottom: 4px; }
+.thread-group-section.drag-over { background: rgba(103,80,164,0.08); border-radius: var(--shape-md); }
+.thread-group-label {
+  padding: 8px 12px 4px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.thread-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: var(--shape-sm);
+  color: var(--md-on-surface);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.thread-group-header:hover { background: rgba(103,80,164,0.06); }
+.thread-group-header.drag-over { background: rgba(103,80,164,0.12); outline: 2px dashed var(--md-primary); }
+.thread-group-chevron { color: var(--md-on-surface-variant); flex-shrink: 0; }
+.thread-group-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-group-del { opacity: 0; display: inline-flex; transition: opacity var(--dur-fast); }
+.thread-group-header:hover .thread-group-del { opacity: 0.6; }
+.thread-group-del:hover { opacity: 1; color: var(--md-error); }
+.thread-group-items { padding-left: 8px; }
 
 .sidebar-footer {
   display: flex;

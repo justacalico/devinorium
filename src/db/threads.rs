@@ -5,7 +5,7 @@ use super::ThreadRow;
 pub struct NewThread {
     pub id: String,
     pub user_id: i64,
-    pub workspace_id: Option<i64>,
+    pub thread_group_id: Option<i64>,
     pub title: String,
     pub model: String,
     pub permission_mode: String,
@@ -14,13 +14,13 @@ pub struct NewThread {
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, workspace_id, title, model, permission_mode)
+            "INSERT INTO threads (id, user_id, thread_group_id, title, model, permission_mode)
              VALUES (?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
         .bind(new.user_id)
-        .bind(new.workspace_id)
+        .bind(new.thread_group_id)
         .bind(&new.title)
         .bind(&new.model)
         .bind(&new.permission_mode)

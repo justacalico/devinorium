@@ -18,15 +18,15 @@ pub mod audit;
 pub mod invites;
 pub mod messages;
 pub mod sessions;
+pub mod thread_groups;
 pub mod threads;
 pub mod users;
-pub mod workspaces;
 
 pub use invites::InviteRow;
 pub use messages::NewMessage;
+pub use thread_groups::NewThreadGroup;
 pub use threads::NewThread;
 pub use users::NewUser;
-pub use workspaces::NewWorkspace;
 
 /// A typed handle to the SQLite pool plus app-wide db config.
 #[derive(Clone)]
@@ -95,13 +95,13 @@ pub struct SessionRow {
 pub struct ThreadRow {
     pub id: String,
     pub user_id: i64,
-    pub workspace_id: Option<i64>,
     pub title: String,
     pub devin_session_id: Option<String>,
     pub model: String,
     pub permission_mode: String,
     pub created_at: String,
     pub updated_at: String,
+    pub thread_group_id: Option<i64>,
 }
 
 /// A row from the `messages` table.
@@ -115,13 +115,12 @@ pub struct MessageRow {
     pub created_at: String,
 }
 
-/// A row from the `workspaces` table.
+/// A row from the `thread_groups` table.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
-pub struct WorkspaceRow {
+pub struct ThreadGroupRow {
     pub id: i64,
     pub user_id: i64,
-    pub path: String,
-    pub label: String,
+    pub name: String,
+    pub position: i64,
     pub created_at: String,
-    pub last_used_at: String,
 }

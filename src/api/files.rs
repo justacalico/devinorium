@@ -1,12 +1,12 @@
 //! File manager API routes.
 //!
-//! All operations are constrained to a workspace's directory (which is itself
-//! within a configured workspace root). Path traversal is prevented by
-//! canonicalizing and checking containment.
+//! All operations are constrained to a single global file root (configured
+//! via DEVINORIUM_FILE_ROOT). Path traversal is prevented by canonicalizing
+//! and checking containment.
 
 use std::path::PathBuf;
 
-use axum::extract::{Multipart, Path, Query, State};
+use axum::extract::{Multipart, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, Router};
@@ -14,50 +14,44 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::session::CurrentUser;
-use crate::db::UserRow;
 use crate::security::paths;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/workspaces/:id/files", get(list_dir).post(upload))
-        .route("/api/workspaces/:id/files/content", get(read_file))
-        .route("/api/workspaces/:id/files/dir", post(mkdir))
-        .route("/api/workspaces/:id/files/move", post(mv))
-        .route("/api/workspaces/:id/files/delete", axum::routing::delete(delete))
+        .route("/api/files", get(list_dir).post(upload))
+        .route("/api/files/content", get(read_file))
+        .route("/api/files/dir", post(mkdir))
+        .route("/api/files/move", post(mv))
+        .route("/api/files/delete", axum::routing::delete(delete))
 }
 
-/// Resolve a relative `path` query param within the workspace, returning
-/// (canonical_path, workspace_path) or a 400 response.
-async fn resolve(
+/// Resolve a relative `path` query param within the global file root,
+/// returning (canonical_path, root_canonical) or a 400/500 response.
+fn resolve(
     state: &AppState,
-    user: &UserRow,
-    workspace_id: i64,
     rel: Option<&str>,
 ) -> Result<(PathBuf, PathBuf), Response> {
-    let ws = match state.db.get_workspace(workspace_id, user.id).await {
-        Ok(Some(w)) => w,
-        Ok(None) => {
-            return Err((StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("workspace not found"))).into_response());
+    let root = match &state.config.file_root {
+        Some(r) => r.clone(),
+        None => {
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(crate::api::ApiError::new("no file root configured"))).into_response());
         }
-        Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
     };
-    let ws_path = PathBuf::from(&ws.path);
-    let ws_canon = match ws_path.canonicalize() {
+    let root_canon = match root.canonicalize() {
         Ok(c) => c,
         Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
     };
     let rel = rel.unwrap_or("");
     let target = if rel.is_empty() {
-        ws_canon.clone()
+        root_canon.clone()
     } else {
-        ws_canon.join(rel)
+        root_canon.join(rel)
     };
-    // Use resolve_within with the workspace canon as base and roots = [ws_canon].
-    let roots = vec![ws_canon.clone()];
-    match paths::resolve_within(&target, Some(&ws_canon), &roots) {
-        Some(p) => Ok((p, ws_canon)),
-        None => Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path escapes workspace"))).into_response()),
+    let roots = vec![root_canon.clone()];
+    match paths::resolve_within(&target, Some(&root_canon), &roots) {
+        Some(p) => Ok((p, root_canon)),
+        None => Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path escapes file root"))).into_response()),
     }
 }
 
@@ -76,11 +70,10 @@ struct DirEntry {
 
 async fn list_dir(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(wid): Path<i64>,
+    CurrentUser(_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> Response {
-    let (target, _ws) = match resolve(&state, &user, wid, q.path.as_deref()).await {
+    let (target, _root) = match resolve(&state, q.path.as_deref()) {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -109,11 +102,10 @@ async fn list_dir(
 
 async fn read_file(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(wid): Path<i64>,
+    CurrentUser(_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> Response {
-    let (target, _ws) = match resolve(&state, &user, wid, q.path.as_deref()).await {
+    let (target, _root) = match resolve(&state, q.path.as_deref()) {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -139,12 +131,11 @@ async fn read_file(
 
 async fn upload(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(wid): Path<i64>,
+    CurrentUser(_user): CurrentUser,
     mut multipart: Multipart,
 ) -> Response {
     // Fields: "path" (optional relative dir to upload into), file fields.
-    let (ws_base, _ws) = match resolve(&state, &user, wid, None).await {
+    let (root_base, _root) = match resolve(&state, None) {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -174,14 +165,14 @@ async fn upload(
             .collect();
         let rel = dest_dir_rel.as_deref().unwrap_or("");
         let target = if rel.is_empty() {
-            ws_base.join(&safe)
+            root_base.join(&safe)
         } else {
-            ws_base.join(rel).join(&safe)
+            root_base.join(rel).join(&safe)
         };
-        let roots = vec![ws_base.clone()];
-        let resolved = match paths::resolve_within(&target, Some(&ws_base), &roots) {
+        let roots = vec![root_base.clone()];
+        let resolved = match paths::resolve_within(&target, Some(&root_base), &roots) {
             Some(p) => p,
-            None => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path escapes workspace"))).into_response(),
+            None => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path escapes file root"))).into_response(),
         };
         if let Some(parent) = resolved.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
@@ -201,11 +192,10 @@ struct MkdirReq {
 
 async fn mkdir(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(wid): Path<i64>,
+    CurrentUser(_user): CurrentUser,
     Json(req): Json<MkdirReq>,
 ) -> Response {
-    let (target, _ws) = match resolve(&state, &user, wid, Some(&req.path)).await {
+    let (target, _root) = match resolve(&state, Some(&req.path)) {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -223,19 +213,18 @@ struct MoveReq {
 
 async fn mv(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(wid): Path<i64>,
+    CurrentUser(_user): CurrentUser,
     Json(req): Json<MoveReq>,
 ) -> Response {
-    let (from, ws) = match resolve(&state, &user, wid, Some(&req.from)).await {
+    let (from, root) = match resolve(&state, Some(&req.from)) {
         Ok(v) => v,
         Err(r) => return r,
     };
-    let to_target = ws.join(&req.to);
-    let roots = vec![ws.clone()];
-    let to = match paths::resolve_within(&to_target, Some(&ws), &roots) {
+    let to_target = root.join(&req.to);
+    let roots = vec![root.clone()];
+    let to = match paths::resolve_within(&to_target, Some(&root), &roots) {
         Some(p) => p,
-        None => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("destination escapes workspace"))).into_response(),
+        None => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("destination escapes file root"))).into_response(),
     };
     if let Some(parent) = to.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
@@ -248,11 +237,10 @@ async fn mv(
 
 async fn delete(
     State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(wid): Path<i64>,
+    CurrentUser(_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> Response {
-    let (target, _ws) = match resolve(&state, &user, wid, q.path.as_deref()).await {
+    let (target, _root) = match resolve(&state, q.path.as_deref()) {
         Ok(v) => v,
         Err(r) => return r,
     };
