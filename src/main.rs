@@ -3,14 +3,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{
-    routing::get,
-    Router,
-};
-use tower_http::{
-    compression::CompressionLayer,
-    trace::TraceLayer,
-};
 
 use devinorium::{auth, config, db, providers, AppState};
 
@@ -36,51 +28,21 @@ async fn main() -> Result<()> {
         default_model: cfg.default_model.clone(),
     })?;
 
+    let secure_cookie = cfg.secure_cookie;
     let state = AppState {
         config: Arc::new(cfg),
         db: database,
         provider: Arc::from(provider),
     };
 
-    // Public routes (no auth).
-    let public = devinorium::api::auth::router();
-
-    // Protected routes (require auth + role=user).
-    let protected = devinorium::api::threads::router()
-        .merge(devinorium::api::files::router())
-        .merge(devinorium::api::workspaces::router())
-        .route("/api/auth/me", axum::routing::get(devinorium::api::auth::me))
-        .route(
-            "/api/auth/totp/setup",
-            axum::routing::post(devinorium::api::auth::totp_setup),
-        )
-        .route(
-            "/api/auth/totp/verify",
-            axum::routing::post(devinorium::api::auth::totp_verify),
-        )
-        .route(
-            "/api/auth/totp/disable",
-            axum::routing::post(devinorium::api::auth::totp_disable),
-        )
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            auth::middleware::require_auth,
-        ));
-
-    let app = Router::new()
-        .route("/healthz", get(healthz))
-        .merge(public)
-        .merge(protected)
-        .with_state(state)
-        .layer(TraceLayer::new_for_http())
-        .layer(CompressionLayer::new());
+    let app = devinorium::build_app(state);
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    tracing::info!("Devinorium listening on http://{}", bind);
-    axum::serve(listener, app).await?;
+    tracing::info!(%bind, secure_cookie, "Devinorium listening");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
-}
-
-async fn healthz() -> &'static str {
-    "ok"
 }
