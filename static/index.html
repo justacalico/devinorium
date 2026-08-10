@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#6750A4">
+  <title>Devinorium</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+</head>
+<body>
+  <!-- Login view -->
+  <section id="login-view" class="view centered-view">
+    <div class="auth-card m3-card">
+      <div class="auth-header">
+        <div class="logo">🤖</div>
+        <h1 class="m3-headline-small">Devinorium</h1>
+        <p class="m3-body-medium auth-subtitle">Sign in to your workspace</p>
+      </div>
+      <form id="login-form" class="auth-form">
+        <label class="m3-text-field">
+          <input type="text" name="username" autocomplete="username" required>
+          <span>Username</span>
+        </label>
+        <label class="m3-text-field">
+          <input type="password" name="password" autocomplete="current-password" required>
+          <span>Password</span>
+        </label>
+        <div id="totp-field" class="m3-text-field hidden">
+          <input type="text" name="totp" inputmode="numeric" autocomplete="one-time-code" placeholder="000000">
+          <span>TOTP code</span>
+        </div>
+        <button type="submit" class="m3-button m3-filled">Sign in</button>
+        <p id="login-error" class="error-text hidden"></p>
+      </form>
+      <div class="auth-footer">
+        <button id="show-register" class="m3-text-button">Have an invite? Register</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Register view -->
+  <section id="register-view" class="view centered-view hidden">
+    <div class="auth-card m3-card">
+      <div class="auth-header">
+        <div class="logo">🤖</div>
+        <h1 class="m3-headline-small">Create account</h1>
+        <p class="m3-body-medium auth-subtitle">Enter your invite token</p>
+      </div>
+      <form id="register-form" class="auth-form">
+        <label class="m3-text-field">
+          <input type="text" name="invite" required placeholder="invite token">
+          <span>Invite token</span>
+        </label>
+        <label class="m3-text-field">
+          <input type="text" name="username" autocomplete="username" required>
+          <span>Username</span>
+        </label>
+        <label class="m3-text-field">
+          <input type="password" name="password" autocomplete="new-password" required minlength="12">
+          <span>Password (min 12 chars)</span>
+        </label>
+        <button type="submit" class="m3-button m3-filled">Register</button>
+        <p id="register-error" class="error-text hidden"></p>
+        <button type="button" id="back-to-login" class="m3-text-button">Back to sign in</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Main app view -->
+  <section id="app-view" class="view app-layout hidden">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="logo-sm">🤖</span>
+          <span class="m3-title-medium">Devinorium</span>
+        </div>
+        <button id="new-thread-btn" class="m3-fab" title="New thread" aria-label="New thread">+</button>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label m3-label-medium">Workspace</div>
+        <select id="workspace-select" class="m3-select"></select>
+      </div>
+
+      <nav class="thread-list" id="thread-list" aria-label="Threads"></nav>
+
+      <div class="sidebar-footer">
+        <div class="user-chip" id="user-chip">
+          <div class="avatar" id="user-avatar">?</div>
+          <span class="m3-body-medium" id="user-name">—</span>
+        </div>
+        <button id="menu-btn" class="m3-icon-button" title="Menu" aria-label="Menu">⋮</button>
+      </div>
+
+      <div id="user-menu" class="user-menu m3-card hidden">
+        <button id="totp-setup-btn" class="menu-item">Enable 2FA (TOTP)</button>
+        <button id="invites-btn" class="menu-item">Invites</button>
+        <button id="logout-btn" class="menu-item danger">Sign out</button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+      <header class="main-header">
+        <button id="sidebar-toggle" class="m3-icon-button mobile-only" aria-label="Toggle sidebar">☰</button>
+        <h2 class="m3-title-large" id="thread-title">Select or create a thread</h2>
+        <div class="header-actions">
+          <select id="model-select" class="m3-select" title="Model"></select>
+          <select id="permission-select" class="m3-select" title="Permission mode">
+            <option value="normal">Normal</option>
+            <option value="accept-edits">Accept edits</option>
+            <option value="smart">Smart</option>
+            <option value="bypass">Bypass</option>
+          </select>
+          <button id="files-btn" class="m3-icon-button" title="File manager" aria-label="File manager">📁</button>
+        </div>
+      </header>
+
+      <div class="messages" id="messages"></div>
+
+      <form class="composer" id="composer">
+        <div class="composer-attachments" id="composer-attachments"></div>
+        <div class="composer-row">
+          <label class="m3-icon-button attach-btn" title="Attach files" aria-label="Attach files">
+            📎<input type="file" id="file-input" multiple hidden>
+          </label>
+          <textarea id="prompt-input" class="m3-text-area" placeholder="Send a message…" rows="1"></textarea>
+          <button type="submit" class="m3-fab send-btn" id="send-btn" aria-label="Send">➤</button>
+        </div>
+      </form>
+    </main>
+
+    <!-- File manager panel -->
+    <aside class="files-panel hidden" id="files-panel">
+      <div class="files-header">
+        <h3 class="m3-title-medium">Files</h3>
+        <div class="files-actions">
+          <button id="files-upload-btn" class="m3-icon-button" title="Upload" aria-label="Upload">⬆</button>
+          <button id="files-mkdir-btn" class="m3-icon-button" title="New folder" aria-label="New folder">📁+</button>
+          <button id="files-close-btn" class="m3-icon-button" title="Close" aria-label="Close">✕</button>
+        </div>
+      </div>
+      <div class="files-breadcrumb" id="files-breadcrumb"></div>
+      <div class="files-list" id="files-list"></div>
+      <input type="file" id="files-upload-input" multiple hidden>
+    </aside>
+  </section>
+
+  <!-- TOTP setup dialog -->
+  <div id="totp-dialog" class="dialog-scrim hidden">
+    <div class="m3-card dialog">
+      <h3 class="m3-headline-small">Enable 2FA</h3>
+      <p class="m3-body-medium">Scan this secret in your authenticator app, then enter the current code.</p>
+      <div class="totp-secret" id="totp-secret"></div>
+      <label class="m3-text-field">
+        <input type="text" id="totp-verify-code" inputmode="numeric" placeholder="000000">
+        <span>Verification code</span>
+      </label>
+      <div class="dialog-actions">
+        <button class="m3-text-button" id="totp-cancel">Cancel</button>
+        <button class="m3-button m3-filled" id="totp-confirm">Verify & enable</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invites dialog -->
+  <div id="invites-dialog" class="dialog-scrim hidden">
+    <div class="m3-card dialog">
+      <h3 class="m3-headline-small">Invite tokens</h3>
+      <p class="m3-body-medium">Share a token so someone can register. Tokens are single-use and expire in 7 days.</p>
+      <button class="m3-button m3-tonal" id="create-invite-btn">Create new invite</button>
+      <div class="invites-list" id="invites-list"></div>
+      <div class="dialog-actions">
+        <button class="m3-text-button" id="invites-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- File preview dialog -->
+  <div id="file-preview-dialog" class="dialog-scrim hidden">
+    <div class="m3-card dialog dialog-wide">
+      <h3 class="m3-title-medium" id="file-preview-name">File</h3>
+      <div class="file-preview-body" id="file-preview-body"></div>
+      <div class="dialog-actions">
+        <button class="m3-text-button" id="file-preview-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
