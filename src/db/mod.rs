@@ -22,7 +22,11 @@ pub mod threads;
 pub mod users;
 pub mod workspaces;
 
+pub use invites::InviteRow;
+pub use messages::NewMessage;
+pub use threads::NewThread;
 pub use users::NewUser;
+pub use workspaces::NewWorkspace;
 
 /// A typed handle to the SQLite pool plus app-wide db config.
 #[derive(Clone)]

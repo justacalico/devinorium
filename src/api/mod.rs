@@ -2,6 +2,8 @@
 
 pub mod auth;
 pub mod files;
+pub mod invites;
+pub mod models;
 pub mod threads;
 pub mod workspaces;
 

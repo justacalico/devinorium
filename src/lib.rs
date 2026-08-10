@@ -59,6 +59,8 @@ pub fn build_app(state: AppState) -> Router {
     let protected = api::threads::router()
         .merge(api::files::router())
         .merge(api::workspaces::router())
+        .merge(api::invites::router())
+        .merge(api::models::router())
         .route("/api/auth/me", get(api::auth::me))
         .route("/api/auth/totp/setup", axum::routing::post(api::auth::totp_setup))
         .route("/api/auth/totp/verify", axum::routing::post(api::auth::totp_verify))

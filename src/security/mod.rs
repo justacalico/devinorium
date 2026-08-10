@@ -7,6 +7,7 @@
 pub mod csrf;
 pub mod headers;
 pub mod ip;
+pub mod paths;
 pub mod rate_limit;
 
 pub use csrf::csrf_origin_check;
