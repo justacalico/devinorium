@@ -13,4 +13,7 @@ pub mod rate_limit;
 pub use csrf::csrf_origin_check;
 pub use headers::security_headers;
 pub use ip::{extract_client_ip, from_req as ip_from_req, ip_hash, ClientIp};
-pub use rate_limit::{rate_limit, RateLimitLayer, RateLimiter};
+pub use rate_limit::{
+    classify, global_weighted_rate_limit, weighted_rate_limit,
+    EndpointClass, RateLimiter, WeightedRateLimit,
+};
