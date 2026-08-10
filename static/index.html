@@ -213,6 +213,33 @@
     </div>
   </div>
 
+  <!-- Generic confirm dialog -->
+  <div id="confirm-dialog" class="dialog-scrim hidden">
+    <div class="m3-card dialog">
+      <h3 class="m3-title-medium" id="confirm-title">Confirm</h3>
+      <p class="m3-body-medium" id="confirm-message">Are you sure?</p>
+      <div class="dialog-actions">
+        <button class="m3-text-button" id="confirm-cancel">Cancel</button>
+        <button class="m3-button m3-filled" id="confirm-ok">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic prompt dialog -->
+  <div id="prompt-dialog" class="dialog-scrim hidden">
+    <div class="m3-card dialog">
+      <h3 class="m3-title-medium" id="prompt-title">Input</h3>
+      <label class="m3-text-field">
+        <input type="text" id="prompt-input">
+        <span id="prompt-label">Value</span>
+      </label>
+      <div class="dialog-actions">
+        <button class="m3-text-button" id="prompt-cancel">Cancel</button>
+        <button class="m3-button m3-filled" id="prompt-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/app.js" defer></script>
 </body>
 </html>

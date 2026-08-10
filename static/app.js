@@ -51,6 +51,67 @@ function showError(elId, msg) {
   el.classList.remove("hidden");
 }
 
+/* ---------- Custom dialogs (replace browser confirm/prompt) ---------- */
+
+function customConfirm(title, message, okLabel = "Delete") {
+  return new Promise((resolve) => {
+    const dlg = $("#confirm-dialog");
+    $("#confirm-title").textContent = title;
+    $("#confirm-message").textContent = message;
+    const okBtn = $("#confirm-ok");
+    const cancelBtn = $("#confirm-cancel");
+    okBtn.textContent = okLabel;
+    dlg.classList.remove("hidden");
+
+    function cleanup() {
+      dlg.classList.add("hidden");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      dlg.removeEventListener("click", onScrim);
+    }
+    function onOk() { cleanup(); resolve(true); }
+    function onCancel() { cleanup(); resolve(false); }
+    function onScrim(e) { if (e.target === dlg) onCancel(); }
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    dlg.addEventListener("click", onScrim);
+  });
+}
+
+function customPrompt(title, label, defaultValue = "") {
+  return new Promise((resolve) => {
+    const dlg = $("#prompt-dialog");
+    $("#prompt-title").textContent = title;
+    $("#prompt-label").textContent = label;
+    const input = $("#prompt-input");
+    input.value = defaultValue;
+    const okBtn = $("#prompt-ok");
+    const cancelBtn = $("#prompt-cancel");
+    dlg.classList.remove("hidden");
+    input.focus();
+    input.select();
+
+    function cleanup() {
+      dlg.classList.add("hidden");
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      input.removeEventListener("keydown", onKey);
+      dlg.removeEventListener("click", onScrim);
+    }
+    function onOk() { cleanup(); resolve(input.value); }
+    function onCancel() { cleanup(); resolve(null); }
+    function onKey(e) {
+      if (e.key === "Enter") { e.preventDefault(); onOk(); }
+      if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+    }
+    function onScrim(e) { if (e.target === dlg) onCancel(); }
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    input.addEventListener("keydown", onKey);
+    dlg.addEventListener("click", onScrim);
+  });
+}
+
 /* ---------- Auth ---------- */
 
 async function checkSession() {
@@ -335,12 +396,12 @@ function wireDragAndDrop() {
 function wireGroupActions() {
   // Group header click → rename or delete.
   $$(".thread-group-header").forEach((el) => {
-    el.addEventListener("click", (e) => {
+    el.addEventListener("click", async (e) => {
       const delBtn = e.target.closest(".thread-group-del");
       if (delBtn) {
         e.stopPropagation();
         const gid = Number(delBtn.dataset.groupDel);
-        if (confirm("Delete this group? Threads will become ungrouped.")) {
+        if (await customConfirm("Delete group", "Delete this group? Threads will become ungrouped.")) {
           deleteGroup(gid).then(() => loadThreads());
         }
         return;
@@ -349,7 +410,7 @@ function wireGroupActions() {
       const nameSpan = e.target.closest(".thread-group-name");
       if (nameSpan) {
         const gid = Number(el.dataset.groupId);
-        const newName = prompt("Group name:", nameSpan.textContent);
+        const newName = await customPrompt("Rename group", "Group name", nameSpan.textContent);
         if (newName && newName.trim()) {
           renameGroup(gid, newName.trim()).then(() => loadThreads());
         }
@@ -389,7 +450,7 @@ async function openThread(id) {
 }
 
 async function deleteThread(id) {
-  if (!confirm("Delete this thread?")) return;
+  if (!await customConfirm("Delete thread", "Delete this thread? This cannot be undone.")) return;
   try {
     await api("DELETE", `/api/threads/${id}`);
     state.threads = state.threads.filter((t) => t.id !== id);
@@ -662,7 +723,7 @@ function isTextFile(name) {
 }
 
 async function deleteFile(name) {
-  if (!confirm(`Delete ${name}?`)) return;
+  if (!await customConfirm("Delete file", `Delete ${name}?`)) return;
   const path = [...filesCurrentPath, name].join("/");
   try {
     await api("DELETE", `/api/files/delete?path=${encodeURIComponent(path)}`);
@@ -687,7 +748,7 @@ $("#files-upload-input")?.addEventListener("change", async (e) => {
 });
 
 async function mkdir() {
-  const name = prompt("Folder name:");
+  const name = await customPrompt("New folder", "Folder name");
   if (!name) return;
   const path = [...filesCurrentPath, name].join("/");
   try {
