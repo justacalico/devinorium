@@ -12,6 +12,10 @@ homepage = "https://gitlab.com/HttpAnimations/devinorium"
 name = "devinorium"
 path = "src/main.rs"
 
+[lib]
+name = "devinorium"
+path = "src/lib.rs"
+
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
@@ -59,8 +63,8 @@ async-trait = "0.1"
 regex = "1"
 
 [dev-dependencies]
-reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
-tokio-tungstenite = "0.23"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
+tokio-tungstenite = { version = "0.23", default-features = false }
 tempfile = "3"
 
 [profile.release]

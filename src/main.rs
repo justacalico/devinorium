@@ -1,9 +1,5 @@
 //! Devinorium — a secure, self-hostable Material 3 web UI for the Devin CLI.
 
-mod auth;
-mod config;
-mod db;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -16,11 +12,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 
-#[derive(Clone)]
-pub struct AppState {
-    pub config: Arc<config::Config>,
-    pub db: db::Db,
-}
+use devinorium::{config, db, providers, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -34,9 +26,17 @@ async fn main() -> Result<()> {
     let cfg = config::Config::from_env()?;
     let bind = cfg.bind_addr();
     let database = db::Db::connect(&cfg.db_url).await?;
+
+    let provider = providers::build_provider(providers::ProviderConfig {
+        id: "devin-cli".to_string(),
+        devin_bin: cfg.devin_bin.clone(),
+        default_model: cfg.default_model.clone(),
+    })?;
+
     let state = AppState {
         config: Arc::new(cfg),
         db: database,
+        provider: Arc::from(provider),
     };
 
     let app = Router::new()
