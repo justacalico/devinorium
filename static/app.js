@@ -180,17 +180,18 @@ function renderThreadList() {
     .map(
       (t) => `
       <div class="thread-item ${t.id === state.activeThreadId ? "active" : ""}" data-id="${t.id}">
-        <span>💬</span>
+        <svg class="icon-sm"><use href="#icon-chat"/></svg>
         <span class="thread-title-text">${escapeHtml(t.title)}</span>
-        <span class="thread-del" data-del="${t.id}" title="Delete">🗑</span>
+        <span class="thread-del" data-del="${t.id}" title="Delete"><svg class="icon-sm"><use href="#icon-trash"/></svg></span>
       </div>`
     )
     .join("");
   $$(".thread-item").forEach((el) => {
     el.addEventListener("click", (e) => {
-      if (e.target.dataset.del) {
+      const delBtn = e.target.closest(".thread-del");
+      if (delBtn) {
         e.stopPropagation();
-        deleteThread(e.target.dataset.del);
+        deleteThread(delBtn.dataset.del);
       } else {
         openThread(el.dataset.id);
       }
@@ -261,16 +262,16 @@ function renderMessages(messages) {
 function renderMessage(m) {
   const div = document.createElement("div");
   div.className = `message ${m.role}`;
-  const avatar = m.role === "user" ? "🧑" : m.role === "assistant" ? "🤖" : "⚠";
+  const iconId = m.role === "user" ? "icon-person" : m.role === "assistant" ? "icon-bot" : "icon-warning";
   const roleLabel = m.role === "user" ? "You" : m.role === "assistant" ? "Assistant" : "Error";
   let attHtml = "";
   if (m.attachments && Array.isArray(m.attachments) && m.attachments.length) {
     attHtml = '<div class="msg-attachments">' +
-      m.attachments.map((a) => `<span class="msg-attachment-chip">📎 ${escapeHtml(a.filename)}</span>`).join("") +
+      m.attachments.map((a) => `<span class="msg-attachment-chip"><svg class="icon-xs"><use href="#icon-paperclip"/></svg> ${escapeHtml(a.filename)}</span>`).join("") +
       "</div>";
   }
   div.innerHTML = `
-    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-avatar"><svg class="icon-sm"><use href="#${iconId}"/></svg></div>
     <div class="msg-body">
       <div class="msg-role">${escapeHtml(roleLabel)}</div>
       <div class="msg-content">${formatContent(m.content)}</div>
@@ -318,7 +319,7 @@ $("#file-input")?.addEventListener("change", (e) => {
 function renderPendingAttachments() {
   const box = $("#composer-attachments");
   box.innerHTML = state.pendingAttachments
-    .map((f, i) => `<span class="att-chip">📎 ${escapeHtml(f.name)} <span class="att-remove" data-i="${i}">✕</span></span>`)
+    .map((f, i) => `<span class="att-chip"><svg class="icon-xs"><use href="#icon-paperclip"/></svg> ${escapeHtml(f.name)} <span class="att-remove" data-i="${i}"><svg class="icon-xs"><use href="#icon-close"/></svg></span></span>`)
     .join("");
   $$(".att-remove").forEach((el) => {
     el.addEventListener("click", () => {
@@ -338,7 +339,7 @@ $("#composer")?.addEventListener("submit", async (e) => {
   if (!prompt) return;
   const sendBtn = $("#send-btn");
   sendBtn.disabled = true;
-  sendBtn.textContent = "…";
+  sendBtn.innerHTML = '<svg class="icon-sm icon-spin"><use href="#icon-loading"/></svg>';
 
   // Append a provisional user message.
   const box = $("#messages");
@@ -369,7 +370,7 @@ $("#composer")?.addEventListener("submit", async (e) => {
     box.scrollTop = box.scrollHeight;
   } finally {
     sendBtn.disabled = false;
-    sendBtn.textContent = "➤";
+    sendBtn.innerHTML = '<svg class="icon-sm"><use href="#icon-send"/></svg>';
   }
 });
 
@@ -432,26 +433,27 @@ function renderFiles(entries) {
   }
   list.innerHTML = entries
     .map((e) => {
-      const icon = e.is_dir ? "📁" : fileIcon(e.name);
+      const iconId = e.is_dir ? "icon-folder" : fileIcon(e.name);
       const sizeStr = e.is_dir ? "" : formatSize(e.size);
       return `
         <div class="file-entry" data-name="${escapeHtml(e.name)}" data-dir="${e.is_dir}">
-          <span class="file-icon">${icon}</span>
+          <svg class="file-icon"><use href="#${iconId}"/></svg>
           <span class="file-name">${escapeHtml(e.name)}</span>
           <span class="file-size">${sizeStr}</span>
           <span class="file-actions">
-            <button data-act="view" data-name="${escapeHtml(e.name)}" title="View">👁</button>
-            <button data-act="del" data-name="${escapeHtml(e.name)}" title="Delete">🗑</button>
+            <button data-act="view" data-name="${escapeHtml(e.name)}" title="View"><svg class="icon-sm"><use href="#icon-eye"/></svg></button>
+            <button data-act="del" data-name="${escapeHtml(e.name)}" title="Delete"><svg class="icon-sm"><use href="#icon-trash"/></svg></button>
           </span>
         </div>`;
     })
     .join("");
   $$(".file-entry").forEach((el) => {
     el.addEventListener("click", (e) => {
-      if (e.target.dataset.act) {
+      const btn = e.target.closest("button[data-act]");
+      if (btn) {
         e.stopPropagation();
-        const act = e.target.dataset.act;
-        const name = e.target.dataset.name;
+        const act = btn.dataset.act;
+        const name = btn.dataset.name;
         if (act === "del") deleteFile(name);
         else if (act === "view") viewFile(name);
         return;
@@ -468,11 +470,11 @@ function renderFiles(entries) {
 
 function fileIcon(name) {
   const ext = name.split(".").pop().toLowerCase();
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return "🖼";
-  if (["md", "txt", "log"].includes(ext)) return "📄";
-  if (["rs", "js", "ts", "py", "go", "java", "c", "cpp", "rb"].includes(ext)) return "📜";
-  if (["json", "yaml", "yml", "toml"].includes(ext)) return "⚙";
-  return "📄";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return "icon-image";
+  if (["md", "txt", "log"].includes(ext)) return "icon-text";
+  if (["rs", "js", "ts", "py", "go", "java", "c", "cpp", "rb"].includes(ext)) return "icon-code";
+  if (["json", "yaml", "yml", "toml"].includes(ext)) return "icon-gear";
+  return "icon-file";
 }
 
 function formatSize(n) {

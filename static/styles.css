@@ -99,6 +99,15 @@ html, body {
 
 .hidden { display: none !important; }
 
+/* SVG icons */
+.icon-lg { width: 48px; height: 48px; }
+.icon-md { width: 22px; height: 22px; }
+.icon-sm { width: 20px; height: 20px; }
+.icon-xs { width: 16px; height: 16px; }
+.menu-icon { margin-right: 8px; flex-shrink: 0; }
+.icon-spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* Typography */
 .m3-headline-small { font-size: 1.5rem; font-weight: 500; line-height: 2rem; }
 .m3-title-large { font-size: 1.375rem; font-weight: 500; }
@@ -131,7 +140,7 @@ html, body {
   border-radius: var(--shape-xl);
 }
 .auth-header { text-align: center; margin-bottom: 24px; }
-.logo { font-size: 48px; margin-bottom: 8px; }
+.logo { margin-bottom: 8px; color: var(--md-primary); }
 .auth-subtitle { color: var(--md-on-surface-variant); margin-top: 4px; }
 .auth-form { display: flex; flex-direction: column; gap: 18px; }
 .auth-footer { margin-top: 20px; text-align: center; }
@@ -194,7 +203,6 @@ html, body {
   color: var(--md-on-surface-variant);
   border-radius: var(--shape-full);
   cursor: pointer;
-  font-size: 18px;
   transition: background var(--dur-fast) var(--ease);
 }
 .m3-icon-button:hover { background: rgba(103,80,164,0.10); }
@@ -208,8 +216,6 @@ html, body {
   border-radius: var(--shape-lg);
   background: var(--md-primary-container);
   color: var(--md-on-primary-container);
-  font-size: 22px;
-  font-weight: 400;
   cursor: pointer;
   box-shadow: var(--elev-1);
   transition: box-shadow var(--dur-fast) var(--ease);
@@ -276,8 +282,7 @@ html, body {
   padding: 16px;
   gap: 8px;
 }
-.brand { display: flex; align-items: center; gap: 10px; }
-.logo-sm { font-size: 22px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--md-primary); }
 .sidebar-section { padding: 0 16px 12px; }
 .thread-list {
   flex: 1;
@@ -302,7 +307,7 @@ html, body {
 .thread-item:hover { background: rgba(103,80,164,0.08); }
 .thread-item.active { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
 .thread-item .thread-title-text { flex: 1; overflow: hidden; text-overflow: ellipsis; font-size: 0.875rem; }
-.thread-item .thread-del { opacity: 0; font-size: 14px; transition: opacity var(--dur-fast); }
+.thread-item .thread-del { opacity: 0; transition: opacity var(--dur-fast); display: inline-flex; }
 .thread-item:hover .thread-del { opacity: 0.6; }
 .thread-item .thread-del:hover { opacity: 1; color: var(--md-error); }
 
@@ -333,7 +338,8 @@ html, body {
   z-index: 30;
 }
 .menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   text-align: left;
   padding: 12px 20px;
@@ -384,7 +390,7 @@ html, body {
   border-radius: var(--shape-full);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  font-size: 16px;
+  color: var(--md-on-primary-container);
 }
 .message.user .msg-avatar { background: var(--md-primary-container); }
 .message.assistant .msg-avatar { background: var(--md-secondary-container); }
@@ -417,6 +423,9 @@ html, body {
 }
 .msg-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .msg-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.75rem;
   background: var(--md-surface-container-high);
   padding: 3px 10px;
@@ -483,14 +492,15 @@ html, body {
   transition: background var(--dur-fast) var(--ease);
 }
 .file-entry:hover { background: rgba(103,80,164,0.08); }
-.file-entry .file-icon { font-size: 18px; width: 20px; text-align: center; }
+.file-entry .file-icon { width: 20px; height: 20px; flex-shrink: 0; }
 .file-entry .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-entry .file-size { font-size: 0.7rem; color: var(--md-on-surface-variant); }
 .file-entry .file-actions { display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur-fast); }
 .file-entry:hover .file-actions { opacity: 1; }
 .file-entry .file-actions button {
   border: none; background: transparent; cursor: pointer;
-  color: var(--md-on-surface-variant); font-size: 14px; padding: 2px 4px; border-radius: 4px;
+  color: var(--md-on-surface-variant); padding: 2px; border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .file-entry .file-actions button:hover { background: rgba(103,80,164,0.12); color: var(--md-error); }
 
