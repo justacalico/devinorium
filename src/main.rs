@@ -1,6 +1,8 @@
 //! Devinorium — a secure, self-hostable Material 3 web UI for the Devin CLI.
 
+mod auth;
 mod config;
+mod db;
 
 use std::sync::Arc;
 
@@ -17,6 +19,7 @@ use tower_http::{
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<config::Config>,
+    pub db: db::Db,
 }
 
 #[tokio::main]
@@ -30,8 +33,10 @@ async fn main() -> Result<()> {
 
     let cfg = config::Config::from_env()?;
     let bind = cfg.bind_addr();
+    let database = db::Db::connect(&cfg.db_url).await?;
     let state = AppState {
         config: Arc::new(cfg),
+        db: database,
     };
 
     let app = Router::new()
