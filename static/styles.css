@@ -595,10 +595,27 @@ html, body {
 .file-preview-body img { max-width: 100%; }
 .file-preview-body pre { white-space: pre-wrap; word-break: break-word; font-size: 0.8125rem; }
 
+/* Sidebar scrim — hidden on desktop, only used on mobile */
+.sidebar-scrim { display: none; }
+
 /* Responsive */
 @media (max-width: 880px) {
   .app-layout { grid-template-columns: 1fr; }
   .app-layout.files-open { grid-template-columns: 1fr; }
+  .sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur) var(--ease);
+    z-index: 20;
+  }
+  .sidebar-scrim.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .sidebar {
     position: fixed;
     left: 0; top: 0; bottom: 0;
@@ -606,6 +623,7 @@ html, body {
     transform: translateX(-100%);
     transition: transform var(--dur) var(--ease);
     box-shadow: var(--elev-3);
+    z-index: 21;
   }
   .sidebar.open { transform: translateX(0); }
   .files-panel {

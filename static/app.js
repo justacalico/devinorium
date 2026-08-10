@@ -438,6 +438,9 @@ async function newThread() {
 async function openThread(id) {
   state.activeThreadId = id;
   renderThreadList();
+  // Close sidebar on mobile when a thread is opened.
+  $("#sidebar").classList.remove("open");
+  $("#sidebar-scrim").classList.remove("visible");
   try {
     const data = await api("GET", `/api/threads/${id}`);
     $("#thread-title").textContent = data.thread.title;
@@ -864,9 +867,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener("click", () => $("#user-menu").classList.add("hidden"));
 
   // Sidebar toggle (mobile).
+  const sidebar = $("#sidebar");
+  const sidebarScrim = $("#sidebar-scrim");
   $("#sidebar-toggle")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    $("#sidebar").classList.toggle("open");
+    const isOpen = sidebar.classList.toggle("open");
+    sidebarScrim.classList.toggle("visible", isOpen);
+  });
+  // Click scrim to close sidebar.
+  sidebarScrim?.addEventListener("click", () => {
+    sidebar.classList.remove("open");
+    sidebarScrim.classList.remove("visible");
   });
 
   // Enter to send (shift+enter for newline).
