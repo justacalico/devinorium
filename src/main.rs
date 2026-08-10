@@ -8,6 +8,9 @@ use devinorium::{auth, config, db, providers, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if present (ignored if not found).
+    let _ = dotenvy::dotenv();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
