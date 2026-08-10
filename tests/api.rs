@@ -75,7 +75,7 @@ async fn make_app() -> (Router, db::Db) {
         devin_bin: "devin".into(),
         default_model: "stub-1".into(),
         trust_proxy: false,
-        max_body_bytes: 1024 * 1024,
+        max_body_bytes: 20 * 1024 * 1024,
         secure_cookie: false,
         allowed_origin: None,
     };
@@ -529,4 +529,178 @@ async fn thread_isolation_between_users() {
 
     // Confirm owner's thread still exists in DB owned by owner.
     let _ = db;
+}
+
+#[tokio::test]
+async fn thread_rejects_invalid_permission_mode() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let resp = app
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            r#"{"title":"T","permission_mode":"god-mode"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_accepts_each_valid_permission_mode() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    for mode in &["normal", "accept-edits", "smart", "bypass"] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "POST",
+                "/api/threads",
+                &cookie,
+                &format!(r#"{{"title":"T-{mode}","permission_mode":"{mode}"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED, "mode {mode} should be accepted");
+    }
+}
+
+#[tokio::test]
+async fn disabled_user_cannot_access_protected_routes() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // Register a second user.
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/invites", &cookie, ""))
+        .await
+        .unwrap();
+    let invite: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    app.clone()
+        .oneshot(authed(
+            "POST",
+            "/api/auth/register",
+            &cookie,
+            &format!(r#"{{"invite":"{invite}","username":"bob","password":"bobpass12345"}}"#),
+        ))
+        .await
+        .unwrap();
+
+    // Bob logs in.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"username":"bob","password":"bobpass12345"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bob_cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().split(';').next().unwrap().to_string();
+
+    // Bob can access /me initially.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &bob_cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Disable bob directly in the DB.
+    sqlx::query("UPDATE users SET disabled = 1 WHERE username = 'bob'")
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+    // Bob's existing session should now be rejected by the middleware.
+    let resp = app
+        .oneshot(authed("GET", "/api/auth/me", &bob_cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn send_rejects_oversized_attachment() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // Create a thread.
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T"}"#))
+        .await
+        .unwrap();
+    let tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Build a multipart body with a >8 MiB attachment.
+    let boundary = "----bigboundary";
+    let big = "x".repeat(9 * 1024 * 1024);
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nhi\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"big.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n{big}\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn send_rejects_empty_prompt() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T"}"#))
+        .await
+        .unwrap();
+    let tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let boundary = "----emptyboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n   \r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
