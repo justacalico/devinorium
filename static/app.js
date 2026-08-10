@@ -10,8 +10,7 @@ const state = {
   user: null,
   threads: [],
   activeThreadId: null,
-  workspaces: [],
-  activeWorkspaceId: null,
+  groups: [],
   models: [],
   pendingAttachments: [],
   filesPath: [],
@@ -122,30 +121,39 @@ async function enterApp() {
   show("app-view");
   $("#user-name").textContent = state.user.username;
   $("#user-avatar").textContent = state.user.username.charAt(0).toUpperCase();
-  await Promise.all([loadWorkspaces(), loadModels()]);
+  await loadModels();
   await loadThreads();
 }
 
-/* ---------- Workspaces ---------- */
+/* ---------- Thread groups ---------- */
 
-async function loadWorkspaces() {
+async function loadGroups() {
   try {
-    state.workspaces = await api("GET", "/api/workspaces");
-    const sel = $("#workspace-select");
-    sel.innerHTML = '<option value="">No workspace</option>' +
-      state.workspaces.map((w) => `<option value="${w.id}">${escapeHtml(w.label)}</option>`).join("");
-    if (state.workspaces.length && !state.activeWorkspaceId) {
-      state.activeWorkspaceId = state.workspaces[0].id;
-      sel.value = state.activeWorkspaceId;
-    }
+    state.groups = await api("GET", "/api/thread-groups");
   } catch (err) {
-    console.error("loadWorkspaces", err);
+    console.error("loadGroups", err);
   }
 }
 
-$("#workspace-select")?.addEventListener("change", (e) => {
-  state.activeWorkspaceId = e.target.value ? Number(e.target.value) : null;
-});
+async function createGroup(threadIds, name) {
+  const body = { thread_ids: threadIds };
+  if (name) body.name = name;
+  return await api("POST", "/api/thread-groups", { body });
+}
+
+async function renameGroup(id, name) {
+  return await api("PATCH", `/api/thread-groups/${id}`, { body: { name } });
+}
+
+async function deleteGroup(id) {
+  return await api("DELETE", `/api/thread-groups/${id}`);
+}
+
+async function moveThreadToGroup(threadId, groupId) {
+  return await api("PATCH", `/api/threads/${threadId}`, {
+    body: { thread_group_id: groupId },
+  });
+}
 
 /* ---------- Models ---------- */
 
@@ -163,7 +171,12 @@ async function loadModels() {
 
 async function loadThreads() {
   try {
-    state.threads = await api("GET", "/api/threads");
+    const [threads, groups] = await Promise.all([
+      api("GET", "/api/threads"),
+      api("GET", "/api/thread-groups"),
+    ]);
+    state.threads = threads;
+    state.groups = groups;
     renderThreadList();
   } catch (err) {
     console.error("loadThreads", err);
@@ -172,20 +185,57 @@ async function loadThreads() {
 
 function renderThreadList() {
   const list = $("#thread-list");
+  const ungrouped = state.threads.filter((t) => !t.thread_group_id);
+  const grouped = state.groups.map((g) => ({
+    ...g,
+    threads: state.threads.filter((t) => t.thread_group_id === g.id),
+  })).filter((g) => g.threads.length > 0);
+
   if (!state.threads.length) {
     list.innerHTML = '<div class="m3-label-medium" style="padding:16px;text-align:center">No threads yet</div>';
     return;
   }
-  list.innerHTML = state.threads
-    .map(
-      (t) => `
-      <div class="thread-item ${t.id === state.activeThreadId ? "active" : ""}" data-id="${t.id}">
-        <svg class="icon-sm"><use href="#icon-chat"/></svg>
-        <span class="thread-title-text">${escapeHtml(t.title)}</span>
-        <span class="thread-del" data-del="${t.id}" title="Delete"><svg class="icon-sm"><use href="#icon-trash"/></svg></span>
-      </div>`
-    )
-    .join("");
+
+  let html = "";
+
+  // Ungrouped threads section.
+  if (ungrouped.length) {
+    html += '<div class="thread-group-section" data-drop-ungrouped>';
+    html += '<div class="thread-group-label m3-label-medium">Ungrouped</div>';
+    html += ungrouped.map((t) => threadItemHtml(t)).join("");
+    html += '</div>';
+  }
+
+  // Grouped threads.
+  for (const g of grouped) {
+    html += `<div class="thread-group-section" data-group-id="${g.id}">`;
+    html += `<div class="thread-group-header" data-group-id="${g.id}">`;
+    html += `<svg class="icon-sm thread-group-chevron"><use href="#icon-menu"/></svg>`;
+    html += `<span class="thread-group-name">${escapeHtml(g.name)}</span>`;
+    html += `<span class="thread-group-del" data-group-del="${g.id}" title="Delete group"><svg class="icon-xs"><use href="#icon-trash"/></svg></span>`;
+    html += `</div>`;
+    html += `<div class="thread-group-items" data-group-id="${g.id}">`;
+    html += g.threads.map((t) => threadItemHtml(t)).join("");
+    html += `</div>`;
+    html += `</div>`;
+  }
+
+  list.innerHTML = html;
+  wireThreadItems();
+  wireDragAndDrop();
+  wireGroupActions();
+}
+
+function threadItemHtml(t) {
+  return `
+    <div class="thread-item ${t.id === state.activeThreadId ? "active" : ""}" data-id="${t.id}" draggable="true">
+      <svg class="icon-sm"><use href="#icon-chat"/></svg>
+      <span class="thread-title-text">${escapeHtml(t.title)}</span>
+      <span class="thread-del" data-del="${t.id}" title="Delete"><svg class="icon-sm"><use href="#icon-trash"/></svg></span>
+    </div>`;
+}
+
+function wireThreadItems() {
   $$(".thread-item").forEach((el) => {
     el.addEventListener("click", (e) => {
       const delBtn = e.target.closest(".thread-del");
@@ -196,13 +246,121 @@ function renderThreadList() {
         openThread(el.dataset.id);
       }
     });
+    // Drag start.
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", el.dataset.id);
+      el.classList.add("dragging");
+    });
+    el.addEventListener("dragend", () => {
+      el.classList.remove("dragging");
+    });
+  });
+}
+
+function wireDragAndDrop() {
+  // Drop on another thread item → create or join a group.
+  $$(".thread-item").forEach((el) => {
+    el.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      el.classList.add("drag-over");
+    });
+    el.addEventListener("dragleave", () => {
+      el.classList.remove("drag-over");
+    });
+    el.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.remove("drag-over");
+      const draggedId = e.dataTransfer.getData("text/plain");
+      const targetId = el.dataset.id;
+      if (draggedId === targetId) return;
+
+      // Find the group of the target thread.
+      const targetThread = state.threads.find((t) => t.id === targetId);
+      const draggedThread = state.threads.find((t) => t.id === draggedId);
+
+      if (targetThread.thread_group_id) {
+        // Target is in a group → add dragged thread to same group.
+        await moveThreadToGroup(draggedId, targetThread.thread_group_id);
+      } else if (draggedThread.thread_group_id) {
+        // Dragged is in a group, target is not → move target into dragged's group.
+        await moveThreadToGroup(targetId, draggedThread.thread_group_id);
+      } else {
+        // Neither is grouped → create a new group with both.
+        await createGroup([draggedId, targetId]);
+      }
+      await loadThreads();
+    });
+  });
+
+  // Drop on "Ungrouped" section → remove from group.
+  $$("[data-drop-ungrouped]").forEach((el) => {
+    el.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      el.classList.add("drag-over");
+    });
+    el.addEventListener("dragleave", () => {
+      el.classList.remove("drag-over");
+    });
+    el.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      el.classList.remove("drag-over");
+      const draggedId = e.dataTransfer.getData("text/plain");
+      await moveThreadToGroup(draggedId, null);
+      await loadThreads();
+    });
+  });
+
+  // Drop on a group header → add to that group.
+  $$(".thread-group-header").forEach((el) => {
+    el.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      el.classList.add("drag-over");
+    });
+    el.addEventListener("dragleave", () => {
+      el.classList.remove("drag-over");
+    });
+    el.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.remove("drag-over");
+      const draggedId = e.dataTransfer.getData("text/plain");
+      const groupId = Number(el.dataset.groupId);
+      await moveThreadToGroup(draggedId, groupId);
+      await loadThreads();
+    });
+  });
+}
+
+function wireGroupActions() {
+  // Group header click → rename or delete.
+  $$(".thread-group-header").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      const delBtn = e.target.closest(".thread-group-del");
+      if (delBtn) {
+        e.stopPropagation();
+        const gid = Number(delBtn.dataset.groupDel);
+        if (confirm("Delete this group? Threads will become ungrouped.")) {
+          deleteGroup(gid).then(() => loadThreads());
+        }
+        return;
+      }
+      // Click on group name → rename.
+      const nameSpan = e.target.closest(".thread-group-name");
+      if (nameSpan) {
+        const gid = Number(el.dataset.groupId);
+        const newName = prompt("Group name:", nameSpan.textContent);
+        if (newName && newName.trim()) {
+          renameGroup(gid, newName.trim()).then(() => loadThreads());
+        }
+      }
+    });
   });
 }
 
 async function newThread() {
   try {
     const body = { title: "New thread" };
-    if (state.activeWorkspaceId) body.workspace_id = state.activeWorkspaceId;
     const model = $("#model-select").value;
     if (model) body.model = model;
     const perm = $("#permission-select").value;
@@ -379,10 +537,6 @@ $("#composer")?.addEventListener("submit", async (e) => {
 let filesCurrentPath = [];
 
 async function openFilesPanel() {
-  if (!state.activeWorkspaceId) {
-    alert("Select a workspace first.");
-    return;
-  }
   $("#files-panel").classList.remove("hidden");
   document.querySelector(".app-layout").classList.add("files-open");
   filesCurrentPath = [];
@@ -395,11 +549,10 @@ function closeFilesPanel() {
 }
 
 async function loadFiles() {
-  const wid = state.activeWorkspaceId;
   const path = filesCurrentPath.join("/");
   const qs = path ? `?path=${encodeURIComponent(path)}` : "";
   try {
-    const entries = await api("GET", `/api/workspaces/${wid}/files${qs}`);
+    const entries = await api("GET", `/api/files${qs}`);
     renderFiles(entries);
     renderBreadcrumb();
   } catch (err) {
@@ -484,10 +637,9 @@ function formatSize(n) {
 }
 
 async function viewFile(name) {
-  const wid = state.activeWorkspaceId;
   const path = [...filesCurrentPath, name].join("/");
   try {
-    const data = await api("GET", `/api/workspaces/${wid}/files/content?path=${encodeURIComponent(path)}`);
+    const data = await api("GET", `/api/files/content?path=${encodeURIComponent(path)}`);
     $("#file-preview-name").textContent = name;
     const body = $("#file-preview-body");
     if (data.mime.startsWith("image/")) {
@@ -511,10 +663,9 @@ function isTextFile(name) {
 
 async function deleteFile(name) {
   if (!confirm(`Delete ${name}?`)) return;
-  const wid = state.activeWorkspaceId;
   const path = [...filesCurrentPath, name].join("/");
   try {
-    await api("DELETE", `/api/workspaces/${wid}/files/delete?path=${encodeURIComponent(path)}`);
+    await api("DELETE", `/api/files/delete?path=${encodeURIComponent(path)}`);
     await loadFiles();
   } catch (err) {
     alert("Delete failed: " + err.message);
@@ -523,12 +674,11 @@ async function deleteFile(name) {
 
 $("#files-upload-input")?.addEventListener("change", async (e) => {
   if (!e.target.files.length) return;
-  const wid = state.activeWorkspaceId;
   const fd = new FormData();
   fd.append("path", filesCurrentPath.join("/"));
   for (const f of e.target.files) fd.append("file", f, f.name);
   try {
-    await api("POST", `/api/workspaces/${wid}/files`, { body: fd });
+    await api("POST", `/api/files`, { body: fd });
     await loadFiles();
   } catch (err) {
     alert("Upload failed: " + err.message);
@@ -539,10 +689,9 @@ $("#files-upload-input")?.addEventListener("change", async (e) => {
 async function mkdir() {
   const name = prompt("Folder name:");
   if (!name) return;
-  const wid = state.activeWorkspaceId;
   const path = [...filesCurrentPath, name].join("/");
   try {
-    await api("POST", `/api/workspaces/${wid}/files/dir`, { body: { path } });
+    await api("POST", `/api/files/dir`, { body: { path } });
     await loadFiles();
   } catch (err) {
     alert("Create folder failed: " + err.message);

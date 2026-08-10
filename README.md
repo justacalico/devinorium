@@ -8,7 +8,7 @@ A secure, self-hostable **Material 3** web UI for managing your [Devin CLI](http
 
 ## What it is
 
-Devinorium is a self-hosted web application that lets you drive the **Devin CLI** from a browser. It is designed for people who want to manage AI coding sessions, files, and workspaces from any device, including over the public internet, without compromising on security.
+Devinorium is a self-hosted web application that lets you drive the **Devin CLI** from a browser. It is designed for people who want to manage AI coding sessions, files, and thread groups from any device, including over the public internet, without compromising on security.
 
 It is structured so that the AI backend is pluggable: today it uses the `devin` CLI, but new providers can be added by **creating one new file and editing one line** in the provider registry.
 
@@ -18,19 +18,19 @@ It is structured so that the AI backend is pluggable: today it uses the `devin` 
 +----------------------------------------------------------+
 | Sidebar          |  Main content                         |
 |                  |                                        |
-|  Threads         |  Conversation / file manager / ...    |
+|  Thread groups   |  Conversation / file manager / ...    |
 |  - thread A      |                                        |
 |  - thread B      |                                        |
+|  (drag & drop    |  +----------------------------------+  |
+|   to group)      |  | Chat prompt                      |  |
 |                  |  +----------------------------------+  |
-|  Workspaces      |  | Chat prompt                      |  |
-|  - ~/proj        |  +----------------------------------+  |
 +----------------------------------------------------------+
 ```
 
-- **Sidebar (left):** list of conversation threads and workspace switcher.
+- **Sidebar (left):** list of conversation threads with drag-and-drop thread grouping.
 - **Main content:** the active thread's conversation, or the file manager.
 - **Chat prompt:** send messages to Devin; supports text, code, and image attachments.
-- **File manager:** choose and browse the directory where work is being done.
+- **File manager:** browse the single global file root where work is being done.
 
 ## Security model
 
@@ -81,7 +81,7 @@ All configuration is via environment variables (see `.env.example`).
 | `DEVINORIUM_DB_URL` | `sqlite:data/devinorium.db?mode=rwc` | SQLite connection string |
 | `DEVINORIUM_BOOTSTRAP_USERNAME` | `owner` | First-run owner account username |
 | `DEVINORIUM_BOOTSTRAP_PASSWORD` | (required) | First-run owner account password |
-| `DEVINORIUM_WORKSPACE_ROOTS` | (required) | Comma-separated absolute paths; file manager is sandboxed to these |
+| `DEVINORIUM_FILE_ROOT` | (required) | Single absolute path; file manager is sandboxed to this |
 | `DEVINORIUM_DEVIN_BIN` | `devin` | Path to the devin CLI |
 | `DEVINORIUM_DEFAULT_MODEL` | `glm-5-2` | Default model for new threads |
 | `DEVINORIUM_TRUST_PROXY` | `false` | Trust `X-Forwarded-For` (enable behind a reverse proxy) |

@@ -8,7 +8,7 @@ TLS. This guide covers the common deployment patterns.
 
 - A Rust toolchain (or a pre-built `devinorium` binary)
 - The `devin` CLI installed and authenticated (`devin login`)
-- A directory for the SQLite database and workspace files
+- A directory for the SQLite database and file root
 
 ## 1. Build
 
@@ -31,7 +31,7 @@ cp .env.example .env
 |---|---|
 | `DEVINORIUM_SESSION_KEY` | Generate with `openssl rand -base64 48`. Must be ≥64 chars. |
 | `DEVINORIUM_BOOTSTRAP_PASSWORD` | A strong password for the first owner account. |
-| `DEVINORIUM_WORKSPACE_ROOTS` | Comma-separated absolute paths. The file manager and Devin sessions are sandboxed to these. |
+| `DEVINORIUM_FILE_ROOT` | A single absolute path. The file manager and Devin sessions are sandboxed to this. |
 | `DEVINORIUM_SECURE_COOKIE` | Set `true` when serving over HTTPS. |
 | `DEVINORIUM_TRUST_PROXY` | Set `true` when behind a reverse proxy (so client IPs are read from `X-Forwarded-For`). |
 
@@ -175,7 +175,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/devinorium/data /opt/devinorium/workspaces
+ReadWritePaths=/opt/devinorium/data /opt/devinorium/fileroot
 PrivateTmp=true
 
 [Install]
@@ -192,7 +192,7 @@ sudo systemctl enable --now devinorium
 - **Create invite tokens** for other users via the user menu → Invites.
 - **Enable TOTP** (2FA) on your account via the user menu → Enable 2FA.
 - **Backups:** the SQLite database (`data/devinorium.db`) and the
-  workspace directories are all you need to back up. Stop the service
+  file root directory are all you need to back up. Stop the service
   before copying the db file, or use `sqlite3 ... ".backup"`.
 - **Updates:** pull the latest main, `cargo build --release`, restart the
   service. Migrations run automatically on startup.

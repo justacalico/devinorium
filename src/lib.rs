@@ -56,7 +56,7 @@ pub fn build_app(state: AppState) -> Router {
     // Protected routes (require auth + role=user).
     let protected = api::threads::router()
         .merge(api::files::router())
-        .merge(api::workspaces::router())
+        .merge(api::thread_groups::router())
         .merge(api::invites::router())
         .merge(api::models::router())
         .route("/api/auth/me", get(api::auth::me))

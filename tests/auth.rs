@@ -29,7 +29,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         db_url: db_url.clone(),
         bootstrap_username: bootstrap_user.into(),
         bootstrap_password: bootstrap_pw.into(),
-        workspace_roots: vec![],
+        file_root: None,
         devin_bin: "devin".into(),
         default_model: "glm-5-2".into(),
         trust_proxy: false,

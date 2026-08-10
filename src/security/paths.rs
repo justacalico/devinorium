@@ -1,4 +1,4 @@
-//! Path safety: constrain file operations to configured workspace roots and
+//! Path safety: constrain file operations to configured file roots and
 //! prevent path traversal.
 
 use std::path::{Path, PathBuf};
@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 /// Resolve `path` (which may be relative or contain `..`) and verify that the
 /// canonicalized result is contained within one of `roots`.
 ///
-/// `base` is an optional already-validated workspace directory to resolve
+/// `base` is an optional already-validated file root directory to resolve
 /// relative paths against.
 ///
 /// Returns the canonicalized absolute path if it is within a root, else None.
