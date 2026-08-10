@@ -73,8 +73,7 @@ Then open `http://localhost:7878` and log in with the bootstrap credentials.
 
 > The frontend is a Rust crate in `frontend/` built with [Dioxus 0.6](https://dioxuslabs.com/)
 > to WebAssembly. The backend embeds the built assets from `frontend/dist/` via
-> `include_dir!`, so the binary stays fully self-contained. The old `static/`
-> directory of vanilla JS is being replaced by this Dioxus frontend.
+> `include_dir!`, so the binary stays fully self-contained.
 
 ## Configuration
 

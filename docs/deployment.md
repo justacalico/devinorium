@@ -30,10 +30,6 @@ cargo build --release
 # Binary is at target/release/devinorium
 ```
 
-> The old `static/` directory of vanilla JS is being replaced by the Dioxus
-> frontend. Going forward, build the frontend with `scripts/build-frontend.sh`
-> rather than editing files in `static/` directly.
-
 ## 2. Configure
 
 Copy `.env.example` to `.env` and edit:
