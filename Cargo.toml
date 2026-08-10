@@ -38,7 +38,7 @@ toml = "0.8"
 # Auth & crypto
 argon2 = "0.5"
 rand = "0.8"
-totp-rs = { version = "5", features = ["qr"] }
+totp-rs = { version = "5", features = ["qr", "gen_secret"] }
 base64 = "0.22"
 subtle = "2"
 constant_time_eq = "0.3"

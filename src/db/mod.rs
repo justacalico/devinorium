@@ -22,6 +22,8 @@ pub mod threads;
 pub mod users;
 pub mod workspaces;
 
+pub use users::NewUser;
+
 /// A typed handle to the SQLite pool plus app-wide db config.
 #[derive(Clone)]
 pub struct Db {
