@@ -5,6 +5,8 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 
 /// The sidebar: brand + new-thread button, thread list, user chip + menu.
+/// When the user is on the Settings page, the sidebar shows settings topics
+/// with a back button instead of the thread list.
 class Sidebar extends StatelessWidget {
   const Sidebar({super.key});
 
@@ -16,36 +18,54 @@ class Sidebar extends StatelessWidget {
     final username = user?.username ?? '';
     final avatar =
         username.isNotEmpty ? username[0].toUpperCase() : '?';
+    final isSettings = state.page == MainPage.settings;
 
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLow,
       child: Column(
         children: [
-          // Brand row
+          // Header row
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
             child: Row(
               children: [
-                Icon(Icons.smart_toy_outlined,
-                    color: theme.colorScheme.primary),
+                if (isSettings)
+                  IconButton(
+                    onPressed: () {
+                      Scaffold.of(context).closeDrawer();
+                      state.setPage(MainPage.threads);
+                    },
+                    icon: const Icon(Icons.arrow_back),
+                    tooltip: 'Back',
+                  )
+                else
+                  Icon(Icons.smart_toy_outlined,
+                      color: theme.colorScheme.primary),
                 const SizedBox(width: 10),
                 Expanded(
-                  child:
-                      Text('Devinorium', style: theme.textTheme.titleMedium),
+                  child: Text(
+                    isSettings ? 'Settings' : 'Devinorium',
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ),
-                IconButton.filled(
-                  onPressed: () {
-                    Scaffold.of(context).closeDrawer();
-                    state.createNewThread();
-                  },
-                  icon: const Icon(Icons.add),
-                  tooltip: 'New thread',
-                ),
+                if (!isSettings)
+                  IconButton.filled(
+                    onPressed: () {
+                      Scaffold.of(context).closeDrawer();
+                      state.createNewThread();
+                    },
+                    icon: const Icon(Icons.add),
+                    tooltip: 'New thread',
+                  ),
               ],
             ),
           ),
-          // Thread list
-          const Expanded(child: ThreadList()),
+          // Thread list or settings navigation
+          Expanded(
+            child: isSettings
+                ? const _SettingsNav()
+                : const ThreadList(),
+          ),
           // User chip + menu
           const Divider(height: 1),
           Padding(
@@ -244,6 +264,42 @@ class _ThreadTile extends StatelessWidget {
         Scaffold.of(context).closeDrawer();
         state.openThread(thread.id);
       },
+    );
+  }
+}
+
+class _SettingsNav extends StatelessWidget {
+  const _SettingsNav();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final topics = [
+      (icon: Icons.person_outline, label: 'Account'),
+      (icon: Icons.notifications_outlined, label: 'Notifications'),
+      (icon: Icons.palette_outlined, label: 'Appearance'),
+      (icon: Icons.model_training_outlined, label: 'Models'),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      children: [
+        const _SectionHeader('Topics'),
+        for (final t in topics)
+          ListTile(
+            leading: Icon(t.icon, size: 20),
+            title: Text(t.label),
+            selected: t.label == 'Account',
+            selectedTileColor: theme.colorScheme.secondaryContainer,
+            shape: const StadiumBorder(),
+            dense: true,
+            onTap: () {
+              // Currently only Account is implemented; future topics will
+              // scroll to or switch the corresponding settings section.
+              Scaffold.of(context).closeDrawer();
+            },
+          ),
+      ],
     );
   }
 }
