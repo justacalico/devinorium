@@ -4,14 +4,18 @@
 //! (`provider.start`); subsequent sends continue it (`provider.send`). Every
 //! user message and assistant reply is persisted in the `messages` table.
 
+use std::convert::Infallible;
 use std::path::PathBuf;
 
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
 use crate::auth::session::CurrentUser;
@@ -25,6 +29,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/threads/:id", get(get_one).patch(rename).delete(delete))
         .route("/api/threads/:id/messages", get(list_messages))
         .route("/api/threads/:id/send", post(send))
+        .route("/api/threads/:id/send/stream", post(send_stream))
 }
 
 #[derive(Debug, Serialize)]
@@ -221,7 +226,7 @@ async fn send(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
-    mut multipart: Multipart,
+    multipart: Multipart,
 ) -> Response {
     let thread = match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => t,
@@ -229,24 +234,164 @@ async fn send(
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
 
-    // Parse multipart: collect prompt + attachments.
+    let input = match parse_send_multipart(multipart).await {
+        Ok(parsed) => parsed,
+        Err(resp) => return resp,
+    };
+
+    let user_msg = match persist_user_message(&state, &id, &input.prompt, &input.att_meta).await {
+        Ok(m) => m,
+        Err(resp) => return resp,
+    };
+
+    let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments).await;
+
+    let (reply, new_session_id, new_title) = match provider_result {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = state
+                .db
+                .add_message(NewMessage {
+                    thread_id: id.clone(),
+                    role: "error".into(),
+                    content: format!("provider error: {e}"),
+                    attachments: "[]".into(),
+                })
+                .await;
+            let _ = state.db.touch_thread(&id).await;
+            return (StatusCode::BAD_GATEWAY, Json(crate::api::ApiError::new("provider error"))).into_response();
+        }
+    };
+
+    let assistant_msg = match persist_assistant_reply(&state, &id, user.id, &reply, new_session_id, new_title).await {
+        Ok(m) => m,
+        Err(resp) => return resp,
+    };
+
+    Json(serde_json::json!({
+        "user_message": MessageOut::from(user_msg),
+        "assistant_message": MessageOut::from(assistant_msg),
+        "reply": reply,
+    }))
+    .into_response()
+}
+
+/// Stream a message response as Server-Sent Events. Same multipart input as
+/// `send`, but the assistant reply is emitted chunk by chunk so the UI can
+/// render a streaming effect.
+async fn send_stream(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+    multipart: Multipart,
+) -> Sse<UnboundedReceiverStream<Result<Event, Infallible>>> {
+    let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
+
+    tokio::spawn(async move {
+        let send_event = move |ev: Event| {
+            let _ = tx.send(Ok(ev));
+        };
+
+        let thread = match state.db.get_thread(&id, user.id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                send_event(Event::default().event("error").data("not found"));
+                return;
+            }
+            Err(e) => {
+                send_event(Event::default().event("error").data(&format!("internal error: {e}")));
+                return;
+            }
+        };
+
+        let input = match parse_send_multipart(multipart).await {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                send_event(Event::default().event("error").data("invalid request"));
+                return;
+            }
+        };
+
+        let user_msg = match persist_user_message(&state, &id, &input.prompt, &input.att_meta).await {
+            Ok(m) => m,
+            Err(_) => {
+                send_event(Event::default().event("error").data("failed to save user message"));
+                return;
+            }
+        };
+        send_event(Event::default().event("user_message").data(&match serde_json::to_string(&MessageOut::from(user_msg)) {
+            Ok(json) => json,
+            Err(_) => return,
+        }));
+
+        let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments).await;
+
+        let (reply, new_session_id, new_title) = match provider_result {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = state
+                    .db
+                    .add_message(NewMessage {
+                        thread_id: id.clone(),
+                        role: "error".into(),
+                        content: format!("provider error: {e}"),
+                        attachments: "[]".into(),
+                    })
+                    .await;
+                let _ = state.db.touch_thread(&id).await;
+                send_event(Event::default().event("error").data("provider error"));
+                return;
+            }
+        };
+
+        // Stream the reply in small chunks to create a typing effect.
+        let chars: Vec<char> = reply.chars().collect();
+        for chunk in chars.chunks(4) {
+            let text: String = chunk.iter().collect();
+            send_event(Event::default().event("chunk").data(&text));
+            tokio::time::sleep(tokio::time::Duration::from_millis(12)).await;
+        }
+
+        let assistant_msg = match persist_assistant_reply(&state, &id, user.id, &reply, new_session_id, new_title).await {
+            Ok(m) => m,
+            Err(_) => {
+                send_event(Event::default().event("error").data("failed to save assistant message"));
+                return;
+            }
+        };
+        send_event(Event::default().event("done").data(&match serde_json::to_string(&MessageOut::from(assistant_msg)) {
+            Ok(json) => json,
+            Err(_) => return,
+        }));
+    });
+
+    Sse::new(UnboundedReceiverStream::new(rx))
+}
+
+struct SendInput {
+    prompt: String,
+    attachments: Vec<Attachment>,
+    att_meta: Vec<serde_json::Value>,
+}
+
+async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Response> {
     let mut prompt: Option<String> = None;
     let mut attachments: Vec<Attachment> = Vec::new();
     let mut att_meta: Vec<serde_json::Value> = Vec::new();
+
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
         let filename = field.file_name().unwrap_or("").to_string();
         let mime = field.content_type().unwrap_or("application/octet-stream").to_string();
         let bytes = match field.bytes().await {
             Ok(b) => b,
-            Err(e) => return crate::api::map_err_internal(e).into_response(),
+            Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
         };
         if name == "prompt" {
             prompt = Some(String::from_utf8_lossy(&bytes).to_string());
         } else if !filename.is_empty() {
-            // Limit individual attachment size to 8 MiB.
             if bytes.len() > 8 * 1024 * 1024 {
-                return (StatusCode::PAYLOAD_TOO_LARGE, Json(crate::api::ApiError::new("attachment too large (max 8 MiB)"))).into_response();
+                return Err((StatusCode::PAYLOAD_TOO_LARGE, Json(crate::api::ApiError::new("attachment too large (max 8 MiB)"))).into_response());
             }
             att_meta.push(serde_json::json!({
                 "filename": filename,
@@ -262,125 +407,107 @@ async fn send(
     }
     let prompt = match prompt {
         Some(p) if !p.trim().is_empty() => p,
-        _ => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("prompt is required"))).into_response(),
+        _ => return Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("prompt is required"))).into_response()),
     };
     if prompt.len() > 64 * 1024 {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("prompt too long (max 64 KiB)"))).into_response();
+        return Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("prompt too long (max 64 KiB)"))).into_response());
     }
+    Ok(SendInput { prompt, attachments, att_meta })
+}
 
-    // Determine working directory: use the first configured file root, or cwd.
+async fn persist_user_message(
+    state: &AppState,
+    thread_id: &str,
+    prompt: &str,
+    att_meta: &[serde_json::Value],
+) -> Result<MessageRow, Response> {
+    state
+        .db
+        .add_message(NewMessage {
+            thread_id: thread_id.into(),
+            role: "user".into(),
+            content: prompt.into(),
+            attachments: serde_json::to_string(att_meta).unwrap_or_else(|_| "[]".into()),
+        })
+        .await
+        .map_err(|e| crate::api::map_err_internal(e).into_response())
+}
+
+async fn call_provider(
+    state: &AppState,
+    thread: &ThreadRow,
+    prompt: &str,
+    attachments: Vec<Attachment>,
+) -> anyhow::Result<(String, Option<String>, Option<String>)> {
     let working_dir = state
         .config
         .file_root
         .clone()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
-    // Persist the user message.
-    let user_msg = match state
-        .db
-        .add_message(NewMessage {
-            thread_id: id.clone(),
-            role: "user".into(),
-            content: prompt.clone(),
-            attachments: serde_json::to_string(&att_meta).unwrap_or_else(|_| "[]".into()),
-        })
-        .await
-    {
-        Ok(m) => m,
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
-    };
-
     let options = SendOptions {
         model: thread.model.clone(),
-        working_dir: working_dir.clone(),
+        working_dir,
         permission_mode: thread.permission_mode.clone(),
         attachments,
     };
 
-    // Call the provider. First message starts a session; subsequent messages
-    // continue it. Both branches are normalized into (reply, session_id, title).
-    let provider_result: anyhow::Result<(String, Option<String>, Option<String>)> =
-        if let Some(sid) = thread.devin_session_id.as_ref() {
-            match state
-                .provider
-                .send(crate::providers::SendRequest {
-                    session_id: sid.clone(),
-                    prompt: prompt.clone(),
-                    options,
-                })
-                .await
-            {
-                Ok(r) => Ok((r.reply, None, None)),
-                Err(e) => Err(e),
-            }
-        } else {
-            match state
-                .provider
-                .start(StartRequest {
-                    prompt: prompt.clone(),
-                    options,
-                })
-                .await
-            {
-                Ok(r) => Ok((r.reply, Some(r.session_id), Some(r.title))),
-                Err(e) => Err(e),
-            }
-        };
+    if let Some(sid) = thread.devin_session_id.as_ref() {
+        state
+            .provider
+            .send(crate::providers::SendRequest {
+                session_id: sid.clone(),
+                prompt: prompt.into(),
+                options,
+            })
+            .await
+            .map(|r| (r.reply, None, None))
+    } else {
+        state
+            .provider
+            .start(StartRequest {
+                prompt: prompt.into(),
+                options,
+            })
+            .await
+            .map(|r| (r.reply, Some(r.session_id), Some(r.title)))
+    }
+}
 
-    let (reply, new_session_id, new_title) = match provider_result {
-        Ok(t) => t,
-        Err(e) => {
-            // Record an error message so the user sees what happened.
-            let _ = state
-                .db
-                .add_message(NewMessage {
-                    thread_id: id.clone(),
-                    role: "error".into(),
-                    content: format!("provider error: {e}"),
-                    attachments: "[]".into(),
-                })
-                .await;
-            let _ = state.db.touch_thread(&id).await;
-            return (StatusCode::BAD_GATEWAY, Json(crate::api::ApiError::new("provider error"))).into_response();
-        }
-    };
-
-    // Update the thread with the session id / title if first message.
+async fn persist_assistant_reply(
+    state: &AppState,
+    thread_id: &str,
+    user_id: i64,
+    reply: &str,
+    new_session_id: Option<String>,
+    new_title: Option<String>,
+) -> Result<MessageRow, Response> {
     let session_id_for_audit = new_session_id.clone();
     if let Some(sid) = new_session_id {
-        let _ = state.db.update_thread_session(&id, &sid, new_title.as_deref()).await;
+        let _ = state.db.update_thread_session(thread_id, &sid, new_title.as_deref()).await;
     }
-    let _ = state.db.touch_thread(&id).await;
+    let _ = state.db.touch_thread(thread_id).await;
 
-    // Persist the assistant message.
-    let assistant_msg = match state
+    let assistant_msg = state
         .db
         .add_message(NewMessage {
-            thread_id: id.clone(),
+            thread_id: thread_id.into(),
             role: "assistant".into(),
-            content: reply.clone(),
+            content: reply.into(),
             attachments: "[]".into(),
         })
         .await
-    {
-        Ok(m) => m,
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
-    };
+        .map_err(|e| crate::api::map_err_internal(e).into_response())?;
 
     let _ = state
         .db
         .audit(
-            Some(user.id),
+            Some(user_id),
             "thread.send",
-            &serde_json::json!({"thread_id": id, "session_id": session_id_for_audit}),
+            &serde_json::json!({"thread_id": thread_id, "session_id": session_id_for_audit}),
             None,
         )
         .await;
 
-    Json(serde_json::json!({
-        "user_message": MessageOut::from(user_msg),
-        "assistant_message": MessageOut::from(assistant_msg),
-        "reply": reply,
-    }))
-    .into_response()
+    Ok(assistant_msg)
 }

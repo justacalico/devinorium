@@ -13,6 +13,7 @@ web-sys = { version = "0.3", features = [
     "HtmlInputElement", "HtmlTextAreaElement", "HtmlSelectElement",
     "HtmlFormElement", "FormData", "File", "FileList", "FileReader",
     "Headers", "Request", "RequestInit", "RequestMode", "Response",
+    "ReadableStream", "ReadableStreamDefaultReader", "ReadableStreamReadResult",
     "Storage", "Location", "History", "Clipboard",
     "DragEvent", "DataTransfer", "MouseEvent", "KeyboardEvent",
     "ScrollIntoViewOptions", "ScrollLogicalPosition", "ScrollBehavior",
