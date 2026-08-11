@@ -375,18 +375,26 @@ class AppState extends ChangeNotifier {
 
   // ---- Threads ----
 
-  Future<void> createNewThread() async {
-    final projectId = _activeProjectId;
-    if (projectId == null) {
+  Future<void> createNewThread({int? projectId}) async {
+    final targetId = projectId ?? _activeProjectId;
+    if (targetId == null) {
       _globalError = 'Select a project first';
       notifyListeners();
       return;
+    }
+    if (targetId != _activeProjectId) {
+      _activeProjectId = targetId;
+      _activeProjectPath = _projectPathById(targetId);
+      _activeThreadId = null;
+      _activeThreadDetail = null;
+      _page = MainPage.threads;
+      notifyListeners();
     }
     _page = MainPage.threads;
     notifyListeners();
     try {
       final t = await api.createThread(
-        projectId: projectId,
+        projectId: targetId,
         title: 'New thread',
         model: _selectedModel.isEmpty ? null : _selectedModel,
         permissionMode: _selectedPermission,
