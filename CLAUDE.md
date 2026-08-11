@@ -1,0 +1,1 @@
+Claude must read and follow AGENTS.md.

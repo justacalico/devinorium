@@ -1,0 +1,5 @@
+- Use subagents to review code harshly for bugs, issues, and correctness before any merge.
+- Do not create god files; keep modules focused and small.
+- Do not blindly merge. Verify behavior and run tests first.
+- Use subagents to write code where it improves quality or speed.
+- Do a final harsh subagent review of all changes before finishing.
