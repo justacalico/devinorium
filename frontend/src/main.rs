@@ -998,9 +998,11 @@ fn ChatView(
         });
     };
 
+    let send_keydown = send.clone();
     let on_keydown = move |e: KeyboardEvent| {
         if e.key() == Key::Enter && !e.modifiers().contains(Modifiers::SHIFT) {
             e.prevent_default();
+            send_keydown(());
         }
     };
 
@@ -1028,7 +1030,7 @@ fn ChatView(
             }
         }
 
-        form { class: "px-5 pb-5 pt-3", onsubmit: move |e| { e.prevent_default(); send(()); },
+        div { class: "px-5 pb-5 pt-3",
             style: "background: var(--color-surface);",
             div { class: "max-w-[760px] mx-auto rounded-[28px] border shadow-elev-1 overflow-hidden",
                 style: "background: var(--color-surface-container); border-color: var(--color-outline-variant);",
@@ -1066,10 +1068,11 @@ fn ChatView(
                         }
                     }
                     button {
-                        r#type: "submit",
+                        r#type: "button",
                         class: "inline-flex items-center justify-center w-10 h-10 rounded-full border-none flex-shrink-0 transition-colors",
                         style: if is_sending { "background: var(--color-surface-container-highest); color: var(--color-on-surface-variant); cursor: default;".to_string() } else { "background: var(--color-primary); color: var(--color-primary-on); cursor: pointer;".to_string() },
                         disabled: is_sending,
+                        onclick: move |_| send(()),
                         if is_sending {
                             Icon { name: "loading".to_string(), class: Some("icon-sm icon-spin".to_string()) }
                         } else {
