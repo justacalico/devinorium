@@ -80,23 +80,12 @@ class Sidebar extends StatelessWidget {
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
-                if (!isSettings) ...[
+                if (!isSettings)
                   IconButton(
                     onPressed: () => state.openNewProjectDialog(),
                     icon: const Icon(Icons.create_new_folder_outlined),
                     tooltip: 'New project',
                   ),
-                  IconButton.filled(
-                    onPressed: state.activeProjectId == null
-                        ? null
-                        : () {
-                            Scaffold.of(context).closeDrawer();
-                            state.createNewThread();
-                          },
-                    icon: const Icon(Icons.add),
-                    tooltip: 'New thread',
-                  ),
-                ],
               ],
             ),
           ),
@@ -220,6 +209,10 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
             isExpanded: _expandedIds.contains(p.id),
             activeThreadId: activeThreadId,
             onToggle: () => _onToggle(p.id),
+            onNewThread: () {
+              Scaffold.of(context).closeDrawer();
+              state.createNewThread(projectId: p.id);
+            },
             onThreadTap: (id) => state.openThread(id),
           ),
       ],
@@ -249,6 +242,7 @@ class _ProjectExpandableTile extends StatelessWidget {
   final bool isExpanded;
   final String? activeThreadId;
   final VoidCallback onToggle;
+  final VoidCallback? onNewThread;
   final ValueChanged<String> onThreadTap;
 
   const _ProjectExpandableTile({
@@ -258,6 +252,7 @@ class _ProjectExpandableTile extends StatelessWidget {
     required this.isExpanded,
     this.activeThreadId,
     required this.onToggle,
+    this.onNewThread,
     required this.onThreadTap,
   });
 
@@ -307,10 +302,21 @@ class _ProjectExpandableTile extends StatelessWidget {
               style: theme.textTheme.labelSmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
-            trailing: AnimatedRotation(
-              turns: isExpanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 150),
-              child: const Icon(Icons.keyboard_arrow_down, size: 20),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onNewThread != null)
+                  IconButton(
+                    tooltip: 'New thread in ${project.name}',
+                    icon: const Icon(Icons.add, size: 18),
+                    onPressed: onNewThread,
+                  ),
+                AnimatedRotation(
+                  turns: isExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: const Icon(Icons.keyboard_arrow_down, size: 20),
+                ),
+              ],
             ),
             dense: true,
             onTap: onToggle,
