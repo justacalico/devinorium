@@ -84,6 +84,7 @@ fn Icon(name: String, class: Option<String>) -> Element {
 
 #[derive(Clone, PartialEq)]
 enum View {
+    Loading,
     Login,
     Register,
     App,
@@ -108,7 +109,7 @@ fn main() {
 }
 
 fn App() -> Element {
-    let mut current_view = use_signal(|| View::Login);
+    let mut current_view = use_signal(|| View::Loading);
     let mut current_page = use_signal(|| Page::Threads);
     let mut user = use_signal(|| Option::<User>::None);
     let mut threads = use_signal(|| Vec::<Thread>::new());
@@ -159,6 +160,9 @@ fn App() -> Element {
 
     rsx! {
         match view {
+            View::Loading => rsx! {
+                div { class: "min-h-screen", style: "background: var(--color-surface);" }
+            },
             View::Login => rsx! {
                 LoginView { user, current_view, login_error, show_totp_field }
             },
