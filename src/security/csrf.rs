@@ -68,13 +68,25 @@ fn origin_ok_explicit(headers: &HeaderMap, allowed: &str) -> bool {
 }
 
 fn origin_ok_same_host(headers: &HeaderMap, host: &str) -> bool {
+    /// Extract the hostname (without port) from a `host:port` string.
+    fn hostname(s: &str) -> &str {
+        // Strip port if present (e.g. "127.0.0.1:7878" -> "127.0.0.1").
+        // Also handles IPv6 brackets like "[::1]:8080".
+        if let Some(idx) = s.rfind(':') {
+            // Don't strip if this looks like an IPv6 address without port.
+            if !s.starts_with('[') || s[idx..].starts_with("]:") {
+                return &s[..idx];
+            }
+        }
+        s
+    }
     let check = |uri_str: &str| -> bool {
         let uri = match uri_str.parse::<axum::http::Uri>() {
             Ok(u) => u,
             Err(_) => return false,
         };
         let origin_host = uri.authority().map(|a| a.as_str()).unwrap_or("");
-        origin_host == host
+        hostname(origin_host) == hostname(host)
     };
     if let Some(origin) = headers.get(header::ORIGIN).and_then(|h| h.to_str().ok()) {
         return check(origin);

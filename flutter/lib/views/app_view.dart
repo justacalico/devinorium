@@ -1,0 +1,58 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../state/app_state.dart';
+import 'files_panel.dart';
+import 'settings_page.dart';
+import 'sidebar.dart';
+import 'thread_page.dart';
+
+/// The main authenticated layout: sidebar + main content area.
+/// Uses a Row with a fixed-width sidebar (300px) and a flexible main area.
+/// On narrow screens, the sidebar becomes a drawer.
+class AppShell extends StatelessWidget {
+  const AppShell({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final isNarrow = MediaQuery.of(context).size.width < 768;
+
+    if (isNarrow) {
+      return Scaffold(
+        drawer: const Drawer(width: 300, child: Sidebar()),
+        body: _MainArea(),
+        endDrawer: state.filesPanelOpen
+            ? const Drawer(width: 360, child: FilesPanel())
+            : null,
+      );
+    }
+
+    return Scaffold(
+      body: Row(
+        children: [
+          const SizedBox(width: 300, child: Sidebar()),
+          const VerticalDivider(width: 1),
+          Expanded(child: _MainArea()),
+          if (state.filesPanelOpen) ...[
+            const VerticalDivider(width: 1),
+            const SizedBox(width: 360, child: FilesPanel()),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MainArea extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    switch (state.page) {
+      case MainPage.threads:
+        return const ThreadPage();
+      case MainPage.settings:
+        return const SettingsPage();
+    }
+  }
+}
