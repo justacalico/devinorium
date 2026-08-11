@@ -9,7 +9,7 @@ enum AppView { loading, login, register, app }
 
 enum MainPage { threads, settings }
 
-enum DialogKind { none, totpSetup, invites }
+enum DialogKind { none, totpSetup, invites, newProject }
 
 /// Central app state. Mirrors the Dioxus `App` component's signals.
 class AppState extends ChangeNotifier {
@@ -25,9 +25,12 @@ class AppState extends ChangeNotifier {
   AppView _view = AppView.loading;
   MainPage _page = MainPage.threads;
   User? _user;
+  List<Project> _projects = [];
   List<Thread> _threads = [];
   List<ThreadGroup> _groups = [];
   List<ModelInfo> _models = [];
+  int? _activeProjectId;
+  String? _activeProjectPath;
   String? _activeThreadId;
   ThreadDetail? _activeThreadDetail;
   String _loginError = '';
@@ -53,9 +56,19 @@ class AppState extends ChangeNotifier {
   AppView get view => _view;
   MainPage get page => _page;
   User? get user => _user;
+  List<Project> get projects => _projects;
   List<Thread> get threads => _threads;
   List<ThreadGroup> get groups => _groups;
   List<ModelInfo> get models => _models;
+  int? get activeProjectId => _activeProjectId;
+  String? get activeProjectPath => _activeProjectPath;
+  Project? get activeProject {
+    for (final p in _projects) {
+      if (p.id == _activeProjectId) return p;
+    }
+    return null;
+  }
+
   String? get activeThreadId => _activeThreadId;
   ThreadDetail? get activeThreadDetail => _activeThreadDetail;
   String get loginError => _loginError;
@@ -91,6 +104,13 @@ class AppState extends ChangeNotifier {
   void setGlobalError(String e) { _globalError = e; notifyListeners(); }
   void clearGlobalError() { _globalError = ''; notifyListeners(); }
 
+  String? _projectPathById(int id) {
+    for (final p in _projects) {
+      if (p.id == id) return p.path;
+    }
+    return null;
+  }
+
   void openFilesPanel() {
     _filesPanelOpen = true;
     _filesPath = [];
@@ -116,7 +136,10 @@ class AppState extends ChangeNotifier {
   Future<void> reloadFiles() async {
     final path = _filesPath.join('/');
     try {
-      _filesEntries = await api.listFiles(path: path.isEmpty ? null : path);
+      _filesEntries = await api.listFiles(
+        path: path.isEmpty ? null : path,
+        projectId: _activeProjectId,
+      );
       _filesError = '';
     } catch (e) {
       _filesError = '$e';
@@ -128,7 +151,7 @@ class AppState extends ChangeNotifier {
     final p = _filesPath.join('/');
     final full = p.isEmpty ? name.trim() : '$p/${name.trim()}';
     try {
-      await api.mkdir(full);
+      await api.mkdir(full, projectId: _activeProjectId);
       _filesError = '';
       notifyListeners();
       await reloadFiles();
@@ -142,7 +165,7 @@ class AppState extends ChangeNotifier {
     final p = _filesPath.join('/');
     final full = p.isEmpty ? name : '$p/$name';
     try {
-      await api.deleteFile(full);
+      await api.deleteFile(full, projectId: _activeProjectId);
       _filesError = '';
       notifyListeners();
       await reloadFiles();
@@ -164,16 +187,33 @@ class AppState extends ChangeNotifier {
           _selectedModel = _models.first.id;
         }
       } catch (_) {}
-      await refreshThreadsAndGroups();
+      await loadProjects();
+      if (_projects.isNotEmpty) {
+        await selectProject(_projects.first.id);
+      } else {
+        await selectAllProjects();
+      }
     } catch (_) {
       _view = AppView.login;
+      notifyListeners();
     }
-    notifyListeners();
+  }
+
+  Future<void> loadProjects() async {
+    try {
+      _projects = await api.listProjects();
+    } catch (_) {
+      _projects = [];
+    }
   }
 
   Future<void> refreshThreadsAndGroups() async {
     try {
-      _threads = await api.listThreads();
+      if (_activeProjectId != null) {
+        _threads = await api.listThreadsForProject(_activeProjectId!);
+      } else {
+        _threads = await api.listThreads();
+      }
     } catch (_) {}
     try {
       _groups = await api.listThreadGroups();
@@ -202,8 +242,12 @@ class AppState extends ChangeNotifier {
           _selectedModel = _models.first.id;
         }
       } catch (_) {}
-      await refreshThreadsAndGroups();
-      notifyListeners();
+      await loadProjects();
+      if (_projects.isNotEmpty) {
+        await selectProject(_projects.first.id);
+      } else {
+        await selectAllProjects();
+      }
     } catch (e) {
       _loginError = '$e';
       notifyListeners();
@@ -218,7 +262,7 @@ class AppState extends ChangeNotifier {
       // Auto-login.
       final res = await api.login(username: username, password: password);
       if (res.totpRequired) {
-        // Shouldn't happen for a fresh user, but handle gracefully.
+        // Shouldn’t happen for a fresh user, but handle gracefully.
         _registerError = 'TOTP required after registration.';
       } else {
         _user = await api.me();
@@ -229,7 +273,12 @@ class AppState extends ChangeNotifier {
             _selectedModel = _models.first.id;
           }
         } catch (_) {}
-        await refreshThreadsAndGroups();
+        await loadProjects();
+        if (_projects.isNotEmpty) {
+          await selectProject(_projects.first.id);
+        } else {
+          await selectAllProjects();
+        }
       }
       notifyListeners();
     } catch (e) {
@@ -247,6 +296,9 @@ class AppState extends ChangeNotifier {
     _userMenuOpen = false;
     _activeThreadId = null;
     _activeThreadDetail = null;
+    _projects = [];
+    _activeProjectId = null;
+    _activeProjectPath = null;
     _showTotpField = false;
     _loginError = '';
     _composerText = '';
@@ -255,18 +307,89 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- Projects ----
+
+  Future<void> selectProject(int id) async {
+    _activeProjectId = id;
+    _activeProjectPath = _projectPathById(id);
+    _activeThreadId = null;
+    _activeThreadDetail = null;
+    _page = MainPage.threads;
+    _globalError = '';
+    notifyListeners();
+    await refreshThreadsAndGroups();
+  }
+
+  Future<void> selectAllProjects() async {
+    _activeProjectId = null;
+    _activeProjectPath = null;
+    _activeThreadId = null;
+    _activeThreadDetail = null;
+    _page = MainPage.threads;
+    _globalError = '';
+    notifyListeners();
+    await refreshThreadsAndGroups();
+  }
+
+  Future<void> createProject({required String name, required String path}) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final p = await api.createProject(name: name, path: path);
+      _projects = [..._projects, p];
+      _activeProjectId = p.id;
+      _activeProjectPath = p.path;
+      _activeThreadId = null;
+      _activeThreadDetail = null;
+      _page = MainPage.threads;
+      await refreshThreadsAndGroups();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteProject(int id) async {
+    try {
+      await api.deleteProject(id);
+      if (_activeProjectId == id) {
+        _activeProjectId = null;
+        _activeProjectPath = null;
+        _activeThreadId = null;
+        _activeThreadDetail = null;
+      }
+      _projects = _projects.where((p) => p.id != id).toList();
+      await refreshThreadsAndGroups();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> openNewProjectDialog() async {
+    _dialog = DialogKind.newProject;
+    _userMenuOpen = false;
+    notifyListeners();
+  }
+
   // ---- Threads ----
 
   Future<void> createNewThread() async {
+    final projectId = _activeProjectId;
+    if (projectId == null) {
+      _globalError = 'Select a project first';
+      notifyListeners();
+      return;
+    }
     _page = MainPage.threads;
     notifyListeners();
     try {
       final t = await api.createThread(
+        projectId: projectId,
         title: 'New thread',
         model: _selectedModel.isEmpty ? null : _selectedModel,
         permissionMode: _selectedPermission,
       );
-      _threads = [t, ..._threads];
       _activeThreadId = t.id;
       try {
         _activeThreadDetail = await api.getThread(t.id);
@@ -284,6 +407,23 @@ class AppState extends ChangeNotifier {
     try {
       _activeThreadDetail = await api.getThread(id);
       notifyListeners();
+
+      // Discover the thread's project and switch the active project.
+      try {
+        final info = await api.getThreadProject(id);
+        final projectId = (info['project_id'] as num).toInt();
+        _activeProjectId = projectId;
+        _activeProjectPath = info['path'] as String? ?? _projectPathById(projectId);
+      } catch (_) {
+        final projectId = _activeThreadDetail?.thread.projectId;
+        if (projectId != null && projectId != 0 && projectId != _activeProjectId) {
+          _activeProjectId = projectId;
+          _activeProjectPath = _projectPathById(projectId);
+        }
+      }
+
+      // Load the threads list for the active project.
+      await refreshThreadsAndGroups();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();

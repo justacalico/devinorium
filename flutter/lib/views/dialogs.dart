@@ -16,6 +16,8 @@ class DialogLayer extends StatelessWidget {
         return const _TotpSetupDialog();
       case DialogKind.invites:
         return const _InvitesDialog();
+      case DialogKind.newProject:
+        return const _NewProjectDialog();
     }
   }
 }
@@ -207,6 +209,111 @@ class _InvitesDialog extends StatelessWidget {
                         TextButton(
                           onPressed: state.closeDialog,
                           child: const Text('Close'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewProjectDialog extends StatefulWidget {
+  const _NewProjectDialog();
+
+  @override
+  State<_NewProjectDialog> createState() => _NewProjectDialogState();
+}
+
+class _NewProjectDialogState extends State<_NewProjectDialog> {
+  final _nameController = TextEditingController();
+  final _pathController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _pathController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    final path = _pathController.text.trim();
+    if (name.isEmpty || path.isEmpty) return;
+
+    final state = context.read<AppState>();
+    await state.createProject(name: name, path: path);
+    if (mounted && state.globalError.isEmpty) {
+      state.closeDialog();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final theme = Theme.of(context);
+    return Stack(
+      children: [
+        ModalBarrier(
+            color: Colors.black.withValues(alpha: 0.5), dismissible: false),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('New project', style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                        hintText: 'My project',
+                        border: OutlineInputBorder(),
+                      ),
+                      textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _pathController,
+                      decoration: const InputDecoration(
+                        labelText: 'Path',
+                        hintText: 'relative/project/path',
+                        border: OutlineInputBorder(),
+                      ),
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                    ),
+                    if (state.globalError.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        state.globalError,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: state.closeDialog,
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: _submit,
+                          child: const Text('Create'),
                         ),
                       ],
                     ),

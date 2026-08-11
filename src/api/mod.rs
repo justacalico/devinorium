@@ -4,6 +4,7 @@ pub mod auth;
 pub mod files;
 pub mod invites;
 pub mod models;
+pub mod projects;
 pub mod thread_groups;
 pub mod threads;
 

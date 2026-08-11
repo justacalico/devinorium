@@ -30,12 +30,14 @@ pub fn router() -> Router<AppState> {
         .route("/api/threads/:id/messages", get(list_messages))
         .route("/api/threads/:id/send", post(send))
         .route("/api/threads/:id/send/stream", post(send_stream))
+        .route("/api/threads/:id/project", get(get_project_path))
 }
 
 #[derive(Debug, Serialize)]
 pub struct ThreadOut {
     pub id: String,
     pub title: String,
+    pub project_id: i64,
     pub thread_group_id: Option<i64>,
     pub devin_session_id: Option<String>,
     pub model: String,
@@ -49,6 +51,7 @@ impl From<ThreadRow> for ThreadOut {
         Self {
             id: t.id,
             title: t.title,
+            project_id: t.project_id.unwrap_or(0),
             thread_group_id: t.thread_group_id,
             devin_session_id: t.devin_session_id,
             model: t.model,
@@ -91,6 +94,7 @@ async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> 
 
 #[derive(Debug, Deserialize)]
 pub struct CreateThread {
+    pub project_id: i64,
     pub title: Option<String>,
     pub thread_group_id: Option<i64>,
     pub model: Option<String>,
@@ -102,6 +106,14 @@ async fn create(
     CurrentUser(user): CurrentUser,
     Json(req): Json<CreateThread>,
 ) -> Response {
+    // Validate project ownership.
+    match state.db.get_project(req.project_id, user.id).await {
+        Ok(Some(_)) => {}
+        _ => {
+            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid project_id"))).into_response();
+        }
+    }
+
     // Validate group ownership if provided.
     if let Some(gid) = req.thread_group_id {
         match state.db.get_thread_group(gid, user.id).await {
@@ -118,6 +130,7 @@ async fn create(
     let new = NewThread {
         id: Uuid::new_v4().to_string(),
         user_id: user.id,
+        project_id: req.project_id,
         thread_group_id: req.thread_group_id,
         title: req.title.unwrap_or_else(|| "New thread".into()),
         model: req.model.unwrap_or_else(|| state.config.default_model.clone()),
@@ -439,11 +452,7 @@ async fn call_provider(
     prompt: &str,
     attachments: Vec<Attachment>,
 ) -> anyhow::Result<(String, Option<String>, Option<String>)> {
-    let working_dir = state
-        .config
-        .file_root
-        .clone()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let working_dir = project_working_dir_for_thread(state, thread).await?;
 
     let options = SendOptions {
         model: thread.model.clone(),
@@ -510,4 +519,47 @@ async fn persist_assistant_reply(
         .await;
 
     Ok(assistant_msg)
+}
+
+/// Return the filesystem working directory for a thread.
+///
+/// If the thread belongs to a project, use the project's canonical path.
+/// Otherwise fall back to the configured global file root.
+async fn project_working_dir_for_thread(
+    state: &AppState,
+    thread: &ThreadRow,
+) -> anyhow::Result<PathBuf> {
+    if let Some(pid) = thread.project_id {
+        if let Ok(Some(p)) = state.db.get_project(pid, thread.user_id).await {
+            return Ok(PathBuf::from(&p.path));
+        }
+    }
+    Ok(state
+        .config
+        .file_root
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))))
+}
+
+async fn get_project_path(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(t)) => match t.project_id {
+            Some(pid) => match state.db.get_project(pid, user.id).await {
+                Ok(Some(p)) => Json(serde_json::json!({
+                    "project_id": p.id,
+                    "path": p.path,
+                    "name": p.name,
+                }))
+                .into_response(),
+                _ => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("project not found"))).into_response(),
+            },
+            None => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("thread has no project"))).into_response(),
+        },
+        Ok(None) => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("not found"))).into_response(),
+        Err(e) => crate::api::map_err_internal(e).into_response(),
+    }
 }

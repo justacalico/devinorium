@@ -77,10 +77,35 @@ class Message {
       );
 }
 
+class Project {
+  final int id;
+  final String name;
+  final String path;
+  final String createdAt;
+  final String updatedAt;
+
+  Project({
+    required this.id,
+    required this.name,
+    required this.path,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory Project.fromJson(Map<String, dynamic> j) => Project(
+        id: (j['id'] as num).toInt(),
+        name: j['name'] as String,
+        path: j['path'] as String,
+        createdAt: j['created_at'] as String? ?? '',
+        updatedAt: j['updated_at'] as String? ?? '',
+      );
+}
+
 class Thread {
   final String id;
   final String title;
   final int? threadGroupId;
+  final int projectId;
   final String? devinSessionId;
   final String model;
   final String permissionMode;
@@ -91,6 +116,7 @@ class Thread {
     required this.id,
     required this.title,
     this.threadGroupId,
+    required this.projectId,
     this.devinSessionId,
     required this.model,
     required this.permissionMode,
@@ -102,6 +128,7 @@ class Thread {
         id: j['id'] as String,
         title: j['title'] as String,
         threadGroupId: j['thread_group_id'] as int?,
+        projectId: (j['project_id'] as num?)?.toInt() ?? 0,
         devinSessionId: j['devin_session_id'] as String?,
         model: j['model'] as String? ?? '',
         permissionMode: j['permission_mode'] as String? ?? 'normal',
