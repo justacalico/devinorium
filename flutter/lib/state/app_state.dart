@@ -422,6 +422,19 @@ class AppState extends ChangeNotifier {
       await api.totpVerify(code);
       _dialog = DialogKind.none;
       _user = await api.me();
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> disableTotp() async {
+    try {
+      await api.totpDisable();
+      _user = await api.me();
+      _globalError = '';
       notifyListeners();
     } catch (e) {
       _globalError = '$e';
