@@ -951,6 +951,46 @@ fn ThreadItem(
     }
 }
 
+// ---------- Messages Panel ----------
+
+/// The scrollable message list inside the chat view.
+#[component]
+fn MessagesPanel(detail: Option<ThreadDetail>, streaming_text: Option<String>) -> Element {
+    rsx! {
+        div { class: "flex-1 overflow-y-auto min-h-0 py-6",
+            style: "scroll-behavior: smooth;",
+            match &detail {
+                None => rsx! {
+                    div { class: "m3-body-medium text-center p-12",
+                        style: "color: var(--color-on-surface-variant);",
+                        "Select or create a thread to start chatting."
+                    }
+                },
+                Some(d) if d.messages.is_empty() && streaming_text.is_none() => rsx! {
+                    div { class: "m3-body-medium text-center p-12",
+                        style: "color: var(--color-on-surface-variant);",
+                        "Start the conversation by sending a message below."
+                    }
+                },
+                Some(d) => rsx! {
+                    {d.messages.iter().enumerate().map(|(i, m)| rsx! {
+                        MessageItem { key: "{i}", message: m.clone() }
+                    })}
+                },
+            }
+            if let Some(text) = streaming_text {
+                MessageItem {
+                    message: Message {
+                        role: "assistant".to_string(),
+                        content: text,
+                        attachments: None,
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ---------- Chat View ----------
 
 #[component]
@@ -1059,40 +1099,11 @@ fn ChatView(
     };
 
     rsx! {
-        div { class: "flex-1 overflow-y-auto py-6",
-            style: "scroll-behavior: smooth;",
-            match &detail {
-                None => rsx! {
-                    div { class: "m3-body-medium text-center p-12",
-                        style: "color: var(--color-on-surface-variant);",
-                        "Select or create a thread to start chatting."
-                    }
-                },
-                Some(d) if d.messages.is_empty() && streaming_text.is_none() => rsx! {
-                    div { class: "m3-body-medium text-center p-12",
-                        style: "color: var(--color-on-surface-variant);",
-                        "Start the conversation by sending a message below."
-                    }
-                },
-                Some(d) => rsx! {
-                    {d.messages.iter().enumerate().map(|(i, m)| rsx! {
-                        MessageItem { key: "{i}", message: m.clone() }
-                    })}
-                },
-            }
-            if let Some(text) = streaming_text {
-                MessageItem {
-                    message: Message {
-                        role: "assistant".to_string(),
-                        content: text,
-                        attachments: None,
-                    }
-                }
-            }
-        }
+        div { class: "flex-1 flex flex-col min-h-0",
+            MessagesPanel { detail: detail.clone(), streaming_text: streaming_text.clone() }
 
-        div { class: "px-5 pb-5 pt-3",
-            style: "background: var(--color-surface);",
+            div { class: "flex-shrink-0 px-5 pb-5 pt-3",
+                style: "background: var(--color-surface);",
             div { class: "max-w-[760px] mx-auto rounded-[28px] border shadow-elev-1 overflow-hidden",
                 style: "background: var(--color-surface-container); border-color: var(--color-outline-variant);",
                 // Unified prompt input area (the whole card is the prompt)
@@ -1141,6 +1152,7 @@ fn ChatView(
                         }
                     }
                 }
+            }
             }
         }
     }
