@@ -57,7 +57,8 @@ impl Config {
         let file_root = env::var("DEVINORIUM_FILE_ROOT")
             .ok()
             .filter(|s| !s.trim().is_empty())
-            .map(|s| PathBuf::from(s.trim()));
+            .map(|s| PathBuf::from(s.trim()))
+            .or_else(default_file_root);
 
         let devin_bin = env_or("DEVINORIUM_DEVIN_BIN", "devin");
         let default_model = env_or("DEVINORIUM_DEFAULT_MODEL", "glm-5-2");
@@ -93,6 +94,14 @@ impl Config {
 
 fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
+}
+
+fn default_file_root() -> Option<PathBuf> {
+    // Prefer $HOME on Unix, $USERPROFILE on Windows.
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
 }
 
 fn rand_key(n: usize) -> Vec<u8> {

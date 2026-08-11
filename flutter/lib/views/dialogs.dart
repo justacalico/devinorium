@@ -268,7 +268,9 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
       );
       if (!mounted) return;
       setState(() {
-        _entries = entries.where((e) => e.isDir).toList();
+        _entries = entries
+            .where((e) => e.isDir && !e.name.startsWith('.'))
+            .toList();
         _loading = false;
       });
     } catch (e) {
@@ -563,15 +565,15 @@ class _BrowserHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final crumbs = path.isEmpty
-        ? <String>['file root']
-        : ['file root', ...path.split('/')];
+        ? <String>['Home']
+        : ['Home', ...path.split('/')];
 
     return Row(
       children: [
-        IconButton(
-          tooltip: 'Up',
-          icon: const Icon(Icons.arrow_upward, size: 18),
+        TextButton.icon(
           onPressed: enabled ? onUp : null,
+          icon: const Icon(Icons.arrow_upward, size: 18),
+          label: const Text('Up'),
         ),
         const SizedBox(width: 4),
         Expanded(
