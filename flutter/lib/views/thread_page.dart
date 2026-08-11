@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
@@ -241,9 +243,42 @@ class _MessageItem extends StatelessWidget {
                             color: theme.colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 4),
-                    Text(message.content,
-                        style: theme.textTheme.bodyLarge
-                            ?.copyWith(height: 1.5)),
+                    if (message.role == 'assistant')
+                      MarkdownBody(
+                        data: message.content,
+                        selectable: true,
+                        extensionSet: markdown.ExtensionSet.gitHubFlavored,
+                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                          p: theme.textTheme.bodyLarge
+                              ?.copyWith(height: 1.5),
+                          code: theme.textTheme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                            backgroundColor:
+                                theme.colorScheme.surfaceContainerHigh,
+                          ),
+                          codeblockDecoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          codeblockPadding: const EdgeInsets.all(12),
+                          tableHead: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                          tableBody: theme.textTheme.bodyMedium,
+                          tableBorder: TableBorder(
+                            horizontalInside: BorderSide(
+                              color: theme.dividerColor.withAlpha(128),
+                            ),
+                          ),
+                          tableCellsPadding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                        ),
+                      )
+                    else
+                      Text(message.content,
+                          style: theme.textTheme.bodyLarge
+                              ?.copyWith(height: 1.5)),
                     if (message.attachments != null &&
                         message.attachments!.isNotEmpty) ...[
                       const SizedBox(height: 8),
