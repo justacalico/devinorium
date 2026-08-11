@@ -17,10 +17,13 @@ use sqlx::{
 pub mod audit;
 pub mod invites;
 pub mod messages;
+pub mod projects;
 pub mod sessions;
 pub mod thread_groups;
 pub mod threads;
 pub mod users;
+
+pub use projects::NewProject;
 
 pub use invites::InviteRow;
 pub use messages::NewMessage;
@@ -102,6 +105,18 @@ pub struct ThreadRow {
     pub created_at: String,
     pub updated_at: String,
     pub thread_group_id: Option<i64>,
+    pub project_id: Option<i64>,
+}
+
+/// A row from the `projects` table.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct ProjectRow {
+    pub id: i64,
+    pub user_id: i64,
+    pub name: String,
+    pub path: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// A row from the `messages` table.

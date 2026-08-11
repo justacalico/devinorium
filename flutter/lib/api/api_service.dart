@@ -60,6 +60,37 @@ class ApiService {
     await _client.post('/api/auth/totp/disable', {});
   }
 
+  // ---- Projects ----
+
+  Future<List<Project>> listProjects() async {
+    final list = await _client.getList('/api/projects');
+    return list.map(Project.fromJson).toList();
+  }
+
+  Future<Project> createProject({
+    required String name,
+    required String path,
+  }) async {
+    final j = await _client.post('/api/projects', {
+      'name': name.trim(),
+      'path': path.trim(),
+    });
+    return Project.fromJson(j);
+  }
+
+  Future<void> deleteProject(int id) async {
+    await _client.delete('/api/projects/$id');
+  }
+
+  Future<List<Thread>> listThreadsForProject(int id) async {
+    final list = await _client.getList('/api/projects/$id/threads');
+    return list.map(Thread.fromJson).toList();
+  }
+
+  Future<Map<String, dynamic>> getThreadProject(String id) async {
+    return await _client.get('/api/threads/$id/project');
+  }
+
   // ---- Threads ----
 
   Future<List<Thread>> listThreads() async {
@@ -68,12 +99,15 @@ class ApiService {
   }
 
   Future<Thread> createThread({
+    required int projectId,
     String? title,
     int? threadGroupId,
     String? model,
     String? permissionMode,
   }) async {
-    final body = <String, dynamic>{};
+    final body = <String, dynamic>{
+      'project_id': projectId,
+    };
     if (title != null) body['title'] = title;
     if (threadGroupId != null) body['thread_group_id'] = threadGroupId;
     if (model != null) body['model'] = model;
@@ -135,27 +169,36 @@ class ApiService {
 
   // ---- Files ----
 
-  Future<List<DirEntry>> listFiles({String? path}) async {
-    final qs = path == null || path.isEmpty ? '' : '?path=${Uri.encodeComponent(path)}';
-    final list = await _client.getList('/api/files$qs');
+  Future<List<DirEntry>> listFiles({String? path, int? projectId}) async {
+    final params = <String, String>{};
+    if (path != null && path.isNotEmpty) params['path'] = path;
+    if (projectId != null) params['project_id'] = projectId.toString();
+    final uri = _buildPath('/api/files', params);
+    final list = await _client.getList(uri);
     return list.map(DirEntry.fromJson).toList();
   }
 
-  Future<void> mkdir(String path) async {
-    await _client.post('/api/files/dir', {'path': path});
+  Future<void> mkdir(String path, {int? projectId}) async {
+    final body = <String, dynamic>{'path': path};
+    if (projectId != null) body['project_id'] = projectId;
+    await _client.post('/api/files/dir', body);
   }
 
-  Future<void> deleteFile(String path) async {
-    final qs = '?path=${Uri.encodeComponent(path)}';
-    await _client.delete('/api/files/delete$qs');
+  Future<void> deleteFile(String path, {int? projectId}) async {
+    final params = <String, String>{'path': path};
+    if (projectId != null) params['project_id'] = projectId.toString();
+    final uri = _buildPath('/api/files/delete', params);
+    await _client.delete(uri);
   }
 
   Future<void> uploadFiles({
     String? destDir,
+    int? projectId,
     required List<({String filename, String mime, Uint8List bytes})> files,
   }) async {
     final fields = <String, String>{};
     if (destDir != null && destDir.isNotEmpty) fields['path'] = destDir;
+    if (projectId != null) fields['project_id'] = projectId.toString();
     await _client.uploadMultipart('/api/files', fields, files);
   }
 
@@ -186,6 +229,20 @@ class ApiService {
       prompt: prompt,
       attachments: attachments,
     );
+  }
+
+  /// Build a path with optional query parameters, encoding values safely.
+  static String _buildPath(String path, Map<String, String> params) {
+    if (params.isEmpty) return path;
+    final buffer = StringBuffer(path);
+    var first = true;
+    for (final e in params.entries) {
+      buffer.write(first ? '?' : '&');
+      buffer.write('${Uri.encodeQueryComponent(e.key)}=');
+      buffer.write(Uri.encodeQueryComponent(e.value));
+      first = false;
+    }
+    return buffer.toString();
   }
 }
 

@@ -11,6 +11,7 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use async_trait::async_trait;
 use tower::ServiceExt;
+use uuid::Uuid;
 
 use devinorium::{
     auth,
@@ -126,6 +127,38 @@ async fn body_str(b: Body) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
+async fn create_project(app: &Router, cookie: &str) -> i64 {
+    let suffix = Uuid::new_v4();
+    let body = format!(r#"{{"name":"test-project-{suffix}","path":"test-project-{suffix}"}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body)
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap()
+}
+
+async fn make_thread(app: &Router, cookie: &str, project_id: i64, title: &str) -> String {
+    let body = format!(r#"{{"project_id":{project_id},"title":"{title}"}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/threads", cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED, "make_thread failed: {}", body_str(resp.into_body()).await);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body)
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
 #[tokio::test]
 async fn models_list() {
     let (app, _db) = make_app().await;
@@ -145,12 +178,14 @@ async fn thread_create_get_list_delete() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
 
+    let pid = create_project(&app, &cookie).await;
+
     // Create a thread.
     let resp = app.clone()
-        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"My Thread"}"#))
+        .oneshot(authed("POST", "/api/threads", &cookie, &format!(r#"{{"project_id":{pid},"title":"My Thread"}}"#)))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED);
+    assert_eq!(resp.status(), StatusCode::CREATED, "thread create failed: {}", body_str(resp.into_body()).await);
     let body = body_str(resp.into_body()).await;
     let tid: String = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
         .as_str()
@@ -193,15 +228,8 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
 
-    // Create a thread.
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T"}"#))
-        .await
-        .unwrap();
-    let tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
 
     // Send a message (multipart).
     let boundary = "----testboundary";
@@ -244,14 +272,8 @@ async fn thread_send_streams_reply_as_sse() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
 
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T"}"#))
-        .await
-        .unwrap();
-    let tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
 
     let boundary = "----streamboundary";
     let body = format!(
@@ -433,24 +455,11 @@ async fn thread_group_with_threads() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
 
-    // Create two threads.
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"Thread A"}"#))
-        .await
-        .unwrap();
-    let tid_a: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let pid = create_project(&app, &cookie).await;
 
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"Thread B"}"#))
-        .await
-        .unwrap();
-    let tid_b: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    // Create two threads.
+    let tid_a = make_thread(&app, &cookie, pid, "Thread A").await;
+    let tid_b = make_thread(&app, &cookie, pid, "Thread B").await;
 
     // Create a group and move both threads into it.
     let resp = app.clone()
@@ -524,15 +533,9 @@ async fn thread_isolation_between_users() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Owner creates a thread.
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/threads", &owner_cookie, r#"{"title":"owner-thread"}"#))
-        .await
-        .unwrap();
-    let owner_tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    // Owner creates a project and a thread.
+    let owner_pid = create_project(&app, &owner_cookie).await;
+    let owner_tid = make_thread(&app, &owner_cookie, owner_pid, "owner-thread").await;
 
     // Alice logs in.
     let resp = app.clone()
@@ -572,8 +575,9 @@ async fn thread_isolation_between_users() {
 async fn thread_rejects_invalid_permission_mode() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
     let resp = app
-        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T","permission_mode":"god-mode"}"#))
+        .oneshot(authed("POST", "/api/threads", &cookie, &format!(r#"{{"project_id":{pid},"title":"T","permission_mode":"god-mode"}}"#)))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -583,10 +587,11 @@ async fn thread_rejects_invalid_permission_mode() {
 async fn thread_accepts_each_valid_permission_mode() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
     for mode in &["normal", "accept-edits", "smart", "bypass"] {
         let resp = app
             .clone()
-            .oneshot(authed("POST", "/api/threads", &cookie, &format!(r#"{{"title":"T-{mode}","permission_mode":"{mode}"}}"#)))
+            .oneshot(authed("POST", "/api/threads", &cookie, &format!(r#"{{"project_id":{pid},"title":"T-{mode}","permission_mode":"{mode}"}}"#)))
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED, "mode {mode} should be accepted");
@@ -631,8 +636,8 @@ async fn send_rejects_oversized_attachment() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
 
-    let resp = app.clone().oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T"}"#)).await.unwrap();
-    let tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"].as_str().unwrap().to_string();
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
 
     // Build a multipart body with a >8 MiB attachment.
     let boundary = "----bigboundary";
@@ -656,8 +661,8 @@ async fn send_rejects_empty_prompt() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
 
-    let resp = app.clone().oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T"}"#)).await.unwrap();
-    let tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"].as_str().unwrap().to_string();
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
 
     let boundary = "----emptyboundary";
     let body = format!(
