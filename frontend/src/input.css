@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* M3 color tokens as CSS variables — swapped by prefers-color-scheme */
+:root {
+  --color-primary: #6750A4;
+  --color-primary-on: #ffffff;
+  --color-primary-container: #EADDFF;
+  --color-primary-on-container: #21005D;
+  --color-secondary: #625B71;
+  --color-secondary-on: #ffffff;
+  --color-secondary-container: #E8DEF8;
+  --color-secondary-on-container: #1D192B;
+  --color-tertiary: #7D5260;
+  --color-surface: #FEF7FF;
+  --color-surface-dim: #DED8E1;
+  --color-surface-bright: #FEF7FF;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #F7F2FA;
+  --color-surface-container: #F3EDF7;
+  --color-surface-container-high: #ECE6F0;
+  --color-surface-container-highest: #E6E0E9;
+  --color-on-surface: #1D1B20;
+  --color-on-surface-variant: #49454F;
+  --color-outline: #79747E;
+  --color-outline-variant: #CAC4D0;
+  --color-error: #B3261E;
+  --color-error-on: #ffffff;
+  --color-error-container: #F9DEDC;
+  --color-error-on-container: #410E0B;
+  --color-success: #2E7D32;
+  --color-scrim: rgba(0,0,0,0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #D0BCFF;
+    --color-primary-on: #381E72;
+    --color-primary-container: #4F378B;
+    --color-primary-on-container: #EADDFF;
+    --color-secondary: #CCC2DC;
+    --color-secondary-on: #332D41;
+    --color-secondary-container: #4A4458;
+    --color-secondary-on-container: #E8DEF8;
+    --color-tertiary: #EFB8C8;
+    --color-surface: #141218;
+    --color-surface-dim: #141218;
+    --color-surface-bright: #3B383F;
+    --color-surface-container-lowest: #0F0D13;
+    --color-surface-container-low: #1D1B20;
+    --color-surface-container: #211F26;
+    --color-surface-container-high: #2B2930;
+    --color-surface-container-highest: #36343B;
+    --color-on-surface: #E6E0E9;
+    --color-on-surface-variant: #CAC4D0;
+    --color-outline: #938F99;
+    --color-outline-variant: #49454F;
+    --color-error: #F2B8B5;
+    --color-error-on: #601410;
+    --color-error-container: #8C1D18;
+    --color-error-on-container: #F9DEDC;
+    --color-success: #2E7D32;
+    --color-scrim: rgba(0,0,0,0.6);
+  }
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html, body {
+    height: 100%;
+    font-family: "Roboto", "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+    background: var(--color-surface);
+    color: var(--color-on-surface);
+  }
+}
+
+/* Reusable component classes */
+@layer components {
+  /* M3 outlined text field with floating label */
+  .m3-text-field {
+    @apply relative block;
+  }
+  .m3-text-field input {
+    @apply w-full px-4 py-3.5 bg-transparent border rounded-xs text-base outline-none transition-colors;
+    border-color: var(--color-outline);
+    color: var(--color-on-surface);
+  }
+  .m3-text-field input:focus {
+    @apply border-2 px-3.5 py-3;
+    border-color: var(--color-primary);
+  }
+  .m3-text-field span {
+    @apply absolute -top-2 left-3 px-1 text-xs;
+    background: var(--color-surface);
+    color: var(--color-on-surface-variant);
+  }
+
+  /* Buttons */
+  .m3-button {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-6 border-none rounded-full text-sm font-medium cursor-pointer transition-all;
+  }
+  .m3-filled {
+    background: var(--color-primary);
+    color: var(--color-primary-on);
+  }
+  .m3-filled:hover {
+    @apply shadow-elev-1;
+  }
+  .m3-tonal {
+    background: var(--color-secondary-container);
+    color: var(--color-secondary-on-container);
+  }
+  .m3-text-button {
+    @apply bg-transparent px-3 h-9;
+    color: var(--color-primary);
+  }
+  .m3-text-button:hover {
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+  .m3-icon-button {
+    @apply inline-flex items-center justify-center w-10 h-10 border-none bg-transparent rounded-full cursor-pointer transition-colors;
+    color: var(--color-on-surface-variant);
+  }
+  .m3-icon-button:hover {
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  }
+  .m3-fab {
+    @apply inline-flex items-center justify-center w-10 h-10 border-none rounded-lg cursor-pointer transition-shadow;
+    background: var(--color-primary-container);
+    color: var(--color-primary-on-container);
+  }
+  .m3-fab:hover {
+    @apply shadow-elev-2;
+  }
+  .m3-fab {
+    @apply shadow-elev-1;
+  }
+
+  /* Select */
+  .m3-select {
+    @apply h-9 px-2.5 border rounded-sm text-[0.8125rem] cursor-pointer outline-none;
+    background: var(--color-surface-container-low);
+    border-color: var(--color-outline-variant);
+    color: var(--color-on-surface);
+  }
+  .m3-select:focus {
+    border-color: var(--color-primary);
+  }
+
+  /* Textarea */
+  .m3-text-area {
+    @apply flex-1 resize-none px-3.5 py-3 border rounded-md text-[0.9375rem] outline-none max-h-40 overflow-y-auto transition-colors;
+    background: var(--color-surface-container-low);
+    border-color: var(--color-outline-variant);
+    color: var(--color-on-surface);
+  }
+  .m3-text-area:focus {
+    border-color: var(--color-primary);
+  }
+
+  /* Card */
+  .m3-card {
+    @apply rounded-md shadow-elev-1;
+    background: var(--color-surface-container);
+  }
+
+  /* Typography */
+  .m3-headline-small {
+    @apply text-2xl font-medium leading-8;
+  }
+  .m3-title-large {
+    @apply text-[1.375rem] font-medium;
+  }
+  .m3-title-medium {
+    @apply text-base font-medium;
+  }
+  .m3-body-medium {
+    @apply text-sm font-normal;
+  }
+  .m3-label-medium {
+    @apply text-xs font-medium uppercase;
+    color: var(--color-on-surface-variant);
+    letter-spacing: 0.033em;
+  }
+
+  /* Error text */
+  .error-text {
+    @apply text-xs;
+    color: var(--color-error);
+  }
+}

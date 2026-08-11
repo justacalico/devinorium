@@ -7,6 +7,10 @@ Cargo.lock
 /frontend/dist/assets/
 /frontend/dist/wasm/
 
+# Node.js / Tailwind
+/frontend/node_modules/
+/frontend/assets/styles.css
+
 # SQLite databases
 *.db
 *.db-shm

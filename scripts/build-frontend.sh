@@ -6,8 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 
-echo "Building Dioxus frontend (release)..."
 cd "$FRONTEND_DIR"
+
+# Step 1: Build Tailwind CSS from input.css → assets/styles.css
+echo "Building Tailwind CSS..."
+npx tailwindcss -i ./src/input.css -o ./assets/styles.css --minify
+
+# Step 2: Build Dioxus WASM frontend
+echo "Building Dioxus frontend (release)..."
 dx build --release
 
 # Copy build output to frontend/dist/
