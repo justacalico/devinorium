@@ -212,7 +212,7 @@ class AppState extends ChangeNotifier {
       if (_activeProjectId != null) {
         _threads = await api.listThreadsForProject(_activeProjectId!);
       } else {
-        _threads = await api.listThreads();
+        _threads = [];
       }
     } catch (_) {}
     try {
@@ -352,13 +352,18 @@ class AppState extends ChangeNotifier {
   Future<void> deleteProject(int id) async {
     try {
       await api.deleteProject(id);
+      _projects = _projects.where((p) => p.id != id).toList();
       if (_activeProjectId == id) {
-        _activeProjectId = null;
-        _activeProjectPath = null;
         _activeThreadId = null;
         _activeThreadDetail = null;
+        if (_projects.isNotEmpty) {
+          _activeProjectId = _projects.first.id;
+          _activeProjectPath = _projects.first.path;
+        } else {
+          _activeProjectId = null;
+          _activeProjectPath = null;
+        }
       }
-      _projects = _projects.where((p) => p.id != id).toList();
       await refreshThreadsAndGroups();
     } catch (e) {
       _globalError = '$e';

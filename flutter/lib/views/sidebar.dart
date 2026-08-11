@@ -193,10 +193,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     final children = <Widget>[];
 
     // Projects section (always first).
-    children.add(_AllProjectsTile(
-      selected: activeProjectId == null,
-      onTap: () => context.read<AppState>().selectAllProjects(),
-    ));
     for (final p in projects) {
       children.add(_ProjectTile(
         project: p,
@@ -205,7 +201,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       ));
     }
 
-    // Overview section for the active/all project.
+    // Overview section for the selected project.
     children.add(const _SectionHeader('Overview'));
     if (threads.isEmpty) {
       children.add(const _NoThreads());
@@ -232,26 +228,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: children,
-    );
-  }
-}
-
-class _AllProjectsTile extends StatelessWidget {
-  final bool selected;
-  final VoidCallback onTap;
-  const _AllProjectsTile({required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ListTile(
-      leading: Icon(Icons.all_inbox, color: theme.colorScheme.primary, size: 20),
-      title: Text('All projects', style: theme.textTheme.bodyMedium),
-      selected: selected,
-      selectedTileColor: theme.colorScheme.secondaryContainer,
-      shape: const StadiumBorder(),
-      dense: true,
-      onTap: onTap,
     );
   }
 }
