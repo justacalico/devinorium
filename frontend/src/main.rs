@@ -36,12 +36,46 @@ fn icon_path(name: &str) -> &'static str {
     ICONS.iter().find(|(n, _)| *n == name).map(|(_, p)| *p).unwrap_or("")
 }
 
+// Icon size utility classes
+fn icon_class(class: &str) -> &'static str {
+    match class {
+        "icon-lg" => "w-12 h-12",
+        "icon-md" => "w-[22px] h-[22px]",
+        "icon-sm" => "w-5 h-5",
+        "icon-xs" => "w-4 h-4",
+        _ => "w-5 h-5",
+    }
+}
+
 #[component]
 fn Icon(name: String, class: Option<String>) -> Element {
     let cls = class.unwrap_or_else(|| "icon-sm".to_string());
+    // Extract the size part and any extra classes (like "menu-icon", "icon-spin")
+    let (size_part, extra): (String, String) = {
+        let parts: Vec<&str> = cls.split_whitespace().collect();
+        let mut size = String::new();
+        let mut extra_parts: Vec<&str> = Vec::new();
+        for p in parts {
+            if p.starts_with("icon-") {
+                if p == "icon-spin" {
+                    extra_parts.push("animate-spin");
+                } else {
+                    size = icon_class(p).to_string();
+                }
+            } else {
+                extra_parts.push(p);
+            }
+        }
+        (size, extra_parts.join(" "))
+    };
+    let final_class = if extra.is_empty() {
+        size_part
+    } else {
+        format!("{} {}", size_part, extra)
+    };
     rsx! {
-        svg { class: "{cls}", view_box: "0 0 24 24",
-            path { fill: "currentColor", d: icon_path(&name) }
+        svg { class: "{final_class}", view_box: "0 0 24 24", fill: "currentColor",
+            path { d: icon_path(&name) }
         }
     }
 }
@@ -74,20 +108,20 @@ fn App() -> Element {
     let mut models = use_signal(|| Vec::<ModelInfo>::new());
     let mut active_thread_id = use_signal(|| Option::<String>::None);
     let mut active_thread_detail = use_signal(|| Option::<ThreadDetail>::None);
-    let mut login_error = use_signal(|| String::new());
-    let mut register_error = use_signal(|| String::new());
+    let mut login_error = use_signal(String::new);
+    let mut register_error = use_signal(String::new);
     let mut show_totp_field = use_signal(|| false);
     let mut sidebar_open = use_signal(|| false);
     let mut user_menu_open = use_signal(|| false);
     let mut files_panel_open = use_signal(|| false);
     let mut files_path = use_signal(|| Vec::<String>::new());
     let mut files_entries = use_signal(|| Vec::<DirEntry>::new());
-    let mut files_error = use_signal(|| String::new());
+    let mut files_error = use_signal(String::new);
     let mut dialog = use_signal(|| DialogState::None);
-    let mut composer_text = use_signal(|| String::new());
+    let mut composer_text = use_signal(String::new);
     let mut pending_attachments = use_signal(|| Vec::<String>::new());
     let mut sending = use_signal(|| false);
-    let mut selected_model = use_signal(|| String::new());
+    let mut selected_model = use_signal(String::new);
     let mut selected_permission = use_signal(|| "normal".to_string());
     let mut invites = use_signal(|| Vec::<Invite>::new());
 
@@ -178,16 +212,18 @@ fn LoginView(
     };
 
     rsx! {
-        section { class: "view centered-view",
-            div { class: "auth-card m3-card",
-                div { class: "auth-header",
-                    div { class: "logo",
-                        Icon { name: "bot".to_string(), class: Some("icon-lg".to_string()) }
+        section { class: "min-h-screen flex items-center justify-center p-6",
+            div { class: "w-full max-w-[420px] p-8 rounded-xl m3-card",
+                div { class: "text-center mb-6",
+                    div { class: "mb-2",
+                        span { style: "color: var(--color-primary);",
+                            Icon { name: "bot".to_string(), class: Some("icon-lg".to_string()) }
+                        }
                     }
                     h1 { class: "m3-headline-small", "Devinorium" }
-                    p { class: "m3-body-medium auth-subtitle", "Sign in to your account" }
+                    p { class: "m3-body-medium mt-1", style: "color: var(--color-on-surface-variant);", "Sign in to your account" }
                 }
-                form { class: "auth-form", onsubmit: do_login,
+                form { class: "flex flex-col gap-[18px]", onsubmit: do_login,
                     label { class: "m3-text-field",
                         input {
                             r#type: "text",
@@ -226,7 +262,7 @@ fn LoginView(
                         p { class: "error-text", "{login_error}" }
                     }
                 }
-                div { class: "auth-footer",
+                div { class: "mt-5 text-center",
                     button {
                         class: "m3-text-button",
                         onclick: move |_| current_view.set(View::Register),
@@ -280,16 +316,18 @@ fn RegisterView(
     };
 
     rsx! {
-        section { class: "view centered-view",
-            div { class: "auth-card m3-card",
-                div { class: "auth-header",
-                    div { class: "logo",
-                        Icon { name: "bot".to_string(), class: Some("icon-lg".to_string()) }
+        section { class: "min-h-screen flex items-center justify-center p-6",
+            div { class: "w-full max-w-[420px] p-8 rounded-xl m3-card",
+                div { class: "text-center mb-6",
+                    div { class: "mb-2",
+                        span { style: "color: var(--color-primary);",
+                            Icon { name: "bot".to_string(), class: Some("icon-lg".to_string()) }
+                        }
                     }
                     h1 { class: "m3-headline-small", "Create account" }
-                    p { class: "m3-body-medium auth-subtitle", "Enter your invite token" }
+                    p { class: "m3-body-medium mt-1", style: "color: var(--color-on-surface-variant);", "Enter your invite token" }
                 }
-                form { class: "auth-form", onsubmit: do_register,
+                form { class: "flex flex-col gap-[18px]", onsubmit: do_register,
                     label { class: "m3-text-field",
                         input {
                             r#type: "text",
@@ -445,14 +483,17 @@ fn AppView(
     let thread_title = active_thread_detail.read().as_ref().map(|d| d.thread.title.clone()).unwrap_or_else(|| "Select or create a thread".to_string());
 
     rsx! {
-        section { class: "view app-layout",
+        section { class: "min-h-screen grid overflow-hidden",
+            style: "grid-template-columns: 300px 1fr; height: 100vh;",
             if *sidebar_open.read() {
-                div { class: "sidebar-scrim visible", onclick: close_sidebar }
+                div { class: "fixed inset-0 bg-black/40 z-20 md:hidden", onclick: close_sidebar }
             }
 
-            aside { class: "sidebar",
-                div { class: "sidebar-header",
-                    div { class: "brand",
+            aside { class: "flex flex-col border-r relative z-20",
+                style: "background: var(--color-surface-container-low); border-color: var(--color-outline-variant);",
+                div { class: "flex items-center justify-between p-4 gap-2",
+                    div { class: "flex items-center gap-2.5",
+                        style: "color: var(--color-primary);",
                         Icon { name: "bot".to_string(), class: Some("icon-md".to_string()) }
                         span { class: "m3-title-medium", "Devinorium" }
                     }
@@ -469,10 +510,14 @@ fn AppView(
                     sidebar_open,
                 }
 
-                div { class: "sidebar-footer",
-                    div { class: "user-chip",
-                        div { class: "avatar", "{avatar}" }
-                        span { class: "m3-body-medium", "{username}" }
+                div { class: "flex items-center justify-between p-2.5 border-t",
+                    style: "border-color: var(--color-outline-variant);",
+                    div { class: "flex items-center gap-2.5 min-w-0",
+                        div { class: "w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm flex-shrink-0",
+                            style: "background: var(--color-primary); color: var(--color-primary-on);",
+                            "{avatar}"
+                        }
+                        span { class: "m3-body-medium overflow-hidden text-ellipsis whitespace-nowrap", "{username}" }
                     }
                     button {
                         class: "m3-icon-button",
@@ -486,32 +531,40 @@ fn AppView(
                 }
 
                 if *user_menu_open.read() {
-                    div { class: "user-menu m3-card",
-                        button { class: "menu-item", onclick: open_totp,
-                            Icon { name: "key".to_string(), class: Some("icon-sm menu-icon".to_string()) }
+                    div { class: "absolute bottom-14 left-3 w-[220px] py-2 m3-card shadow-elev-3 z-30",
+                        button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
+                            style: "color: var(--color-on-surface);",
+                            onclick: open_totp,
+                            Icon { name: "key".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
                             "Enable 2FA (TOTP)"
                         }
-                        button { class: "menu-item", onclick: open_invites,
-                            Icon { name: "copy".to_string(), class: Some("icon-sm menu-icon".to_string()) }
+                        button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
+                            style: "color: var(--color-on-surface);",
+                            onclick: open_invites,
+                            Icon { name: "copy".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
                             "Invites"
                         }
-                        button { class: "menu-item danger", onclick: logout,
-                            Icon { name: "logout".to_string(), class: Some("icon-sm menu-icon".to_string()) }
+                        button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
+                            style: "color: var(--color-error);",
+                            onclick: logout,
+                            Icon { name: "logout".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
                             "Sign out"
                         }
                     }
                 }
             }
 
-            main { class: "main-content",
-                header { class: "main-header",
+            main { class: "flex flex-col min-w-0",
+                style: "background: var(--color-surface);",
+                header { class: "flex items-center gap-3 px-5 py-3 border-b",
+                    style: "border-color: var(--color-outline-variant); background: var(--color-surface);",
                     button {
-                        class: "m3-icon-button mobile-only",
+                        class: "m3-icon-button md:hidden",
                         onclick: toggle_sidebar,
                         Icon { name: "menu".to_string(), class: Some("icon-sm".to_string()) }
                     }
-                    h2 { class: "m3-title-large", "{thread_title}" }
-                    div { class: "header-actions",
+                    h2 { class: "m3-title-large flex-1 overflow-hidden text-ellipsis whitespace-nowrap", "{thread_title}" }
+                    div { class: "flex items-center gap-2",
                         select {
                             class: "m3-select",
                             value: "{selected_model}",
@@ -555,12 +608,16 @@ fn AppView(
         match dialog.read().clone() {
             DialogState::None => rsx! {},
             DialogState::TotpSetup { secret } => rsx! {
-                div { class: "dialog-scrim",
-                    div { class: "m3-card dialog",
+                div { class: "fixed inset-0 flex items-center justify-center z-50 p-6",
+                    style: "background: var(--color-scrim);",
+                    div { class: "w-full max-w-[440px] p-6 rounded-xl m3-card shadow-elev-3 flex flex-col gap-3.5",
                         h3 { class: "m3-headline-small", "Enable 2FA" }
                         p { class: "m3-body-medium", "Scan this secret in your authenticator app, then enter the current code." }
-                        div { class: "totp-secret", "{secret}" }
-                        div { class: "dialog-actions",
+                        div { class: "font-mono text-sm p-3.5 rounded-sm break-all select-all",
+                            style: "background: var(--color-surface-container-high);",
+                            "{secret}"
+                        }
+                        div { class: "flex justify-end gap-2 mt-2",
                             button {
                                 class: "m3-text-button",
                                 onclick: move |_| dialog.set(DialogState::None),
@@ -580,22 +637,27 @@ fn AppView(
 #[component]
 fn InvitesDialog(dialog: Signal<DialogState>, invites: Signal<Vec<Invite>>) -> Element {
     rsx! {
-        div { class: "dialog-scrim",
-            div { class: "m3-card dialog",
+        div { class: "fixed inset-0 flex items-center justify-center z-50 p-6",
+            style: "background: var(--color-scrim);",
+            div { class: "w-full max-w-[440px] p-6 rounded-xl m3-card shadow-elev-3 flex flex-col gap-3.5",
                 h3 { class: "m3-headline-small", "Invite tokens" }
                 p { class: "m3-body-medium", "Share a token so someone can register. Tokens are single-use and expire in 7 days." }
-                {invites.read().iter().map(|i| {
-                    let status_class = if i.used_by_user_id.is_some() { "invite-status used" } else { "invite-status fresh" };
-                    let status_text = if i.used_by_user_id.is_some() { "Used" } else { "Available" };
-                    let token = i.token.clone();
-                    rsx! {
-                        div { class: "invite-row", key: "{token}",
-                            span { class: "invite-token", "{token}" }
-                            span { class: "{status_class}", "{status_text}" }
+                div { class: "flex flex-col gap-1.5 max-h-60 overflow-y-auto",
+                    {invites.read().iter().map(|i| {
+                        let status_color = if i.used_by_user_id.is_some() { "var(--color-error)" } else { "var(--color-success)" };
+                        let status_text = if i.used_by_user_id.is_some() { "Used" } else { "Available" };
+                        let token = i.token.clone();
+                        rsx! {
+                            div { class: "flex items-center gap-2 px-2.5 py-2 rounded-sm text-[0.8125rem]",
+                                key: "{token}",
+                                style: "background: var(--color-surface-container-high);",
+                                span { class: "flex-1 font-mono overflow-hidden text-ellipsis whitespace-nowrap", "{token}" }
+                                span { class: "text-xs", style: "color: {status_color};", "{status_text}" }
+                            }
                         }
-                    }
-                })}
-                div { class: "dialog-actions",
+                    })}
+                }
+                div { class: "flex justify-end gap-2 mt-2",
                     button {
                         class: "m3-text-button",
                         onclick: move |_| dialog.set(DialogState::None),
@@ -629,17 +691,17 @@ fn ThreadList(
 
     if all_threads.is_empty() {
         return rsx! {
-            nav { class: "thread-list",
-                div { class: "m3-label-medium", style: "padding:16px;text-align:center", "No threads yet" }
+            nav { class: "flex-1 overflow-y-auto p-2 flex flex-col gap-0.5",
+                div { class: "m3-label-medium p-4 text-center", "No threads yet" }
             }
         };
     }
 
     rsx! {
-        nav { class: "thread-list",
+        nav { class: "flex-1 overflow-y-auto px-2 pb-3 flex flex-col gap-0.5",
             if !ungrouped.is_empty() {
-                div { class: "thread-group-section",
-                    div { class: "thread-group-label m3-label-medium", "Ungrouped" }
+                div { class: "mb-1",
+                    div { class: "m3-label-medium px-3 pt-2 pb-1", "Ungrouped" }
                     {ungrouped.iter().map(|t| {
                         let tid = t.id.clone();
                         let is_active = active_id.as_ref() == Some(&tid);
@@ -658,12 +720,13 @@ fn ThreadList(
             {grouped.iter().map(|(g, g_threads)| {
                 let gid = g.id;
                 rsx! {
-                    div { class: "thread-group-section", key: "{gid}",
-                        div { class: "thread-group-header",
-                            Icon { name: "menu".to_string(), class: Some("icon-sm thread-group-chevron".to_string()) }
-                            span { class: "thread-group-name", "{g.name}" }
+                    div { class: "mb-1", key: "{gid}",
+                        div { class: "flex items-center gap-1.5 px-3 py-2 cursor-pointer rounded-sm text-sm font-medium",
+                            style: "color: var(--color-on-surface);",
+                            Icon { name: "menu".to_string(), class: Some("icon-sm flex-shrink-0".to_string()) }
+                            span { class: "flex-1 overflow-hidden text-ellipsis whitespace-nowrap", "{g.name}" }
                             span {
-                                class: "thread-group-del",
+                                class: "inline-flex opacity-0 transition-opacity",
                                 title: "Delete group (Shift+click to skip confirmation)",
                                 onclick: move |e| {
                                     e.stop_propagation();
@@ -681,7 +744,7 @@ fn ThreadList(
                                 Icon { name: "trash".to_string(), class: Some("icon-xs".to_string()) }
                             }
                         }
-                        div { class: "thread-group-items",
+                        div { class: "pl-2",
                             {g_threads.iter().map(|t| {
                                 let tid = t.id.clone();
                                 let is_active = active_id.as_ref() == Some(&tid);
@@ -716,7 +779,12 @@ fn ThreadItem(
     let tid = thread.id.clone();
     let tid_open = tid.clone();
     let tid_delete = tid.clone();
-    let active_class = if is_active { "active" } else { "" };
+
+    let active_style = if is_active {
+        "background: var(--color-secondary-container); color: var(--color-secondary-on-container);"
+    } else {
+        "color: var(--color-on-surface-variant);"
+    };
 
     let open = move |_| {
         let tid = tid_open.clone();
@@ -746,12 +814,13 @@ fn ThreadItem(
 
     rsx! {
         div {
-            class: "thread-item {active_class}",
+            class: "flex items-center gap-2.5 px-3 py-2.5 rounded-full cursor-pointer whitespace-nowrap overflow-hidden transition-colors",
+            style: "{active_style}",
             onclick: open,
             Icon { name: "chat".to_string(), class: Some("icon-sm".to_string()) }
-            span { class: "thread-title-text", "{thread.title}" }
+            span { class: "flex-1 overflow-hidden text-ellipsis text-sm", "{thread.title}" }
             span {
-                class: "thread-del",
+                class: "inline-flex opacity-0 transition-opacity",
                 title: "Delete (Shift+click to skip confirmation)",
                 onclick: delete,
                 Icon { name: "trash".to_string(), class: Some("icon-sm".to_string()) }
@@ -811,17 +880,18 @@ fn ChatView(
     };
 
     rsx! {
-        div { class: "messages",
+        div { class: "flex-1 overflow-y-auto py-6",
+            style: "scroll-behavior: smooth;",
             match &detail {
                 None => rsx! {
-                    div { class: "m3-body-medium",
-                        style: "text-align:center;color:var(--md-on-surface-variant);padding:48px",
+                    div { class: "m3-body-medium text-center p-12",
+                        style: "color: var(--color-on-surface-variant);",
                         "Select or create a thread to start chatting."
                     }
                 },
                 Some(d) if d.messages.is_empty() => rsx! {
-                    div { class: "m3-body-medium",
-                        style: "text-align:center;color:var(--md-on-surface-variant);padding:48px",
+                    div { class: "m3-body-medium text-center p-12",
+                        style: "color: var(--color-on-surface-variant);",
                         "Start the conversation by sending a message below."
                     }
                 },
@@ -833,8 +903,9 @@ fn ChatView(
             }
         }
 
-        form { class: "composer", onsubmit: move |e| { e.prevent_default(); send(()); },
-            div { class: "composer-row",
+        form { class: "px-5 pb-5 pt-3", onsubmit: move |e| { e.prevent_default(); send(()); },
+            style: "background: var(--color-surface);",
+            div { class: "flex items-end gap-2 max-w-[760px] mx-auto",
                 textarea {
                     class: "m3-text-area",
                     placeholder: "Send a message...",
@@ -845,7 +916,7 @@ fn ChatView(
                 }
                 button {
                     r#type: "submit",
-                    class: "m3-fab send-btn",
+                    class: "m3-fab flex-shrink-0",
                     disabled: is_sending,
                     if is_sending {
                         Icon { name: "loading".to_string(), class: Some("icon-sm icon-spin".to_string()) }
@@ -870,20 +941,38 @@ fn MessageItem(message: Message) -> Element {
         "assistant" => "Assistant",
         _ => "Error",
     };
+    let avatar_bg = match message.role.as_str() {
+        "user" => "var(--color-primary-container)",
+        "assistant" => "var(--color-secondary-container)",
+        _ => "var(--color-error-container)",
+    };
+    let avatar_color = match message.role.as_str() {
+        "user" => "var(--color-primary-on-container)",
+        "assistant" => "var(--color-secondary-on-container)",
+        _ => "var(--color-error-on-container)",
+    };
 
     rsx! {
-        div { class: "message {message.role}",
-            div { class: "msg-avatar",
+        div { class: "max-w-[760px] mx-auto mb-5 px-6 flex gap-3.5",
+            div { class: "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+                style: "background: {avatar_bg}; color: {avatar_color};",
                 Icon { name: icon.to_string(), class: Some("icon-sm".to_string()) }
             }
-            div { class: "msg-body",
-                div { class: "msg-role", "{label}" }
-                div { class: "msg-content", "{message.content}" }
+            div { class: "flex-1 min-w-0",
+                div { class: "text-xs mb-1 font-medium",
+                    style: "color: var(--color-on-surface-variant);",
+                    "{label}"
+                }
+                div { class: "text-[0.9375rem] whitespace-pre-wrap break-words leading-relaxed",
+                    "{message.content}"
+                }
                 if let Some(atts) = &message.attachments {
                     if !atts.is_empty() {
-                        div { class: "msg-attachments",
+                        div { class: "flex flex-wrap gap-1.5 mt-2",
                             {atts.iter().map(|a| rsx! {
-                                span { class: "msg-attachment-chip", key: "{a.filename}",
+                                span { class: "inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full",
+                                    key: "{a.filename}",
+                                    style: "background: var(--color-surface-container-high); color: var(--color-on-surface-variant);",
                                     Icon { name: "paperclip".to_string(), class: Some("icon-xs".to_string()) }
                                     " {a.filename}"
                                 }
@@ -930,10 +1019,11 @@ fn FilesPanel(
     };
 
     rsx! {
-        aside { class: "files-panel open",
-            div { class: "files-header",
-                h3 { class: "m3-title-medium", "Files" }
-                div { class: "files-actions",
+        aside { class: "flex flex-col overflow-hidden border-l",
+            style: "background: var(--color-surface-container-low); border-color: var(--color-outline-variant);",
+            div { class: "flex items-center justify-between p-3 gap-1",
+                h3 { class: "m3-title-medium flex-1", "Files" }
+                div { class: "flex gap-0.5",
                     button { class: "m3-icon-button", title: "New folder", onclick: mkdir,
                         Icon { name: "folder-plus".to_string(), class: Some("icon-sm".to_string()) }
                     }
@@ -943,9 +1033,11 @@ fn FilesPanel(
                 }
             }
 
-            div { class: "files-breadcrumb",
+            div { class: "px-3.5 pb-2 text-xs break-all",
+                style: "color: var(--color-on-surface-variant);",
                 span {
-                    class: "crumb",
+                    class: "cursor-pointer",
+                    style: "color: var(--color-primary);",
                     onclick: move |_| {
                         files_path.set(Vec::new());
                         spawn(async move { reload_files(files_path, files_entries, files_error).await; });
@@ -956,7 +1048,8 @@ fn FilesPanel(
                     span { key: "{i}",
                         " / "
                         span {
-                            class: "crumb",
+                            class: "cursor-pointer",
+                            style: "color: var(--color-primary);",
                             onclick: move |_| {
                                 let mut new_path = files_path.read().clone();
                                 new_path.truncate(i + 1);
@@ -969,12 +1062,12 @@ fn FilesPanel(
                 })}
             }
 
-            div { class: "files-list",
+            div { class: "flex-1 overflow-y-auto px-1.5 pb-3",
                 if !error.is_empty() {
-                    div { class: "error-text", style: "padding:12px", "{error}" }
+                    div { class: "error-text p-3", "{error}" }
                 } else if entries.is_empty() {
-                    div { class: "m3-body-medium",
-                        style: "padding:16px;color:var(--md-on-surface-variant)",
+                    div { class: "m3-body-medium p-4",
+                        style: "color: var(--color-on-surface-variant);",
                         "Empty folder"
                     }
                 } else {
@@ -987,7 +1080,8 @@ fn FilesPanel(
                         let icon_name = if is_dir { "folder".to_string() } else { file_icon(&name) };
                         let size_str = if is_dir { "".to_string() } else { format_size(e.size) };
                         rsx! {
-                            div { class: "file-entry", key: "{name}",
+                            div { class: "flex items-center gap-2.5 px-2.5 py-2.5 rounded-sm cursor-pointer text-sm transition-colors",
+                                key: "{name}",
                                 onclick: move |_| {
                                     if is_dir {
                                         let mut new_path = files_path.read().clone();
@@ -996,10 +1090,10 @@ fn FilesPanel(
                                         spawn(async move { reload_files(files_path, files_entries, files_error).await; });
                                     }
                                 },
-                                Icon { name: icon_name, class: Some("file-icon".to_string()) }
-                                span { class: "file-name", "{name_display}" }
-                                span { class: "file-size", "{size_str}" }
-                                span { class: "file-actions",
+                                Icon { name: icon_name, class: Some("w-5 h-5 flex-shrink-0".to_string()) }
+                                span { class: "flex-1 overflow-hidden text-ellipsis whitespace-nowrap", "{name_display}" }
+                                span { class: "text-xs", style: "color: var(--color-on-surface-variant);", "{size_str}" }
+                                span { class: "flex gap-0.5 opacity-0 transition-opacity",
                                     button {
                                         title: "Delete (Shift+click to skip confirmation)",
                                         onclick: move |e| {
