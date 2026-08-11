@@ -77,11 +77,6 @@ class Sidebar extends StatelessWidget {
                       },
                     ),
                     MenuItemButton(
-                      leadingIcon: const Icon(Icons.key_outlined),
-                      child: const Text('Enable 2FA (TOTP)'),
-                      onPressed: () => state.openTotpSetup(),
-                    ),
-                    MenuItemButton(
                       leadingIcon: const Icon(Icons.mail_outline),
                       child: const Text('Invites'),
                       onPressed: () => state.openInvites(),
