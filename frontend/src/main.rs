@@ -966,9 +966,11 @@ fn ChatView(
     selected_model: Signal<String>,
     selected_permission: Signal<String>,
 ) -> Element {
+    let mut streaming = use_signal(|| Option::<String>::None);
     let detail = active_thread_detail.read().clone();
     let thread_id = active_thread_id.read().clone();
     let is_sending = *sending.read();
+    let streaming_text = streaming.read().clone();
 
     let send = move |_| {
         let text = composer_text.read().clone();
@@ -979,19 +981,69 @@ fn ChatView(
         let tid = tid.unwrap();
         spawn(async move {
             sending.set(true);
+            streaming.set(Some(String::new()));
             composer_text.set(String::new());
-            match api::send_message(&format!("/api/threads/{}/send", tid), &text, &[]).await {
-                Ok(_) => {
-                    if let Ok(d) = api::api_get::<ThreadDetail>(&format!("/api/threads/{}", tid)).await {
-                        active_thread_detail.set(Some(d));
-                    }
+
+            let tid_for_error = tid.clone();
+            let on_user_message = move |msg: Message| {
+                let mut current = active_thread_detail.write().clone();
+                if let Some(d) = current.as_mut() {
+                    d.messages.push(msg);
+                }
+                active_thread_detail.set(current);
+            };
+            let on_chunk = move |chunk: &str| {
+                let mut current = streaming.write().clone();
+                if let Some(text) = current.as_mut() {
+                    text.push_str(chunk);
+                }
+                streaming.set(current);
+            };
+            let on_done = move |msg: Message| {
+                streaming.set(None);
+                let mut current = active_thread_detail.write().clone();
+                if let Some(d) = current.as_mut() {
+                    d.messages.push(msg);
+                }
+                active_thread_detail.set(current);
+                spawn(async move {
                     let t = api::api_get::<Vec<Thread>>("/api/threads").await;
                     let g = api::api_get::<Vec<ThreadGroup>>("/api/thread-groups").await;
                     if let Ok(t) = t { threads.set(t); }
                     if let Ok(g) = g { groups.set(g); }
+                });
+            };
+            let on_error = move |err: &str| {
+                web_sys::console::log_1(&format!("Stream error: {}", err).into());
+                streaming.set(None);
+                let tid = tid_for_error.clone();
+                spawn(async move {
+                    if let Ok(d) = api::api_get::<ThreadDetail>(&format!("/api/threads/{}", tid)).await {
+                        active_thread_detail.set(Some(d));
+                    }
+                });
+            };
+
+            match api::send_message_stream(
+                &format!("/api/threads/{}/send/stream", tid),
+                &text,
+                &[],
+                on_user_message,
+                on_chunk,
+                on_done,
+                on_error,
+            ).await {
+                Ok(_) => {
+                    if streaming.read().clone().is_some() {
+                        streaming.set(None);
+                        if let Ok(d) = api::api_get::<ThreadDetail>(&format!("/api/threads/{}", tid)).await {
+                            active_thread_detail.set(Some(d));
+                        }
+                    }
                 }
                 Err(e) => {
                     web_sys::console::log_1(&format!("Send error: {}", e).into());
+                    streaming.set(None);
                 }
             }
             sending.set(false);
@@ -1016,7 +1068,7 @@ fn ChatView(
                         "Select or create a thread to start chatting."
                     }
                 },
-                Some(d) if d.messages.is_empty() => rsx! {
+                Some(d) if d.messages.is_empty() && streaming_text.is_none() => rsx! {
                     div { class: "m3-body-medium text-center p-12",
                         style: "color: var(--color-on-surface-variant);",
                         "Start the conversation by sending a message below."
@@ -1027,6 +1079,15 @@ fn ChatView(
                         MessageItem { key: "{i}", message: m.clone() }
                     })}
                 },
+            }
+            if let Some(text) = streaming_text {
+                MessageItem {
+                    message: Message {
+                        role: "assistant".to_string(),
+                        content: text,
+                        attachments: None,
+                    }
+                }
             }
         }
 

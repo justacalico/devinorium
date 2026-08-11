@@ -240,6 +240,60 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
 }
 
 #[tokio::test]
+async fn thread_send_streams_reply_as_sse() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app.clone()
+        .oneshot(authed("POST", "/api/threads", &cookie, r#"{"title":"T"}"#))
+        .await
+        .unwrap();
+    let tid: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let boundary = "----streamboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+    let resp = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("content-type").unwrap().to_str().unwrap(),
+        "text/event-stream"
+    );
+
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: user_message"), "body: {body}");
+    assert!(body.contains("event: chunk"), "body: {body}");
+    assert!(body.contains("event: done"), "body: {body}");
+    assert!(body.contains("Hello world"), "body: {body}");
+    assert!(body.contains("echo: Hello world"), "body: {body}");
+
+    // Verify messages persisted in DB.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[0].role, "user");
+    assert_eq!(msgs[0].content, "Hello world");
+    assert_eq!(msgs[1].role, "assistant");
+    assert_eq!(msgs[1].content, "echo: Hello world");
+}
+
+#[tokio::test]
 async fn invites_create_and_list() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

@@ -55,12 +55,6 @@ pub struct ThreadDetail {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SendResponse {
-    pub user_message: Message,
-    pub assistant_message: Message,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub id: String,
     pub label: String,
