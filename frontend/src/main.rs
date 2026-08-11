@@ -640,8 +640,8 @@ fn Sidebar(
 
 // ---------- Thread Page (main content template) ----------
 
-/// The threads page: header (title, model/permission selects, file button)
-/// + chat view (messages + composer) + files panel.
+/// The threads page: header (title, file button) + chat view
+/// (messages + composer with model/permission dropdowns) + files panel.
 /// This is the default main content. Other pages replace this area.
 #[component]
 fn ThreadPage(
@@ -693,36 +693,18 @@ fn ThreadPage(
                     Icon { name: "menu".to_string(), class: Some("icon-sm".to_string()) }
                 }
                 h2 { class: "m3-title-large flex-1 overflow-hidden text-ellipsis whitespace-nowrap", "{thread_title}" }
-                div { class: "flex items-center gap-2",
-                    select {
-                        class: "m3-select",
-                        value: "{selected_model}",
-                        onchange: move |e| selected_model.set(e.value()),
-                        {models.read().iter().map(|m| rsx! {
-                            option { value: "{m.id}", "{m.label}" }
-                        })}
-                    }
-                    select {
-                        class: "m3-select",
-                        value: "{selected_permission}",
-                        onchange: move |e| selected_permission.set(e.value()),
-                        option { value: "normal", "Normal" }
-                        option { value: "accept-edits", "Accept edits" }
-                        option { value: "smart", "Smart" }
-                        option { value: "bypass", "Bypass" }
-                    }
-                    button {
-                        class: "m3-icon-button",
-                        title: "File manager",
-                        onclick: open_files,
-                        Icon { name: "folder".to_string(), class: Some("icon-sm".to_string()) }
-                    }
+                button {
+                    class: "m3-icon-button",
+                    title: "File manager",
+                    onclick: open_files,
+                    Icon { name: "folder".to_string(), class: Some("icon-sm".to_string()) }
                 }
             }
 
             ChatView {
                 active_thread_detail, active_thread_id, composer_text,
                 pending_attachments, sending, threads, groups,
+                models, selected_model, selected_permission,
             }
         }
 
@@ -980,6 +962,9 @@ fn ChatView(
     sending: Signal<bool>,
     threads: Signal<Vec<Thread>>,
     groups: Signal<Vec<ThreadGroup>>,
+    models: Signal<Vec<ModelInfo>>,
+    selected_model: Signal<String>,
+    selected_permission: Signal<String>,
 ) -> Element {
     let detail = active_thread_detail.read().clone();
     let thread_id = active_thread_id.read().clone();
@@ -1045,23 +1030,51 @@ fn ChatView(
 
         form { class: "px-5 pb-5 pt-3", onsubmit: move |e| { e.prevent_default(); send(()); },
             style: "background: var(--color-surface);",
-            div { class: "flex items-end gap-2 max-w-[760px] mx-auto",
+            div { class: "max-w-[760px] mx-auto rounded-[28px] border shadow-elev-1 overflow-hidden",
+                style: "background: var(--color-surface-container); border-color: var(--color-outline-variant);",
+                // Unified prompt input area (the whole card is the prompt)
                 textarea {
-                    class: "m3-text-area",
-                    placeholder: "Send a message...",
+                    class: "w-full resize-none bg-transparent border-none outline-none px-5 pt-4 pb-2 text-[0.9375rem] max-h-40 overflow-y-auto min-h-[64px]",
+                    style: "color: var(--color-on-surface);",
+                    placeholder: "Ask for follow-up changes or attach images",
                     rows: "1",
                     value: "{composer_text}",
                     oninput: move |e| composer_text.set(e.value()),
                     onkeydown: on_keydown,
                 }
-                button {
-                    r#type: "submit",
-                    class: "m3-fab flex-shrink-0",
-                    disabled: is_sending,
-                    if is_sending {
-                        Icon { name: "loading".to_string(), class: Some("icon-sm icon-spin".to_string()) }
-                    } else {
-                        Icon { name: "send".to_string(), class: Some("icon-sm".to_string()) }
+                // Footer: model/permission selects (left) + send button (right)
+                div { class: "flex items-center justify-between gap-2 px-4 pb-3 pt-2",
+                    div { class: "flex items-center gap-2",
+                        select {
+                            class: "m3-select",
+                            title: "Model",
+                            value: "{selected_model}",
+                            onchange: move |e| selected_model.set(e.value()),
+                            {models.read().iter().map(|m| rsx! {
+                                option { value: "{m.id}", "{m.label}" }
+                            })}
+                        }
+                        select {
+                            class: "m3-select",
+                            title: "Permission mode",
+                            value: "{selected_permission}",
+                            onchange: move |e| selected_permission.set(e.value()),
+                            option { value: "normal", "Normal" }
+                            option { value: "accept-edits", "Accept edits" }
+                            option { value: "smart", "Smart" }
+                            option { value: "bypass", "Bypass" }
+                        }
+                    }
+                    button {
+                        r#type: "submit",
+                        class: "inline-flex items-center justify-center w-10 h-10 rounded-full border-none flex-shrink-0 transition-colors",
+                        style: if is_sending { "background: var(--color-surface-container-highest); color: var(--color-on-surface-variant); cursor: default;".to_string() } else { "background: var(--color-primary); color: var(--color-primary-on); cursor: pointer;".to_string() },
+                        disabled: is_sending,
+                        if is_sending {
+                            Icon { name: "loading".to_string(), class: Some("icon-sm icon-spin".to_string()) }
+                        } else {
+                            Icon { name: "send".to_string(), class: Some("icon-sm".to_string()) }
+                        }
                     }
                 }
             }
