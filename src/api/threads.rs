@@ -43,6 +43,7 @@ pub struct ThreadOut {
     pub devin_session_id: Option<String>,
     pub model: String,
     pub permission_mode: String,
+    pub permissions: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -57,6 +58,7 @@ impl From<ThreadRow> for ThreadOut {
             devin_session_id: t.devin_session_id,
             model: t.model,
             permission_mode: t.permission_mode,
+            permissions: t.permissions,
             created_at: t.created_at,
             updated_at: t.updated_at,
         }
@@ -100,6 +102,7 @@ pub struct CreateThread {
     pub thread_group_id: Option<i64>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
+    pub permissions: Option<String>,
 }
 
 async fn create(
@@ -136,6 +139,7 @@ async fn create(
         title: req.title.unwrap_or_else(|| "New thread".into()),
         model: req.model.unwrap_or_else(|| state.config.default_model.clone()),
         permission_mode,
+        permissions: req.permissions,
     };
     match state.db.create_thread(new).await {
         Ok(t) => (StatusCode::CREATED, Json(ThreadOut::from(t))).into_response(),
@@ -171,6 +175,13 @@ pub struct UpdateThread {
     ///   - field is a number: move to that group
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub thread_group_id: Option<Option<i64>>,
+    pub permission_mode: Option<String>,
+    /// Distinguish between:
+    ///   - field absent: don't change permissions
+    ///   - field null: clear permissions
+    ///   - field string: set permissions
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub permissions: Option<Option<String>>,
 }
 
 /// Custom deserializer that maps `null` → `Some(None)` and a number → `Some(Some(n))`.
@@ -180,6 +191,14 @@ where
     D: serde::Deserializer<'de>,
 {
     let opt = Option::<i64>::deserialize(deserializer)?;
+    Ok(Some(opt))
+}
+
+fn deserialize_optional_string<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
     Ok(Some(opt))
 }
 
@@ -202,6 +221,22 @@ async fn rename(
     if let Some(group_id) = req.thread_group_id {
         if let Err(e) = state.db.move_thread_to_group(&id, user.id, group_id).await {
             return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new(e.to_string()))).into_response();
+        }
+    }
+    // Validate and apply permission mode changes.
+    if let Some(mode) = &req.permission_mode {
+        if !["normal", "accept-edits", "smart", "bypass"].contains(&mode.as_str()) {
+            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid permission_mode"))).into_response();
+        }
+    }
+    if req.permission_mode.is_some() || req.permissions.is_some() {
+        // Treat an empty permissions string as a request to clear the field.
+        let permissions = req
+            .permissions
+            .as_ref()
+            .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
+        if let Err(e) = state.db.update_thread_settings(&id, user.id, req.permission_mode.as_deref(), permissions).await {
+            return crate::api::map_err_internal(e).into_response();
         }
     }
     Json(serde_json::json!({"ok": true})).into_response()
@@ -481,6 +516,7 @@ async fn call_provider(
         model: thread.model.clone(),
         working_dir,
         permission_mode: thread.permission_mode.clone(),
+        permissions: thread.permissions.clone(),
         attachments,
     };
 

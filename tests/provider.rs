@@ -61,6 +61,7 @@ async fn provider_start_and_send_text() {
             prompt: "Remember the secret word is BANANA. Reply with exactly: OK".to_string(),
             options: SendOptions {
                 model: "glm-5-2".to_string(),
+                permissions: None,
                 working_dir: dir.clone(),
                 permission_mode: "normal".to_string(),
                 attachments: vec![],
@@ -77,6 +78,7 @@ async fn provider_start_and_send_text() {
             prompt: "What was the secret word? Reply with just the word.".to_string(),
             options: SendOptions {
                 model: "glm-5-2".to_string(),
+                permissions: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![],
@@ -115,6 +117,7 @@ async fn provider_start_with_image_attachment() {
             prompt: "I have attached an image. Reply with exactly: IMAGE_RECEIVED".to_string(),
             options: SendOptions {
                 model: "glm-5-2".to_string(),
+                permissions: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![providers::Attachment {
@@ -160,6 +163,7 @@ async fn provider_generates_code() {
             prompt: "Write a Rust function called `add` that takes two i32 and returns their sum. Reply with ONLY the function in a ```rust code block, nothing else.".to_string(),
             options: SendOptions {
                 model: "glm-5-2".to_string(),
+                permissions: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![],
@@ -191,6 +195,7 @@ async fn provider_writes_file_in_working_dir() {
             prompt: "Create a file called hello.txt in the current directory containing the text 'Devinorium was here'. Do not ask for permission.".to_string(),
             options: SendOptions {
                 model: "glm-5-2".to_string(),
+                permissions: None,
                 working_dir: dir.clone(),
                 permission_mode: "accept-edits".to_string(),
                 attachments: vec![],
@@ -238,6 +243,7 @@ async fn provider_accepts_all_permission_modes() {
                 prompt: "Reply with exactly: OK".to_string(),
                 options: SendOptions {
                     model: "glm-5-2".to_string(),
+                    permissions: None,
                     working_dir: dir,
                     permission_mode: mode.to_string(),
                     attachments: vec![],
@@ -265,6 +271,7 @@ async fn provider_accepts_text_attachment() {
             prompt: "I have attached a file. Tell me the single word it contains. Reply with just that word.".to_string(),
             options: SendOptions {
                 model: "glm-5-2".to_string(),
+                permissions: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![providers::Attachment {

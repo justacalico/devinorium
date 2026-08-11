@@ -109,6 +109,7 @@ class Thread {
   final String? devinSessionId;
   final String model;
   final String permissionMode;
+  final String? permissions;
   final String createdAt;
   final String updatedAt;
 
@@ -120,6 +121,7 @@ class Thread {
     this.devinSessionId,
     required this.model,
     required this.permissionMode,
+    this.permissions,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -132,6 +134,7 @@ class Thread {
         devinSessionId: j['devin_session_id'] as String?,
         model: j['model'] as String? ?? '',
         permissionMode: j['permission_mode'] as String? ?? 'normal',
+        permissions: j['permissions'] as String?,
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
       );

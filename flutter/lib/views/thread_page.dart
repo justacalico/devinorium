@@ -401,7 +401,15 @@ class _ComposerState extends State<_Composer> {
                               ),
                               _PermissionDropdown(
                                 value: state.selectedPermission,
-                                onChanged: state.setSelectedPermission,
+                                onChanged: (mode) {
+                                  state.setSelectedPermission(mode);
+                                  state.saveThreadSettings();
+                                },
+                              ),
+                              _PermissionsInput(
+                                value: state.selectedPermissionsText,
+                                onChanged: state.setSelectedPermissionsText,
+                                onSave: state.saveThreadSettings,
                               ),
                             ],
                           ),
@@ -489,6 +497,76 @@ class _PermissionDropdown extends StatelessWidget {
       onChanged: (v) {
         if (v != null) onChanged(v);
       },
+    );
+  }
+}
+
+class _PermissionsInput extends StatefulWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onSave;
+  const _PermissionsInput({
+    required this.value,
+    required this.onChanged,
+    required this.onSave,
+  });
+
+  @override
+  State<_PermissionsInput> createState() => _PermissionsInputState();
+}
+
+class _PermissionsInputState extends State<_PermissionsInput> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(_PermissionsInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicWidth(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 180,
+            child: TextField(
+              controller: _controller,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'Exec(curl), Fetch(**)',
+                isCollapsed: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
+              ),
+              onChanged: widget.onChanged,
+              onSubmitted: (_) => widget.onSave(),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.check, size: 18),
+            tooltip: 'Save permissions',
+            onPressed: widget.onSave,
+          ),
+        ],
+      ),
     );
   }
 }
