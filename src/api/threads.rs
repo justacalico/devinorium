@@ -6,6 +6,7 @@
 
 use std::convert::Infallible;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
@@ -301,18 +302,18 @@ async fn send_stream(
     let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
 
     tokio::spawn(async move {
-        let send_event = move |ev: Event| {
-            let _ = tx.send(Ok(ev));
+        let send_event = |tx: &mpsc::UnboundedSender<Result<Event, Infallible>>, ev: Event| -> bool {
+            tx.send(Ok(ev)).is_ok()
         };
 
         let thread = match state.db.get_thread(&id, user.id).await {
             Ok(Some(t)) => t,
             Ok(None) => {
-                send_event(Event::default().event("error").data("not found"));
+                send_event(&tx, Event::default().event("error").data("not found"));
                 return;
             }
             Err(e) => {
-                send_event(Event::default().event("error").data(&format!("internal error: {e}")));
+                send_event(&tx, Event::default().event("error").data(&format!("internal error: {e}")));
                 return;
             }
         };
@@ -320,7 +321,7 @@ async fn send_stream(
         let input = match parse_send_multipart(multipart).await {
             Ok(parsed) => parsed,
             Err(_) => {
-                send_event(Event::default().event("error").data("invalid request"));
+                send_event(&tx, Event::default().event("error").data("invalid request"));
                 return;
             }
         };
@@ -328,16 +329,36 @@ async fn send_stream(
         let user_msg = match persist_user_message(&state, &id, &input.prompt, &input.att_meta).await {
             Ok(m) => m,
             Err(_) => {
-                send_event(Event::default().event("error").data("failed to save user message"));
+                send_event(&tx, Event::default().event("error").data("failed to save user message"));
                 return;
             }
         };
-        send_event(Event::default().event("user_message").data(&match serde_json::to_string(&MessageOut::from(user_msg)) {
+        if !send_event(&tx, Event::default().event("user_message").data(&match serde_json::to_string(&MessageOut::from(user_msg)) {
             Ok(json) => json,
             Err(_) => return,
-        }));
+        })) {
+            return;
+        }
+
+        // Keep the SSE connection alive while devin CLI runs, since a long
+        // tool call can leave the response idle and trigger proxy timeouts.
+        let tx2 = tx.clone();
+        let mut keepalive = tokio::time::interval(Duration::from_secs(10));
+        keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let keepalive_handle = tokio::spawn(async move {
+            // tokio::time::interval fires the first tick immediately.
+            // Consume it so the loop then waits a full 10 s before each ping.
+            keepalive.tick().await;
+            loop {
+                keepalive.tick().await;
+                if tx2.send(Ok(Event::default().comment("keep-alive"))).is_err() {
+                    break;
+                }
+            }
+        });
 
         let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments).await;
+        keepalive_handle.abort();
 
         let (reply, new_session_id, new_title) = match provider_result {
             Ok(t) => t,
@@ -352,7 +373,7 @@ async fn send_stream(
                     })
                     .await;
                 let _ = state.db.touch_thread(&id).await;
-                send_event(Event::default().event("error").data("provider error"));
+                send_event(&tx, Event::default().event("error").data("provider error"));
                 return;
             }
         };
@@ -361,18 +382,20 @@ async fn send_stream(
         let chars: Vec<char> = reply.chars().collect();
         for chunk in chars.chunks(4) {
             let text: String = chunk.iter().collect();
-            send_event(Event::default().event("chunk").data(&text));
+            if !send_event(&tx, Event::default().event("chunk").data(&text)) {
+                return;
+            }
             tokio::time::sleep(tokio::time::Duration::from_millis(12)).await;
         }
 
         let assistant_msg = match persist_assistant_reply(&state, &id, user.id, &reply, new_session_id, new_title).await {
             Ok(m) => m,
             Err(_) => {
-                send_event(Event::default().event("error").data("failed to save assistant message"));
+                send_event(&tx, Event::default().event("error").data("failed to save assistant message"));
                 return;
             }
         };
-        send_event(Event::default().event("done").data(&match serde_json::to_string(&MessageOut::from(assistant_msg)) {
+        send_event(&tx, Event::default().event("done").data(&match serde_json::to_string(&MessageOut::from(assistant_msg)) {
             Ok(json) => json,
             Err(_) => return,
         }));
