@@ -89,6 +89,13 @@ enum View {
     App,
 }
 
+/// Which page is shown in the main content area (right of the sidebar).
+#[derive(Clone, PartialEq)]
+enum Page {
+    Threads,
+    Settings,
+}
+
 #[derive(Clone, PartialEq)]
 enum DialogState {
     None,
@@ -102,6 +109,7 @@ fn main() {
 
 fn App() -> Element {
     let mut current_view = use_signal(|| View::Login);
+    let mut current_page = use_signal(|| Page::Threads);
     let mut user = use_signal(|| Option::<User>::None);
     let mut threads = use_signal(|| Vec::<Thread>::new());
     let mut groups = use_signal(|| Vec::<ThreadGroup>::new());
@@ -159,7 +167,7 @@ fn App() -> Element {
             },
             View::App => rsx! {
                 AppView {
-                    user, current_view, threads, groups, models,
+                    user, current_view, current_page, threads, groups, models,
                     active_thread_id, active_thread_detail,
                     sidebar_open, user_menu_open,
                     files_panel_open, files_path, files_entries, files_error,
@@ -375,12 +383,16 @@ fn RegisterView(
     }
 }
 
-// ---------- Main App View ----------
+// ---------- Main App View (layout shell) ----------
 
+/// The top-level app layout: sidebar + main content area.
+/// The main content is swapped based on `current_page`, so new pages
+/// (settings, etc.) just need to add a `Page` variant and a match arm.
 #[component]
 fn AppView(
     user: Signal<Option<User>>,
     current_view: Signal<View>,
+    current_page: Signal<Page>,
     threads: Signal<Vec<Thread>>,
     groups: Signal<Vec<ThreadGroup>>,
     models: Signal<Vec<ModelInfo>>,
@@ -400,18 +412,100 @@ fn AppView(
     selected_permission: Signal<String>,
     invites: Signal<Vec<Invite>>,
 ) -> Element {
-    let username = user.read().as_ref().map(|u| u.username.clone()).unwrap_or_default();
-    let avatar = username.chars().next().unwrap_or('?').to_uppercase().to_string();
-
-    let toggle_sidebar = move |_| {
-        sidebar_open.toggle();
-    };
-
     let close_sidebar = move |_| {
         sidebar_open.set(false);
     };
 
+    let page = current_page.read().clone();
+
+    rsx! {
+        section { class: "min-h-screen grid overflow-hidden",
+            style: "grid-template-columns: 300px 1fr; height: 100vh;",
+            if *sidebar_open.read() {
+                div { class: "fixed inset-0 bg-black/40 z-20 md:hidden", onclick: close_sidebar }
+            }
+
+            Sidebar {
+                user, current_view, current_page, threads, groups,
+                active_thread_id, active_thread_detail,
+                sidebar_open, user_menu_open,
+                dialog, selected_model, selected_permission, invites,
+            }
+
+            // Main content area — swapped based on current_page.
+            {match page {
+                Page::Threads => rsx! {
+                    ThreadPage {
+                        current_page, threads, groups, models,
+                        active_thread_id, active_thread_detail,
+                        sidebar_open,
+                        files_panel_open, files_path, files_entries, files_error,
+                        composer_text, pending_attachments, sending,
+                        selected_model, selected_permission,
+                    }
+                },
+                Page::Settings => rsx! {
+                    SettingsPage { current_page, user }
+                },
+            }}
+        }
+
+        // Global dialogs (rendered outside main layout).
+        {match dialog.read().clone() {
+            DialogState::None => rsx! {},
+            DialogState::TotpSetup { secret } => rsx! {
+                div { class: "fixed inset-0 flex items-center justify-center z-50 p-6",
+                    style: "background: var(--color-scrim);",
+                    div { class: "w-full max-w-[440px] p-6 rounded-xl m3-card shadow-elev-3 flex flex-col gap-3.5",
+                        h3 { class: "m3-headline-small", "Enable 2FA" }
+                        p { class: "m3-body-medium", "Scan this secret in your authenticator app, then enter the current code." }
+                        div { class: "font-mono text-sm p-3.5 rounded-sm break-all select-all",
+                            style: "background: var(--color-surface-container-high);",
+                            "{secret}"
+                        }
+                        div { class: "flex justify-end gap-2 mt-2",
+                            button {
+                                class: "m3-text-button",
+                                onclick: move |_| dialog.set(DialogState::None),
+                                "Cancel"
+                            }
+                        }
+                    }
+                }
+            },
+            DialogState::Invites => rsx! {
+                InvitesDialog { dialog, invites }
+            },
+        }}
+    }
+}
+
+// ---------- Sidebar ----------
+
+/// The sidebar component: brand, thread list, user chip + menu.
+/// This is a standalone component so it can be reused across all pages.
+#[component]
+fn Sidebar(
+    user: Signal<Option<User>>,
+    current_view: Signal<View>,
+    current_page: Signal<Page>,
+    threads: Signal<Vec<Thread>>,
+    groups: Signal<Vec<ThreadGroup>>,
+    active_thread_id: Signal<Option<String>>,
+    active_thread_detail: Signal<Option<ThreadDetail>>,
+    sidebar_open: Signal<bool>,
+    user_menu_open: Signal<bool>,
+    dialog: Signal<DialogState>,
+    selected_model: Signal<String>,
+    selected_permission: Signal<String>,
+    invites: Signal<Vec<Invite>>,
+) -> Element {
+    let username = user.read().as_ref().map(|u| u.username.clone()).unwrap_or_default();
+    let avatar = username.chars().next().unwrap_or('?').to_uppercase().to_string();
+
     let new_thread = move |_| {
+        // Switch to the threads page before creating.
+        current_page.set(Page::Threads);
         spawn(async move {
             let body = serde_json::json!({
                 "title": "New thread",
@@ -444,25 +538,6 @@ fn AppView(
         });
     };
 
-    let open_files = move |_| {
-        files_panel_open.set(true);
-        files_path.set(Vec::new());
-        spawn(async move {
-            let path = String::new();
-            match api::api_get::<Vec<DirEntry>>("/api/files").await {
-                Ok(entries) => {
-                    files_entries.set(entries);
-                    files_error.set(String::new());
-                }
-                Err(e) => files_error.set(e),
-            }
-        });
-    };
-
-    let close_files = move |_: Event<()>| {
-        files_panel_open.set(false);
-    };
-
     let open_totp = move |_| {
         spawn(async move {
             if let Ok(res) = api::api_post::<TotpSetupResponse, serde_json::Value>("/api/auth/totp/setup", &serde_json::json!({})).await {
@@ -480,156 +555,217 @@ fn AppView(
         });
     };
 
-    let thread_title = active_thread_detail.read().as_ref().map(|d| d.thread.title.clone()).unwrap_or_else(|| "Select or create a thread".to_string());
+    let open_settings = move |_| {
+        current_page.set(Page::Settings);
+        user_menu_open.set(false);
+    };
 
     rsx! {
-        section { class: "min-h-screen grid overflow-hidden",
-            style: "grid-template-columns: 300px 1fr; height: 100vh;",
-            if *sidebar_open.read() {
-                div { class: "fixed inset-0 bg-black/40 z-20 md:hidden", onclick: close_sidebar }
-            }
-
-            aside { class: "flex flex-col border-r relative z-20",
-                style: "background: var(--color-surface-container-low); border-color: var(--color-outline-variant);",
-                div { class: "flex items-center justify-between p-4 gap-2",
-                    div { class: "flex items-center gap-2.5",
-                        style: "color: var(--color-primary);",
-                        Icon { name: "bot".to_string(), class: Some("icon-md".to_string()) }
-                        span { class: "m3-title-medium", "Devinorium" }
-                    }
-                    button {
-                        class: "m3-fab",
-                        title: "New thread",
-                        onclick: new_thread,
-                        Icon { name: "plus".to_string(), class: Some("icon-sm".to_string()) }
-                    }
+        aside { class: "flex flex-col border-r relative z-20",
+            style: "background: var(--color-surface-container-low); border-color: var(--color-outline-variant);",
+            div { class: "flex items-center justify-between p-4 gap-2",
+                div { class: "flex items-center gap-2.5",
+                    style: "color: var(--color-primary);",
+                    Icon { name: "bot".to_string(), class: Some("icon-md".to_string()) }
+                    span { class: "m3-title-medium", "Devinorium" }
                 }
-
-                ThreadList {
-                    threads, groups, active_thread_id, active_thread_detail,
-                    sidebar_open,
-                }
-
-                div { class: "flex items-center justify-between p-2.5 border-t",
-                    style: "border-color: var(--color-outline-variant);",
-                    div { class: "flex items-center gap-2.5 min-w-0",
-                        div { class: "w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm flex-shrink-0",
-                            style: "background: var(--color-primary); color: var(--color-primary-on);",
-                            "{avatar}"
-                        }
-                        span { class: "m3-body-medium overflow-hidden text-ellipsis whitespace-nowrap", "{username}" }
-                    }
-                    button {
-                        class: "m3-icon-button",
-                        title: "Menu",
-                        onclick: move |e| {
-                            e.stop_propagation();
-                            user_menu_open.toggle();
-                        },
-                        Icon { name: "dots".to_string(), class: Some("icon-sm".to_string()) }
-                    }
-                }
-
-                if *user_menu_open.read() {
-                    div { class: "absolute bottom-14 left-3 w-[220px] py-2 m3-card shadow-elev-3 z-30",
-                        button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
-                            style: "color: var(--color-on-surface);",
-                            onclick: open_totp,
-                            Icon { name: "key".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
-                            "Enable 2FA (TOTP)"
-                        }
-                        button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
-                            style: "color: var(--color-on-surface);",
-                            onclick: open_invites,
-                            Icon { name: "copy".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
-                            "Invites"
-                        }
-                        button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
-                            style: "color: var(--color-error);",
-                            onclick: logout,
-                            Icon { name: "logout".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
-                            "Sign out"
-                        }
-                    }
+                button {
+                    class: "m3-fab",
+                    title: "New thread",
+                    onclick: new_thread,
+                    Icon { name: "plus".to_string(), class: Some("icon-sm".to_string()) }
                 }
             }
 
-            main { class: "flex flex-col min-w-0",
-                style: "background: var(--color-surface);",
-                header { class: "flex items-center gap-3 px-5 py-3 border-b",
-                    style: "border-color: var(--color-outline-variant); background: var(--color-surface);",
-                    button {
-                        class: "m3-icon-button md:hidden",
-                        onclick: toggle_sidebar,
-                        Icon { name: "menu".to_string(), class: Some("icon-sm".to_string()) }
-                    }
-                    h2 { class: "m3-title-large flex-1 overflow-hidden text-ellipsis whitespace-nowrap", "{thread_title}" }
-                    div { class: "flex items-center gap-2",
-                        select {
-                            class: "m3-select",
-                            value: "{selected_model}",
-                            onchange: move |e| selected_model.set(e.value()),
-                            {models.read().iter().map(|m| rsx! {
-                                option { value: "{m.id}", "{m.label}" }
-                            })}
-                        }
-                        select {
-                            class: "m3-select",
-                            value: "{selected_permission}",
-                            onchange: move |e| selected_permission.set(e.value()),
-                            option { value: "normal", "Normal" }
-                            option { value: "accept-edits", "Accept edits" }
-                            option { value: "smart", "Smart" }
-                            option { value: "bypass", "Bypass" }
-                        }
-                        button {
-                            class: "m3-icon-button",
-                            title: "File manager",
-                            onclick: open_files,
-                            Icon { name: "folder".to_string(), class: Some("icon-sm".to_string()) }
-                        }
-                    }
-                }
+            ThreadList {
+                threads, groups, active_thread_id, active_thread_detail,
+                sidebar_open,
+            }
 
-                ChatView {
-                    active_thread_detail, active_thread_id, composer_text,
-                    pending_attachments, sending, threads, groups,
+            div { class: "flex items-center justify-between p-2.5 border-t",
+                style: "border-color: var(--color-outline-variant);",
+                div { class: "flex items-center gap-2.5 min-w-0",
+                    div { class: "w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm flex-shrink-0",
+                        style: "background: var(--color-primary); color: var(--color-primary-on);",
+                        "{avatar}"
+                    }
+                    span { class: "m3-body-medium overflow-hidden text-ellipsis whitespace-nowrap", "{username}" }
+                }
+                button {
+                    class: "m3-icon-button",
+                    title: "Menu",
+                    onclick: move |e| {
+                        e.stop_propagation();
+                        user_menu_open.toggle();
+                    },
+                    Icon { name: "dots".to_string(), class: Some("icon-sm".to_string()) }
                 }
             }
 
-            if *files_panel_open.read() {
-                FilesPanel {
-                    files_path, files_entries, files_error, files_panel_open,
+            if *user_menu_open.read() {
+                div { class: "absolute bottom-14 left-3 w-[220px] py-2 m3-card shadow-elev-3 z-30",
+                    button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
+                        style: "color: var(--color-on-surface);",
+                        onclick: open_settings,
+                        Icon { name: "gear".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
+                        "Settings"
+                    }
+                    button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
+                        style: "color: var(--color-on-surface);",
+                        onclick: open_totp,
+                        Icon { name: "key".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
+                        "Enable 2FA (TOTP)"
+                    }
+                    button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
+                        style: "color: var(--color-on-surface);",
+                        onclick: open_invites,
+                        Icon { name: "copy".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
+                        "Invites"
+                    }
+                    button { class: "flex items-center w-full text-left px-5 py-3 bg-transparent border-none cursor-pointer text-sm",
+                        style: "color: var(--color-error);",
+                        onclick: logout,
+                        Icon { name: "logout".to_string(), class: Some("icon-sm mr-2 flex-shrink-0".to_string()) }
+                        "Sign out"
+                    }
                 }
             }
         }
+    }
+}
 
-        // Global dialogs (rendered outside main layout).
-        match dialog.read().clone() {
-            DialogState::None => rsx! {},
-            DialogState::TotpSetup { secret } => rsx! {
-                div { class: "fixed inset-0 flex items-center justify-center z-50 p-6",
-                    style: "background: var(--color-scrim);",
-                    div { class: "w-full max-w-[440px] p-6 rounded-xl m3-card shadow-elev-3 flex flex-col gap-3.5",
-                        h3 { class: "m3-headline-small", "Enable 2FA" }
-                        p { class: "m3-body-medium", "Scan this secret in your authenticator app, then enter the current code." }
-                        div { class: "font-mono text-sm p-3.5 rounded-sm break-all select-all",
-                            style: "background: var(--color-surface-container-high);",
-                            "{secret}"
-                        }
-                        div { class: "flex justify-end gap-2 mt-2",
-                            button {
-                                class: "m3-text-button",
-                                onclick: move |_| dialog.set(DialogState::None),
-                                "Cancel"
-                            }
-                        }
+// ---------- Thread Page (main content template) ----------
+
+/// The threads page: header (title, model/permission selects, file button)
+/// + chat view (messages + composer) + files panel.
+/// This is the default main content. Other pages replace this area.
+#[component]
+fn ThreadPage(
+    current_page: Signal<Page>,
+    threads: Signal<Vec<Thread>>,
+    groups: Signal<Vec<ThreadGroup>>,
+    models: Signal<Vec<ModelInfo>>,
+    active_thread_id: Signal<Option<String>>,
+    active_thread_detail: Signal<Option<ThreadDetail>>,
+    sidebar_open: Signal<bool>,
+    files_panel_open: Signal<bool>,
+    files_path: Signal<Vec<String>>,
+    files_entries: Signal<Vec<DirEntry>>,
+    files_error: Signal<String>,
+    composer_text: Signal<String>,
+    pending_attachments: Signal<Vec<String>>,
+    sending: Signal<bool>,
+    selected_model: Signal<String>,
+    selected_permission: Signal<String>,
+) -> Element {
+    let toggle_sidebar = move |_| {
+        sidebar_open.toggle();
+    };
+
+    let open_files = move |_| {
+        files_panel_open.set(true);
+        files_path.set(Vec::new());
+        spawn(async move {
+            match api::api_get::<Vec<DirEntry>>("/api/files").await {
+                Ok(entries) => {
+                    files_entries.set(entries);
+                    files_error.set(String::new());
+                }
+                Err(e) => files_error.set(e),
+            }
+        });
+    };
+
+    let thread_title = active_thread_detail.read().as_ref().map(|d| d.thread.title.clone()).unwrap_or_else(|| "Select or create a thread".to_string());
+
+    rsx! {
+        main { class: "flex flex-col min-w-0",
+            style: "background: var(--color-surface);",
+            header { class: "flex items-center gap-3 px-5 py-3 border-b",
+                style: "border-color: var(--color-outline-variant); background: var(--color-surface);",
+                button {
+                    class: "m3-icon-button md:hidden",
+                    onclick: toggle_sidebar,
+                    Icon { name: "menu".to_string(), class: Some("icon-sm".to_string()) }
+                }
+                h2 { class: "m3-title-large flex-1 overflow-hidden text-ellipsis whitespace-nowrap", "{thread_title}" }
+                div { class: "flex items-center gap-2",
+                    select {
+                        class: "m3-select",
+                        value: "{selected_model}",
+                        onchange: move |e| selected_model.set(e.value()),
+                        {models.read().iter().map(|m| rsx! {
+                            option { value: "{m.id}", "{m.label}" }
+                        })}
+                    }
+                    select {
+                        class: "m3-select",
+                        value: "{selected_permission}",
+                        onchange: move |e| selected_permission.set(e.value()),
+                        option { value: "normal", "Normal" }
+                        option { value: "accept-edits", "Accept edits" }
+                        option { value: "smart", "Smart" }
+                        option { value: "bypass", "Bypass" }
+                    }
+                    button {
+                        class: "m3-icon-button",
+                        title: "File manager",
+                        onclick: open_files,
+                        Icon { name: "folder".to_string(), class: Some("icon-sm".to_string()) }
                     }
                 }
-            },
-            DialogState::Invites => rsx! {
-                InvitesDialog { dialog, invites }
-            },
+            }
+
+            ChatView {
+                active_thread_detail, active_thread_id, composer_text,
+                pending_attachments, sending, threads, groups,
+            }
+        }
+
+        if *files_panel_open.read() {
+            FilesPanel {
+                files_path, files_entries, files_error, files_panel_open,
+            }
+        }
+    }
+}
+
+// ---------- Settings Page ----------
+
+/// A placeholder settings page. Demonstrates the layout: the sidebar
+/// stays fixed, and this content replaces the thread view area.
+/// Future work will add password change and TOTP management here.
+#[component]
+fn SettingsPage(
+    current_page: Signal<Page>,
+    user: Signal<Option<User>>,
+) -> Element {
+    let username = user.read().as_ref().map(|u| u.username.clone()).unwrap_or_default();
+
+    rsx! {
+        main { class: "flex flex-col min-w-0",
+            style: "background: var(--color-surface);",
+            header { class: "flex items-center gap-3 px-5 py-3 border-b",
+                style: "border-color: var(--color-outline-variant); background: var(--color-surface);",
+                h2 { class: "m3-title-large flex-1", "Settings" }
+            }
+            div { class: "flex-1 overflow-y-auto p-6 flex items-center justify-center",
+                div { class: "w-full max-w-[560px] p-6 rounded-xl m3-card flex flex-col gap-5",
+                    div { class: "flex items-center justify-between py-2",
+                        span { class: "m3-body-medium", style: "color: var(--color-on-surface-variant);", "Username" }
+                        span { class: "font-medium", "{username}" }
+                    }
+                    p { class: "m3-body-medium text-center py-8",
+                        style: "color: var(--color-on-surface-variant);",
+                        "Settings content coming soon."
+                    }
+                    button {
+                        class: "m3-button m3-filled",
+                        onclick: move |_| current_page.set(Page::Threads),
+                        "Back to threads"
+                    }
+                }
+            }
         }
     }
 }
