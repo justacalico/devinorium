@@ -11,14 +11,16 @@ use axum::extract::Request;
 /// origin. `img-src 'self' data: blob:` allows inline image previews.
 /// `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'` allows the Dioxus
 /// WASM bootstrap loader (which uses an inline import() script) and WASM
-/// execution.
+/// execution. The Flutter web renderer loads CanvasKit and the Roboto font
+/// from `https://www.gstatic.com` / `https://fonts.gstatic.com`, so those
+/// origins are allow-listed in the relevant directives.
 pub fn csp_value() -> &'static str {
     "default-src 'self'; \
-     script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; \
+     script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://www.gstatic.com; \
      style-src 'self' 'unsafe-inline'; \
      img-src 'self' data: blob:; \
-     font-src 'self'; \
-     connect-src 'self'; \
+     font-src 'self' https://fonts.gstatic.com; \
+     connect-src 'self' https://www.gstatic.com https://fonts.gstatic.com; \
      frame-ancestors 'none'; \
      base-uri 'self'; \
      form-action 'self'; \
