@@ -98,7 +98,7 @@ class FilesPanel extends StatelessWidget {
                                   IconButton(
                                     tooltip: 'Delete',
                                     icon: const Icon(Icons.delete_outline,
-                                        size: 18),
+                                        color: Colors.red, size: 18),
                                     onPressed: () async {
                                       if (await _confirm(
                                           context, 'Delete ${e.name}?')) {

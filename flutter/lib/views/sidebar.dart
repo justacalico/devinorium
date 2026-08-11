@@ -428,7 +428,7 @@ class _ThreadTile extends StatelessWidget {
             const SizedBox(width: 4),
             IconButton(
               tooltip: 'Delete',
-              icon: const Icon(Icons.delete_outline, size: 18),
+              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
               onPressed: () async {
                 if (await _confirm(
                     context, 'Delete this thread? This cannot be undone.')) {
