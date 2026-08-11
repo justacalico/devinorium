@@ -209,11 +209,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshThreadsAndGroups() async {
     try {
-      if (_activeProjectId != null) {
-        _threads = await api.listThreadsForProject(_activeProjectId!);
-      } else {
-        _threads = [];
-      }
+      _threads = await api.listThreads();
     } catch (_) {}
     try {
       _groups = await api.listThreadGroups();

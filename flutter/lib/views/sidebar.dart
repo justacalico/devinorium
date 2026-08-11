@@ -170,7 +170,7 @@ class Sidebar extends StatelessWidget {
   }
 }
 
-/// A combined list of projects with the selected project expanded to show its threads.
+/// A combined list of projects, each expandable to show its threads.
 class _ProjectThreadList extends StatefulWidget {
   const _ProjectThreadList();
 
@@ -179,8 +179,8 @@ class _ProjectThreadList extends StatefulWidget {
 }
 
 class _ProjectThreadListState extends State<_ProjectThreadList> {
-  bool _showAllThreads = false;
-  static const int _threadLimit = 5;
+  final Set<int> _expandedIds = {};
+  int? _lastActiveProjectId;
 
   @override
   Widget build(BuildContext context) {
@@ -190,89 +190,173 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     final threads = state.threads;
     final activeThreadId = state.activeThreadId;
 
-    final children = <Widget>[];
-
-    // Projects section (always first).
-    for (final p in projects) {
-      children.add(_ProjectTile(
-        project: p,
-        selected: activeProjectId == p.id,
-        onTap: () => context.read<AppState>().selectProject(p.id),
-      ));
+    // Auto-expand when the active project changes.
+    if (activeProjectId != _lastActiveProjectId) {
+      _lastActiveProjectId = activeProjectId;
+      if (activeProjectId != null) {
+        _expandedIds.add(activeProjectId);
+      }
     }
 
-    // Overview section for the selected project.
-    children.add(const _SectionHeader('Overview'));
-    if (threads.isEmpty) {
-      children.add(const _NoThreads());
-    } else {
-      final shown = _showAllThreads
-          ? threads
-          : threads.take(_threadLimit).toList();
-      for (final t in shown) {
-        children.add(_ThreadTile(thread: t, isActive: activeThreadId == t.id));
-      }
-      if (threads.length > _threadLimit) {
-        children.add(
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-            child: TextButton(
-              onPressed: () => setState(() => _showAllThreads = !_showAllThreads),
-              child: Text(_showAllThreads ? 'Show less' : 'Show more'),
-            ),
-          ),
-        );
+    if (projects.isEmpty) {
+      return const _NoProjects();
+    }
+
+    final threadsByProject = <int, List<Thread>>{};
+    for (final t in threads) {
+      if (t.projectId != 0) {
+        threadsByProject.putIfAbsent(t.projectId, () => []).add(t);
       }
     }
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      children: children,
+      children: [
+        for (final p in projects)
+          _ProjectExpandableTile(
+            project: p,
+            threads: threadsByProject[p.id] ?? [],
+            isActive: activeProjectId == p.id,
+            isExpanded: _expandedIds.contains(p.id),
+            activeThreadId: activeThreadId,
+            onToggle: () => _onToggle(p.id),
+            onThreadTap: (id) => state.openThread(id),
+          ),
+      ],
     );
+  }
+
+  void _onToggle(int id) {
+    final state = context.read<AppState>();
+    if (state.activeProjectId != id) {
+      state.selectProject(id);
+    } else {
+      setState(() {
+        if (_expandedIds.contains(id)) {
+          _expandedIds.remove(id);
+        } else {
+          _expandedIds.add(id);
+        }
+      });
+    }
   }
 }
 
-class _ProjectTile extends StatelessWidget {
+class _ProjectExpandableTile extends StatelessWidget {
   final Project project;
-  final bool selected;
-  final VoidCallback onTap;
-  const _ProjectTile({
+  final List<Thread> threads;
+  final bool isActive;
+  final bool isExpanded;
+  final String? activeThreadId;
+  final VoidCallback onToggle;
+  final ValueChanged<String> onThreadTap;
+
+  const _ProjectExpandableTile({
     required this.project,
-    required this.selected,
-    required this.onTap,
+    required this.threads,
+    required this.isActive,
+    required this.isExpanded,
+    this.activeThreadId,
+    required this.onToggle,
+    required this.onThreadTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 14,
-        backgroundColor: color,
+    final borderColor = isActive
+        ? theme.colorScheme.primary
+        : Colors.transparent;
+    final bgColor = isActive
+        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+        : null;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        border: Border.all(color: borderColor, width: 1.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: CircleAvatar(
+              radius: 14,
+              backgroundColor: color,
+              child: Text(
+                project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+              ),
+            ),
+            title: Text(
+              project.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w500),
+            ),
+            subtitle: Text(
+              project.path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            trailing: AnimatedRotation(
+              turns: isExpanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: const Icon(Icons.keyboard_arrow_down, size: 20),
+            ),
+            dense: true,
+            onTap: onToggle,
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            child: isExpanded
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (threads.isEmpty)
+                        const _NoThreads()
+                      else
+                        for (final t in threads)
+                          _ThreadTile(
+                            thread: t,
+                            isActive: activeThreadId == t.id,
+                            onTap: () => onThreadTap(t.id),
+                          ),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoProjects extends StatelessWidget {
+  const _NoProjects();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Text(
-          project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
-          style: const TextStyle(fontSize: 12, color: Colors.white),
+          'No projects yet.\nCreate one to get started.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
-      title: Text(
-        project.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-      ),
-      subtitle: Text(
-        project.path,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelSmall
-            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-      ),
-      selected: selected,
-      selectedTileColor: theme.colorScheme.secondaryContainer,
-      shape: const StadiumBorder(),
-      dense: true,
-      onTap: onTap,
     );
   }
 }
@@ -294,6 +378,74 @@ class _NoThreads extends StatelessWidget {
   }
 }
 
+class _ThreadTile extends StatelessWidget {
+  final Thread thread;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _ThreadTile({
+    required this.thread,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.read<AppState>();
+    final theme = Theme.of(context);
+    final time = _timeAgo(thread.updatedAt);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+      decoration: BoxDecoration(
+        border: isActive
+            ? Border.all(color: theme.colorScheme.primary, width: 1.5)
+            : null,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListTile(
+        leading: const Icon(Icons.chat_outlined, size: 18),
+        title: Text(
+          thread.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (time.isNotEmpty)
+              Text(
+                time,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline, size: 18),
+              onPressed: () async {
+                if (await _confirm(
+                    context, 'Delete this thread? This cannot be undone.')) {
+                  state.deleteThread(thread.id);
+                }
+              },
+            ),
+          ],
+        ),
+        selected: isActive,
+        selectedTileColor: theme.colorScheme.secondaryContainer,
+        shape: const StadiumBorder(),
+        dense: true,
+        onTap: () {
+          // Close the drawer if open (mobile layout).
+          Scaffold.of(context).closeDrawer();
+          onTap();
+        },
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   final String text;
   const _SectionHeader(this.text);
@@ -310,59 +462,6 @@ class _SectionHeader extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
       ),
-    );
-  }
-}
-
-class _ThreadTile extends StatelessWidget {
-  final Thread thread;
-  final bool isActive;
-  const _ThreadTile({required this.thread, required this.isActive});
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.read<AppState>();
-    final theme = Theme.of(context);
-    final time = _timeAgo(thread.updatedAt);
-    return ListTile(
-      leading: const Icon(Icons.chat_outlined, size: 18),
-      title: Text(
-        thread.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodyMedium,
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (time.isNotEmpty)
-            Text(
-              time,
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'Delete',
-            icon: const Icon(Icons.delete_outline, size: 18),
-            onPressed: () async {
-              if (await _confirm(
-                  context, 'Delete this thread? This cannot be undone.')) {
-                state.deleteThread(thread.id);
-              }
-            },
-          ),
-        ],
-      ),
-      selected: isActive,
-      selectedTileColor: theme.colorScheme.secondaryContainer,
-      shape: const StadiumBorder(),
-      dense: true,
-      onTap: () {
-        // Close the drawer if open (mobile layout).
-        Scaffold.of(context).closeDrawer();
-        state.openThread(thread.id);
-      },
     );
   }
 }
