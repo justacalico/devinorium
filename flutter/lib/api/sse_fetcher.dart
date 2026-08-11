@@ -15,15 +15,28 @@ import '../models/models.dart' show tryDecodeJson;
 /// response bodies on web. Instead we build a `FormData` object (so the
 /// browser sets its own multipart boundary) and call `window.fetch` directly
 /// with `credentials: 'include'` so the HttpOnly session cookie is sent.
+///
+/// A single `TextDecoder` with `stream: true` is used so multi-byte UTF-8
+/// characters that are split across `fetch` chunks decode correctly.
 Stream<SseEvent> fetchSseStream({
   required BrowserClient client,
   required String path,
   required String prompt,
   required List<({String filename, String mime, Uint8List bytes})> attachments,
 }) {
-  final controller = StreamController<SseEvent>();
+  // Cancels the underlying fetch when the stream subscription is canceled,
+  // e.g. when the user sends a new message before the previous one finishes.
+  final abort = web.AbortController();
+  final controller = StreamController<SseEvent>(
+    onCancel: () {
+      try {
+        abort.abort();
+      } catch (_) {}
+    },
+  );
   _runSse(
     controller: controller,
+    abort: abort,
     path: path,
     prompt: prompt,
     attachments: attachments,
@@ -33,10 +46,12 @@ Stream<SseEvent> fetchSseStream({
 
 Future<void> _runSse({
   required StreamController<SseEvent> controller,
+  required web.AbortController abort,
   required String path,
   required String prompt,
   required List<({String filename, String mime, Uint8List bytes})> attachments,
 }) async {
+  web.ReadableStreamDefaultReader? reader;
   try {
     final form = web.FormData();
     form.append('prompt', prompt.toJS);
@@ -52,6 +67,7 @@ Future<void> _runSse({
       method: 'POST',
       body: form,
       credentials: 'include',
+      signal: abort.signal,
     );
 
     final response = await web.window.fetch(path.toJS, init).toDart;
@@ -69,15 +85,32 @@ Future<void> _runSse({
 
     final body = response.body;
     if (body == null) throw ApiException('no response body', response.status);
-    final reader = web.ReadableStreamDefaultReader(body);
+    reader = web.ReadableStreamDefaultReader(body);
+
+    // Reuse one TextDecoder with streaming=true so characters split across
+    // `reader.read()` chunks still decode correctly.
+    final decoder = web.TextDecoder(
+      'utf-8',
+      web.TextDecoderOptions(fatal: false),
+    );
 
     String buffer = '';
     while (true) {
       final result = await reader.read().toDart;
-      if (result.done) break;
+      if (result.done) {
+        // Flush any remaining decoder state.
+        buffer += decoder.decode();
+        break;
+      }
       final value = result.value;
       if (value == null) continue;
-      buffer += _decodeUtf8(value);
+      if (!value.typeofEquals('object')) {
+        throw ApiException('Unexpected stream chunk type', 0);
+      }
+      buffer += decoder.decode(
+        value as JSObject,
+        web.TextDecodeOptions(stream: true),
+      );
 
       while (true) {
         final idx = buffer.indexOf('\n\n');
@@ -95,10 +128,20 @@ Future<void> _runSse({
       if (event != null) controller.add(event);
     }
   } catch (e) {
-    if (!controller.isClosed) {
-      controller.addError(e is ApiException ? e : ApiException('$e', 0));
+    // Don't surface errors after the listener has gone (e.g. after cancel).
+    if (!controller.isClosed && controller.hasListener) {
+      try {
+        controller.addError(e is ApiException ? e : ApiException('$e', 0));
+      } catch (_) {
+        // Controller may close between the check and addError; ignore.
+      }
     }
   } finally {
+    if (reader != null) {
+      try {
+        await reader.cancel().toDart;
+      } catch (_) {}
+    }
     if (!controller.isClosed) controller.close();
   }
 }
@@ -116,24 +159,7 @@ SseEvent? _parseSseBlock(String block) {
     }
   }
   // Ignore blocks with no event name — the backend only emits named events
-  // (user_message, chunk, done, error) and the SSE spec says a missing
-  // event: field means the last event type, which we don't track.
+  // (user_message, chunk, done, error) and comments (: ...), which we skip.
   if (event.isEmpty) return null;
   return SseEvent(event, dataLines.join('\n'));
 }
-
-/// Decode a JS Uint8Array chunk into a Dart string using TextDecoder.
-String _decodeUtf8(JSAny bytes) {
-  final decoder = _TextDecoder('utf-8');
-  return decoder.decode(bytes).toDart;
-}
-
-@JS('TextDecoder')
-extension type _TextDecoder._(JSObject _) implements JSObject {
-  external factory _TextDecoder([String label]);
-  external JSString decode(JSAny? input);
-}
-
-// Suppress unused warning for the streams import (kept for clarity).
-// ignore: unused_element
-final _ = web.ReadableStream;
