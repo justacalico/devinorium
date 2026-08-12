@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.3.0 - 2026-08-12
+#### Features
+- 添加 misc 提交类型与 commit-msg hook - (a4bd4cb) - HttpAnimations
+#### Bug Fixes
+- 修复移动端设置页无法打开侧边栏 - (1a3ff0c) - HttpAnimations
+
+- - -
+
 ## v0.2.0 - 2026-08-12
 #### Features
 - 添加 GitLab 自动发布流水线 - (29309a3) - HttpAnimations
