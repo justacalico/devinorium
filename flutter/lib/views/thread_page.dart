@@ -232,7 +232,7 @@ class _MessageItemState extends State<_MessageItem> {
   @override
   void didUpdateWidget(covariant _MessageItem old) {
     super.didUpdateWidget(old);
-    if (widget.thinkingActive && !old.thinkingActive) {
+    if (widget.thinkingActive && !_expanded) {
       setState(() => _expanded = true);
     }
   }
@@ -266,19 +266,22 @@ class _MessageItemState extends State<_MessageItem> {
     final hasThinking = thinking != null && thinking.isNotEmpty;
 
     Widget thinkingSection() {
+      final label = widget.thinkingActive
+          ? 'Thinking'
+          : (_expanded ? 'Hide thinking' : 'Show thinking');
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(
             onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(20),
             child: Container(
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(20),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -287,15 +290,15 @@ class _MessageItemState extends State<_MessageItem> {
                     size: 16,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
                   Text(
-                    'Thinking',
+                    label,
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  _ThinkingDots(active: widget.thinkingActive),
+                  if (widget.thinkingActive) _ThinkingDots(active: true),
                 ],
               ),
             ),
@@ -304,15 +307,35 @@ class _MessageItemState extends State<_MessageItem> {
             firstChild: const SizedBox.shrink(),
             secondChild: Container(
               width: double.infinity,
-              margin: const EdgeInsets.only(top: 6),
-              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
+                border: Border(
+                  left: BorderSide(
+                    color: theme.colorScheme.outline,
+                    width: 2,
+                  ),
+                ),
               ),
-              child: SelectableText(
-                thinking!,
-                style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.access_time,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SelectableText(
+                      thinking!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        height: 1.5,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             crossFadeState:
