@@ -1,0 +1,73 @@
+stages:
+  - verify
+  - release
+
+variables:
+  COCO_GITTO_VERSION: "7.0.0"
+  GLAB_VERSION: "1.53.0"
+  GLAB_ENABLE_CI_AUTOLOGIN: "true"
+  GIT_DEPTH: "0"
+
+default:
+  image: rust:1.88.0
+  cache:
+    key:
+      files:
+        - Cargo.lock
+        - flutter/pubspec.lock
+    paths:
+      - /root/.cargo
+      - /root/.local
+      - /root/.pub-cache
+      - /root/.dart-tool
+
+.install: &install
+  - export PATH="$HOME/.local/bin:$HOME/.local/flutter/bin:$PATH"
+  - |
+    if ! command -v flutter >/dev/null 2>&1; then
+      mkdir -p "$HOME/.local"
+      git clone -b 3.44.9 --depth 1 https://github.com/flutter/flutter.git "$HOME/.local/flutter"
+    fi
+    flutter config --no-analytics >/dev/null
+  - |
+    if ! command -v cog >/dev/null 2>&1; then
+      apt-get update -qq
+      apt-get install -y -qq libgit2-dev cmake
+      cargo install cocogitto --version "$COCO_GITTO_VERSION" --root "$HOME/.local"
+    fi
+  - |
+    if ! command -v glab >/dev/null 2>&1; then
+      mkdir -p "$HOME/.local"
+      curl -fsSL --retry 3 -o /tmp/glab.tar.gz "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_amd64.tar.gz"
+      tar -xzf /tmp/glab.tar.gz -C "$HOME/.local"
+      chmod +x "$HOME/.local/bin/glab"
+    fi
+  - export CARGO_HOME="$HOME/.cargo"
+
+verify:
+  stage: verify
+  before_script:
+    - *install
+  script:
+    - cog check
+    - cd flutter && flutter pub get && flutter analyze --no-pub && cd ..
+    - cargo test
+    - cargo build --release
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+release:
+  stage: release
+  before_script:
+    - *install
+    - git config user.name "GitLab CI"
+    - git config user.email "ci@gitlab.com"
+    - git remote set-url origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git checkout -B main
+    - git branch --set-upstream-to=origin/main main
+    - glab auth status
+  script:
+    - cog bump --auto --skip-ci
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
