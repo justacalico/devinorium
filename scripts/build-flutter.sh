@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Build the Flutter web frontend and copy output to frontend/dist/ so the
 # Rust backend's `include_dir!("frontend/dist")` picks it up at compile time.
-#
-# This REPLACES the Dioxus frontend in frontend/dist. To switch back to the
-# Dioxus frontend, run scripts/build-frontend.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

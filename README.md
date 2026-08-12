@@ -3,11 +3,7 @@
 A self-hosted web UI for the [Devin CLI](https://devin.ai).
 
 - Backend: Rust (axum + tokio + SQLite)
-- Frontend: embedded from `frontend/dist/`. The repo contains two frontends; the build script you run decides which one is embedded:
-  - Flutter: `flutter/`, built with `./scripts/build-flutter.sh`
-  - Dioxus: `frontend/`, built with `./scripts/build-frontend.sh`
-
-Only one can be embedded at a time. Both scripts replace the contents of `frontend/dist/`.
+- Frontend: Flutter web, built with `./scripts/build-flutter.sh` and embedded from `frontend/dist/` at compile time
 
 ## What it is
 
@@ -15,9 +11,7 @@ Devinorium lets you use the Devin CLI from a browser. The Rust backend handles a
 
 ## Quick start
 
-Prerequisites: Rust, the `devin` CLI on PATH, authenticated with `devin login`, and a frontend toolchain.
-
-For the Flutter frontend:
+Prerequisites: Rust, the `devin` CLI on PATH, authenticated with `devin login`, and the Flutter SDK.
 
 ```bash
 git clone https://gitlab.com/HttpAnimations/devinorium.git
@@ -30,8 +24,6 @@ cp .env.example .env
 cargo build --release          # embeds the freshly built frontend/dist/
 ./target/release/devinorium
 ```
-
-For the Dioxus frontend, run `./scripts/build-frontend.sh` instead (requires the Dioxus CLI `dx` and Node.js for Tailwind).
 
 Then open `http://localhost:7878` and log in with the bootstrap credentials.
 

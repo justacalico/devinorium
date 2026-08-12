@@ -9,8 +9,8 @@ use axum::extract::Request;
 
 /// A strict CSP. `connect-src 'self'` allows fetch/XHR/WebSocket to the same
 /// origin. `img-src 'self' data: blob:` allows inline image previews.
-/// `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'` allows the Dioxus
-/// WASM bootstrap loader (which uses an inline import() script) and WASM
+/// `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'` allows the Flutter
+/// web bootstrap loader (which uses an inline import() script) and WASM
 /// execution. The Flutter web renderer loads CanvasKit and the Roboto font
 /// from `https://www.gstatic.com` / `https://fonts.gstatic.com`, so those
 /// origins are allow-listed in the relevant directives.

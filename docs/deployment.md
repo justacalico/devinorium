@@ -7,23 +7,20 @@ TLS. This guide covers the common deployment patterns.
 ## Prerequisites
 
 - A Rust toolchain (or a pre-built `devinorium` binary)
-- The `dioxus` CLI (`dx`), used to build the frontend to WASM:
-  ```sh
-  cargo binstall dioxus-cli --version 0.6.3
-  ```
+- The Flutter SDK, used to build the web frontend
 - The `devin` CLI installed and authenticated (`devin login`)
 - A directory for the SQLite database and file root
 
 ## 1. Build
 
-The frontend is a Rust crate in `frontend/` built with Dioxus 0.6 to
-WebAssembly. The backend embeds the built assets from `frontend/dist/` at
-compile time via `include_dir!`, so the binary is fully self-contained.
-Build the frontend **before** building the backend:
+The frontend is a Flutter app in `flutter/` built to web. The backend embeds
+the built assets from `frontend/dist/` at compile time via `include_dir!`, so
+the binary is fully self-contained. Build the frontend **before** building the
+backend:
 
 ```sh
-# Build the Dioxus WASM frontend (output goes to frontend/dist/)
-./scripts/build-frontend.sh
+# Build the Flutter web frontend (output goes to frontend/dist/)
+./scripts/build-flutter.sh
 
 # Build the backend, which embeds frontend/dist/ at compile time
 cargo build --release
@@ -208,5 +205,5 @@ sudo systemctl enable --now devinorium
   file root directory are all you need to back up. Stop the service
   before copying the db file, or use `sqlite3 ... ".backup"`.
 - **Updates:** pull the latest main, rebuild the frontend with
-  `./scripts/build-frontend.sh`, then `cargo build --release`, and restart
+  `./scripts/build-flutter.sh`, then `cargo build --release`, and restart
   the service. Migrations run automatically on startup.
