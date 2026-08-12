@@ -421,8 +421,17 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openThread(String id) async {
-    _activeThreadId = id;
+    // Cancel any in-flight send and clear transient state before switching.
+    await _sendSubscription?.cancel();
+    _sendSubscription = null;
+    _clearPermissionRequest();
+    _sending = false;
+    _streamingText = null;
+    _streamingThinking = null;
+    _streamingThinkingActive = false;
     _streamingToolCalls.clear();
+
+    _activeThreadId = id;
     notifyListeners();
     try {
       _activeThreadDetail = await api.getThread(id);
