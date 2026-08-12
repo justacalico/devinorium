@@ -17,7 +17,9 @@ use devinorium::{
     auth,
     config::Config,
     db,
-    providers::{ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse},
+    providers::{
+        ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse, ToolCallEvent,
+    },
     AppState,
 };
 
@@ -54,6 +56,18 @@ impl Provider for StubProvider {
         if let Some(cb) = &req.options.thinking_callback {
             cb(thinking.clone());
         }
+        if let Some(cb) = &req.options.tool_callback {
+            cb(ToolCallEvent {
+                id: "stub-tool-1".into(),
+                title: "Stub tool".into(),
+                kind: "execute".into(),
+                status: "completed".into(),
+                command: Some(format!("echo {}", req.prompt)),
+                output: Some("stub output".into()),
+                output_preview: Some("stub output".into()),
+                changed_files: vec![],
+            });
+        }
         if let Some(cb) = &req.options.text_callback {
             cb(reply.clone());
         }
@@ -69,6 +83,18 @@ impl Provider for StubProvider {
         let thinking = "reasoning about the prompt".to_string();
         if let Some(cb) = &req.options.thinking_callback {
             cb(thinking.clone());
+        }
+        if let Some(cb) = &req.options.tool_callback {
+            cb(ToolCallEvent {
+                id: "stub-tool-1".into(),
+                title: "Stub tool".into(),
+                kind: "execute".into(),
+                status: "completed".into(),
+                command: Some(format!("echo {}", req.prompt)),
+                output: Some("stub output".into()),
+                output_preview: Some("stub output".into()),
+                changed_files: vec![],
+            });
         }
         if let Some(cb) = &req.options.text_callback {
             cb(reply.clone());
@@ -488,14 +514,31 @@ async fn thread_send_streams_reply_as_sse() {
     let body = body_str(resp.into_body()).await;
     assert!(body.contains("event: user_message"), "body: {body}");
     assert!(body.contains("event: thinking"), "body: {body}");
+    assert!(body.contains("event: tool_call"), "body: {body}");
     assert!(body.contains("event: chunk"), "body: {body}");
     assert!(body.contains("event: done"), "body: {body}");
 
     let thinking_pos = body.find("event: thinking").expect("thinking event");
+    let tool_call_pos = body.find("event: tool_call").expect("tool_call event");
     let chunk_pos = body.find("event: chunk").expect("chunk event");
     let done_pos = body.find("event: done").expect("done event");
-    assert!(thinking_pos < chunk_pos, "thinking should come before chunk");
+    assert!(thinking_pos < tool_call_pos, "thinking should come before tool_call");
+    assert!(tool_call_pos < chunk_pos, "tool_call should come before chunk");
     assert!(chunk_pos < done_pos, "chunk should come before done");
+
+    let tool_call_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: tool_call"))
+        .expect("tool_call block");
+    let tool_call_data = tool_call_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("tool_call data");
+    let tool_call_json: serde_json::Value =
+        serde_json::from_str(&tool_call_data[6..]).expect("valid tool_call json");
+    assert_eq!(tool_call_json["title"], "Stub tool");
+    assert_eq!(tool_call_json["kind"], "execute");
+    assert_eq!(tool_call_json["status"], "completed");
 
     let done_block = body
         .split("\n\n")
