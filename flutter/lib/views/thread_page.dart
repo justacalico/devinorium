@@ -59,6 +59,7 @@ class _ChatViewState extends State<ChatView> {
   int _lastMessageCount = 0;
   String? _lastStreamingText;
   String? _lastStreamingThinking;
+  int _lastToolCallCount = 0;
   String? _lastThreadId;
 
   @override
@@ -100,6 +101,7 @@ class _ChatViewState extends State<ChatView> {
     final streaming = state.streamingText;
     final thinking = state.streamingThinking;
     final thinkingActive = state.streamingThinkingActive;
+    final toolCalls = state.streamingToolCalls;
 
     // Auto-scroll only when:
     // - A new message was added (message count changed), OR
@@ -109,12 +111,15 @@ class _ChatViewState extends State<ChatView> {
     final newMessage = msgCount != _lastMessageCount;
     final newChunk = streaming != null && streaming != _lastStreamingText;
     final newThinking = thinking != null && thinking != _lastStreamingThinking;
-    if (newMessage || newChunk || newThinking) {
+    final toolCount = toolCalls.length;
+    final newToolCall = toolCount != _lastToolCallCount;
+    if (newMessage || newChunk || newThinking || newToolCall) {
       _maybeScrollToBottom();
     }
     _lastMessageCount = msgCount;
     _lastStreamingText = streaming;
     _lastStreamingThinking = thinking;
+    _lastToolCallCount = toolCount;
 
     // When switching threads, reset auto-scroll and jump to bottom.
     final threadId = detail?.thread.id;
@@ -132,6 +137,7 @@ class _ChatViewState extends State<ChatView> {
             streamingText: streaming,
             streamingThinking: thinking,
             streamingThinkingActive: thinkingActive,
+            toolCalls: toolCalls,
             controller: _scrollController,
           ),
         ),
@@ -146,12 +152,14 @@ class _MessagesPanel extends StatelessWidget {
   final String? streamingText;
   final String? streamingThinking;
   final bool streamingThinkingActive;
+  final Map<String, ToolCallData> toolCalls;
   final ScrollController controller;
   const _MessagesPanel({
     required this.detail,
     required this.streamingText,
     required this.streamingThinking,
     required this.streamingThinkingActive,
+    required this.toolCalls,
     required this.controller,
   });
 
@@ -191,11 +199,13 @@ class _MessagesPanel extends StatelessWidget {
     }
 
     final thinking = streamingThinking;
+    final activeToolCalls = toolCalls.values.toList();
     return ListView(
       controller: controller,
       padding: const EdgeInsets.symmetric(vertical: 24),
       children: [
         for (final m in messages) _MessageItem(message: m),
+        for (final t in activeToolCalls) _ToolCallItem(tool: t),
         if (hasStreaming)
           _MessageItem(
             message: Message(
@@ -700,6 +710,168 @@ class _PermissionDropdown extends StatelessWidget {
       onChanged: (v) {
         if (v != null) onChanged(v);
       },
+    );
+  }
+}
+
+(IconData, Color) _toolIconAndColor(String kind, ThemeData theme) {
+  return switch (kind) {
+    'read' => (Icons.file_open_outlined, theme.colorScheme.primary),
+    'edit' => (Icons.edit_outlined, theme.colorScheme.tertiary),
+    'delete' || 'move' => (Icons.delete_outlined, theme.colorScheme.error),
+    'search' => (Icons.search, theme.colorScheme.primary),
+    'execute' => (Icons.terminal, theme.colorScheme.secondary),
+    'fetch' => (Icons.download_outlined, theme.colorScheme.primary),
+    'think' => (Icons.psychology_outlined, theme.colorScheme.tertiary),
+    _ => (Icons.build_outlined, theme.colorScheme.onSurfaceVariant),
+  };
+}
+
+class _ToolCallItem extends StatefulWidget {
+  final ToolCallData tool;
+  const _ToolCallItem({required this.tool});
+
+  @override
+  State<_ToolCallItem> createState() => _ToolCallItemState();
+}
+
+class _ToolCallItemState extends State<_ToolCallItem> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tool = widget.tool;
+    final preview = tool.outputPreview ?? tool.command ?? '';
+
+    final (icon, iconColor) = _toolIconAndColor(tool.kind, theme);
+
+    final (statusIcon, statusColor) = switch (tool.status) {
+      'completed' => (Icons.check_circle, theme.colorScheme.primary),
+      'failed' => (Icons.error_outline, theme.colorScheme.error),
+      'pending' => (Icons.hourglass_empty, theme.colorScheme.onSurfaceVariant),
+      _ => (Icons.play_circle_outline, theme.colorScheme.onSurfaceVariant),
+    };
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+          child: InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: theme.colorScheme.outline.withAlpha(64),
+                ),
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, size: 18, color: iconColor),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          tool.title,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Icon(statusIcon, size: 16, color: statusColor),
+                      const SizedBox(width: 6),
+                      Icon(
+                        _expanded ? Icons.expand_less : Icons.expand_more,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                  if (preview.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 28),
+                      child: Text(
+                        preview,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  if (_expanded)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, left: 28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (tool.command != null && tool.command!.isNotEmpty)
+                            _ToolDetailRow(
+                              label: 'Command',
+                              value: tool.command!,
+                            ),
+                          if (tool.output != null && tool.output!.isNotEmpty)
+                            _ToolDetailRow(
+                              label: 'Output',
+                              value: tool.output!,
+                            ),
+                          if (tool.changedFiles.isNotEmpty)
+                            _ToolDetailRow(
+                              label: 'Changed',
+                              value: tool.changedFiles.join('\n'),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolDetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _ToolDetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          SelectableText(
+            value,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

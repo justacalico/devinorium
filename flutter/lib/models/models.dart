@@ -81,6 +81,62 @@ class Message {
       );
 }
 
+class ToolCallData {
+  final String id;
+  final String title;
+  final String kind;
+  final String status;
+  final String? command;
+  final String? output;
+  final String? outputPreview;
+  final List<String> changedFiles;
+
+  ToolCallData({
+    required this.id,
+    required this.title,
+    required this.kind,
+    required this.status,
+    this.command,
+    this.output,
+    this.outputPreview,
+    this.changedFiles = const [],
+  });
+
+  factory ToolCallData.fromJson(Map<String, dynamic> j) => ToolCallData(
+        id: j['id'] as String,
+        title: j['title'] as String,
+        kind: j['kind'] as String,
+        status: j['status'] as String,
+        command: j['command'] as String?,
+        output: j['output'] as String?,
+        outputPreview: j['output_preview'] as String?,
+        changedFiles: (j['changed_files'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            const [],
+      );
+
+  ToolCallData copyWith({
+    String? title,
+    String? kind,
+    String? status,
+    String? command,
+    String? output,
+    String? outputPreview,
+    List<String>? changedFiles,
+  }) =>
+      ToolCallData(
+        id: id,
+        title: title ?? this.title,
+        kind: kind ?? this.kind,
+        status: status ?? this.status,
+        command: command ?? this.command,
+        output: output ?? this.output,
+        outputPreview: outputPreview ?? this.outputPreview,
+        changedFiles: changedFiles ?? this.changedFiles,
+      );
+}
+
 class Project {
   final int id;
   final String name;

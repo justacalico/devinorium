@@ -245,7 +245,7 @@ class ApiService {
   // ---- Streaming send ----
 
   /// Stream a message send. Returns a stream of [SseEvent] records with
-  /// `event` ∈ {`user_message`, `permission_request`, `thinking`, `chunk`, `done`, `error`}.
+  /// `event` ∈ {`user_message`, `permission_request`, `thinking`, `chunk`, `tool_call`, `done`, `error`}.
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,

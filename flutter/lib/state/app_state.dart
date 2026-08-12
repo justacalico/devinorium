@@ -51,6 +51,7 @@ class AppState extends ChangeNotifier {
   String? _streamingText;
   String? _streamingThinking;
   bool _streamingThinkingActive = false;
+  final Map<String, ToolCallData> _streamingToolCalls = {};
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   PermissionRequest? _pendingPermissionRequest;
@@ -92,6 +93,7 @@ class AppState extends ChangeNotifier {
   String? get streamingText => _streamingText;
   String? get streamingThinking => _streamingThinking;
   bool get streamingThinkingActive => _streamingThinkingActive;
+  Map<String, ToolCallData> get streamingToolCalls => _streamingToolCalls;
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
 
@@ -420,6 +422,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> openThread(String id) async {
     _activeThreadId = id;
+    _streamingToolCalls.clear();
     notifyListeners();
     try {
       _activeThreadDetail = await api.getThread(id);
@@ -513,6 +516,7 @@ class AppState extends ChangeNotifier {
     _streamingText = '';
     _streamingThinking = null;
     _streamingThinkingActive = false;
+    _streamingToolCalls.clear();
     _composerText = '';
     notifyListeners();
 
@@ -556,6 +560,14 @@ class AppState extends ChangeNotifier {
             _streamingThinkingActive = false;
             notifyListeners();
             break;
+          case 'tool_call':
+            final decoded = tryDecodeJson(ev.data);
+            if (decoded != null) {
+              final tc = ToolCallData.fromJson(decoded);
+              _streamingToolCalls[tc.id] = tc;
+              notifyListeners();
+            }
+            break;
           case 'done':
             final msg = parseSseMessage(ev.data);
             _streamingText = null;
@@ -577,6 +589,7 @@ class AppState extends ChangeNotifier {
             _streamingText = null;
             _streamingThinking = null;
             _streamingThinkingActive = false;
+            _streamingToolCalls.clear();
             _sending = false;
             _sendSubscription = null;
             _globalError = ev.data;
@@ -595,6 +608,7 @@ class AppState extends ChangeNotifier {
         _streamingText = null;
         _streamingThinking = null;
         _streamingThinkingActive = false;
+        _streamingToolCalls.clear();
         _sending = false;
         _sendSubscription = null;
         _globalError = '$e';
@@ -614,6 +628,7 @@ class AppState extends ChangeNotifier {
           _streamingText = null;
           _streamingThinking = null;
           _streamingThinkingActive = false;
+          _streamingToolCalls.clear();
           notifyListeners();
           // Reload to ensure consistency.
           api.getThread(tid).then((d) {
