@@ -213,9 +213,11 @@ class _MessagesPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 24),
       children: [
         for (final m in history) _MessageItem(message: m),
-        if (activeToolCalls.isNotEmpty)
-          _ToolCallGroup(calls: activeToolCalls),
-        if (currentAssistant != null) _MessageItem(message: currentAssistant),
+        if (currentAssistant != null)
+          _MessageItem(
+            message: currentAssistant,
+            toolCalls: activeToolCalls,
+          ),
         if (hasStreaming)
           _MessageItem(
             message: Message(
@@ -225,6 +227,7 @@ class _MessagesPanel extends StatelessWidget {
               attachments: null,
             ),
             thinkingActive: streamingThinkingActive,
+            toolCalls: activeToolCalls,
           ),
       ],
     );
@@ -234,7 +237,12 @@ class _MessagesPanel extends StatelessWidget {
 class _MessageItem extends StatefulWidget {
   final Message message;
   final bool thinkingActive;
-  const _MessageItem({required this.message, this.thinkingActive = false});
+  final List<ToolCallData> toolCalls;
+  const _MessageItem({
+    required this.message,
+    this.thinkingActive = false,
+    this.toolCalls = const [],
+  });
 
   @override
   State<_MessageItem> createState() => _MessageItemState();
@@ -246,13 +254,13 @@ class _MessageItemState extends State<_MessageItem> {
   @override
   void initState() {
     super.initState();
-    _expanded = widget.thinkingActive;
+    _expanded = widget.thinkingActive || widget.toolCalls.isNotEmpty;
   }
 
   @override
   void didUpdateWidget(covariant _MessageItem old) {
     super.didUpdateWidget(old);
-    if (widget.thinkingActive && !_expanded) {
+    if ((widget.thinkingActive || widget.toolCalls.isNotEmpty) && !_expanded) {
       setState(() => _expanded = true);
     }
   }
@@ -283,10 +291,53 @@ class _MessageItemState extends State<_MessageItem> {
     };
 
     final thinking = message.thinking;
-    final hasThinking = thinking != null && thinking.isNotEmpty;
+    final hasThinking =
+        (thinking != null && thinking.isNotEmpty) || widget.toolCalls.isNotEmpty;
+
+    Widget buildExpandedContent() {
+      final children = <Widget>[];
+      if (widget.toolCalls.isNotEmpty) {
+        children.addAll(
+          widget.toolCalls.map((t) => _ToolCallItem(tool: t)),
+        );
+      }
+      if (thinking != null && thinking.isNotEmpty) {
+        children.add(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.access_time,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SelectableText(
+                  thinking,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    height: 1.5,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      );
+    }
 
     Widget thinkingSection() {
-      final label = widget.thinkingActive
+      final anyToolRunning = widget.toolCalls.any(
+        (t) => t.status != 'completed' && t.status != 'failed',
+      );
+      final working = widget.thinkingActive || anyToolRunning;
+      final label = working
           ? 'Thinking'
           : (_expanded ? 'Hide thinking' : 'Show thinking');
       return Column(
@@ -318,7 +369,7 @@ class _MessageItemState extends State<_MessageItem> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if (widget.thinkingActive) _ThinkingDots(active: true),
+                  if (working) _ThinkingDots(active: widget.thinkingActive),
                 ],
               ),
             ),
@@ -337,26 +388,7 @@ class _MessageItemState extends State<_MessageItem> {
                   ),
                 ),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.access_time,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SelectableText(
-                      thinking!,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        height: 1.5,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              child: buildExpandedContent(),
             ),
             crossFadeState:
                 _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
@@ -763,24 +795,20 @@ class _ToolCallItemState extends State<_ToolCallItem> {
       _ => (Icons.play_circle_outline, theme.colorScheme.onSurfaceVariant),
     };
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 2),
-          child: InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(6),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              decoration: BoxDecoration(
-                color: _expanded
-                    ? theme.colorScheme.surfaceContainer
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Column(
+    return InkWell(
+      onTap: () => setState(() => _expanded = !_expanded),
+      borderRadius: BorderRadius.circular(6),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          color: _expanded
+              ? theme.colorScheme.surfaceContainer
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        margin: const EdgeInsets.only(bottom: 2),
+        child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -839,110 +867,6 @@ class _ToolCallItemState extends State<_ToolCallItem> {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolCallGroup extends StatefulWidget {
-  final List<ToolCallData> calls;
-  const _ToolCallGroup({required this.calls});
-
-  @override
-  State<_ToolCallGroup> createState() => _ToolCallGroupState();
-}
-
-class _ToolCallGroupState extends State<_ToolCallGroup> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final count = widget.calls.length;
-    final anyFailed = widget.calls.any((t) => t.status == 'failed');
-    final anyRunning = widget.calls.any(
-      (t) => t.status != 'completed' && t.status != 'failed',
-    );
-
-    final (statusIcon, statusColor) = switch ((anyFailed, anyRunning)) {
-      (true, _) => (Icons.error_outline, theme.colorScheme.error),
-      (_, true) => (Icons.play_circle_outline, theme.colorScheme.onSurfaceVariant),
-      _ => (Icons.check, theme.colorScheme.primary),
-    };
-
-    final header = InkWell(
-      onTap: () => setState(() => _expanded = !_expanded),
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        child: Row(
-          children: [
-            Icon(
-              Icons.auto_fix_high,
-              size: 16,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                count == 1 ? '1 tool call' : '$count tool calls',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            Icon(statusIcon, size: 14, color: statusColor),
-            const SizedBox(width: 4),
-            Icon(
-              _expanded ? Icons.expand_less : Icons.expand_more,
-              size: 14,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (!_expanded) {
-      return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 2),
-            child: header,
-          ),
-        ),
-      );
-    }
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 2),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              header,
-              Padding(
-                padding: const EdgeInsets.only(left: 8, top: 2),
-                child: Column(
-                  children: widget.calls
-                      .map((t) => _ToolCallItem(tool: t))
-                      .toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
