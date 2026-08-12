@@ -44,6 +44,8 @@ class AppState extends ChangeNotifier {
   DialogKind _dialog = DialogKind.none;
   String _totpSecret = '';
   String _composerText = '';
+  final List<({String filename, String mime, Uint8List bytes})> _attachments =
+      [];
   bool _sending = false;
   String _selectedModel = '';
   String _selectedPermission = 'normal';
@@ -87,6 +89,8 @@ class AppState extends ChangeNotifier {
   String get totpSecret => _totpSecret;
   String get composerText => _composerText;
   bool get sending => _sending;
+  List<({String filename, String mime, Uint8List bytes})> get attachments =>
+      _attachments;
   String get selectedModel => _selectedModel;
   String get selectedPermission => _selectedPermission;
   List<Invite> get invites => _invites;
@@ -104,6 +108,23 @@ class AppState extends ChangeNotifier {
   void toggleUserMenu() { _userMenuOpen = !_userMenuOpen; notifyListeners(); }
   void setUserMenuOpen(bool v) { _userMenuOpen = v; notifyListeners(); }
   void setComposerText(String t) { _composerText = t; notifyListeners(); }
+  void addAttachments(
+    List<({String filename, String mime, Uint8List bytes})> files,
+  ) {
+    _attachments.addAll(files);
+    notifyListeners();
+  }
+
+  void removeAttachment(int index) {
+    _attachments.removeAt(index);
+    notifyListeners();
+  }
+
+  void clearAttachments() {
+    _attachments.clear();
+    notifyListeners();
+  }
+
   void setSelectedModel(String m) { _selectedModel = m; notifyListeners(); }
   void setSelectedPermission(String p) { _selectedPermission = p; notifyListeners(); }
   void setLoginError(String e) { _loginError = e; notifyListeners(); }
@@ -306,6 +327,7 @@ class AppState extends ChangeNotifier {
     _showTotpField = false;
     _loginError = '';
     _composerText = '';
+    _attachments.clear();
     _streamingText = null;
     _streamingThinking = null;
     _streamingThinkingActive = false;
@@ -322,6 +344,8 @@ class AppState extends ChangeNotifier {
     _activeThreadDetail = null;
     _page = MainPage.threads;
     _globalError = '';
+    _attachments.clear();
+    _composerText = '';
     notifyListeners();
     await refreshThreadsAndGroups();
   }
@@ -333,6 +357,8 @@ class AppState extends ChangeNotifier {
     _activeThreadDetail = null;
     _page = MainPage.threads;
     _globalError = '';
+    _attachments.clear();
+    _composerText = '';
     notifyListeners();
     await refreshThreadsAndGroups();
   }
@@ -430,6 +456,7 @@ class AppState extends ChangeNotifier {
     _streamingThinking = null;
     _streamingThinkingActive = false;
     _streamingToolCalls.clear();
+    _attachments.clear();
 
     _activeThreadId = id;
     notifyListeners();
@@ -527,14 +554,16 @@ class AppState extends ChangeNotifier {
     _streamingThinkingActive = false;
     _streamingToolCalls.clear();
     _composerText = '';
+    final attachments = List<({String filename, String mime, Uint8List bytes})>.from(_attachments);
     notifyListeners();
 
     late StreamSubscription? sub;
-    sub = api.sendMessageStream(threadId: tid, prompt: text).listen(
+    sub = api.sendMessageStream(threadId: tid, prompt: text, attachments: attachments).listen(
       (ev) {
         if (_sendSubscription != sub) return;
         switch (ev.event) {
           case 'user_message':
+            clearAttachments();
             final msg = parseSseMessage(ev.data);
             if (msg != null && _activeThreadDetail != null) {
               _activeThreadDetail = _activeThreadDetail!.copyWith(

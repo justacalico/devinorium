@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import 'drop_zone.dart';
 import 'files_panel.dart';
 import 'settings_page.dart';
 import 'sidebar.dart';
@@ -18,10 +19,12 @@ class AppShell extends StatelessWidget {
     final state = context.watch<AppState>();
     final isNarrow = MediaQuery.of(context).size.width < 768;
 
+    final main = DropZone(child: _MainArea());
+
     if (isNarrow) {
       return Scaffold(
         drawer: const Drawer(width: 300, child: Sidebar()),
-        body: _MainArea(),
+        body: main,
         endDrawer: state.filesPanelOpen
             ? const Drawer(width: 360, child: FilesPanel())
             : null,
@@ -33,7 +36,7 @@ class AppShell extends StatelessWidget {
         children: [
           const SizedBox(width: 300, child: Sidebar()),
           const VerticalDivider(width: 1),
-          Expanded(child: _MainArea()),
+          Expanded(child: main),
           if (state.filesPanelOpen) ...[
             const VerticalDivider(width: 1),
             const SizedBox(width: 360, child: FilesPanel()),
