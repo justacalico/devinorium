@@ -16,6 +16,7 @@ Cargo.lock
 /frontend/dist/manifest.json
 /frontend/dist/version.json
 /frontend/dist/favicon.png
+/frontend/dist/.last_build_id
 
 # Flutter/Dart build artifacts
 /flutter/build/

@@ -129,10 +129,12 @@ class ApiService {
 
   Future<void> updateThreadSettings(
     String id, {
+    String? model,
     String? permissionMode,
     String? permissions,
   }) async {
     final body = <String, dynamic>{};
+    if (model != null && model.isNotEmpty) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
     // An empty permissions string is sent as JSON null, which clears the field.
     if (permissions != null) body['permissions'] = permissions.isEmpty ? null : permissions;

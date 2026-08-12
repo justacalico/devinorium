@@ -271,17 +271,23 @@ class PermissionOption {
 class PermissionRequest {
   final String requestId;
   final String scope;
+  final String title;
+  final String? input;
   final List<PermissionOption> options;
 
   PermissionRequest({
     required this.requestId,
     required this.scope,
+    required this.title,
+    this.input,
     required this.options,
   });
 
   factory PermissionRequest.fromJson(Map<String, dynamic> j) => PermissionRequest(
         requestId: j['request_id'] as String,
         scope: j['scope'] as String? ?? '',
+        title: j['title'] as String? ?? 'Unknown action',
+        input: j['input'] as String?,
         options: (j['options'] as List<dynamic>?)
                 ?.map((o) => PermissionOption.fromJson(o as Map<String, dynamic>))
                 .toList() ??

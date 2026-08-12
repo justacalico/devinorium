@@ -620,6 +620,12 @@ class _PermissionRequestDialog extends StatelessWidget {
     if (req == null) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
+    final allowOnce = req.options.firstWhere(
+      (o) => o.id == 'allow_once',
+      orElse: () => req.options.first,
+    );
+    final otherOptions = req.options.where((o) => o.id != allowOnce.id).toList();
+
     return Stack(
       children: [
         ModalBarrier(
@@ -630,37 +636,75 @@ class _PermissionRequestDialog extends StatelessWidget {
           child: AlertDialog(
             title: const Text('Permission request'),
             content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('The agent is requesting permission for:', style: theme.textTheme.bodyMedium),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
+              constraints: const BoxConstraints(maxWidth: 420, maxHeight: 500),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      req.title,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
-                    child: Text(req.scope, style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace')),
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Choose an option:', style: theme.textTheme.bodyMedium),
-                ],
+                    if (req.input != null && req.input!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          req.input!,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    Text(
+                      'Allow this action?',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () => state.respondToPermissionRequest(null),
-                child: const Text('Cancel'),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton(
+                    onPressed: () => state.respondToPermissionRequest(allowOnce.id),
+                    child: Text(allowOnce.label ?? 'Allow once'),
+                  ),
+                  const SizedBox(height: 8),
+                  if (otherOptions.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final option in otherOptions)
+                          OutlinedButton(
+                            onPressed: () =>
+                                state.respondToPermissionRequest(option.id),
+                            child: Text(option.label ?? _displayKind(option.kind)),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => state.respondToPermissionRequest(null),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                ],
               ),
-              for (final option in req.options)
-                TextButton(
-                  onPressed: () => state.respondToPermissionRequest(option.id),
-                  child: Text(option.label ?? _displayKind(option.kind)),
-                ),
             ],
           ),
         ),

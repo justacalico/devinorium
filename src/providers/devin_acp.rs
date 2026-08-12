@@ -23,10 +23,12 @@ use agent_client_protocol::{
     schema::ProtocolVersion,
     schema::v1::{
         ContentBlock, EmbeddedResourceResource, InitializeRequest, LoadSessionRequest,
-        NewSessionRequest, PermissionOption as AcpPermissionOption, PermissionOptionKind,
-        PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, TextContent,
-        ToolCallContent,
+        LoadSessionResponse, NewSessionRequest, NewSessionResponse,
+        PermissionOption as AcpPermissionOption, PermissionOptionKind, PromptRequest,
+        RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+        SelectedPermissionOutcome, SessionConfigId, SessionConfigKind, SessionConfigOption,
+        SessionConfigOptionValue, SessionConfigSelectOptions, SessionId,
+        SessionNotification, SetSessionConfigOptionRequest, TextContent, ToolCallContent,
     },
     AcpAgent, Agent, Client, ConnectionTo,
 };
@@ -36,7 +38,6 @@ const PROVIDER_NAME: &str = "Devin CLI";
 
 pub struct DevinAcpProvider {
     bin: String,
-    #[allow(dead_code)]
     default_model: String,
 }
 
@@ -93,22 +94,31 @@ impl DevinAcpProvider {
                         .block_task()
                         .await?;
 
-                    let (session_id, _modes) = if let Some(ref sid) = maybe_session {
-                        let _load_response = connection
+                    let (session_id, config_options) = if let Some(ref sid) = maybe_session {
+                        let load_resp: LoadSessionResponse = connection
                             .send_request(LoadSessionRequest::new(
                                 agent_client_protocol::schema::v1::SessionId::new(sid.clone()),
                                 cwd.clone(),
                             ))
                             .block_task()
                             .await?;
-                        (sid.clone(), None)
+                        (sid.clone(), load_resp.config_options)
                     } else {
-                        let resp = connection
+                        let resp: NewSessionResponse = connection
                             .send_request(NewSessionRequest::new(cwd.clone()))
                             .block_task()
                             .await?;
-                        (resp.session_id.to_string(), resp.modes)
+                        (resp.session_id.to_string(), resp.config_options)
                     };
+
+                    apply_session_config(
+                        &connection,
+                        &session_id,
+                        &self.default_model,
+                        options,
+                        config_options.as_deref(),
+                    )
+                    .await?;
 
                     let prompt_blocks = vec![ContentBlock::Text(TextContent::new(prompt))];
 
@@ -217,16 +227,129 @@ impl DevinAcpProvider {
     }
 }
 
+async fn apply_session_config(
+    connection: &ConnectionTo<Agent>,
+    session_id: &str,
+    default_model: &str,
+    options: &SendOptions,
+    config_options: Option<&[SessionConfigOption]>,
+) -> anyhow::Result<()> {
+    let config_options = match config_options {
+        Some(c) => c,
+        None => return Ok(()),
+    };
+
+    let session_id = SessionId::new(session_id.to_string());
+
+    if let Some(model_opt) = config_options.iter().find(|o| o.id.0.as_ref() == "model") {
+        let choices = select_values(model_opt);
+        let requested = options.model.trim();
+        let model = if !requested.is_empty() && choices.iter().any(|v| v == requested) {
+            requested.to_string()
+        } else if !default_model.is_empty() && choices.iter().any(|v| v == default_model) {
+            default_model.to_string()
+        } else if let Some(first) = choices.first() {
+            first.clone()
+        } else {
+            return Ok(());
+        };
+
+        if !requested.is_empty() && requested != model {
+            tracing::warn!(
+                session_id = %session_id,
+                requested = %requested,
+                model = %model,
+                "requested model not in ACP choices, using fallback"
+            );
+        }
+
+        tracing::info!(session_id = %session_id, model = %model, "setting devin acp model");
+        if let Err(e) = connection
+            .send_request(SetSessionConfigOptionRequest::new(
+                session_id.clone(),
+                SessionConfigId::new("model"),
+                SessionConfigOptionValue::value_id(model),
+            ))
+            .block_task()
+            .await
+        {
+            tracing::warn!(session_id = %session_id, error = %e, "failed to set devin acp model");
+        }
+    }
+
+    if let Some(mode_opt) = config_options.iter().find(|o| o.id.0.as_ref() == "mode") {
+        let choices = select_values(mode_opt);
+        // Accepted ACP mode ids. "ask" and "plan" are not exposed by the
+        // Devinorium UI (which only supports the first four), but we keep
+        // them so a manually configured mode does not get silently rewritten.
+        let known = ["normal", "accept-edits", "smart", "bypass", "ask", "plan"];
+        let requested = options.permission_mode.trim();
+        let mode = if known.contains(&requested) {
+            requested.to_string()
+        } else if choices.iter().any(|v| v == "normal") {
+            tracing::warn!(
+                session_id = %session_id,
+                requested = %requested,
+                "unknown permission mode, falling back to normal"
+            );
+            "normal".to_string()
+        } else if let Some(first) = choices.first() {
+            tracing::warn!(
+                session_id = %session_id,
+                requested = %requested,
+                available = ?choices,
+                "unknown permission mode, falling back to first available"
+            );
+            first.clone()
+        } else {
+            return Ok(());
+        };
+
+        tracing::info!(session_id = %session_id, mode = %mode, "setting devin acp mode");
+        if let Err(e) = connection
+            .send_request(SetSessionConfigOptionRequest::new(
+                session_id.clone(),
+                SessionConfigId::new("mode"),
+                SessionConfigOptionValue::value_id(mode),
+            ))
+            .block_task()
+            .await
+        {
+            tracing::warn!(session_id = %session_id, error = %e, "failed to set devin acp mode");
+        }
+    }
+
+    Ok(())
+}
+
+fn select_values(opt: &SessionConfigOption) -> Vec<String> {
+    match &opt.kind {
+        SessionConfigKind::Select(select) => match &select.options {
+            SessionConfigSelectOptions::Ungrouped(opts) => {
+                opts.iter().map(|o| o.value.0.to_string()).collect()
+            }
+            SessionConfigSelectOptions::Grouped(groups) => groups
+                .iter()
+                .flat_map(|g| g.options.iter().map(|o| o.value.0.to_string()))
+                .collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
 async fn handle_permission_request(
     request: RequestPermissionRequest,
     permission_callback: Option<&PermissionCallback>,
 ) -> RequestPermissionOutcome {
     if let Some(callback) = permission_callback {
         let permission_request = map_permission_request(&request);
+        tracing::info!(scope = %permission_request.scope, "forwarding acp permission request");
         match callback(permission_request).await {
-            PermissionOutcome::Allow { option_id } => RequestPermissionOutcome::Selected(
-                SelectedPermissionOutcome::new(option_id),
-            ),
+            PermissionOutcome::Allow { option_id } => {
+                tracing::info!(option_id = %option_id, "permission request allowed");
+                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id))
+            }
             PermissionOutcome::Cancel => RequestPermissionOutcome::Cancelled,
         }
     } else {
@@ -244,6 +367,26 @@ async fn handle_permission_request(
 fn map_permission_request(request: &RequestPermissionRequest) -> PermissionRequest {
     let request_id = uuid::Uuid::new_v4().to_string();
     let scope = format!("{}", request.tool_call.tool_call_id);
+    let title = request
+        .tool_call
+        .fields
+        .title
+        .clone()
+        .or_else(|| {
+            request
+                .tool_call
+                .fields
+                .kind
+                .as_ref()
+                .map(|k| format!("{k:?}"))
+        })
+        .unwrap_or_else(|| "Run command".to_string());
+    let input = request
+        .tool_call
+        .fields
+        .raw_input
+        .as_ref()
+        .map(|v| serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string()));
     let options = request
         .options
         .iter()
@@ -252,6 +395,8 @@ fn map_permission_request(request: &RequestPermissionRequest) -> PermissionReque
     PermissionRequest {
         request_id,
         scope,
+        title,
+        input,
         options,
     }
 }

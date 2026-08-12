@@ -68,7 +68,6 @@ pub fn is_within(child: &Path, parent: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn rejects_traversal_outside_root() {

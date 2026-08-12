@@ -179,6 +179,7 @@ pub struct UpdateThread {
     ///   - field is a number: move to that group
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub thread_group_id: Option<Option<i64>>,
+    pub model: Option<String>,
     pub permission_mode: Option<String>,
     /// Distinguish between:
     ///   - field absent: don't change permissions
@@ -233,13 +234,19 @@ async fn rename(
             return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid permission_mode"))).into_response();
         }
     }
-    if req.permission_mode.is_some() || req.permissions.is_some() {
+    if let Some(model) = &req.model {
+        if model.trim().is_empty() || model.len() > 100 {
+            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("model must be 1-100 chars"))).into_response();
+        }
+    }
+    if req.model.is_some() || req.permission_mode.is_some() || req.permissions.is_some() {
         // Treat an empty permissions string as a request to clear the field.
         let permissions = req
             .permissions
             .as_ref()
             .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
-        if let Err(e) = state.db.update_thread_settings(&id, user.id, req.permission_mode.as_deref(), permissions).await {
+        let model = req.model.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        if let Err(e) = state.db.update_thread_settings(&id, user.id, model, req.permission_mode.as_deref(), permissions).await {
             return crate::api::map_err_internal(e).into_response();
         }
     }

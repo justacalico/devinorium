@@ -48,6 +48,8 @@ pub struct PermissionOption {
 pub struct PermissionRequest {
     pub request_id: String,
     pub scope: String,
+    pub title: String,
+    pub input: Option<String>,
     pub options: Vec<PermissionOption>,
 }
 

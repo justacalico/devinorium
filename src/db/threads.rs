@@ -87,9 +87,17 @@ impl super::Db {
         &self,
         id: &str,
         user_id: i64,
+        model: Option<&str>,
         permission_mode: Option<&str>,
         permissions: Option<Option<&str>>,
     ) -> anyhow::Result<()> {
+        if let Some(model) = model {
+            sqlx::query("UPDATE threads SET model = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                .bind(model)
+                .bind(id)
+                .bind(user_id)
+                .execute(self.pool()).await?;
+        }
         if let Some(mode) = permission_mode {
             sqlx::query("UPDATE threads SET permission_mode = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                 .bind(mode)
