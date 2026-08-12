@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
         config: Arc::new(cfg),
         db: database,
         provider: Arc::from(provider),
+        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     let app = devinorium::build_app(state);

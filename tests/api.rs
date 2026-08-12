@@ -85,6 +85,7 @@ async fn make_app() -> (Router, db::Db) {
         config: Arc::new(cfg),
         db: database.clone(),
         provider: Arc::new(StubProvider) as Arc<dyn Provider>,
+        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
     (devinorium::build_app(state), database)
 }

@@ -250,6 +250,45 @@ class TotpSetupResponse {
       );
 }
 
+class PermissionOption {
+  final String id;
+  final String kind;
+  final String? label;
+
+  PermissionOption({
+    required this.id,
+    required this.kind,
+    this.label,
+  });
+
+  factory PermissionOption.fromJson(Map<String, dynamic> j) => PermissionOption(
+        id: j['id'] as String,
+        kind: j['kind'] as String? ?? '',
+        label: j['label'] as String?,
+      );
+}
+
+class PermissionRequest {
+  final String requestId;
+  final String scope;
+  final List<PermissionOption> options;
+
+  PermissionRequest({
+    required this.requestId,
+    required this.scope,
+    required this.options,
+  });
+
+  factory PermissionRequest.fromJson(Map<String, dynamic> j) => PermissionRequest(
+        requestId: j['request_id'] as String,
+        scope: j['scope'] as String? ?? '',
+        options: (j['options'] as List<dynamic>?)
+                ?.map((o) => PermissionOption.fromJson(o as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
+}
+
 /// Decode a JSON body that may be either a raw string (error) or a JSON object.
 Map<String, dynamic>? tryDecodeJson(String body) {
   try {

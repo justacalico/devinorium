@@ -5,7 +5,10 @@
 //! user message and assistant reply is persisted in the `messages` table.
 
 use std::convert::Infallible;
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Multipart, Path, State};
@@ -21,8 +24,8 @@ use uuid::Uuid;
 
 use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, NewMessage, NewThread, ThreadRow};
-use crate::providers::{Attachment, SendOptions, StartRequest};
-use crate::AppState;
+use crate::providers::{Attachment, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions, StartRequest};
+use crate::{AppState, PendingPermissionRequest};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -31,6 +34,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/threads/:id/messages", get(list_messages))
         .route("/api/threads/:id/send", post(send))
         .route("/api/threads/:id/send/stream", post(send_stream))
+        .route("/api/threads/:id/permission/:request_id", post(respond_permission))
         .route("/api/threads/:id/project", get(get_project_path))
 }
 
@@ -293,7 +297,7 @@ async fn send(
         Err(resp) => return resp,
     };
 
-    let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments).await;
+    let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments, None).await;
 
     let (reply, new_session_id, new_title) = match provider_result {
         Ok(t) => t,
@@ -335,6 +339,7 @@ async fn send_stream(
     multipart: Multipart,
 ) -> Sse<UnboundedReceiverStream<Result<Event, Infallible>>> {
     let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
+    let permission_callback = build_permission_callback(state.clone(), user.id, id.clone(), tx.clone());
 
     tokio::spawn(async move {
         let send_event = |tx: &mpsc::UnboundedSender<Result<Event, Infallible>>, ev: Event| -> bool {
@@ -348,7 +353,7 @@ async fn send_stream(
                 return;
             }
             Err(e) => {
-                send_event(&tx, Event::default().event("error").data(&format!("internal error: {e}")));
+                send_event(&tx, Event::default().event("error").data(format!("internal error: {e}")));
                 return;
             }
         };
@@ -392,7 +397,7 @@ async fn send_stream(
             }
         });
 
-        let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments).await;
+        let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments, Some(permission_callback)).await;
         keepalive_handle.abort();
 
         let (reply, new_session_id, new_title) = match provider_result {
@@ -509,6 +514,7 @@ async fn call_provider(
     thread: &ThreadRow,
     prompt: &str,
     attachments: Vec<Attachment>,
+    permission_callback: Option<PermissionCallback>,
 ) -> anyhow::Result<(String, Option<String>, Option<String>)> {
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
@@ -518,6 +524,7 @@ async fn call_provider(
         permission_mode: thread.permission_mode.clone(),
         permissions: thread.permissions.clone(),
         attachments,
+        permission_callback,
     };
 
     if let Some(sid) = thread.devin_session_id.as_ref() {
@@ -539,6 +546,118 @@ async fn call_provider(
             })
             .await
             .map(|r| (r.reply, Some(r.session_id), Some(r.title)))
+    }
+}
+
+fn build_permission_callback(
+    state: AppState,
+    user_id: i64,
+    thread_id: String,
+    tx: mpsc::UnboundedSender<Result<Event, Infallible>>,
+) -> PermissionCallback {
+    Arc::new(
+        move |req: PermissionRequest| -> Pin<Box<dyn Future<Output = PermissionOutcome> + Send>> {
+            let state = state.clone();
+            let tx = tx.clone();
+            let thread_id = thread_id.clone();
+            Box::pin(async move {
+                let (response_tx, response_rx) = tokio::sync::oneshot::channel::<String>();
+                let _cleanup = RemoveOnDrop::new(state.clone(), req.request_id.clone());
+
+                {
+                    let mut map = state.pending_permission_requests.lock().await;
+                    map.insert(
+                        req.request_id.clone(),
+                        PendingPermissionRequest {
+                            user_id,
+                            thread_id,
+                            sender: response_tx,
+                        },
+                    );
+                }
+
+                let payload = match serde_json::to_string(&req) {
+                    Ok(json) => json,
+                    Err(_) => return PermissionOutcome::Cancel,
+                };
+                let event = Event::default().event("permission_request").data(&payload);
+                if tx.send(Ok(event)).is_err() {
+                    return PermissionOutcome::Cancel;
+                }
+
+                let result = tokio::time::timeout(Duration::from_secs(120), response_rx).await;
+
+                match result {
+                    Ok(Ok(option_id)) if !option_id.is_empty() => {
+                        PermissionOutcome::Allow { option_id }
+                    }
+                    _ => PermissionOutcome::Cancel,
+                }
+            })
+        },
+    ) as PermissionCallback
+}
+
+/// Removes a pending permission request from the map when the callback future
+/// is dropped (e.g. cancelled or the connection closes), preventing memory
+/// leaks and abandoned senders.
+struct RemoveOnDrop {
+    state: Option<AppState>,
+    request_id: String,
+}
+
+impl RemoveOnDrop {
+    fn new(state: AppState, request_id: String) -> Self {
+        Self {
+            state: Some(state),
+            request_id,
+        }
+    }
+}
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        if let Some(state) = self.state.take() {
+            let request_id = self.request_id.clone();
+            tokio::spawn(async move {
+                let _ = state.pending_permission_requests.lock().await.remove(&request_id);
+            });
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct PermissionResponseBody {
+    option_id: Option<String>,
+}
+
+async fn respond_permission(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path((thread_id, request_id)): Path<(String, String)>,
+    Json(body): Json<PermissionResponseBody>,
+) -> impl IntoResponse {
+    let sender = {
+        let mut map = state.pending_permission_requests.lock().await;
+        map.remove(&request_id)
+    };
+
+    match sender {
+        Some(pending)
+            if pending.user_id == user.id && pending.thread_id == thread_id =>
+        {
+            if let Some(option_id) = body.option_id {
+                match pending.sender.send(option_id) {
+                    Ok(()) => StatusCode::OK,
+                    Err(_) => StatusCode::GONE,
+                }
+            } else {
+                // Drop the sender without responding, which signals cancellation
+                // to the waiting provider.
+                StatusCode::OK
+            }
+        }
+        _ => StatusCode::NOT_FOUND,
     }
 }
 

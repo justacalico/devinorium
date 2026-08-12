@@ -11,12 +11,21 @@ pub mod db;
 pub mod providers;
 pub mod security;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::get;
 use axum::Router;
+use tokio::sync::{oneshot, Mutex};
 use tower_http::{compression::CompressionLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
+
+/// A permission request that is awaiting a user decision.
+pub struct PendingPermissionRequest {
+    pub user_id: i64,
+    pub thread_id: String,
+    pub sender: oneshot::Sender<String>,
+}
 
 /// Shared application state passed to all axum handlers.
 #[derive(Clone)]
@@ -24,6 +33,7 @@ pub struct AppState {
     pub config: Arc<config::Config>,
     pub db: db::Db,
     pub provider: Arc<dyn providers::Provider>,
+    pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
 }
 
 /// Build the full axum application router with all security middleware.

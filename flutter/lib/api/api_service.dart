@@ -141,6 +141,16 @@ class ApiService {
     }
   }
 
+  Future<void> respondPermission(
+    String threadId,
+    String requestId,
+    String? optionId,
+  ) async {
+    await _client.post('/api/threads/$threadId/permission/$requestId', {
+      'option_id': optionId,
+    });
+  }
+
   Future<void> moveThreadToGroup(String id, int? groupId) async {
     // null means ungroup; absent means don't change. We always send the field.
     await _client.patch('/api/threads/$id', {'thread_group_id': groupId});
@@ -233,7 +243,7 @@ class ApiService {
   // ---- Streaming send ----
 
   /// Stream a message send. Returns a stream of [SseEvent] records with
-  /// `event` ∈ {`user_message`, `chunk`, `done`, `error`}.
+  /// `event` ∈ {`user_message`, `permission_request`, `chunk`, `done`, `error`}.
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,

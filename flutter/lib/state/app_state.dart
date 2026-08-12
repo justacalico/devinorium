@@ -9,7 +9,7 @@ enum AppView { loading, login, register, app }
 
 enum MainPage { threads, settings }
 
-enum DialogKind { none, totpSetup, invites, newProject }
+enum DialogKind { none, totpSetup, invites, newProject, permissionRequest }
 
 /// Central app state.
 class AppState extends ChangeNotifier {
@@ -52,6 +52,7 @@ class AppState extends ChangeNotifier {
   String? _streamingText;
   String _globalError = '';
   StreamSubscription? _sendSubscription;
+  PermissionRequest? _pendingPermissionRequest;
 
   // Getters
   AppView get view => _view;
@@ -89,6 +90,7 @@ class AppState extends ChangeNotifier {
   String get selectedPermissionsText => _selectedPermissionsText;
   List<Invite> get invites => _invites;
   String? get streamingText => _streamingText;
+  PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
 
   // ---- Setters / mutations ----
@@ -517,6 +519,14 @@ class AppState extends ChangeNotifier {
               notifyListeners();
             }
             break;
+          case 'permission_request':
+            final decoded = tryDecodeJson(ev.data);
+            if (decoded != null) {
+              _pendingPermissionRequest = PermissionRequest.fromJson(decoded);
+              _dialog = DialogKind.permissionRequest;
+              notifyListeners();
+            }
+            break;
           case 'chunk':
             _streamingText = (_streamingText ?? '') + ev.data;
             notifyListeners();
@@ -536,6 +546,7 @@ class AppState extends ChangeNotifier {
             refreshThreadsAndGroups();
             break;
           case 'error':
+            _clearPermissionRequest();
             _streamingText = null;
             _sending = false;
             _sendSubscription = null;
@@ -550,6 +561,7 @@ class AppState extends ChangeNotifier {
         }
       },
       onError: (e) {
+        _clearPermissionRequest();
         _streamingText = null;
         _sending = false;
         _sendSubscription = null;
@@ -562,6 +574,7 @@ class AppState extends ChangeNotifier {
       },
       onDone: () {
         _sendSubscription = null;
+        _clearPermissionRequest();
         if (_sending) {
           // Stream ended without an explicit done/error event.
           _sending = false;
@@ -639,6 +652,30 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+    }
+  }
+
+  Future<void> respondToPermissionRequest(String? optionId) async {
+    final tid = _activeThreadId;
+    final req = _pendingPermissionRequest;
+    if (tid == null || req == null) return;
+    try {
+      await api.respondPermission(tid, req.requestId, optionId);
+      _pendingPermissionRequest = null;
+      _dialog = DialogKind.none;
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  void _clearPermissionRequest() {
+    if (_pendingPermissionRequest != null) {
+      _pendingPermissionRequest = null;
+      if (_dialog == DialogKind.permissionRequest) {
+        _dialog = DialogKind.none;
+      }
     }
   }
 

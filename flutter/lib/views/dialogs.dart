@@ -19,6 +19,8 @@ class DialogLayer extends StatelessWidget {
         return const _InvitesDialog();
       case DialogKind.newProject:
         return const _NewProjectDialog();
+      case DialogKind.permissionRequest:
+        return const _PermissionRequestDialog();
     }
   }
 }
@@ -605,5 +607,74 @@ class _BrowserHeader extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _PermissionRequestDialog extends StatelessWidget {
+  const _PermissionRequestDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final req = state.pendingPermissionRequest;
+    if (req == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: AlertDialog(
+            title: const Text('Permission request'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('The agent is requesting permission for:', style: theme.textTheme.bodyMedium),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(req.scope, style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace')),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Choose an option:', style: theme.textTheme.bodyMedium),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => state.respondToPermissionRequest(null),
+                child: const Text('Cancel'),
+              ),
+              for (final option in req.options)
+                TextButton(
+                  onPressed: () => state.respondToPermissionRequest(option.id),
+                  child: Text(option.label ?? _displayKind(option.kind)),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _displayKind(String kind) {
+    return switch (kind) {
+      'AllowOnce' => 'Allow once',
+      'AllowAlways' => 'Allow always',
+      'RejectOnce' => 'Reject once',
+      'RejectAlways' => 'Reject always',
+      _ => kind,
+    };
   }
 }
