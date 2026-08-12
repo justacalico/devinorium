@@ -11,7 +11,7 @@ enum MainPage { threads, settings }
 
 enum DialogKind { none, totpSetup, invites, newProject }
 
-/// Central app state. Mirrors the Dioxus `App` component's signals.
+/// Central app state.
 class AppState extends ChangeNotifier {
   final ApiService api = ApiService();
 

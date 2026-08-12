@@ -1,4 +1,4 @@
-//! Static asset serving — embeds the Dioxus WASM frontend at compile time so
+//! Static asset serving — embeds the Flutter web frontend at compile time so
 //! the binary is fully self-contained, and provides an SPA fallback to
 //! index.html.
 
@@ -12,8 +12,9 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 use crate::AppState;
 
-// Embed the entire Dioxus build output at compile time.
-// The frontend must be built first with `dx build --release` (from the frontend/ directory).
+// Embed the entire Flutter web build output at compile time.
+// The frontend must be built first with ./scripts/build-flutter.sh, which
+// writes the Flutter web bundle into frontend/dist/.
 static FRONTEND_DIST: Dir<'static> =
     include_dir!("$CARGO_MANIFEST_DIR/frontend/dist");
 

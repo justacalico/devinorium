@@ -17,7 +17,6 @@ name = "devinorium"
 path = "src/lib.rs"
 
 [workspace]
-members = ["frontend"]
 resolver = "2"
 
 [dependencies]
