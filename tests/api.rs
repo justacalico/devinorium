@@ -41,12 +41,22 @@ impl Provider for StubProvider {
                 label: "Stub One".into(),
                 cost_tier: "free".into(),
                 family: "stub".into(),
+                cost_summary: "Free".into(),
+                max_context_tokens: 200_000,
+                max_output_tokens: 32_000,
+                is_new: false,
+                is_beta: false,
             },
             ModelInfo {
                 id: "stub-2".into(),
                 label: "Stub Two".into(),
                 cost_tier: "free".into(),
                 family: "stub".into(),
+                cost_summary: "Free".into(),
+                max_context_tokens: 200_000,
+                max_output_tokens: 32_000,
+                is_new: false,
+                is_beta: false,
             },
         ])
     }
