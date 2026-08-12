@@ -213,7 +213,8 @@ class _MessagesPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 24),
       children: [
         for (final m in history) _MessageItem(message: m),
-        ...activeToolCalls.map((t) => _ToolCallItem(tool: t)),
+        if (activeToolCalls.isNotEmpty)
+          _ToolCallGroup(calls: activeToolCalls),
         if (currentAssistant != null) _MessageItem(message: currentAssistant),
         if (hasStreaming)
           _MessageItem(
@@ -838,6 +839,107 @@ class _ToolCallItemState extends State<_ToolCallItem> {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolCallGroup extends StatefulWidget {
+  final List<ToolCallData> calls;
+  const _ToolCallGroup({required this.calls});
+
+  @override
+  State<_ToolCallGroup> createState() => _ToolCallGroupState();
+}
+
+class _ToolCallGroupState extends State<_ToolCallGroup> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final count = widget.calls.length;
+    final anyFailed = widget.calls.any((t) => t.status == 'failed');
+    final anyRunning = widget.calls.any(
+      (t) => t.status != 'completed' && t.status != 'failed',
+    );
+
+    final (statusIcon, statusColor) = switch ((anyFailed, anyRunning)) {
+      (true, _) => (Icons.error_outline, theme.colorScheme.error),
+      (_, true) => (Icons.play_circle_outline, theme.colorScheme.onSurfaceVariant),
+      _ => (Icons.check, theme.colorScheme.primary),
+    };
+
+    final header = InkWell(
+      onTap: () => setState(() => _expanded = !_expanded),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: Row(
+          children: [
+            Icon(
+              Icons.auto_fix_high,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                count == 1 ? '1 tool call' : '$count tool calls',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Icon(statusIcon, size: 14, color: statusColor),
+            const SizedBox(width: 4),
+            Icon(
+              _expanded ? Icons.expand_less : Icons.expand_more,
+              size: 14,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!_expanded) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 2),
+            child: header,
+          ),
+        ),
+      );
+    }
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              Padding(
+                padding: const EdgeInsets.only(left: 8, top: 2),
+                child: Column(
+                  children: widget.calls
+                      .map((t) => _ToolCallItem(tool: t))
+                      .toList(),
+                ),
+              ),
+            ],
           ),
         ),
       ),
