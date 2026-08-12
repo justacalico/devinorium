@@ -6,19 +6,21 @@ pub struct NewMessage {
     pub thread_id: String,
     pub role: String,
     pub content: String,
+    pub thinking: Option<String>,
     pub attachments: String,
 }
 
 impl super::Db {
     pub async fn add_message(&self, new: NewMessage) -> anyhow::Result<MessageRow> {
         sqlx::query_as::<_, MessageRow>(
-            "INSERT INTO messages (thread_id, role, content, attachments)
-             VALUES (?, ?, ?, ?)
+            "INSERT INTO messages (thread_id, role, content, thinking, attachments)
+             VALUES (?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.thread_id)
         .bind(&new.role)
         .bind(&new.content)
+        .bind(&new.thinking)
         .bind(&new.attachments)
         .fetch_one(self.pool())
         .await

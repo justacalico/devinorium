@@ -25,7 +25,8 @@ use uuid::Uuid;
 use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, NewMessage, NewThread, ThreadRow};
 use crate::providers::{
-    Attachment, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions, StartRequest,
+    Attachment, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions,
+    StartRequest, StreamChunkCallback,
 };
 use crate::{AppState, PendingPermissionRequest};
 
@@ -82,6 +83,7 @@ pub struct MessageOut {
     pub id: i64,
     pub role: String,
     pub content: String,
+    pub thinking: Option<String>,
     pub attachments: serde_json::Value,
     pub created_at: String,
 }
@@ -94,6 +96,7 @@ impl From<MessageRow> for MessageOut {
             id: m.id,
             role: m.role,
             content: m.content,
+            thinking: m.thinking.filter(|s| !s.is_empty()),
             attachments,
             created_at: m.created_at,
         }
@@ -389,9 +392,9 @@ async fn send(
     };
 
     let provider_result =
-        call_provider(&state, &thread, &input.prompt, input.attachments, None).await;
+        call_provider(&state, &thread, &input.prompt, input.attachments, None, None, None).await;
 
-    let (reply, new_session_id, new_title) = match provider_result {
+    let (reply, thinking, new_session_id, new_title) = match provider_result {
         Ok(t) => t,
         Err(e) => {
             let _ = state
@@ -400,6 +403,7 @@ async fn send(
                     thread_id: id.clone(),
                     role: "error".into(),
                     content: format!("provider error: {e}"),
+                    thinking: None,
                     attachments: "[]".into(),
                 })
                 .await;
@@ -417,6 +421,7 @@ async fn send(
         &id,
         user.id,
         &reply,
+        Some(&thinking),
         new_session_id,
         new_title,
     )
@@ -428,10 +433,15 @@ async fn send(
 
     Json(serde_json::json!({
         "user_message": MessageOut::from(user_msg),
-        "assistant_message": MessageOut::from(assistant_msg),
+        "assistant_message": MessageOut::from(assistant_msg.clone()),
         "reply": reply,
+        "thinking": assistant_msg.thinking,
     }))
     .into_response()
+}
+
+fn sanitize_sse_data(s: &str) -> String {
+    s.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 /// Stream a message response as Server-Sent Events. Same multipart input as
@@ -446,6 +456,18 @@ async fn send_stream(
     let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
     let permission_callback =
         build_permission_callback(state.clone(), user.id, id.clone(), tx.clone());
+    let tx_text = tx.clone();
+    let text_callback: StreamChunkCallback = Arc::new(move |chunk: String| {
+        let _ = tx_text.send(Ok(
+            Event::default().event("chunk").data(&sanitize_sse_data(&chunk)),
+        ));
+    });
+    let tx_thinking = tx.clone();
+    let thinking_callback: StreamChunkCallback = Arc::new(move |chunk: String| {
+        let _ = tx_thinking.send(Ok(
+            Event::default().event("thinking").data(&sanitize_sse_data(&chunk)),
+        ));
+    });
 
     tokio::spawn(async move {
         let send_event = |tx: &mpsc::UnboundedSender<Result<Event, Infallible>>,
@@ -463,7 +485,7 @@ async fn send_stream(
                     &tx,
                     Event::default()
                         .event("error")
-                        .data(format!("internal error: {e}")),
+                        .data(sanitize_sse_data(&format!("internal error: {e}"))),
                 );
                 return;
             }
@@ -528,11 +550,13 @@ async fn send_stream(
             &input.prompt,
             input.attachments,
             Some(permission_callback),
+            Some(text_callback),
+            Some(thinking_callback),
         )
         .await;
         keepalive_handle.abort();
 
-        let (reply, new_session_id, new_title) = match provider_result {
+        let (reply, thinking, new_session_id, new_title) = match provider_result {
             Ok(t) => t,
             Err(e) => {
                 let _ = state
@@ -541,6 +565,7 @@ async fn send_stream(
                         thread_id: id.clone(),
                         role: "error".into(),
                         content: format!("provider error: {e}"),
+                        thinking: None,
                         attachments: "[]".into(),
                     })
                     .await;
@@ -550,18 +575,8 @@ async fn send_stream(
             }
         };
 
-        // Stream the reply in small chunks to create a typing effect.
-        let chars: Vec<char> = reply.chars().collect();
-        for chunk in chars.chunks(4) {
-            let text: String = chunk.iter().collect();
-            if !send_event(&tx, Event::default().event("chunk").data(&text)) {
-                return;
-            }
-            tokio::time::sleep(tokio::time::Duration::from_millis(12)).await;
-        }
-
         let assistant_msg =
-            match persist_assistant_reply(&state, &id, user.id, &reply, new_session_id, new_title)
+            match persist_assistant_reply(&state, &id, user.id, &reply, Some(&thinking), new_session_id, new_title)
                 .await
             {
                 Ok(m) => m,
@@ -673,6 +688,7 @@ async fn persist_user_message(
             thread_id: thread_id.into(),
             role: "user".into(),
             content: prompt.into(),
+            thinking: None,
             attachments: serde_json::to_string(att_meta).unwrap_or_else(|_| "[]".into()),
         })
         .await
@@ -685,7 +701,9 @@ async fn call_provider(
     prompt: &str,
     attachments: Vec<Attachment>,
     permission_callback: Option<PermissionCallback>,
-) -> anyhow::Result<(String, Option<String>, Option<String>)> {
+    text_callback: Option<StreamChunkCallback>,
+    thinking_callback: Option<StreamChunkCallback>,
+) -> anyhow::Result<(String, String, Option<String>, Option<String>)> {
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
     let options = SendOptions {
@@ -695,6 +713,8 @@ async fn call_provider(
         permissions: thread.permissions.clone(),
         attachments,
         permission_callback,
+        text_callback,
+        thinking_callback,
     };
 
     if let Some(sid) = thread.devin_session_id.as_ref() {
@@ -706,7 +726,7 @@ async fn call_provider(
                 options,
             })
             .await
-            .map(|r| (r.reply, None, None))
+            .map(|r| (r.reply, r.thinking, None, None))
     } else {
         state
             .provider
@@ -715,7 +735,7 @@ async fn call_provider(
                 options,
             })
             .await
-            .map(|r| (r.reply, Some(r.session_id), Some(r.title)))
+            .map(|r| (r.reply, r.thinking, Some(r.session_id), Some(r.title)))
     }
 }
 
@@ -838,6 +858,7 @@ async fn persist_assistant_reply(
     thread_id: &str,
     user_id: i64,
     reply: &str,
+    thinking: Option<&str>,
     new_session_id: Option<String>,
     new_title: Option<String>,
 ) -> Result<MessageRow, Response> {
@@ -850,12 +871,14 @@ async fn persist_assistant_reply(
     }
     let _ = state.db.touch_thread(thread_id).await;
 
+    let thinking = thinking.filter(|s| !s.is_empty()).map(|s| s.to_string());
     let assistant_msg = state
         .db
         .add_message(NewMessage {
             thread_id: thread_id.into(),
             role: "assistant".into(),
             content: reply.into(),
+            thinking,
             attachments: "[]".into(),
         })
         .await

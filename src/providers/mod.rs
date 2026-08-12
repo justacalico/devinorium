@@ -68,6 +68,8 @@ pub type PermissionCallback = Arc<
         + Sync,
 >;
 
+pub type StreamChunkCallback = Arc<dyn Fn(String) + Send + Sync + 'static>;
+
 /// Options shared by [`Provider::start`] and [`Provider::send`].
 #[derive(Clone)]
 pub struct SendOptions {
@@ -85,6 +87,10 @@ pub struct SendOptions {
     pub attachments: Vec<Attachment>,
     /// Optional callback that handles interactive permission requests.
     pub permission_callback: Option<PermissionCallback>,
+    /// Optional callback for each chunk of the assistant's reply.
+    pub text_callback: Option<StreamChunkCallback>,
+    /// Optional callback for each chunk of the assistant's thinking/reasoning.
+    pub thinking_callback: Option<StreamChunkCallback>,
 }
 
 impl std::fmt::Debug for SendOptions {
@@ -96,6 +102,8 @@ impl std::fmt::Debug for SendOptions {
             .field("permissions", &self.permissions)
             .field("attachments", &self.attachments.len())
             .field("permission_callback", &self.permission_callback.is_some())
+            .field("text_callback", &self.text_callback.is_some())
+            .field("thinking_callback", &self.thinking_callback.is_some())
             .finish()
     }
 }
@@ -114,6 +122,8 @@ pub struct StartResponse {
     pub session_id: String,
     /// The assistant's reply text.
     pub reply: String,
+    /// The assistant's internal reasoning / thinking, if any.
+    pub thinking: String,
     /// A suggested title for the thread (e.g. derived from the first prompt).
     pub title: String,
 }
@@ -131,6 +141,7 @@ pub struct SendRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct SendResponse {
     pub reply: String,
+    pub thinking: String,
 }
 
 /// Metadata about a model the provider offers.
