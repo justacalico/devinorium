@@ -114,7 +114,6 @@ class _DropZoneState extends State<DropZone> {
             onCreated: (c) => _ctrl = c,
             onHover: () => setState(() => _hovering = true),
             onLeave: () => setState(() => _hovering = false),
-            onDropFile: (f) => _handleFiles([f]),
             onDropFiles: (fs) => _handleFiles(fs),
           ),
           widget.child,
