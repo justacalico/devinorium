@@ -251,16 +251,31 @@ class _MessageItem extends StatefulWidget {
 class _MessageItemState extends State<_MessageItem> {
   bool _expanded = false;
 
+  bool get _working {
+    if (widget.thinkingActive) return true;
+    return widget.toolCalls.any(
+      (t) => t.status != 'completed' && t.status != 'failed',
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    _expanded = widget.thinkingActive || widget.toolCalls.isNotEmpty;
+    // Keep the thinking box open while working; collapse once the final
+    // reply or the first text chunk starts arriving.
+    _expanded = _working && widget.message.content.isEmpty;
   }
 
   @override
   void didUpdateWidget(covariant _MessageItem old) {
     super.didUpdateWidget(old);
-    if ((widget.thinkingActive || widget.toolCalls.isNotEmpty) && !_expanded) {
+    if ((old.message.content.isEmpty && widget.message.content.isNotEmpty) ||
+        (old.thinkingActive && !widget.thinkingActive &&
+            widget.message.content.isNotEmpty)) {
+      if (_expanded) setState(() => _expanded = false);
+      return;
+    }
+    if ((_working || widget.toolCalls.isNotEmpty) && !_expanded) {
       setState(() => _expanded = true);
     }
   }
@@ -296,11 +311,6 @@ class _MessageItemState extends State<_MessageItem> {
 
     Widget buildExpandedContent() {
       final children = <Widget>[];
-      if (widget.toolCalls.isNotEmpty) {
-        children.addAll(
-          widget.toolCalls.map((t) => _ToolCallItem(tool: t)),
-        );
-      }
       if (thinking != null && thinking.isNotEmpty) {
         children.add(
           Row(
@@ -325,6 +335,11 @@ class _MessageItemState extends State<_MessageItem> {
           ),
         );
       }
+      if (widget.toolCalls.isNotEmpty) {
+        children.addAll(
+          widget.toolCalls.map((t) => _ToolCallItem(tool: t)),
+        );
+      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -333,11 +348,7 @@ class _MessageItemState extends State<_MessageItem> {
     }
 
     Widget thinkingSection() {
-      final anyToolRunning = widget.toolCalls.any(
-        (t) => t.status != 'completed' && t.status != 'failed',
-      );
-      final working = widget.thinkingActive || anyToolRunning;
-      final label = working
+      final label = _working
           ? 'Thinking'
           : (_expanded ? 'Hide thinking' : 'Show thinking');
       return Column(
@@ -369,7 +380,7 @@ class _MessageItemState extends State<_MessageItem> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if (working) _ThinkingDots(active: widget.thinkingActive),
+                  if (_working) _ThinkingDots(active: widget.thinkingActive),
                 ],
               ),
             ),
