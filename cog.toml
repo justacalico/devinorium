@@ -29,6 +29,7 @@ docs = { changelog_title = "Documentation", omit_from_changelog = true }
 refactor = { changelog_title = "Refactors", omit_from_changelog = true }
 style = { changelog_title = "Style", omit_from_changelog = true }
 test = { changelog_title = "Tests", omit_from_changelog = true }
+misc = { changelog_title = "Other", omit_from_changelog = true }
 
 [changelog]
 path = "CHANGELOG.md"
