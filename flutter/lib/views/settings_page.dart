@@ -13,9 +13,16 @@ class SettingsPage extends StatelessWidget {
     final user = state.user;
     final username = user?.username ?? '';
     final totpEnabled = user?.totpEnabled ?? false;
+    final isNarrow = MediaQuery.of(context).size.width < 768;
 
     return Scaffold(
       appBar: AppBar(
+        leading: isNarrow
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              )
+            : null,
         title: const Text('Settings'),
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
