@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import 'drop_zone.dart';
 import 'model_picker.dart';
 
 class ThreadPage extends StatelessWidget {
@@ -614,6 +615,30 @@ class _ComposerState extends State<_Composer> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (state.attachments.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (var i = 0; i < state.attachments.length; i++)
+                              Chip(
+                                avatar:
+                                    const Icon(Icons.attach_file, size: 14),
+                                label: Text(state.attachments[i].filename),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 0,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                backgroundColor:
+                                    theme.colorScheme.surfaceContainerHigh,
+                                onDeleted: () => state.removeAttachment(i),
+                              ),
+                          ],
+                        ),
+                      ),
                     KeyboardListener(
                       focusNode: _focusNode,
                       onKeyEvent: (event) {
@@ -634,7 +659,7 @@ class _ComposerState extends State<_Composer> {
                           border: InputBorder.none,
                           isCollapsed: true,
                           hintText:
-                              'Ask for follow-up changes or attach images',
+                              'Ask a question or drop files here',
                         ),
                         style: theme.textTheme.bodyLarge,
                         onChanged: state.setComposerText,
@@ -643,6 +668,19 @@ class _ComposerState extends State<_Composer> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
+                        IconButton(
+                          icon: const Icon(Icons.attach_file, size: 20),
+                          onPressed: hasActiveThread && !isSending
+                              ? () async {
+                                  final dz = DropZone.of(context);
+                                  if (dz == null) return;
+                                  final files = await dz.pick(multiple: true);
+                                  if (files.isNotEmpty) {
+                                    state.addAttachments(files);
+                                  }
+                                }
+                              : null,
+                        ),
                         Expanded(
                           child: Wrap(
                             spacing: 8,
