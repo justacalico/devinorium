@@ -1,5 +1,5 @@
 //! Devinorium library crate — a secure, self-hostable Material 3 web UI for
-//! the Devin CLI.
+//! AI coding agents.
 //!
 //! The binary target (`src/main.rs`) is a thin wrapper around this library.
 
@@ -70,7 +70,9 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::thread_groups::router())
         .merge(api::invites::router())
         .merge(api::models::router())
+        .merge(api::providers::router())
         .route("/api/auth/me", get(api::auth::me))
+        .route("/api/auth/me", axum::routing::patch(api::auth::update_me))
         .route(
             "/api/auth/totp/setup",
             axum::routing::post(api::auth::totp_setup),

@@ -82,6 +82,7 @@ pub struct UserRow {
     pub role: String,
     pub created_at: String,
     pub disabled: bool,
+    pub provider_id: String,
 }
 
 /// A row from the `sessions` table.

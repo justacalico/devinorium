@@ -1,6 +1,6 @@
 # Adding a new AI provider
 
-Devinorium talks to AI backends through a single trait defined in
+Devinorium talks to agent backends through a single trait defined in
 `src/providers/mod.rs`:
 
 ```rust
@@ -55,7 +55,7 @@ match cfg.id.as_str() {
 }
 ```
 
-- Append `"my-provider"` to `available_providers()`.
+- Append a `ProviderInfo { id: "my-provider", name: "My Provider" }` entry to `available_providers()`.
 
 That is the entire surface area of the change. No other file in the project
 needs to be touched — the rest of Devinorium only depends on the `Provider`
@@ -63,5 +63,8 @@ trait.
 
 ## Selecting a provider at runtime
 
-Set `DEVINORIUM_PROVIDER` (planned) in the environment. Today only
-`devin-cli` is implemented.
+Users can pick their default provider from **Settings**. The list is exposed
+through the `GET /api/providers` endpoint and the active provider is stored on
+the user record. Today only `devin-cli` is available, so the dropdown is a
+single entry; as more providers are implemented the selection will be wired
+directly into the request path.

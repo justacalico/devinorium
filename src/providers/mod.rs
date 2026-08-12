@@ -162,6 +162,13 @@ pub struct SendResponse {
     pub thinking: String,
 }
 
+/// Metadata about a provider the backend knows.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderInfo {
+    pub id: &'static str,
+    pub name: &'static str,
+}
+
 /// Metadata about a model the provider offers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
@@ -224,11 +231,22 @@ pub struct ProviderConfig {
     pub default_model: String,
 }
 
-/// The list of provider ids known to the registry.
+/// The list of providers known to the registry.
 ///
-/// **When adding a provider, append its id here.**
-pub fn available_providers() -> Vec<&'static str> {
-    vec!["devin-cli"]
+/// **When adding a provider, append its entry here.**
+pub fn available_providers() -> Vec<ProviderInfo> {
+    vec![ProviderInfo {
+        id: "devin-cli",
+        name: "Devin CLI",
+    }]
+}
+
+/// Find a registered provider by id.
+pub fn provider_name(id: &str) -> Option<&'static str> {
+    available_providers()
+        .into_iter()
+        .find(|p| p.id == id)
+        .map(|p| p.name)
 }
 
 /// Construct a provider by id.

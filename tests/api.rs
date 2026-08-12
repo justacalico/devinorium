@@ -1113,3 +1113,79 @@ async fn send_rejects_empty_prompt() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn provider_list_requires_auth_and_returns_devin_cli() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/providers", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("devin-cli"), "body: {body}");
+    assert!(body.contains("Devin CLI"), "body: {body}");
+}
+
+#[tokio::test]
+async fn me_includes_default_provider() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("provider_id"), "body: {body}");
+    assert!(body.contains("devin-cli"), "body: {body}");
+}
+
+#[tokio::test]
+async fn update_provider_persists_and_validates() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // Unknown provider is rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &cookie,
+            r#"{"provider_id":"not-real"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Valid provider is accepted.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &cookie,
+            r#"{"provider_id":"devin-cli"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+
+    // Confirm it actually persisted.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+}

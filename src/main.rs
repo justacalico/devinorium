@@ -1,4 +1,4 @@
-//! Devinorium — a secure, self-hostable Material 3 web UI for the Devin CLI.
+//! Devinorium — a secure, self-hostable Material 3 web UI for AI coding agents.
 
 use std::sync::Arc;
 

@@ -22,6 +22,15 @@ impl super::Db {
         .map_err(Into::into)
     }
 
+    pub async fn set_provider(&self, user_id: i64, provider_id: &str) -> anyhow::Result<()> {
+        sqlx::query("UPDATE users SET provider_id = ? WHERE id = ?")
+            .bind(provider_id)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_user_by_username(&self, username: &str) -> anyhow::Result<Option<UserRow>> {
         sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE username = ?")
             .bind(username)

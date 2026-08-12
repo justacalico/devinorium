@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/models.dart';
 import '../state/app_state.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -39,6 +40,12 @@ class SettingsPage extends StatelessWidget {
                   _SettingsRow(
                     label: 'Username',
                     value: username.isEmpty ? '—' : username,
+                  ),
+                  const Divider(),
+                  _SettingsRow(
+                    label: 'Provider',
+                    value: _providerName(state.providers, user?.providerId ?? ''),
+                    trailing: _ProviderDropdown(state: state),
                   ),
                   const Divider(),
                   _SettingsRow(
@@ -88,6 +95,46 @@ class SettingsPage extends StatelessWidget {
     if (confirmed == true) {
       await state.disableTotp();
     }
+  }
+}
+
+String _providerName(List<ProviderInfo> providers, String id) {
+  for (final p in providers) {
+    if (p.id == id) return p.name;
+  }
+  return id.isEmpty ? '—' : id;
+}
+
+class _ProviderDropdown extends StatelessWidget {
+  final AppState state;
+  const _ProviderDropdown({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final providers = state.providers;
+    final currentId = state.user?.providerId ?? '';
+    if (providers.isEmpty) return const SizedBox.shrink();
+
+    final ids = providers.map((p) => p.id).toSet();
+    final effectiveId = ids.contains(currentId) ? currentId : providers.first.id;
+
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: effectiveId,
+        isDense: true,
+        items: providers
+            .map((p) => DropdownMenuItem(
+                  value: p.id,
+                  child: Text(p.name),
+                ))
+            .toList(),
+        onChanged: (id) {
+          if (id != null && id != currentId) {
+            state.saveProvider(id);
+          }
+        },
+      ),
+    );
   }
 }
 

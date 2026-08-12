@@ -29,6 +29,7 @@ class AppState extends ChangeNotifier {
   List<Thread> _threads = [];
   List<ThreadGroup> _groups = [];
   List<ModelInfo> _models = [];
+  List<ProviderInfo> _providers = [];
   int? _activeProjectId;
   String? _activeProjectPath;
   String? _activeThreadId;
@@ -66,6 +67,7 @@ class AppState extends ChangeNotifier {
   List<Thread> get threads => _threads;
   List<ThreadGroup> get groups => _groups;
   List<ModelInfo> get models => _models;
+  List<ProviderInfo> get providers => _providers;
   int? get activeProjectId => _activeProjectId;
   String? get activeProjectPath => _activeProjectPath;
   Project? get activeProject {
@@ -206,16 +208,23 @@ class AppState extends ChangeNotifier {
 
   // ---- Auth ----
 
+  Future<void> _loadModelsAndProviders() async {
+    try {
+      _models = await api.listModels();
+      if (_models.isNotEmpty && _selectedModel.isEmpty) {
+        _selectedModel = _models.first.id;
+      }
+    } catch (_) {}
+    try {
+      _providers = await api.listProviders();
+    } catch (_) {}
+  }
+
   Future<void> bootstrap() async {
     try {
       _user = await api.me();
       _view = AppView.app;
-      try {
-        _models = await api.listModels();
-        if (_models.isNotEmpty && _selectedModel.isEmpty) {
-          _selectedModel = _models.first.id;
-        }
-      } catch (_) {}
+      await _loadModelsAndProviders();
       await loadProjects();
       if (_projects.isNotEmpty) {
         await selectProject(_projects.first.id);
@@ -261,12 +270,7 @@ class AppState extends ChangeNotifier {
       _view = AppView.app;
       _showTotpField = false;
       _loginError = '';
-      try {
-        _models = await api.listModels();
-        if (_models.isNotEmpty && _selectedModel.isEmpty) {
-          _selectedModel = _models.first.id;
-        }
-      } catch (_) {}
+      await _loadModelsAndProviders();
       await loadProjects();
       if (_projects.isNotEmpty) {
         await selectProject(_projects.first.id);
@@ -292,12 +296,7 @@ class AppState extends ChangeNotifier {
       } else {
         _user = await api.me();
         _view = AppView.app;
-        try {
-          _models = await api.listModels();
-          if (_models.isNotEmpty && _selectedModel.isEmpty) {
-            _selectedModel = _models.first.id;
-          }
-        } catch (_) {}
+        await _loadModelsAndProviders();
         await loadProjects();
         if (_projects.isNotEmpty) {
           await selectProject(_projects.first.id);
@@ -488,6 +487,18 @@ class AppState extends ChangeNotifier {
       _globalError = '$e';
       notifyListeners();
     }
+  }
+
+  Future<void> saveProvider(String providerId) async {
+    final user = _user;
+    if (user == null) return;
+    try {
+      _user = await api.updateMe(providerId: providerId);
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    }
+    notifyListeners();
   }
 
   Future<void> saveThreadSettings() async {

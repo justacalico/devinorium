@@ -195,6 +195,18 @@ class ApiService {
     return list.map(ModelInfo.fromJson).toList();
   }
 
+  // ---- Providers ----
+
+  Future<List<ProviderInfo>> listProviders() async {
+    final list = await _client.getList('/api/providers');
+    return list.map(ProviderInfo.fromJson).toList();
+  }
+
+  Future<User> updateMe({required String providerId}) async {
+    final j = await _client.patch('/api/auth/me', {'provider_id': providerId});
+    return User.fromJson(j);
+  }
+
   // ---- Files ----
 
   Future<List<DirEntry>> listFiles({String? path, int? projectId}) async {

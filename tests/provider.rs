@@ -151,7 +151,20 @@ async fn provider_start_with_image_attachment() {
 
 #[test]
 fn registry_knows_devin_cli() {
-    assert!(providers::available_providers().contains(&"devin-cli"));
+    let providers = providers::available_providers();
+    let ids: Vec<_> = providers.iter().map(|p| p.id).collect();
+    assert!(ids.contains(&"devin-cli"));
+    let devin = providers.iter().find(|p| p.id == "devin-cli").unwrap();
+    assert_eq!(devin.name, "Devin CLI");
+}
+
+#[test]
+fn provider_name_looks_up_display_name() {
+    assert_eq!(
+        providers::provider_name("devin-cli"),
+        Some("Devin CLI")
+    );
+    assert_eq!(providers::provider_name("nope"), None);
 }
 
 #[test]
