@@ -102,6 +102,7 @@ pub struct ThreadRow {
     pub devin_session_id: Option<String>,
     pub model: String,
     pub permission_mode: String,
+    pub permissions: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub thread_group_id: Option<i64>,

@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::Deserialize;
+use tempfile::NamedTempFile;
 use tokio::process::Command;
 
 use super::{
@@ -83,6 +84,7 @@ impl Provider for DevinCliProvider {
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
         let working_dir = req.options.working_dir.clone();
         let prompt = self.with_attachments(&req.prompt, &req.options.attachments, &working_dir).await?;
+        let _config = self.ensure_permission_config(req.options.permissions.as_deref()).await?;
 
         let mut args = vec![
             "--respect-workspace-trust".to_string(),
@@ -90,6 +92,10 @@ impl Provider for DevinCliProvider {
             "--model".to_string(),
             req.options.model.clone(),
         ];
+        if let Some(ref config) = _config {
+            args.push("--config".to_string());
+            args.push(config.path().display().to_string());
+        }
         args.extend(permission_flags(&req.options.permission_mode));
         args.push("-p".to_string());
         args.push(prompt.clone());
@@ -113,6 +119,7 @@ impl Provider for DevinCliProvider {
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
         let working_dir = req.options.working_dir.clone();
         let prompt = self.with_attachments(&req.prompt, &req.options.attachments, &working_dir).await?;
+        let _config = self.ensure_permission_config(req.options.permissions.as_deref()).await?;
 
         let mut args = vec![
             "--respect-workspace-trust".to_string(),
@@ -120,6 +127,10 @@ impl Provider for DevinCliProvider {
             "--resume".to_string(),
             req.session_id.clone(),
         ];
+        if let Some(ref config) = _config {
+            args.push("--config".to_string());
+            args.push(config.path().display().to_string());
+        }
         args.extend(permission_flags(&req.options.permission_mode));
         args.push("-p".to_string());
         args.push(prompt);
@@ -191,6 +202,35 @@ impl DevinCliProvider {
             .ok_or_else(|| anyhow::anyhow!("no devin session found for {:?}", working_dir))
     }
 
+    /// Write a temp devin config with the thread permission allowlist, if any.
+    /// Returns the temp file when the config was written; it is deleted when
+    /// the returned value is dropped.
+    async fn ensure_permission_config(
+        &self,
+        permissions: Option<&str>,
+    ) -> anyhow::Result<Option<NamedTempFile>> {
+        let rules: Vec<String> = permissions
+            .unwrap_or("")
+            .split(|c: char| c == ',' || c == '\n' || c == '\r')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if rules.is_empty() {
+            return Ok(None);
+        }
+
+        let config = serde_json::json!({
+            "permissions": {
+                "allow": rules,
+            },
+        });
+
+        let temp = tokio::task::spawn_blocking(NamedTempFile::new).await??;
+        tokio::fs::write(temp.path(), serde_json::to_string_pretty(&config)?).await?;
+        Ok(Some(temp))
+    }
+
     /// Write attachments to a temp dir under the working directory and append
     /// `@path` mentions to the prompt.
     async fn with_attachments(
@@ -216,12 +256,15 @@ impl DevinCliProvider {
 }
 
 fn permission_flags(mode: &str) -> Vec<String> {
-    match mode {
-        "accept-edits" | "smart" | "bypass" | "dangerous" | "yolo" | "autonomous" => {
-            vec!["--permission-mode".to_string(), mode.to_string()]
-        }
-        _ => vec![],
-    }
+    let cli_mode = match mode {
+        // The devin CLI documents `dangerous` as the canonical name for
+        // auto-approving all tools. `bypass` and `yolo` are user-facing aliases.
+        "bypass" | "yolo" => "dangerous",
+        "accept-edits" | "smart" | "dangerous" | "autonomous" => mode,
+        // `normal` is the default; no flag needed.
+        _ => return vec![],
+    };
+    vec!["--permission-mode".to_string(), cli_mode.to_string()]
 }
 
 fn title_from_prompt(prompt: &str) -> String {

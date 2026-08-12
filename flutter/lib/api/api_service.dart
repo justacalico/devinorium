@@ -104,6 +104,7 @@ class ApiService {
     int? threadGroupId,
     String? model,
     String? permissionMode,
+    String? permissions,
   }) async {
     final body = <String, dynamic>{
       'project_id': projectId,
@@ -112,6 +113,7 @@ class ApiService {
     if (threadGroupId != null) body['thread_group_id'] = threadGroupId;
     if (model != null) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
+    if (permissions != null) body['permissions'] = permissions;
     final j = await _client.post('/api/threads', body);
     return Thread.fromJson(j);
   }
@@ -123,6 +125,20 @@ class ApiService {
 
   Future<void> renameThread(String id, String title) async {
     await _client.patch('/api/threads/$id', {'title': title});
+  }
+
+  Future<void> updateThreadSettings(
+    String id, {
+    String? permissionMode,
+    String? permissions,
+  }) async {
+    final body = <String, dynamic>{};
+    if (permissionMode != null) body['permission_mode'] = permissionMode;
+    // An empty permissions string is sent as JSON null, which clears the field.
+    if (permissions != null) body['permissions'] = permissions.isEmpty ? null : permissions;
+    if (body.isNotEmpty) {
+      await _client.patch('/api/threads/$id', body);
+    }
   }
 
   Future<void> moveThreadToGroup(String id, int? groupId) async {

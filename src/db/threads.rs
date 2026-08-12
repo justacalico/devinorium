@@ -10,13 +10,14 @@ pub struct NewThread {
     pub title: String,
     pub model: String,
     pub permission_mode: String,
+    pub permissions: Option<String>,
 }
 
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, model, permission_mode)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, model, permission_mode, permissions)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
@@ -26,6 +27,7 @@ impl super::Db {
         .bind(&new.title)
         .bind(&new.model)
         .bind(&new.permission_mode)
+        .bind(&new.permissions)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
@@ -78,6 +80,37 @@ impl super::Db {
             .bind(user_id)
             .execute(self.pool())
             .await?;
+        Ok(())
+    }
+
+    pub async fn update_thread_settings(
+        &self,
+        id: &str,
+        user_id: i64,
+        permission_mode: Option<&str>,
+        permissions: Option<Option<&str>>,
+    ) -> anyhow::Result<()> {
+        if let Some(mode) = permission_mode {
+            sqlx::query("UPDATE threads SET permission_mode = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                .bind(mode)
+                .bind(id)
+                .bind(user_id)
+                .execute(self.pool()).await?;
+        }
+        if let Some(perms) = permissions {
+            if let Some(perms) = perms {
+                sqlx::query("UPDATE threads SET permissions = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                    .bind(perms)
+                    .bind(id)
+                    .bind(user_id)
+                    .execute(self.pool()).await?;
+            } else {
+                sqlx::query("UPDATE threads SET permissions = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                    .bind(id)
+                    .bind(user_id)
+                    .execute(self.pool()).await?;
+            }
+        }
         Ok(())
     }
 

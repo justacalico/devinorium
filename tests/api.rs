@@ -224,6 +224,54 @@ async fn thread_create_get_list_delete() {
 }
 
 #[tokio::test]
+async fn thread_permissions_crud() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    // Create with a permission allowlist.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"permission_mode":"bypass","permissions":"Exec(curl), Fetch(**)"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid: String = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(body.contains("Exec(curl)"), "created thread should expose permissions: {body}");
+
+    // Update and clear.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"permissions":""}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(!body.contains("Exec(curl)"), "cleared permissions should not appear: {body}");
+}
+
+#[tokio::test]
 async fn thread_send_uses_stub_provider_and_persists_messages() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;

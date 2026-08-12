@@ -70,11 +70,11 @@ sha2 = "0.10"
 hex = "0.4"
 dotenvy = "0.15.7"
 include_dir = "0.7"
+tempfile = "3"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
 tokio-tungstenite = { version = "0.23", default-features = false }
-tempfile = "3"
 
 [profile.release]
 opt-level = 3

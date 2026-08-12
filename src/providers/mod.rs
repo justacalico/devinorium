@@ -40,6 +40,9 @@ pub struct SendOptions {
     pub working_dir: PathBuf,
     /// Permission mode: "normal", "accept-edits", "smart", "bypass".
     pub permission_mode: String,
+    /// Optional comma/newline-separated list of permission scopes allowed
+    /// for this thread (e.g. "Exec(curl), Fetch(**)").
+    pub permissions: Option<String>,
     /// Attachments to include with the message.
     pub attachments: Vec<Attachment>,
 }
