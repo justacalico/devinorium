@@ -162,17 +162,23 @@ pub trait Provider: Send + Sync {
 
     /// Best-effort: export the full conversation for a session as JSON.
     /// Providers that cannot export should return an empty object.
-    async fn export(&self, session_id: &str, working_dir: &Path) -> anyhow::Result<serde_json::Value>;
+    async fn export(
+        &self,
+        session_id: &str,
+        working_dir: &Path,
+    ) -> anyhow::Result<serde_json::Value>;
 }
 
 /// Derive a short title from the first line of a prompt.
 pub fn title_from_prompt(prompt: &str) -> String {
     let line = prompt.lines().next().unwrap_or(prompt);
     let title = line.trim();
-    if title.len() > 80 {
-        format!("{}...", &title[..77])
+    let mut chars = title.chars();
+    let truncated: String = chars.by_ref().take(77).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
     } else {
-        title.to_string()
+        truncated
     }
 }
 

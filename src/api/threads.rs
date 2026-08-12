@@ -24,17 +24,25 @@ use uuid::Uuid;
 
 use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, NewMessage, NewThread, ThreadRow};
-use crate::providers::{Attachment, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions, StartRequest};
+use crate::providers::{
+    Attachment, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions, StartRequest,
+};
 use crate::{AppState, PendingPermissionRequest};
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/threads", get(list).post(create))
-        .route("/api/threads/:id", get(get_one).patch(rename).delete(delete))
+        .route(
+            "/api/threads/:id",
+            get(get_one).patch(rename).delete(delete),
+        )
         .route("/api/threads/:id/messages", get(list_messages))
         .route("/api/threads/:id/send", post(send))
         .route("/api/threads/:id/send/stream", post(send_stream))
-        .route("/api/threads/:id/permission/:request_id", post(respond_permission))
+        .route(
+            "/api/threads/:id/permission/:request_id",
+            post(respond_permission),
+        )
         .route("/api/threads/:id/project", get(get_project_path))
 }
 
@@ -118,7 +126,11 @@ async fn create(
     match state.db.get_project(req.project_id, user.id).await {
         Ok(Some(_)) => {}
         _ => {
-            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid project_id"))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid project_id")),
+            )
+                .into_response();
         }
     }
 
@@ -127,13 +139,35 @@ async fn create(
         match state.db.get_thread_group(gid, user.id).await {
             Ok(Some(_)) => {}
             _ => {
-                return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid thread_group_id"))).into_response();
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid thread_group_id")),
+                )
+                    .into_response();
             }
         }
     }
     let permission_mode = req.permission_mode.unwrap_or_else(|| "normal".into());
     if !["normal", "accept-edits", "smart", "bypass"].contains(&permission_mode.as_str()) {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid permission_mode"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid permission_mode")),
+        )
+            .into_response();
+    }
+    let model = req
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| state.config.default_model.clone());
+    if model.is_empty() || model.len() > 100 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("model must be 1-100 chars")),
+        )
+            .into_response();
     }
     let new = NewThread {
         id: Uuid::new_v4().to_string(),
@@ -141,7 +175,7 @@ async fn create(
         project_id: req.project_id,
         thread_group_id: req.thread_group_id,
         title: req.title.unwrap_or_else(|| "New thread".into()),
-        model: req.model.unwrap_or_else(|| state.config.default_model.clone()),
+        model,
         permission_mode,
         permissions: req.permissions,
     };
@@ -165,7 +199,11 @@ async fn get_one(
             }))
             .into_response()
         }
-        Ok(None) => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("not found"))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -213,30 +251,48 @@ async fn rename(
     Path(id): Path<String>,
     Json(req): Json<UpdateThread>,
 ) -> Response {
-    // Update title if provided.
+    // Validate all inputs before touching the database.
     if let Some(title) = &req.title {
         if title.trim().is_empty() || title.len() > 200 {
-            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("title must be 1-200 chars"))).into_response();
-        }
-        if let Err(e) = state.db.rename_thread(&id, user.id, title).await {
-            return crate::api::map_err_internal(e).into_response();
-        }
-    }
-    // Move to group if the field was present.
-    if let Some(group_id) = req.thread_group_id {
-        if let Err(e) = state.db.move_thread_to_group(&id, user.id, group_id).await {
-            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new(e.to_string()))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("title must be 1-200 chars")),
+            )
+                .into_response();
         }
     }
-    // Validate and apply permission mode changes.
     if let Some(mode) = &req.permission_mode {
         if !["normal", "accept-edits", "smart", "bypass"].contains(&mode.as_str()) {
-            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid permission_mode"))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid permission_mode")),
+            )
+                .into_response();
         }
     }
     if let Some(model) = &req.model {
         if model.trim().is_empty() || model.len() > 100 {
-            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("model must be 1-100 chars"))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("model must be 1-100 chars")),
+            )
+                .into_response();
+        }
+    }
+
+    // Apply updates.
+    if let Some(title) = &req.title {
+        if let Err(e) = state.db.rename_thread(&id, user.id, title).await {
+            return crate::api::map_err_internal(e).into_response();
+        }
+    }
+    if let Some(group_id) = req.thread_group_id {
+        if let Err(e) = state.db.move_thread_to_group(&id, user.id, group_id).await {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(e.to_string())),
+            )
+                .into_response();
         }
     }
     if req.model.is_some() || req.permission_mode.is_some() || req.permissions.is_some() {
@@ -245,8 +301,22 @@ async fn rename(
             .permissions
             .as_ref()
             .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
-        let model = req.model.as_deref().map(str::trim).filter(|s| !s.is_empty());
-        if let Err(e) = state.db.update_thread_settings(&id, user.id, model, req.permission_mode.as_deref(), permissions).await {
+        let model = req
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        if let Err(e) = state
+            .db
+            .update_thread_settings(
+                &id,
+                user.id,
+                model,
+                req.permission_mode.as_deref(),
+                permissions,
+            )
+            .await
+        {
             return crate::api::map_err_internal(e).into_response();
         }
     }
@@ -272,10 +342,18 @@ async fn list_messages(
     // Ensure the thread belongs to the user.
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(_)) => {}
-        _ => return (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("not found"))).into_response(),
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response()
+        }
     }
     match state.db.list_messages(&id).await {
-        Ok(rows) => Json(rows.into_iter().map(MessageOut::from).collect::<Vec<_>>()).into_response(),
+        Ok(rows) => {
+            Json(rows.into_iter().map(MessageOut::from).collect::<Vec<_>>()).into_response()
+        }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -290,7 +368,13 @@ async fn send(
 ) -> Response {
     let thread = match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => t,
-        Ok(None) => return (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("not found"))).into_response(),
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response()
+        }
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
 
@@ -304,7 +388,8 @@ async fn send(
         Err(resp) => return resp,
     };
 
-    let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments, None).await;
+    let provider_result =
+        call_provider(&state, &thread, &input.prompt, input.attachments, None).await;
 
     let (reply, new_session_id, new_title) = match provider_result {
         Ok(t) => t,
@@ -319,11 +404,24 @@ async fn send(
                 })
                 .await;
             let _ = state.db.touch_thread(&id).await;
-            return (StatusCode::BAD_GATEWAY, Json(crate::api::ApiError::new("provider error"))).into_response();
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(crate::api::ApiError::new("provider error")),
+            )
+                .into_response();
         }
     };
 
-    let assistant_msg = match persist_assistant_reply(&state, &id, user.id, &reply, new_session_id, new_title).await {
+    let assistant_msg = match persist_assistant_reply(
+        &state,
+        &id,
+        user.id,
+        &reply,
+        new_session_id,
+        new_title,
+    )
+    .await
+    {
         Ok(m) => m,
         Err(resp) => return resp,
     };
@@ -346,12 +444,13 @@ async fn send_stream(
     multipart: Multipart,
 ) -> Sse<UnboundedReceiverStream<Result<Event, Infallible>>> {
     let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
-    let permission_callback = build_permission_callback(state.clone(), user.id, id.clone(), tx.clone());
+    let permission_callback =
+        build_permission_callback(state.clone(), user.id, id.clone(), tx.clone());
 
     tokio::spawn(async move {
-        let send_event = |tx: &mpsc::UnboundedSender<Result<Event, Infallible>>, ev: Event| -> bool {
-            tx.send(Ok(ev)).is_ok()
-        };
+        let send_event = |tx: &mpsc::UnboundedSender<Result<Event, Infallible>>,
+                          ev: Event|
+         -> bool { tx.send(Ok(ev)).is_ok() };
 
         let thread = match state.db.get_thread(&id, user.id).await {
             Ok(Some(t)) => t,
@@ -360,7 +459,12 @@ async fn send_stream(
                 return;
             }
             Err(e) => {
-                send_event(&tx, Event::default().event("error").data(format!("internal error: {e}")));
+                send_event(
+                    &tx,
+                    Event::default()
+                        .event("error")
+                        .data(format!("internal error: {e}")),
+                );
                 return;
             }
         };
@@ -373,17 +477,28 @@ async fn send_stream(
             }
         };
 
-        let user_msg = match persist_user_message(&state, &id, &input.prompt, &input.att_meta).await {
+        let user_msg = match persist_user_message(&state, &id, &input.prompt, &input.att_meta).await
+        {
             Ok(m) => m,
             Err(_) => {
-                send_event(&tx, Event::default().event("error").data("failed to save user message"));
+                send_event(
+                    &tx,
+                    Event::default()
+                        .event("error")
+                        .data("failed to save user message"),
+                );
                 return;
             }
         };
-        if !send_event(&tx, Event::default().event("user_message").data(&match serde_json::to_string(&MessageOut::from(user_msg)) {
-            Ok(json) => json,
-            Err(_) => return,
-        })) {
+        if !send_event(
+            &tx,
+            Event::default()
+                .event("user_message")
+                .data(&match serde_json::to_string(&MessageOut::from(user_msg)) {
+                    Ok(json) => json,
+                    Err(_) => return,
+                }),
+        ) {
             return;
         }
 
@@ -398,13 +513,23 @@ async fn send_stream(
             keepalive.tick().await;
             loop {
                 keepalive.tick().await;
-                if tx2.send(Ok(Event::default().comment("keep-alive"))).is_err() {
+                if tx2
+                    .send(Ok(Event::default().comment("keep-alive")))
+                    .is_err()
+                {
                     break;
                 }
             }
         });
 
-        let provider_result = call_provider(&state, &thread, &input.prompt, input.attachments, Some(permission_callback)).await;
+        let provider_result = call_provider(
+            &state,
+            &thread,
+            &input.prompt,
+            input.attachments,
+            Some(permission_callback),
+        )
+        .await;
         keepalive_handle.abort();
 
         let (reply, new_session_id, new_title) = match provider_result {
@@ -435,17 +560,32 @@ async fn send_stream(
             tokio::time::sleep(tokio::time::Duration::from_millis(12)).await;
         }
 
-        let assistant_msg = match persist_assistant_reply(&state, &id, user.id, &reply, new_session_id, new_title).await {
-            Ok(m) => m,
-            Err(_) => {
-                send_event(&tx, Event::default().event("error").data("failed to save assistant message"));
-                return;
-            }
-        };
-        send_event(&tx, Event::default().event("done").data(&match serde_json::to_string(&MessageOut::from(assistant_msg)) {
-            Ok(json) => json,
-            Err(_) => return,
-        }));
+        let assistant_msg =
+            match persist_assistant_reply(&state, &id, user.id, &reply, new_session_id, new_title)
+                .await
+            {
+                Ok(m) => m,
+                Err(_) => {
+                    send_event(
+                        &tx,
+                        Event::default()
+                            .event("error")
+                            .data("failed to save assistant message"),
+                    );
+                    return;
+                }
+            };
+        send_event(
+            &tx,
+            Event::default()
+                .event("done")
+                .data(
+                    &match serde_json::to_string(&MessageOut::from(assistant_msg)) {
+                        Ok(json) => json,
+                        Err(_) => return,
+                    },
+                ),
+        );
     });
 
     Sse::new(UnboundedReceiverStream::new(rx))
@@ -465,7 +605,10 @@ async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Res
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
         let filename = field.file_name().unwrap_or("").to_string();
-        let mime = field.content_type().unwrap_or("application/octet-stream").to_string();
+        let mime = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
         let bytes = match field.bytes().await {
             Ok(b) => b,
             Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
@@ -474,7 +617,13 @@ async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Res
             prompt = Some(String::from_utf8_lossy(&bytes).to_string());
         } else if !filename.is_empty() {
             if bytes.len() > 8 * 1024 * 1024 {
-                return Err((StatusCode::PAYLOAD_TOO_LARGE, Json(crate::api::ApiError::new("attachment too large (max 8 MiB)"))).into_response());
+                return Err((
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    Json(crate::api::ApiError::new(
+                        "attachment too large (max 8 MiB)",
+                    )),
+                )
+                    .into_response());
             }
             att_meta.push(serde_json::json!({
                 "filename": filename,
@@ -490,12 +639,26 @@ async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Res
     }
     let prompt = match prompt {
         Some(p) if !p.trim().is_empty() => p,
-        _ => return Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("prompt is required"))).into_response()),
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("prompt is required")),
+            )
+                .into_response())
+        }
     };
     if prompt.len() > 64 * 1024 {
-        return Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("prompt too long (max 64 KiB)"))).into_response());
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("prompt too long (max 64 KiB)")),
+        )
+            .into_response());
     }
-    Ok(SendInput { prompt, attachments, att_meta })
+    Ok(SendInput {
+        prompt,
+        attachments,
+        att_meta,
+    })
 }
 
 async fn persist_user_message(
@@ -627,7 +790,11 @@ impl Drop for RemoveOnDrop {
         if let Some(state) = self.state.take() {
             let request_id = self.request_id.clone();
             tokio::spawn(async move {
-                let _ = state.pending_permission_requests.lock().await.remove(&request_id);
+                let _ = state
+                    .pending_permission_requests
+                    .lock()
+                    .await
+                    .remove(&request_id);
             });
         }
     }
@@ -650,9 +817,7 @@ async fn respond_permission(
     };
 
     match sender {
-        Some(pending)
-            if pending.user_id == user.id && pending.thread_id == thread_id =>
-        {
+        Some(pending) if pending.user_id == user.id && pending.thread_id == thread_id => {
             if let Some(option_id) = body.option_id {
                 match pending.sender.send(option_id) {
                     Ok(()) => StatusCode::OK,
@@ -678,7 +843,10 @@ async fn persist_assistant_reply(
 ) -> Result<MessageRow, Response> {
     let session_id_for_audit = new_session_id.clone();
     if let Some(sid) = new_session_id {
-        let _ = state.db.update_thread_session(thread_id, &sid, new_title.as_deref()).await;
+        let _ = state
+            .db
+            .update_thread_session(thread_id, &sid, new_title.as_deref())
+            .await;
     }
     let _ = state.db.touch_thread(thread_id).await;
 
@@ -740,11 +908,23 @@ async fn get_project_path(
                     "name": p.name,
                 }))
                 .into_response(),
-                _ => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("project not found"))).into_response(),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    Json(crate::api::ApiError::new("project not found")),
+                )
+                    .into_response(),
             },
-            None => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("thread has no project"))).into_response(),
+            None => (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("thread has no project")),
+            )
+                .into_response(),
         },
-        Ok(None) => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("not found"))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }

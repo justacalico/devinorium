@@ -3,8 +3,7 @@
 //! Spawns `devin acp` and communicates over JSON-RPC stdio using the
 //! `agent-client-protocol` crate. Permission requests can be forwarded to the
 //! API layer through the optional [`SendOptions::permission_callback`]; if no
-//! callback is configured, they are auto-approved with the safest `AllowOnce`
-//! option.
+//! callback is configured, permission requests are rejected.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -20,16 +19,16 @@ use super::{
     StartRequest, StartResponse,
 };
 use agent_client_protocol::{
-    schema::ProtocolVersion,
     schema::v1::{
         ContentBlock, EmbeddedResourceResource, InitializeRequest, LoadSessionRequest,
         LoadSessionResponse, NewSessionRequest, NewSessionResponse,
-        PermissionOption as AcpPermissionOption, PermissionOptionKind, PromptRequest,
-        RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-        SelectedPermissionOutcome, SessionConfigId, SessionConfigKind, SessionConfigOption,
-        SessionConfigOptionValue, SessionConfigSelectOptions, SessionId,
-        SessionNotification, SetSessionConfigOptionRequest, TextContent, ToolCallContent,
+        PermissionOption as AcpPermissionOption, PromptRequest, RequestPermissionOutcome,
+        RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+        SessionConfigId, SessionConfigKind, SessionConfigOption, SessionConfigOptionValue,
+        SessionConfigSelectOptions, SessionId, SessionNotification, SetSessionConfigOptionRequest,
+        TextContent, ToolCallContent,
     },
+    schema::ProtocolVersion,
     AcpAgent, Agent, Client, ConnectionTo,
 };
 
@@ -80,7 +79,8 @@ impl DevinAcpProvider {
                 {
                     let permission_callback = permission_callback.clone();
                     async move |request: RequestPermissionRequest, responder, _cx| {
-                        let outcome = handle_permission_request(request, permission_callback.as_ref()).await;
+                        let outcome =
+                            handle_permission_request(request, permission_callback.as_ref()).await;
                         responder.respond(RequestPermissionResponse::new(outcome))
                     }
                 },
@@ -185,7 +185,10 @@ impl DevinAcpProvider {
             .await?;
 
         if !output.status.success() {
-            anyhow::bail!("devin models list failed: {}", String::from_utf8_lossy(&output.stderr));
+            anyhow::bail!(
+                "devin models list failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         #[derive(Deserialize)]
@@ -279,25 +282,57 @@ async fn apply_session_config(
 
     if let Some(mode_opt) = config_options.iter().find(|o| o.id.0.as_ref() == "mode") {
         let choices = select_values(mode_opt);
-        // Accepted ACP mode ids. "ask" and "plan" are not exposed by the
-        // Devinorium UI (which only supports the first four), but we keep
-        // them so a manually configured mode does not get silently rewritten.
-        let known = ["normal", "accept-edits", "smart", "bypass", "ask", "plan"];
         let requested = options.permission_mode.trim();
-        let mode = if known.contains(&requested) {
+
+        let mode = if choices.iter().any(|v| v == requested) {
             requested.to_string()
-        } else if choices.iter().any(|v| v == "normal") {
-            tracing::warn!(
-                session_id = %session_id,
-                requested = %requested,
-                "unknown permission mode, falling back to normal"
-            );
-            "normal".to_string()
+        } else if requested == "bypass" || requested == "yolo" {
+            // The Devin CLI historically uses `dangerous`; ACP agents may
+            // expose it as `autonomous`.
+            if let Some(v) = choices
+                .iter()
+                .find(|v| *v == "dangerous" || *v == "autonomous")
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    requested = %requested,
+                    mode = %v,
+                    "mapping permission mode alias to ACP mode"
+                );
+                v.clone()
+            } else {
+                tracing::warn!(
+                    session_id = %session_id,
+                    requested = %requested,
+                    "ACP agent has no auto-run mode, falling back"
+                );
+                if let Some(first) = choices.first() {
+                    first.clone()
+                } else {
+                    return Ok(());
+                }
+            }
+        } else if ["normal", "accept-edits", "smart", "ask", "plan"].contains(&requested) {
+            if let Some(fallback) = choices
+                .iter()
+                .find(|v| *v == "normal")
+                .or_else(|| choices.first())
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    requested = %requested,
+                    fallback = %fallback,
+                    "permission mode not in ACP choices, falling back"
+                );
+                fallback.clone()
+            } else {
+                return Ok(());
+            }
         } else if let Some(first) = choices.first() {
             tracing::warn!(
                 session_id = %session_id,
                 requested = %requested,
-                available = ?choices,
+                first = %first,
                 "unknown permission mode, falling back to first available"
             );
             first.clone()
@@ -353,14 +388,11 @@ async fn handle_permission_request(
             PermissionOutcome::Cancel => RequestPermissionOutcome::Cancelled,
         }
     } else {
-        // No interactive handler: auto-approve using the safest available option.
-        request
-            .options
-            .iter()
-            .find(|o| matches!(o.kind, PermissionOptionKind::AllowOnce))
-            .or_else(|| request.options.first())
-            .map(|o| RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(o.option_id.clone())))
-            .unwrap_or(RequestPermissionOutcome::Cancelled)
+        // No interactive handler (e.g. the non-stream /send endpoint). We
+        // cannot safely get user consent, so reject the request instead of
+        // auto-approving.
+        tracing::warn!("no permission callback configured; rejecting ACP permission request");
+        RequestPermissionOutcome::Cancelled
     }
 }
 
@@ -387,11 +419,7 @@ fn map_permission_request(request: &RequestPermissionRequest) -> PermissionReque
         .raw_input
         .as_ref()
         .map(|v| serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string()));
-    let options = request
-        .options
-        .iter()
-        .map(map_permission_option)
-        .collect();
+    let options = request.options.iter().map(map_permission_option).collect();
     PermissionRequest {
         request_id,
         scope,
@@ -428,11 +456,8 @@ async fn extract_text_from_notification(
                 _ => None,
             })
             .next(),
-        SessionUpdate::ToolCallUpdate(update) => update
-            .fields
-            .content
-            .as_ref()
-            .and_then(|contents| {
+        SessionUpdate::ToolCallUpdate(update) => {
+            update.fields.content.as_ref().and_then(|contents| {
                 contents
                     .iter()
                     .filter_map(|c| match c {
@@ -442,7 +467,8 @@ async fn extract_text_from_notification(
                         _ => None,
                     })
                     .next()
-            }),
+            })
+        }
         _ => None,
     };
 
@@ -513,9 +539,7 @@ impl Provider for DevinAcpProvider {
 
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
         let title = title_from_prompt(&req.prompt);
-        let (session_id, reply) = self
-            .run_prompt(&req.options, None, req.prompt)
-            .await?;
+        let (session_id, reply) = self.run_prompt(&req.options, None, req.prompt).await?;
 
         Ok(StartResponse {
             session_id,

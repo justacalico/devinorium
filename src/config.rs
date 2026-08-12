@@ -3,7 +3,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 /// All runtime configuration for a Devinorium instance.
 #[derive(Debug, Clone)]
@@ -32,7 +32,9 @@ impl Config {
             .context("DEVINORIUM_PORT must be a valid u16")?;
 
         let session_key_str = env::var("DEVINORIUM_SESSION_KEY").unwrap_or_default();
-        let session_key = if session_key_str.is_empty() || session_key_str == "change-me-to-a-long-random-secret-please-64-chars-min" {
+        let session_key = if session_key_str.is_empty()
+            || session_key_str == "change-me-to-a-long-random-secret-please-64-chars-min"
+        {
             // Generate an ephemeral key for local dev. Warn the user.
             tracing::warn!("DEVINORIUM_SESSION_KEY not set; generating an ephemeral key. Sessions will not survive restarts. Set a permanent key for production.");
             rand_key(48)
@@ -48,8 +50,7 @@ impl Config {
         let db_url = env_or("DEVINORIUM_DB_URL", "sqlite:data/devinorium.db?mode=rwc");
 
         let bootstrap_username = env_or("DEVINORIUM_BOOTSTRAP_USERNAME", "owner");
-        let bootstrap_password =
-            env::var("DEVINORIUM_BOOTSTRAP_PASSWORD").unwrap_or_default();
+        let bootstrap_password = env::var("DEVINORIUM_BOOTSTRAP_PASSWORD").unwrap_or_default();
         if bootstrap_password.is_empty() || bootstrap_password == "change-me-to-a-strong-password" {
             tracing::warn!("DEVINORIUM_BOOTSTRAP_PASSWORD is not set to a real password; bootstrap account creation will be skipped. Set it to create the first user.");
         }
@@ -66,8 +67,11 @@ impl Config {
         let max_body_bytes = env_or("DEVINORIUM_MAX_BODY_BYTES", "16777216")
             .parse::<usize>()
             .context("DEVINORIUM_MAX_BODY_BYTES must be a valid usize")?;
-        let secure_cookie = env_or("DEVINORIUM_SECURE_COOKIE", "false").eq_ignore_ascii_case("true");
-        let allowed_origin = std::env::var("DEVINORIUM_ALLOWED_ORIGIN").ok().filter(|s| !s.is_empty());
+        let secure_cookie =
+            env_or("DEVINORIUM_SECURE_COOKIE", "false").eq_ignore_ascii_case("true");
+        let allowed_origin = std::env::var("DEVINORIUM_ALLOWED_ORIGIN")
+            .ok()
+            .filter(|s| !s.is_empty());
 
         Ok(Self {
             host,

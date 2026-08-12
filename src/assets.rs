@@ -15,8 +15,7 @@ use crate::AppState;
 // Embed the entire Flutter web build output at compile time.
 // The frontend must be built first with ./scripts/build-flutter.sh, which
 // writes the Flutter web bundle into frontend/dist/.
-static FRONTEND_DIST: Dir<'static> =
-    include_dir!("$CARGO_MANIFEST_DIR/frontend/dist");
+static FRONTEND_DIST: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/frontend/dist");
 
 /// A router that serves the embedded frontend assets.
 pub fn router() -> Router<AppState> {
@@ -51,7 +50,11 @@ fn try_serve_file(path: &str) -> Option<Response> {
         HeaderValue::from_str(mime.as_ref()).unwrap(),
     );
     // Hashed assets can be cached aggressively; index.html should not.
-    let cache = if path == "index.html" { "no-cache" } else { "public, max-age=31536000, immutable" };
+    let cache = if path == "index.html" {
+        "no-cache"
+    } else {
+        "public, max-age=31536000, immutable"
+    };
     if let Ok(val) = HeaderValue::from_str(cache) {
         resp.headers_mut().insert(header::CACHE_CONTROL, val);
     }

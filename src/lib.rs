@@ -71,14 +71,26 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::invites::router())
         .merge(api::models::router())
         .route("/api/auth/me", get(api::auth::me))
-        .route("/api/auth/totp/setup", axum::routing::post(api::auth::totp_setup))
-        .route("/api/auth/totp/verify", axum::routing::post(api::auth::totp_verify))
-        .route("/api/auth/totp/disable", axum::routing::post(api::auth::totp_disable))
+        .route(
+            "/api/auth/totp/setup",
+            axum::routing::post(api::auth::totp_setup),
+        )
+        .route(
+            "/api/auth/totp/verify",
+            axum::routing::post(api::auth::totp_verify),
+        )
+        .route(
+            "/api/auth/totp/disable",
+            axum::routing::post(api::auth::totp_disable),
+        )
         // Allow multipart fields up to 10 MiB so the per-attachment 8 MiB
         // check in the send handler is the effective gate (axum's default
         // multipart field limit is 2 MiB, which would shadow it).
         .route_layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024))
-        .route_layer(from_fn_with_state(state.clone(), auth::middleware::require_auth));
+        .route_layer(from_fn_with_state(
+            state.clone(),
+            auth::middleware::require_auth,
+        ));
 
     Router::new()
         .route("/healthz", get(|| async { "ok" }))

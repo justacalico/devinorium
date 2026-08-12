@@ -34,24 +34,20 @@ impl Db {
     }
 
     pub async fn get_project(&self, id: i64, user_id: i64) -> anyhow::Result<Option<ProjectRow>> {
-        sqlx::query_as::<_, ProjectRow>(
-            "SELECT * FROM projects WHERE id = ? AND user_id = ?",
-        )
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(self.pool())
-        .await
-        .map_err(Into::into)
+        sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(user_id)
+            .fetch_optional(self.pool())
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn delete_project(&self, id: i64, user_id: i64) -> anyhow::Result<()> {
-        sqlx::query(
-            "DELETE FROM projects WHERE id = ? AND user_id = ?",
-        )
-        .bind(id)
-        .bind(user_id)
-        .execute(self.pool())
-        .await?;
+        sqlx::query("DELETE FROM projects WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 

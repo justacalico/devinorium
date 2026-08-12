@@ -52,7 +52,12 @@ impl super::Db {
             .map_err(Into::into)
     }
 
-    pub async fn update_thread_session(&self, id: &str, devin_session_id: &str, title: Option<&str>) -> anyhow::Result<()> {
+    pub async fn update_thread_session(
+        &self,
+        id: &str,
+        devin_session_id: &str,
+        title: Option<&str>,
+    ) -> anyhow::Result<()> {
         if let Some(title) = title {
             sqlx::query("UPDATE threads SET devin_session_id = ?, title = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
                 .bind(devin_session_id).bind(title).bind(id)
@@ -66,10 +71,12 @@ impl super::Db {
     }
 
     pub async fn touch_thread(&self, id: &str) -> anyhow::Result<()> {
-        sqlx::query("UPDATE threads SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
-            .bind(id)
-            .execute(self.pool())
-            .await?;
+        sqlx::query(
+            "UPDATE threads SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
+        )
+        .bind(id)
+        .execute(self.pool())
+        .await?;
         Ok(())
     }
 
@@ -91,19 +98,20 @@ impl super::Db {
         permission_mode: Option<&str>,
         permissions: Option<Option<&str>>,
     ) -> anyhow::Result<()> {
+        let mut tx = self.pool().begin().await?;
         if let Some(model) = model {
             sqlx::query("UPDATE threads SET model = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                 .bind(model)
                 .bind(id)
                 .bind(user_id)
-                .execute(self.pool()).await?;
+                .execute(&mut *tx).await?;
         }
         if let Some(mode) = permission_mode {
             sqlx::query("UPDATE threads SET permission_mode = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                 .bind(mode)
                 .bind(id)
                 .bind(user_id)
-                .execute(self.pool()).await?;
+                .execute(&mut *tx).await?;
         }
         if let Some(perms) = permissions {
             if let Some(perms) = perms {
@@ -111,14 +119,15 @@ impl super::Db {
                     .bind(perms)
                     .bind(id)
                     .bind(user_id)
-                    .execute(self.pool()).await?;
+                    .execute(&mut *tx).await?;
             } else {
                 sqlx::query("UPDATE threads SET permissions = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                     .bind(id)
                     .bind(user_id)
-                    .execute(self.pool()).await?;
+                    .execute(&mut *tx).await?;
             }
         }
+        tx.commit().await?;
         Ok(())
     }
 

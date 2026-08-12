@@ -2,7 +2,7 @@
 
 use sqlx::SqlitePool;
 
-use super::{UserRow};
+use super::UserRow;
 
 pub struct NewUser {
     pub username: String,
@@ -45,7 +45,12 @@ impl super::Db {
         Ok(n)
     }
 
-    pub async fn set_totp(&self, user_id: i64, secret: Option<String>, enabled: bool) -> anyhow::Result<()> {
+    pub async fn set_totp(
+        &self,
+        user_id: i64,
+        secret: Option<String>,
+        enabled: bool,
+    ) -> anyhow::Result<()> {
         sqlx::query("UPDATE users SET totp_secret = ?, totp_enabled = ? WHERE id = ?")
             .bind(secret)
             .bind(enabled)

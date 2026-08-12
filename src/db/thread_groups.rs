@@ -33,7 +33,11 @@ impl super::Db {
         .map_err(Into::into)
     }
 
-    pub async fn get_thread_group(&self, id: i64, user_id: i64) -> anyhow::Result<Option<ThreadGroupRow>> {
+    pub async fn get_thread_group(
+        &self,
+        id: i64,
+        user_id: i64,
+    ) -> anyhow::Result<Option<ThreadGroupRow>> {
         sqlx::query_as::<_, ThreadGroupRow>(
             "SELECT * FROM thread_groups WHERE id = ? AND user_id = ?",
         )
@@ -44,7 +48,12 @@ impl super::Db {
         .map_err(Into::into)
     }
 
-    pub async fn rename_thread_group(&self, id: i64, user_id: i64, name: &str) -> anyhow::Result<()> {
+    pub async fn rename_thread_group(
+        &self,
+        id: i64,
+        user_id: i64,
+        name: &str,
+    ) -> anyhow::Result<()> {
         sqlx::query("UPDATE thread_groups SET name = ? WHERE id = ? AND user_id = ?")
             .bind(name)
             .bind(id)
@@ -89,12 +98,11 @@ impl super::Db {
 
     /// Get the next available position for a new group.
     pub async fn next_group_position(&self, user_id: i64) -> anyhow::Result<i64> {
-        let max: Option<i64> = sqlx::query_scalar(
-            "SELECT MAX(position) FROM thread_groups WHERE user_id = ?",
-        )
-        .bind(user_id)
-        .fetch_one(self.pool())
-        .await?;
+        let max: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(position) FROM thread_groups WHERE user_id = ?")
+                .bind(user_id)
+                .fetch_one(self.pool())
+                .await?;
         Ok(max.unwrap_or(-1) + 1)
     }
 }

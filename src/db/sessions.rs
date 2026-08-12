@@ -63,9 +63,11 @@ impl super::Db {
     }
 
     pub async fn purge_expired_sessions(&self) -> anyhow::Result<u64> {
-        let res = sqlx::query("DELETE FROM sessions WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')")
-            .execute(self.pool())
-            .await?;
+        let res = sqlx::query(
+            "DELETE FROM sessions WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+        )
+        .execute(self.pool())
+        .await?;
         Ok(res.rows_affected())
     }
 }

@@ -19,7 +19,9 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("sec.db").display());
     let database = db::Db::connect(&db_url).await.unwrap();
-    auth::bootstrap::run(&database, "owner", "supersecret123").await.unwrap();
+    auth::bootstrap::run(&database, "owner", "supersecret123")
+        .await
+        .unwrap();
 
     let cfg = Config {
         host: "127.0.0.1".into(),
@@ -48,7 +50,9 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         config: Arc::new(cfg),
         db: database.clone(),
         provider: Arc::from(provider),
-        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
     (devinorium::build_app(state), database)
 }
@@ -57,7 +61,12 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
 async fn security_headers_present() {
     let (app, _db) = make_app(None).await;
     let resp = app
-        .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -65,8 +74,18 @@ async fn security_headers_present() {
     assert_eq!(h.get(header::X_CONTENT_TYPE_OPTIONS).unwrap(), "nosniff");
     assert_eq!(h.get(header::X_FRAME_OPTIONS).unwrap(), "DENY");
     assert_eq!(h.get(header::REFERRER_POLICY).unwrap(), "no-referrer");
-    assert!(h.get(header::CONTENT_SECURITY_POLICY).unwrap().to_str().unwrap().contains("default-src 'self'"));
-    assert!(h.get("permissions-policy").unwrap().to_str().unwrap().contains("camera=()"));
+    assert!(h
+        .get(header::CONTENT_SECURITY_POLICY)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("default-src 'self'"));
+    assert!(h
+        .get("permissions-policy")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("camera=()"));
 }
 
 #[tokio::test]
@@ -98,7 +117,9 @@ async fn csrf_allows_post_with_matching_origin() {
                 .header(header::HOST, "localhost:7878")
                 .header(header::ORIGIN, "http://localhost:7878")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"owner","password":"supersecret123"}"#))
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -118,7 +139,9 @@ async fn csrf_rejects_cross_origin_post() {
                 .header(header::HOST, "localhost:7878")
                 .header(header::ORIGIN, "http://evil.com")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"owner","password":"supersecret123"}"#))
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -138,7 +161,9 @@ async fn csrf_explicit_allowed_origin_enforced() {
                 .uri("/api/auth/login")
                 .header(header::ORIGIN, "https://evil.com")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"owner","password":"supersecret123"}"#))
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -153,7 +178,9 @@ async fn csrf_explicit_allowed_origin_enforced() {
                 .uri("/api/auth/login")
                 .header(header::ORIGIN, "https://devinorium.example")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"owner","password":"supersecret123"}"#))
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -186,8 +213,15 @@ async fn rate_limit_blocks_after_burst() {
         statuses.push(resp.status());
     }
     // First several should be 401 (bad password) or 403; after 10, 429.
-    let too_many = statuses.iter().filter(|s| **s == StatusCode::TOO_MANY_REQUESTS).count();
-    assert!(too_many >= 1, "expected rate limiting to kick in: {:?}", statuses);
+    let too_many = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::TOO_MANY_REQUESTS)
+        .count();
+    assert!(
+        too_many >= 1,
+        "expected rate limiting to kick in: {:?}",
+        statuses
+    );
 }
 
 #[tokio::test]
@@ -196,7 +230,9 @@ async fn body_size_limit_rejects_oversized() {
     let dir = tempfile::tempdir().unwrap().keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("tiny.db").display());
     let database = db::Db::connect(&db_url).await.unwrap();
-    auth::bootstrap::run(&database, "owner", "supersecret123").await.unwrap();
+    auth::bootstrap::run(&database, "owner", "supersecret123")
+        .await
+        .unwrap();
     let cfg = Config {
         host: "127.0.0.1".into(),
         port: 0,
@@ -222,7 +258,9 @@ async fn body_size_limit_rejects_oversized() {
         config: Arc::new(cfg),
         db: database,
         provider: Arc::from(provider),
-        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
     let app = devinorium::build_app(state);
 

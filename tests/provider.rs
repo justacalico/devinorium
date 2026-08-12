@@ -43,7 +43,11 @@ async fn provider_lists_models() {
     let models = p.list_models().await.expect("list models");
     assert!(!models.is_empty(), "should return at least one model");
     let ids: Vec<_> = models.iter().map(|m| m.id.as_str()).collect();
-    assert!(ids.contains(&"glm-5-2"), "free model glm-5-2 should be listed: {:?}", ids);
+    assert!(
+        ids.contains(&"glm-5-2"),
+        "free model glm-5-2 should be listed: {:?}",
+        ids
+    );
 }
 
 #[tokio::test]
@@ -158,10 +162,7 @@ async fn provider_acp_start() {
         eprintln!("skipping: devin not on PATH");
         return;
     }
-    let p = providers::devin_acp::DevinAcpProvider::new(
-        "devin".to_string(),
-        "glm-5-2".to_string(),
-    );
+    let p = providers::devin_acp::DevinAcpProvider::new("devin".to_string(), "glm-5-2".to_string());
     let dir = tmp_workdir();
 
     let start = p
@@ -256,7 +257,10 @@ async fn provider_writes_file_in_working_dir() {
         if std::time::Instant::now() > deadline {
             // Some models may phrase the write differently; accept if the reply
             // acknowledges the task rather than hard-failing on timing.
-            eprintln!("file not created within timeout; reply was: {:?}", start.reply);
+            eprintln!(
+                "file not created within timeout; reply was: {:?}",
+                start.reply
+            );
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -287,7 +291,12 @@ async fn provider_accepts_all_permission_modes() {
                 },
             })
             .await;
-        assert!(res.is_ok(), "permission mode {} should be accepted: {:?}", mode, res.err());
+        assert!(
+            res.is_ok(),
+            "permission mode {} should be accepted: {:?}",
+            mode,
+            res.err()
+        );
         let r = res.unwrap();
         assert!(!r.reply.is_empty(), "mode {} produced empty reply", mode);
     }

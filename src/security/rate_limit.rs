@@ -93,10 +93,12 @@ impl RateLimiter {
         }
         let mut map = self.inner.lock().await;
         let now = Instant::now();
-        let entry = map.entry((bucket.to_string(), key.to_string())).or_insert(Bucket {
-            tokens: self.capacity,
-            last: now,
-        });
+        let entry = map
+            .entry((bucket.to_string(), key.to_string()))
+            .or_insert(Bucket {
+                tokens: self.capacity,
+                last: now,
+            });
         let elapsed = now.duration_since(entry.last).as_secs_f64();
         entry.tokens = (entry.tokens + elapsed * self.refill_per_sec).min(self.capacity);
         entry.last = now;
@@ -141,10 +143,7 @@ pub async fn weighted_rate_limit(cfg: WeightedRateLimit, req: Request, next: Nex
 pub fn classify(req: &Request) -> EndpointClass {
     let path = req.uri().path();
     let method = req.method();
-    let has_cookie = req
-        .headers()
-        .get(axum::http::header::COOKIE)
-        .is_some();
+    let has_cookie = req.headers().get(axum::http::header::COOKIE).is_some();
 
     // Auth endpoints (public, no session required).
     if path == "/api/auth/login" || path == "/api/auth/register" {
@@ -182,7 +181,11 @@ pub fn classify(req: &Request) -> EndpointClass {
 
 /// Middleware: global weighted rate limiter that classifies each request
 /// automatically based on method + path + cookie presence.
-pub async fn global_weighted_rate_limit(limiter: RateLimiter, req: Request, next: Next) -> Response {
+pub async fn global_weighted_rate_limit(
+    limiter: RateLimiter,
+    req: Request,
+    next: Next,
+) -> Response {
     let ip = from_req(&req);
     let class = classify(&req);
     let cost = class.cost();
@@ -214,7 +217,10 @@ mod tests {
         assert!(lim.check("b", "ip", 20.0).await);
         assert!(lim.check("b", "ip", 20.0).await);
         assert!(lim.check("b", "ip", 20.0).await);
-        assert!(!lim.check("b", "ip", 20.0).await, "6th call should be blocked");
+        assert!(
+            !lim.check("b", "ip", 20.0).await,
+            "6th call should be blocked"
+        );
     }
 
     #[tokio::test]
@@ -224,7 +230,10 @@ mod tests {
         for i in 0..50 {
             assert!(lim.check("b", "ip", 2.0).await, "call {} should pass", i);
         }
-        assert!(!lim.check("b", "ip", 2.0).await, "51st call should be blocked");
+        assert!(
+            !lim.check("b", "ip", 2.0).await,
+            "51st call should be blocked"
+        );
     }
 
     #[tokio::test]
@@ -235,7 +244,10 @@ mod tests {
         assert!(lim.check("b", "ip", 25.0).await);
         assert!(lim.check("b", "ip", 25.0).await);
         assert!(lim.check("b", "ip", 25.0).await);
-        assert!(!lim.check("b", "ip", 25.0).await, "5th probe should be blocked");
+        assert!(
+            !lim.check("b", "ip", 25.0).await,
+            "5th probe should be blocked"
+        );
     }
 
     #[tokio::test]
@@ -244,23 +256,29 @@ mod tests {
         // 1 login (20) + 1 probe (25) + 1 write (2) = 47, then 2 more logins (40) = 87, then 1 write (2) = 89
         assert!(lim.check("b", "ip", 20.0).await); // login
         assert!(lim.check("b", "ip", 25.0).await); // probe
-        assert!(lim.check("b", "ip", 2.0).await);  // write
+        assert!(lim.check("b", "ip", 2.0).await); // write
         assert!(lim.check("b", "ip", 20.0).await); // login
         assert!(lim.check("b", "ip", 20.0).await); // login = 87
-        assert!(lim.check("b", "ip", 2.0).await);  // write = 89
-        assert!(lim.check("b", "ip", 2.0).await);  // write = 91
-        assert!(lim.check("b", "ip", 2.0).await);  // write = 93
-        assert!(lim.check("b", "ip", 2.0).await);  // write = 95
-        // 5 tokens left — another login (20) should fail.
-        assert!(!lim.check("b", "ip", 20.0).await, "login should fail with 5 tokens left");
+        assert!(lim.check("b", "ip", 2.0).await); // write = 89
+        assert!(lim.check("b", "ip", 2.0).await); // write = 91
+        assert!(lim.check("b", "ip", 2.0).await); // write = 93
+        assert!(lim.check("b", "ip", 2.0).await); // write = 95
+                                                  // 5 tokens left — another login (20) should fail.
+        assert!(
+            !lim.check("b", "ip", 20.0).await,
+            "login should fail with 5 tokens left"
+        );
         // But a write (2) should still pass.
-        assert!(lim.check("b", "ip", 2.0).await, "write should pass with 5 tokens");
+        assert!(
+            lim.check("b", "ip", 2.0).await,
+            "write should pass with 5 tokens"
+        );
     }
 
     #[tokio::test]
     async fn refill_restores_tokens() {
         let lim = RateLimiter::new(100, 1000.0); // very fast refill
-        // Deplete fully.
+                                                 // Deplete fully.
         for _ in 0..5 {
             lim.check("b", "ip", 20.0).await;
         }

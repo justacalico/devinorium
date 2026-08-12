@@ -619,9 +619,14 @@ class _PermissionRequestDialog extends StatelessWidget {
     final req = state.pendingPermissionRequest;
     if (req == null) return const SizedBox.shrink();
 
+    if (req.options.isEmpty) {
+      state.respondToPermissionRequest(null);
+      return const SizedBox.shrink();
+    }
+
     final theme = Theme.of(context);
     final allowOnce = req.options.firstWhere(
-      (o) => o.id == 'allow_once',
+      (o) => o.kind == 'AllowOnce',
       orElse: () => req.options.first,
     );
     final otherOptions = req.options.where((o) => o.id != allowOnce.id).toList();

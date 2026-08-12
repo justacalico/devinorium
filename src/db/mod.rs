@@ -66,7 +66,9 @@ impl Db {
 
 /// Parse a stored ISO-8601 timestamp into a UTC DateTime.
 pub(crate) fn parse_ts(s: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(s).map(|d| d.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now())
+    DateTime::parse_from_rfc3339(s)
+        .map(|d| d.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now())
 }
 
 /// A row from the `users` table.

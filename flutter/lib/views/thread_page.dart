@@ -455,15 +455,22 @@ class _ModelDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fallbackItems = value.isNotEmpty && !models.any((m) => m.id == value)
+        ? [DropdownMenuItem<String>(value: value, child: Text(value))]
+        : <DropdownMenuItem<String>>[];
+    final items = [
+      for (final m in models)
+        DropdownMenuItem<String>(value: m.id, child: Text(m.label)),
+      ...fallbackItems,
+    ];
+    final effectiveValue = items.any((i) => i.value == value) ? value : null;
+
     return DropdownButton<String>(
-      value: value.isEmpty ? null : value,
+      value: effectiveValue,
       hint: const Text('Model'),
       underline: const SizedBox(),
       isDense: true,
-      items: [
-        for (final m in models)
-          DropdownMenuItem(value: m.id, child: Text(m.label)),
-      ],
+      items: items,
       onChanged: (v) {
         if (v != null) onChanged(v);
       },
@@ -484,14 +491,21 @@ class _PermissionDropdown extends StatelessWidget {
       ('smart', 'Smart confirm'),
       ('bypass', 'Auto-run'),
     ];
+    final fallback = !modes.any((m) => m.$1 == value)
+        ? [DropdownMenuItem<String>(value: value, child: Text(value))]
+        : <DropdownMenuItem<String>>[];
+    final items = [
+      for (final (id, label) in modes)
+        DropdownMenuItem<String>(value: id, child: Text(label)),
+      ...fallback,
+    ];
+    final effectiveValue = items.any((i) => i.value == value) ? value : null;
+
     return DropdownButton<String>(
-      value: value,
+      value: effectiveValue,
       underline: const SizedBox(),
       isDense: true,
-      items: [
-        for (final (id, label) in modes)
-          DropdownMenuItem(value: id, child: Text(label)),
-      ],
+      items: items,
       onChanged: (v) {
         if (v != null) onChanged(v);
       },

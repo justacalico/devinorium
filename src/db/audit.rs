@@ -33,12 +33,10 @@ impl super::Db {
     }
 
     pub async fn list_audit(&self, limit: i64) -> anyhow::Result<Vec<AuditRow>> {
-        sqlx::query_as::<_, AuditRow>(
-            "SELECT * FROM audit_logs ORDER BY id DESC LIMIT ?",
-        )
-        .bind(limit)
-        .fetch_all(self.pool())
-        .await
-        .map_err(Into::into)
+        sqlx::query_as::<_, AuditRow>("SELECT * FROM audit_logs ORDER BY id DESC LIMIT ?")
+            .bind(limit)
+            .fetch_all(self.pool())
+            .await
+            .map_err(Into::into)
     }
 }

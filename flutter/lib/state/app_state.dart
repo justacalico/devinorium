@@ -494,6 +494,10 @@ class AppState extends ChangeNotifier {
     final tid = _activeThreadId;
     if (text.isEmpty || tid == null) return;
 
+    // Persist the current model and permission mode before sending, so the
+    // backend uses the latest settings.
+    await saveThreadSettings();
+
     // Cancel any in-flight send before starting a new one.
     await _sendSubscription?.cancel();
     _sendSubscription = null;
@@ -504,8 +508,10 @@ class AppState extends ChangeNotifier {
     _composerText = '';
     notifyListeners();
 
-    _sendSubscription = api.sendMessageStream(threadId: tid, prompt: text).listen(
+    late StreamSubscription? sub;
+    sub = api.sendMessageStream(threadId: tid, prompt: text).listen(
       (ev) {
+        if (_sendSubscription != sub) return;
         switch (ev.event) {
           case 'user_message':
             final msg = parseSseMessage(ev.data);
@@ -566,6 +572,7 @@ class AppState extends ChangeNotifier {
         }
       },
       onError: (e) {
+        if (_sendSubscription != sub) return;
         _clearPermissionRequest();
         _streamingText = null;
         _sending = false;
@@ -578,6 +585,7 @@ class AppState extends ChangeNotifier {
         }).catchError((_) {});
       },
       onDone: () {
+        if (_sendSubscription != sub) return;
         _sendSubscription = null;
         _clearPermissionRequest();
         if (_sending) {
@@ -593,6 +601,7 @@ class AppState extends ChangeNotifier {
         }
       },
     );
+    _sendSubscription = sub;
   }
 
   // ---- TOTP ----
