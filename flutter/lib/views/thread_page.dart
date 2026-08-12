@@ -707,27 +707,285 @@ class _ModelDropdown extends StatelessWidget {
     required this.onChanged,
   });
 
+  /// Matches a version number at the end of a string, e.g. "5", "5.6", "4.7".
+  static final _versionSuffix = RegExp(r'\d+(?:\.\d+)?$');
+
+  String _shortLabel(ModelInfo m) {
+    final f = m.family.trim().toLowerCase();
+    final l = m.label.trim();
+    if (f.isEmpty) return l;
+    if (l.toLowerCase().startsWith(f)) {
+      final rest = l.substring(f.length).trim();
+      return rest.isEmpty ? l : rest;
+    }
+    return l;
+  }
+
+  String _triggerLabel(ModelInfo m) {
+    final f = m.family.trim();
+    final l = m.label.trim();
+    if (f.isNotEmpty && !l.toLowerCase().startsWith(f.toLowerCase())) {
+      return '$f $l';
+    }
+    return l;
+  }
+
+  /// Splits a family name into a top-level base and an optional sub-family.
+  ///
+  /// Examples:
+  ///   "GPT-5.6 Sol"        -> base "GPT-5.6", sub "Sol"
+  ///   "SWE-1.7 Lightning"  -> base "SWE-1.7", sub "Lightning"
+  ///   "Claude Opus 5"      -> base "Claude 5", sub "Opus"
+  ///   "Claude Sonnet 4.6"  -> base "Claude 4.6", sub "Sonnet"
+  ///   "GLM-5.2"            -> base "GLM-5.2", sub ""
+  ({String base, String sub}) _splitFamily(String family) {
+    final f = family.trim();
+    if (f.isEmpty) return (base: 'Other', sub: '');
+
+    String trySplit(String sep) {
+      final parts = f.split(sep);
+      if (parts.length < 2) return '';
+      final last = parts.last.trim();
+      final prefix = parts.sublist(0, parts.length - 1).join(sep).trim();
+      if (!_versionSuffix.hasMatch(last) && _versionSuffix.hasMatch(prefix)) {
+        return last;
+      }
+      return '';
+    }
+
+    final spaceSub = trySplit(' ');
+    if (spaceSub.isNotEmpty) {
+      final base = f.substring(0, f.length - spaceSub.length - 1).trim();
+      return (base: base, sub: spaceSub);
+    }
+
+    final dashSub = trySplit('-');
+    if (dashSub.isNotEmpty) {
+      final base = f.substring(0, f.length - dashSub.length - 1).trim();
+      return (base: base, sub: dashSub);
+    }
+
+    // "Brand Series Version" form: base is "Brand Version", sub is the series.
+    final parts = f.split(' ');
+    if (parts.length >= 3 && _versionSuffix.hasMatch(parts.last)) {
+      final base = '${parts.first} ${parts.last}';
+      final sub = parts.sublist(1, parts.length - 1).join(' ');
+      return (base: base, sub: sub);
+    }
+
+    return (base: f, sub: '');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final fallbackItems = value.isNotEmpty && !models.any((m) => m.id == value)
-        ? [DropdownMenuItem<String>(value: value, child: Text(value))]
-        : <DropdownMenuItem<String>>[];
-    final items = [
-      for (final m in models)
-        DropdownMenuItem<String>(value: m.id, child: Text(m.label)),
-      ...fallbackItems,
-    ];
-    final effectiveValue = items.any((i) => i.value == value) ? value : null;
+    final theme = Theme.of(context);
 
-    return DropdownButton<String>(
-      value: effectiveValue,
-      hint: const Text('Model'),
-      underline: const SizedBox(),
-      isDense: true,
-      items: items,
-      onChanged: (v) {
-        if (v != null) onChanged(v);
+    final ModelInfo selected;
+    if (models.isEmpty) {
+      selected = ModelInfo(
+        id: '',
+        label: 'Model',
+        costTier: '',
+        family: '',
+      );
+    } else {
+      selected = models.firstWhere(
+        (m) => m.id == value,
+        orElse: () => value.isNotEmpty
+            ? ModelInfo(id: value, label: value, costTier: '', family: '')
+            : ModelInfo(id: '', label: 'Model', costTier: '', family: ''),
+      );
+    }
+
+    // Group by base family, then optional sub-family (e.g. GPT-5.6 -> Sol/Luna).
+    final groups = <String, Map<String, List<ModelInfo>>>{};
+    for (final m in models) {
+      final split = _splitFamily(m.family);
+      groups
+          .putIfAbsent(split.base, () => {})
+          .putIfAbsent(split.sub, () => [])
+          .add(m);
+    }
+    for (final subs in groups.values) {
+      for (final list in subs.values) {
+        list.sort((a, b) => a.label.compareTo(b.label));
+      }
+    }
+    final sortedBases = groups.keys.toList()..sort();
+
+    final menu = MenuStyle(
+      backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surfaceContainer),
+      surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+      padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 8)),
+    );
+
+    return MenuAnchor(
+      style: menu,
+      builder: (context, controller, child) {
+        return InkWell(
+          onTap: () {
+            if (controller.isOpen) {
+              controller.close();
+            } else {
+              controller.open();
+            }
+          },
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _triggerLabel(selected),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  controller.isOpen ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        );
       },
+      menuChildren: models.isEmpty
+          ? [
+              const MenuItemButton(
+                child: Text('No models available'),
+              ),
+            ]
+          : [
+              for (final base in sortedBases)
+                _buildFamilyMenu(
+                  theme: theme,
+                  menuStyle: menu,
+                  value: value,
+                  base: base,
+                  subs: groups[base]!,
+                ),
+            ],
+    );
+  }
+
+  Widget _buildFamilyMenu({
+    required ThemeData theme,
+    required MenuStyle menuStyle,
+    required String value,
+    required String base,
+    required Map<String, List<ModelInfo>> subs,
+  }) {
+    final subKeys = subs.keys.toList()..sort();
+    final hasSubFamilies = subKeys.any((k) => k.isNotEmpty);
+    final baseContainsSelected =
+        subs.values.any((list) => list.any((m) => m.id == value));
+
+    List<Widget> buildChildren() {
+      if (!hasSubFamilies) {
+        return [
+          for (final m in subs.values.expand((l) => l))
+            _VariantMenuItem(
+              model: m,
+              selected: m.id == value,
+              displayLabel: _shortLabel(m),
+              onPressed: () => onChanged(m.id),
+            ),
+        ];
+      }
+
+      return [
+        for (final sub in subKeys)
+          if (sub.isEmpty)
+            for (final m in subs[sub]!)
+              _VariantMenuItem(
+                model: m,
+                selected: m.id == value,
+                displayLabel: _shortLabel(m),
+                onPressed: () => onChanged(m.id),
+              )
+          else
+            SubmenuButton(
+              menuStyle: menuStyle,
+              menuChildren: [
+                for (final m in subs[sub]!)
+                  _VariantMenuItem(
+                    model: m,
+                    selected: m.id == value,
+                    displayLabel: _shortLabel(m),
+                    onPressed: () => onChanged(m.id),
+                  ),
+              ],
+              child: Text(
+                sub,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: subs[sub]!.any((m) => m.id == value)
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+      ];
+    }
+
+    return SubmenuButton(
+      menuStyle: menuStyle,
+      menuChildren: buildChildren(),
+      child: Text(
+        base,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: baseContainsSelected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurface,
+        ),
+      ),
+    );
+  }
+}
+
+class _VariantMenuItem extends StatelessWidget {
+  final ModelInfo model;
+  final String displayLabel;
+  final bool selected;
+  final VoidCallback onPressed;
+  const _VariantMenuItem({
+    required this.model,
+    required this.displayLabel,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return MenuItemButton(
+      onPressed: onPressed,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              displayLabel,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+          if (selected)
+            Icon(
+              Icons.check,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
+        ],
+      ),
     );
   }
 }
