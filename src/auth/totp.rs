@@ -72,8 +72,9 @@ mod tests {
     #[test]
     fn generate_and_verify_current_code() {
         let setup = generate("devinorium", "alice").unwrap();
-        let secret =
-            Secret::Encoded(setup.secret_base32.clone()).to_bytes().unwrap();
+        let secret = Secret::Encoded(setup.secret_base32.clone())
+            .to_bytes()
+            .unwrap();
         let totp = TOTP::new(
             Algorithm::SHA1,
             6,

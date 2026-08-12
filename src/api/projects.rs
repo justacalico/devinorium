@@ -50,7 +50,9 @@ pub struct CreateProject {
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.list_projects(user.id).await {
-        Ok(rows) => Json(rows.into_iter().map(ProjectOut::from).collect::<Vec<_>>()).into_response(),
+        Ok(rows) => {
+            Json(rows.into_iter().map(ProjectOut::from).collect::<Vec<_>>()).into_response()
+        }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -62,22 +64,40 @@ async fn create(
 ) -> Response {
     let name = req.name.trim();
     if name.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("project name is required"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("project name is required")),
+        )
+            .into_response();
     }
 
     let path = req.path.trim();
     if path.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("project path is required"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("project path is required")),
+        )
+            .into_response();
     }
 
     // Validate the path is within the configured file root.
     let Ok(abs) = resolve_and_ensure_dir(&state, path).await else {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid project path"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid project path")),
+        )
+            .into_response();
     };
 
     let path_str = match abs.to_str() {
         Some(s) => s.to_string(),
-        None => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid project path encoding"))).into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid project path encoding")),
+            )
+                .into_response()
+        }
     };
 
     let new = NewProject {
@@ -109,7 +129,12 @@ async fn list_threads(
     Path(id): Path<i64>,
 ) -> Response {
     match state.db.list_threads_for_project(id, user.id).await {
-        Ok(rows) => Json(rows.into_iter().map(crate::api::threads::ThreadOut::from).collect::<Vec<_>>()).into_response(),
+        Ok(rows) => Json(
+            rows.into_iter()
+                .map(crate::api::threads::ThreadOut::from)
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -118,7 +143,10 @@ async fn list_threads(
 /// root, create the directory if it doesn't exist, and return the canonical
 /// absolute path.
 async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<PathBuf> {
-    let file_root = state.config.file_root.as_ref()
+    let file_root = state
+        .config
+        .file_root
+        .as_ref()
         .ok_or_else(|| anyhow::anyhow!("no file root configured"))?;
 
     // If the user supplied an absolute path, join doesn't make sense; we still

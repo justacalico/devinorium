@@ -129,16 +129,28 @@ class ApiService {
 
   Future<void> updateThreadSettings(
     String id, {
+    String? model,
     String? permissionMode,
     String? permissions,
   }) async {
     final body = <String, dynamic>{};
+    if (model != null && model.isNotEmpty) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
     // An empty permissions string is sent as JSON null, which clears the field.
     if (permissions != null) body['permissions'] = permissions.isEmpty ? null : permissions;
     if (body.isNotEmpty) {
       await _client.patch('/api/threads/$id', body);
     }
+  }
+
+  Future<void> respondPermission(
+    String threadId,
+    String requestId,
+    String? optionId,
+  ) async {
+    await _client.post('/api/threads/$threadId/permission/$requestId', {
+      'option_id': optionId,
+    });
   }
 
   Future<void> moveThreadToGroup(String id, int? groupId) async {
@@ -233,7 +245,7 @@ class ApiService {
   // ---- Streaming send ----
 
   /// Stream a message send. Returns a stream of [SseEvent] records with
-  /// `event` ∈ {`user_message`, `chunk`, `done`, `error`}.
+  /// `event` ∈ {`user_message`, `permission_request`, `chunk`, `done`, `error`}.
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,

@@ -9,7 +9,7 @@ enum AppView { loading, login, register, app }
 
 enum MainPage { threads, settings }
 
-enum DialogKind { none, totpSetup, invites, newProject }
+enum DialogKind { none, totpSetup, invites, newProject, permissionRequest }
 
 /// Central app state.
 class AppState extends ChangeNotifier {
@@ -47,11 +47,11 @@ class AppState extends ChangeNotifier {
   bool _sending = false;
   String _selectedModel = '';
   String _selectedPermission = 'normal';
-  String _selectedPermissionsText = '';
   List<Invite> _invites = [];
   String? _streamingText;
   String _globalError = '';
   StreamSubscription? _sendSubscription;
+  PermissionRequest? _pendingPermissionRequest;
 
   // Getters
   AppView get view => _view;
@@ -86,9 +86,9 @@ class AppState extends ChangeNotifier {
   bool get sending => _sending;
   String get selectedModel => _selectedModel;
   String get selectedPermission => _selectedPermission;
-  String get selectedPermissionsText => _selectedPermissionsText;
   List<Invite> get invites => _invites;
   String? get streamingText => _streamingText;
+  PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
 
   // ---- Setters / mutations ----
@@ -100,7 +100,6 @@ class AppState extends ChangeNotifier {
   void setComposerText(String t) { _composerText = t; notifyListeners(); }
   void setSelectedModel(String m) { _selectedModel = m; notifyListeners(); }
   void setSelectedPermission(String p) { _selectedPermission = p; notifyListeners(); }
-  void setSelectedPermissionsText(String p) { _selectedPermissionsText = p; notifyListeners(); }
   void setLoginError(String e) { _loginError = e; notifyListeners(); }
   void setRegisterError(String e) { _registerError = e; notifyListeners(); }
   void setShowTotpField(bool v) { _showTotpField = v; notifyListeners(); }
@@ -401,7 +400,6 @@ class AppState extends ChangeNotifier {
         title: 'New thread',
         model: _selectedModel.isEmpty ? null : _selectedModel,
         permissionMode: _selectedPermission,
-        permissions: _selectedPermissionsText.isEmpty ? null : _selectedPermissionsText,
       );
       _activeThreadId = t.id;
       try {
@@ -420,8 +418,8 @@ class AppState extends ChangeNotifier {
     try {
       _activeThreadDetail = await api.getThread(id);
       if (_activeThreadDetail != null) {
+        _selectedModel = _activeThreadDetail!.thread.model;
         _selectedPermission = _activeThreadDetail!.thread.permissionMode;
-        _selectedPermissionsText = _activeThreadDetail!.thread.permissions ?? '';
       }
       notifyListeners();
 
@@ -453,8 +451,8 @@ class AppState extends ChangeNotifier {
     try {
       await api.updateThreadSettings(
         tid,
+        model: _selectedModel,
         permissionMode: _selectedPermission,
-        permissions: _selectedPermissionsText,
       );
       _activeThreadDetail = await api.getThread(tid);
       notifyListeners();
@@ -496,17 +494,24 @@ class AppState extends ChangeNotifier {
     final tid = _activeThreadId;
     if (text.isEmpty || tid == null) return;
 
+    // Persist the current model and permission mode before sending, so the
+    // backend uses the latest settings.
+    await saveThreadSettings();
+
     // Cancel any in-flight send before starting a new one.
     await _sendSubscription?.cancel();
     _sendSubscription = null;
+    _clearPermissionRequest();
 
     _sending = true;
     _streamingText = '';
     _composerText = '';
     notifyListeners();
 
-    _sendSubscription = api.sendMessageStream(threadId: tid, prompt: text).listen(
+    late StreamSubscription? sub;
+    sub = api.sendMessageStream(threadId: tid, prompt: text).listen(
       (ev) {
+        if (_sendSubscription != sub) return;
         switch (ev.event) {
           case 'user_message':
             final msg = parseSseMessage(ev.data);
@@ -514,6 +519,22 @@ class AppState extends ChangeNotifier {
               _activeThreadDetail = _activeThreadDetail!.copyWith(
                 messages: [..._activeThreadDetail!.messages, msg],
               );
+              notifyListeners();
+            }
+            break;
+          case 'permission_request':
+            final decoded = tryDecodeJson(ev.data);
+            if (decoded != null) {
+              try {
+                _pendingPermissionRequest = PermissionRequest.fromJson(decoded);
+                _dialog = DialogKind.permissionRequest;
+                notifyListeners();
+              } catch (e) {
+                _globalError = 'Invalid permission request: $e';
+                notifyListeners();
+              }
+            } else {
+              _globalError = 'Failed to decode permission request';
               notifyListeners();
             }
             break;
@@ -536,6 +557,7 @@ class AppState extends ChangeNotifier {
             refreshThreadsAndGroups();
             break;
           case 'error':
+            _clearPermissionRequest();
             _streamingText = null;
             _sending = false;
             _sendSubscription = null;
@@ -550,6 +572,8 @@ class AppState extends ChangeNotifier {
         }
       },
       onError: (e) {
+        if (_sendSubscription != sub) return;
+        _clearPermissionRequest();
         _streamingText = null;
         _sending = false;
         _sendSubscription = null;
@@ -561,7 +585,9 @@ class AppState extends ChangeNotifier {
         }).catchError((_) {});
       },
       onDone: () {
+        if (_sendSubscription != sub) return;
         _sendSubscription = null;
+        _clearPermissionRequest();
         if (_sending) {
           // Stream ended without an explicit done/error event.
           _sending = false;
@@ -575,6 +601,7 @@ class AppState extends ChangeNotifier {
         }
       },
     );
+    _sendSubscription = sub;
   }
 
   // ---- TOTP ----
@@ -638,6 +665,31 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> respondToPermissionRequest(String? optionId) async {
+    final tid = _activeThreadId;
+    final req = _pendingPermissionRequest;
+    if (tid == null || req == null) return;
+    try {
+      await api.respondPermission(tid, req.requestId, optionId);
+      _pendingPermissionRequest = null;
+      _dialog = DialogKind.none;
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  void _clearPermissionRequest() {
+    if (_pendingPermissionRequest != null) {
+      _pendingPermissionRequest = null;
+      if (_dialog == DialogKind.permissionRequest) {
+        _dialog = DialogKind.none;
+      }
       notifyListeners();
     }
   }

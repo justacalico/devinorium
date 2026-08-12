@@ -49,7 +49,7 @@ In `src/providers/mod.rs`:
 
 ```rust
 match cfg.id.as_str() {
-    "devin-cli" => Ok(Box::new(devin_cli::DevinCliProvider::new(...))),
+    "devin-cli" => Ok(Box::new(devin_acp::DevinAcpProvider::new(...))),
     "my-provider" => Ok(Box::new(my_provider::MyProvider)),   // <- one line
     other => anyhow::bail!("unknown provider: {other}"),
 }

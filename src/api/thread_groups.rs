@@ -19,7 +19,10 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/thread-groups", get(list).post(create))
-        .route("/api/thread-groups/:id", get(get_one).patch(rename).delete(delete))
+        .route(
+            "/api/thread-groups/:id",
+            get(get_one).patch(rename).delete(delete),
+        )
 }
 
 #[derive(Debug, Serialize)]
@@ -41,12 +44,14 @@ impl From<ThreadGroupRow> for ThreadGroupOut {
     }
 }
 
-async fn list(
-    State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-) -> Response {
+async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.list_thread_groups(user.id).await {
-        Ok(rows) => Json(rows.into_iter().map(ThreadGroupOut::from).collect::<Vec<_>>()).into_response(),
+        Ok(rows) => Json(
+            rows.into_iter()
+                .map(ThreadGroupOut::from)
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -64,7 +69,11 @@ async fn create(
 ) -> Response {
     let name = req.name.unwrap_or_else(|| "New Group".into());
     if name.trim().is_empty() || name.len() > 100 {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("name must be 1-100 chars"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("name must be 1-100 chars")),
+        )
+            .into_response();
     }
     let position = match state.db.next_group_position(user.id).await {
         Ok(p) => p,
@@ -82,7 +91,10 @@ async fn create(
     // Optionally move threads into the new group.
     if let Some(thread_ids) = req.thread_ids {
         for tid in &thread_ids {
-            let _ = state.db.move_thread_to_group(tid, user.id, Some(group.id)).await;
+            let _ = state
+                .db
+                .move_thread_to_group(tid, user.id, Some(group.id))
+                .await;
         }
     }
     (StatusCode::CREATED, Json(ThreadGroupOut::from(group))).into_response()
@@ -95,7 +107,11 @@ async fn get_one(
 ) -> Response {
     match state.db.get_thread_group(id, user.id).await {
         Ok(Some(g)) => Json(ThreadGroupOut::from(g)).into_response(),
-        Ok(None) => (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("not found"))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -112,7 +128,11 @@ async fn rename(
     Json(req): Json<RenameGroup>,
 ) -> Response {
     if req.name.trim().is_empty() || req.name.len() > 100 {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("name must be 1-100 chars"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("name must be 1-100 chars")),
+        )
+            .into_response();
     }
     match state.db.rename_thread_group(id, user.id, &req.name).await {
         Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),

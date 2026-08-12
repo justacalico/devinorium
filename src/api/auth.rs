@@ -36,31 +36,51 @@ pub struct LoginResponse {
     pub username: String,
 }
 
-async fn login(
-    State(state): State<AppState>,
-    Json(req): Json<LoginRequest>,
-) -> Response {
+async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> Response {
     let username = match req.username.as_deref().filter(|s| !s.trim().is_empty()) {
         Some(u) => u,
-        None => return (StatusCode::BAD_REQUEST, Json(auth_json_err("username is required"))).into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("username is required")),
+            )
+                .into_response()
+        }
     };
     let password = match req.password.as_deref().filter(|s| !s.is_empty()) {
         Some(p) => p,
-        None => return (StatusCode::BAD_REQUEST, Json(auth_json_err("password is required"))).into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("password is required")),
+            )
+                .into_response()
+        }
     };
     // Load user by username. To avoid user-enumeration timing, we always do
     // a dummy hash verify even when the user doesn't exist.
     let user = state.db.get_user_by_username(username).await.ok().flatten();
     let dummy_hash =
         "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAA";
-    let stored = user.as_ref().map(|u| u.password_hash.as_str()).unwrap_or(dummy_hash);
+    let stored = user
+        .as_ref()
+        .map(|u| u.password_hash.as_str())
+        .unwrap_or(dummy_hash);
     let pw_ok = password::verify(password, stored).unwrap_or(false);
 
     let Some(user) = user else {
-        return (StatusCode::UNAUTHORIZED, Json(auth_json_err("invalid credentials"))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(auth_json_err("invalid credentials")),
+        )
+            .into_response();
     };
     if !pw_ok || user.disabled {
-        return (StatusCode::UNAUTHORIZED, Json(auth_json_err("invalid credentials"))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(auth_json_err("invalid credentials")),
+        )
+            .into_response();
     }
 
     // TOTP check.
@@ -75,7 +95,11 @@ async fn login(
         };
         let secret = user.totp_secret.as_deref().unwrap_or("");
         if !totp::verify(secret, code) {
-            return (StatusCode::UNAUTHORIZED, Json(auth_json_err("invalid totp"))).into_response();
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(auth_json_err("invalid totp")),
+            )
+                .into_response();
         }
     }
 
@@ -121,40 +145,80 @@ pub struct RegisterRequest {
     pub password: Option<String>,
 }
 
-async fn register(
-    State(state): State<AppState>,
-    Json(req): Json<RegisterRequest>,
-) -> Response {
+async fn register(State(state): State<AppState>, Json(req): Json<RegisterRequest>) -> Response {
     // Validate inputs.
     let invite = match req.invite.as_deref().filter(|s| !s.trim().is_empty()) {
         Some(i) => i,
-        None => return (StatusCode::BAD_REQUEST, Json(auth_json_err("invite token is required"))).into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("invite token is required")),
+            )
+                .into_response()
+        }
     };
     let username = match req.username.as_deref().filter(|s| !s.trim().is_empty()) {
         Some(u) => u,
-        None => return (StatusCode::BAD_REQUEST, Json(auth_json_err("username is required"))).into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("username is required")),
+            )
+                .into_response()
+        }
     };
     let password = match req.password.as_deref().filter(|s| !s.is_empty()) {
         Some(p) => p,
-        None => return (StatusCode::BAD_REQUEST, Json(auth_json_err("password is required"))).into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("password is required")),
+            )
+                .into_response()
+        }
     };
     if username.trim().len() < 3 || username.len() > 32 {
-        return (StatusCode::BAD_REQUEST, Json(auth_json_err("username must be 3-32 chars"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("username must be 3-32 chars")),
+        )
+            .into_response();
     }
-    if !username.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.') {
-        return (StatusCode::BAD_REQUEST, Json(auth_json_err("username has invalid characters"))).into_response();
+    if !username
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("username has invalid characters")),
+        )
+            .into_response();
     }
     if password.len() < 10 {
-        return (StatusCode::BAD_REQUEST, Json(auth_json_err("password must be at least 10 chars"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("password must be at least 10 chars")),
+        )
+            .into_response();
     }
     if password.len() > 1024 {
-        return (StatusCode::BAD_REQUEST, Json(auth_json_err("password too long"))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("password too long")),
+        )
+            .into_response();
     }
 
     // Validate invite.
     let created_by = match state.db.validate_invite(invite).await {
         Ok(Some(id)) => id,
-        Ok(None) => return (StatusCode::BAD_REQUEST, Json(auth_json_err("invalid or used invite"))).into_response(),
+        Ok(None) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("invalid or used invite")),
+            )
+                .into_response()
+        }
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
 
@@ -219,16 +283,17 @@ pub struct TotpSetupResponse {
 
 /// Begin TOTP enrollment. Returns the secret + otpauth URI. The secret is
 /// NOT enabled until verified with a valid code via `/totp/verify`.
-pub async fn totp_setup(
-    State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-) -> Response {
+pub async fn totp_setup(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     let setup = match totp::generate("devinorium", &user.username) {
         Ok(s) => s,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
     // Store the pending secret (not yet enabled) so verify can confirm it.
-    if let Err(e) = state.db.set_totp(user.id, Some(setup.secret_base32.clone()), false).await {
+    if let Err(e) = state
+        .db
+        .set_totp(user.id, Some(setup.secret_base32.clone()), false)
+        .await
+    {
         return crate::api::map_err_internal(e).into_response();
     }
     Json(TotpSetupResponse {
@@ -251,11 +316,19 @@ pub async fn totp_verify(
     let secret = match user.totp_secret {
         Some(ref s) if !user.totp_enabled => s.clone(),
         _ => {
-            return (StatusCode::BAD_REQUEST, Json(auth_json_err("no pending totp setup"))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("no pending totp setup")),
+            )
+                .into_response();
         }
     };
     if !totp::verify(&secret, &req.code) {
-        return (StatusCode::UNAUTHORIZED, Json(auth_json_err("invalid totp code"))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(auth_json_err("invalid totp code")),
+        )
+            .into_response();
     }
     if let Err(e) = state.db.set_totp(user.id, Some(secret), true).await {
         return crate::api::map_err_internal(e).into_response();

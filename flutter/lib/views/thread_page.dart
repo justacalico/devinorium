@@ -397,7 +397,10 @@ class _ComposerState extends State<_Composer> {
                               _ModelDropdown(
                                 value: state.selectedModel,
                                 models: state.models,
-                                onChanged: state.setSelectedModel,
+                                onChanged: (model) {
+                                  state.setSelectedModel(model);
+                                  state.saveThreadSettings();
+                                },
                               ),
                               _PermissionDropdown(
                                 value: state.selectedPermission,
@@ -405,11 +408,6 @@ class _ComposerState extends State<_Composer> {
                                   state.setSelectedPermission(mode);
                                   state.saveThreadSettings();
                                 },
-                              ),
-                              _PermissionsInput(
-                                value: state.selectedPermissionsText,
-                                onChanged: state.setSelectedPermissionsText,
-                                onSave: state.saveThreadSettings,
                               ),
                             ],
                           ),
@@ -457,15 +455,22 @@ class _ModelDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fallbackItems = value.isNotEmpty && !models.any((m) => m.id == value)
+        ? [DropdownMenuItem<String>(value: value, child: Text(value))]
+        : <DropdownMenuItem<String>>[];
+    final items = [
+      for (final m in models)
+        DropdownMenuItem<String>(value: m.id, child: Text(m.label)),
+      ...fallbackItems,
+    ];
+    final effectiveValue = items.any((i) => i.value == value) ? value : null;
+
     return DropdownButton<String>(
-      value: value.isEmpty ? null : value,
+      value: effectiveValue,
       hint: const Text('Model'),
       underline: const SizedBox(),
       isDense: true,
-      items: [
-        for (final m in models)
-          DropdownMenuItem(value: m.id, child: Text(m.label)),
-      ],
+      items: items,
       onChanged: (v) {
         if (v != null) onChanged(v);
       },
@@ -481,19 +486,26 @@ class _PermissionDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const modes = [
-      ('normal', 'Normal'),
-      ('accept-edits', 'Accept edits'),
-      ('smart', 'Smart'),
-      ('bypass', 'Bypass'),
+      ('normal', 'Ask every time'),
+      ('accept-edits', 'Confirm edits'),
+      ('smart', 'Smart confirm'),
+      ('bypass', 'Auto-run'),
     ];
+    final fallback = !modes.any((m) => m.$1 == value)
+        ? [DropdownMenuItem<String>(value: value, child: Text(value))]
+        : <DropdownMenuItem<String>>[];
+    final items = [
+      for (final (id, label) in modes)
+        DropdownMenuItem<String>(value: id, child: Text(label)),
+      ...fallback,
+    ];
+    final effectiveValue = items.any((i) => i.value == value) ? value : null;
+
     return DropdownButton<String>(
-      value: value,
+      value: effectiveValue,
       underline: const SizedBox(),
       isDense: true,
-      items: [
-        for (final (id, label) in modes)
-          DropdownMenuItem(value: id, child: Text(label)),
-      ],
+      items: items,
       onChanged: (v) {
         if (v != null) onChanged(v);
       },
@@ -501,72 +513,4 @@ class _PermissionDropdown extends StatelessWidget {
   }
 }
 
-class _PermissionsInput extends StatefulWidget {
-  final String value;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onSave;
-  const _PermissionsInput({
-    required this.value,
-    required this.onChanged,
-    required this.onSave,
-  });
 
-  @override
-  State<_PermissionsInput> createState() => _PermissionsInputState();
-}
-
-class _PermissionsInputState extends State<_PermissionsInput> {
-  late TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.value);
-  }
-
-  @override
-  void didUpdateWidget(_PermissionsInput oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
-      _controller.text = widget.value;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IntrinsicWidth(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 180,
-            child: TextField(
-              controller: _controller,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Exec(curl), Fetch(**)',
-                isCollapsed: true,
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 8),
-              ),
-              onChanged: widget.onChanged,
-              onSubmitted: (_) => widget.onSave(),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.check, size: 18),
-            tooltip: 'Save permissions',
-            onPressed: widget.onSave,
-          ),
-        ],
-      ),
-    );
-  }
-}

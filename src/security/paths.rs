@@ -68,7 +68,6 @@ pub fn is_within(child: &Path, parent: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn rejects_traversal_outside_root() {
@@ -105,12 +104,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap().keep();
         let roots = vec![tmp.clone()];
         // subdir/deep/file.txt — none of these exist yet.
-        let resolved = resolve_within(
-            Path::new("subdir/deep/file.txt"),
-            Some(&tmp),
-            &roots,
+        let resolved = resolve_within(Path::new("subdir/deep/file.txt"), Some(&tmp), &roots);
+        assert!(
+            resolved.is_some(),
+            "nested non-existent path should resolve"
         );
-        assert!(resolved.is_some(), "nested non-existent path should resolve");
         let resolved = resolved.unwrap();
         assert!(resolved.starts_with(&tmp));
         assert!(resolved.ends_with("subdir/deep/file.txt"));
@@ -122,11 +120,10 @@ mod tests {
         let roots = vec![tmp.clone()];
         // fakedir/../../etc — fakedir doesn't exist, so the `..` would
         // escape through a non-existent directory.
-        let resolved = resolve_within(
-            Path::new("fakedir/../../etc"),
-            Some(&tmp),
-            &roots,
+        let resolved = resolve_within(Path::new("fakedir/../../etc"), Some(&tmp), &roots);
+        assert!(
+            resolved.is_none(),
+            "traversal through non-existent dir should be rejected"
         );
-        assert!(resolved.is_none(), "traversal through non-existent dir should be rejected");
     }
 }

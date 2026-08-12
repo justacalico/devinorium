@@ -6,10 +6,10 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
 use axum::Router;
-use async_trait::async_trait;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -34,8 +34,18 @@ impl Provider for StubProvider {
     }
     async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(vec![
-            ModelInfo { id: "stub-1".into(), label: "Stub One".into(), cost_tier: "free".into(), family: "stub".into() },
-            ModelInfo { id: "stub-2".into(), label: "Stub Two".into(), cost_tier: "free".into(), family: "stub".into() },
+            ModelInfo {
+                id: "stub-1".into(),
+                label: "Stub One".into(),
+                cost_tier: "free".into(),
+                family: "stub".into(),
+            },
+            ModelInfo {
+                id: "stub-2".into(),
+                label: "Stub Two".into(),
+                cost_tier: "free".into(),
+                family: "stub".into(),
+            },
         ])
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
@@ -50,7 +60,11 @@ impl Provider for StubProvider {
             reply: format!("echo: {}", req.prompt),
         })
     }
-    async fn export(&self, _session_id: &str, _working_dir: &std::path::Path) -> anyhow::Result<serde_json::Value> {
+    async fn export(
+        &self,
+        _session_id: &str,
+        _working_dir: &std::path::Path,
+    ) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::json!({}))
     }
 }
@@ -59,7 +73,9 @@ async fn make_app() -> (Router, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
     let database = db::Db::connect(&db_url).await.unwrap();
-    auth::bootstrap::run(&database, "owner", "supersecret123").await.unwrap();
+    auth::bootstrap::run(&database, "owner", "supersecret123")
+        .await
+        .unwrap();
 
     // A file root under the temp dir.
     let file_root = dir.join("files");
@@ -85,12 +101,16 @@ async fn make_app() -> (Router, db::Db) {
         config: Arc::new(cfg),
         db: database.clone(),
         provider: Arc::new(StubProvider) as Arc<dyn Provider>,
+        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
     (devinorium::build_app(state), database)
 }
 
 async fn login(app: &Router) -> String {
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .clone()
         .oneshot(
             Request::builder()
@@ -99,7 +119,9 @@ async fn login(app: &Router) -> String {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"owner","password":"supersecret123"}"#))
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -137,8 +159,7 @@ async fn create_project(app: &Router, cookie: &str) -> i64 {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body = body_str(resp.into_body()).await;
-    serde_json::from_str::<serde_json::Value>(&body)
-        .unwrap()["id"]
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
         .as_i64()
         .unwrap()
 }
@@ -150,10 +171,14 @@ async fn make_thread(app: &Router, cookie: &str, project_id: i64, title: &str) -
         .oneshot(authed("POST", "/api/threads", cookie, &body))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED, "make_thread failed: {}", body_str(resp.into_body()).await);
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "make_thread failed: {}",
+        body_str(resp.into_body()).await
+    );
     let body = body_str(resp.into_body()).await;
-    serde_json::from_str::<serde_json::Value>(&body)
-        .unwrap()["id"]
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
         .as_str()
         .unwrap()
         .to_string()
@@ -163,7 +188,8 @@ async fn make_thread(app: &Router, cookie: &str, project_id: i64, title: &str) -
 async fn models_list() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", "/api/models", &cookie, ""))
         .await
         .unwrap();
@@ -181,11 +207,22 @@ async fn thread_create_get_list_delete() {
     let pid = create_project(&app, &cookie).await;
 
     // Create a thread.
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/threads", &cookie, &format!(r#"{{"project_id":{pid},"title":"My Thread"}}"#)))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"My Thread"}}"#),
+        ))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED, "thread create failed: {}", body_str(resp.into_body()).await);
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "thread create failed: {}",
+        body_str(resp.into_body()).await
+    );
     let body = body_str(resp.into_body()).await;
     let tid: String = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
         .as_str()
@@ -193,7 +230,8 @@ async fn thread_create_get_list_delete() {
         .to_string();
 
     // Get it back.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
         .await
         .unwrap();
@@ -202,22 +240,35 @@ async fn thread_create_get_list_delete() {
     assert!(body.contains("My Thread"), "body: {body}");
 
     // List.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", "/api/threads", &cookie, ""))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Rename.
-    let resp = app.clone()
-        .oneshot(authed("PATCH", &format!("/api/threads/{tid}"), &cookie, r#"{"title":"Renamed"}"#))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"title":"Renamed"}"#,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Delete.
-    let resp = app.clone()
-        .oneshot(authed("DELETE", &format!("/api/threads/{tid}"), &cookie, ""))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -246,7 +297,10 @@ async fn thread_permissions_crud() {
         .as_str()
         .unwrap()
         .to_string();
-    assert!(body.contains("Exec(curl)"), "created thread should expose permissions: {body}");
+    assert!(
+        body.contains("Exec(curl)"),
+        "created thread should expose permissions: {body}"
+    );
 
     // Update and clear.
     let resp = app
@@ -268,7 +322,59 @@ async fn thread_permissions_crud() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(!body.contains("Exec(curl)"), "cleared permissions should not appear: {body}");
+    assert!(
+        !body.contains("Exec(curl)"),
+        "cleared permissions should not appear: {body}"
+    );
+}
+
+#[tokio::test]
+async fn thread_model_update() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"model":"glm-5-2"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid: String = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(body.contains("glm-5-2"), "body: {body}");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"model":"swe-1-7"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains("swe-1-7"),
+        "updated model should persist: {body}"
+    );
 }
 
 #[tokio::test]
@@ -284,7 +390,8 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     let body = format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
     );
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -292,7 +399,10 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
-                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -327,7 +437,8 @@ async fn thread_send_streams_reply_as_sse() {
     let body = format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
     );
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -335,7 +446,10 @@ async fn thread_send_streams_reply_as_sse() {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
-                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -343,7 +457,11 @@ async fn thread_send_streams_reply_as_sse() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(
-        resp.headers().get("content-type").unwrap().to_str().unwrap(),
+        resp.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap(),
         "text/event-stream"
     );
 
@@ -368,7 +486,8 @@ async fn invites_create_and_list() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
 
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("POST", "/api/invites", &cookie, ""))
         .await
         .unwrap();
@@ -376,7 +495,8 @@ async fn invites_create_and_list() {
     let body = body_str(resp.into_body()).await;
     assert!(body.contains("token"), "body: {body}");
 
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", "/api/invites", &cookie, ""))
         .await
         .unwrap();
@@ -395,7 +515,8 @@ async fn file_manager_list_upload_read_delete() {
     let body = format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"hello.txt\"\r\nContent-Type: text/plain\r\n\r\nhi there\r\n--{boundary}--\r\n"
     );
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -403,7 +524,10 @@ async fn file_manager_list_upload_read_delete() {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
-                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -412,7 +536,8 @@ async fn file_manager_list_upload_read_delete() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // List dir.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", "/api/files", &cookie, ""))
         .await
         .unwrap();
@@ -421,8 +546,14 @@ async fn file_manager_list_upload_read_delete() {
     assert!(body.contains("hello.txt"), "body: {body}");
 
     // Read file content.
-    let resp = app.clone()
-        .oneshot(authed("GET", "/api/files/content?path=hello.txt", &cookie, ""))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/files/content?path=hello.txt",
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -430,8 +561,14 @@ async fn file_manager_list_upload_read_delete() {
     assert!(body.contains("base64"), "body: {body}");
 
     // Delete file.
-    let resp = app.clone()
-        .oneshot(authed("DELETE", "/api/files/delete?path=hello.txt", &cookie, ""))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/files/delete?path=hello.txt",
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -443,7 +580,8 @@ async fn file_manager_rejects_traversal() {
     let cookie = login(&app).await;
 
     // Attempt traversal via ..
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", "/api/files?path=../../etc", &cookie, ""))
         .await
         .unwrap();
@@ -456,8 +594,14 @@ async fn thread_group_create_list_rename_delete() {
     let cookie = login(&app).await;
 
     // Create a group.
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/thread-groups", &cookie, r#"{"name":"My Group"}"#))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/thread-groups",
+            &cookie,
+            r#"{"name":"My Group"}"#,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
@@ -467,7 +611,8 @@ async fn thread_group_create_list_rename_delete() {
         .unwrap();
 
     // List groups.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", "/api/thread-groups", &cookie, ""))
         .await
         .unwrap();
@@ -476,23 +621,41 @@ async fn thread_group_create_list_rename_delete() {
     assert!(body.contains("My Group"), "body: {body}");
 
     // Rename.
-    let resp = app.clone()
-        .oneshot(authed("PATCH", &format!("/api/thread-groups/{gid}"), &cookie, r#"{"name":"Renamed Group"}"#))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/thread-groups/{gid}"),
+            &cookie,
+            r#"{"name":"Renamed Group"}"#,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Verify rename.
-    let resp = app.clone()
-        .oneshot(authed("GET", &format!("/api/thread-groups/{gid}"), &cookie, ""))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/thread-groups/{gid}"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     let body = body_str(resp.into_body()).await;
     assert!(body.contains("Renamed Group"), "body: {body}");
 
     // Delete.
-    let resp = app.clone()
-        .oneshot(authed("DELETE", &format!("/api/thread-groups/{gid}"), &cookie, ""))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/thread-groups/{gid}"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -510,34 +673,50 @@ async fn thread_group_with_threads() {
     let tid_b = make_thread(&app, &cookie, pid, "Thread B").await;
 
     // Create a group and move both threads into it.
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/thread-groups", &cookie, &format!(
-            r#"{{"name":"Group 1","thread_ids":["{tid_a}","{tid_b}"]}}"#
-        )))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/thread-groups",
+            &cookie,
+            &format!(r#"{{"name":"Group 1","thread_ids":["{tid_a}","{tid_b}"]}}"#),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let gid: i64 = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["id"]
+    let gid: i64 = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await)
+        .unwrap()["id"]
         .as_i64()
         .unwrap();
 
     // Verify thread A has the group id.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", &format!("/api/threads/{tid_a}"), &cookie, ""))
         .await
         .unwrap();
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains(&format!(r#""thread_group_id":{gid}"#)), "body: {body}");
+    assert!(
+        body.contains(&format!(r#""thread_group_id":{gid}"#)),
+        "body: {body}"
+    );
 
     // Move thread A out of the group (ungroup).
-    let resp = app.clone()
-        .oneshot(authed("PATCH", &format!("/api/threads/{tid_a}"), &cookie, r#"{"thread_group_id":null}"#))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid_a}"),
+            &cookie,
+            r#"{"thread_group_id":null}"#,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Verify thread A is now ungrouped.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", &format!("/api/threads/{tid_a}"), &cookie, ""))
         .await
         .unwrap();
@@ -545,14 +724,21 @@ async fn thread_group_with_threads() {
     assert!(body.contains(r#""thread_group_id":null"#), "body: {body}");
 
     // Delete the group — thread B should become ungrouped.
-    let resp = app.clone()
-        .oneshot(authed("DELETE", &format!("/api/thread-groups/{gid}"), &cookie, ""))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/thread-groups/{gid}"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Verify thread B is now ungrouped.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", &format!("/api/threads/{tid_b}"), &cookie, ""))
         .await
         .unwrap();
@@ -566,17 +752,26 @@ async fn thread_isolation_between_users() {
     let owner_cookie = login(&app).await;
 
     // Owner creates an invite and a second user registers.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("POST", "/api/invites", &owner_cookie, ""))
         .await
         .unwrap();
-    let invite: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["token"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let invite: String =
+        serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()
+            ["token"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
-    let resp = app.clone()
-        .oneshot(authed("POST", "/api/auth/register", &owner_cookie, &format!(r#"{{"invite":"{invite}","username":"alice","password":"alicepass123"}}"#)))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/auth/register",
+            &owner_cookie,
+            &format!(r#"{{"invite":"{invite}","username":"alice","password":"alicepass123"}}"#),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -586,7 +781,8 @@ async fn thread_isolation_between_users() {
     let owner_tid = make_thread(&app, &owner_cookie, owner_pid, "owner-thread").await;
 
     // Alice logs in.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -594,22 +790,40 @@ async fn thread_isolation_between_users() {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"alice","password":"alicepass123"}"#))
+                .body(Body::from(
+                    r#"{"username":"alice","password":"alicepass123"}"#,
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
-    let alice_cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().split(';').next().unwrap().to_string();
+    let alice_cookie = resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
 
     // Alice cannot see owner's thread.
-    let resp = app.clone()
-        .oneshot(authed("GET", &format!("/api/threads/{owner_tid}"), &alice_cookie, ""))
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{owner_tid}"),
+            &alice_cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
     // Alice's thread list is empty.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(authed("GET", "/api/threads", &alice_cookie, ""))
         .await
         .unwrap();
@@ -625,7 +839,12 @@ async fn thread_rejects_invalid_permission_mode() {
     let cookie = login(&app).await;
     let pid = create_project(&app, &cookie).await;
     let resp = app
-        .oneshot(authed("POST", "/api/threads", &cookie, &format!(r#"{{"project_id":{pid},"title":"T","permission_mode":"god-mode"}}"#)))
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"T","permission_mode":"god-mode"}}"#),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -639,10 +858,19 @@ async fn thread_accepts_each_valid_permission_mode() {
     for mode in &["normal", "accept-edits", "smart", "bypass"] {
         let resp = app
             .clone()
-            .oneshot(authed("POST", "/api/threads", &cookie, &format!(r#"{{"project_id":{pid},"title":"T-{mode}","permission_mode":"{mode}"}}"#)))
+            .oneshot(authed(
+                "POST",
+                "/api/threads",
+                &cookie,
+                &format!(r#"{{"project_id":{pid},"title":"T-{mode}","permission_mode":"{mode}"}}"#),
+            ))
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::CREATED, "mode {mode} should be accepted");
+        assert_eq!(
+            resp.status(),
+            StatusCode::CREATED,
+            "mode {mode} should be accepted"
+        );
     }
 }
 
@@ -652,30 +880,75 @@ async fn disabled_user_cannot_access_protected_routes() {
     let cookie = login(&app).await;
 
     // Register a second user.
-    let resp = app.clone().oneshot(authed("POST", "/api/invites", &cookie, "")).await.unwrap();
-    let invite: String = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()["token"].as_str().unwrap().to_string();
-    app.clone().oneshot(authed("POST", "/api/auth/register", &cookie, &format!(r#"{{"invite":"{invite}","username":"bob","password":"bobpass12345"}}"#))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/invites", &cookie, ""))
+        .await
+        .unwrap();
+    let invite: String =
+        serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()
+            ["token"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    app.clone()
+        .oneshot(authed(
+            "POST",
+            "/api/auth/register",
+            &cookie,
+            &format!(r#"{{"invite":"{invite}","username":"bob","password":"bobpass12345"}}"#),
+        ))
+        .await
+        .unwrap();
 
     // Bob logs in.
-    let resp = app.clone().oneshot(
-        Request::builder()
-            .method("POST").uri("/api/auth/login")
-            .header(header::HOST, "localhost").header(header::ORIGIN, "http://localhost")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"username":"bob","password":"bobpass12345"}"#)).unwrap(),
-    ).await.unwrap();
-    let bob_cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().split(';').next().unwrap().to_string();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"username":"bob","password":"bobpass12345"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bob_cookie = resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
 
     // Bob can access /me initially.
-    let resp = app.clone().oneshot(authed("GET", "/api/auth/me", &bob_cookie, "")).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &bob_cookie, ""))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Disable bob directly in the DB.
     sqlx::query("UPDATE users SET disabled = 1 WHERE username = 'bob'")
-        .execute(db.pool()).await.unwrap();
+        .execute(db.pool())
+        .await
+        .unwrap();
 
     // Bob's existing session should now be rejected by the middleware.
-    let resp = app.clone().oneshot(authed("GET", "/api/auth/me", &bob_cookie, "")).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &bob_cookie, ""))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -693,14 +966,23 @@ async fn send_rejects_oversized_attachment() {
     let body = format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nhi\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"big.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n{big}\r\n--{boundary}--\r\n"
     );
-    let resp = app.oneshot(
-        Request::builder()
-            .method("POST").uri(format!("/api/threads/{tid}/send"))
-            .header(header::HOST, "localhost").header(header::ORIGIN, "http://localhost")
-            .header("cookie", &cookie)
-            .header("content-type", format!("multipart/form-data; boundary={boundary}"))
-            .body(Body::from(body)).unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
@@ -716,13 +998,22 @@ async fn send_rejects_empty_prompt() {
     let body = format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n   \r\n--{boundary}--\r\n"
     );
-    let resp = app.oneshot(
-        Request::builder()
-            .method("POST").uri(format!("/api/threads/{tid}/send"))
-            .header(header::HOST, "localhost").header(header::ORIGIN, "http://localhost")
-            .header("cookie", &cookie)
-            .header("content-type", format!("multipart/form-data; boundary={boundary}"))
-            .body(Body::from(body)).unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }

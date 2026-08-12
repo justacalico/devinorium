@@ -3,9 +3,9 @@
 //! Sets a strict Content-Security-Policy plus the standard hardening headers
 //! on every response.
 
+use axum::extract::Request;
 use axum::http::{header, HeaderValue, Response};
 use axum::middleware::Next;
-use axum::extract::Request;
 
 /// A strict CSP. `connect-src 'self'` allows fetch/XHR/WebSocket to the same
 /// origin. `img-src 'self' data: blob:` allows inline image previews.

@@ -1,8 +1,8 @@
 //! AI provider abstraction.
 //!
-//! Devinorium talks to AI backends through a single [`Provider`] trait. Today
-//! the only implementation is the `devin` CLI ([`devin_cli`]), but the design
-//! makes adding a new provider a two-step change:
+//! Devinorium talks to AI backends through a single [`Provider`] trait. The
+//! current implementation drives the `devin` CLI through the Agent Client
+//! Protocol ([`devin_acp`]). Adding a new provider is a two-step change:
 //!
 //! 1. **Create one new file** `src/providers/<name>.rs` implementing [`Provider`].
 //! 2. **Edit one line** in the registry below — add a match arm in
@@ -12,9 +12,12 @@
 //!
 //! See [`docs/providers.md`] for a walkthrough.
 
-pub mod devin_cli;
+pub mod devin_acp;
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -31,9 +34,44 @@ pub struct Attachment {
     pub data: Vec<u8>,
 }
 
-/// Options shared by [`Provider::start`] and [`Provider::send`].
+/// A single option presented for an interactive permission request.
+#[derive(Debug, Clone, Serialize)]
+pub struct PermissionOption {
+    pub id: String,
+    pub kind: String,
+    pub label: Option<String>,
+}
+
+/// An interactive permission request that the provider wants the user to
+/// decide on (allow/skip/etc.).
+#[derive(Debug, Clone, Serialize)]
+pub struct PermissionRequest {
+    pub request_id: String,
+    pub scope: String,
+    pub title: String,
+    pub input: Option<String>,
+    pub options: Vec<PermissionOption>,
+}
+
+/// The user's decision for a permission request.
 #[derive(Debug, Clone)]
+pub enum PermissionOutcome {
+    Allow { option_id: String },
+    Cancel,
+}
+
+/// Callback the API layer supplies to the provider so permission requests
+/// can be forwarded to the client (e.g. over SSE) and awaited.
+pub type PermissionCallback = Arc<
+    dyn Fn(PermissionRequest) -> Pin<Box<dyn Future<Output = PermissionOutcome> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Options shared by [`Provider::start`] and [`Provider::send`].
+#[derive(Clone)]
 pub struct SendOptions {
+    // Manual Debug impl below.
     /// The model to use (ignored when resuming an existing session).
     pub model: String,
     /// Working directory the provider should operate in.
@@ -45,6 +83,21 @@ pub struct SendOptions {
     pub permissions: Option<String>,
     /// Attachments to include with the message.
     pub attachments: Vec<Attachment>,
+    /// Optional callback that handles interactive permission requests.
+    pub permission_callback: Option<PermissionCallback>,
+}
+
+impl std::fmt::Debug for SendOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SendOptions")
+            .field("model", &self.model)
+            .field("working_dir", &self.working_dir)
+            .field("permission_mode", &self.permission_mode)
+            .field("permissions", &self.permissions)
+            .field("attachments", &self.attachments.len())
+            .field("permission_callback", &self.permission_callback.is_some())
+            .finish()
+    }
 }
 
 /// Request to start a brand-new conversation.
@@ -109,7 +162,24 @@ pub trait Provider: Send + Sync {
 
     /// Best-effort: export the full conversation for a session as JSON.
     /// Providers that cannot export should return an empty object.
-    async fn export(&self, session_id: &str, working_dir: &Path) -> anyhow::Result<serde_json::Value>;
+    async fn export(
+        &self,
+        session_id: &str,
+        working_dir: &Path,
+    ) -> anyhow::Result<serde_json::Value>;
+}
+
+/// Derive a short title from the first line of a prompt.
+pub fn title_from_prompt(prompt: &str) -> String {
+    let line = prompt.lines().next().unwrap_or(prompt);
+    let title = line.trim();
+    let mut chars = title.chars();
+    let truncated: String = chars.by_ref().take(77).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
 }
 
 /// Configuration passed to [`build_provider`].
@@ -133,7 +203,7 @@ pub fn available_providers() -> Vec<&'static str> {
 /// line you edit in this file.
 pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> {
     match cfg.id.as_str() {
-        "devin-cli" => Ok(Box::new(devin_cli::DevinCliProvider::new(
+        "devin-cli" => Ok(Box::new(devin_acp::DevinAcpProvider::new(
             cfg.devin_bin.clone(),
             cfg.default_model.clone(),
         ))),

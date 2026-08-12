@@ -19,6 +19,8 @@ class DialogLayer extends StatelessWidget {
         return const _InvitesDialog();
       case DialogKind.newProject:
         return const _NewProjectDialog();
+      case DialogKind.permissionRequest:
+        return const _PermissionRequestDialog();
     }
   }
 }
@@ -605,5 +607,123 @@ class _BrowserHeader extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _PermissionRequestDialog extends StatelessWidget {
+  const _PermissionRequestDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final req = state.pendingPermissionRequest;
+    if (req == null) return const SizedBox.shrink();
+
+    if (req.options.isEmpty) {
+      state.respondToPermissionRequest(null);
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final allowOnce = req.options.firstWhere(
+      (o) => o.kind == 'AllowOnce',
+      orElse: () => req.options.first,
+    );
+    final otherOptions = req.options.where((o) => o.id != allowOnce.id).toList();
+
+    return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: AlertDialog(
+            title: const Text('Permission request'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420, maxHeight: 500),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      req.title,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    if (req.input != null && req.input!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          req.input!,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    Text(
+                      'Allow this action?',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton(
+                    onPressed: () => state.respondToPermissionRequest(allowOnce.id),
+                    child: Text(allowOnce.label ?? 'Allow once'),
+                  ),
+                  const SizedBox(height: 8),
+                  if (otherOptions.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final option in otherOptions)
+                          OutlinedButton(
+                            onPressed: () =>
+                                state.respondToPermissionRequest(option.id),
+                            child: Text(option.label ?? _displayKind(option.kind)),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => state.respondToPermissionRequest(null),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _displayKind(String kind) {
+    return switch (kind) {
+      'AllowOnce' => 'Allow once',
+      'AllowAlways' => 'Allow always',
+      'RejectOnce' => 'Reject once',
+      'RejectAlways' => 'Reject always',
+      _ => kind,
+    };
   }
 }

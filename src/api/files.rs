@@ -40,7 +40,11 @@ async fn resolve(
     let global_root = match &state.config.file_root {
         Some(r) => r.clone(),
         None => {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(crate::api::ApiError::new("no file root configured"))).into_response());
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(crate::api::ApiError::new("no file root configured")),
+            )
+                .into_response());
         }
     };
     let global_root_canon = match global_root.canonicalize() {
@@ -51,7 +55,13 @@ async fn resolve(
     let project_root = if let Some(pid) = project_id {
         match state.db.get_project(pid, user_id).await {
             Ok(Some(p)) => Some(PathBuf::from(p.path)),
-            _ => return Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("invalid project_id"))).into_response()),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid project_id")),
+                )
+                    .into_response())
+            }
         }
     } else {
         None
@@ -70,7 +80,13 @@ async fn resolve(
     if let Some(p) = project_root.as_ref() {
         match paths::resolve_within(p, Some(&global_root_canon), &roots) {
             Some(_) => {}
-            None => return Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("project path escapes file root"))).into_response()),
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("project path escapes file root")),
+                )
+                    .into_response())
+            }
         }
     }
 
@@ -82,7 +98,11 @@ async fn resolve(
     };
     match paths::resolve_within(&target, Some(&root_canon), &roots) {
         Some(p) => Ok((p, root_canon)),
-        None => Err((StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path escapes file root"))).into_response()),
+        None => Err((
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("path escapes file root")),
+        )
+            .into_response()),
     }
 }
 
@@ -148,11 +168,19 @@ async fn read_file(
     };
     // Limit to 4 MiB for inline read.
     if bytes.len() > 4 * 1024 * 1024 {
-        return (StatusCode::PAYLOAD_TOO_LARGE, Json(crate::api::ApiError::new("file too large for inline read (max 4 MiB)"))).into_response();
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(crate::api::ApiError::new(
+                "file too large for inline read (max 4 MiB)",
+            )),
+        )
+            .into_response();
     }
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    let mime = mime_guess::from_path(&target).first_or_octet_stream().to_string();
+    let mime = mime_guess::from_path(&target)
+        .first_or_octet_stream()
+        .to_string();
     Json(serde_json::json!({
         "path": target.to_string_lossy(),
         "mime": mime,
@@ -191,7 +219,11 @@ async fn upload(
             continue;
         }
         if bytes.len() > 16 * 1024 * 1024 {
-            return (StatusCode::PAYLOAD_TOO_LARGE, Json(crate::api::ApiError::new("file too large (max 16 MiB)"))).into_response();
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(crate::api::ApiError::new("file too large (max 16 MiB)")),
+            )
+                .into_response();
         }
         files.push((filename, bytes.to_vec()));
     }
@@ -205,7 +237,13 @@ async fn upload(
     for (filename, bytes) in files {
         let safe: String = filename
             .chars()
-            .map(|c| if c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ') { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ') {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         let rel = dest_dir_rel.as_deref().unwrap_or("");
         let target = if rel.is_empty() {
@@ -216,7 +254,13 @@ async fn upload(
         let roots = vec![root_base.clone()];
         let resolved = match paths::resolve_within(&target, Some(&root_base), &roots) {
             Some(p) => p,
-            None => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path escapes file root"))).into_response(),
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("path escapes file root")),
+                )
+                    .into_response()
+            }
         };
         if let Some(parent) = resolved.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
@@ -270,7 +314,13 @@ async fn mv(
     let roots = vec![root.clone()];
     let to = match paths::resolve_within(&to_target, Some(&root), &roots) {
         Some(p) => p,
-        None => return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("destination escapes file root"))).into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("destination escapes file root")),
+            )
+                .into_response()
+        }
     };
     if let Some(parent) = to.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;

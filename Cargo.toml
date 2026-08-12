@@ -2,7 +2,7 @@
 name = "devinorium"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.88.0"
 license = "AGPL-3.0-only"
 description = "A secure, self-hostable Material 3 web UI for managing Devin work from anywhere."
 repository = "https://gitlab.com/HttpAnimations/devinorium"
@@ -70,6 +70,7 @@ hex = "0.4"
 dotenvy = "0.15.7"
 include_dir = "0.7"
 tempfile = "3"
+agent-client-protocol = "2"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }

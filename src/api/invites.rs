@@ -15,8 +15,7 @@ use crate::db::invites::InviteRow;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/api/invites", get(list).post(create))
+    Router::new().route("/api/invites", get(list).post(create))
 }
 
 #[derive(Debug, Serialize)]
@@ -56,7 +55,11 @@ async fn create(State(state): State<AppState>, CurrentUser(user): CurrentUser) -
                 .db
                 .audit(Some(user.id), "invite.create", &serde_json::json!({}), None)
                 .await;
-            (StatusCode::CREATED, Json(serde_json::json!({"token": token}))).into_response()
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({"token": token})),
+            )
+                .into_response()
         }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }

@@ -52,6 +52,9 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         config: Arc::new(cfg),
         db: database.clone(),
         provider: Arc::from(provider),
+        pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
     (state, database)
 }
@@ -101,7 +104,8 @@ async fn bootstrap_creates_owner() {
 async fn login_succeeds_with_correct_password() {
     let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -123,7 +127,8 @@ async fn login_succeeds_with_correct_password() {
 async fn login_fails_with_wrong_password() {
     let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -141,13 +146,16 @@ async fn login_fails_with_wrong_password() {
 async fn login_fails_for_nonexistent_user() {
     let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/api/auth/login")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"ghost","password":"whatever12"}"#))
+                .body(Body::from(
+                    r#"{"username":"ghost","password":"whatever12"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -159,8 +167,14 @@ async fn login_fails_for_nonexistent_user() {
 async fn me_requires_auth() {
     let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
-    let resp = app.clone()
-        .oneshot(Request::builder().uri("/api/auth/me").body(Body::empty()).unwrap())
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -202,7 +216,8 @@ async fn full_login_then_me_flow() {
         .to_string();
 
     // Use cookie to call /me.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/auth/me")
@@ -245,7 +260,8 @@ async fn register_requires_valid_invite() {
     let invite = db.create_invite(owner.id, 7).await.unwrap();
 
     // Valid invite -> success.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -276,7 +292,8 @@ async fn register_rejects_short_password() {
     let app = build_router(state.clone());
     let owner = db.get_user_by_username("owner").await.unwrap().unwrap();
     let invite = db.create_invite(owner.id, 7).await.unwrap();
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -341,8 +358,7 @@ async fn totp_setup_and_verify_flow() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = read_body(resp.into_body()).await;
     assert!(body.contains("secret"), "body: {body}");
-    let secret = serde_json::from_str::<serde_json::Value>(&body)
-        .unwrap()["secret"]
+    let secret = serde_json::from_str::<serde_json::Value>(&body).unwrap()["secret"]
         .as_str()
         .unwrap()
         .to_string();
@@ -362,7 +378,8 @@ async fn totp_setup_and_verify_flow() {
     let code = totp.generate_current().unwrap();
 
     // Verify -> enables TOTP.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -377,7 +394,8 @@ async fn totp_setup_and_verify_flow() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Now login should require TOTP.
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")

@@ -43,7 +43,11 @@ async fn provider_lists_models() {
     let models = p.list_models().await.expect("list models");
     assert!(!models.is_empty(), "should return at least one model");
     let ids: Vec<_> = models.iter().map(|m| m.id.as_str()).collect();
-    assert!(ids.contains(&"glm-5-2"), "free model glm-5-2 should be listed: {:?}", ids);
+    assert!(
+        ids.contains(&"glm-5-2"),
+        "free model glm-5-2 should be listed: {:?}",
+        ids
+    );
 }
 
 #[tokio::test]
@@ -62,6 +66,7 @@ async fn provider_start_and_send_text() {
             options: SendOptions {
                 model: "glm-5-2".to_string(),
                 permissions: None,
+                permission_callback: None,
                 working_dir: dir.clone(),
                 permission_mode: "normal".to_string(),
                 attachments: vec![],
@@ -79,6 +84,7 @@ async fn provider_start_and_send_text() {
             options: SendOptions {
                 model: "glm-5-2".to_string(),
                 permissions: None,
+                permission_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![],
@@ -118,6 +124,7 @@ async fn provider_start_with_image_attachment() {
             options: SendOptions {
                 model: "glm-5-2".to_string(),
                 permissions: None,
+                permission_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![providers::Attachment {
@@ -148,6 +155,34 @@ fn registry_rejects_unknown() {
     assert!(res.is_err());
 }
 
+#[tokio::test]
+#[ignore = "requires devin CLI + auth with ACP support"]
+async fn provider_acp_start() {
+    if !devin_available() {
+        eprintln!("skipping: devin not on PATH");
+        return;
+    }
+    let p = providers::devin_acp::DevinAcpProvider::new("devin".to_string(), "glm-5-2".to_string());
+    let dir = tmp_workdir();
+
+    let start = p
+        .start(providers::StartRequest {
+            prompt: "Reply with exactly: ACP_OK".to_string(),
+            options: providers::SendOptions {
+                model: "glm-5-2".to_string(),
+                permissions: None,
+                permission_callback: None,
+                working_dir: dir,
+                permission_mode: "normal".to_string(),
+                attachments: vec![],
+            },
+        })
+        .await
+        .expect("start");
+    assert!(!start.session_id.is_empty(), "session id should be set");
+    assert!(!start.reply.is_empty(), "reply should be non-empty");
+}
+
 /// glm-5-2 should be able to generate code when asked.
 #[tokio::test]
 #[ignore = "requires devin CLI + auth"]
@@ -164,6 +199,7 @@ async fn provider_generates_code() {
             options: SendOptions {
                 model: "glm-5-2".to_string(),
                 permissions: None,
+                permission_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![],
@@ -196,6 +232,7 @@ async fn provider_writes_file_in_working_dir() {
             options: SendOptions {
                 model: "glm-5-2".to_string(),
                 permissions: None,
+                permission_callback: None,
                 working_dir: dir.clone(),
                 permission_mode: "accept-edits".to_string(),
                 attachments: vec![],
@@ -220,7 +257,10 @@ async fn provider_writes_file_in_working_dir() {
         if std::time::Instant::now() > deadline {
             // Some models may phrase the write differently; accept if the reply
             // acknowledges the task rather than hard-failing on timing.
-            eprintln!("file not created within timeout; reply was: {:?}", start.reply);
+            eprintln!(
+                "file not created within timeout; reply was: {:?}",
+                start.reply
+            );
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -244,13 +284,19 @@ async fn provider_accepts_all_permission_modes() {
                 options: SendOptions {
                     model: "glm-5-2".to_string(),
                     permissions: None,
+                    permission_callback: None,
                     working_dir: dir,
                     permission_mode: mode.to_string(),
                     attachments: vec![],
                 },
             })
             .await;
-        assert!(res.is_ok(), "permission mode {} should be accepted: {:?}", mode, res.err());
+        assert!(
+            res.is_ok(),
+            "permission mode {} should be accepted: {:?}",
+            mode,
+            res.err()
+        );
         let r = res.unwrap();
         assert!(!r.reply.is_empty(), "mode {} produced empty reply", mode);
     }
@@ -272,6 +318,7 @@ async fn provider_accepts_text_attachment() {
             options: SendOptions {
                 model: "glm-5-2".to_string(),
                 permissions: None,
+                permission_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
                 attachments: vec![providers::Attachment {
