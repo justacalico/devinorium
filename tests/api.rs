@@ -49,15 +49,33 @@ impl Provider for StubProvider {
         ])
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        let reply = format!("echo: {}", req.prompt);
+        let thinking = "reasoning about the prompt".to_string();
+        if let Some(cb) = &req.options.thinking_callback {
+            cb(thinking.clone());
+        }
+        if let Some(cb) = &req.options.text_callback {
+            cb(reply.clone());
+        }
         Ok(StartResponse {
             session_id: format!("stub-session-{}", req.prompt.len()),
-            reply: format!("echo: {}", req.prompt),
+            reply,
+            thinking,
             title: "Stub Thread".into(),
         })
     }
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        let reply = format!("echo: {}", req.prompt);
+        let thinking = "reasoning about the prompt".to_string();
+        if let Some(cb) = &req.options.thinking_callback {
+            cb(thinking.clone());
+        }
+        if let Some(cb) = &req.options.text_callback {
+            cb(reply.clone());
+        }
         Ok(SendResponse {
-            reply: format!("echo: {}", req.prompt),
+            reply,
+            thinking,
         })
     }
     async fn export(
@@ -411,6 +429,7 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
     assert!(body.contains("echo: Hello world"), "body: {body}");
+    assert!(body.contains("reasoning about the prompt"), "body: {body}");
 
     // Verify messages persisted in DB.
     let msgs = db.list_messages(&tid).await.unwrap();
@@ -419,6 +438,7 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
+    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "reasoning about the prompt"));
 
     // Thread now has a session id.
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
@@ -467,10 +487,32 @@ async fn thread_send_streams_reply_as_sse() {
 
     let body = body_str(resp.into_body()).await;
     assert!(body.contains("event: user_message"), "body: {body}");
+    assert!(body.contains("event: thinking"), "body: {body}");
     assert!(body.contains("event: chunk"), "body: {body}");
     assert!(body.contains("event: done"), "body: {body}");
-    assert!(body.contains("Hello world"), "body: {body}");
-    assert!(body.contains("echo: Hello world"), "body: {body}");
+
+    let thinking_pos = body.find("event: thinking").expect("thinking event");
+    let chunk_pos = body.find("event: chunk").expect("chunk event");
+    let done_pos = body.find("event: done").expect("done event");
+    assert!(thinking_pos < chunk_pos, "thinking should come before chunk");
+    assert!(chunk_pos < done_pos, "chunk should come before done");
+
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    assert_eq!(done_json["role"], "assistant");
+    assert_eq!(done_json["content"], "echo: Hello world");
+    assert_eq!(
+        done_json["thinking"].as_str(),
+        Some("reasoning about the prompt")
+    );
 
     // Verify messages persisted in DB.
     let msgs = db.list_messages(&tid).await.unwrap();
@@ -479,6 +521,7 @@ async fn thread_send_streams_reply_as_sse() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
+    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "reasoning about the prompt"));
 }
 
 #[tokio::test]

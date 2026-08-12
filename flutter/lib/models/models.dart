@@ -54,17 +54,20 @@ class Attachment {
 class Message {
   final String role;
   final String content;
+  final String? thinking;
   final List<Attachment>? attachments;
 
   Message({
     required this.role,
     required this.content,
+    this.thinking,
     this.attachments,
   });
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
         role: j['role'] as String,
         content: j['content'] as String? ?? '',
+        thinking: j['thinking'] as String?,
         attachments: (j['attachments'] as List<dynamic>?)
             ?.map((a) => Attachment.fromJson(a as Map<String, dynamic>))
             .toList(),
@@ -73,6 +76,7 @@ class Message {
   Message copyWith({String? content}) => Message(
         role: role,
         content: content ?? this.content,
+        thinking: thinking,
         attachments: attachments,
       );
 }

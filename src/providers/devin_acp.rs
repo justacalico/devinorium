@@ -11,12 +11,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::Deserialize;
 use tokio::process::Command;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 
 use super::{
     title_from_prompt, Attachment, ModelInfo, PermissionCallback, PermissionOption,
     PermissionOutcome, PermissionRequest, Provider, SendOptions, SendRequest, SendResponse,
-    StartRequest, StartResponse,
+    StartRequest, StartResponse, StreamChunkCallback,
 };
 use agent_client_protocol::{
     schema::v1::{
@@ -50,13 +50,15 @@ impl DevinAcpProvider {
         options: &SendOptions,
         maybe_session: Option<&str>,
         prompt: String,
-    ) -> anyhow::Result<(String, String)> {
+    ) -> anyhow::Result<(String, String, String)> {
         let prompt = self
             .with_attachments(prompt, &options.attachments, &options.working_dir)
             .await?;
 
-        let (text_tx, mut text_rx) = mpsc::unbounded_channel::<String>();
-        let text_tx = Arc::new(Mutex::new(Some(text_tx)));
+        let text_acc = Arc::new(Mutex::new(String::new()));
+        let thinking_acc = Arc::new(Mutex::new(String::new()));
+        let text_callback = options.text_callback.clone();
+        let thinking_callback = options.thinking_callback.clone();
 
         let cwd = options.working_dir.clone();
         let maybe_session = maybe_session.map(|s| s.to_string());
@@ -67,9 +69,18 @@ impl DevinAcpProvider {
             .name("devinorium")
             .on_receive_notification(
                 {
-                    let text_tx = text_tx.clone();
+                    let text_acc = text_acc.clone();
+                    let thinking_acc = thinking_acc.clone();
+                    let text_callback = text_callback.clone();
+                    let thinking_callback = thinking_callback.clone();
                     async move |notification: SessionNotification, _cx| {
-                        extract_text_from_notification(&notification, &text_tx).await;
+                        let (text, thinking) = extract_text_from_notification(&notification).await;
+                        if let Some(t) = text {
+                            emit_chunk(&text_acc, text_callback.as_ref(), t).await;
+                        }
+                        if let Some(t) = thinking {
+                            emit_chunk(&thinking_acc, thinking_callback.as_ref(), t).await;
+                        }
                         Ok(())
                     }
                 },
@@ -127,14 +138,11 @@ impl DevinAcpProvider {
                         .block_task()
                         .await?;
 
-                    // Collect any text that arrived while we were waiting.
-                    let mut reply = String::new();
-                    let _tx = text_tx.lock().await.take();
-                    while let Ok(text) = text_rx.try_recv() {
-                        reply.push_str(&text);
-                    }
+                    // After the prompt completes, gather any text/thinking that arrived.
+                    let reply = text_acc.lock().await.clone();
+                    let thinking = thinking_acc.lock().await.clone();
 
-                    Ok::<_, agent_client_protocol::Error>((session_id, reply))
+                    Ok::<_, agent_client_protocol::Error>((session_id, reply, thinking))
                 },
             )
             .await
@@ -440,24 +448,28 @@ fn map_permission_option(option: &AcpPermissionOption) -> PermissionOption {
 
 async fn extract_text_from_notification(
     notification: &SessionNotification,
-    text_tx: &Arc<Mutex<Option<mpsc::UnboundedSender<String>>>>,
-) {
+) -> (Option<String>, Option<String>) {
     use agent_client_protocol::schema::v1::SessionUpdate;
-    let text = match &notification.update {
-        SessionUpdate::AgentMessageChunk(chunk) => match &chunk.content {
-            ContentBlock::Text(t) => Some(t.text.clone()),
-            _ => None,
-        },
-        SessionUpdate::ToolCall(tool_call) => tool_call
-            .content
-            .iter()
-            .filter_map(|c| match c {
-                ToolCallContent::Content(content) => text_from_content_block(&content.content),
-                _ => None,
-            })
-            .next(),
+    match &notification.update {
+        SessionUpdate::AgentMessageChunk(chunk) => {
+            (text_from_content_block(&chunk.content), None)
+        }
+        SessionUpdate::AgentThoughtChunk(chunk) => {
+            (None, text_from_content_block(&chunk.content))
+        }
+        SessionUpdate::ToolCall(tool_call) => {
+            let text = tool_call
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    ToolCallContent::Content(content) => text_from_content_block(&content.content),
+                    _ => None,
+                })
+                .next();
+            (text, None)
+        }
         SessionUpdate::ToolCallUpdate(update) => {
-            update.fields.content.as_ref().and_then(|contents| {
+            let text = update.fields.content.as_ref().and_then(|contents| {
                 contents
                     .iter()
                     .filter_map(|c| match c {
@@ -467,16 +479,22 @@ async fn extract_text_from_notification(
                         _ => None,
                     })
                     .next()
-            })
+            });
+            (text, None)
         }
-        _ => None,
-    };
+        _ => (None, None),
+    }
+}
 
-    if let Some(text) = text {
-        let guard = text_tx.lock().await;
-        if let Some(tx) = guard.as_ref() {
-            let _ = tx.send(text);
-        }
+async fn emit_chunk(
+    acc: &Mutex<String>,
+    callback: Option<&StreamChunkCallback>,
+    chunk: String,
+) {
+    let mut guard = acc.lock().await;
+    guard.push_str(&chunk);
+    if let Some(cb) = callback {
+        cb(chunk);
     }
 }
 
@@ -539,21 +557,23 @@ impl Provider for DevinAcpProvider {
 
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
         let title = title_from_prompt(&req.prompt);
-        let (session_id, reply) = self.run_prompt(&req.options, None, req.prompt).await?;
+        let (session_id, reply, thinking) =
+            self.run_prompt(&req.options, None, req.prompt).await?;
 
         Ok(StartResponse {
             session_id,
             title,
             reply,
+            thinking,
         })
     }
 
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
-        let (_, reply) = self
+        let (_, reply, thinking) = self
             .run_prompt(&req.options, Some(&req.session_id), req.prompt)
             .await?;
 
-        Ok(SendResponse { reply })
+        Ok(SendResponse { reply, thinking })
     }
 
     async fn export(
