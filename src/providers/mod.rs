@@ -70,6 +70,21 @@ pub type PermissionCallback = Arc<
 
 pub type StreamChunkCallback = Arc<dyn Fn(String) + Send + Sync + 'static>;
 
+/// A tool call streamed from the agent, rendered separately from the reply.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallEvent {
+    pub id: String,
+    pub title: String,
+    pub kind: String,
+    pub status: String,
+    pub command: Option<String>,
+    pub output: Option<String>,
+    pub output_preview: Option<String>,
+    pub changed_files: Vec<String>,
+}
+
+pub type ToolCallCallback = Arc<dyn Fn(ToolCallEvent) + Send + Sync + 'static>;
+
 /// Options shared by [`Provider::start`] and [`Provider::send`].
 #[derive(Clone)]
 pub struct SendOptions {
@@ -91,6 +106,8 @@ pub struct SendOptions {
     pub text_callback: Option<StreamChunkCallback>,
     /// Optional callback for each chunk of the assistant's thinking/reasoning.
     pub thinking_callback: Option<StreamChunkCallback>,
+    /// Optional callback for tool call progress updates.
+    pub tool_callback: Option<ToolCallCallback>,
 }
 
 impl std::fmt::Debug for SendOptions {
@@ -104,6 +121,7 @@ impl std::fmt::Debug for SendOptions {
             .field("permission_callback", &self.permission_callback.is_some())
             .field("text_callback", &self.text_callback.is_some())
             .field("thinking_callback", &self.thinking_callback.is_some())
+            .field("tool_callback", &self.tool_callback.is_some())
             .finish()
     }
 }

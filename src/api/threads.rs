@@ -392,7 +392,7 @@ async fn send(
     };
 
     let provider_result =
-        call_provider(&state, &thread, &input.prompt, input.attachments, None, None, None).await;
+        call_provider(&state, &thread, &input.prompt, input.attachments, None, None, None, None).await;
 
     let (reply, thinking, new_session_id, new_title) = match provider_result {
         Ok(t) => t,
@@ -466,6 +466,16 @@ async fn send_stream(
     let thinking_callback: StreamChunkCallback = Arc::new(move |chunk: String| {
         let _ = tx_thinking.send(Ok(
             Event::default().event("thinking").data(&sanitize_sse_data(&chunk)),
+        ));
+    });
+    let tx_tool = tx.clone();
+    let tool_callback: crate::providers::ToolCallCallback = Arc::new(move |ev| {
+        let payload = match serde_json::to_string(&ev) {
+            Ok(json) => json,
+            Err(_) => return,
+        };
+        let _ = tx_tool.send(Ok(
+            Event::default().event("tool_call").data(&sanitize_sse_data(&payload)),
         ));
     });
 
@@ -552,6 +562,7 @@ async fn send_stream(
             Some(permission_callback),
             Some(text_callback),
             Some(thinking_callback),
+            Some(tool_callback),
         )
         .await;
         keepalive_handle.abort();
@@ -703,6 +714,7 @@ async fn call_provider(
     permission_callback: Option<PermissionCallback>,
     text_callback: Option<StreamChunkCallback>,
     thinking_callback: Option<StreamChunkCallback>,
+    tool_callback: Option<crate::providers::ToolCallCallback>,
 ) -> anyhow::Result<(String, String, Option<String>, Option<String>)> {
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
@@ -715,6 +727,7 @@ async fn call_provider(
         permission_callback,
         text_callback,
         thinking_callback,
+        tool_callback,
     };
 
     if let Some(sid) = thread.devin_session_id.as_ref() {

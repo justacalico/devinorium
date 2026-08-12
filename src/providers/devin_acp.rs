@@ -5,6 +5,7 @@
 //! API layer through the optional [`SendOptions::permission_callback`]; if no
 //! callback is configured, permission requests are rejected.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ use tokio::sync::Mutex;
 use super::{
     title_from_prompt, Attachment, ModelInfo, PermissionCallback, PermissionOption,
     PermissionOutcome, PermissionRequest, Provider, SendOptions, SendRequest, SendResponse,
-    StartRequest, StartResponse, StreamChunkCallback,
+    StartRequest, StartResponse, StreamChunkCallback, ToolCallCallback, ToolCallEvent,
 };
 use agent_client_protocol::{
     schema::v1::{
@@ -26,7 +27,7 @@ use agent_client_protocol::{
         RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
         SessionConfigId, SessionConfigKind, SessionConfigOption, SessionConfigOptionValue,
         SessionConfigSelectOptions, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-        TextContent, ToolCallContent,
+        TextContent, ToolCallContent, ToolCallStatus, ToolKind,
     },
     schema::ProtocolVersion,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -57,8 +58,11 @@ impl DevinAcpProvider {
 
         let text_acc = Arc::new(Mutex::new(String::new()));
         let thinking_acc = Arc::new(Mutex::new(String::new()));
+        let tool_calls: Arc<Mutex<HashMap<String, ToolCallEvent>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let text_callback = options.text_callback.clone();
         let thinking_callback = options.thinking_callback.clone();
+        let tool_callback = options.tool_callback.clone();
 
         let cwd = options.working_dir.clone();
         let maybe_session = maybe_session.map(|s| s.to_string());
@@ -73,6 +77,8 @@ impl DevinAcpProvider {
                     let thinking_acc = thinking_acc.clone();
                     let text_callback = text_callback.clone();
                     let thinking_callback = thinking_callback.clone();
+                    let tool_calls = tool_calls.clone();
+                    let tool_callback = tool_callback.clone();
                     async move |notification: SessionNotification, _cx| {
                         let (text, thinking) = extract_text_from_notification(&notification).await;
                         if let Some(t) = text {
@@ -81,6 +87,12 @@ impl DevinAcpProvider {
                         if let Some(t) = thinking {
                             emit_chunk(&thinking_acc, thinking_callback.as_ref(), t).await;
                         }
+                        handle_tool_call_notification(
+                            &notification,
+                            &tool_calls,
+                            tool_callback.as_ref(),
+                        )
+                        .await;
                         Ok(())
                     }
                 },
@@ -457,32 +469,158 @@ async fn extract_text_from_notification(
         SessionUpdate::AgentThoughtChunk(chunk) => {
             (None, text_from_content_block(&chunk.content))
         }
-        SessionUpdate::ToolCall(tool_call) => {
-            let text = tool_call
-                .content
-                .iter()
-                .filter_map(|c| match c {
-                    ToolCallContent::Content(content) => text_from_content_block(&content.content),
-                    _ => None,
-                })
-                .next();
-            (text, None)
-        }
-        SessionUpdate::ToolCallUpdate(update) => {
-            let text = update.fields.content.as_ref().and_then(|contents| {
-                contents
-                    .iter()
-                    .filter_map(|c| match c {
-                        ToolCallContent::Content(content) => {
-                            text_from_content_block(&content.content)
-                        }
-                        _ => None,
-                    })
-                    .next()
-            });
-            (text, None)
-        }
+        SessionUpdate::ToolCall(_) | SessionUpdate::ToolCallUpdate(_) => (None, None),
         _ => (None, None),
+    }
+}
+
+async fn handle_tool_call_notification(
+    notification: &SessionNotification,
+    tool_calls: &Mutex<HashMap<String, ToolCallEvent>>,
+    callback: Option<&ToolCallCallback>,
+) {
+    use agent_client_protocol::schema::v1::{SessionUpdate, ToolCallStatus};
+
+    let (id, title, kind, status, raw_input, raw_output, content) = match &notification.update {
+        SessionUpdate::ToolCall(tool_call) => (
+            tool_call.tool_call_id.to_string(),
+            Some(tool_call.title.clone()),
+            Some(tool_call.kind),
+            Some(tool_call.status),
+            tool_call.raw_input.clone(),
+            tool_call.raw_output.clone(),
+            Some(tool_call.content.clone()),
+        ),
+        SessionUpdate::ToolCallUpdate(update) => {
+            let f = &update.fields;
+            (
+                update.tool_call_id.to_string(),
+                f.title.clone(),
+                f.kind,
+                f.status,
+                f.raw_input.clone(),
+                f.raw_output.clone(),
+                f.content.clone(),
+            )
+        }
+        _ => return,
+    };
+
+    let mut map = tool_calls.lock().await;
+    let existing = map.get(&id).cloned();
+    let mut ev = existing.unwrap_or_else(|| ToolCallEvent {
+        id: id.clone(),
+        title: title.clone().unwrap_or_else(|| "Tool call".to_string()),
+        kind: kind_to_string(None),
+        status: status_to_string(None),
+        command: None,
+        output: None,
+        output_preview: None,
+        changed_files: Vec::new(),
+    });
+
+    if let Some(t) = title {
+        ev.title = t;
+    }
+    if let Some(k) = kind {
+        ev.kind = kind_to_string(Some(k));
+    }
+    if let Some(s) = status {
+        ev.status = status_to_string(Some(s));
+    } else if ev.status.is_empty() {
+        ev.status = status_to_string(None);
+    }
+
+    if let Some(input) = raw_input {
+        ev.command = Some(json_to_compact_string(&input));
+    }
+    if let Some(output) = raw_output {
+        let text = json_to_compact_string(&output);
+        if !text.is_empty() {
+            ev.output = Some(text);
+        }
+    }
+
+    if let Some(content) = content {
+        let mut output_parts = Vec::new();
+        let mut changed = Vec::new();
+        for c in content {
+            match c {
+                ToolCallContent::Content(content) => {
+                    if let Some(text) = text_from_content_block(&content.content) {
+                        output_parts.push(text);
+                    }
+                }
+                ToolCallContent::Diff(diff) => {
+                    changed.push(diff.path.to_string_lossy().into_owned());
+                }
+                _ => {}
+            }
+        }
+        if !output_parts.is_empty() {
+            let text = output_parts.join("");
+            ev.output = Some(text);
+        }
+        if !changed.is_empty() {
+            ev.changed_files = changed;
+        }
+    }
+
+    if let Some(output) = ev.output.as_deref() {
+        ev.output_preview = Some(truncate_preview(output, 120));
+    }
+
+    // Treat any non-terminal status as "in progress" until completed/failed.
+    if !matches!(ev.status.as_str(), "completed" | "failed") && status.is_some() {
+        ev.status = status_to_string(Some(ToolCallStatus::InProgress));
+    }
+
+    map.insert(id, ev.clone());
+    if let Some(cb) = callback {
+        cb(ev);
+    }
+}
+
+fn kind_to_string(kind: Option<ToolKind>) -> String {
+    use ToolKind;
+    match kind {
+        Some(ToolKind::Read) => "read".to_string(),
+        Some(ToolKind::Edit) => "edit".to_string(),
+        Some(ToolKind::Delete) => "delete".to_string(),
+        Some(ToolKind::Move) => "move".to_string(),
+        Some(ToolKind::Search) => "search".to_string(),
+        Some(ToolKind::Execute) => "execute".to_string(),
+        Some(ToolKind::Think) => "think".to_string(),
+        Some(ToolKind::Fetch) => "fetch".to_string(),
+        Some(ToolKind::SwitchMode) => "switch_mode".to_string(),
+        Some(ToolKind::Other) | None => "other".to_string(),
+        Some(_) => "other".to_string(),
+    }
+}
+
+fn status_to_string(status: Option<ToolCallStatus>) -> String {
+    match status {
+        Some(ToolCallStatus::Pending) => "pending".to_string(),
+        Some(ToolCallStatus::InProgress) => "in_progress".to_string(),
+        Some(ToolCallStatus::Completed) => "completed".to_string(),
+        Some(ToolCallStatus::Failed) => "failed".to_string(),
+        Some(_) => "in_progress".to_string(),
+        None => "in_progress".to_string(),
+    }
+}
+
+fn json_to_compact_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        _ => serde_json::to_string(value).unwrap_or_default(),
+    }
+}
+
+fn truncate_preview(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len])
     }
 }
 
