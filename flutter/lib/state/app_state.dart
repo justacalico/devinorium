@@ -49,6 +49,8 @@ class AppState extends ChangeNotifier {
   String _selectedPermission = 'normal';
   List<Invite> _invites = [];
   String? _streamingText;
+  String? _streamingThinking;
+  bool _streamingThinkingActive = false;
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   PermissionRequest? _pendingPermissionRequest;
@@ -88,6 +90,8 @@ class AppState extends ChangeNotifier {
   String get selectedPermission => _selectedPermission;
   List<Invite> get invites => _invites;
   String? get streamingText => _streamingText;
+  String? get streamingThinking => _streamingThinking;
+  bool get streamingThinkingActive => _streamingThinkingActive;
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
 
@@ -301,6 +305,8 @@ class AppState extends ChangeNotifier {
     _loginError = '';
     _composerText = '';
     _streamingText = null;
+    _streamingThinking = null;
+    _streamingThinkingActive = false;
     _sending = false;
     notifyListeners();
   }
@@ -505,6 +511,8 @@ class AppState extends ChangeNotifier {
 
     _sending = true;
     _streamingText = '';
+    _streamingThinking = null;
+    _streamingThinkingActive = false;
     _composerText = '';
     notifyListeners();
 
@@ -538,13 +546,21 @@ class AppState extends ChangeNotifier {
               notifyListeners();
             }
             break;
+          case 'thinking':
+            _streamingThinking = (_streamingThinking ?? '') + ev.data;
+            _streamingThinkingActive = true;
+            notifyListeners();
+            break;
           case 'chunk':
             _streamingText = (_streamingText ?? '') + ev.data;
+            _streamingThinkingActive = false;
             notifyListeners();
             break;
           case 'done':
             final msg = parseSseMessage(ev.data);
             _streamingText = null;
+            _streamingThinking = null;
+            _streamingThinkingActive = false;
             if (msg != null && _activeThreadDetail != null) {
               _activeThreadDetail = _activeThreadDetail!.copyWith(
                 messages: [..._activeThreadDetail!.messages, msg],
@@ -559,6 +575,8 @@ class AppState extends ChangeNotifier {
           case 'error':
             _clearPermissionRequest();
             _streamingText = null;
+            _streamingThinking = null;
+            _streamingThinkingActive = false;
             _sending = false;
             _sendSubscription = null;
             _globalError = ev.data;
@@ -575,6 +593,8 @@ class AppState extends ChangeNotifier {
         if (_sendSubscription != sub) return;
         _clearPermissionRequest();
         _streamingText = null;
+        _streamingThinking = null;
+        _streamingThinkingActive = false;
         _sending = false;
         _sendSubscription = null;
         _globalError = '$e';
@@ -592,6 +612,8 @@ class AppState extends ChangeNotifier {
           // Stream ended without an explicit done/error event.
           _sending = false;
           _streamingText = null;
+          _streamingThinking = null;
+          _streamingThinkingActive = false;
           notifyListeners();
           // Reload to ensure consistency.
           api.getThread(tid).then((d) {

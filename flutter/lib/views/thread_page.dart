@@ -58,6 +58,7 @@ class _ChatViewState extends State<ChatView> {
   bool _autoScroll = true;
   int _lastMessageCount = 0;
   String? _lastStreamingText;
+  String? _lastStreamingThinking;
   String? _lastThreadId;
 
   @override
@@ -97,19 +98,23 @@ class _ChatViewState extends State<ChatView> {
     final state = context.watch<AppState>();
     final detail = state.activeThreadDetail;
     final streaming = state.streamingText;
+    final thinking = state.streamingThinking;
+    final thinkingActive = state.streamingThinkingActive;
 
     // Auto-scroll only when:
     // - A new message was added (message count changed), OR
-    // - Streaming text grew (new chunk arrived)
+    // - Streaming text/thinking grew (new chunk arrived)
     // AND the user is already near the bottom.
     final msgCount = detail?.messages.length ?? 0;
     final newMessage = msgCount != _lastMessageCount;
     final newChunk = streaming != null && streaming != _lastStreamingText;
-    if (newMessage || newChunk) {
+    final newThinking = thinking != null && thinking != _lastStreamingThinking;
+    if (newMessage || newChunk || newThinking) {
       _maybeScrollToBottom();
     }
     _lastMessageCount = msgCount;
     _lastStreamingText = streaming;
+    _lastStreamingThinking = thinking;
 
     // When switching threads, reset auto-scroll and jump to bottom.
     final threadId = detail?.thread.id;
@@ -121,7 +126,15 @@ class _ChatViewState extends State<ChatView> {
 
     return Column(
       children: [
-        Expanded(child: _MessagesPanel(detail: detail, streamingText: streaming, controller: _scrollController)),
+        Expanded(
+          child: _MessagesPanel(
+            detail: detail,
+            streamingText: streaming,
+            streamingThinking: thinking,
+            streamingThinkingActive: thinkingActive,
+            controller: _scrollController,
+          ),
+        ),
         _Composer(controller: _composerController),
       ],
     );
@@ -131,10 +144,14 @@ class _ChatViewState extends State<ChatView> {
 class _MessagesPanel extends StatelessWidget {
   final ThreadDetail? detail;
   final String? streamingText;
+  final String? streamingThinking;
+  final bool streamingThinkingActive;
   final ScrollController controller;
   const _MessagesPanel({
     required this.detail,
     required this.streamingText,
+    required this.streamingThinking,
+    required this.streamingThinkingActive,
     required this.controller,
   });
 
@@ -173,6 +190,7 @@ class _MessagesPanel extends StatelessWidget {
       );
     }
 
+    final thinking = streamingThinking;
     return ListView(
       controller: controller,
       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -183,21 +201,46 @@ class _MessagesPanel extends StatelessWidget {
             message: Message(
               role: 'assistant',
               content: streamingText!,
+              thinking: thinking,
               attachments: null,
             ),
+            thinkingActive: streamingThinkingActive,
           ),
       ],
     );
   }
 }
 
-class _MessageItem extends StatelessWidget {
+class _MessageItem extends StatefulWidget {
   final Message message;
-  const _MessageItem({required this.message});
+  final bool thinkingActive;
+  const _MessageItem({required this.message, this.thinkingActive = false});
+
+  @override
+  State<_MessageItem> createState() => _MessageItemState();
+}
+
+class _MessageItemState extends State<_MessageItem> {
+  bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.thinkingActive;
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageItem old) {
+    super.didUpdateWidget(old);
+    if (widget.thinkingActive && !old.thinkingActive) {
+      setState(() => _expanded = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final message = widget.message;
     final (icon, label, avatarBg, avatarFg) = switch (message.role) {
       'user' => (
         Icons.person_outline,
@@ -218,6 +261,69 @@ class _MessageItem extends StatelessWidget {
         theme.colorScheme.onErrorContainer,
       ),
     };
+
+    final thinking = message.thinking;
+    final hasThinking = thinking != null && thinking.isNotEmpty;
+
+    Widget thinkingSection() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Thinking',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  _ThinkingDots(active: widget.thinkingActive),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                thinking!,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+              ),
+            ),
+            crossFadeState:
+                _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 200),
+            sizeCurve: Curves.easeInOut,
+          ),
+          const SizedBox(height: 12),
+        ],
+      );
+    }
 
     return Center(
       child: ConstrainedBox(
@@ -243,42 +349,53 @@ class _MessageItem extends StatelessWidget {
                             color: theme.colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 4),
-                    if (message.role == 'assistant')
-                      MarkdownBody(
-                        data: message.content,
-                        selectable: true,
-                        extensionSet: markdown.ExtensionSet.gitHubFlavored,
-                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                          p: theme.textTheme.bodyLarge
-                              ?.copyWith(height: 1.5),
-                          code: theme.textTheme.bodySmall?.copyWith(
-                            fontFamily: 'monospace',
-                            backgroundColor:
-                                theme.colorScheme.surfaceContainerHigh,
-                          ),
-                          codeblockDecoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          codeblockPadding: const EdgeInsets.all(12),
-                          tableHead: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                          tableBody: theme.textTheme.bodyMedium,
-                          tableBorder: TableBorder(
-                            horizontalInside: BorderSide(
-                              color: theme.dividerColor.withAlpha(128),
+                    if (hasThinking) thinkingSection(),
+                    if (message.content.isNotEmpty)
+                      if (message.role == 'assistant')
+                        MarkdownBody(
+                          data: message.content,
+                          selectable: true,
+                          extensionSet: markdown.ExtensionSet.gitHubFlavored,
+                          styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                            p: theme.textTheme.bodyLarge
+                                ?.copyWith(height: 1.5),
+                            code: theme.textTheme.bodySmall?.copyWith(
+                              fontFamily: 'monospace',
+                              backgroundColor:
+                                  theme.colorScheme.surfaceContainerHigh,
                             ),
+                            codeblockDecoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            codeblockPadding: const EdgeInsets.all(12),
+                            tableHead: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                            tableBody: theme.textTheme.bodyMedium,
+                            tableBorder: TableBorder(
+                              horizontalInside: BorderSide(
+                                color: theme.dividerColor.withAlpha(128),
+                              ),
+                            ),
+                            tableCellsPadding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                           ),
-                          tableCellsPadding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                        )
+                      else
+                        Text(message.content,
+                            style: theme.textTheme.bodyLarge
+                                ?.copyWith(height: 1.5)),
+                    if (message.role == 'assistant' &&
+                        message.content.isEmpty &&
+                        !hasThinking)
+                      Text(
+                        '...',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
-                      )
-                    else
-                      Text(message.content,
-                          style: theme.textTheme.bodyLarge
-                              ?.copyWith(height: 1.5)),
+                      ),
                     if (message.attachments != null &&
                         message.attachments!.isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -306,6 +423,57 @@ class _MessageItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ThinkingDots extends StatefulWidget {
+  final bool active;
+  const _ThinkingDots({required this.active});
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    if (widget.active) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThinkingDots old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!widget.active && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.active) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, child) {
+        final dotCount = ((_controller.value * 3).floor() % 3) + 1;
+        return Text('.' * dotCount);
+      },
     );
   }
 }
