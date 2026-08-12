@@ -198,14 +198,23 @@ class _MessagesPanel extends StatelessWidget {
       );
     }
 
+    // Tool calls belong to the current assistant turn, which is the last
+    // assistant message (or the streaming assistant bubble when active).
     final thinking = streamingThinking;
     final activeToolCalls = toolCalls.values.toList();
+    Message? currentAssistant;
+    final history = messages.toList();
+    if (history.isNotEmpty && history.last.role == 'assistant') {
+      currentAssistant = history.removeLast();
+    }
+
     return ListView(
       controller: controller,
       padding: const EdgeInsets.symmetric(vertical: 24),
       children: [
-        for (final m in messages) _MessageItem(message: m),
-        for (final t in activeToolCalls) _ToolCallItem(tool: t),
+        for (final m in history) _MessageItem(message: m),
+        ...activeToolCalls.map((t) => _ToolCallItem(tool: t)),
+        if (currentAssistant != null) _MessageItem(message: currentAssistant),
         if (hasStreaming)
           _MessageItem(
             message: Message(
@@ -747,7 +756,7 @@ class _ToolCallItemState extends State<_ToolCallItem> {
     final (icon, iconColor) = _toolIconAndColor(tool.kind, theme);
 
     final (statusIcon, statusColor) = switch (tool.status) {
-      'completed' => (Icons.check_circle, theme.colorScheme.primary),
+      'completed' => (Icons.check, theme.colorScheme.primary),
       'failed' => (Icons.error_outline, theme.colorScheme.error),
       'pending' => (Icons.hourglass_empty, theme.colorScheme.onSurfaceVariant),
       _ => (Icons.play_circle_outline, theme.colorScheme.onSurfaceVariant),
@@ -757,30 +766,30 @@ class _ToolCallItemState extends State<_ToolCallItem> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 2),
           child: InkWell(
             onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
+            borderRadius: BorderRadius.circular(6),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: theme.colorScheme.outline.withAlpha(64),
-                ),
+                color: _expanded
+                    ? theme.colorScheme.surfaceContainer
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
               ),
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(icon, size: 18, color: iconColor),
-                      const SizedBox(width: 10),
+                      Icon(icon, size: 16, color: iconColor),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           tool.title,
-                          style: theme.textTheme.labelLarge?.copyWith(
+                          style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurface,
                             fontWeight: FontWeight.w500,
                           ),
@@ -788,33 +797,26 @@ class _ToolCallItemState extends State<_ToolCallItem> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      Icon(statusIcon, size: 16, color: statusColor),
-                      const SizedBox(width: 6),
+                      Icon(statusIcon, size: 14, color: statusColor),
+                      const SizedBox(width: 4),
                       Icon(
                         _expanded ? Icons.expand_less : Icons.expand_more,
-                        size: 16,
+                        size: 14,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ],
                   ),
-                  if (preview.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4, left: 28),
-                      child: Text(
-                        preview,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
                   if (_expanded)
                     Padding(
-                      padding: const EdgeInsets.only(top: 10, left: 28),
+                      padding: const EdgeInsets.only(top: 8, left: 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (preview.isNotEmpty)
+                            _ToolDetailRow(
+                              label: 'Preview',
+                              value: preview,
+                            ),
                           if (tool.command != null && tool.command!.isNotEmpty)
                             _ToolDetailRow(
                               label: 'Command',
