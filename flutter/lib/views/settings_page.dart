@@ -188,24 +188,30 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
     super.dispose();
   }
 
+  String get _effectiveCommand {
+    final command = _controller.text.trim();
+    return command.isEmpty ? 'devin' : command;
+  }
+
   Future<void> _save() async {
     final user = widget.state.user;
     if (user == null) return;
-    final command = _controller.text.trim();
+    final command = _effectiveCommand;
+    _controller.text = command;
     await widget.state.saveProvider(
       providerId: user.providerId,
-      providerCommand: command.isEmpty ? 'devin' : command,
+      providerCommand: command,
     );
   }
 
   Future<void> _test() async {
     final user = widget.state.user;
     if (user == null) return;
-    final command = _controller.text.trim();
 
     // Persist the command before testing so the user isn't surprised when
     // a successful test does not match the value used in chat.
     await _save();
+    final command = _effectiveCommand;
 
     setState(() => _testing = true);
     try {
