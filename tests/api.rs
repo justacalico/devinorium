@@ -1199,3 +1199,53 @@ async fn update_provider_persists_and_validates() {
     let body = body_str(resp.into_body()).await;
     assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
 }
+
+#[tokio::test]
+async fn provider_health_rejects_invalid_input() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // Missing command.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &cookie,
+            r#"{"provider_id":"devin-cli"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Unknown provider.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &cookie,
+            r#"{"provider_id":"not-real","command":"devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn provider_health_fails_for_missing_binary() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &cookie,
+            r#"{"provider_id":"devin-cli","command":"/nonexistent/devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}

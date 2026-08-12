@@ -179,19 +179,12 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
   void initState() {
     super.initState();
     _controller.text = widget.state.user?.providerCommand ?? 'devin';
-    widget.state.addListener(_onUserChanged);
   }
 
   @override
   void dispose() {
-    widget.state.removeListener(_onUserChanged);
     _controller.dispose();
     super.dispose();
-  }
-
-  void _onUserChanged() {
-    if (!mounted) return;
-    _controller.text = widget.state.user?.providerCommand ?? _controller.text;
   }
 
   Future<void> _save() async {
@@ -206,11 +199,17 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
   Future<void> _test() async {
     final user = widget.state.user;
     if (user == null) return;
+    final command = _controller.text.trim();
+
+    // Persist the command before testing so the user isn't surprised when
+    // a successful test does not match the value used in chat.
+    await _save();
+
     setState(() => _testing = true);
     try {
       await widget.state.testProvider(
         providerId: user.providerId,
-        command: _controller.text.trim(),
+        command: command,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -61,8 +61,9 @@ impl DevinAcpProvider {
             anyhow::bail!("provider command not found: {}", self.bin);
         }
 
-        // Open an ACP connection and send Initialize.
-        Client
+        // Open an ACP connection and send Initialize, with a timeout so the
+        // test button can’t hang if the binary is unresponsive.
+        let health = Client
             .builder()
             .name("devinorium")
             .connect_with(
@@ -74,9 +75,13 @@ impl DevinAcpProvider {
                         .await?;
                     Ok::<_, agent_client_protocol::Error>(())
                 },
-            )
+            );
+
+        tokio::time::timeout(std::time::Duration::from_secs(15), health)
             .await
-            .map_err(|e| anyhow::anyhow!("acp health check failed: {e}"))
+            .map_err(|_| anyhow::anyhow!("acp health check timed out"))?
+            .map_err(|e| anyhow::anyhow!("acp health check failed: {e}"))?;
+        Ok(())
     }
 
     async fn run_prompt(

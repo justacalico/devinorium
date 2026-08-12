@@ -24,7 +24,7 @@ async fn list(CurrentUser(_user): CurrentUser) -> Response {
 #[derive(Debug, Deserialize)]
 pub struct HealthRequest {
     pub provider_id: String,
-    pub command: String,
+    pub command: Option<String>,
 }
 
 async fn health(
@@ -33,7 +33,7 @@ async fn health(
     Json(req): Json<HealthRequest>,
 ) -> Response {
     let provider_id = req.provider_id.trim();
-    let command = req.command.trim();
+    let command = req.command.as_deref().unwrap_or("").trim();
 
     if provider_id.is_empty() || command.is_empty() {
         return (
