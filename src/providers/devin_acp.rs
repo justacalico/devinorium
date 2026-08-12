@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -67,6 +68,7 @@ impl DevinAcpProvider {
         let cwd = options.working_dir.clone();
         let maybe_session = maybe_session.map(|s| s.to_string());
         let permission_callback = options.permission_callback.clone();
+        let replaying = Arc::new(AtomicBool::new(maybe_session.is_some()));
 
         let result = Client
             .builder()
@@ -79,7 +81,13 @@ impl DevinAcpProvider {
                     let thinking_callback = thinking_callback.clone();
                     let tool_calls = tool_calls.clone();
                     let tool_callback = tool_callback.clone();
+                    let replaying = replaying.clone();
                     async move |notification: SessionNotification, _cx| {
+                        // Ignore notifications that are part of the session-load replay.
+                        // We only want text/thinking/tool-calls from the new prompt.
+                        if replaying.load(Ordering::SeqCst) {
+                            return Ok(());
+                        }
                         let (text, thinking) = extract_text_from_notification(&notification).await;
                         if let Some(t) = text {
                             emit_chunk(&text_acc, text_callback.as_ref(), t).await;
@@ -101,10 +109,18 @@ impl DevinAcpProvider {
             .on_receive_request(
                 {
                     let permission_callback = permission_callback.clone();
+                    let replaying = replaying.clone();
                     async move |request: RequestPermissionRequest, responder, _cx| {
-                        let outcome =
-                            handle_permission_request(request, permission_callback.as_ref()).await;
-                        responder.respond(RequestPermissionResponse::new(outcome))
+                        if replaying.load(Ordering::SeqCst) {
+                            responder.respond(RequestPermissionResponse::new(
+                                RequestPermissionOutcome::Cancelled,
+                            ))
+                        } else {
+                            let outcome =
+                                handle_permission_request(request, permission_callback.as_ref())
+                                    .await;
+                            responder.respond(RequestPermissionResponse::new(outcome))
+                        }
                     }
                 },
                 agent_client_protocol::on_receive_request!(),
@@ -145,6 +161,8 @@ impl DevinAcpProvider {
 
                     let prompt_blocks = vec![ContentBlock::Text(TextContent::new(prompt))];
 
+                    // The session-load replay is over once we send the new prompt.
+                    replaying.store(false, Ordering::SeqCst);
                     let _prompt_response = connection
                         .send_request(PromptRequest::new(session_id.clone(), prompt_blocks))
                         .block_task()
