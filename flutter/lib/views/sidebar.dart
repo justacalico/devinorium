@@ -480,9 +480,6 @@ class _SettingsNav extends StatelessWidget {
     final theme = Theme.of(context);
     final topics = [
       (icon: Icons.person_outline, label: 'Account'),
-      (icon: Icons.notifications_outlined, label: 'Notifications'),
-      (icon: Icons.palette_outlined, label: 'Appearance'),
-      (icon: Icons.model_training_outlined, label: 'Models'),
     ];
 
     return ListView(
@@ -497,11 +494,7 @@ class _SettingsNav extends StatelessWidget {
             selectedTileColor: theme.colorScheme.secondaryContainer,
             shape: const StadiumBorder(),
             dense: true,
-            onTap: () {
-              // Currently only Account is implemented; future topics will
-              // scroll to or switch the corresponding settings section.
-              Scaffold.of(context).closeDrawer();
-            },
+            onTap: () => Scaffold.of(context).closeDrawer(),
           ),
       ],
     );
