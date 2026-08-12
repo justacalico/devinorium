@@ -23,7 +23,9 @@ class User {
         role: j['role'] as String,
         totpEnabled: (j['totp_enabled'] as bool?) ?? false,
         providerId: j['provider_id'] as String? ?? 'devin-cli',
-        providerCommand: j['provider_command'] as String? ?? 'devin',
+        providerCommand: (j['provider_command'] as String? ?? '').trim().isEmpty
+            ? 'devin'
+            : j['provider_command'] as String,
       );
 
   User copyWith({String? providerId, String? providerCommand}) => User(

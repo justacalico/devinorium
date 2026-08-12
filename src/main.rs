@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
 
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".to_string(),
-        devin_bin: "devin".to_string(),
+        command: "devin".to_string(),
         default_model: cfg.default_model.clone(),
     })?;
 

@@ -47,11 +47,20 @@ impl AppState {
 
         match providers::build_provider(providers::ProviderConfig {
             id: user.provider_id.clone(),
-            devin_bin: command.to_string(),
+            command: command.to_string(),
             default_model: self.config.default_model.clone(),
         }) {
             Ok(p) => Arc::from(p),
-            Err(_) => self.provider.clone(),
+            Err(e) => {
+                tracing::warn!(
+                    user_id = %user.id,
+                    provider_id = %user.provider_id,
+                    command = %command,
+                    error = %e,
+                    "failed to build user provider; falling back to default"
+                );
+                self.provider.clone()
+            }
         }
     }
 }

@@ -232,7 +232,7 @@ pub fn title_from_prompt(prompt: &str) -> String {
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     pub id: String,
-    pub devin_bin: String,
+    pub command: String,
     pub default_model: String,
 }
 
@@ -261,7 +261,7 @@ pub fn provider_name(id: &str) -> Option<&'static str> {
 pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> {
     match cfg.id.as_str() {
         "devin-cli" => Ok(Box::new(devin_acp::DevinAcpProvider::new(
-            cfg.devin_bin.clone(),
+            cfg.command.clone(),
             cfg.default_model.clone(),
         ))),
         other => anyhow::bail!("unknown provider: {other}"),

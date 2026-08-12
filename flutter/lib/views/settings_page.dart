@@ -178,7 +178,8 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
   @override
   void initState() {
     super.initState();
-    _controller.text = widget.state.user?.providerCommand ?? 'devin';
+    final saved = (widget.state.user?.providerCommand ?? 'devin').trim();
+    _controller.text = saved.isEmpty ? 'devin' : saved;
   }
 
   @override
@@ -190,9 +191,10 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
   Future<void> _save() async {
     final user = widget.state.user;
     if (user == null) return;
+    final command = _controller.text.trim();
     await widget.state.saveProvider(
       providerId: user.providerId,
-      providerCommand: _controller.text.trim(),
+      providerCommand: command.isEmpty ? 'devin' : command,
     );
   }
 

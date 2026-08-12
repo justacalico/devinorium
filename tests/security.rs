@@ -45,7 +45,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
 
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),
-        devin_bin: "devin".into(),
+        command: "devin".into(),
         default_model: "glm-5-2".into(),
     })
     .unwrap();
@@ -253,7 +253,7 @@ async fn body_size_limit_rejects_oversized() {
     };
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),
-        devin_bin: "devin".into(),
+        command: "devin".into(),
         default_model: "glm-5-2".into(),
     })
     .unwrap();

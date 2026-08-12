@@ -1249,3 +1249,43 @@ async fn provider_health_fails_for_missing_binary() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
+
+#[tokio::test]
+async fn custom_provider_command_is_used() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let id = make_thread(&app, &cookie, pid, "test").await;
+
+    // Set a non-existent command; the provider should try to use it and fail.
+    sqlx::query(
+        "UPDATE users SET provider_command = '/nonexistent/devin' WHERE username = 'owner'",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    let boundary = "----testboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{id}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}

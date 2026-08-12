@@ -22,7 +22,7 @@ fn devin_available() -> bool {
 fn make_provider() -> Box<dyn Provider> {
     providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".to_string(),
-        devin_bin: "devin".to_string(),
+        command: "devin".to_string(),
         default_model: "glm-5-2".to_string(),
     })
     .expect("build devin-cli provider")
@@ -171,7 +171,7 @@ fn provider_name_looks_up_display_name() {
 fn registry_rejects_unknown() {
     let res = providers::build_provider(providers::ProviderConfig {
         id: "nope".to_string(),
-        devin_bin: "devin".to_string(),
+        command: "devin".to_string(),
         default_model: "glm-5-2".to_string(),
     });
     assert!(res.is_err());

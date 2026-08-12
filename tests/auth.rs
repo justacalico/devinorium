@@ -50,7 +50,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
 
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),
-        devin_bin: "devin".into(),
+        command: "devin".into(),
         default_model: "glm-5-2".into(),
     })
     .expect("provider");

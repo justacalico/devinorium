@@ -2,8 +2,7 @@
 
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use axum::routing::Router;
+use axum::routing::{get, post, Router};
 use axum::Json;
 use serde::Deserialize;
 
@@ -23,7 +22,7 @@ async fn list(CurrentUser(_user): CurrentUser) -> Response {
 
 #[derive(Debug, Deserialize)]
 pub struct HealthRequest {
-    pub provider_id: String,
+    pub provider_id: Option<String>,
     pub command: Option<String>,
 }
 
@@ -32,7 +31,7 @@ async fn health(
     CurrentUser(_user): CurrentUser,
     Json(req): Json<HealthRequest>,
 ) -> Response {
-    let provider_id = req.provider_id.trim();
+    let provider_id = req.provider_id.as_deref().unwrap_or("").trim();
     let command = req.command.as_deref().unwrap_or("").trim();
 
     if provider_id.is_empty() || command.is_empty() {
@@ -57,7 +56,7 @@ async fn health(
 
     let provider = match providers::build_provider(providers::ProviderConfig {
         id: provider_id.to_string(),
-        devin_bin: command.to_string(),
+        command: command.to_string(),
         default_model: state.config.default_model.clone(),
     }) {
         Ok(p) => p,
