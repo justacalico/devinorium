@@ -62,7 +62,12 @@ release:
     - *install
     - git config user.name "GitLab CI"
     - git config user.email "ci@gitlab.com"
-    - git remote set-url origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - |
+      if [ -n "${GITLAB_TOKEN:-}" ]; then
+        git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      else
+        git remote set-url origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      fi
     - git checkout -B main
     - git branch --set-upstream-to=origin/main main
   script:
