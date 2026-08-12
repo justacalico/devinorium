@@ -15,7 +15,6 @@ pub struct Config {
     pub bootstrap_username: String,
     pub bootstrap_password: String,
     pub file_root: Option<PathBuf>,
-    pub devin_bin: String,
     pub default_model: String,
     pub trust_proxy: bool,
     pub max_body_bytes: usize,
@@ -61,7 +60,6 @@ impl Config {
             .map(|s| PathBuf::from(s.trim()))
             .or_else(default_file_root);
 
-        let devin_bin = env_or("DEVINORIUM_DEVIN_BIN", "devin");
         let default_model = env_or("DEVINORIUM_DEFAULT_MODEL", "glm-5-2");
         let trust_proxy = env_or("DEVINORIUM_TRUST_PROXY", "false").eq_ignore_ascii_case("true");
         let max_body_bytes = env_or("DEVINORIUM_MAX_BODY_BYTES", "16777216")
@@ -81,7 +79,6 @@ impl Config {
             bootstrap_username,
             bootstrap_password,
             file_root,
-            devin_bin,
             default_model,
             trust_proxy,
             max_body_bytes,

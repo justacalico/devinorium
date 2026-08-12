@@ -36,6 +36,26 @@ pub struct AppState {
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
 }
 
+impl AppState {
+    /// Build a provider for the given user, falling back to the configured
+    /// default provider when the user has not set a custom command.
+    pub fn provider_for_user(&self, user: &db::UserRow) -> Arc<dyn providers::Provider> {
+        let command = user.provider_command.trim();
+        if command.is_empty() {
+            return self.provider.clone();
+        }
+
+        match providers::build_provider(providers::ProviderConfig {
+            id: user.provider_id.clone(),
+            devin_bin: command.to_string(),
+            default_model: self.config.default_model.clone(),
+        }) {
+            Ok(p) => Arc::from(p),
+            Err(_) => self.provider.clone(),
+        }
+    }
+}
+
 /// Build the full axum application router with all security middleware.
 ///
 /// This is shared by the binary target and the integration tests so that

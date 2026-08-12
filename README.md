@@ -45,7 +45,6 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `DEVINORIUM_BOOTSTRAP_USERNAME` | `owner` | First-run owner username |
 | `DEVINORIUM_BOOTSTRAP_PASSWORD` | (none) | First-run owner password; if unset, no owner is created |
 | `DEVINORIUM_FILE_ROOT` | `$HOME` on Unix, `%USERPROFILE%` on Windows | Sandbox path for the file manager |
-| `DEVINORIUM_DEVIN_BIN` | `devin` | Provider command (currently the Devin CLI binary) |
 | `DEVINORIUM_DEFAULT_MODEL` | `glm-5-2` | Default model for new threads |
 | `DEVINORIUM_TRUST_PROXY` | `false` | Trust `X-Forwarded-For` behind a reverse proxy |
 | `DEVINORIUM_MAX_BODY_BYTES` | `16777216` | Max request body size in bytes |

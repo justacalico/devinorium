@@ -13,27 +13,31 @@ void main() {
       expect(user.providerId, 'devin-cli');
     });
 
-    test('parses explicit provider_id', () {
+    test('parses explicit provider_id and command', () {
       final user = User.fromJson({
         'id': 1,
         'username': 'owner',
         'role': 'user',
         'totp_enabled': false,
         'provider_id': 'devin-cli',
+        'provider_command': 'devin-cli',
       });
       expect(user.providerId, 'devin-cli');
+      expect(user.providerCommand, 'devin-cli');
     });
 
-    test('copyWith updates providerId', () {
+    test('copyWith updates providerId and command', () {
       final user = User(
         id: 1,
         username: 'owner',
         role: 'user',
         totpEnabled: false,
         providerId: 'devin-cli',
+        providerCommand: 'devin',
       );
-      final updated = user.copyWith(providerId: 'other');
+      final updated = user.copyWith(providerId: 'other', providerCommand: 'other-cli');
       expect(updated.providerId, 'other');
+      expect(updated.providerCommand, 'other-cli');
     });
   });
 

@@ -6,6 +6,7 @@ class User {
   final String role;
   final bool totpEnabled;
   final String providerId;
+  final String providerCommand;
 
   User({
     required this.id,
@@ -13,6 +14,7 @@ class User {
     required this.role,
     required this.totpEnabled,
     required this.providerId,
+    required this.providerCommand,
   });
 
   factory User.fromJson(Map<String, dynamic> j) => User(
@@ -21,14 +23,16 @@ class User {
         role: j['role'] as String,
         totpEnabled: (j['totp_enabled'] as bool?) ?? false,
         providerId: j['provider_id'] as String? ?? 'devin-cli',
+        providerCommand: j['provider_command'] as String? ?? 'devin',
       );
 
-  User copyWith({String? providerId}) => User(
+  User copyWith({String? providerId, String? providerCommand}) => User(
         id: id,
         username: username,
         role: role,
         totpEnabled: totpEnabled,
         providerId: providerId ?? this.providerId,
+        providerCommand: providerCommand ?? this.providerCommand,
       );
 }
 

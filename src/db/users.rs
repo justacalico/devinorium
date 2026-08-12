@@ -22,12 +22,20 @@ impl super::Db {
         .map_err(Into::into)
     }
 
-    pub async fn set_provider(&self, user_id: i64, provider_id: &str) -> anyhow::Result<()> {
-        sqlx::query("UPDATE users SET provider_id = ? WHERE id = ?")
-            .bind(provider_id)
-            .bind(user_id)
-            .execute(self.pool())
-            .await?;
+    pub async fn set_provider(
+        &self,
+        user_id: i64,
+        provider_id: &str,
+        provider_command: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE users SET provider_id = ?, provider_command = ? WHERE id = ?",
+        )
+        .bind(provider_id)
+        .bind(provider_command)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
         Ok(())
     }
 

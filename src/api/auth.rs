@@ -264,6 +264,7 @@ pub struct MeResponse {
     pub role: String,
     pub totp_enabled: bool,
     pub provider_id: String,
+    pub provider_command: String,
 }
 
 pub async fn me(CurrentUser(user): CurrentUser) -> Response {
@@ -273,6 +274,7 @@ pub async fn me(CurrentUser(user): CurrentUser) -> Response {
         role: user.role,
         totp_enabled: user.totp_enabled,
         provider_id: user.provider_id,
+        provider_command: user.provider_command,
     })
     .into_response()
 }
@@ -280,6 +282,7 @@ pub async fn me(CurrentUser(user): CurrentUser) -> Response {
 #[derive(Debug, Deserialize)]
 pub struct UpdateMeRequest {
     pub provider_id: String,
+    pub provider_command: String,
 }
 
 pub async fn update_me(
@@ -308,7 +311,20 @@ pub async fn update_me(
             .into_response();
     }
 
-    if let Err(e) = state.db.set_provider(user.id, provider_id).await {
+    let provider_command = req.provider_command.trim();
+    if provider_command.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("provider_command is required")),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = state
+        .db
+        .set_provider(user.id, provider_id, provider_command)
+        .await
+    {
         return crate::api::map_err_internal(e).into_response();
     }
 
@@ -318,6 +334,7 @@ pub async fn update_me(
         role: user.role,
         totp_enabled: user.totp_enabled,
         provider_id: provider_id.to_string(),
+        provider_command: provider_command.to_string(),
     })
     .into_response()
 }

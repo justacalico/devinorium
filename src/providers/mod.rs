@@ -208,6 +208,11 @@ pub trait Provider: Send + Sync {
         session_id: &str,
         working_dir: &Path,
     ) -> anyhow::Result<serde_json::Value>;
+
+    /// Verify the provider is reachable without running a prompt.
+    /// For the Devin CLI this opens an ACP session, sends `Initialize`,
+    /// and immediately closes.
+    async fn health_check(&self) -> anyhow::Result<()>;
 }
 
 /// Derive a short title from the first line of a prompt.

@@ -121,6 +121,10 @@ impl Provider for StubProvider {
     ) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::json!({}))
     }
+
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 async fn make_app() -> (Router, db::Db) {
@@ -128,6 +132,13 @@ async fn make_app() -> (Router, db::Db) {
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
     let database = db::Db::connect(&db_url).await.unwrap();
     auth::bootstrap::run(&database, "owner", "supersecret123")
+        .await
+        .unwrap();
+
+    // Tests use the fallback provider; clear the default command so
+    // provider_for_user does not try to spawn the real devin binary.
+    sqlx::query("UPDATE users SET provider_command = '' WHERE username = 'owner'")
+        .execute(database.pool())
         .await
         .unwrap();
 
@@ -143,7 +154,6 @@ async fn make_app() -> (Router, db::Db) {
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
         file_root: Some(file_root),
-        devin_bin: "devin".into(),
         default_model: "stub-1".into(),
         trust_proxy: false,
         max_body_bytes: 20 * 1024 * 1024,
@@ -1158,7 +1168,7 @@ async fn update_provider_persists_and_validates() {
             "PATCH",
             "/api/auth/me",
             &cookie,
-            r#"{"provider_id":"not-real"}"#,
+            r#"{"provider_id":"not-real","provider_command":"devin"}"#,
         ))
         .await
         .unwrap();
@@ -1171,7 +1181,7 @@ async fn update_provider_persists_and_validates() {
             "PATCH",
             "/api/auth/me",
             &cookie,
-            r#"{"provider_id":"devin-cli"}"#,
+            r#"{"provider_id":"devin-cli","provider_command":"devin"}"#,
         ))
         .await
         .unwrap();

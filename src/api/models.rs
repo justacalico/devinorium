@@ -12,8 +12,9 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/api/models", get(list))
 }
 
-async fn list(State(state): State<AppState>, CurrentUser(_user): CurrentUser) -> Response {
-    match state.provider.list_models().await {
+async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
+    let provider = state.provider_for_user(&user);
+    match provider.list_models().await {
         Ok(models) => axum::Json(models).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }

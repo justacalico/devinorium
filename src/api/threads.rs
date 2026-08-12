@@ -392,7 +392,7 @@ async fn send(
     };
 
     let provider_result =
-        call_provider(&state, &thread, &input.prompt, input.attachments, None, None, None, None).await;
+        call_provider(&state, &user, &thread, &input.prompt, input.attachments, None, None, None, None).await;
 
     let (reply, thinking, new_session_id, new_title) = match provider_result {
         Ok(t) => t,
@@ -556,6 +556,7 @@ async fn send_stream(
 
         let provider_result = call_provider(
             &state,
+            &user,
             &thread,
             &input.prompt,
             input.attachments,
@@ -708,6 +709,7 @@ async fn persist_user_message(
 
 async fn call_provider(
     state: &AppState,
+    user: &crate::db::UserRow,
     thread: &ThreadRow,
     prompt: &str,
     attachments: Vec<Attachment>,
@@ -716,6 +718,7 @@ async fn call_provider(
     thinking_callback: Option<StreamChunkCallback>,
     tool_callback: Option<crate::providers::ToolCallCallback>,
 ) -> anyhow::Result<(String, String, Option<String>, Option<String>)> {
+    let provider = state.provider_for_user(user);
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
     let options = SendOptions {
@@ -731,8 +734,7 @@ async fn call_provider(
     };
 
     if let Some(sid) = thread.devin_session_id.as_ref() {
-        state
-            .provider
+        provider
             .send(crate::providers::SendRequest {
                 session_id: sid.clone(),
                 prompt: prompt.into(),
@@ -741,8 +743,7 @@ async fn call_provider(
             .await
             .map(|r| (r.reply, r.thinking, None, None))
     } else {
-        state
-            .provider
+        provider
             .start(StartRequest {
                 prompt: prompt.into(),
                 options,

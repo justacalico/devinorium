@@ -22,6 +22,14 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         .await
         .expect("bootstrap");
 
+    sqlx::query(
+        "UPDATE users SET provider_command = '' WHERE username = ?",
+    )
+    .bind(bootstrap_user)
+    .execute(database.pool())
+    .await
+    .unwrap();
+
     let mut cfg = Config::from_env().unwrap_or_else(|_| Config {
         host: "127.0.0.1".into(),
         port: 0,
@@ -30,7 +38,6 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         bootstrap_username: bootstrap_user.into(),
         bootstrap_password: bootstrap_pw.into(),
         file_root: None,
-        devin_bin: "devin".into(),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 1024 * 1024,

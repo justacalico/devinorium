@@ -202,9 +202,25 @@ class ApiService {
     return list.map(ProviderInfo.fromJson).toList();
   }
 
-  Future<User> updateMe({required String providerId}) async {
-    final j = await _client.patch('/api/auth/me', {'provider_id': providerId});
+  Future<User> updateMe({
+    required String providerId,
+    required String providerCommand,
+  }) async {
+    final j = await _client.patch('/api/auth/me', {
+      'provider_id': providerId,
+      'provider_command': providerCommand,
+    });
     return User.fromJson(j);
+  }
+
+  Future<void> testProvider({
+    required String providerId,
+    required String command,
+  }) async {
+    await _client.post('/api/providers/health', {
+      'provider_id': providerId,
+      'command': command,
+    });
   }
 
   // ---- Files ----

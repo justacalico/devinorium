@@ -489,11 +489,30 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> saveProvider(String providerId) async {
+  Future<void> saveProvider({
+    String? providerId,
+    String? providerCommand,
+  }) async {
     final user = _user;
     if (user == null) return;
     try {
-      _user = await api.updateMe(providerId: providerId);
+      _user = await api.updateMe(
+        providerId: providerId ?? user.providerId,
+        providerCommand: providerCommand ?? user.providerCommand,
+      );
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    }
+    notifyListeners();
+  }
+
+  Future<void> testProvider({
+    required String providerId,
+    required String command,
+  }) async {
+    try {
+      await api.testProvider(providerId: providerId, command: command);
       _globalError = '';
     } catch (e) {
       _globalError = '$e';

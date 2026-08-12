@@ -43,12 +43,6 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const Divider(),
                   _SettingsRow(
-                    label: 'Provider',
-                    value: _providerName(state.providers, user?.providerId ?? ''),
-                    trailing: _ProviderDropdown(state: state),
-                  ),
-                  const Divider(),
-                  _SettingsRow(
                     label: 'Two-factor authentication',
                     value: totpEnabled ? 'Enabled' : 'Disabled',
                     trailing: totpEnabled
@@ -65,6 +59,7 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ],
               ),
+              _ProviderCard(state: state),
             ],
           ),
         ),
@@ -105,6 +100,30 @@ String _providerName(List<ProviderInfo> providers, String id) {
   return id.isEmpty ? '—' : id;
 }
 
+class _ProviderCard extends StatelessWidget {
+  final AppState state;
+  const _ProviderCard({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = state.user;
+    final providers = state.providers;
+
+    return _SectionCard(
+      title: 'Provider',
+      children: [
+        _SettingsRow(
+          label: 'Provider',
+          value: _providerName(providers, user?.providerId ?? ''),
+          trailing: _ProviderDropdown(state: state),
+        ),
+        const Divider(),
+        _ProviderCommandField(state: state),
+      ],
+    );
+  }
+}
+
 class _ProviderDropdown extends StatelessWidget {
   final AppState state;
   const _ProviderDropdown({required this.state});
@@ -130,10 +149,114 @@ class _ProviderDropdown extends StatelessWidget {
             .toList(),
         onChanged: (id) {
           if (id != null && id != currentId) {
-            state.saveProvider(id);
+            final user = state.user;
+            if (user != null) {
+              state.saveProvider(
+                providerId: id,
+                providerCommand: user.providerCommand,
+              );
+            }
           }
         },
       ),
+    );
+  }
+}
+
+class _ProviderCommandField extends StatefulWidget {
+  final AppState state;
+  const _ProviderCommandField({required this.state});
+
+  @override
+  State<_ProviderCommandField> createState() => _ProviderCommandFieldState();
+}
+
+class _ProviderCommandFieldState extends State<_ProviderCommandField> {
+  final _controller = TextEditingController();
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.text = widget.state.user?.providerCommand ?? 'devin';
+    widget.state.addListener(_onUserChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_onUserChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onUserChanged() {
+    if (!mounted) return;
+    _controller.text = widget.state.user?.providerCommand ?? _controller.text;
+  }
+
+  Future<void> _save() async {
+    final user = widget.state.user;
+    if (user == null) return;
+    await widget.state.saveProvider(
+      providerId: user.providerId,
+      providerCommand: _controller.text.trim(),
+    );
+  }
+
+  Future<void> _test() async {
+    final user = widget.state.user;
+    if (user == null) return;
+    setState(() => _testing = true);
+    try {
+      await widget.state.testProvider(
+        providerId: user.providerId,
+        command: _controller.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Provider is reachable')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Provider test failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _controller,
+            decoration: const InputDecoration(
+              labelText: 'Command',
+              hintText: 'devin',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: _testing ? null : _test,
+          child: _testing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Test'),
+        ),
+      ],
     );
   }
 }
