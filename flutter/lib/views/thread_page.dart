@@ -614,6 +614,7 @@ class _ComposerState extends State<_Composer> {
                 padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (state.attachments.isNotEmpty)
                       Padding(
