@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Auto-wrap non-conventional commit subjects with `misc:` so `cog check` passes.
+set -euo pipefail
+
+msg_file="$1"
+
+# Skip if the first line already looks like a conventional commit.
+# Extract the allowed types from cog.toml.
+cog_toml="$(git rev-parse --show-toplevel)/cog.toml"
+if [[ -f "$cog_toml" ]]; then
+  types=$(sed -n '/^\[commit_types\]/,/^\[/p' "$cog_toml" \
+    | grep -E '^[a-zA-Z_]+ =' \
+    | sed 's/ =.*//' \
+    | tr '\n' '|' \
+    | sed 's/|$//')
+else
+  types="feat|fix|chore|ci|docs|refactor|style|test|perf|revert|build|misc"
+fi
+
+# Read the subject line, ignoring leading blank or comment lines.
+mapfile -t lines < "$msg_file"
+for line in "${lines[@]}"; do
+  [[ -z "$line" ]] && continue
+  [[ "$line" =~ ^# ]] && continue
+  subject="$line"
+  break
+done
+
+# If no subject found, let git handle the empty message error.
+[[ -z "${subject:-}" ]] && exit 0
+
+# Skip auto-generated git messages (merge, fixup, squash, etc.).
+if [[ "$subject" =~ ^(Merge|Pull request|fixup!|amend!|squash!) ]]; then
+  exit 0
+fi
+
+# If it already matches a conventional commit type, leave it alone.
+if echo "$subject" | grep -qE "^($types)(\([^)]+\))?!?: "; then
+  exit 0
+fi
+
+# Prepend `misc:` to the subject.
+sed -i "0,/^$(echo "$subject" | sed 's/[\/.*+?|\\&]/\\&/g')$/s/^/misc: /" "$msg_file"

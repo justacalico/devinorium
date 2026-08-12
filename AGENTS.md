@@ -10,13 +10,14 @@
 All commits must follow Conventional Commits so cocogitto can bump versions and generate changelogs.
 
 Rules:
-- Use one of these types: `feat`, `fix`, `chore`, `ci`, `docs`, `refactor`, `style`, `test`, `perf`, `revert`, `build`.
+- Use one of these types: `feat`, `fix`, `chore`, `ci`, `docs`, `refactor`, `style`, `test`, `perf`, `revert`, `build`, `misc`.
 - The type and colon are in English; the description can be in Chinese.
 - Keep the first line short and in this exact format: `<type>: <description>`.
 - Use the imperative mood.
 - Do not add a period at the end of the subject line.
 - Only use `feat` for new features and `fix` for bug fixes.
-- For non-code changes, use `chore`, `ci`, or `docs` as appropriate.
+- For non-code changes, use `chore`, `ci`, `docs`, or `misc` as appropriate.
+- If a commit does not fit any specific type, use `misc: <description>`. It will be grouped under "Other" in the changelog and will not trigger a version bump.
 
 Examples:
 
@@ -26,3 +27,14 @@ chore: 更新 cocogitto 配置
 ci: 添加 release job 的资源组
 docs: 完善 AGENTS.md 说明
 test: 添加用户认证单元测试
+misc: 临时提交说明
+
+## Git hooks
+
+Install the commit message hook so non-conventional subjects are automatically prefixed with `misc:` and do not break `cog check`:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook is a safety net. Still try to write proper conventional commits when possible.
