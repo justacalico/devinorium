@@ -19,7 +19,6 @@ default:
       - /root/.cargo
       - /root/.local
       - /root/.pub-cache
-      - /root/.dart-tool
 
 .install: &install
   - export PATH="$HOME/.local/bin:$HOME/.local/flutter/bin:$PATH"
@@ -66,7 +65,6 @@ release:
     - git remote set-url origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
     - git checkout -B main
     - git branch --set-upstream-to=origin/main main
-    - glab auth status
   script:
     - cog bump --auto --skip-ci
   rules:
