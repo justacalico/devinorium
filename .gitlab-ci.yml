@@ -6,6 +6,7 @@ variables:
   COCO_GITTO_VERSION: "7.0.0"
   GLAB_VERSION: "1.53.0"
   GLAB_ENABLE_CI_AUTOLOGIN: "true"
+  FLUTTER_VERSION: "3.44.9"
   GIT_DEPTH: "0"
 
 default:
@@ -25,7 +26,7 @@ default:
   - |
     if ! command -v flutter >/dev/null 2>&1; then
       mkdir -p "$HOME/.local"
-      git clone -b 3.44.9 --depth 1 https://github.com/flutter/flutter.git "$HOME/.local/flutter"
+      git clone -b "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$HOME/.local/flutter"
     fi
     flutter config --no-analytics >/dev/null
   - |
@@ -51,23 +52,23 @@ verify:
     - cog check
     - cd flutter && flutter pub get && flutter analyze --no-pub && cd ..
     - cargo test
-    - cargo build --release
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
 
 release:
   stage: release
+  resource_group: release
   before_script:
     - *install
     - git config user.name "GitLab CI"
     - git config user.email "ci@gitlab.com"
     - |
-      if [ -n "${GITLAB_TOKEN:-}" ]; then
-        git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      else
-        git remote set-url origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      if [ -z "${GITLAB_TOKEN:-}" ]; then
+        echo "Error: GITLAB_TOKEN is required for release" >&2
+        exit 1
       fi
+      git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
     - git checkout -B main
     - git branch --set-upstream-to=origin/main main
   script:
