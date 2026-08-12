@@ -244,6 +244,16 @@ impl DevinAcpProvider {
             label: String,
             #[serde(default)]
             cost_tier: String,
+            #[serde(default)]
+            cost_summary: String,
+            #[serde(default)]
+            max_context_tokens: u64,
+            #[serde(default)]
+            max_output_tokens: u64,
+            #[serde(default)]
+            is_new: bool,
+            #[serde(default)]
+            is_beta: bool,
         }
 
         #[derive(Deserialize)]
@@ -260,6 +270,11 @@ impl DevinAcpProvider {
                     label: v.label,
                     cost_tier: v.cost_tier,
                     family: f.family_label.clone(),
+                    cost_summary: v.cost_summary,
+                    max_context_tokens: v.max_context_tokens,
+                    max_output_tokens: v.max_output_tokens,
+                    is_new: v.is_new,
+                    is_beta: v.is_beta,
                 });
             }
         }
@@ -684,12 +699,22 @@ fn static_models() -> Vec<ModelInfo> {
             label: "GLM-5.2 High".into(),
             cost_tier: "low".into(),
             family: "glm".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 1_000_000,
+            max_output_tokens: 128_000,
+            is_new: false,
+            is_beta: false,
         },
         ModelInfo {
             id: "claude-opus-5-medium".into(),
             label: "Claude Opus 5 Medium".into(),
             cost_tier: "high".into(),
             family: "claude".into(),
+            cost_summary: "$5 / MTok In · $25 / MTok Out".into(),
+            max_context_tokens: 1_000_000,
+            max_output_tokens: 128_000,
+            is_new: false,
+            is_beta: false,
         },
     ]
 }

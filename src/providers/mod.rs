@@ -169,6 +169,11 @@ pub struct ModelInfo {
     pub label: String,
     pub cost_tier: String,
     pub family: String,
+    pub cost_summary: String,
+    pub max_context_tokens: u64,
+    pub max_output_tokens: u64,
+    pub is_new: bool,
+    pub is_beta: bool,
 }
 
 /// The trait every AI backend implements.
