@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../widgets/owner_badge.dart';
+import '../widgets/thread_tag.dart';
 
 Color _projectColor(String name) {
   final colors = [
@@ -427,6 +428,12 @@ class _ThreadTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium,
           ),
+          subtitle: thread.tags.isNotEmpty
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: ThreadTag(thread.tags.first),
+                )
+              : null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
