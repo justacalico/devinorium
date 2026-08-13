@@ -80,6 +80,7 @@ pub struct UserRow {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SessionRow {
     pub token: String,
+    pub device_id: String,
     pub user_id: i64,
     pub created_at: String,
     pub expires_at: String,

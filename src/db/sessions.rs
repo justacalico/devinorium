@@ -13,14 +13,16 @@ impl super::Db {
         name: Option<&str>,
     ) -> anyhow::Result<SessionRow> {
         let token = crate::auth::tokens::random_token(32);
+        let device_id = crate::auth::tokens::random_alnum(16);
         let now = Utc::now();
         let expires = now + Duration::days(ttl_days);
         sqlx::query_as::<_, SessionRow>(
-            "INSERT INTO sessions (token, user_id, expires_at, ip_hash, name)
-             VALUES (?, ?, ?, ?, ?)
+            "INSERT INTO sessions (token, device_id, user_id, expires_at, ip_hash, name)
+             VALUES (?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&token)
+        .bind(&device_id)
         .bind(user_id)
         .bind(expires.to_rfc3339())
         .bind(ip_hash)
@@ -87,6 +89,30 @@ impl super::Db {
             .execute(self.pool())
             .await?;
         Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn delete_session_by_device_id_for_user(
+        &self,
+        device_id: &str,
+        user_id: i64,
+    ) -> anyhow::Result<bool> {
+        let res =
+            sqlx::query("DELETE FROM sessions WHERE device_id = ? AND user_id = ?")
+                .bind(device_id)
+                .bind(user_id)
+                .execute(self.pool())
+                .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    pub async fn count_user_sessions(&self, user_id: i64) -> anyhow::Result<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = ? AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+        )
+        .bind(user_id)
+        .fetch_one(self.pool())
+        .await?;
+        Ok(row.0)
     }
 
     pub async fn purge_expired_sessions(&self) -> anyhow::Result<u64> {

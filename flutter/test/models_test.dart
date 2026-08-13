@@ -451,6 +451,73 @@ void main() {
     });
   });
 
+  group('PairingResponse', () {
+    test('parses pairing fields', () {
+      final p = PairingResponse.fromJson({
+        'ok': true,
+        'token': 'abc123',
+        'username': 'owner',
+        'server_url': 'http://localhost:7878',
+      });
+      expect(p.token, 'abc123');
+      expect(p.username, 'owner');
+      expect(p.serverUrl, 'http://localhost:7878');
+      expect(p.ok, true);
+    });
+
+    test('defaults missing fields', () {
+      final p = PairingResponse.fromJson({'ok': true});
+      expect(p.token, '');
+      expect(p.username, '');
+      expect(p.serverUrl, '');
+      expect(p.ok, true);
+    });
+
+    test('toJsonString round-trips', () {
+      final p = PairingResponse(
+        ok: true,
+        token: 't',
+        username: 'u',
+        serverUrl: 'http://x',
+      );
+      final json = p.toJsonString();
+      expect(json.contains('"token":"t"'), true);
+      expect(json.contains('"username":"u"'), true);
+      expect(json.contains('"server_url":"http://x"'), true);
+    });
+  });
+
+  group('Device', () {
+    test('parses all fields', () {
+      final d = Device.fromJson({
+        'device_id': 'dev123',
+        'token_prefix': 'abc',
+        'name': 'Phone',
+        'created_at': '2024-01-01',
+        'last_seen_at': '2024-01-02',
+        'expires_at': '2024-02-01',
+        'is_current': true,
+      });
+      expect(d.deviceId, 'dev123');
+      expect(d.tokenPrefix, 'abc');
+      expect(d.name, 'Phone');
+      expect(d.createdAt, '2024-01-01');
+      expect(d.lastSeenAt, '2024-01-02');
+      expect(d.expiresAt, '2024-02-01');
+      expect(d.isCurrent, true);
+    });
+
+    test('defaults missing fields', () {
+      final d = Device.fromJson({'device_id': 'd'});
+      expect(d.tokenPrefix, '');
+      expect(d.name, isNull);
+      expect(d.createdAt, '');
+      expect(d.lastSeenAt, '');
+      expect(d.expiresAt, '');
+      expect(d.isCurrent, false);
+    });
+  });
+
   group('tryDecodeJson', () {
     test('decodes JSON object', () {
       final decoded = tryDecodeJson('{"ok": true}');

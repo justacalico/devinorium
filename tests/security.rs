@@ -409,7 +409,7 @@ async fn bearer_token_bypasses_csrf_with_cors() {
                 .header(header::ORIGIN, "https://devinorium.example")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"token":"does-not-exist"}"#))
+                .body(Body::from(r#"{"device_id":"does-not-exist"}"#))
                 .unwrap(),
         )
         .await
@@ -435,7 +435,7 @@ async fn bearer_token_bypasses_csrf_without_origin() {
                 .uri("/api/auth/devices/revoke")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"token":"does-not-exist"}"#))
+                .body(Body::from(r#"{"device_id":"does-not-exist"}"#))
                 .unwrap(),
         )
         .await

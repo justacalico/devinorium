@@ -13,13 +13,16 @@ class _FakeApiService extends ApiService {
   int updateMeCalls = 0;
   int testProviderCalls = 0;
   int createUserCalls = 0;
+  int createPairingCalls = 0;
+  int revokeDeviceCalls = 0;
   String? savedProviderCommand;
   String? testedCommand;
   bool throwOnTest = false;
 
   final List<User> _users;
+  final List<Device> _devices;
 
-  _FakeApiService({List<User>? users})
+  _FakeApiService({List<User>? users, List<Device>? devices})
       : _users = users ??
             [User(
               id: 1,
@@ -29,6 +32,16 @@ class _FakeApiService extends ApiService {
               isOwner: true,
               providerId: 'devin-cli',
               providerCommand: 'devin',
+            )],
+        _devices = devices ??
+            [Device(
+              deviceId: 'dev1',
+              tokenPrefix: 'abc',
+              name: 'Phone',
+              createdAt: '',
+              lastSeenAt: '',
+              expiresAt: '',
+              isCurrent: true,
             )],
         super(client: ApiClient.withClient(MockClient((_) async => http.Response('{}', 200))));
 
@@ -77,6 +90,30 @@ class _FakeApiService extends ApiService {
       providerId: 'devin-cli',
       providerCommand: 'devin',
     ));
+  }
+
+  @override
+  Future<List<Device>> listDevices() async => List.unmodifiable(_devices);
+
+  @override
+  Future<void> revokeDevice(String deviceId) async {
+    revokeDeviceCalls++;
+    _devices.removeWhere((d) => d.deviceId == deviceId);
+  }
+
+  @override
+  Future<PairingResponse> createPairing({
+    required String serverUrl,
+    String? name,
+  }) async {
+    createPairingCalls++;
+    return PairingResponse(
+      ok: true,
+      token: 'tok',
+      deviceId: 'dev-new',
+      username: 'owner',
+      serverUrl: serverUrl,
+    );
   }
 }
 
@@ -264,6 +301,28 @@ void main() {
 
     expect(find.text('Accounts'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Create user'), findsNothing);
+  });
+
+  testWidgets('Devices section lists paired devices', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Devices'), findsOneWidget);
+    expect(find.text('Phone'), findsOneWidget);
   });
 
   testWidgets('Creating a user adds it to the accounts list', (tester) async {

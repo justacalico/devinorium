@@ -238,7 +238,7 @@ class _DeviceRow extends StatelessWidget {
     final theme = Theme.of(context);
     final display = device.name?.isNotEmpty == true
         ? device.name!
-        : 'Device ${device.token.substring(0, device.token.length > 8 ? 8 : device.token.length)}';
+        : 'Device ${device.tokenPrefix}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -264,7 +264,7 @@ class _DeviceRow extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.logout, size: 20),
               tooltip: 'Revoke',
-              onPressed: () => onRevoke(device.token),
+              onPressed: () => onRevoke(device.deviceId),
             ),
         ],
       ),

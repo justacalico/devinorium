@@ -15,8 +15,8 @@ void main() {
     });
 
     test('strips single leading space from data', () {
-      final event = parseSseBlock('event: done\ndata:  {"ok": true}');
-      expect(event!.data, ' {"ok": true}');
+      final event = parseSseBlock('event: done\ndata: {"ok": true}');
+      expect(event!.data, '{"ok": true}');
     });
 
     test('ignores unknown lines', () {

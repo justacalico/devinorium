@@ -71,8 +71,8 @@ class ApiService {
     return list.map(Device.fromJson).toList();
   }
 
-  Future<void> revokeDevice(String token) async {
-    await _client.post('/api/auth/devices/revoke', {'token': token});
+  Future<void> revokeDevice(String deviceId) async {
+    await _client.post('/api/auth/devices/revoke', {'device_id': deviceId});
   }
 
   // ---- Projects ----

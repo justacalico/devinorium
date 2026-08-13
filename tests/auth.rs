@@ -706,6 +706,7 @@ async fn create_pairing(
                 .method("POST")
                 .uri("/api/auth/pairing")
                 .header("content-type", "application/json")
+                .header("origin", server_url)
                 .header("cookie", cookie)
                 .body(Body::from(body))
                 .unwrap(),
@@ -784,6 +785,7 @@ async fn device_list_and_revoke() {
     let cookie = login(&app, "owner", "supersecret123").await;
     let v = create_pairing(&app, &cookie, "http://localhost:7878", None).await;
     let token = v["token"].as_str().unwrap().to_string();
+    let device_id = v["device_id"].as_str().unwrap().to_string();
 
     let resp = app
         .clone()
@@ -800,7 +802,8 @@ async fn device_list_and_revoke() {
     let body = read_body(resp.into_body()).await;
     let devices: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
     assert!(devices.len() >= 1);
-    assert!(devices.iter().any(|d| d["token"] == token));
+    assert!(devices.iter().any(|d| d["device_id"] == device_id));
+    assert!(devices.iter().any(|d| d["token_prefix"].as_str().map_or(false, |p| token.starts_with(p))));
 
     let resp = app
         .clone()
@@ -810,7 +813,7 @@ async fn device_list_and_revoke() {
                 .uri("/api/auth/devices/revoke")
                 .header("content-type", "application/json")
                 .header("cookie", &cookie)
-                .body(Body::from(format!(r#"{{"token":"{token}"}}"#)))
+                .body(Body::from(format!(r#"{{"device_id":"{device_id}"}}"#)))
                 .unwrap(),
         )
         .await
@@ -856,7 +859,7 @@ async fn cannot_revoke_device_owned_by_another_user() {
 
     let alice_cookie = login(&app, "alice", "alicepass123").await;
     let v = create_pairing(&app, &alice_cookie, "http://localhost:7878", None).await;
-    let token = v["token"].as_str().unwrap().to_string();
+    let device_id = v["device_id"].as_str().unwrap().to_string();
 
     let resp = app
         .clone()
@@ -866,7 +869,7 @@ async fn cannot_revoke_device_owned_by_another_user() {
                 .uri("/api/auth/devices/revoke")
                 .header("content-type", "application/json")
                 .header("cookie", &owner_cookie)
-                .body(Body::from(format!(r#"{{"token":"{token}"}}"#)))
+                .body(Body::from(format!(r#"{{"device_id":"{device_id}"}}"#)))
                 .unwrap(),
         )
         .await
