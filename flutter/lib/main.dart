@@ -18,21 +18,28 @@ class DevinoriumApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AppState()..bootstrap(),
-      child: MaterialApp(
-        title: 'Devinorium',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorSchemeSeed: const Color(0xFF6750A4),
-          brightness: Brightness.light,
-        ),
-        darkTheme: ThemeData(
-          useMaterial3: true,
-          colorSchemeSeed: const Color(0xFF6750A4),
-          brightness: Brightness.dark,
-        ),
-        themeMode: ThemeMode.system,
-        home: const RootScaffold(),
+      child: Builder(
+        builder: (context) {
+          final themeMode = context.select<AppState, ThemeMode>(
+            (state) => state.themeMode,
+          );
+          return MaterialApp(
+            title: 'Devinorium',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              useMaterial3: true,
+              colorSchemeSeed: const Color(0xFF6750A4),
+              brightness: Brightness.light,
+            ),
+            darkTheme: ThemeData(
+              useMaterial3: true,
+              colorSchemeSeed: const Color(0xFF6750A4),
+              brightness: Brightness.dark,
+            ),
+            themeMode: themeMode,
+            home: const RootScaffold(),
+          );
+        },
       ),
     );
   }

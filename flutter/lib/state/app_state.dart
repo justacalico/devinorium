@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../api/api_service.dart';
@@ -36,7 +38,9 @@ class AppState extends ChangeNotifier {
     PermissionRequest? pendingPermissionRequest,
     List<String> filesPath = const [],
     String? globalError,
+    ThemeMode? themeMode,
   })  : api = api ?? ApiService() {
+    _themeMode = themeMode ?? ThemeMode.system;
     _user = user;
     _users = users;
     _projects = projects;
@@ -98,6 +102,7 @@ class AppState extends ChangeNotifier {
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   PermissionRequest? _pendingPermissionRequest;
+  ThemeMode _themeMode = ThemeMode.system;
 
   // Getters
   AppView get view => _view;
@@ -144,6 +149,7 @@ class AppState extends ChangeNotifier {
   Map<String, ToolCallData> get streamingToolCalls => _streamingToolCalls;
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
+  ThemeMode get themeMode => _themeMode;
 
   // ---- Setters / mutations ----
 
@@ -175,6 +181,45 @@ class AppState extends ChangeNotifier {
   void setShowTotpField(bool v) { _showTotpField = v; notifyListeners(); }
   void setGlobalError(String e) { _globalError = e; notifyListeners(); }
   void clearGlobalError() { _globalError = ''; notifyListeners(); }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    _themeMode = mode;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('devinorium_theme_mode', _themeModeToString(mode));
+    } catch (_) {}
+  }
+
+  static String _themeModeToString(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      _ => 'system',
+    };
+  }
+
+  Future<void> _loadThemeMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final value = prefs.getString('devinorium_theme_mode') ?? 'system';
+      _themeMode = _parseThemeMode(value);
+    } catch (_) {
+      _themeMode = ThemeMode.system;
+    }
+    notifyListeners();
+  }
+
+  static ThemeMode _parseThemeMode(String value) {
+    switch (value) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
 
   String? _projectPathById(int id) {
     for (final p in _projects) {
@@ -262,6 +307,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> bootstrap() async {
+    await _loadThemeMode();
     try {
       final configured = await api.client.isConfigured;
       if (!configured) {

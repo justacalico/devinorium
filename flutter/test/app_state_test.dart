@@ -6,6 +6,7 @@ import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -81,6 +82,15 @@ void main() {
       expect(state.globalError, 'boom');
       state.clearGlobalError();
       expect(state.globalError, isEmpty);
+    });
+
+    test('theme mode defaults to system and can be changed', () async {
+      final state = AppState.test();
+      expect(state.themeMode, ThemeMode.system);
+      await state.setThemeMode(ThemeMode.dark);
+      expect(state.themeMode, ThemeMode.dark);
+      await state.setThemeMode(ThemeMode.light);
+      expect(state.themeMode, ThemeMode.light);
     });
   });
 

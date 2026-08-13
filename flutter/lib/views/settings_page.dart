@@ -66,6 +66,7 @@ class SettingsPage extends StatelessWidget {
                 ),
                 _ProviderCard(state: state),
                 _DevicesSection(state: state),
+                _PersonalizationSection(state: state),
                 if (state.isOwner) _AccountsSection(state: state),
               ],
             ),
@@ -443,6 +444,52 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Text('Test'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PersonalizationSection extends StatelessWidget {
+  final AppState state;
+
+  const _PersonalizationSection({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return _SectionCard(
+      title: 'Personalization',
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Theme',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant),
+            ),
+            SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  label: Text('Light'),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  label: Text('Dark'),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  label: Text('System'),
+                ),
+              ],
+              selected: {state.themeMode},
+              onSelectionChanged: (modes) {
+                if (modes.isNotEmpty) state.setThemeMode(modes.first);
+              },
+            ),
+          ],
         ),
       ],
     );
