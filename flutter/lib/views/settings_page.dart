@@ -679,6 +679,7 @@ class _UserRow extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Icon(
                   Icons.verified_user_outlined,
@@ -695,23 +696,24 @@ class _UserRow extends StatelessWidget {
               ],
             ),
           ),
-          if (!user.isOwner)
-            Expanded(
-              flex: 2,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    user.disabled ? 'Disabled' : 'Active',
-                    style: theme.textTheme.bodySmall,
+          Expanded(
+            flex: 2,
+            child: user.isOwner
+                ? const SizedBox.shrink()
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        user.disabled ? 'Disabled' : 'Active',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      Switch(
+                        value: user.disabled,
+                        onChanged: (v) => state.setUserDisabled(user.id, v),
+                      ),
+                    ],
                   ),
-                  Switch(
-                    value: user.disabled,
-                    onChanged: (v) => state.setUserDisabled(user.id, v),
-                  ),
-                ],
-              ),
-            ),
+          ),
         ],
       ),
     );
