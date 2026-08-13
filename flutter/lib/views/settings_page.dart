@@ -729,17 +729,17 @@ class _UserRow extends StatelessWidget {
           ),
           Expanded(
             flex: 2,
-            child: user.isOwner
-                ? const SizedBox.shrink()
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Switch(
-                        value: !user.disabled,
-                        onChanged: (v) => state.setUserDisabled(user.id, !v),
-                      ),
-                    ],
-                  ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Switch(
+                  value: !user.disabled,
+                  onChanged: user.isOwner
+                      ? null
+                      : (v) => state.setUserDisabled(user.id, !v),
+                ),
+              ],
+            ),
           ),
         ],
       ),
