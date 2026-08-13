@@ -129,12 +129,15 @@ async fn list_threads(
     Path(id): Path<i64>,
 ) -> Response {
     match state.db.list_threads_for_project(id, user.id).await {
-        Ok(rows) => Json(
-            rows.into_iter()
-                .map(crate::api::threads::ThreadOut::from)
-                .collect::<Vec<_>>(),
-        )
-        .into_response(),
+        Ok(rows) => {
+            let mut out: Vec<crate::api::threads::ThreadOut> = Vec::with_capacity(rows.len());
+            for t in rows {
+                let mut thread = crate::api::threads::ThreadOut::from(t);
+                thread.tags = crate::api::threads::resolve_thread_tags(&state, &thread.id).await;
+                out.push(thread);
+            }
+            Json(out).into_response()
+        }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }

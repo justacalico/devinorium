@@ -14,9 +14,11 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use devinorium::{
+    api::threads::resolve_thread_tags,
     auth,
     config::Config,
     db,
+    db::{NewMessage, NewThread},
     providers::{
         ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse, ToolCallEvent,
     },
@@ -127,7 +129,7 @@ impl Provider for StubProvider {
     }
 }
 
-async fn make_app() -> (Router, db::Db) {
+async fn app_state() -> (AppState, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
     let database = db::Db::connect(&db_url).await.unwrap();
@@ -169,6 +171,11 @@ async fn make_app() -> (Router, db::Db) {
             std::collections::HashMap::new(),
         )),
     };
+    (state, database)
+}
+
+async fn make_app() -> (Router, db::Db) {
+    let (state, database) = app_state().await;
     (devinorium::build_app(state), database)
 }
 
@@ -510,6 +517,107 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     // Thread now has a session id.
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
     assert!(thread.devin_session_id.is_some());
+}
+
+#[tokio::test]
+async fn resolve_thread_tags_reflects_message_state() {
+    let (state, db) = app_state().await;
+    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
+    let tid = Uuid::new_v4().to_string();
+    db.create_thread(NewThread {
+        id: tid.clone(),
+        user_id: user.id,
+        project_id: 1,
+        thread_group_id: None,
+        title: "T".into(),
+        model: "stub".into(),
+        permission_mode: "normal".into(),
+        permissions: None,
+    })
+    .await
+    .unwrap();
+
+    assert!(resolve_thread_tags(&state, &tid).await.is_empty());
+
+    db.add_message(NewMessage {
+        thread_id: tid.clone(),
+        role: "user".into(),
+        content: "hello".into(),
+        thinking: None,
+        attachments: "[]".into(),
+    })
+    .await
+    .unwrap();
+    assert_eq!(resolve_thread_tags(&state, &tid).await, vec!["working"]);
+
+    db.add_message(NewMessage {
+        thread_id: tid.clone(),
+        role: "assistant".into(),
+        content: "done".into(),
+        thinking: None,
+        attachments: "[]".into(),
+    })
+    .await
+    .unwrap();
+    assert_eq!(resolve_thread_tags(&state, &tid).await, vec!["completed"]);
+
+    db.add_message(NewMessage {
+        thread_id: tid.clone(),
+        role: "error".into(),
+        content: "oops".into(),
+        thinking: None,
+        attachments: "[]".into(),
+    })
+    .await
+    .unwrap();
+    assert_eq!(resolve_thread_tags(&state, &tid).await, vec!["failed"]);
+}
+
+#[tokio::test]
+async fn resolve_thread_tags_prefers_pending_approval() {
+    let (state, db) = app_state().await;
+    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
+    let tid = Uuid::new_v4().to_string();
+    db.create_thread(NewThread {
+        id: tid.clone(),
+        user_id: user.id,
+        project_id: 1,
+        thread_group_id: None,
+        title: "T".into(),
+        model: "stub".into(),
+        permission_mode: "normal".into(),
+        permissions: None,
+    })
+    .await
+    .unwrap();
+
+    db.add_message(NewMessage {
+        thread_id: tid.clone(),
+        role: "error".into(),
+        content: "oops".into(),
+        thinking: None,
+        attachments: "[]".into(),
+    })
+    .await
+    .unwrap();
+
+    let (tx, _rx) = tokio::sync::oneshot::channel::<String>();
+    {
+        let mut reqs = state.pending_permission_requests.lock().await;
+        reqs.insert(
+            "req-1".into(),
+            devinorium::PendingPermissionRequest {
+                user_id: user.id,
+                thread_id: tid.clone(),
+                sender: tx,
+            },
+        );
+    }
+
+    assert_eq!(
+        resolve_thread_tags(&state, &tid).await,
+        vec!["needs approval"]
+    );
 }
 
 #[tokio::test]

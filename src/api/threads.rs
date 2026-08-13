@@ -57,6 +57,7 @@ pub struct ThreadOut {
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,
+    pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -72,6 +73,7 @@ impl From<ThreadRow> for ThreadOut {
             model: t.model,
             permission_mode: t.permission_mode,
             permissions: t.permissions,
+            tags: Vec::new(),
             created_at: t.created_at,
             updated_at: t.updated_at,
         }
@@ -103,9 +105,33 @@ impl From<MessageRow> for MessageOut {
     }
 }
 
+pub async fn resolve_thread_tags(state: &AppState, thread_id: &str) -> Vec<String> {
+    {
+        let reqs = state.pending_permission_requests.lock().await;
+        if reqs.values().any(|r| r.thread_id == thread_id) {
+            return vec!["needs approval".into()];
+        }
+    }
+
+    match state.db.last_message_role(thread_id).await {
+        Ok(Some(role)) if role == "error" => vec!["failed".into()],
+        Ok(Some(role)) if role == "user" => vec!["working".into()],
+        Ok(Some(role)) if role == "assistant" => vec!["completed".into()],
+        _ => Vec::new(),
+    }
+}
+
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.list_threads(user.id).await {
-        Ok(rows) => Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response(),
+        Ok(rows) => {
+            let mut out: Vec<ThreadOut> = Vec::with_capacity(rows.len());
+            for t in rows {
+                let mut thread = ThreadOut::from(t);
+                thread.tags = resolve_thread_tags(&state, &thread.id).await;
+                out.push(thread);
+            }
+            Json(out).into_response()
+        }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -195,9 +221,11 @@ async fn get_one(
 ) -> Response {
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => {
+            let mut thread = ThreadOut::from(t);
+            thread.tags = resolve_thread_tags(&state, &id).await;
             let messages = state.db.list_messages(&id).await.unwrap_or_default();
             Json(serde_json::json!({
-                "thread": ThreadOut::from(t),
+                "thread": thread,
                 "messages": messages.into_iter().map(MessageOut::from).collect::<Vec<_>>(),
             }))
             .into_response()
