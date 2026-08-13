@@ -37,7 +37,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('选择配对文件'));
+      await tester.tap(find.text('Select pairing file'));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -61,11 +61,11 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('选择配对文件'));
+      await tester.tap(find.text('Select pairing file'));
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('无法解析文件'), findsOneWidget);
+      expect(find.text('Could not parse file'), findsOneWidget);
       expect(state.imported, isNull);
     });
 
@@ -83,11 +83,11 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('选择配对文件'));
+      await tester.tap(find.text('Select pairing file'));
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('配对文件过大'), findsOneWidget);
+      expect(find.text('Pairing file is too large'), findsOneWidget);
       expect(state.imported, isNull);
     });
 
@@ -105,11 +105,11 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('选择配对文件'));
+      await tester.tap(find.text('Select pairing file'));
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('配对文件缺少必要字段'), findsOneWidget);
+      expect(find.text('Pairing file is missing required fields'), findsOneWidget);
       expect(state.imported, isNull);
     });
 
@@ -127,11 +127,11 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('选择配对文件'));
+      await tester.tap(find.text('Select pairing file'));
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('无法打开文件选择器'), findsOneWidget);
+      expect(find.text('Could not open file picker'), findsOneWidget);
       expect(state.imported, isNull);
     });
 
@@ -149,11 +149,11 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('选择配对文件'));
+      await tester.tap(find.text('Select pairing file'));
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('输入配对文件路径'), findsOneWidget);
+      expect(find.text('Enter pairing file path'), findsOneWidget);
       expect(state.imported, isNull);
     });
   });

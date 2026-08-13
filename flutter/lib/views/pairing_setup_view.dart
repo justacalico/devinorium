@@ -34,9 +34,9 @@ class _PairingSetupViewState extends State<PairingSetupView> {
         await _handleBytes(bytes);
       }
     } on FormatException {
-      _showSnack('无法解析文件');
+      _showSnack('Could not parse file');
     } on Exception {
-      _showSnack('无法打开文件选择器');
+      _showSnack('Could not open file picker');
     } finally {
       if (mounted) setState(() => _picking = false);
     }
@@ -47,7 +47,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
     final path = await showDialog<String?>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('输入配对文件路径'),
+        title: const Text('Enter pairing file path'),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
@@ -57,11 +57,11 @@ class _PairingSetupViewState extends State<PairingSetupView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('确定'),
+            child: const Text('OK'),
           ),
         ],
       ),
@@ -69,7 +69,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
     controller.dispose();
 
     if (path == null || path.isEmpty) {
-      _showSnack('未选择文件');
+      _showSnack('No file selected');
       return;
     }
 
@@ -79,23 +79,23 @@ class _PairingSetupViewState extends State<PairingSetupView> {
 
   Future<void> _handleBytes(Uint8List? bytes) async {
     if (bytes == null || bytes.isEmpty) {
-      _showSnack('无法读取文件内容');
+      _showSnack('Could not read file content');
       return;
     }
     if (bytes.length > 1024 * 1024) {
-      _showSnack('配对文件过大');
+      _showSnack('Pairing file is too large');
       return;
     }
 
     final json = jsonDecode(utf8.decode(bytes));
     if (json is! Map<String, dynamic>) {
-      _showSnack('文件格式不正确');
+      _showSnack('Invalid file format');
       return;
     }
 
     final pairing = PairingResponse.fromJson(json);
     if (pairing.token.isEmpty || pairing.serverUrl.isEmpty) {
-      _showSnack('配对文件缺少必要字段');
+      _showSnack('Pairing file is missing required fields');
       return;
     }
 
@@ -130,7 +130,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  '导入配对文件以连接到服务器。',
+                  'Import a pairing file to connect to the server.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
@@ -158,7 +158,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
                           ),
                         )
                       : const Icon(Icons.file_open),
-                  label: const Text('选择配对文件'),
+                  label: const Text('Select pairing file'),
                 ),
               ],
             ),

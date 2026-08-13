@@ -60,7 +60,7 @@ Future<String?> _pickPathWithLinuxDialog() async {
     'zenity': [
       '--file-selection',
       '--file-filter=JSON files | *.json',
-      '--title=选择配对文件',
+      '--title=Select pairing file',
     ],
     'kdialog': [
       '--getopenfilename',
