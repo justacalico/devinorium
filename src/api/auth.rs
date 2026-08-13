@@ -263,6 +263,8 @@ pub struct MeResponse {
     pub username: String,
     pub role: String,
     pub totp_enabled: bool,
+    pub provider_id: String,
+    pub provider_command: String,
 }
 
 pub async fn me(CurrentUser(user): CurrentUser) -> Response {
@@ -271,6 +273,68 @@ pub async fn me(CurrentUser(user): CurrentUser) -> Response {
         username: user.username,
         role: user.role,
         totp_enabled: user.totp_enabled,
+        provider_id: user.provider_id,
+        provider_command: user.provider_command,
+    })
+    .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateMeRequest {
+    pub provider_id: String,
+    pub provider_command: String,
+}
+
+pub async fn update_me(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<UpdateMeRequest>,
+) -> Response {
+    let provider_id = req.provider_id.trim();
+    if provider_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("provider_id is required")),
+        )
+            .into_response();
+    }
+
+    let valid_ids: std::collections::HashSet<_> = crate::providers::available_providers()
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
+    if !valid_ids.contains(provider_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("unknown provider")),
+        )
+            .into_response();
+    }
+
+    let provider_command = req.provider_command.trim();
+    if provider_command.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("provider_command is required")),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = state
+        .db
+        .set_provider(user.id, provider_id, provider_command)
+        .await
+    {
+        return crate::api::map_err_internal(e).into_response();
+    }
+
+    Json(MeResponse {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        totp_enabled: user.totp_enabled,
+        provider_id: provider_id.to_string(),
+        provider_command: provider_command.to_string(),
     })
     .into_response()
 }

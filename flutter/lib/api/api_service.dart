@@ -195,6 +195,34 @@ class ApiService {
     return list.map(ModelInfo.fromJson).toList();
   }
 
+  // ---- Providers ----
+
+  Future<List<ProviderInfo>> listProviders() async {
+    final list = await _client.getList('/api/providers');
+    return list.map(ProviderInfo.fromJson).toList();
+  }
+
+  Future<User> updateMe({
+    required String providerId,
+    required String providerCommand,
+  }) async {
+    final j = await _client.patch('/api/auth/me', {
+      'provider_id': providerId,
+      'provider_command': providerCommand,
+    });
+    return User.fromJson(j);
+  }
+
+  Future<void> testProvider({
+    required String providerId,
+    required String command,
+  }) async {
+    await _client.post('/api/providers/health', {
+      'provider_id': providerId,
+      'command': command,
+    });
+  }
+
   // ---- Files ----
 
   Future<List<DirEntry>> listFiles({String? path, int? projectId}) async {

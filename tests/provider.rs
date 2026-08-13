@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use devinorium::providers::{self, Provider, SendOptions, StartRequest};
+use devinorium::providers::{self, devin_acp, Provider, SendOptions, StartRequest};
 
 fn devin_available() -> bool {
     std::process::Command::new("devin")
@@ -22,7 +22,7 @@ fn devin_available() -> bool {
 fn make_provider() -> Box<dyn Provider> {
     providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".to_string(),
-        devin_bin: "devin".to_string(),
+        command: "devin".to_string(),
         default_model: "glm-5-2".to_string(),
     })
     .expect("build devin-cli provider")
@@ -151,17 +151,40 @@ async fn provider_start_with_image_attachment() {
 
 #[test]
 fn registry_knows_devin_cli() {
-    assert!(providers::available_providers().contains(&"devin-cli"));
+    let providers = providers::available_providers();
+    let ids: Vec<_> = providers.iter().map(|p| p.id).collect();
+    assert!(ids.contains(&"devin-cli"));
+    let devin = providers.iter().find(|p| p.id == "devin-cli").unwrap();
+    assert_eq!(devin.name, "Devin CLI");
+}
+
+#[test]
+fn provider_name_looks_up_display_name() {
+    assert_eq!(
+        providers::provider_name("devin-cli"),
+        Some("Devin CLI")
+    );
+    assert_eq!(providers::provider_name("nope"), None);
 }
 
 #[test]
 fn registry_rejects_unknown() {
     let res = providers::build_provider(providers::ProviderConfig {
         id: "nope".to_string(),
-        devin_bin: "devin".to_string(),
+        command: "devin".to_string(),
         default_model: "glm-5-2".to_string(),
     });
     assert!(res.is_err());
+}
+
+#[tokio::test]
+async fn devin_acp_health_check_fails_for_missing_binary() {
+    let p = devin_acp::DevinAcpProvider::new(
+        "/nonexistent/devin".to_string(),
+        "glm-5-2".to_string(),
+    );
+    let res = p.health_check().await;
+    assert!(res.is_err(), "missing binary should fail health check");
 }
 
 #[tokio::test]

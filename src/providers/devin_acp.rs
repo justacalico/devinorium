@@ -47,6 +47,43 @@ impl DevinAcpProvider {
         Self { bin, default_model }
     }
 
+    /// Verify the binary is on PATH and the ACP handshake succeeds
+    /// without creating a session or sending a prompt.
+    pub async fn do_health_check(&self) -> anyhow::Result<()> {
+        // First make sure the binary exists.
+        let path = tokio::task::spawn_blocking({
+            let bin = self.bin.clone();
+            move || which::which(&bin)
+        })
+        .await?;
+
+        if path.is_err() {
+            anyhow::bail!("provider command not found: {}", self.bin);
+        }
+
+        // Open an ACP connection and send Initialize, with a timeout so the
+        // test button can’t hang if the binary is unresponsive.
+        let health = Client
+            .builder()
+            .name("devinorium")
+            .connect_with(
+                AcpAgent::from_args([&self.bin, "acp"])?,
+                async move |connection: ConnectionTo<Agent>| {
+                    let _ = connection
+                        .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                        .block_task()
+                        .await?;
+                    Ok::<_, agent_client_protocol::Error>(())
+                },
+            );
+
+        tokio::time::timeout(std::time::Duration::from_secs(15), health)
+            .await
+            .map_err(|_| anyhow::anyhow!("acp health check timed out"))?
+            .map_err(|e| anyhow::anyhow!("acp health check failed: {e}"))?;
+        Ok(())
+    }
+
     async fn run_prompt(
         &self,
         options: &SendOptions,
@@ -763,5 +800,9 @@ impl Provider for DevinAcpProvider {
         _working_dir: &Path,
     ) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::json!({}))
+    }
+
+    async fn health_check(&self) -> anyhow::Result<()> {
+        self.do_health_check().await
     }
 }

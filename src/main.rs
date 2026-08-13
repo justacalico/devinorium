@@ -1,4 +1,4 @@
-//! Devinorium — a secure, self-hostable Material 3 web UI for the Devin CLI.
+//! Devinorium — a secure, self-hostable Material 3 web UI for AI coding agents.
 
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
 
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".to_string(),
-        devin_bin: cfg.devin_bin.clone(),
+        command: "devin".to_string(),
         default_model: cfg.default_model.clone(),
     })?;
 

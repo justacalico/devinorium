@@ -69,6 +69,7 @@ sha2 = "0.10"
 hex = "0.4"
 dotenvy = "0.15.7"
 include_dir = "0.7"
+which = "7"
 tempfile = "3"
 agent-client-protocol = "2"
 

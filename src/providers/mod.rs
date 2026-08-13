@@ -162,6 +162,13 @@ pub struct SendResponse {
     pub thinking: String,
 }
 
+/// Metadata about a provider the backend knows.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderInfo {
+    pub id: &'static str,
+    pub name: &'static str,
+}
+
 /// Metadata about a model the provider offers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
@@ -201,6 +208,11 @@ pub trait Provider: Send + Sync {
         session_id: &str,
         working_dir: &Path,
     ) -> anyhow::Result<serde_json::Value>;
+
+    /// Verify the provider is reachable without running a prompt.
+    /// For the Devin CLI this opens an ACP session, sends `Initialize`,
+    /// and immediately closes.
+    async fn health_check(&self) -> anyhow::Result<()>;
 }
 
 /// Derive a short title from the first line of a prompt.
@@ -220,15 +232,26 @@ pub fn title_from_prompt(prompt: &str) -> String {
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     pub id: String,
-    pub devin_bin: String,
+    pub command: String,
     pub default_model: String,
 }
 
-/// The list of provider ids known to the registry.
+/// The list of providers known to the registry.
 ///
-/// **When adding a provider, append its id here.**
-pub fn available_providers() -> Vec<&'static str> {
-    vec!["devin-cli"]
+/// **When adding a provider, append its entry here.**
+pub fn available_providers() -> Vec<ProviderInfo> {
+    vec![ProviderInfo {
+        id: "devin-cli",
+        name: "Devin CLI",
+    }]
+}
+
+/// Find a registered provider by id.
+pub fn provider_name(id: &str) -> Option<&'static str> {
+    available_providers()
+        .into_iter()
+        .find(|p| p.id == id)
+        .map(|p| p.name)
 }
 
 /// Construct a provider by id.
@@ -238,7 +261,7 @@ pub fn available_providers() -> Vec<&'static str> {
 pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> {
     match cfg.id.as_str() {
         "devin-cli" => Ok(Box::new(devin_acp::DevinAcpProvider::new(
-            cfg.devin_bin.clone(),
+            cfg.command.clone(),
             cfg.default_model.clone(),
         ))),
         other => anyhow::bail!("unknown provider: {other}"),

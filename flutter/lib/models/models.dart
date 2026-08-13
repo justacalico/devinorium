@@ -5,12 +5,16 @@ class User {
   final String username;
   final String role;
   final bool totpEnabled;
+  final String providerId;
+  final String providerCommand;
 
   User({
     required this.id,
     required this.username,
     required this.role,
     required this.totpEnabled,
+    required this.providerId,
+    required this.providerCommand,
   });
 
   factory User.fromJson(Map<String, dynamic> j) => User(
@@ -18,6 +22,19 @@ class User {
         username: j['username'] as String,
         role: j['role'] as String,
         totpEnabled: (j['totp_enabled'] as bool?) ?? false,
+        providerId: j['provider_id'] as String? ?? 'devin-cli',
+        providerCommand: (j['provider_command'] as String? ?? '').trim().isEmpty
+            ? 'devin'
+            : j['provider_command'] as String,
+      );
+
+  User copyWith({String? providerId, String? providerCommand}) => User(
+        id: id,
+        username: username,
+        role: role,
+        totpEnabled: totpEnabled,
+        providerId: providerId ?? this.providerId,
+        providerCommand: providerCommand ?? this.providerCommand,
       );
 }
 
@@ -237,6 +254,18 @@ class ThreadDetail {
   ThreadDetail copyWith({List<Message>? messages}) => ThreadDetail(
         thread: thread,
         messages: messages ?? this.messages,
+      );
+}
+
+class ProviderInfo {
+  final String id;
+  final String name;
+
+  ProviderInfo({required this.id, required this.name});
+
+  factory ProviderInfo.fromJson(Map<String, dynamic> j) => ProviderInfo(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? j['id'] as String,
       );
 }
 

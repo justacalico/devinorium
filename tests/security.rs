@@ -23,6 +23,11 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         .await
         .unwrap();
 
+    sqlx::query("UPDATE users SET provider_command = '' WHERE username = 'owner'")
+        .execute(database.pool())
+        .await
+        .unwrap();
+
     let cfg = Config {
         host: "127.0.0.1".into(),
         port: 0,
@@ -31,7 +36,6 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
         file_root: None,
-        devin_bin: "devin".into(),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 1024 * 1024,
@@ -41,7 +45,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
 
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),
-        devin_bin: "devin".into(),
+        command: "devin".into(),
         default_model: "glm-5-2".into(),
     })
     .unwrap();
@@ -241,7 +245,6 @@ async fn body_size_limit_rejects_oversized() {
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
         file_root: None,
-        devin_bin: "devin".into(),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 64,
@@ -250,7 +253,7 @@ async fn body_size_limit_rejects_oversized() {
     };
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),
-        devin_bin: "devin".into(),
+        command: "devin".into(),
         default_model: "glm-5-2".into(),
     })
     .unwrap();

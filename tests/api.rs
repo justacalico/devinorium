@@ -121,6 +121,10 @@ impl Provider for StubProvider {
     ) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::json!({}))
     }
+
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 async fn make_app() -> (Router, db::Db) {
@@ -128,6 +132,13 @@ async fn make_app() -> (Router, db::Db) {
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
     let database = db::Db::connect(&db_url).await.unwrap();
     auth::bootstrap::run(&database, "owner", "supersecret123")
+        .await
+        .unwrap();
+
+    // Tests use the fallback provider; clear the default command so
+    // provider_for_user does not try to spawn the real devin binary.
+    sqlx::query("UPDATE users SET provider_command = '' WHERE username = 'owner'")
+        .execute(database.pool())
         .await
         .unwrap();
 
@@ -143,7 +154,6 @@ async fn make_app() -> (Router, db::Db) {
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
         file_root: Some(file_root),
-        devin_bin: "devin".into(),
         default_model: "stub-1".into(),
         trust_proxy: false,
         max_body_bytes: 20 * 1024 * 1024,
@@ -1112,4 +1122,170 @@ async fn send_rejects_empty_prompt() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn provider_list_requires_auth_and_returns_devin_cli() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/providers", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("devin-cli"), "body: {body}");
+    assert!(body.contains("Devin CLI"), "body: {body}");
+}
+
+#[tokio::test]
+async fn me_includes_default_provider() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("provider_id"), "body: {body}");
+    assert!(body.contains("devin-cli"), "body: {body}");
+}
+
+#[tokio::test]
+async fn update_provider_persists_and_validates() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // Unknown provider is rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &cookie,
+            r#"{"provider_id":"not-real","provider_command":"devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Valid provider is accepted.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &cookie,
+            r#"{"provider_id":"devin-cli","provider_command":"devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+
+    // Confirm it actually persisted.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+}
+
+#[tokio::test]
+async fn provider_health_rejects_invalid_input() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // Missing command.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &cookie,
+            r#"{"provider_id":"devin-cli"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Unknown provider.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &cookie,
+            r#"{"provider_id":"not-real","command":"devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn provider_health_fails_for_missing_binary() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &cookie,
+            r#"{"provider_id":"devin-cli","command":"/nonexistent/devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
+async fn custom_provider_command_is_used() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let id = make_thread(&app, &cookie, pid, "test").await;
+
+    // Set a non-existent command; the provider should try to use it and fail.
+    sqlx::query(
+        "UPDATE users SET provider_command = '/nonexistent/devin' WHERE username = 'owner'",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    let boundary = "----testboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{id}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }

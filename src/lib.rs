@@ -1,5 +1,5 @@
 //! Devinorium library crate — a secure, self-hostable Material 3 web UI for
-//! the Devin CLI.
+//! AI coding agents.
 //!
 //! The binary target (`src/main.rs`) is a thin wrapper around this library.
 
@@ -36,6 +36,35 @@ pub struct AppState {
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
 }
 
+impl AppState {
+    /// Build a provider for the given user, falling back to the configured
+    /// default provider when the user has not set a custom command.
+    pub fn provider_for_user(&self, user: &db::UserRow) -> Arc<dyn providers::Provider> {
+        let command = user.provider_command.trim();
+        if command.is_empty() {
+            return self.provider.clone();
+        }
+
+        match providers::build_provider(providers::ProviderConfig {
+            id: user.provider_id.clone(),
+            command: command.to_string(),
+            default_model: self.config.default_model.clone(),
+        }) {
+            Ok(p) => Arc::from(p),
+            Err(e) => {
+                tracing::warn!(
+                    user_id = %user.id,
+                    provider_id = %user.provider_id,
+                    command = %command,
+                    error = %e,
+                    "failed to build user provider; falling back to default"
+                );
+                self.provider.clone()
+            }
+        }
+    }
+}
+
 /// Build the full axum application router with all security middleware.
 ///
 /// This is shared by the binary target and the integration tests so that
@@ -70,7 +99,9 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::thread_groups::router())
         .merge(api::invites::router())
         .merge(api::models::router())
+        .merge(api::providers::router())
         .route("/api/auth/me", get(api::auth::me))
+        .route("/api/auth/me", axum::routing::patch(api::auth::update_me))
         .route(
             "/api/auth/totp/setup",
             axum::routing::post(api::auth::totp_setup),

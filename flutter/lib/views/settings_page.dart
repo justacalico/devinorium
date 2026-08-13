@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/models.dart';
 import '../state/app_state.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -58,6 +59,7 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ],
               ),
+              _ProviderCard(state: state),
             ],
           ),
         ),
@@ -88,6 +90,181 @@ class SettingsPage extends StatelessWidget {
     if (confirmed == true) {
       await state.disableTotp();
     }
+  }
+}
+
+String _providerName(List<ProviderInfo> providers, String id) {
+  for (final p in providers) {
+    if (p.id == id) return p.name;
+  }
+  return id.isEmpty ? '—' : id;
+}
+
+class _ProviderCard extends StatelessWidget {
+  final AppState state;
+  const _ProviderCard({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = state.user;
+    final providers = state.providers;
+
+    return _SectionCard(
+      title: 'Provider',
+      children: [
+        _SettingsRow(
+          label: 'Provider',
+          value: _providerName(providers, user?.providerId ?? ''),
+          trailing: _ProviderDropdown(state: state),
+        ),
+        const Divider(),
+        _ProviderCommandField(state: state),
+      ],
+    );
+  }
+}
+
+class _ProviderDropdown extends StatelessWidget {
+  final AppState state;
+  const _ProviderDropdown({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final providers = state.providers;
+    final currentId = state.user?.providerId ?? '';
+    if (providers.isEmpty) return const SizedBox.shrink();
+
+    final ids = providers.map((p) => p.id).toSet();
+    final effectiveId = ids.contains(currentId) ? currentId : providers.first.id;
+
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: effectiveId,
+        isDense: true,
+        items: providers
+            .map((p) => DropdownMenuItem(
+                  value: p.id,
+                  child: Text(p.name),
+                ))
+            .toList(),
+        onChanged: (id) {
+          if (id != null && id != currentId) {
+            final user = state.user;
+            if (user != null) {
+              state.saveProvider(
+                providerId: id,
+                providerCommand: user.providerCommand,
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _ProviderCommandField extends StatefulWidget {
+  final AppState state;
+  const _ProviderCommandField({required this.state});
+
+  @override
+  State<_ProviderCommandField> createState() => _ProviderCommandFieldState();
+}
+
+class _ProviderCommandFieldState extends State<_ProviderCommandField> {
+  final _controller = TextEditingController();
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final saved = (widget.state.user?.providerCommand ?? 'devin').trim();
+    _controller.text = saved.isEmpty ? 'devin' : saved;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String get _effectiveCommand {
+    final command = _controller.text.trim();
+    return command.isEmpty ? 'devin' : command;
+  }
+
+  Future<void> _save() async {
+    final user = widget.state.user;
+    if (user == null) return;
+    final command = _effectiveCommand;
+    _controller.text = command;
+    await widget.state.saveProvider(
+      providerId: user.providerId,
+      providerCommand: command,
+    );
+  }
+
+  Future<void> _test() async {
+    final user = widget.state.user;
+    if (user == null) return;
+
+    // Persist the command before testing so the user isn't surprised when
+    // a successful test does not match the value used in chat.
+    await _save();
+    final command = _effectiveCommand;
+
+    setState(() => _testing = true);
+    try {
+      await widget.state.testProvider(
+        providerId: user.providerId,
+        command: command,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Provider is reachable')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Provider test failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _controller,
+            decoration: const InputDecoration(
+              labelText: 'Command',
+              hintText: 'devin',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: _testing ? null : _test,
+          child: _testing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Test'),
+        ),
+      ],
+    );
   }
 }
 
