@@ -1,10 +1,10 @@
 //! File manager API routes.
 //!
-//! All operations are constrained to a single global file root (configured
-//! via DEVINORIUM_FILE_ROOT). Path traversal is prevented by canonicalizing
-//! and checking containment.
+//! Paths are resolved relative to the active project (if any) or the user's
+//! home directory. Absolute paths are accepted, and path traversal via `..`
+//! is prevented by canonicalization.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use axum::extract::{Multipart, Query, State};
 use axum::http::StatusCode;
@@ -26,31 +26,15 @@ pub fn router() -> Router<AppState> {
         .route("/api/files/delete", axum::routing::delete(delete))
 }
 
-/// Resolve a relative `path` query param within the active root.
-///
-/// If `project_id` is given, the root is the project's canonical path (which
-/// itself must live inside the global file root). Otherwise the global
-/// DEVINORIUM_FILE_ROOT is used.
+/// Resolve a `path` relative to the active project (if any) or the user's
+/// home directory. Absolute paths are accepted; `..` traversal is prevented.
 async fn resolve(
     state: &AppState,
     user_id: i64,
     rel: Option<&str>,
     project_id: Option<i64>,
 ) -> Result<(PathBuf, PathBuf), Response> {
-    let global_root = match &state.config.file_root {
-        Some(r) => r.clone(),
-        None => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(crate::api::ApiError::new("no file root configured")),
-            )
-                .into_response());
-        }
-    };
-    let global_root_canon = match global_root.canonicalize() {
-        Ok(c) => c,
-        Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
-    };
+    let home_dir = &state.config.home_dir;
 
     let project_root = if let Some(pid) = project_id {
         match state.db.get_project(pid, user_id).await {
@@ -72,37 +56,41 @@ async fn resolve(
             Ok(c) => c,
             Err(_) => p.clone(),
         },
-        None => global_root_canon.clone(),
+        None => match home_dir.canonicalize() {
+            Ok(c) => c,
+            Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
+        },
     };
-
-    // Ensure the project root (if any) is still inside the global root.
-    let roots = vec![global_root_canon.clone()];
-    if let Some(p) = project_root.as_ref() {
-        match paths::resolve_within(p, Some(&global_root_canon), &roots) {
-            Some(_) => {}
-            None => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new("project path escapes file root")),
-                )
-                    .into_response())
-            }
-        }
-    }
 
     let rel = rel.unwrap_or("");
-    let target = if rel.is_empty() {
-        root_canon.clone()
+    if rel.is_empty() {
+        match paths::resolve_within(&root_canon, Some(&root_canon), &[root_canon.clone()]) {
+            Some(p) => Ok((p, root_canon)),
+            None => Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid path")),
+            )
+                .into_response()),
+        }
+    } else if std::path::Path::new(rel).is_absolute() {
+        match paths::resolve(Path::new(rel), None, None) {
+            Some(p) => Ok((p, root_canon)),
+            None => Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid path")),
+            )
+                .into_response()),
+        }
     } else {
-        root_canon.join(rel)
-    };
-    match paths::resolve_within(&target, Some(&root_canon), &roots) {
-        Some(p) => Ok((p, root_canon)),
-        None => Err((
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("path escapes file root")),
-        )
-            .into_response()),
+        let target = root_canon.join(rel);
+        match paths::resolve_within(&target, Some(&root_canon), &[root_canon.clone()]) {
+            Some(p) => Ok((p, root_canon)),
+            None => Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid path")),
+            )
+                .into_response()),
+        }
     }
 }
 
@@ -248,16 +236,22 @@ async fn upload(
         let rel = dest_dir_rel.as_deref().unwrap_or("");
         let target = if rel.is_empty() {
             root_base.join(&safe)
+        } else if std::path::Path::new(rel).is_absolute() {
+            PathBuf::from(rel).join(&safe)
         } else {
             root_base.join(rel).join(&safe)
         };
-        let roots = vec![root_base.clone()];
-        let resolved = match paths::resolve_within(&target, Some(&root_base), &roots) {
+        let resolved = if std::path::Path::new(rel).is_absolute() {
+            paths::resolve(&target, None, None)
+        } else {
+            paths::resolve_within(&target, Some(&root_base), &[root_base.clone()])
+        };
+        let resolved = match resolved {
             Some(p) => p,
             None => {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new("path escapes file root")),
+                    Json(crate::api::ApiError::new("invalid upload path")),
                 )
                     .into_response()
             }
@@ -310,14 +304,22 @@ async fn mv(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let to_target = root.join(&req.to);
-    let roots = vec![root.clone()];
-    let to = match paths::resolve_within(&to_target, Some(&root), &roots) {
+    let to_target = if std::path::Path::new(&req.to).is_absolute() {
+        PathBuf::from(&req.to)
+    } else {
+        root.join(&req.to)
+    };
+    let to = if std::path::Path::new(&req.to).is_absolute() {
+        paths::resolve(&to_target, None, None)
+    } else {
+        paths::resolve_within(&to_target, Some(&root), &[root.clone()])
+    };
+    let to = match to {
         Some(p) => p,
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("destination escapes file root")),
+                Json(crate::api::ApiError::new("invalid destination path")),
             )
                 .into_response()
         }

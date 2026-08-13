@@ -142,9 +142,9 @@ async fn make_app() -> (Router, db::Db) {
         .await
         .unwrap();
 
-    // A file root under the temp dir.
-    let file_root = dir.join("files");
-    std::fs::create_dir_all(&file_root).unwrap();
+    // A home directory under the temp dir.
+    let home_dir = dir.join("files");
+    std::fs::create_dir_all(&home_dir).unwrap();
 
     let cfg = Config {
         host: "127.0.0.1".into(),
@@ -153,7 +153,7 @@ async fn make_app() -> (Router, db::Db) {
         db_url,
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
-        file_root: Some(file_root),
+        home_dir,
         default_model: "stub-1".into(),
         trust_proxy: false,
         max_body_bytes: 20 * 1024 * 1024,
@@ -721,6 +721,80 @@ async fn file_manager_rejects_traversal() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn project_accepts_absolute_path_with_spaces() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let outside = tempfile::tempdir().unwrap().keep();
+    let project_path = outside.join("my drive").join("my app");
+
+    let body = format!(r#"{{"name":"spaced","path":"{}"}}"#, project_path.display());
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED, "body: {}", body_str(resp.into_body()).await);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["path"].as_str().unwrap().contains("my drive"));
+    assert!(v["path"].as_str().unwrap().contains("my app"));
+}
+
+#[tokio::test]
+async fn file_manager_lists_absolute_path_with_spaces() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let outside = tempfile::tempdir().unwrap().keep();
+    let target = outside.join("my drive").join("my app");
+    std::fs::create_dir_all(&target).unwrap();
+
+    let encoded = target.to_string_lossy().replace(' ', "%20");
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/files?path={encoded}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn file_manager_uploads_to_absolute_dir_with_spaces() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let outside = tempfile::tempdir().unwrap().keep();
+    let dest_dir = outside.join("my drive").join("my app");
+    std::fs::create_dir_all(&dest_dir).unwrap();
+
+    let boundary = "----fmboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n{}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"hello.txt\"\r\nContent-Type: text/plain\r\n\r\nhi there\r\n--{boundary}--\r\n",
+        dest_dir.display()
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/files")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let file = dest_dir.join("hello.txt");
+    assert!(file.exists());
 }
 
 #[tokio::test]

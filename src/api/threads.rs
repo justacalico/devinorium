@@ -915,7 +915,7 @@ async fn persist_assistant_reply(
 /// Return the filesystem working directory for a thread.
 ///
 /// If the thread belongs to a project, use the project's canonical path.
-/// Otherwise fall back to the configured global file root.
+/// Otherwise fall back to the user's home directory.
 async fn project_working_dir_for_thread(
     state: &AppState,
     thread: &ThreadRow,
@@ -925,11 +925,7 @@ async fn project_working_dir_for_thread(
             return Ok(PathBuf::from(&p.path));
         }
     }
-    Ok(state
-        .config
-        .file_root
-        .clone()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))))
+    Ok(state.config.home_dir.clone())
 }
 
 async fn get_project_path(
