@@ -1,31 +1,34 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 
-/// Pick a pairing file. On Linux, fall back to a system dialog if the
+/// Picks a pairing file. On Linux, falls back to a system dialog if the
 /// XDG Desktop Portal is not available. Returns `null` if the user cancels
 /// or no dialog can be opened.
 Future<Uint8List?> pickPairingFileContent() async {
   try {
     return await _pickWithFilePicker();
-  } on Object {
+  } on Exception {
     if (Platform.isLinux) {
-      try {
-        return await _pickWithLinuxDialog();
-      } on Object {
-        return null;
-      }
+      return await _pickWithLinuxDialog();
     }
-    return null;
+    rethrow;
   }
 }
 
-/// Read a pairing file from an absolute path.
+/// Reads a pairing file from an absolute path.
 Future<Uint8List?> readPairingFileFromPath(String path) async {
   try {
-    return await File(path).readAsBytes();
-  } on Object {
+    final file = File(path);
+    if (!await file.exists()) return null;
+
+    final stat = await file.stat();
+    if (stat.type != FileSystemEntityType.file) return null;
+
+    return await file.readAsBytes();
+  } on Exception {
     return null;
   }
 }
@@ -52,6 +55,7 @@ Future<Uint8List?> _pickWithLinuxDialog() async {
 }
 
 Future<String?> _pickPathWithLinuxDialog() async {
+  final home = Platform.environment['HOME'] ?? '.';
   final commands = <String, List<String>>{
     'zenity': [
       '--file-selection',
@@ -60,7 +64,7 @@ Future<String?> _pickPathWithLinuxDialog() async {
     ],
     'kdialog': [
       '--getopenfilename',
-      '.',
+      home,
       '*.json',
     ],
   };
@@ -71,6 +75,7 @@ Future<String?> _pickPathWithLinuxDialog() async {
         entry.key,
         entry.value,
         runInShell: false,
+        stdoutEncoding: utf8,
       );
 
       if (result.exitCode != 0) return null;
@@ -79,8 +84,8 @@ Future<String?> _pickPathWithLinuxDialog() async {
       if (output.isEmpty) return null;
 
       return output;
-    } on Object {
-      // Executable not found or failed; try the next one.
+    } on Exception {
+      // Executable not found or failed to start; try the next one.
     }
   }
 

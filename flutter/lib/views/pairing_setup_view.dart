@@ -28,13 +28,14 @@ class _PairingSetupViewState extends State<PairingSetupView> {
       final pick = widget.pickFile ?? picker.pickPairingFileContent;
       final bytes = await pick();
       if (bytes == null || bytes.isEmpty) {
+        setState(() => _picking = false);
         await _manualPathFallback();
       } else {
         await _handleBytes(bytes);
       }
     } on FormatException {
       _showSnack('无法解析文件');
-    } on Object {
+    } on Exception {
       _showSnack('无法打开文件选择器');
     } finally {
       if (mounted) setState(() => _picking = false);
@@ -49,7 +50,6 @@ class _PairingSetupViewState extends State<PairingSetupView> {
         title: const Text('输入配对文件路径'),
         content: TextField(
           controller: controller,
-          autofocus: true,
           decoration: const InputDecoration(
             hintText: '/path/to/devinorium-pairing.json',
           ),
@@ -59,7 +59,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('取消'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
             child: const Text('确定'),
           ),

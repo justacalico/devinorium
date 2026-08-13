@@ -134,5 +134,27 @@ void main() {
       expect(find.text('无法打开文件选择器'), findsOneWidget);
       expect(state.imported, isNull);
     });
+
+    testWidgets('shows manual path fallback when picker is cancelled', (tester) async {
+      final state = _TestAppState();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: PairingSetupView(
+              pickFile: () async => null,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('选择配对文件'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('输入配对文件路径'), findsOneWidget);
+      expect(state.imported, isNull);
+    });
   });
 }
