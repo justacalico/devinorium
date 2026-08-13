@@ -1,7 +1,7 @@
 //! Session cookie helpers and current-user extraction.
 
 use axum::extract::{FromRequestParts, Request};
-use axum::http::header::COOKIE;
+use axum::http::header::{AUTHORIZATION, COOKIE};
 use axum::http::StatusCode;
 
 use crate::db::UserRow;
@@ -42,8 +42,13 @@ where
     }
 }
 
-/// Extract the session token from a request's Cookie header, if present.
+/// Extract the session token from a request's Cookie header or
+/// `Authorization: Bearer <token>` header, whichever is present.
 pub fn extract_token(req: &Request) -> Option<String> {
+    extract_cookie_token(req).or_else(|| extract_bearer_token(req))
+}
+
+fn extract_cookie_token(req: &Request) -> Option<String> {
     let header = req.headers().get(COOKIE)?;
     let s = header.to_str().ok()?;
     for pair in s.split(';') {
@@ -53,6 +58,16 @@ pub fn extract_token(req: &Request) -> Option<String> {
         }
     }
     None
+}
+
+fn extract_bearer_token(req: &Request) -> Option<String> {
+    let header = req.headers().get(AUTHORIZATION)?;
+    let s = header.to_str().ok()?;
+    let rest = s.strip_prefix("Bearer ")?.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    Some(rest.to_string())
 }
 
 /// Build a Set-Cookie header value for a session token.
@@ -67,4 +82,60 @@ pub fn clear_cookie(secure: bool) -> String {
     let flags = "HttpOnly; SameSite=Strict; Path=/";
     let secure_flag = if secure { "; Secure" } else { "" };
     format!("{COOKIE_NAME}=; {flags}{secure_flag}; Max-Age=0")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+
+    fn req() -> Request {
+        Request::builder().uri("/").body(Body::empty()).unwrap()
+    }
+
+    #[test]
+    fn extract_from_cookie() {
+        let req = Request::builder()
+            .uri("/")
+            .header("cookie", "other=1; devinorium_session=abc123; x=2")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(extract_token(&req).unwrap(), "abc123");
+    }
+
+    #[test]
+    fn extract_from_authorization_bearer() {
+        let req = Request::builder()
+            .uri("/")
+            .header("authorization", "Bearer tok_123")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(extract_token(&req).unwrap(), "tok_123");
+    }
+
+    #[test]
+    fn cookie_takes_precedence_over_bearer() {
+        let req = Request::builder()
+            .uri("/")
+            .header("cookie", "devinorium_session=from_cookie")
+            .header("authorization", "Bearer from_header")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(extract_token(&req).unwrap(), "from_cookie");
+    }
+
+    #[test]
+    fn missing_token_returns_none() {
+        assert!(extract_token(&req()).is_none());
+    }
+
+    #[test]
+    fn malformed_bearer_returns_none() {
+        let req = Request::builder()
+            .uri("/")
+            .header("authorization", "tok_123")
+            .body(Body::empty())
+            .unwrap();
+        assert!(extract_token(&req).is_none());
+    }
 }

@@ -75,6 +75,68 @@ class LoginResponse {
       );
 }
 
+class PairingResponse {
+  final bool ok;
+  final String token;
+  final String deviceId;
+  final String username;
+  final String serverUrl;
+
+  PairingResponse({
+    required this.ok,
+    required this.token,
+    this.deviceId = '',
+    required this.username,
+    required this.serverUrl,
+  });
+
+  factory PairingResponse.fromJson(Map<String, dynamic> j) => PairingResponse(
+        ok: (j['ok'] as bool?) ?? false,
+        token: j['token'] as String? ?? '',
+        deviceId: j['device_id'] as String? ?? '',
+        username: j['username'] as String? ?? '',
+        serverUrl: j['server_url'] as String? ?? '',
+      );
+
+  String toJsonString() => jsonEncode({
+        'ok': ok,
+        'token': token,
+        'device_id': deviceId,
+        'username': username,
+        'server_url': serverUrl,
+      });
+}
+
+class Device {
+  final String deviceId;
+  final String tokenPrefix;
+  final String? name;
+  final String createdAt;
+  final String lastSeenAt;
+  final String expiresAt;
+  final bool isCurrent;
+
+  Device({
+    required this.deviceId,
+    required this.tokenPrefix,
+    this.name,
+    required this.createdAt,
+    required this.lastSeenAt,
+    required this.expiresAt,
+    required this.isCurrent,
+  });
+
+  factory Device.fromJson(Map<String, dynamic> j) => Device(
+        deviceId: j['device_id'] as String? ?? '',
+        tokenPrefix: j['token_prefix'] as String? ?? '',
+        name: j['name'] as String?,
+        createdAt: j['created_at'] as String? ?? '',
+        lastSeenAt: j['last_seen_at'] as String? ?? '',
+        expiresAt: j['expires_at'] as String? ?? '',
+        isCurrent: (j['is_current'] as bool?) ?? false,
+      );
+}
+
 class Attachment {
   final String filename;
   final int size;

@@ -6,7 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 
 import '../models/models.dart' show tryDecodeJson;
-import 'api_client.dart';
+import 'api_types.dart';
+import 'sse_parser.dart';
 
 Stream<SseEvent> platformFetchSseStream({
   required http.Client client,
@@ -102,14 +103,14 @@ Future<void> _runSse({
         if (idx < 0) break;
         final block = buffer.substring(0, idx);
         buffer = buffer.substring(idx + 2);
-        final event = _parseSseBlock(block);
+        final event = parseSseBlock(block);
         if (event != null && !controller.isClosed) controller.add(event);
       }
     }
 
     final tail = buffer.trim();
     if (tail.isNotEmpty && !controller.isClosed) {
-      final event = _parseSseBlock(tail);
+      final event = parseSseBlock(tail);
       if (event != null) controller.add(event);
     }
   } catch (e) {
@@ -126,20 +127,4 @@ Future<void> _runSse({
     }
     if (!controller.isClosed) controller.close();
   }
-}
-
-SseEvent? _parseSseBlock(String block) {
-  String event = '';
-  final dataLines = <String>[];
-  for (final line in block.split('\n')) {
-    if (line.startsWith('event:')) {
-      event = line.substring(6).trim();
-    } else if (line.startsWith('data:')) {
-      final rest = line.substring(5);
-      final stripped = rest.startsWith(' ') ? rest.substring(1) : rest;
-      dataLines.add(stripped);
-    }
-  }
-  if (event.isEmpty) return null;
-  return SseEvent(event, dataLines.join('\n'));
 }

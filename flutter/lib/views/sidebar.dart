@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../widgets/owner_badge.dart';
 
 Color _projectColor(String name) {
   final colors = [
@@ -274,47 +275,55 @@ class _ProjectExpandableTile extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(
-            leading: CircleAvatar(
-              radius: 14,
-              backgroundColor: color,
-              child: Text(
-                project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
-                style: const TextStyle(fontSize: 12, color: Colors.white),
-              ),
+          Material(
+            color: Colors.transparent,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
-            title: Text(
-              project.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w500),
-            ),
-            subtitle: Text(
-              project.path,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (onNewThread != null)
-                  IconButton(
-                    tooltip: 'New thread in ${project.name}',
-                    icon: const Icon(Icons.add, size: 18),
-                    onPressed: onNewThread,
-                  ),
-                AnimatedRotation(
-                  turns: isExpanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 150),
-                  child: const Icon(Icons.keyboard_arrow_down, size: 20),
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: CircleAvatar(
+                radius: 14,
+                backgroundColor: color,
+                child: Text(
+                  project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
+                  style: const TextStyle(fontSize: 12, color: Colors.white),
                 ),
-              ],
+              ),
+              title: Text(
+                project.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w500),
+              ),
+              subtitle: Text(
+                project.path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (onNewThread != null)
+                    IconButton(
+                      tooltip: 'New thread in ${project.name}',
+                      icon: const Icon(Icons.add, size: 18),
+                      onPressed: onNewThread,
+                    ),
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 150),
+                    child: const Icon(Icons.keyboard_arrow_down, size: 20),
+                  ),
+                ],
+              ),
+              dense: true,
+              onTap: onToggle,
             ),
-            dense: true,
-            onTap: onToggle,
           ),
           AnimatedSize(
             duration: const Duration(milliseconds: 150),
@@ -403,45 +412,52 @@ class _ThreadTile extends StatelessWidget {
             : null,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: ListTile(
-        leading: const Icon(Icons.chat_outlined, size: 18),
-        title: Text(
-          thread.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium,
+      child: Material(
+        color: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (time.isNotEmpty)
-              Text(
-                time,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          leading: const Icon(Icons.chat_outlined, size: 18),
+          title: Text(
+            thread.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (time.isNotEmpty)
+                Text(
+                  time,
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                onPressed: () async {
+                  if (await _confirm(
+                      context, 'Delete this thread? This cannot be undone.')) {
+                    state.deleteThread(thread.id);
+                  }
+                },
               ),
-            const SizedBox(width: 4),
-            IconButton(
-              tooltip: 'Delete',
-              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
-              onPressed: () async {
-                if (await _confirm(
-                    context, 'Delete this thread? This cannot be undone.')) {
-                  state.deleteThread(thread.id);
-                }
-              },
-            ),
-          ],
+            ],
+          ),
+          selected: isActive,
+          selectedTileColor: theme.colorScheme.secondaryContainer,
+          dense: true,
+          onTap: () {
+            // Close the drawer if open (mobile layout).
+            Scaffold.of(context).closeDrawer();
+            onTap();
+          },
         ),
-        selected: isActive,
-        selectedTileColor: theme.colorScheme.secondaryContainer,
-        shape: const StadiumBorder(),
-        dense: true,
-        onTap: () {
-          // Close the drawer if open (mobile layout).
-          Scaffold.of(context).closeDrawer();
-          onTap();
-        },
       ),
     );
   }
@@ -472,24 +488,46 @@ class _SettingsNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final topics = [
       (icon: Icons.person_outline, label: 'Account'),
+      (icon: Icons.cloud_outlined, label: 'Providers'),
+      (icon: Icons.devices_outlined, label: 'Devices'),
+      (icon: Icons.palette_outlined, label: 'Personalization'),
+      if (state.isOwner)
+        (icon: Icons.manage_accounts_outlined, label: 'Manage'),
     ];
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: [
         const _SectionHeader('Topics'),
-        for (final t in topics)
-          ListTile(
-            leading: Icon(t.icon, size: 20),
-            title: Text(t.label),
-            selected: t.label == 'Account',
-            selectedTileColor: theme.colorScheme.secondaryContainer,
+        for (var i = 0; i < topics.length; i++)
+          Material(
+            color: Colors.transparent,
+            elevation: 0,
             shape: const StadiumBorder(),
-            dense: true,
-            onTap: () => Scaffold.of(context).closeDrawer(),
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: Icon(topics[i].icon, size: 20),
+              title: Row(
+                children: [
+                  Text(topics[i].label),
+                  if (topics[i].label == 'Manage') ...[
+                    const SizedBox(width: 6),
+                    const OwnerBadge(),
+                  ],
+                ],
+              ),
+              selected: i == state.settingsTopicIndex,
+              selectedTileColor: theme.colorScheme.secondaryContainer,
+              dense: true,
+              onTap: () {
+                state.setSettingsTopicIndex(i);
+                Scaffold.of(context).closeDrawer();
+              },
+            ),
           ),
       ],
     );

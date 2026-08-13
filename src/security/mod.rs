@@ -4,6 +4,7 @@
 //! These layers make Devinorium safe to expose to the public internet behind
 //! a reverse proxy.
 
+pub mod cors;
 pub mod csrf;
 pub mod headers;
 pub mod ip;

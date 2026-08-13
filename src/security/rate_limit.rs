@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::extract::Request;
-use axum::http::{Method, StatusCode};
+use axum::http::{header, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tokio::sync::Mutex;
@@ -140,7 +140,13 @@ pub async fn weighted_rate_limit(cfg: WeightedRateLimit, req: Request, next: Nex
 pub fn classify(req: &Request) -> EndpointClass {
     let path = req.uri().path();
     let method = req.method();
-    let has_cookie = req.headers().get(axum::http::header::COOKIE).is_some();
+    let has_cookie = req.headers().get(header::COOKIE).is_some();
+    let has_bearer = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(|s| s.trim().starts_with("Bearer "));
+    let has_auth = has_cookie || has_bearer;
 
     // Auth endpoints (public, no session required).
     if path == "/api/auth/login" {
@@ -154,14 +160,14 @@ pub fn classify(req: &Request) -> EndpointClass {
     }
 
     // Protected endpoints — cost depends on whether the caller appears
-    // authenticated (has a cookie) and the action type.
+    // authenticated (has a cookie or bearer token) and the action type.
     let is_write = matches!(
         method,
         &Method::POST | &Method::PUT | &Method::PATCH | &Method::DELETE
     );
 
-    if !has_cookie && is_write {
-        // No cookie + write attempt to a protected endpoint = probing.
+    if !has_auth && is_write {
+        // No auth + write attempt to a protected endpoint = probing.
         return EndpointClass::UnauthProbe;
     }
 
@@ -366,5 +372,16 @@ mod tests {
             .body(axum::body::Body::empty())
             .unwrap();
         assert!(matches!(classify(&req), EndpointClass::UnauthProbe));
+    }
+
+    #[test]
+    fn classify_post_with_bearer_is_write() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/threads")
+            .header(header::AUTHORIZATION, "Bearer abc123")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert!(matches!(classify(&req), EndpointClass::AuthWrite));
     }
 }

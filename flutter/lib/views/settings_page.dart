@@ -1,8 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/download.dart';
+import '../utils/origin.dart';
+import '../widgets/owner_badge.dart';
+import 'create_user_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -11,10 +16,16 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final user = state.user;
-    final username = user?.username ?? '';
-    final totpEnabled = user?.totpEnabled ?? false;
     final isNarrow = MediaQuery.of(context).size.width < 768;
+
+    final sections = [
+      _AccountSection(state: state),
+      _ProviderCard(state: state),
+      _DevicesSection(state: state),
+      _PersonalizationSection(state: state),
+      if (state.isOwner) _AccountsSection(state: state),
+    ];
+    final index = state.settingsTopicIndex.clamp(0, sections.length - 1);
 
     return Scaffold(
       appBar: AppBar(
@@ -28,47 +39,20 @@ class SettingsPage extends StatelessWidget {
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              _SectionCard(
-                title: 'Account',
-                children: [
-                  _SettingsRow(
-                    label: 'Username',
-                    value: username.isEmpty ? '—' : username,
-                  ),
-                  const Divider(),
-                  _SettingsRow(
-                    label: 'Two-factor authentication',
-                    value: totpEnabled ? 'Enabled' : 'Disabled',
-                    trailing: totpEnabled
-                        ? OutlinedButton.icon(
-                            onPressed: () => _confirmDisableTotp(context, state),
-                            icon: const Icon(Icons.lock_open_outlined, size: 18),
-                            label: const Text('Disable 2FA'),
-                          )
-                        : FilledButton.icon(
-                            onPressed: state.openTotpSetup,
-                            icon: const Icon(Icons.lock_outline, size: 18),
-                            label: const Text('Enable 2FA'),
-                          ),
-                  ),
-                ],
-              ),
-              _ProviderCard(state: state),
-              if (state.isOwner) _AccountsSection(state: state),
-            ],
-          ),
-        ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: sections[index],
       ),
     );
   }
+}
 
-  Future<void> _confirmDisableTotp(BuildContext context, AppState state) async {
+class _AccountSection extends StatelessWidget {
+  final AppState state;
+
+  const _AccountSection({required this.state});
+
+  Future<void> _confirmDisableTotp(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -92,6 +76,39 @@ class SettingsPage extends StatelessWidget {
       await state.disableTotp();
     }
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = state.user;
+    final username = user?.username ?? '';
+    final totpEnabled = user?.totpEnabled ?? false;
+
+    return _SectionCard(
+      title: 'Account',
+      children: [
+        _SettingsRow(
+          label: 'Username',
+          value: username.isEmpty ? '—' : username,
+        ),
+        const Divider(),
+        _SettingsRow(
+          label: 'Two-factor authentication',
+          value: totpEnabled ? 'Enabled' : 'Disabled',
+          trailing: totpEnabled
+              ? OutlinedButton.icon(
+                  onPressed: () => _confirmDisableTotp(context),
+                  icon: const Icon(Icons.lock_open_outlined, size: 18),
+                  label: const Text('Disable 2FA'),
+                )
+              : FilledButton.icon(
+                  onPressed: state.openTotpSetup,
+                  icon: const Icon(Icons.lock_outline, size: 18),
+                  label: const Text('Enable 2FA'),
+                ),
+        ),
+      ],
+    );
+  }
 }
 
 String _providerName(List<ProviderInfo> providers, String id) {
@@ -99,6 +116,181 @@ String _providerName(List<ProviderInfo> providers, String id) {
     if (p.id == id) return p.name;
   }
   return id.isEmpty ? '—' : id;
+}
+
+class _DevicesSection extends StatefulWidget {
+  final AppState state;
+
+  const _DevicesSection({required this.state});
+
+  @override
+  State<_DevicesSection> createState() => _DevicesSectionState();
+}
+
+class _DevicesSectionState extends State<_DevicesSection> {
+  bool _creating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.loadDevices();
+  }
+
+  Future<void> _downloadPairing() async {
+    setState(() => _creating = true);
+    try {
+      final serverUrl = kIsWeb
+          ? currentOrigin()
+          : (await widget.state.api.client.serverUrl ?? '');
+      if (serverUrl.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not get server address')),
+          );
+        }
+        return;
+      }
+      final pairing = await widget.state.createPairing(
+        serverUrl: serverUrl,
+        name: 'Devinorium native client',
+      );
+      downloadTextFile(pairing.toJsonString(), 'devinorium-pairing.json');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create pairing: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  Future<void> _revoke(String token) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revoke device?'),
+        content: const Text('This device will be signed out immediately.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await widget.state.revokeDevice(token);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return _SectionCard(
+      title: 'Devices',
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'Download a pairing file to set up the mobile or desktop app.',
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: 12),
+            _creating
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : FilledButton.icon(
+                    onPressed: _downloadPairing,
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Pair'),
+                  ),
+          ],
+        ),
+        const Divider(),
+        ListenableBuilder(
+          listenable: widget.state,
+          builder: (context, child) {
+            final devices = widget.state.devices;
+            if (devices.isEmpty) {
+              return Text(
+                'No paired devices.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              );
+            }
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: devices.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (_, i) => _DeviceRow(
+                device: devices[i],
+                onRevoke: _revoke,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _DeviceRow extends StatelessWidget {
+  final Device device;
+  final void Function(String) onRevoke;
+
+  const _DeviceRow({required this.device, required this.onRevoke});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final display = device.name?.isNotEmpty == true
+        ? device.name!
+        : 'Device ${device.tokenPrefix}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  display,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  device.isCurrent ? 'Current' : 'Paired',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          if (!device.isCurrent)
+            IconButton(
+              icon: const Icon(Icons.logout, size: 20),
+              tooltip: 'Revoke',
+              onPressed: () => onRevoke(device.deviceId),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProviderCard extends StatelessWidget {
@@ -267,6 +459,54 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
   }
 }
 
+class _PersonalizationSection extends StatelessWidget {
+  final AppState state;
+
+  const _PersonalizationSection({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return _SectionCard(
+      title: 'Personalization',
+      children: [
+        Row(
+          children: [
+            Text(
+              'Theme',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    label: Text('Light'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    label: Text('Dark'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    label: Text('System'),
+                  ),
+                ],
+                selected: {state.themeMode},
+                onSelectionChanged: (modes) {
+                  if (modes.isNotEmpty) state.setThemeMode(modes.first);
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _AccountsSection extends StatefulWidget {
   final AppState state;
 
@@ -277,106 +517,65 @@ class _AccountsSection extends StatefulWidget {
 }
 
 class _AccountsSectionState extends State<_AccountsSection> {
-  final _formKey = GlobalKey<FormState>();
-  final _username = TextEditingController();
-  final _password = TextEditingController();
-  bool _obscure = true;
-  bool _creating = false;
-
   @override
   void initState() {
     super.initState();
     widget.state.loadUsers();
   }
 
-  @override
-  void dispose() {
-    _username.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _creating = true);
-    await widget.state.createUser(
-      username: _username.text,
-      password: _password.text,
+  void _showCreateDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => CreateUserDialog(state: widget.state),
     );
-    if (mounted) {
-      setState(() => _creating = false);
-      _username.clear();
-      _password.clear();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return _SectionCard(
-      title: 'Accounts',
+      title: 'Manage',
+      titleBadge: const OwnerBadge(),
       children: [
-        Form(
-          key: _formKey,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _username,
-                  decoration: const InputDecoration(
-                    labelText: 'Username',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  textInputAction: TextInputAction.next,
-                  enabled: !_creating,
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? 'Required' : null,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextFormField(
-                  controller: _password,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscure
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined),
-                      onPressed: () =>
-                          setState(() => _obscure = !_obscure),
-                    ),
-                  ),
-                  obscureText: _obscure,
-                  textInputAction: TextInputAction.done,
-                  enabled: !_creating,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    if (v.length < 12) return 'At least 12 characters';
-                    return null;
-                  },
-                  onFieldSubmitted: (_) => _submit(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _creating ? null : _submit,
-                child: _creating
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Create user'),
-              ),
-            ],
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _showCreateDialog,
+            child: const Text('Create user'),
           ),
         ),
         const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: Text(
+                'User',
+                style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text(
+                '2FA',
+                textAlign: TextAlign.right,
+                style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text(
+                'Active',
+                textAlign: TextAlign.right,
+                style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         ListenableBuilder(
           listenable: widget.state,
           builder: (context, child) {
@@ -439,6 +638,7 @@ class _UserRow extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Icon(
                   Icons.verified_user_outlined,
@@ -455,23 +655,20 @@ class _UserRow extends StatelessWidget {
               ],
             ),
           ),
-          if (!user.isOwner)
-            Expanded(
-              flex: 2,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    user.disabled ? 'Disabled' : 'Active',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  Switch(
-                    value: user.disabled,
-                    onChanged: (v) => state.setUserDisabled(user.id, v),
-                  ),
-                ],
-              ),
+          Expanded(
+            flex: 2,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Switch(
+                  value: !user.disabled,
+                  onChanged: user.isOwner
+                      ? null
+                      : (v) => state.setUserDisabled(user.id, !v),
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -481,7 +678,12 @@ class _UserRow extends StatelessWidget {
 class _SectionCard extends StatelessWidget {
   final String title;
   final List<Widget> children;
-  const _SectionCard({required this.title, required this.children});
+  final Widget? titleBadge;
+  const _SectionCard({
+    required this.title,
+    required this.children,
+    this.titleBadge,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -494,9 +696,17 @@ class _SectionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                Text(title,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
+                if (titleBadge != null) ...[
+                  const SizedBox(width: 8),
+                  titleBadge!,
+                ],
+              ],
+            ),
             const SizedBox(height: 16),
             ...children,
           ],

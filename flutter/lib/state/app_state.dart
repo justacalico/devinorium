@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api/api_client.dart';
 import '../api/api_service.dart';
 import '../models/models.dart';
 
-enum AppView { loading, login, app }
+enum AppView { loading, login, setup, app }
 
 enum MainPage { threads, settings }
 
@@ -35,7 +38,11 @@ class AppState extends ChangeNotifier {
     PermissionRequest? pendingPermissionRequest,
     List<String> filesPath = const [],
     String? globalError,
+    ThemeMode? themeMode,
+    int? settingsTopicIndex,
   })  : api = api ?? ApiService() {
+    _themeMode = themeMode ?? ThemeMode.system;
+    _settingsTopicIndex = settingsTopicIndex ?? 0;
     _user = user;
     _users = users;
     _projects = projects;
@@ -73,7 +80,9 @@ class AppState extends ChangeNotifier {
   String? _activeThreadId;
   ThreadDetail? _activeThreadDetail;
   List<User> _users = [];
+  List<Device> _devices = [];
   String _loginError = '';
+  String _setupError = '';
   bool _showTotpField = false;
   bool _userMenuOpen = false;
   bool _filesPanelOpen = false;
@@ -95,6 +104,8 @@ class AppState extends ChangeNotifier {
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   PermissionRequest? _pendingPermissionRequest;
+  ThemeMode _themeMode = ThemeMode.system;
+  int _settingsTopicIndex = 0;
 
   // Getters
   AppView get view => _view;
@@ -117,8 +128,10 @@ class AppState extends ChangeNotifier {
   String? get activeThreadId => _activeThreadId;
   ThreadDetail? get activeThreadDetail => _activeThreadDetail;
   List<User> get users => _users;
+  List<Device> get devices => _devices;
   bool get isOwner => _user?.isOwner ?? false;
   String get loginError => _loginError;
+  String get setupError => _setupError;
   bool get showTotpField => _showTotpField;
   bool get userMenuOpen => _userMenuOpen;
   bool get filesPanelOpen => _filesPanelOpen;
@@ -139,11 +152,14 @@ class AppState extends ChangeNotifier {
   Map<String, ToolCallData> get streamingToolCalls => _streamingToolCalls;
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
+  ThemeMode get themeMode => _themeMode;
+  int get settingsTopicIndex => _settingsTopicIndex;
 
   // ---- Setters / mutations ----
 
   void setView(AppView v) { _view = v; notifyListeners(); }
   void setPage(MainPage p) { _page = p; notifyListeners(); }
+  void setSettingsTopicIndex(int index) { _settingsTopicIndex = index; notifyListeners(); }
   void toggleUserMenu() { _userMenuOpen = !_userMenuOpen; notifyListeners(); }
   void setUserMenuOpen(bool v) { _userMenuOpen = v; notifyListeners(); }
   void setComposerText(String t) { _composerText = t; notifyListeners(); }
@@ -170,6 +186,45 @@ class AppState extends ChangeNotifier {
   void setShowTotpField(bool v) { _showTotpField = v; notifyListeners(); }
   void setGlobalError(String e) { _globalError = e; notifyListeners(); }
   void clearGlobalError() { _globalError = ''; notifyListeners(); }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    _themeMode = mode;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('devinorium_theme_mode', _themeModeToString(mode));
+    } catch (_) {}
+  }
+
+  static String _themeModeToString(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      _ => 'system',
+    };
+  }
+
+  Future<void> _loadThemeMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final value = prefs.getString('devinorium_theme_mode') ?? 'system';
+      _themeMode = _parseThemeMode(value);
+    } catch (_) {
+      _themeMode = ThemeMode.system;
+    }
+    notifyListeners();
+  }
+
+  static ThemeMode _parseThemeMode(String value) {
+    switch (value) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
 
   String? _projectPathById(int id) {
     for (final p in _projects) {
@@ -257,9 +312,17 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> bootstrap() async {
+    await _loadThemeMode();
     try {
+      final configured = await api.client.isConfigured;
+      if (!configured) {
+        _view = api.client.isNative ? AppView.setup : AppView.login;
+        notifyListeners();
+        return;
+      }
       _user = await api.me();
       _view = AppView.app;
+      _setupError = '';
       await _loadModelsAndProviders();
       await loadProjects();
       if (_projects.isNotEmpty) {
@@ -267,8 +330,25 @@ class AppState extends ChangeNotifier {
       } else {
         await selectAllProjects();
       }
-    } catch (_) {
-      _view = AppView.login;
+    } catch (e) {
+      if (e is ApiException && e.statusCode == 401) {
+        await api.client.clearCredentials();
+      }
+      _setupError = e is ApiException ? e.message : 'connection failed';
+      _view = api.client.isNative ? AppView.setup : AppView.login;
+      notifyListeners();
+    }
+  }
+
+  Future<void> completePairing(PairingResponse pairing) async {
+    try {
+      await api.client.setServerUrl(pairing.serverUrl);
+      await api.client.setToken(pairing.token);
+      await api.client.setUsername(pairing.username);
+      await bootstrap();
+    } catch (e) {
+      _setupError = e is ApiException ? e.message : 'import failed';
+      _view = AppView.setup;
       notifyListeners();
     }
   }
@@ -331,6 +411,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadDevices() async {
+    try {
+      _devices = await api.listDevices();
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    }
+    notifyListeners();
+  }
+
+  Future<void> revokeDevice(String token) async {
+    try {
+      await api.revokeDevice(token);
+      _globalError = '';
+      await loadDevices();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<PairingResponse> createPairing({
+    required String serverUrl,
+    String? name,
+  }) async {
+    return api.createPairing(serverUrl: serverUrl, name: name);
+  }
+
   Future<void> createUser({required String username, required String password}) async {
     try {
       await api.createUser(username: username, password: password);
@@ -357,9 +465,13 @@ class AppState extends ChangeNotifier {
     await _sendSubscription?.cancel();
     _sendSubscription = null;
     try { await api.logout(); } catch (_) {}
+    try {
+      await api.client.clearCredentials();
+    } catch (_) {}
     _user = null;
     _users = [];
-    _view = AppView.login;
+    _settingsTopicIndex = 0;
+    _view = api.client.isNative ? AppView.setup : AppView.login;
     _page = MainPage.threads;
     _userMenuOpen = false;
     _activeThreadId = null;
