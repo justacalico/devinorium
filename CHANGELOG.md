@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.5.0 - 2026-08-13
+#### Features
+- 从侧边栏用户菜单移除 Accounts 入口 - (451c57f) - HttpAnimations
+- 在前端设置页添加账号管理 - (39dde6f) - HttpAnimations
+- 替换邀请码为 owner 账户管理 - (850bc96) - HttpAnimations
+
+- - -
+
 ## v0.4.0 - 2026-08-13
 #### Features
 - 添加 provider 命令配置与测试按钮 - (8ad429a) - HttpAnimations
