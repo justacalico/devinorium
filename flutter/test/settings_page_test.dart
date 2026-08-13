@@ -12,11 +12,25 @@ import 'package:flutter_test/flutter_test.dart';
 class _FakeApiService extends ApiService {
   int updateMeCalls = 0;
   int testProviderCalls = 0;
+  int createUserCalls = 0;
   String? savedProviderCommand;
   String? testedCommand;
   bool throwOnTest = false;
 
-  _FakeApiService() : super(client: ApiClient.withClient(MockClient((_) async => http.Response('{}', 200))));
+  final List<User> _users;
+
+  _FakeApiService({List<User>? users})
+      : _users = users ??
+            [User(
+              id: 1,
+              username: 'owner',
+              role: 'user',
+              totpEnabled: false,
+              isOwner: true,
+              providerId: 'devin-cli',
+              providerCommand: 'devin',
+            )],
+        super(client: ApiClient.withClient(MockClient((_) async => http.Response('{}', 200))));
 
   @override
   Future<User> updateMe({
@@ -28,8 +42,9 @@ class _FakeApiService extends ApiService {
     return User(
       id: 1,
       username: 'owner',
-      role: 'owner',
+      role: 'user',
       totpEnabled: false,
+      isOwner: true,
       providerId: providerId,
       providerCommand: providerCommand,
     );
@@ -43,6 +58,25 @@ class _FakeApiService extends ApiService {
     testProviderCalls++;
     testedCommand = command;
     if (throwOnTest) throw Exception('not reachable');
+  }
+
+  @override
+  Future<List<User>> listUsers() async => List.unmodifiable(_users);
+
+  @override
+  Future<void> createUser({
+    required String username,
+    required String password,
+  }) async {
+    createUserCalls++;
+    _users.add(User(
+      id: _users.length + 1,
+      username: username,
+      role: 'user',
+      totpEnabled: false,
+      providerId: 'devin-cli',
+      providerCommand: 'devin',
+    ));
   }
 }
 
@@ -59,8 +93,9 @@ void main() {
       user: User(
         id: 1,
         username: 'owner',
-        role: 'owner',
+        role: 'user',
         totpEnabled: true,
+        isOwner: true,
         providerId: 'devin-cli',
         providerCommand: 'devin',
       ),
@@ -82,8 +117,9 @@ void main() {
       user: User(
         id: 1,
         username: 'owner',
-        role: 'owner',
+        role: 'user',
         totpEnabled: false,
+        isOwner: true,
         providerId: 'devin-cli',
         providerCommand: 'devin',
       ),
@@ -112,8 +148,9 @@ void main() {
       user: User(
         id: 1,
         username: 'owner',
-        role: 'owner',
+        role: 'user',
         totpEnabled: false,
+        isOwner: true,
         providerId: 'devin-cli',
         providerCommand: 'devin',
       ),
@@ -141,8 +178,9 @@ void main() {
       user: User(
         id: 1,
         username: 'owner',
-        role: 'owner',
+        role: 'user',
         totpEnabled: false,
+        isOwner: true,
         providerId: 'devin-cli',
         providerCommand: 'devin',
       ),
@@ -165,8 +203,9 @@ void main() {
       user: User(
         id: 1,
         username: 'owner',
-        role: 'owner',
+        role: 'user',
         totpEnabled: false,
+        isOwner: true,
         providerId: 'devin-cli',
         providerCommand: 'devin',
       ),
@@ -180,5 +219,86 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Provider test failed'), findsOneWidget);
+  });
+
+  testWidgets('Accounts section appears for owners', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Accounts'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Create user'), findsOneWidget);
+    expect(find.text('owner'), findsWidgets);
+  });
+
+  testWidgets('Accounts section is hidden for non-owners', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 2,
+        username: 'alice',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Accounts'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Create user'), findsNothing);
+  });
+
+  testWidgets('Creating a user adds it to the accounts list', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final usernameField = find.widgetWithText(TextField, 'Username');
+    final passwordField = find.widgetWithText(TextField, 'Password');
+    expect(usernameField, findsOneWidget);
+    expect(passwordField, findsOneWidget);
+
+    await tester.enterText(usernameField, 'alice');
+    await tester.enterText(passwordField, 'password1234');
+
+    final createButton = find.widgetWithText(FilledButton, 'Create user');
+    await tester.ensureVisible(createButton);
+    await tester.pumpAndSettle();
+    await tester.tap(createButton);
+    await tester.pumpAndSettle();
+
+    expect(fake.createUserCalls, 1);
+    expect(find.text('alice'), findsOneWidget);
   });
 }

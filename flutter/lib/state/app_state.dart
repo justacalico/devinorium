@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 import '../api/api_service.dart';
 import '../models/models.dart';
 
-enum AppView { loading, login, register, app }
+enum AppView { loading, login, app }
 
 enum MainPage { threads, settings }
 
-enum DialogKind { none, totpSetup, invites, newProject, permissionRequest }
+enum DialogKind { none, totpSetup, newProject, permissionRequest }
 
 /// Central app state.
 class AppState extends ChangeNotifier {
@@ -21,6 +21,7 @@ class AppState extends ChangeNotifier {
   AppState.test({
     ApiService? api,
     User? user,
+    List<User> users = const [],
     List<Project> projects = const [],
     List<Thread> threads = const [],
     List<ThreadGroup> groups = const [],
@@ -36,6 +37,7 @@ class AppState extends ChangeNotifier {
     String? globalError,
   })  : api = api ?? ApiService() {
     _user = user;
+    _users = users;
     _projects = projects;
     _threads = threads;
     _groups = groups;
@@ -70,8 +72,8 @@ class AppState extends ChangeNotifier {
   String? _activeProjectPath;
   String? _activeThreadId;
   ThreadDetail? _activeThreadDetail;
+  List<User> _users = [];
   String _loginError = '';
-  String _registerError = '';
   bool _showTotpField = false;
   bool _userMenuOpen = false;
   bool _filesPanelOpen = false;
@@ -86,7 +88,6 @@ class AppState extends ChangeNotifier {
   bool _sending = false;
   String _selectedModel = '';
   String _selectedPermission = 'normal';
-  List<Invite> _invites = [];
   String? _streamingText;
   String? _streamingThinking;
   bool _streamingThinkingActive = false;
@@ -115,8 +116,9 @@ class AppState extends ChangeNotifier {
 
   String? get activeThreadId => _activeThreadId;
   ThreadDetail? get activeThreadDetail => _activeThreadDetail;
+  List<User> get users => _users;
+  bool get isOwner => _user?.isOwner ?? false;
   String get loginError => _loginError;
-  String get registerError => _registerError;
   bool get showTotpField => _showTotpField;
   bool get userMenuOpen => _userMenuOpen;
   bool get filesPanelOpen => _filesPanelOpen;
@@ -131,7 +133,6 @@ class AppState extends ChangeNotifier {
       _attachments;
   String get selectedModel => _selectedModel;
   String get selectedPermission => _selectedPermission;
-  List<Invite> get invites => _invites;
   String? get streamingText => _streamingText;
   String? get streamingThinking => _streamingThinking;
   bool get streamingThinkingActive => _streamingThinkingActive;
@@ -166,7 +167,6 @@ class AppState extends ChangeNotifier {
   void setSelectedModel(String m) { _selectedModel = m; notifyListeners(); }
   void setSelectedPermission(String p) { _selectedPermission = p; notifyListeners(); }
   void setLoginError(String e) { _loginError = e; notifyListeners(); }
-  void setRegisterError(String e) { _registerError = e; notifyListeners(); }
   void setShowTotpField(bool v) { _showTotpField = v; notifyListeners(); }
   void setGlobalError(String e) { _globalError = e; notifyListeners(); }
   void clearGlobalError() { _globalError = ''; notifyListeners(); }
@@ -321,32 +321,34 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> doRegister({required String invite, required String username, required String password}) async {
-    _registerError = '';
-    notifyListeners();
+  Future<void> loadUsers() async {
     try {
-      await api.register(invite: invite, username: username, password: password);
-      // Auto-login.
-      final res = await api.login(username: username, password: password);
-      if (res.totpRequired) {
-        // Shouldn’t happen for a fresh user, but handle gracefully.
-        _view = AppView.register;
-        _registerError = 'TOTP required after registration.';
-      } else {
-        _user = await api.me();
-        _view = AppView.app;
-        await _loadModelsAndProviders();
-        await loadProjects();
-        if (_projects.isNotEmpty) {
-          await selectProject(_projects.first.id);
-        } else {
-          await selectAllProjects();
-        }
-      }
-      notifyListeners();
+      _users = await api.listUsers();
+      _globalError = '';
     } catch (e) {
-      _view = AppView.register;
-      _registerError = '$e';
+      _globalError = '$e';
+    }
+    notifyListeners();
+  }
+
+  Future<void> createUser({required String username, required String password}) async {
+    try {
+      await api.createUser(username: username, password: password);
+      _globalError = '';
+      await loadUsers();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> setUserDisabled(int id, bool disabled) async {
+    try {
+      await api.setUserDisabled(id, disabled);
+      _globalError = '';
+      await loadUsers();
+    } catch (e) {
+      _globalError = '$e';
       notifyListeners();
     }
   }
@@ -356,7 +358,9 @@ class AppState extends ChangeNotifier {
     _sendSubscription = null;
     try { await api.logout(); } catch (_) {}
     _user = null;
+    _users = [];
     _view = AppView.login;
+    _page = MainPage.threads;
     _userMenuOpen = false;
     _activeThreadId = null;
     _activeThreadDetail = null;
@@ -784,31 +788,6 @@ class AppState extends ChangeNotifier {
       await api.totpDisable();
       _user = await api.me();
       _globalError = '';
-      notifyListeners();
-    } catch (e) {
-      _globalError = '$e';
-      notifyListeners();
-    }
-  }
-
-  // ---- Invites ----
-
-  Future<void> openInvites() async {
-    try {
-      _invites = await api.listInvites();
-      _dialog = DialogKind.invites;
-      _userMenuOpen = false;
-      notifyListeners();
-    } catch (e) {
-      _globalError = '$e';
-      notifyListeners();
-    }
-  }
-
-  Future<void> createInvite() async {
-    try {
-      await api.createInvite();
-      _invites = await api.listInvites();
       notifyListeners();
     } catch (e) {
       _globalError = '$e';

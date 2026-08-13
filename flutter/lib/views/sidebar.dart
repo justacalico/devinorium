@@ -125,11 +125,15 @@ class Sidebar extends StatelessWidget {
                         state.setUserMenuOpen(false);
                       },
                     ),
-                    MenuItemButton(
-                      leadingIcon: const Icon(Icons.mail_outline),
-                      child: const Text('Invites'),
-                      onPressed: () => state.openInvites(),
-                    ),
+                    if (state.isOwner)
+                      MenuItemButton(
+                        leadingIcon: const Icon(Icons.people_outline),
+                        child: const Text('Accounts'),
+                        onPressed: () {
+                          state.setPage(MainPage.settings);
+                          state.setUserMenuOpen(false);
+                        },
+                      ),
                     MenuItemButton(
                       leadingIcon: const Icon(Icons.logout),
                       child: const Text('Sign out'),

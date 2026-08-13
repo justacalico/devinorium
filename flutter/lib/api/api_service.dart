@@ -37,18 +37,6 @@ class ApiService {
     await _client.post('/api/auth/logout', {});
   }
 
-  Future<void> register({
-    required String invite,
-    required String username,
-    required String password,
-  }) async {
-    await _client.post('/api/auth/register', {
-      'invite': invite.trim(),
-      'username': username.trim(),
-      'password': password,
-    });
-  }
-
   Future<TotpSetupResponse> totpSetup() async {
     final j = await _client.post('/api/auth/totp/setup', {});
     return TotpSetupResponse.fromJson(j);
@@ -260,16 +248,25 @@ class ApiService {
     await _client.uploadMultipart('/api/files', fields, files);
   }
 
-  // ---- Invites ----
+  // ---- Users ----
 
-  Future<List<Invite>> listInvites() async {
-    final list = await _client.getList('/api/invites');
-    return list.map(Invite.fromJson).toList();
+  Future<List<User>> listUsers() async {
+    final list = await _client.getList('/api/users');
+    return list.map(User.fromJson).toList();
   }
 
-  Future<String> createInvite() async {
-    final j = await _client.post('/api/invites', {});
-    return j['token'] as String;
+  Future<void> createUser({
+    required String username,
+    required String password,
+  }) async {
+    await _client.post('/api/users', {
+      'username': username.trim(),
+      'password': password,
+    });
+  }
+
+  Future<void> setUserDisabled(int id, bool disabled) async {
+    await _client.patch('/api/users/$id', {'disabled': disabled});
   }
 
   // ---- Streaming send ----

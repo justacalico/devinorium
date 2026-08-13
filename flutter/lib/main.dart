@@ -55,9 +55,6 @@ class RootScaffold extends StatelessWidget {
       case AppView.login:
         body = const LoginView();
         break;
-      case AppView.register:
-        body = const RegisterView();
-        break;
       case AppView.app:
         body = const AppShell();
         break;

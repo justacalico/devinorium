@@ -5,6 +5,9 @@ class User {
   final String username;
   final String role;
   final bool totpEnabled;
+  final bool isOwner;
+  final bool disabled;
+  final String createdAt;
   final String providerId;
   final String providerCommand;
 
@@ -13,6 +16,9 @@ class User {
     required this.username,
     required this.role,
     required this.totpEnabled,
+    this.isOwner = false,
+    this.disabled = false,
+    this.createdAt = '',
     required this.providerId,
     required this.providerCommand,
   });
@@ -22,17 +28,30 @@ class User {
         username: j['username'] as String,
         role: j['role'] as String,
         totpEnabled: (j['totp_enabled'] as bool?) ?? false,
+        isOwner: (j['is_owner'] as bool?) ?? false,
+        disabled: (j['disabled'] as bool?) ?? false,
+        createdAt: j['created_at'] as String? ?? '',
         providerId: j['provider_id'] as String? ?? 'devin-cli',
         providerCommand: (j['provider_command'] as String? ?? '').trim().isEmpty
             ? 'devin'
             : j['provider_command'] as String,
       );
 
-  User copyWith({String? providerId, String? providerCommand}) => User(
+  User copyWith({
+    String? providerId,
+    String? providerCommand,
+    bool? isOwner,
+    bool? disabled,
+    String? createdAt,
+  }) =>
+      User(
         id: id,
         username: username,
         role: role,
         totpEnabled: totpEnabled,
+        isOwner: isOwner ?? this.isOwner,
+        disabled: disabled ?? this.disabled,
+        createdAt: createdAt ?? this.createdAt,
         providerId: providerId ?? this.providerId,
         providerCommand: providerCommand ?? this.providerCommand,
       );
@@ -317,29 +336,6 @@ class DirEntry {
         isDir: (j['is_dir'] as bool?) ?? false,
         size: (j['size'] as num).toInt(),
       );
-}
-
-class Invite {
-  final String token;
-  final int? usedByUserId;
-  final String createdAt;
-  final String expiresAt;
-
-  Invite({
-    required this.token,
-    this.usedByUserId,
-    required this.createdAt,
-    required this.expiresAt,
-  });
-
-  factory Invite.fromJson(Map<String, dynamic> j) => Invite(
-        token: j['token'] as String,
-        usedByUserId: j['used_by_user_id'] as int?,
-        createdAt: j['created_at'] as String? ?? '',
-        expiresAt: j['expires_at'] as String? ?? '',
-      );
-
-  bool get isUsed => usedByUserId != null;
 }
 
 class TotpSetupResponse {

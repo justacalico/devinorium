@@ -91,7 +91,8 @@ void main() {
           _json(200, {
             'id': 1,
             'username': 'owner',
-            'role': 'owner',
+            'role': 'user',
+            'is_owner': true,
             'totp_enabled': false,
             'provider_id': 'devin-cli',
             'provider_command': 'devin',
@@ -136,7 +137,8 @@ void main() {
           _json(200, {
             'id': 1,
             'username': 'owner',
-            'role': 'owner',
+            'role': 'user',
+            'is_owner': true,
             'totp_enabled': false,
             'provider_id': 'devin-cli',
             'provider_command': 'devin',
@@ -197,41 +199,6 @@ void main() {
       expect(state.projects, isEmpty);
     });
 
-    test('doRegister creates account and logs in', () async {
-      final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, {'ok': true, 'totp_required': false, 'username': 'alice'}),
-          _json(200, {
-            'id': 2,
-            'username': 'alice',
-            'role': 'user',
-            'totp_enabled': false,
-            'provider_id': 'devin-cli',
-            'provider_command': 'devin',
-          }),
-          _json(200, []),
-          _json(200, []),
-          _json(200, []),
-          _json(200, []),
-          _json(200, []),
-        ])),
-      );
-      await state.doRegister(invite: 'token', username: 'alice', password: 'pw');
-      expect(state.view, AppView.app);
-      expect(state.user?.username, 'alice');
-    });
-
-    test('doRegister sets register error on failure', () async {
-      final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(400, {'error': 'invalid invite'}),
-        ])),
-      );
-      await state.doRegister(invite: 'bad', username: 'alice', password: 'pw');
-      expect(state.view, AppView.register);
-      expect(state.registerError, contains('invalid invite'));
-    });
   });
 
   group('Projects and threads', () {
@@ -381,7 +348,8 @@ void main() {
           _json(200, {
             'id': 1,
             'username': 'owner',
-            'role': 'owner',
+            'role': 'user',
+            'is_owner': true,
             'totp_enabled': false,
             'provider_id': 'devin-cli',
             'provider_command': 'devin-cli',
@@ -393,7 +361,7 @@ void main() {
         user: User(
           id: 1,
           username: 'owner',
-          role: 'owner',
+          role: 'user',
           totpEnabled: false,
           providerId: 'devin-cli',
           providerCommand: 'devin',
@@ -415,7 +383,7 @@ void main() {
         user: User(
           id: 1,
           username: 'owner',
-          role: 'owner',
+          role: 'user',
           totpEnabled: false,
           providerId: 'devin-cli',
           providerCommand: 'devin',
@@ -636,7 +604,7 @@ void main() {
     });
   });
 
-  group('TOTP and invites', () {
+  group('TOTP, dialog and accounts', () {
     test('openTotpSetup sets secret and dialog', () async {
       final state = AppState(
         api: ApiService(client: _clientFor([
@@ -655,7 +623,8 @@ void main() {
           _json(200, {
             'id': 1,
             'username': 'owner',
-            'role': 'owner',
+            'role': 'user',
+            'is_owner': true,
             'totp_enabled': true,
             'provider_id': 'devin-cli',
             'provider_command': 'devin',
@@ -666,19 +635,6 @@ void main() {
       await base.verifyTotp('123456');
       expect(base.dialog, DialogKind.none);
       expect(base.user?.totpEnabled, isTrue);
-    });
-
-    test('openInvites loads invites', () async {
-      final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, [
-            {'token': 'abc', 'created_at': '', 'expires_at': ''},
-          ]),
-        ])),
-      );
-      await state.openInvites();
-      expect(state.invites, hasLength(1));
-      expect(state.dialog, DialogKind.invites);
     });
 
     test('respondToPermissionRequest sends response', () async {
@@ -702,9 +658,89 @@ void main() {
     });
 
     test('closeDialog clears dialog', () {
-      final state = AppState.test(dialog: DialogKind.invites);
+      final state = AppState.test(dialog: DialogKind.totpSetup);
       state.closeDialog();
       expect(state.dialog, DialogKind.none);
+    });
+
+    test('loadUsers populates users list', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, [
+            {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'disabled': false,
+              'totp_enabled': false,
+              'created_at': '',
+            },
+          ]),
+        ])),
+      );
+      await state.loadUsers();
+      expect(state.users, hasLength(1));
+      expect(state.users.first.username, 'owner');
+      expect(state.users.first.isOwner, isTrue);
+    });
+
+    test('createUser reloads users', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, {'ok': true, 'id': 2, 'username': 'alice'}),
+          _json(200, [
+            {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'disabled': false,
+              'totp_enabled': false,
+              'created_at': '',
+            },
+            {
+              'id': 2,
+              'username': 'alice',
+              'role': 'user',
+              'is_owner': false,
+              'disabled': false,
+              'totp_enabled': false,
+              'created_at': '',
+            },
+          ]),
+        ])),
+      );
+      await state.createUser(username: 'alice', password: 'pw');
+      expect(state.users, hasLength(2));
+      expect(state.users.any((u) => u.username == 'alice'), isTrue);
+    });
+
+    test('isOwner reflects user', () {
+      final owner = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      expect(owner.isOwner, isTrue);
+
+      final regular = AppState.test(
+        user: User(
+          id: 2,
+          username: 'alice',
+          role: 'user',
+          totpEnabled: false,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      expect(regular.isOwner, isFalse);
     });
   });
 }
