@@ -2,6 +2,29 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.6.0 - 2026-08-13
+#### Features
+- 从 flutter_markdown 迁移到 flutter_markdown_plus - (7281409) - HttpAnimations
+- 在无线程或发送时禁用模型和权限选择器 - (b14d407) - HttpAnimations
+- 将创建用户表单提取到弹窗，管理页显示全宽按钮 - (386383b) - HttpAnimations
+- 为 owner 账户显示禁用的 Active 开关以保持列对齐 - (966fd9a) - HttpAnimations
+- 在管理页面用户列表添加列标题 - (8680dd4) - HttpAnimations
+- 重构设置页为侧边栏主题导航并添加 Owner 徽章 - (23642c1) - HttpAnimations
+- 添加主题模式设置并持久化到 SharedPreferences - (5ff0840) - HttpAnimations
+- 在事务内限制设备数量，验证配对文件大小，并支持从客户端读取服务器地址 - (72f7dde) - HttpAnimations
+- 为设备会话添加 device_id，避免在列表中暴露完整 token，并加强配对安全校验 - (1b43478) - HttpAnimations
+- 实现 Flutter 原生客户端、配对流程与设备管理 - (de3a8b2) - HttpAnimations
+- 添加跨平台配对所需的后端认证、设备管理与 CORS 支持 - (12a9e2a) - HttpAnimations
+#### Bug Fixes
+- 反转管理页面用户 Active 开关含义 - (8dd8261) - HttpAnimations
+- 管理页面用户行的 2FA 状态与 Active 开关列对齐 - (b5688f5) - HttpAnimations
+- 为侧边栏 ListTile 包裹 Material 避免 DecoratedBox 隐藏背景 - (e3522f7) - HttpAnimations
+- 将配对设置界面的文案统一为英文 - (6aef2a7) - HttpAnimations
+- 完善 Linux 下配对文件选择器的回退与测试 - (45a7729) - HttpAnimations
+- 在 Linux 无 XDG Portal 时优雅降级配对文件选择，并提供手动路径输入 - (d85ded9) - HttpAnimations
+
+- - -
+
 ## v0.5.0 - 2026-08-13
 #### Features
 - 从侧边栏用户菜单移除 Accounts 入口 - (451c57f) - HttpAnimations
