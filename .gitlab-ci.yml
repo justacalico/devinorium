@@ -1,5 +1,4 @@
 stages:
-  - setup
   - verify
   - release
 
@@ -45,18 +44,6 @@ default:
     fi
   - export CARGO_HOME="$HOME/.cargo"
 
-setup-docker:
-  stage: setup
-  tags: [linux-truenas]
-  script:
-    - apt-get update -qq
-    - apt-get install -y -qq docker.io
-    - systemctl enable docker
-    - systemctl start docker
-    - docker info
-  rules:
-    - if: $CI_COMMIT_BRANCH == "ci/linux-truenas-runner"
-
 verify:
   stage: verify
   tags: [linux-truenas]
@@ -67,8 +54,6 @@ verify:
     - cd flutter && flutter pub get && flutter analyze --no-pub && cd ..
     - cargo test
   rules:
-    - if: $CI_COMMIT_BRANCH == "ci/linux-truenas-runner"
-      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
 
