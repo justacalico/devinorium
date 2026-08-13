@@ -53,7 +53,7 @@ pub fn verify(secret_base32: &str, code: &str) -> bool {
         Err(_) => return false,
     };
     let now = chrono::Utc::now().timestamp();
-    let step = (now / 30) as i64;
+    let step = now / 30;
     let target = code.as_bytes();
     for delta in -1..=1i64 {
         let t = ((step + delta) * 30) as u64;
