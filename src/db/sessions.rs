@@ -10,19 +10,21 @@ impl super::Db {
         user_id: i64,
         ttl_days: i64,
         ip_hash: Option<&str>,
+        name: Option<&str>,
     ) -> anyhow::Result<SessionRow> {
         let token = crate::auth::tokens::random_token(32);
         let now = Utc::now();
         let expires = now + Duration::days(ttl_days);
         sqlx::query_as::<_, SessionRow>(
-            "INSERT INTO sessions (token, user_id, expires_at, ip_hash)
-             VALUES (?, ?, ?, ?)
+            "INSERT INTO sessions (token, user_id, expires_at, ip_hash, name)
+             VALUES (?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&token)
         .bind(user_id)
         .bind(expires.to_rfc3339())
         .bind(ip_hash)
+        .bind(name)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
@@ -60,6 +62,31 @@ impl super::Db {
             .execute(self.pool())
             .await?;
         Ok(())
+    }
+
+    pub async fn list_user_sessions(&self, user_id: i64) -> anyhow::Result<Vec<SessionRow>> {
+        sqlx::query_as::<_, SessionRow>(
+            "SELECT * FROM sessions
+             WHERE user_id = ? AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn delete_session_for_user(
+        &self,
+        token: &str,
+        user_id: i64,
+    ) -> anyhow::Result<bool> {
+        let res = sqlx::query("DELETE FROM sessions WHERE token = ? AND user_id = ?")
+            .bind(token)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(res.rows_affected() > 0)
     }
 
     pub async fn purge_expired_sessions(&self) -> anyhow::Result<u64> {

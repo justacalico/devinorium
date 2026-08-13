@@ -71,7 +71,8 @@ impl AppState {
 /// tests exercise the exact same middleware stack as production.
 pub fn build_app(state: AppState) -> Router {
     let trust_proxy = state.config.trust_proxy;
-    let allowed_origin = state.config.allowed_origin.clone();
+    let csrf_allowed = state.config.allowed_origin.clone();
+    let cors_allowed = state.config.allowed_origin.clone();
     let max_body = state.config.max_body_bytes;
 
     // Global weighted rate limiter.
@@ -99,6 +100,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::accounts::router())
         .merge(api::models::router())
         .merge(api::providers::router())
+        .merge(api::devices::router())
         .route("/api/auth/me", get(api::auth::me))
         .route("/api/auth/me", axum::routing::patch(api::auth::update_me))
         .route(
@@ -122,14 +124,14 @@ pub fn build_app(state: AppState) -> Router {
             auth::middleware::require_auth,
         ));
 
-    Router::new()
+    let mut app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .merge(public)
         .merge(protected)
         .merge(assets::router())
         .layer(from_fn(security::security_headers))
         .layer(from_fn(move |req, next| {
-            let ao = allowed_origin.clone();
+            let ao = csrf_allowed.clone();
             async move { security::csrf_origin_check(ao, req, next).await }
         }))
         // Global weighted rate limiter — runs after IP extraction (so it can
@@ -144,6 +146,13 @@ pub fn build_app(state: AppState) -> Router {
         }))
         .layer(RequestBodyLimitLayer::new(max_body))
         .layer(TraceLayer::new_for_http())
-        .layer(CompressionLayer::new())
-        .with_state(state)
+        .layer(CompressionLayer::new());
+
+    // Opt-in CORS for native clients. Only enabled when the admin explicitly
+    // sets DEVINORIUM_ALLOWED_ORIGIN. Same-origin web requests are unaffected.
+    if let Some(cors) = security::cors::build_cors_layer(&cors_allowed) {
+        app = app.layer(cors);
+    }
+
+    app.with_state(state)
 }

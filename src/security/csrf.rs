@@ -32,6 +32,12 @@ pub async fn csrf_origin_check(
         return next.run(req).await;
     }
 
+    // Bearer tokens are not vulnerable to CSRF; skip the origin check.
+    if has_bearer_auth(req.headers()) {
+        tracing::debug!("csrf: skipping origin check for bearer token request");
+        return next.run(req).await;
+    }
+
     let host = req
         .headers()
         .get(header::HOST)
@@ -65,6 +71,13 @@ fn origin_ok_explicit(headers: &HeaderMap, allowed: &str) -> bool {
         }
     }
     false
+}
+
+fn has_bearer_auth(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(|s| s.trim().starts_with("Bearer "))
 }
 
 fn origin_ok_same_host(headers: &HeaderMap, host: &str) -> bool {
@@ -135,5 +148,22 @@ mod tests {
             &req(Method::POST, None, "example.com").headers(),
             "example.com"
         ));
+    }
+
+    #[test]
+    fn bearer_auth_skips_origin_check() {
+        let mut r = req(Method::POST, None, "example.com");
+        r.headers_mut().insert(
+            header::AUTHORIZATION,
+            "Bearer abc123".parse().unwrap(),
+        );
+        assert!(has_bearer_auth(r.headers()));
+    }
+
+    #[test]
+    fn plain_authorization_is_not_bearer() {
+        let mut r = req(Method::POST, None, "example.com");
+        r.headers_mut().insert(header::AUTHORIZATION, "abc123".parse().unwrap());
+        assert!(!has_bearer_auth(r.headers()));
     }
 }

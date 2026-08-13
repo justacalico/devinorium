@@ -85,6 +85,7 @@ pub struct SessionRow {
     pub expires_at: String,
     pub last_seen_at: String,
     pub ip_hash: Option<String>,
+    pub name: Option<String>,
 }
 
 /// A row from the `threads` table.

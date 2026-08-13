@@ -103,7 +103,7 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
     }
 
     // Create session.
-    let sess = match state.db.create_session(user.id, 30, None).await {
+    let sess = match state.db.create_session(user.id, 30, None, None).await {
         Ok(s) => s,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
