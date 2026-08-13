@@ -52,6 +52,9 @@ data/
 *.swo
 .DS_Store
 
+# Runtime upload/attachment cache
+/.devinorium-attachments/
+
 # Logs
 *.log
 logs/
