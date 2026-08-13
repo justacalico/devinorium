@@ -1,16 +1,19 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/pairing_file_picker.dart' as picker;
 
 /// Initial screen for native clients: import a pairing file downloaded from
 /// the web UI. The file contains the server URL, bearer token, and username.
 class PairingSetupView extends StatefulWidget {
-  const PairingSetupView({super.key});
+  final Future<Uint8List?> Function()? pickFile;
+
+  const PairingSetupView({super.key, this.pickFile});
 
   @override
   State<PairingSetupView> createState() => _PairingSetupViewState();
@@ -22,42 +25,82 @@ class _PairingSetupViewState extends State<PairingSetupView> {
   Future<void> _pickFile() async {
     setState(() => _picking = true);
     try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.any,
-        allowMultiple: false,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-
-      final bytes = result.files.first.bytes;
+      final pick = widget.pickFile ?? picker.pickPairingFileContent;
+      final bytes = await pick();
       if (bytes == null || bytes.isEmpty) {
-        _showSnack('无法读取文件内容');
-        return;
+        await _manualPathFallback();
+      } else {
+        await _handleBytes(bytes);
       }
-      if (bytes.length > 1024 * 1024) {
-        _showSnack('配对文件过大');
-        return;
-      }
-
-      final json = jsonDecode(utf8.decode(bytes));
-      if (json is! Map<String, dynamic>) {
-        _showSnack('文件格式不正确');
-        return;
-      }
-
-      final pairing = PairingResponse.fromJson(json);
-      if (pairing.token.isEmpty || pairing.serverUrl.isEmpty) {
-        _showSnack('配对文件缺少必要字段');
-        return;
-      }
-
-      if (!mounted) return;
-      await context.read<AppState>().completePairing(pairing);
     } on FormatException {
       _showSnack('无法解析文件');
+    } on Object {
+      _showSnack('无法打开文件选择器');
     } finally {
-      setState(() => _picking = false);
+      if (mounted) setState(() => _picking = false);
     }
+  }
+
+  Future<void> _manualPathFallback() async {
+    final controller = TextEditingController();
+    final path = await showDialog<String?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('输入配对文件路径'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '/path/to/devinorium-pairing.json',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (path == null || path.isEmpty) {
+      _showSnack('未选择文件');
+      return;
+    }
+
+    final bytes = await picker.readPairingFileFromPath(path);
+    await _handleBytes(bytes);
+  }
+
+  Future<void> _handleBytes(Uint8List? bytes) async {
+    if (bytes == null || bytes.isEmpty) {
+      _showSnack('无法读取文件内容');
+      return;
+    }
+    if (bytes.length > 1024 * 1024) {
+      _showSnack('配对文件过大');
+      return;
+    }
+
+    final json = jsonDecode(utf8.decode(bytes));
+    if (json is! Map<String, dynamic>) {
+      _showSnack('文件格式不正确');
+      return;
+    }
+
+    final pairing = PairingResponse.fromJson(json);
+    if (pairing.token.isEmpty || pairing.serverUrl.isEmpty) {
+      _showSnack('配对文件缺少必要字段');
+      return;
+    }
+
+    if (!mounted) return;
+    await context.read<AppState>().completePairing(pairing);
   }
 
   void _showSnack(String message) {
