@@ -734,10 +734,6 @@ class _UserRow extends StatelessWidget {
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Text(
-                        user.disabled ? 'Disabled' : 'Active',
-                        style: theme.textTheme.bodySmall,
-                      ),
                       Switch(
                         value: !user.disabled,
                         onChanged: (v) => state.setUserDisabled(user.id, !v),
