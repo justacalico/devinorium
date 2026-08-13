@@ -4,8 +4,54 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import 'api_types.dart';
 import 'client_factory_stub.dart' if (dart.library.js_interop) 'client_factory_web.dart';
 import 'sse_fetcher.dart';
+
+export 'api_types.dart';
+
+/// Common interface for both web and native API clients.
+///
+/// The web implementation uses HttpOnly cookies, while the native
+/// implementation reads the server URL and bearer token from local storage.
+abstract class BaseApiClient {
+  Future<Map<String, dynamic>> get(String path);
+  Future<Map<String, dynamic>> post(String path, [Object? body]);
+  Future<Map<String, dynamic>> patch(String path, [Object? body]);
+  Future<Map<String, dynamic>> delete(String path);
+  Future<List<Map<String, dynamic>>> getList(String path);
+  Future<Map<String, dynamic>> uploadMultipart(
+    String path,
+    Map<String, String> fields,
+    List<({String filename, String mime, Uint8List bytes})> files,
+  );
+  Stream<SseEvent> sendStream({
+    required String path,
+    required String prompt,
+    List<({String filename, String mime, Uint8List bytes})> attachments,
+  });
+
+  /// Whether the client has enough configuration to make requests.
+  Future<bool> get isConfigured;
+
+  /// Persist the server URL for native clients (no-op on web).
+  Future<void> setServerUrl(String serverUrl);
+
+  /// Persist an authentication token for native clients (no-op on web).
+  Future<void> setToken(String token);
+
+  /// Persist the username for display on native clients (no-op on web).
+  Future<void> setUsername(String username);
+
+  /// Clear stored credentials on native clients (no-op on web).
+  Future<void> clearCredentials();
+
+  /// Ensure local configuration is loaded.
+  Future<void> init();
+
+  /// Whether this client is a native bearer-token client.
+  bool get isNative;
+}
 
 /// Thin wrapper around [http] that:
 /// - Uses [BrowserClient] with `withCredentials = true` so the HttpOnly
@@ -15,7 +61,7 @@ import 'sse_fetcher.dart';
 ///
 /// All paths are relative (e.g. "/api/threads") and resolve against the same
 /// origin that served the Flutter app, so CORS/CSRF Origin checks pass.
-class ApiClient {
+class ApiClient implements BaseApiClient {
   static ApiClient? _instance;
   factory ApiClient() {
     _instance ??= ApiClient._internal(createClient());
@@ -30,15 +76,40 @@ class ApiClient {
 
   ApiClient._internal(this._client);
 
+  @override
+  Future<bool> get isConfigured => Future.value(true);
+
+  @override
+  Future<void> setServerUrl(String serverUrl) => Future.value();
+
+  @override
+  Future<void> setToken(String token) => Future.value();
+
+  @override
+  Future<void> setUsername(String username) => Future.value();
+
+  @override
+  Future<void> clearCredentials() => Future.value();
+
+  @override
+  Future<void> init() => Future.value();
+
+  @override
+  bool get isNative => false;
+
+  @override
   Future<Map<String, dynamic>> get(String path) async =>
       _json('GET', path, null);
 
+  @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) async =>
       _json('POST', path, body);
 
+  @override
   Future<Map<String, dynamic>> patch(String path, [Object? body]) async =>
       _json('PATCH', path, body);
 
+  @override
   Future<Map<String, dynamic>> delete(String path) async =>
       _json('DELETE', path, null);
 
@@ -77,7 +148,7 @@ class ApiClient {
     throw ApiException('unexpected response shape', resp.statusCode);
   }
 
-  /// GET that returns a list. The backend returns a bare JSON array.
+  @override
   Future<List<Map<String, dynamic>>> getList(String path) async {
     final uri = Uri.parse(path);
     final req = http.Request('GET', uri);
@@ -99,8 +170,7 @@ class ApiClient {
     throw ApiException('expected a list', resp.statusCode);
   }
 
-  /// Upload files via multipart POST to [path]. [fields] are form text fields.
-  /// Returns the parsed JSON body.
+  @override
   Future<Map<String, dynamic>> uploadMultipart(
     String path,
     Map<String, String> fields,
@@ -123,8 +193,7 @@ class ApiClient {
     return _parse(resp);
   }
 
-  /// POST a multipart form with a single text field `prompt` and optional
-  /// file attachments, then stream the Server-Sent Events response.
+  @override
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
@@ -138,19 +207,4 @@ class ApiClient {
       attachments: attachments,
     );
   }
-}
-
-class ApiException implements Exception {
-  final String message;
-  final int statusCode;
-  ApiException(this.message, this.statusCode);
-  @override
-  String toString() => message;
-}
-
-/// A single parsed SSE event from the streaming send endpoint.
-class SseEvent {
-  final String event;
-  final String data;
-  SseEvent(this.event, this.data);
 }

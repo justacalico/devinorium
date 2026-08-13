@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
-import 'api_client.dart';
+import 'api_types.dart';
 
 Stream<SseEvent> platformFetchSseStream({
   required http.Client client,

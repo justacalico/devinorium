@@ -3,12 +3,15 @@ import 'dart:typed_data';
 
 import '../models/models.dart';
 import 'api_client.dart';
+import 'client_factory.dart';
 
 /// High-level API methods returning typed models. Wraps [ApiClient].
 class ApiService {
-  final ApiClient _client;
+  final BaseApiClient _client;
 
-  ApiService({ApiClient? client}) : _client = client ?? ApiClient();
+  ApiService({BaseApiClient? client}) : _client = client ?? createApiClient();
+
+  BaseApiClient get client => _client;
 
   // ---- Auth ----
 
@@ -48,6 +51,28 @@ class ApiService {
 
   Future<void> totpDisable() async {
     await _client.post('/api/auth/totp/disable', {});
+  }
+
+  // ---- Pairing and devices ----
+
+  Future<PairingResponse> createPairing({
+    required String serverUrl,
+    String? name,
+  }) async {
+    final j = await _client.post('/api/auth/pairing', {
+      'server_url': serverUrl,
+      if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+    });
+    return PairingResponse.fromJson(j);
+  }
+
+  Future<List<Device>> listDevices() async {
+    final list = await _client.getList('/api/auth/devices');
+    return list.map(Device.fromJson).toList();
+  }
+
+  Future<void> revokeDevice(String token) async {
+    await _client.post('/api/auth/devices/revoke', {'token': token});
   }
 
   // ---- Projects ----

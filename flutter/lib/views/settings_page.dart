@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/download.dart';
+import '../utils/origin.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -31,37 +33,41 @@ class SettingsPage extends StatelessWidget {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
-          child: ListView(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            children: [
-              _SectionCard(
-                title: 'Account',
-                children: [
-                  _SettingsRow(
-                    label: 'Username',
-                    value: username.isEmpty ? '—' : username,
-                  ),
-                  const Divider(),
-                  _SettingsRow(
-                    label: 'Two-factor authentication',
-                    value: totpEnabled ? 'Enabled' : 'Disabled',
-                    trailing: totpEnabled
-                        ? OutlinedButton.icon(
-                            onPressed: () => _confirmDisableTotp(context, state),
-                            icon: const Icon(Icons.lock_open_outlined, size: 18),
-                            label: const Text('Disable 2FA'),
-                          )
-                        : FilledButton.icon(
-                            onPressed: state.openTotpSetup,
-                            icon: const Icon(Icons.lock_outline, size: 18),
-                            label: const Text('Enable 2FA'),
-                          ),
-                  ),
-                ],
-              ),
-              _ProviderCard(state: state),
-              if (state.isOwner) _AccountsSection(state: state),
-            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SectionCard(
+                  title: 'Account',
+                  children: [
+                    _SettingsRow(
+                      label: 'Username',
+                      value: username.isEmpty ? '—' : username,
+                    ),
+                    const Divider(),
+                    _SettingsRow(
+                      label: 'Two-factor authentication',
+                      value: totpEnabled ? 'Enabled' : 'Disabled',
+                      trailing: totpEnabled
+                          ? OutlinedButton.icon(
+                              onPressed: () => _confirmDisableTotp(context, state),
+                              icon: const Icon(Icons.lock_open_outlined, size: 18),
+                              label: const Text('Disable 2FA'),
+                            )
+                          : FilledButton.icon(
+                              onPressed: state.openTotpSetup,
+                              icon: const Icon(Icons.lock_outline, size: 18),
+                              label: const Text('Enable 2FA'),
+                            ),
+                    ),
+                  ],
+                ),
+                _ProviderCard(state: state),
+                _DevicesSection(state: state),
+                if (state.isOwner) _AccountsSection(state: state),
+              ],
+            ),
           ),
         ),
       ),
@@ -99,6 +105,171 @@ String _providerName(List<ProviderInfo> providers, String id) {
     if (p.id == id) return p.name;
   }
   return id.isEmpty ? '—' : id;
+}
+
+class _DevicesSection extends StatefulWidget {
+  final AppState state;
+
+  const _DevicesSection({required this.state});
+
+  @override
+  State<_DevicesSection> createState() => _DevicesSectionState();
+}
+
+class _DevicesSectionState extends State<_DevicesSection> {
+  bool _creating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.loadDevices();
+  }
+
+  Future<void> _downloadPairing() async {
+    setState(() => _creating = true);
+    try {
+      final origin = currentOrigin();
+      final pairing = await widget.state.createPairing(
+        serverUrl: origin.isNotEmpty ? origin : 'http://localhost:7878',
+        name: 'Devinorium native client',
+      );
+      downloadTextFile(pairing.toJsonString(), 'devinorium-pairing.json');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create pairing: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  Future<void> _revoke(String token) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revoke device?'),
+        content: const Text('This device will be signed out immediately.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await widget.state.revokeDevice(token);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return _SectionCard(
+      title: 'Devices',
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'Download a pairing file to set up the mobile or desktop app.',
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: 12),
+            _creating
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : FilledButton.icon(
+                    onPressed: _downloadPairing,
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Pair'),
+                  ),
+          ],
+        ),
+        const Divider(),
+        ListenableBuilder(
+          listenable: widget.state,
+          builder: (context, child) {
+            final devices = widget.state.devices;
+            if (devices.isEmpty) {
+              return Text(
+                'No paired devices.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              );
+            }
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: devices.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (_, i) => _DeviceRow(
+                device: devices[i],
+                onRevoke: _revoke,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _DeviceRow extends StatelessWidget {
+  final Device device;
+  final void Function(String) onRevoke;
+
+  const _DeviceRow({required this.device, required this.onRevoke});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final display = device.name?.isNotEmpty == true
+        ? device.name!
+        : 'Device ${device.token.substring(0, device.token.length > 8 ? 8 : device.token.length)}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  display,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  device.isCurrent ? 'Current' : 'Paired',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          if (!device.isCurrent)
+            IconButton(
+              icon: const Icon(Icons.logout, size: 20),
+              tooltip: 'Revoke',
+              onPressed: () => onRevoke(device.token),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProviderCard extends StatelessWidget {

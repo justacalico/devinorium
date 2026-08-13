@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
-import 'api_client.dart';
+import 'api_types.dart';
 
 // Conditional import: the web implementation uses package:web and
 // dart:js_interop, which are not available in the VM test runner.

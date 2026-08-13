@@ -75,6 +75,61 @@ class LoginResponse {
       );
 }
 
+class PairingResponse {
+  final bool ok;
+  final String token;
+  final String username;
+  final String serverUrl;
+
+  PairingResponse({
+    required this.ok,
+    required this.token,
+    required this.username,
+    required this.serverUrl,
+  });
+
+  factory PairingResponse.fromJson(Map<String, dynamic> j) => PairingResponse(
+        ok: (j['ok'] as bool?) ?? false,
+        token: j['token'] as String? ?? '',
+        username: j['username'] as String? ?? '',
+        serverUrl: j['server_url'] as String? ?? '',
+      );
+
+  String toJsonString() => jsonEncode({
+        'ok': ok,
+        'token': token,
+        'username': username,
+        'server_url': serverUrl,
+      });
+}
+
+class Device {
+  final String token;
+  final String? name;
+  final String createdAt;
+  final String lastSeenAt;
+  final String expiresAt;
+  final bool isCurrent;
+
+  Device({
+    required this.token,
+    this.name,
+    required this.createdAt,
+    required this.lastSeenAt,
+    required this.expiresAt,
+    required this.isCurrent,
+  });
+
+  factory Device.fromJson(Map<String, dynamic> j) => Device(
+        token: j['token'] as String? ?? '',
+        name: j['name'] as String?,
+        createdAt: j['created_at'] as String? ?? '',
+        lastSeenAt: j['last_seen_at'] as String? ?? '',
+        expiresAt: j['expires_at'] as String? ?? '',
+        isCurrent: (j['is_current'] as bool?) ?? false,
+      );
+}
+
 class Attachment {
   final String filename;
   final int size;

@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../api/api_client.dart';
 import '../api/api_service.dart';
 import '../models/models.dart';
 
-enum AppView { loading, login, app }
+enum AppView { loading, login, setup, app }
 
 enum MainPage { threads, settings }
 
@@ -73,7 +74,9 @@ class AppState extends ChangeNotifier {
   String? _activeThreadId;
   ThreadDetail? _activeThreadDetail;
   List<User> _users = [];
+  List<Device> _devices = [];
   String _loginError = '';
+  String _setupError = '';
   bool _showTotpField = false;
   bool _userMenuOpen = false;
   bool _filesPanelOpen = false;
@@ -117,8 +120,10 @@ class AppState extends ChangeNotifier {
   String? get activeThreadId => _activeThreadId;
   ThreadDetail? get activeThreadDetail => _activeThreadDetail;
   List<User> get users => _users;
+  List<Device> get devices => _devices;
   bool get isOwner => _user?.isOwner ?? false;
   String get loginError => _loginError;
+  String get setupError => _setupError;
   bool get showTotpField => _showTotpField;
   bool get userMenuOpen => _userMenuOpen;
   bool get filesPanelOpen => _filesPanelOpen;
@@ -258,8 +263,15 @@ class AppState extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     try {
+      final configured = await api.client.isConfigured;
+      if (!configured) {
+        _view = api.client.isNative ? AppView.setup : AppView.login;
+        notifyListeners();
+        return;
+      }
       _user = await api.me();
       _view = AppView.app;
+      _setupError = '';
       await _loadModelsAndProviders();
       await loadProjects();
       if (_projects.isNotEmpty) {
@@ -267,8 +279,25 @@ class AppState extends ChangeNotifier {
       } else {
         await selectAllProjects();
       }
-    } catch (_) {
-      _view = AppView.login;
+    } catch (e) {
+      if (e is ApiException && e.statusCode == 401) {
+        await api.client.clearCredentials();
+      }
+      _setupError = e is ApiException ? e.message : 'connection failed';
+      _view = api.client.isNative ? AppView.setup : AppView.login;
+      notifyListeners();
+    }
+  }
+
+  Future<void> completePairing(PairingResponse pairing) async {
+    try {
+      await api.client.setServerUrl(pairing.serverUrl);
+      await api.client.setToken(pairing.token);
+      await api.client.setUsername(pairing.username);
+      await bootstrap();
+    } catch (e) {
+      _setupError = e is ApiException ? e.message : 'import failed';
+      _view = AppView.setup;
       notifyListeners();
     }
   }
@@ -331,6 +360,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadDevices() async {
+    try {
+      _devices = await api.listDevices();
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    }
+    notifyListeners();
+  }
+
+  Future<void> revokeDevice(String token) async {
+    try {
+      await api.revokeDevice(token);
+      _globalError = '';
+      await loadDevices();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<PairingResponse> createPairing({
+    required String serverUrl,
+    String? name,
+  }) async {
+    return api.createPairing(serverUrl: serverUrl, name: name);
+  }
+
   Future<void> createUser({required String username, required String password}) async {
     try {
       await api.createUser(username: username, password: password);
@@ -357,9 +414,12 @@ class AppState extends ChangeNotifier {
     await _sendSubscription?.cancel();
     _sendSubscription = null;
     try { await api.logout(); } catch (_) {}
+    try {
+      await api.client.clearCredentials();
+    } catch (_) {}
     _user = null;
     _users = [];
-    _view = AppView.login;
+    _view = api.client.isNative ? AppView.setup : AppView.login;
     _page = MainPage.threads;
     _userMenuOpen = false;
     _activeThreadId = null;
