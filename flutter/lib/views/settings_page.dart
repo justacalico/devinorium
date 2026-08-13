@@ -38,14 +38,9 @@ class SettingsPage extends StatelessWidget {
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: sections[index],
-          ),
-        ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: sections[index],
       ),
     );
   }
