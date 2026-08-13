@@ -38,7 +38,7 @@ pub fn build_cors_layer(allowed_origin: &Option<String>) -> Option<CorsLayer> {
 
     Some(
         CorsLayer::new()
-            .allow_origin(parsed)
+            .allow_origin(tower_http::cors::AllowOrigin::list([parsed]))
             .allow_credentials(true)
             .allow_methods(methods)
             .allow_headers(headers)

@@ -285,3 +285,160 @@ async fn body_size_limit_rejects_oversized() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+async fn login_with_origin(
+    app: &Router,
+    username: &str,
+    password: &str,
+    origin: &str,
+) -> String {
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::HOST, "localhost:7878")
+                .header(header::ORIGIN, origin)
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"username":"{username}","password":"{password}"}}"#,
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    resp.headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+fn token_from_cookie(cookie: &str) -> &str {
+    cookie.strip_prefix("devinorium_session=").unwrap()
+}
+
+#[tokio::test]
+async fn cors_headers_on_allowed_origin() {
+    let (app, _db) = make_app(Some("https://devinorium.example".into())).await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .header(header::ORIGIN, "https://devinorium.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let h = resp.headers();
+    assert_eq!(
+        h.get("access-control-allow-origin").unwrap(),
+        "https://devinorium.example"
+    );
+    assert_eq!(h.get("access-control-allow-credentials").unwrap(), "true");
+}
+
+#[tokio::test]
+async fn cors_blocks_disallowed_origin() {
+    let (app, _db) = make_app(Some("https://devinorium.example".into())).await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .header(header::ORIGIN, "https://evil.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(resp.headers().get("access-control-allow-origin").is_none());
+}
+
+#[tokio::test]
+async fn cors_preflight_for_api() {
+    let (app, _db) = make_app(Some("https://devinorium.example".into())).await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/api/threads")
+                .header(header::ORIGIN, "https://devinorium.example")
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "authorization")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(resp.status().is_success());
+    let h = resp.headers();
+    assert_eq!(
+        h.get("access-control-allow-origin").unwrap(),
+        "https://devinorium.example"
+    );
+    let allow_methods = h.get("access-control-allow-methods").unwrap().to_str().unwrap();
+    assert!(allow_methods.contains("GET"), "methods: {allow_methods}");
+    let allow_headers = h.get("access-control-allow-headers").unwrap().to_str().unwrap();
+    assert!(
+        allow_headers.to_lowercase().contains("authorization"),
+        "headers: {allow_headers}"
+    );
+}
+
+#[tokio::test]
+async fn bearer_token_bypasses_csrf_with_cors() {
+    let (app, _db) = make_app(Some("https://devinorium.example".into())).await;
+    let cookie = login_with_origin(&app, "owner", "supersecret123", "https://devinorium.example").await;
+    let token = token_from_cookie(&cookie);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/devices/revoke")
+                .header(header::ORIGIN, "https://devinorium.example")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"token":"does-not-exist"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        resp.headers().get("access-control-allow-origin").unwrap(),
+        "https://devinorium.example"
+    );
+}
+
+#[tokio::test]
+async fn bearer_token_bypasses_csrf_without_origin() {
+    let (app, _db) = make_app(None).await;
+    let cookie = login_with_origin(&app, "owner", "supersecret123", "http://localhost:7878").await;
+    let token = token_from_cookie(&cookie);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/devices/revoke")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"token":"does-not-exist"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
