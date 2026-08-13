@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import 'client_factory_stub.dart' if (dart.library.js_interop) 'client_factory_web.dart';
 import 'sse_fetcher.dart';
 
 /// Thin wrapper around [http] that:
@@ -16,14 +16,19 @@ import 'sse_fetcher.dart';
 /// All paths are relative (e.g. "/api/threads") and resolve against the same
 /// origin that served the Flutter app, so CORS/CSRF Origin checks pass.
 class ApiClient {
-  static final ApiClient _instance = ApiClient._();
-  factory ApiClient() => _instance;
-
-  late final BrowserClient _client;
-
-  ApiClient._() {
-    _client = BrowserClient()..withCredentials = true;
+  static ApiClient? _instance;
+  factory ApiClient() {
+    _instance ??= ApiClient._internal(createClient());
+    return _instance!;
   }
+
+  /// Create a client backed by an arbitrary [http.Client]. Used in tests
+  /// with a fake client so network calls can be mocked.
+  factory ApiClient.withClient(http.Client client) => ApiClient._internal(client);
+
+  final http.Client _client;
+
+  ApiClient._internal(this._client);
 
   Future<Map<String, dynamic>> get(String path) async =>
       _json('GET', path, null);
@@ -89,7 +94,7 @@ class ApiClient {
     }
     final decoded = jsonDecode(resp.body);
     if (decoded is List) {
-      return decoded.cast<Map<String, dynamic>>();
+      return decoded.map((e) => e as Map<String, dynamic>).toList();
     }
     throw ApiException('expected a list', resp.statusCode);
   }
@@ -110,6 +115,7 @@ class ApiClient {
         'file',
         f.bytes,
         filename: f.filename,
+        contentType: http.MediaType.parse(f.mime),
       ));
     }
     final streamed = await _client.send(req);
