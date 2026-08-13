@@ -617,6 +617,37 @@ class _AccountsSectionState extends State<_AccountsSection> {
           ),
         ),
         const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: Text(
+                'User',
+                style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text(
+                '2FA',
+                textAlign: TextAlign.right,
+                style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Text(
+                'Active',
+                textAlign: TextAlign.right,
+                style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         ListenableBuilder(
           listenable: widget.state,
           builder: (context, child) {
