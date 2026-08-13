@@ -13,7 +13,43 @@ enum DialogKind { none, totpSetup, invites, newProject, permissionRequest }
 
 /// Central app state.
 class AppState extends ChangeNotifier {
-  final ApiService api = ApiService();
+  final ApiService api;
+
+  AppState({ApiService? api}) : api = api ?? ApiService();
+
+  /// Test-only constructor to pre-populate state without running a full flow.
+  AppState.test({
+    ApiService? api,
+    User? user,
+    List<Project> projects = const [],
+    List<Thread> threads = const [],
+    List<ThreadGroup> groups = const [],
+    List<ModelInfo> models = const [],
+    List<ProviderInfo> providers = const [],
+    int? activeProjectId,
+    String? activeProjectPath,
+    String? activeThreadId,
+    ThreadDetail? activeThreadDetail,
+    DialogKind? dialog,
+    PermissionRequest? pendingPermissionRequest,
+    List<String> filesPath = const [],
+    String? globalError,
+  })  : api = api ?? ApiService() {
+    _user = user;
+    _projects = projects;
+    _threads = threads;
+    _groups = groups;
+    _models = models;
+    _providers = providers;
+    _activeProjectId = activeProjectId;
+    _activeProjectPath = activeProjectPath;
+    _activeThreadId = activeThreadId;
+    _activeThreadDetail = activeThreadDetail;
+    _dialog = dialog ?? DialogKind.none;
+    _pendingPermissionRequest = pendingPermissionRequest;
+    _filesPath = filesPath;
+    _globalError = globalError ?? '';
+  }
 
   @override
   void dispose() {
@@ -142,26 +178,26 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  void openFilesPanel() {
+  Future<void> openFilesPanel() async {
     _filesPanelOpen = true;
     _filesPath = [];
     _filesError = '';
     notifyListeners();
-    reloadFiles();
+    await reloadFiles();
   }
 
   void closeFilesPanel() { _filesPanelOpen = false; notifyListeners(); }
 
-  void navigateFilesInto(String name) {
+  Future<void> navigateFilesInto(String name) async {
     _filesPath = [..._filesPath, name];
     notifyListeners();
-    reloadFiles();
+    await reloadFiles();
   }
 
-  void navigateFilesTo(List<String> path) {
+  Future<void> navigateFilesTo(List<String> path) async {
     _filesPath = path;
     notifyListeners();
-    reloadFiles();
+    await reloadFiles();
   }
 
   Future<void> reloadFiles() async {
@@ -261,6 +297,7 @@ class AppState extends ChangeNotifier {
     try {
       final res = await api.login(username: username, password: password, totp: totp);
       if (res.totpRequired) {
+        _view = AppView.login;
         _showTotpField = true;
         _loginError = 'Enter your 6-digit TOTP code.';
         notifyListeners();
@@ -278,6 +315,7 @@ class AppState extends ChangeNotifier {
         await selectAllProjects();
       }
     } catch (e) {
+      _view = AppView.login;
       _loginError = '$e';
       notifyListeners();
     }
@@ -292,6 +330,7 @@ class AppState extends ChangeNotifier {
       final res = await api.login(username: username, password: password);
       if (res.totpRequired) {
         // Shouldn’t happen for a fresh user, but handle gracefully.
+        _view = AppView.register;
         _registerError = 'TOTP required after registration.';
       } else {
         _user = await api.me();
@@ -306,6 +345,7 @@ class AppState extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
+      _view = AppView.register;
       _registerError = '$e';
       notifyListeners();
     }
@@ -514,10 +554,12 @@ class AppState extends ChangeNotifier {
     try {
       await api.testProvider(providerId: providerId, command: command);
       _globalError = '';
+      notifyListeners();
     } catch (e) {
       _globalError = '$e';
+      notifyListeners();
+      rethrow;
     }
-    notifyListeners();
   }
 
   Future<void> saveThreadSettings() async {

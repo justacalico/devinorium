@@ -6,7 +6,9 @@ import 'api_client.dart';
 
 /// High-level API methods returning typed models. Wraps [ApiClient].
 class ApiService {
-  final ApiClient _client = ApiClient();
+  final ApiClient _client;
+
+  ApiService({ApiClient? client}) : _client = client ?? ApiClient();
 
   // ---- Auth ----
 
