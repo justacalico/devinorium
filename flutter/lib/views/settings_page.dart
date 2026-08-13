@@ -739,8 +739,8 @@ class _UserRow extends StatelessWidget {
                         style: theme.textTheme.bodySmall,
                       ),
                       Switch(
-                        value: user.disabled,
-                        onChanged: (v) => state.setUserDisabled(user.id, v),
+                        value: !user.disabled,
+                        onChanged: (v) => state.setUserDisabled(user.id, !v),
                       ),
                     ],
                   ),
