@@ -621,6 +621,70 @@ async fn resolve_thread_tags_prefers_pending_approval() {
 }
 
 #[tokio::test]
+async fn thread_list_and_get_include_tags() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // List returns empty tags for a new thread.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("\"tags\":[]"), "list should include empty tags: {body}");
+
+    // Send a message so the last message is from the assistant.
+    let boundary = "----tagboundary";
+    let send_body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHi\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(send_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // List now shows completed.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("completed"), "list should include completed tag: {body}");
+
+    // Get one also shows completed.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("completed"), "get should include completed tag: {body}");
+}
+
+#[tokio::test]
 async fn thread_send_streams_reply_as_sse() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
