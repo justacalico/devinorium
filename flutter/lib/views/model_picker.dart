@@ -9,21 +9,27 @@ class ModelPicker extends StatelessWidget {
   final String value;
   final List<ModelInfo> models;
   final ValueChanged<String> onChanged;
+  final bool enabled;
 
   const ModelPicker({
     super.key,
     required this.value,
     required this.models,
     required this.onChanged,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final selected = _findSelected(models, value);
+    final disabledColor = theme.colorScheme.onSurface.withValues(alpha: 0.38);
+    final contentColor = enabled
+        ? theme.colorScheme.onSurface
+        : disabledColor;
 
     return InkWell(
-      onTap: () => _showPicker(context),
+      onTap: enabled ? () => _showPicker(context) : null,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         decoration: BoxDecoration(
@@ -34,12 +40,15 @@ class ModelPicker extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _CostDot(tier: selected.costTier),
+            _CostDot(
+              tier: selected.costTier,
+              color: enabled ? null : disabledColor,
+            ),
             const SizedBox(width: 8),
             Text(
               _triggerLabel(selected),
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface,
+                color: contentColor,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -47,7 +56,9 @@ class ModelPicker extends StatelessWidget {
             Icon(
               Icons.expand_more,
               size: 16,
-              color: theme.colorScheme.onSurfaceVariant,
+              color: enabled
+                  ? theme.colorScheme.onSurfaceVariant
+                  : disabledColor,
             ),
           ],
         ),
@@ -610,7 +621,8 @@ class _Badge extends StatelessWidget {
 
 class _CostDot extends StatelessWidget {
   final String tier;
-  const _CostDot({required this.tier});
+  final Color? color;
+  const _CostDot({required this.tier, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -618,7 +630,7 @@ class _CostDot extends StatelessWidget {
       width: 10,
       height: 10,
       decoration: BoxDecoration(
-        color: _tierColor(tier, Theme.of(context).colorScheme),
+        color: color ?? _tierColor(tier, Theme.of(context).colorScheme),
         shape: BoxShape.circle,
       ),
     );
