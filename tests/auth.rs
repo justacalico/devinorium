@@ -876,3 +876,106 @@ async fn cannot_revoke_device_owned_by_another_user() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn pairing_rejects_missing_origin() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/pairing")
+                .header("content-type", "application/json")
+                .header("cookie", cookie)
+                .body(Body::from(r#"{"server_url":"http://localhost:7878"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn pairing_rejects_mismatched_origin() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/pairing")
+                .header("content-type", "application/json")
+                .header("origin", "https://devinorium.example")
+                .header("cookie", cookie)
+                .body(Body::from(r#"{"server_url":"http://evil.com"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn pairing_rejects_invalid_name() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/pairing")
+                .header("content-type", "application/json")
+                .header("origin", "http://localhost:7878")
+                .header("cookie", cookie)
+                .body(Body::from(
+                    r#"{"server_url":"http://localhost:7878","name":"a\n\nb"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn pairing_enforces_device_limit() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    for i in 0..9 {
+        create_pairing(
+            &app,
+            &cookie,
+            "http://localhost:7878",
+            Some(&format!("device-{i}")),
+        )
+        .await;
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/pairing")
+                .header("content-type", "application/json")
+                .header("origin", "http://localhost:7878")
+                .header("cookie", cookie)
+                .body(Body::from(r#"{"server_url":"http://localhost:7878"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}

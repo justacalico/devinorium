@@ -154,16 +154,15 @@ async fn create_pairing(
         return bad_request(msg);
     }
 
-    match state.db.count_user_sessions(user.id).await {
-        Ok(n) if n >= MAX_DEVICES_PER_USER => {
+    let sess = match state
+        .db
+        .create_session_limited(user.id, 30, None, Some(name), MAX_DEVICES_PER_USER)
+        .await
+    {
+        Ok(s) => s,
+        Err(e) if e.to_string().contains("too many paired devices") => {
             return bad_request("too many paired devices");
         }
-        Ok(_) => {}
-        Err(e) => return map_err_internal(e).into_response(),
-    }
-
-    let sess = match state.db.create_session(user.id, 30, None, Some(name)).await {
-        Ok(s) => s,
         Err(e) => return map_err_internal(e).into_response(),
     };
 

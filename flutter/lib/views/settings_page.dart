@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -128,9 +129,19 @@ class _DevicesSectionState extends State<_DevicesSection> {
   Future<void> _downloadPairing() async {
     setState(() => _creating = true);
     try {
-      final origin = currentOrigin();
+      final serverUrl = kIsWeb
+          ? currentOrigin()
+          : (await widget.state.api.client.serverUrl ?? '');
+      if (serverUrl.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法获取服务器地址')),
+          );
+        }
+        return;
+      }
       final pairing = await widget.state.createPairing(
-        serverUrl: origin.isNotEmpty ? origin : 'http://localhost:7878',
+        serverUrl: serverUrl,
         name: 'Devinorium native client',
       );
       downloadTextFile(pairing.toJsonString(), 'devinorium-pairing.json');

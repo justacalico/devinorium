@@ -215,4 +215,10 @@ class NativeApiClient implements BaseApiClient {
 
   @override
   bool get isNative => true;
+
+  @override
+  Future<String?> get serverUrl async {
+    await _ensureLoaded();
+    return _baseUrl.isNotEmpty ? _baseUrl : null;
+  }
 }

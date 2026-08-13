@@ -34,6 +34,10 @@ class _PairingSetupViewState extends State<PairingSetupView> {
         _showSnack('无法读取文件内容');
         return;
       }
+      if (bytes.length > 1024 * 1024) {
+        _showSnack('配对文件过大');
+        return;
+      }
 
       final json = jsonDecode(utf8.decode(bytes));
       if (json is! Map<String, dynamic>) {

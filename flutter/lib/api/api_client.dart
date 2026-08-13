@@ -51,6 +51,9 @@ abstract class BaseApiClient {
 
   /// Whether this client is a native bearer-token client.
   bool get isNative;
+
+  /// The configured server URL, if any.
+  Future<String?> get serverUrl;
 }
 
 /// Thin wrapper around [http] that:
@@ -96,6 +99,9 @@ class ApiClient implements BaseApiClient {
 
   @override
   bool get isNative => false;
+
+  @override
+  Future<String?> get serverUrl => Future.value(null);
 
   @override
   Future<Map<String, dynamic>> get(String path) async =>
