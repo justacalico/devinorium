@@ -46,6 +46,7 @@ default:
 
 verify:
   stage: verify
+  tags: [linux-truenas]
   before_script:
     - *install
   script:
@@ -58,6 +59,7 @@ verify:
 
 release:
   stage: release
+  tags: [linux-truenas]
   resource_group: release
   before_script:
     - *install
