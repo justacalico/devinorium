@@ -9,7 +9,7 @@ TLS. This guide covers the common deployment patterns.
 - A Rust toolchain (or a pre-built `devinorium` binary)
 - The Flutter SDK, used to build the web frontend
 - The `devin` CLI installed and authenticated (`devin login`)
-- A directory for the SQLite database and file root
+- A directory for the SQLite database
 
 ## 1. Build
 
@@ -41,7 +41,6 @@ cp .env.example .env
 |---|---|
 | `DEVINORIUM_SESSION_KEY` | Generate with `openssl rand -base64 48`. Must be ≥64 chars. |
 | `DEVINORIUM_BOOTSTRAP_PASSWORD` | A strong password for the first owner account. |
-| `DEVINORIUM_FILE_ROOT` | A single absolute path. The file manager and Devin sessions are sandboxed to this. |
 | `DEVINORIUM_SECURE_COOKIE` | Set `true` when serving over HTTPS. |
 | `DEVINORIUM_TRUST_PROXY` | Set `true` when behind a reverse proxy (so client IPs are read from `X-Forwarded-For`). |
 
@@ -185,7 +184,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/devinorium/data /opt/devinorium/fileroot
+ReadWritePaths=/opt/devinorium/data
 PrivateTmp=true
 
 [Install]
@@ -201,9 +200,10 @@ sudo systemctl enable --now devinorium
 
 - **Create accounts** for other users via the user menu → Accounts (owner only).
 - **Enable TOTP** (2FA) on your account via the user menu → Enable 2FA.
-- **Backups:** the SQLite database (`data/devinorium.db`) and the
-  file root directory are all you need to back up. Stop the service
-  before copying the db file, or use `sqlite3 ... ".backup"`.
+- **Backups:** the SQLite database (`data/devinorium.db`) is the
+  only state you need to back up. Project paths can live anywhere
+  on the filesystem, so back those up separately if desired. Stop
+  the service before copying the db file, or use `sqlite3 ... ".backup"`.
 - **Updates:** pull the latest main, rebuild the frontend with
   `./scripts/build-flutter.sh`, then `cargo build --release`, and restart
   the service. Migrations run automatically on startup.

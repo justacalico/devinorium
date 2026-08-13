@@ -139,31 +139,46 @@ async fn list_threads(
     }
 }
 
-/// Resolve the user-supplied path, ensure it is inside the configured file
-/// root, create the directory if it doesn't exist, and return the canonical
-/// absolute path.
+/// Resolve the user-supplied path, create the directory if it doesn't exist,
+/// and return the canonical absolute path. Paths are resolved relative to the
+/// user's home directory unless they are absolute.
 async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<PathBuf> {
-    let file_root = state
-        .config
-        .file_root
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("no file root configured"))?;
+    let path = normalize_path(path, &state.config.home_dir);
 
-    // If the user supplied an absolute path, join doesn't make sense; we still
-    // require it to be within the root via resolve_within.
-    let candidate = if std::path::Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        file_root.join(path)
-    };
+    if std::path::Path::new(&path).is_absolute() {
+        let resolved = paths::resolve(std::path::Path::new(&path), None, None)
+            .ok_or_else(|| anyhow::anyhow!("invalid project path"))?;
+        tokio::fs::create_dir_all(&resolved).await?;
+        return Ok(tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved));
+    }
 
-    let roots = vec![file_root.to_path_buf()];
-    let resolved = paths::resolve_within(&candidate, Some(file_root), &roots)
-        .ok_or_else(|| anyhow::anyhow!("path escapes file root"))?;
+    let candidate = state.config.home_dir.join(&path);
+    let resolved = paths::resolve_within(&candidate, Some(&state.config.home_dir), &[state.config.home_dir.clone()])
+        .ok_or_else(|| anyhow::anyhow!("invalid project path"))?;
 
     // Ensure the directory exists.
     tokio::fs::create_dir_all(&resolved).await?;
 
     // Canonicalize so the stored path is stable.
     Ok(tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved))
+}
+
+fn normalize_path(path: &str, home: &std::path::Path) -> String {
+    let mut s = path.trim().to_string();
+
+    // Strip matching surrounding quotes, e.g. "/path/with spaces" or '/path'.
+    if s.len() >= 2 {
+        let first = s.chars().next().unwrap();
+        let last = s.chars().last().unwrap();
+        if (first == last) && (first == '\"' || first == '\'') {
+            s = s[1..s.len() - 1].to_string();
+        }
+    }
+
+    // Expand a leading `~` to the home directory.
+    if s == "~" || s.starts_with("~/") {
+        s = home.join(&s[1..]).to_string_lossy().to_string();
+    }
+
+    s
 }

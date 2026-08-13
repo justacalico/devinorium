@@ -35,7 +35,8 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         db_url: db_url.clone(),
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
-        file_root: None,
+        home_dir: devinorium::config::default_home_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 1024 * 1024,
@@ -244,7 +245,8 @@ async fn body_size_limit_rejects_oversized() {
         db_url,
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
-        file_root: None,
+        home_dir: devinorium::config::default_home_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 64,

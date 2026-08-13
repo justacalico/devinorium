@@ -1,16 +1,22 @@
-//! Path safety: constrain file operations to configured file roots and
-//! prevent path traversal.
+//! Path safety: prevent path traversal while allowing any absolute path.
 
 use std::path::{Path, PathBuf};
 
-/// Resolve `path` (which may be relative or contain `..`) and verify that the
-/// canonicalized result is contained within one of `roots`.
+/// Resolve `path` to a canonicalized absolute path.
 ///
-/// `base` is an optional already-validated file root directory to resolve
-/// relative paths against.
+/// `base` is an optional directory used to resolve relative paths. If `path`
+/// is absolute, `base` is ignored.
 ///
-/// Returns the canonicalized absolute path if it is within a root, else None.
-pub fn resolve_within(path: &Path, base: Option<&Path>, roots: &[PathBuf]) -> Option<PathBuf> {
+/// When `roots` is `None` the path is not sandboxed; it is only verified that
+/// it does not escape via `..` through a non-existent directory.
+///
+/// When `roots` is `Some` the canonicalized path must be contained within one
+/// of the given roots.
+pub fn resolve(
+    path: &Path,
+    base: Option<&Path>,
+    roots: Option<&[PathBuf]>,
+) -> Option<PathBuf> {
     // First, join with base if relative and base is set.
     let joined = if path.is_relative() {
         base?.join(path)
@@ -47,14 +53,23 @@ pub fn resolve_within(path: &Path, base: Option<&Path>, roots: &[PathBuf]) -> Op
         }
     };
 
-    for root in roots {
-        if let Ok(root_canon) = root.canonicalize() {
-            if canon == root_canon || canon.starts_with(&root_canon) {
-                return Some(canon);
+    if let Some(roots) = roots {
+        for root in roots {
+            if let Ok(root_canon) = root.canonicalize() {
+                if canon == root_canon || canon.starts_with(&root_canon) {
+                    return Some(canon);
+                }
             }
         }
+        None
+    } else {
+        Some(canon)
     }
-    None
+}
+
+/// Resolve `path` and require it to be contained within one of `roots`.
+pub fn resolve_within(path: &Path, base: Option<&Path>, roots: &[PathBuf]) -> Option<PathBuf> {
+    resolve(path, base, Some(roots))
 }
 
 /// Check that `child` (already canonicalized) is within `parent` (canonicalized).
@@ -122,5 +137,27 @@ mod tests {
             resolved.is_none(),
             "traversal through non-existent dir should be rejected"
         );
+    }
+
+    #[test]
+    fn resolve_accepts_absolute_paths() {
+        let tmp = tempfile::tempdir().unwrap().keep();
+        let sub = tmp.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let resolved = resolve(&sub, None, None);
+        assert!(resolved.is_some());
+        assert!(resolved.unwrap().starts_with(&tmp));
+    }
+
+    #[test]
+    fn resolve_accepts_paths_with_spaces() {
+        let tmp = tempfile::tempdir().unwrap().keep();
+        let sub = tmp.join("my dir").join("my app");
+        std::fs::create_dir_all(&sub).unwrap();
+        let resolved = resolve(&sub, None, None);
+        assert!(resolved.is_some());
+        let resolved = resolved.unwrap();
+        assert!(resolved.to_string_lossy().contains("my dir"));
+        assert!(resolved.to_string_lossy().contains("my app"));
     }
 }

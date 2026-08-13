@@ -37,7 +37,8 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         db_url: db_url.clone(),
         bootstrap_username: bootstrap_user.into(),
         bootstrap_password: bootstrap_pw.into(),
-        file_root: None,
+        home_dir: devinorium::config::default_home_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 1024 * 1024,

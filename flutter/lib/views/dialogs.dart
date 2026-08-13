@@ -125,6 +125,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
   final _nameController = TextEditingController();
   final _pathController = TextEditingController();
   final _pathSegments = <String>[];
+  var _isAbsolute = false;
   var _entries = <DirEntry>[];
   var _loading = true;
   var _submitting = false;
@@ -143,7 +144,12 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     super.dispose();
   }
 
-  String get _currentPath => _pathSegments.join('/');
+  String get _currentPath {
+    if (_isAbsolute) {
+      return _pathSegments.isEmpty ? '/' : '/${_pathSegments.join('/')}';
+    }
+    return _pathSegments.join('/');
+  }
 
   Future<void> _load() async {
     setState(() {
@@ -205,11 +211,12 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     final text = _pathController.text.trim();
     if (text.isEmpty) {
       _pathSegments.clear();
+      _isAbsolute = false;
       _load();
       return;
     }
-    if (text.startsWith('/')) {
-      setState(() => _error = 'Absolute paths cannot be browsed; type a path relative to the file root');
+    if (text == '~' || text.startsWith('~/')) {
+      setState(() => _error = 'Home directory shortcut is not supported here; type the full path');
       return;
     }
     final normalized = text.replaceAll(RegExp(r'/+'), '/');
@@ -217,6 +224,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
       setState(() => _error = 'Path traversal is not allowed');
       return;
     }
+    _isAbsolute = normalized.startsWith('/');
     final segs = normalized
         .split('/')
         .where((s) => s.isNotEmpty && s != '.')
@@ -308,7 +316,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                       enabled: !_submitting,
                       decoration: InputDecoration(
                         labelText: 'Path',
-                        hintText: 'relative/project/path',
+                        hintText: 'relative/path or /absolute/project/path',
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
                           tooltip: 'Browse to this path',
@@ -323,6 +331,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                     const SizedBox(height: 8),
                     _BrowserHeader(
                       path: _currentPath,
+                      isAbsolute: _isAbsolute,
                       onUp: _up,
                       onCrumb: _goTo,
                       enabled: !_loading && !_submitting,
@@ -440,12 +449,14 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
 
 class _BrowserHeader extends StatelessWidget {
   final String path;
+  final bool isAbsolute;
   final VoidCallback onUp;
   final ValueChanged<int> onCrumb;
   final bool enabled;
 
   const _BrowserHeader({
     required this.path,
+    this.isAbsolute = false,
     required this.onUp,
     required this.onCrumb,
     required this.enabled,
@@ -454,9 +465,12 @@ class _BrowserHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final crumbs = path.isEmpty
-        ? <String>['Home']
-        : ['Home', ...path.split('/')];
+    final segs = path
+        .split('/')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final rootLabel = isAbsolute ? 'root' : 'Home';
+    final crumbs = <String>[rootLabel, ...segs];
 
     return Row(
       children: [

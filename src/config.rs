@@ -14,7 +14,7 @@ pub struct Config {
     pub db_url: String,
     pub bootstrap_username: String,
     pub bootstrap_password: String,
-    pub file_root: Option<PathBuf>,
+    pub home_dir: PathBuf,
     pub default_model: String,
     pub trust_proxy: bool,
     pub max_body_bytes: usize,
@@ -54,11 +54,9 @@ impl Config {
             tracing::warn!("DEVINORIUM_BOOTSTRAP_PASSWORD is not set to a real password; bootstrap account creation will be skipped. Set it to create the first user.");
         }
 
-        let file_root = env::var("DEVINORIUM_FILE_ROOT")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| PathBuf::from(s.trim()))
-            .or_else(default_file_root);
+        let home_dir = default_home_dir().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        });
 
         let default_model = env_or("DEVINORIUM_DEFAULT_MODEL", "glm-5-2");
         let trust_proxy = env_or("DEVINORIUM_TRUST_PROXY", "false").eq_ignore_ascii_case("true");
@@ -78,7 +76,7 @@ impl Config {
             db_url,
             bootstrap_username,
             bootstrap_password,
-            file_root,
+            home_dir,
             default_model,
             trust_proxy,
             max_body_bytes,
@@ -97,7 +95,7 @@ fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
-fn default_file_root() -> Option<PathBuf> {
+pub fn default_home_dir() -> Option<PathBuf> {
     // Prefer $HOME on Unix, $USERPROFILE on Windows.
     env::var_os("HOME")
         .or_else(|| env::var_os("USERPROFILE"))
