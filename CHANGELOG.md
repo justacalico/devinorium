@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.4.0 - 2026-08-13
+#### Features
+- 添加 provider 命令配置与测试按钮 - (8ad429a) - HttpAnimations
+- 添加 AI provider 设置支持 - (ffe1982) - HttpAnimations
+#### Bug Fixes
+- 规范化 Provider 命令输入 - (d70d850) - HttpAnimations
+- 修复 Provider 测试超时与前端状态管理 - (3d0c853) - HttpAnimations
+
+- - -
+
 ## v0.3.0 - 2026-08-12
 #### Features
 - 添加 misc 提交类型与 commit-msg hook - (a4bd4cb) - HttpAnimations
