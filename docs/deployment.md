@@ -162,7 +162,7 @@ If you must forward a port directly from your router:
 - [ ] The firewall on the host blocks direct access to port 7878 from the LAN/WAN.
 - [ ] `DEVINORIUM_SESSION_KEY` is a fresh random value (not the example).
 - [ ] `DEVINORIUM_BOOTSTRAP_PASSWORD` is strong and changed after first login.
-- [ ] Only trusted users have invite tokens.
+- [ ] Only the owner account can create and manage other user accounts.
 
 ## 5. Run as a systemd service
 
@@ -199,7 +199,7 @@ sudo systemctl enable --now devinorium
 
 ## 6. Post-deployment
 
-- **Create invite tokens** for other users via the user menu → Invites.
+- **Create accounts** for other users via the user menu → Accounts (owner only).
 - **Enable TOTP** (2FA) on your account via the user menu → Enable 2FA.
 - **Backups:** the SQLite database (`data/devinorium.db`) and the
   file root directory are all you need to back up. Stop the service
