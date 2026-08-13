@@ -33,7 +33,7 @@ void main() {
         return _json(200, {
           'id': 1,
           'username': 'owner',
-          'role': 'owner',
+          'role': 'user',
           'totp_enabled': false,
           'provider_id': 'devin-cli',
           'provider_command': 'devin',
@@ -42,7 +42,7 @@ void main() {
       final service = _serviceFor(mock);
       final user = await service.me();
       expect(user.username, 'owner');
-      expect(user.role, 'owner');
+      expect(user.role, 'user');
     });
 
     test('login sends body and returns LoginResponse', () async {
@@ -76,19 +76,6 @@ void main() {
       });
       final service = _serviceFor(mock);
       await service.logout();
-    });
-
-    test('register sends invite, username and password', () async {
-      final mock = MockClient((req) async {
-        expect(req, _requestTo('POST', '/api/auth/register'));
-        final body = jsonDecode(_readBody(req)!);
-        expect(body['invite'], 'token');
-        expect(body['username'], 'alice');
-        expect(body['password'], 'pw');
-        return _json(200, {});
-      });
-      final service = _serviceFor(mock);
-      await service.register(invite: 'token', username: 'alice', password: 'pw');
     });
 
     test('totpSetup returns TotpSetupResponse', () async {
@@ -130,7 +117,7 @@ void main() {
         return _json(200, {
           'id': 1,
           'username': 'owner',
-          'role': 'owner',
+          'role': 'user',
           'totp_enabled': false,
           'provider_id': 'devin-cli',
           'provider_command': 'devin-cli',
@@ -482,25 +469,61 @@ void main() {
     });
   });
 
-  group('Invites', () {
-    test('listInvites returns invites', () async {
+  group('Users', () {
+    test('listUsers returns users', () async {
       final mock = MockClient((req) async {
-        expect(req, _requestTo('GET', '/api/invites'));
-        return _json(200, []);
+        expect(req, _requestTo('GET', '/api/users'));
+        return _json(200, [
+          {
+            'id': 1,
+            'username': 'owner',
+            'role': 'user',
+            'is_owner': true,
+            'disabled': false,
+            'totp_enabled': true,
+            'created_at': '2026-01-01',
+          },
+          {
+            'id': 2,
+            'username': 'alice',
+            'role': 'user',
+            'is_owner': false,
+            'disabled': true,
+            'totp_enabled': false,
+            'created_at': '2026-01-02',
+          },
+        ]);
       });
       final service = _serviceFor(mock);
-      final invites = await service.listInvites();
-      expect(invites, isEmpty);
+      final users = await service.listUsers();
+      expect(users, hasLength(2));
+      expect(users.first.isOwner, isTrue);
+      expect(users.first.totpEnabled, isTrue);
+      expect(users.last.disabled, isTrue);
+      expect(users.last.isOwner, isFalse);
     });
 
-    test('createInvite returns token', () async {
+    test('createUser sends username and password', () async {
       final mock = MockClient((req) async {
-        expect(req, _requestTo('POST', '/api/invites'));
-        return _json(200, {'token': 'abc'});
+        expect(req, _requestTo('POST', '/api/users'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['username'], 'alice');
+        expect(body['password'], 'pw');
+        return _json(200, {'ok': true, 'id': 2, 'username': 'alice'});
       });
       final service = _serviceFor(mock);
-      final token = await service.createInvite();
-      expect(token, 'abc');
+      await service.createUser(username: 'alice', password: 'pw');
+    });
+
+    test('setUserDisabled sends disabled', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('PATCH', '/api/users/1'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['disabled'], isTrue);
+        return _json(200, {'ok': true});
+      });
+      final service = _serviceFor(mock);
+      await service.setUserDisabled(1, true);
     });
   });
 

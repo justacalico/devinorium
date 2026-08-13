@@ -344,25 +344,51 @@ void main() {
     });
   });
 
-  group('Invite', () {
-    test('parses unused invite', () {
-      final i = Invite.fromJson({
-        'token': 'abc',
+  group('User', () {
+    test('parses is_owner and disabled', () {
+      final user = User.fromJson({
+        'id': 1,
+        'username': 'owner',
+        'role': 'user',
+        'is_owner': true,
+        'disabled': true,
+        'totp_enabled': true,
         'created_at': '2026-01-01',
-        'expires_at': '2026-01-02',
       });
-      expect(i.token, 'abc');
-      expect(i.isUsed, isFalse);
+      expect(user.isOwner, isTrue);
+      expect(user.disabled, isTrue);
+      expect(user.totpEnabled, isTrue);
+      expect(user.createdAt, '2026-01-01');
     });
 
-    test('parses used invite', () {
-      final i = Invite.fromJson({
-        'token': 'abc',
-        'used_by_user_id': 2,
-        'created_at': '2026-01-01',
-        'expires_at': '2026-01-02',
+    test('defaults is_owner, disabled and created_at', () {
+      final user = User.fromJson({
+        'id': 1,
+        'username': 'owner',
+        'role': 'user',
+        'totp_enabled': false,
       });
-      expect(i.isUsed, isTrue);
+      expect(user.isOwner, isFalse);
+      expect(user.disabled, isFalse);
+      expect(user.createdAt, isEmpty);
+    });
+
+    test('copyWith preserves is_owner and disabled', () {
+      final user = User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        disabled: true,
+        createdAt: '2026-01-01',
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      );
+      final updated = user.copyWith(providerId: 'other');
+      expect(updated.isOwner, isTrue);
+      expect(updated.disabled, isTrue);
+      expect(updated.createdAt, '2026-01-01');
     });
   });
 

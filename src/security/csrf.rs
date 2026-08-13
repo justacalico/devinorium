@@ -40,10 +40,10 @@ pub async fn csrf_origin_check(
         .to_string();
 
     if let Some(ref allowed) = allowed_origin {
-        if origin_ok_explicit(&req.headers(), allowed) {
+        if origin_ok_explicit(req.headers(), allowed) {
             return next.run(req).await;
         }
-    } else if origin_ok_same_host(&req.headers(), &host) {
+    } else if origin_ok_same_host(req.headers(), &host) {
         return next.run(req).await;
     }
 

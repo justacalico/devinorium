@@ -77,11 +77,10 @@ pub fn build_app(state: AppState) -> Router {
     // Global weighted rate limiter.
     //
     // Capacity 500 tokens, refill 2/sec. Each endpoint class has a cost:
-    //   - login/register: 20 tokens (25 attempts before throttle)
-    //   - TOTP verify:    15 tokens
-    //   - unauth probe:   25 tokens (20 attempts before throttle)
-    //   - auth write:      2 tokens (250 writes before throttle)
-    //   - invite create:   5 tokens
+    //   - login:           20 tokens (25 attempts before throttle)
+    //   - TOTP verify:     15 tokens
+    //   - unauth probe:    25 tokens (20 attempts before throttle)
+    //   - auth write:       2 tokens (250 writes before throttle)
     //   - auth read/logout: 0 tokens (free, never throttled)
     //
     // This means a brute-force attacker depletes the bucket in ~25 tries,
@@ -97,7 +96,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::files::router())
         .merge(api::projects::router())
         .merge(api::thread_groups::router())
-        .merge(api::invites::router())
+        .merge(api::accounts::router())
         .merge(api::models::router())
         .merge(api::providers::router())
         .route("/api/auth/me", get(api::auth::me))

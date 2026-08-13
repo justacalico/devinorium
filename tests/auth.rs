@@ -1,5 +1,5 @@
-//! Integration tests for the auth system: bootstrap, login, register
-//! (invite-only), `me`, TOTP setup/verify, and role enforcement.
+//! Integration tests for the auth system: bootstrap, login, `me`, owner
+//! account management, TOTP setup/verify, and role enforcement.
 //!
 //! These spin up a real axum app against a temp SQLite db.
 
@@ -82,6 +82,7 @@ fn build_router(state: AppState) -> Router {
             "/api/auth/totp/disable",
             axum::routing::post(devinorium::api::auth::totp_disable),
         )
+        .merge(devinorium::api::accounts::router())
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::middleware::require_auth,
@@ -98,6 +99,33 @@ async fn read_body(body: axum::body::Body) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
+async fn login(app: &Router, username: &str, password: &str) -> String {
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"username":"{username}","password":"{password}"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    resp.headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
 #[tokio::test]
 async fn bootstrap_creates_owner() {
     let (_state, db) = make_app("owner", "supersecret123").await;
@@ -105,6 +133,7 @@ async fn bootstrap_creates_owner() {
     assert_eq!(users.len(), 1);
     assert_eq!(users[0].username, "owner");
     assert_eq!(users[0].role, "user");
+    assert!(users[0].is_owner);
 }
 
 #[tokio::test]
@@ -188,6 +217,28 @@ async fn me_requires_auth() {
 }
 
 #[tokio::test]
+async fn me_includes_is_owner() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_body(resp.into_body()).await;
+    assert!(body.contains("\"is_owner\":true"), "body: {body}");
+    assert!(body.contains("\"role\":\"user\""), "body: {body}");
+}
+
+#[tokio::test]
 async fn full_login_then_me_flow() {
     let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
@@ -238,82 +289,208 @@ async fn full_login_then_me_flow() {
     let body = read_body(resp.into_body()).await;
     assert!(body.contains("\"role\":\"user\""), "body: {body}");
     assert!(body.contains("\"username\":\"owner\""), "body: {body}");
+    assert!(body.contains("\"is_owner\":true"), "body: {body}");
 }
 
 #[tokio::test]
-async fn register_requires_valid_invite() {
-    let (state, db) = make_app("owner", "supersecret123").await;
+async fn owner_creates_user() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
 
-    // No invite -> rejected.
     let resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/auth/register")
+                .uri("/api/users")
                 .header("content-type", "application/json")
+                .header("cookie", &cookie)
                 .body(Body::from(
-                    r#"{"invite":"bogus","username":"alice","password":"alicepass123"}"#,
+                    r#"{"username":"alice","password":"alicepass123"}"#,
                 ))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = read_body(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["username"], "alice");
+    assert!(v["id"].is_i64());
 
-    // Owner creates an invite.
-    let owner = db.get_user_by_username("owner").await.unwrap().unwrap();
-    let invite = db.create_invite(owner.id, 7).await.unwrap();
+    // The new user can log in.
+    let _ = login(&app, "alice", "alicepass123").await;
+}
 
-    // Valid invite -> success.
+#[tokio::test]
+async fn non_owner_cannot_create_user() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let owner_cookie = login(&app, "owner", "supersecret123").await;
+
+    // Owner creates alice.
     let resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/auth/register")
+                .uri("/api/users")
                 .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"invite":"{invite}","username":"alice","password":"alicepass123"}}"#
-                )))
+                .header("cookie", &owner_cookie)
+                .body(Body::from(
+                    r#"{"username":"alice","password":"alicepass123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Alice tries to create another user and is forbidden.
+    let alice_cookie = login(&app, "alice", "alicepass123").await;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/users")
+                .header("content-type", "application/json")
+                .header("cookie", &alice_cookie)
+                .body(Body::from(
+                    r#"{"username":"bob","password":"bobpass12345"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn owner_can_list_users() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    // Create a second user so the list has more than one entry.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/users")
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(
+                    r#"{"username":"alice","password":"alicepass123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/users")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_body(resp.into_body()).await;
+    let users = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(users.len(), 2);
+    assert!(users.iter().any(|u| u["username"] == "owner" && u["is_owner"] == true));
+    assert!(users.iter().any(|u| u["username"] == "alice" && u["is_owner"] == false));
+    // Sorted by id.
+    assert!(users[0]["id"].as_i64().unwrap() < users[1]["id"].as_i64().unwrap());
+}
+
+#[tokio::test]
+async fn owner_can_disable_user() {
+    let (state, db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    // Create bob.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/users")
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(
+                    r#"{"username":"bob","password":"bobpass12345"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bob_id = serde_json::from_str::<serde_json::Value>(&read_body(resp.into_body()).await)
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+
+    // Bob can log in and use /me.
+    let bob_cookie = login(&app, "bob", "bobpass12345").await;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", &bob_cookie)
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // alice exists and is role user.
-    let alice = db.get_user_by_username("alice").await.unwrap().unwrap();
-    assert_eq!(alice.role, "user");
-
-    // Invite cannot be reused.
-    let (state2, _db2) = make_app("owner", "supersecret123").await;
-    // (separate app instance not needed; reuse db via state)
-    let _ = state2;
-}
-
-#[tokio::test]
-async fn register_rejects_short_password() {
-    let (state, db) = make_app("owner", "supersecret123").await;
-    let app = build_router(state.clone());
-    let owner = db.get_user_by_username("owner").await.unwrap().unwrap();
-    let invite = db.create_invite(owner.id, 7).await.unwrap();
+    // Owner disables bob.
     let resp = app
         .clone()
         .oneshot(
             Request::builder()
-                .method("POST")
-                .uri("/api/auth/register")
+                .method("PATCH")
+                .uri(format!("/api/users/{bob_id}"))
                 .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"invite":"{invite}","username":"bob","password":"short"}}"#
-                )))
+                .header("cookie", &cookie)
+                .body(Body::from(r#"{"disabled":true}"#))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_body(resp.into_body()).await;
+    assert!(body.contains("\"ok\":true"), "body: {body}");
+
+    // Verify disabled flag in the DB.
+    let bob = db.get_user_by_id(bob_id).await.unwrap().unwrap();
+    assert!(bob.disabled);
+
+    // Bob's existing session is now rejected.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", &bob_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -417,4 +594,95 @@ async fn totp_setup_and_verify_flow() {
         .unwrap();
     let body = read_body(resp.into_body()).await;
     assert!(body.contains("\"totp_required\":true"), "body: {body}");
+}
+
+#[tokio::test]
+async fn owner_cannot_disable_self() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/api/users/1")
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(r#"{"disabled":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_user_rejects_short_password() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/users")
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(
+                    r#"{"username":"alice","password":"short12345"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn owner_cannot_disable_another_owner() {
+    let (state, db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    // Create a normal user and promote them to owner in the DB.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/users")
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(
+                    r#"{"username":"alice","password":"alicepass123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let alice_id = serde_json::from_str::<serde_json::Value>(&read_body(resp.into_body()).await)
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    db.set_user_owner(alice_id, true).await.unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/users/{alice_id}"))
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(r#"{"disabled":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }

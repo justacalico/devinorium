@@ -1,8 +1,8 @@
 //! HTTP API routes.
 
+pub mod accounts;
 pub mod auth;
 pub mod files;
-pub mod invites;
 pub mod models;
 pub mod projects;
 pub mod providers;

@@ -459,13 +459,13 @@ async fn send_stream(
     let tx_text = tx.clone();
     let text_callback: StreamChunkCallback = Arc::new(move |chunk: String| {
         let _ = tx_text.send(Ok(
-            Event::default().event("chunk").data(&sanitize_sse_data(&chunk)),
+            Event::default().event("chunk").data(sanitize_sse_data(&chunk)),
         ));
     });
     let tx_thinking = tx.clone();
     let thinking_callback: StreamChunkCallback = Arc::new(move |chunk: String| {
         let _ = tx_thinking.send(Ok(
-            Event::default().event("thinking").data(&sanitize_sse_data(&chunk)),
+            Event::default().event("thinking").data(sanitize_sse_data(&chunk)),
         ));
     });
     let tx_tool = tx.clone();
@@ -475,7 +475,7 @@ async fn send_stream(
             Err(_) => return,
         };
         let _ = tx_tool.send(Ok(
-            Event::default().event("tool_call").data(&sanitize_sse_data(&payload)),
+            Event::default().event("tool_call").data(sanitize_sse_data(&payload)),
         ));
     });
 
@@ -707,6 +707,7 @@ async fn persist_user_message(
         .map_err(|e| crate::api::map_err_internal(e).into_response())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn call_provider(
     state: &AppState,
     user: &crate::db::UserRow,

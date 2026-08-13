@@ -13,10 +13,7 @@ use std::path::{Path, PathBuf};
 pub fn resolve_within(path: &Path, base: Option<&Path>, roots: &[PathBuf]) -> Option<PathBuf> {
     // First, join with base if relative and base is set.
     let joined = if path.is_relative() {
-        match base {
-            Some(b) => b.join(path),
-            None => return None,
-        }
+        base?.join(path)
     } else {
         path.to_path_buf()
     };

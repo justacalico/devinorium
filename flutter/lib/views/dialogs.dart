@@ -15,8 +15,6 @@ class DialogLayer extends StatelessWidget {
         return const SizedBox.shrink();
       case DialogKind.totpSetup:
         return const _TotpSetupDialog();
-      case DialogKind.invites:
-        return const _InvitesDialog();
       case DialogKind.newProject:
         return const _NewProjectDialog();
       case DialogKind.permissionRequest:
@@ -102,116 +100,6 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
                             state.verifyTotp(_codeController.text.trim());
                           },
                           child: const Text('Verify'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InvitesDialog extends StatelessWidget {
-  const _InvitesDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final theme = Theme.of(context);
-    final invites = state.invites;
-    return Stack(
-      children: [
-        ModalBarrier(color: Colors.black.withValues(alpha: 0.5), dismissible: false),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text('Invite tokens',
-                              style: theme.textTheme.headlineSmall),
-                        ),
-                        IconButton.filled(
-                          onPressed: state.createInvite,
-                          icon: const Icon(Icons.add),
-                          tooltip: 'Create invite',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Share a token so someone can register. Tokens are single-use and expire in 7 days.',
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 240,
-                      child: invites.isEmpty
-                          ? Center(
-                              child: Text('No invites yet.',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                      color:
-                                          theme.colorScheme.onSurfaceVariant)),
-                            )
-                          : ListView.separated(
-                              itemCount: invites.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 6),
-                              itemBuilder: (_, i) {
-                                final inv = invites[i];
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        theme.colorScheme.surfaceContainerHigh,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: SelectableText(
-                                          inv.token,
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                  fontFamily: 'monospace'),
-                                        ),
-                                      ),
-                                      Text(
-                                        inv.isUsed ? 'Used' : 'Available',
-                                        style: theme.textTheme.labelSmall
-                                            ?.copyWith(
-                                          color: inv.isUsed
-                                              ? theme.colorScheme.error
-                                              : theme.colorScheme.tertiary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: state.closeDialog,
-                          child: const Text('Close'),
                         ),
                       ],
                     ),

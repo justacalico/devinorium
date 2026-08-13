@@ -60,6 +60,7 @@ class SettingsPage extends StatelessWidget {
                 ],
               ),
               _ProviderCard(state: state),
+              if (state.isOwner) _AccountsSection(state: state),
             ],
           ),
         ),
@@ -208,8 +209,6 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
     final user = widget.state.user;
     if (user == null) return;
 
-    // Persist the command before testing so the user isn't surprised when
-    // a successful test does not match the value used in chat.
     await _save();
     final command = _effectiveCommand;
 
@@ -264,6 +263,217 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
               : const Text('Test'),
         ),
       ],
+    );
+  }
+}
+
+class _AccountsSection extends StatefulWidget {
+  final AppState state;
+
+  const _AccountsSection({required this.state});
+
+  @override
+  State<_AccountsSection> createState() => _AccountsSectionState();
+}
+
+class _AccountsSectionState extends State<_AccountsSection> {
+  final _formKey = GlobalKey<FormState>();
+  final _username = TextEditingController();
+  final _password = TextEditingController();
+  bool _obscure = true;
+  bool _creating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.loadUsers();
+  }
+
+  @override
+  void dispose() {
+    _username.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _creating = true);
+    await widget.state.createUser(
+      username: _username.text,
+      password: _password.text,
+    );
+    if (mounted) {
+      setState(() => _creating = false);
+      _username.clear();
+      _password.clear();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return _SectionCard(
+      title: 'Accounts',
+      children: [
+        Form(
+          key: _formKey,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _username,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  textInputAction: TextInputAction.next,
+                  enabled: !_creating,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Required' : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextFormField(
+                  controller: _password,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscure
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined),
+                      onPressed: () =>
+                          setState(() => _obscure = !_obscure),
+                    ),
+                  ),
+                  obscureText: _obscure,
+                  textInputAction: TextInputAction.done,
+                  enabled: !_creating,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    if (v.length < 12) return 'At least 12 characters';
+                    return null;
+                  },
+                  onFieldSubmitted: (_) => _submit(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: _creating ? null : _submit,
+                child: _creating
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Create user'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        ListenableBuilder(
+          listenable: widget.state,
+          builder: (context, child) {
+            final users = widget.state.users;
+            if (users.isEmpty) {
+              return Text(
+                'No users yet.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant),
+              );
+            }
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: users.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (_, i) => _UserRow(
+                user: users[i],
+                state: widget.state,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _UserRow extends StatelessWidget {
+  final User user;
+  final AppState state;
+
+  const _UserRow({required this.user, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.username,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  user.role,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.verified_user_outlined,
+                  size: 16,
+                  color: user.totpEnabled
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  user.totpEnabled ? 'On' : 'Off',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          if (!user.isOwner)
+            Expanded(
+              flex: 2,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    user.disabled ? 'Disabled' : 'Active',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  Switch(
+                    value: user.disabled,
+                    onChanged: (v) => state.setUserDisabled(user.id, v),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

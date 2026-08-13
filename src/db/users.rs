@@ -7,19 +7,30 @@ use super::UserRow;
 pub struct NewUser {
     pub username: String,
     pub password_hash: String,
+    pub is_owner: bool,
 }
 
 impl super::Db {
     pub async fn create_user(&self, new: NewUser) -> anyhow::Result<UserRow> {
         sqlx::query_as::<_, UserRow>(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)
+            "INSERT INTO users (username, password_hash, is_owner) VALUES (?, ?, ?)
              RETURNING *",
         )
         .bind(&new.username)
         .bind(&new.password_hash)
+        .bind(new.is_owner)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
+    }
+
+    pub async fn set_user_owner(&self, user_id: i64, is_owner: bool) -> anyhow::Result<()> {
+        sqlx::query("UPDATE users SET is_owner = ? WHERE id = ?")
+            .bind(is_owner)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
     }
 
     pub async fn set_provider(
