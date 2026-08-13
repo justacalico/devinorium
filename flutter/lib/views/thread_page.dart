@@ -691,6 +691,7 @@ class _ComposerState extends State<_Composer> {
                               ModelPicker(
                                 value: state.selectedModel,
                                 models: state.models,
+                                enabled: hasActiveThread && !isSending,
                                 onChanged: (model) {
                                   state.setSelectedModel(model);
                                   state.saveThreadSettings();
@@ -698,6 +699,7 @@ class _ComposerState extends State<_Composer> {
                               ),
                               _PermissionDropdown(
                                 value: state.selectedPermission,
+                                enabled: hasActiveThread && !isSending,
                                 onChanged: (mode) {
                                   state.setSelectedPermission(mode);
                                   state.saveThreadSettings();
@@ -740,7 +742,12 @@ class _ComposerState extends State<_Composer> {
 class _PermissionDropdown extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
-  const _PermissionDropdown({required this.value, required this.onChanged});
+  final bool enabled;
+  const _PermissionDropdown({
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -765,9 +772,11 @@ class _PermissionDropdown extends StatelessWidget {
       underline: const SizedBox(),
       isDense: true,
       items: items,
-      onChanged: (v) {
-        if (v != null) onChanged(v);
-      },
+      onChanged: enabled
+          ? (v) {
+              if (v != null) onChanged(v);
+            }
+          : null,
     );
   }
 }
