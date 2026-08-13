@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../widgets/owner_badge.dart';
 
 Color _projectColor(String name) {
   final colors = [
@@ -472,24 +473,46 @@ class _SettingsNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final topics = [
       (icon: Icons.person_outline, label: 'Account'),
+      (icon: Icons.cloud_outlined, label: 'Providers'),
+      (icon: Icons.devices_outlined, label: 'Devices'),
+      (icon: Icons.palette_outlined, label: 'Personalization'),
+      if (state.isOwner)
+        (icon: Icons.manage_accounts_outlined, label: 'Accounts'),
     ];
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: [
         const _SectionHeader('Topics'),
-        for (final t in topics)
-          ListTile(
-            leading: Icon(t.icon, size: 20),
-            title: Text(t.label),
-            selected: t.label == 'Account',
-            selectedTileColor: theme.colorScheme.secondaryContainer,
+        for (var i = 0; i < topics.length; i++)
+          Material(
+            color: Colors.transparent,
+            elevation: 0,
             shape: const StadiumBorder(),
-            dense: true,
-            onTap: () => Scaffold.of(context).closeDrawer(),
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: Icon(topics[i].icon, size: 20),
+              title: Row(
+                children: [
+                  Text(topics[i].label),
+                  if (topics[i].label == 'Accounts') ...[
+                    const SizedBox(width: 6),
+                    const OwnerBadge(),
+                  ],
+                ],
+              ),
+              selected: i == state.settingsTopicIndex,
+              selectedTileColor: theme.colorScheme.secondaryContainer,
+              dense: true,
+              onTap: () {
+                state.setSettingsTopicIndex(i);
+                Scaffold.of(context).closeDrawer();
+              },
+            ),
           ),
       ],
     );

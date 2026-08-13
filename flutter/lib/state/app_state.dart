@@ -39,8 +39,10 @@ class AppState extends ChangeNotifier {
     List<String> filesPath = const [],
     String? globalError,
     ThemeMode? themeMode,
+    int? settingsTopicIndex,
   })  : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
+    _settingsTopicIndex = settingsTopicIndex ?? 0;
     _user = user;
     _users = users;
     _projects = projects;
@@ -103,6 +105,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription? _sendSubscription;
   PermissionRequest? _pendingPermissionRequest;
   ThemeMode _themeMode = ThemeMode.system;
+  int _settingsTopicIndex = 0;
 
   // Getters
   AppView get view => _view;
@@ -150,11 +153,13 @@ class AppState extends ChangeNotifier {
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
   ThemeMode get themeMode => _themeMode;
+  int get settingsTopicIndex => _settingsTopicIndex;
 
   // ---- Setters / mutations ----
 
   void setView(AppView v) { _view = v; notifyListeners(); }
   void setPage(MainPage p) { _page = p; notifyListeners(); }
+  void setSettingsTopicIndex(int index) { _settingsTopicIndex = index; notifyListeners(); }
   void toggleUserMenu() { _userMenuOpen = !_userMenuOpen; notifyListeners(); }
   void setUserMenuOpen(bool v) { _userMenuOpen = v; notifyListeners(); }
   void setComposerText(String t) { _composerText = t; notifyListeners(); }
@@ -465,6 +470,7 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     _user = null;
     _users = [];
+    _settingsTopicIndex = 0;
     _view = api.client.isNative ? AppView.setup : AppView.login;
     _page = MainPage.threads;
     _userMenuOpen = false;

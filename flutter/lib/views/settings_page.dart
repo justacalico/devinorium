@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/download.dart';
 import '../utils/origin.dart';
+import '../widgets/owner_badge.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -14,10 +15,16 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final user = state.user;
-    final username = user?.username ?? '';
-    final totpEnabled = user?.totpEnabled ?? false;
     final isNarrow = MediaQuery.of(context).size.width < 768;
+
+    final sections = [
+      _AccountSection(state: state),
+      _ProviderCard(state: state),
+      _DevicesSection(state: state),
+      _PersonalizationSection(state: state),
+      if (state.isOwner) _AccountsSection(state: state),
+    ];
+    final index = state.settingsTopicIndex.clamp(0, sections.length - 1);
 
     return Scaffold(
       appBar: AppBar(
@@ -36,47 +43,20 @@ class SettingsPage extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 560),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _SectionCard(
-                  title: 'Account',
-                  children: [
-                    _SettingsRow(
-                      label: 'Username',
-                      value: username.isEmpty ? '—' : username,
-                    ),
-                    const Divider(),
-                    _SettingsRow(
-                      label: 'Two-factor authentication',
-                      value: totpEnabled ? 'Enabled' : 'Disabled',
-                      trailing: totpEnabled
-                          ? OutlinedButton.icon(
-                              onPressed: () => _confirmDisableTotp(context, state),
-                              icon: const Icon(Icons.lock_open_outlined, size: 18),
-                              label: const Text('Disable 2FA'),
-                            )
-                          : FilledButton.icon(
-                              onPressed: state.openTotpSetup,
-                              icon: const Icon(Icons.lock_outline, size: 18),
-                              label: const Text('Enable 2FA'),
-                            ),
-                    ),
-                  ],
-                ),
-                _ProviderCard(state: state),
-                _DevicesSection(state: state),
-                _PersonalizationSection(state: state),
-                if (state.isOwner) _AccountsSection(state: state),
-              ],
-            ),
+            child: sections[index],
           ),
         ),
       ),
     );
   }
+}
 
-  Future<void> _confirmDisableTotp(BuildContext context, AppState state) async {
+class _AccountSection extends StatelessWidget {
+  final AppState state;
+
+  const _AccountSection({required this.state});
+
+  Future<void> _confirmDisableTotp(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -99,6 +79,39 @@ class SettingsPage extends StatelessWidget {
     if (confirmed == true) {
       await state.disableTotp();
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = state.user;
+    final username = user?.username ?? '';
+    final totpEnabled = user?.totpEnabled ?? false;
+
+    return _SectionCard(
+      title: 'Account',
+      children: [
+        _SettingsRow(
+          label: 'Username',
+          value: username.isEmpty ? '—' : username,
+        ),
+        const Divider(),
+        _SettingsRow(
+          label: 'Two-factor authentication',
+          value: totpEnabled ? 'Enabled' : 'Disabled',
+          trailing: totpEnabled
+              ? OutlinedButton.icon(
+                  onPressed: () => _confirmDisableTotp(context),
+                  icon: const Icon(Icons.lock_open_outlined, size: 18),
+                  label: const Text('Disable 2FA'),
+                )
+              : FilledButton.icon(
+                  onPressed: state.openTotpSetup,
+                  icon: const Icon(Icons.lock_outline, size: 18),
+                  label: const Text('Enable 2FA'),
+                ),
+        ),
+      ],
+    );
   }
 }
 
@@ -136,7 +149,7 @@ class _DevicesSectionState extends State<_DevicesSection> {
       if (serverUrl.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法获取服务器地址')),
+            const SnackBar(content: Text('Could not get server address')),
           );
         }
         return;
@@ -462,32 +475,34 @@ class _PersonalizationSection extends StatelessWidget {
       title: 'Personalization',
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               'Theme',
               style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant),
             ),
-            SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ThemeMode.light,
-                  label: Text('Light'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.dark,
-                  label: Text('Dark'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.system,
-                  label: Text('System'),
-                ),
-              ],
-              selected: {state.themeMode},
-              onSelectionChanged: (modes) {
-                if (modes.isNotEmpty) state.setThemeMode(modes.first);
-              },
+            const SizedBox(width: 16),
+            Expanded(
+              child: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    label: Text('Light'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    label: Text('Dark'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    label: Text('System'),
+                  ),
+                ],
+                selected: {state.themeMode},
+                onSelectionChanged: (modes) {
+                  if (modes.isNotEmpty) state.setThemeMode(modes.first);
+                },
+              ),
             ),
           ],
         ),
@@ -544,6 +559,7 @@ class _AccountsSectionState extends State<_AccountsSection> {
     final theme = Theme.of(context);
     return _SectionCard(
       title: 'Accounts',
+      titleBadge: const OwnerBadge(),
       children: [
         Form(
           key: _formKey,
@@ -710,7 +726,12 @@ class _UserRow extends StatelessWidget {
 class _SectionCard extends StatelessWidget {
   final String title;
   final List<Widget> children;
-  const _SectionCard({required this.title, required this.children});
+  final Widget? titleBadge;
+  const _SectionCard({
+    required this.title,
+    required this.children,
+    this.titleBadge,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -723,9 +744,17 @@ class _SectionCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                Text(title,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
+                if (titleBadge != null) ...[
+                  const SizedBox(width: 8),
+                  titleBadge!,
+                ],
+              ],
+            ),
             const SizedBox(height: 16),
             ...children,
           ],

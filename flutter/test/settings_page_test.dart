@@ -144,6 +144,10 @@ void main() {
     expect(find.text('owner'), findsOneWidget);
     expect(find.text('Enabled'), findsOneWidget);
     expect(find.text('Disable 2FA'), findsOneWidget);
+
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
     expect(find.text('Provider'), findsNWidgets(2));
   });
 
@@ -164,6 +168,9 @@ void main() {
     );
 
     await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(1);
     await tester.pumpAndSettle();
 
     final field = find.widgetWithText(TextField, 'Command');
@@ -197,6 +204,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
     final field = find.widgetWithText(TextField, 'Command');
     await tester.enterText(field, '   ');
     await tester.tap(find.widgetWithText(OutlinedButton, 'Test'));
@@ -227,6 +237,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
     await tester.tap(find.widgetWithText(OutlinedButton, 'Test'));
     await tester.pumpAndSettle();
 
@@ -252,6 +265,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
     await tester.tap(find.widgetWithText(OutlinedButton, 'Test'));
     await tester.pumpAndSettle();
 
@@ -274,6 +290,9 @@ void main() {
     );
 
     await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     expect(find.text('Accounts'), findsOneWidget);
@@ -321,6 +340,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
     expect(find.text('Devices'), findsOneWidget);
     expect(find.text('Phone'), findsOneWidget);
   });
@@ -343,6 +365,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
     final usernameField = find.widgetWithText(TextField, 'Username');
     final passwordField = find.widgetWithText(TextField, 'Password');
     expect(usernameField, findsOneWidget);
@@ -359,5 +384,51 @@ void main() {
 
     expect(fake.createUserCalls, 1);
     expect(find.text('alice'), findsOneWidget);
+  });
+
+  testWidgets('Settings topic index clamps out of bounds', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 2,
+        username: 'alice',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      settingsTopicIndex: 10,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // With only 4 sections for non-owners, index 10 clamps to 3 (Personalization).
+    expect(find.text('Theme'), findsOneWidget);
+  });
+
+  testWidgets('Personalization tab has theme selector', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(3);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Light'), findsOneWidget);
+    expect(find.text('Dark'), findsOneWidget);
+    expect(find.text('System'), findsOneWidget);
   });
 }
