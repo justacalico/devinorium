@@ -40,9 +40,11 @@ class AppState extends ChangeNotifier {
     String? globalError,
     ThemeMode? themeMode,
     int? settingsTopicIndex,
+    bool sending = false,
   })  : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
     _settingsTopicIndex = settingsTopicIndex ?? 0;
+    _sending = sending;
     _user = user;
     _users = users;
     _projects = projects;
