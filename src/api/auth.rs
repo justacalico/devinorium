@@ -1,5 +1,6 @@
-//! Authentication API routes: login, logout, register (invite-only),
-//! TOTP setup/verify/disable, and `me`.
+//! Authentication API routes: login, logout, `me`, TOTP setup/verify/disable.
+//!
+//! Registration is now owner-managed via the accounts API.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -9,7 +10,6 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{self, password, session::CurrentUser, totp};
-use crate::db::NewUser;
 use crate::AppState;
 
 /// Public (unauthenticated) auth routes.
@@ -17,7 +17,6 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
-        .route("/api/auth/register", post(register))
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,130 +137,12 @@ async fn logout(State(state): State<AppState>, req: axum::extract::Request) -> R
         .into_response()
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RegisterRequest {
-    pub invite: Option<String>,
-    pub username: Option<String>,
-    pub password: Option<String>,
-}
-
-async fn register(State(state): State<AppState>, Json(req): Json<RegisterRequest>) -> Response {
-    // Validate inputs.
-    let invite = match req.invite.as_deref().filter(|s| !s.trim().is_empty()) {
-        Some(i) => i,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(auth_json_err("invite token is required")),
-            )
-                .into_response()
-        }
-    };
-    let username = match req.username.as_deref().filter(|s| !s.trim().is_empty()) {
-        Some(u) => u,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(auth_json_err("username is required")),
-            )
-                .into_response()
-        }
-    };
-    let password = match req.password.as_deref().filter(|s| !s.is_empty()) {
-        Some(p) => p,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(auth_json_err("password is required")),
-            )
-                .into_response()
-        }
-    };
-    if username.trim().len() < 3 || username.len() > 32 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(auth_json_err("username must be 3-32 chars")),
-        )
-            .into_response();
-    }
-    if !username
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
-    {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(auth_json_err("username has invalid characters")),
-        )
-            .into_response();
-    }
-    if password.len() < 10 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(auth_json_err("password must be at least 10 chars")),
-        )
-            .into_response();
-    }
-    if password.len() > 1024 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(auth_json_err("password too long")),
-        )
-            .into_response();
-    }
-
-    // Validate invite.
-    let created_by = match state.db.validate_invite(invite).await {
-        Ok(Some(id)) => id,
-        Ok(None) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(auth_json_err("invalid or used invite")),
-            )
-                .into_response()
-        }
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
-    };
-
-    // Check username not taken.
-    if let Ok(Some(_)) = state.db.get_user_by_username(username).await {
-        return (StatusCode::CONFLICT, Json(auth_json_err("username taken"))).into_response();
-    }
-
-    let hash = match password::hash(password) {
-        Ok(h) => h,
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
-    };
-    let user = match state
-        .db
-        .create_user(NewUser {
-            username: username.to_string(),
-            password_hash: hash,
-        })
-        .await
-    {
-        Ok(u) => u,
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
-    };
-
-    let _ = state.db.consume_invite(invite, user.id).await;
-    let _ = state
-        .db
-        .audit(
-            Some(user.id),
-            "register",
-            &serde_json::json!({"username": username, "invited_by": created_by}),
-            None,
-        )
-        .await;
-
-    Json(serde_json::json!({"ok": true, "username": user.username})).into_response()
-}
-
 #[derive(Debug, Serialize)]
 pub struct MeResponse {
     pub id: i64,
     pub username: String,
     pub role: String,
+    pub is_owner: bool,
     pub totp_enabled: bool,
     pub provider_id: String,
     pub provider_command: String,
@@ -272,6 +153,7 @@ pub async fn me(CurrentUser(user): CurrentUser) -> Response {
         id: user.id,
         username: user.username,
         role: user.role,
+        is_owner: user.is_owner,
         totp_enabled: user.totp_enabled,
         provider_id: user.provider_id,
         provider_command: user.provider_command,
@@ -332,6 +214,7 @@ pub async fn update_me(
         id: user.id,
         username: user.username,
         role: user.role,
+        is_owner: user.is_owner,
         totp_enabled: user.totp_enabled,
         provider_id: provider_id.to_string(),
         provider_command: provider_command.to_string(),

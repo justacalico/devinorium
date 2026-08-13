@@ -7,7 +7,6 @@
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -15,7 +14,6 @@ use sqlx::{
 };
 
 pub mod audit;
-pub mod invites;
 pub mod messages;
 pub mod projects;
 pub mod sessions;
@@ -24,8 +22,6 @@ pub mod threads;
 pub mod users;
 
 pub use projects::NewProject;
-
-pub use invites::InviteRow;
 pub use messages::NewMessage;
 pub use thread_groups::NewThreadGroup;
 pub use threads::NewThread;
@@ -64,13 +60,6 @@ impl Db {
     }
 }
 
-/// Parse a stored ISO-8601 timestamp into a UTC DateTime.
-pub(crate) fn parse_ts(s: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
-}
-
 /// A row from the `users` table.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserRow {
@@ -82,6 +71,7 @@ pub struct UserRow {
     pub role: String,
     pub created_at: String,
     pub disabled: bool,
+    pub is_owner: bool,
     pub provider_id: String,
     pub provider_command: String,
 }

@@ -1,5 +1,5 @@
 //! Integration tests for the core API: threads CRUD, thread groups, file
-//! manager, invites, and models — using a stub provider so no devin CLI is
+//! manager, accounts, and models — using a stub provider so no devin CLI is
 //! required.
 
 #![cfg(test)]
@@ -172,9 +172,8 @@ async fn make_app() -> (Router, db::Db) {
     (devinorium::build_app(state), database)
 }
 
-async fn login(app: &Router) -> String {
+async fn login_as(app: &Router, username: &str, password: &str) -> String {
     let resp = app
-        .clone()
         .clone()
         .oneshot(
             Request::builder()
@@ -183,9 +182,9 @@ async fn login(app: &Router) -> String {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"username":"owner","password":"supersecret123"}"#,
-                ))
+                .body(Body::from(format!(
+                    r#"{{"username":"{username}","password":"{password}"}}"#
+                )))
                 .unwrap(),
         )
         .await
@@ -193,6 +192,28 @@ async fn login(app: &Router) -> String {
     assert_eq!(resp.status(), StatusCode::OK);
     let sc = resp.headers().get("set-cookie").unwrap().to_str().unwrap();
     sc.split(';').next().unwrap().to_string()
+}
+
+async fn login(app: &Router) -> String {
+    login_as(app, "owner", "supersecret123").await
+}
+
+async fn create_user(app: &Router, owner_cookie: &str, username: &str, password: &str) -> i64 {
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/users",
+            owner_cookie,
+            &format!(r#"{{"username":"{username}","password":"{password}"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_i64()
+        .unwrap()
 }
 
 fn authed(method: &str, uri: &str, cookie: &str, body: &str) -> Request<Body> {
@@ -588,27 +609,35 @@ async fn thread_send_streams_reply_as_sse() {
 }
 
 #[tokio::test]
-async fn invites_create_and_list() {
+async fn accounts_owner_create_and_list() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
 
     let resp = app
         .clone()
-        .oneshot(authed("POST", "/api/invites", &cookie, ""))
+        .oneshot(authed(
+            "POST",
+            "/api/users",
+            &cookie,
+            r#"{"username":"alice","password":"alicepass123"}"#,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains("token"), "body: {body}");
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["username"], "alice");
 
     let resp = app
         .clone()
-        .oneshot(authed("GET", "/api/invites", &cookie, ""))
+        .oneshot(authed("GET", "/api/users", &cookie, ""))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains("token"), "body: {body}");
+    let users = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert!(users.iter().any(|u| u["username"] == "alice" && u["is_owner"] == false));
 }
 
 #[tokio::test]
@@ -857,62 +886,15 @@ async fn thread_isolation_between_users() {
     let (app, db) = make_app().await;
     let owner_cookie = login(&app).await;
 
-    // Owner creates an invite and a second user registers.
-    let resp = app
-        .clone()
-        .oneshot(authed("POST", "/api/invites", &owner_cookie, ""))
-        .await
-        .unwrap();
-    let invite: String =
-        serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()
-            ["token"]
-            .as_str()
-            .unwrap()
-            .to_string();
-
-    let resp = app
-        .clone()
-        .oneshot(authed(
-            "POST",
-            "/api/auth/register",
-            &owner_cookie,
-            &format!(r#"{{"invite":"{invite}","username":"alice","password":"alicepass123"}}"#),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    // Owner creates a second user.
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
 
     // Owner creates a project and a thread.
     let owner_pid = create_project(&app, &owner_cookie).await;
     let owner_tid = make_thread(&app, &owner_cookie, owner_pid, "owner-thread").await;
 
     // Alice logs in.
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/login")
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"username":"alice","password":"alicepass123"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let alice_cookie = resp
-        .headers()
-        .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_string();
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
 
     // Alice cannot see owner's thread.
     let resp = app
@@ -985,55 +967,11 @@ async fn disabled_user_cannot_access_protected_routes() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
 
-    // Register a second user.
-    let resp = app
-        .clone()
-        .oneshot(authed("POST", "/api/invites", &cookie, ""))
-        .await
-        .unwrap();
-    let invite: String =
-        serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()
-            ["token"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    app.clone()
-        .oneshot(authed(
-            "POST",
-            "/api/auth/register",
-            &cookie,
-            &format!(r#"{{"invite":"{invite}","username":"bob","password":"bobpass12345"}}"#),
-        ))
-        .await
-        .unwrap();
+    // Owner creates a second user.
+    let bob_id = create_user(&app, &cookie, "bob", "bobpass12345").await;
 
     // Bob logs in.
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/login")
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"username":"bob","password":"bobpass12345"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let bob_cookie = resp
-        .headers()
-        .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_string();
+    let bob_cookie = login_as(&app, "bob", "bobpass12345").await;
 
     // Bob can access /me initially.
     let resp = app
@@ -1043,11 +981,24 @@ async fn disabled_user_cannot_access_protected_routes() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Disable bob directly in the DB.
-    sqlx::query("UPDATE users SET disabled = 1 WHERE username = 'bob'")
-        .execute(db.pool())
+    // Owner disables bob via the accounts API.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/users/{bob_id}"),
+            &cookie,
+            r#"{"disabled":true}"#,
+        ))
         .await
         .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("\"ok\":true"), "body: {body}");
+
+    // Verify in the DB.
+    let bob = db.get_user_by_id(bob_id).await.unwrap().unwrap();
+    assert!(bob.disabled);
 
     // Bob's existing session should now be rejected by the middleware.
     let resp = app

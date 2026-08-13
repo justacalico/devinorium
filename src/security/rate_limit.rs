@@ -3,13 +3,13 @@
 //! Instead of counting every request equally, each endpoint type has a
 //! **cost** that is deducted from the bucket. This means:
 //!
-//! - Sensitive unauthenticated actions (login, register, TOTP verify) cost a
-//!   lot — a brute-force attacker depletes the bucket in a few tries.
+//! - Sensitive unauthenticated actions (login, TOTP verify) cost a lot — a
+//!   brute-force attacker depletes the bucket in a few tries.
 //! - Authenticated read actions (GET /threads, GET /files) cost nothing —
 //!   normal browsing is never throttled.
-//! - Authenticated write actions (send message, upload file) cost a little —
-//!   a user can send many messages before being throttled, but a script
-//!   spamming the API will be stopped.
+//! - Authenticated write actions (send message, create thread, create user)
+//!   cost a little — a user can send many messages before being throttled,
+//!   but a script spamming the API will be stopped.
 //! - Unauthenticated attempts to hit protected endpoints cost the most —
 //!   this penalizes probing/scanning behavior.
 //!
@@ -32,16 +32,14 @@ use super::ip::from_req;
 /// Higher = more expensive = fewer allowed before throttling.
 #[derive(Debug, Clone, Copy)]
 pub enum EndpointClass {
-    /// Sensitive unauthenticated auth: login, register. High cost.
+    /// Sensitive unauthenticated auth: login. High cost.
     AuthSensitive,
     /// TOTP verification (unauthenticated but requires a valid session cookie
     /// to have been issued). Medium-high cost.
     TotpVerify,
-    /// Authenticated write: send message, create thread, upload file, etc.
+    /// Authenticated write: send message, create thread, create user, etc.
     /// Low cost — normal usage should never hit the limit.
     AuthWrite,
-    /// Authenticated sensitive write: create invite. Medium cost.
-    AuthSensitiveWrite,
     /// Authenticated read or logout. Free.
     AuthRead,
     /// Unauthenticated attempt to hit a protected endpoint. Very high cost —
@@ -55,7 +53,6 @@ impl EndpointClass {
             EndpointClass::AuthSensitive => 20.0,
             EndpointClass::TotpVerify => 15.0,
             EndpointClass::AuthWrite => 2.0,
-            EndpointClass::AuthSensitiveWrite => 5.0,
             EndpointClass::AuthRead => 0.0,
             EndpointClass::UnauthProbe => 25.0,
         }
@@ -146,7 +143,7 @@ pub fn classify(req: &Request) -> EndpointClass {
     let has_cookie = req.headers().get(axum::http::header::COOKIE).is_some();
 
     // Auth endpoints (public, no session required).
-    if path == "/api/auth/login" || path == "/api/auth/register" {
+    if path == "/api/auth/login" {
         return EndpointClass::AuthSensitive;
     }
     if path == "/api/auth/totp/verify" {
@@ -166,10 +163,6 @@ pub fn classify(req: &Request) -> EndpointClass {
     if !has_cookie && is_write {
         // No cookie + write attempt to a protected endpoint = probing.
         return EndpointClass::UnauthProbe;
-    }
-
-    if path == "/api/invites" && is_write {
-        return EndpointClass::AuthSensitiveWrite;
     }
 
     if is_write {
@@ -312,16 +305,6 @@ mod tests {
     }
 
     #[test]
-    fn classify_register_is_sensitive() {
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri("/api/auth/register")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        assert!(matches!(classify(&req), EndpointClass::AuthSensitive));
-    }
-
-    #[test]
     fn classify_logout_is_free() {
         let req = Request::builder()
             .method(Method::POST)
@@ -355,6 +338,17 @@ mod tests {
     }
 
     #[test]
+    fn classify_post_users_with_cookie_is_write() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/users")
+            .header(axum::http::header::COOKIE, "session=abc")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert!(matches!(classify(&req), EndpointClass::AuthWrite));
+    }
+
+    #[test]
     fn classify_post_threads_without_cookie_is_probe() {
         let req = Request::builder()
             .method(Method::POST)
@@ -362,17 +356,6 @@ mod tests {
             .body(axum::body::Body::empty())
             .unwrap();
         assert!(matches!(classify(&req), EndpointClass::UnauthProbe));
-    }
-
-    #[test]
-    fn classify_post_invites_is_sensitive_write() {
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri("/api/invites")
-            .header(axum::http::header::COOKIE, "session=abc")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        assert!(matches!(classify(&req), EndpointClass::AuthSensitiveWrite));
     }
 
     #[test]
