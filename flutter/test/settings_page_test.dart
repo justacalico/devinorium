@@ -368,6 +368,10 @@ void main() {
     state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
+    final openButton = find.widgetWithText(FilledButton, 'Create user');
+    await tester.tap(openButton);
+    await tester.pumpAndSettle();
+
     final usernameField = find.widgetWithText(TextField, 'Username');
     final passwordField = find.widgetWithText(TextField, 'Password');
     expect(usernameField, findsOneWidget);
@@ -376,9 +380,7 @@ void main() {
     await tester.enterText(usernameField, 'alice');
     await tester.enterText(passwordField, 'password1234');
 
-    final createButton = find.widgetWithText(FilledButton, 'Create user');
-    await tester.ensureVisible(createButton);
-    await tester.pumpAndSettle();
+    final createButton = find.widgetWithText(FilledButton, 'Create');
     await tester.tap(createButton);
     await tester.pumpAndSettle();
 
