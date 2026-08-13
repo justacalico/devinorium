@@ -496,7 +496,7 @@ class _SettingsNav extends StatelessWidget {
       (icon: Icons.devices_outlined, label: 'Devices'),
       (icon: Icons.palette_outlined, label: 'Personalization'),
       if (state.isOwner)
-        (icon: Icons.manage_accounts_outlined, label: 'Accounts'),
+        (icon: Icons.manage_accounts_outlined, label: 'Manage'),
     ];
 
     return ListView(
@@ -514,7 +514,7 @@ class _SettingsNav extends StatelessWidget {
               title: Row(
                 children: [
                   Text(topics[i].label),
-                  if (topics[i].label == 'Accounts') ...[
+                  if (topics[i].label == 'Manage') ...[
                     const SizedBox(width: 6),
                     const OwnerBadge(),
                   ],

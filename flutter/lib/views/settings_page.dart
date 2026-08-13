@@ -553,7 +553,7 @@ class _AccountsSectionState extends State<_AccountsSection> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return _SectionCard(
-      title: 'Accounts',
+      title: 'Manage',
       titleBadge: const OwnerBadge(),
       children: [
         Form(

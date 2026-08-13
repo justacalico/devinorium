@@ -274,7 +274,7 @@ void main() {
     expect(find.textContaining('Provider test failed'), findsOneWidget);
   });
 
-  testWidgets('Accounts section appears for owners', (tester) async {
+  testWidgets('Manage section appears for owners', (tester) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -295,12 +295,12 @@ void main() {
     state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    expect(find.text('Accounts'), findsOneWidget);
+    expect(find.text('Manage'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Create user'), findsOneWidget);
     expect(find.text('owner'), findsWidgets);
   });
 
-  testWidgets('Accounts section is hidden for non-owners', (tester) async {
+  testWidgets('Manage section is hidden for non-owners', (tester) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -318,7 +318,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    expect(find.text('Accounts'), findsNothing);
+    expect(find.text('Manage'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Create user'), findsNothing);
   });
 

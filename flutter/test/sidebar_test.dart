@@ -43,11 +43,11 @@ void main() {
     expect(find.text('Providers'), findsOneWidget);
     expect(find.text('Devices'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
-    expect(find.text('Accounts'), findsOneWidget);
+    expect(find.text('Manage'), findsOneWidget);
     expect(find.text('Owner'), findsOneWidget);
   });
 
-  testWidgets('Sidebar hides Accounts topic for non-owners', (tester) async {
+  testWidgets('Sidebar hides Manage topic for non-owners', (tester) async {
     final state = AppState.test(
       user: User(
         id: 2,
@@ -68,7 +68,7 @@ void main() {
     expect(find.text('Providers'), findsOneWidget);
     expect(find.text('Devices'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
-    expect(find.text('Accounts'), findsNothing);
+    expect(find.text('Manage'), findsNothing);
   });
 
   testWidgets('Settings topic selection updates AppState', (tester) async {
