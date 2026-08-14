@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.8.0 - 2026-08-14
+#### Features
+- 前端文案全部迁移到 AppLocalizations（仅支持英文） - (b6f66cc) - HttpAnimations
+- 在个性化设置中添加语言选项 - (7657449) - HttpAnimations
+
+- - -
+
 ## v0.7.1 - 2026-08-14
 #### Bug Fixes
 - 取消 SSE 时不再关闭 native 客户端的共享 http client - (09a3e84) - HttpAnimations
