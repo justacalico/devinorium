@@ -72,21 +72,20 @@ async fn create(
     }
 
     let path = req.path.trim();
-    if path.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("project path is required")),
-        )
-            .into_response();
-    }
+    // An empty path is interpreted as the user's home directory so the
+    // project picker can select the home root.
 
     // Validate the path is within the configured file root.
-    let Ok(abs) = resolve_and_ensure_dir(&state, path).await else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("invalid project path")),
-        )
-            .into_response();
+    let abs = match resolve_and_ensure_dir(&state, path).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, path = %path, "project path resolution failed");
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid project path")),
+            )
+                .into_response();
+        }
     };
 
     let path_str = match abs.to_str() {
@@ -153,8 +152,24 @@ async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<
         return Ok(tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved));
     }
 
+    // Treat `.` and empty paths as the home directory so the user can add the
+    // home root from the folder picker.
+    if path.is_empty() || path == "." {
+        let resolved = state.config.home_dir.clone();
+        tokio::fs::create_dir_all(&resolved).await?;
+        return Ok(tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved));
+    }
+
+    // Reject `..` in any path component to prevent traversal through symlinks.
+    if path.split(|c: char| c == '/' || c == '\\').any(|c| c == "..") {
+        return Err(anyhow::anyhow!("path traversal is not allowed"));
+    }
+
+    // Resolve relative to home. Unlike the file manager, project creation allows
+    // absolute paths, so a symlink inside the home directory that points outside
+    // is also accepted.
     let candidate = state.config.home_dir.join(&path);
-    let resolved = paths::resolve_within(&candidate, Some(&state.config.home_dir), &[state.config.home_dir.clone()])
+    let resolved = paths::resolve(&candidate, Some(&state.config.home_dir), None)
         .ok_or_else(|| anyhow::anyhow!("invalid project path"))?;
 
     // Ensure the directory exists.
@@ -168,17 +183,23 @@ fn normalize_path(path: &str, home: &std::path::Path) -> String {
     let mut s = path.trim().to_string();
 
     // Strip matching surrounding quotes, e.g. "/path/with spaces" or '/path'.
-    if s.len() >= 2 {
-        let first = s.chars().next().unwrap();
-        let last = s.chars().last().unwrap();
-        if (first == last) && (first == '\"' || first == '\'') {
-            s = s[1..s.len() - 1].to_string();
-        }
+    if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        s = inner.to_string();
+    } else if let Some(inner) = s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+        s = inner.to_string();
     }
 
     // Expand a leading `~` to the home directory.
-    if s == "~" || s.starts_with("~/") {
-        s = home.join(&s[1..]).to_string_lossy().to_string();
+    if s == "~" || s == "~/" || s == "~\\" {
+        s = home.to_string_lossy().to_string();
+    } else if s.starts_with("~/") || s.starts_with("~\\") {
+        let sep = if s.starts_with("~/") { '/' } else { '\\' };
+        let rest = s[2..].trim_start_matches(sep);
+        s = if rest.is_empty() {
+            home.to_string_lossy().to_string()
+        } else {
+            home.join(rest).to_string_lossy().to_string()
+        };
     }
 
     s

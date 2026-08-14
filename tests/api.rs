@@ -880,6 +880,215 @@ async fn project_accepts_absolute_path_with_spaces() {
 }
 
 #[tokio::test]
+async fn project_accepts_existing_home_subdir() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    // Create a subdir inside the configured home dir before creating the project.
+    let sub = home.join("devinorium");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    let body = r#"{"name":"devin","path":"devinorium"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+}
+
+#[tokio::test]
+async fn project_accepts_tilde_subdir() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let sub = home.join("devin");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    let body = r#"{"name":"devin","path":"~/devin"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["path"].as_str().unwrap().contains("devin"));
+}
+
+#[tokio::test]
+async fn project_accepts_home_root_with_tilde() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"home","path":"~"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), home.to_str().unwrap());
+}
+
+#[tokio::test]
+async fn project_accepts_existing_home_subdir_symlink() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    // Create a real dir outside the home and a symlink inside home.
+    let real = tempfile::tempdir().unwrap().keep().join("real-dev");
+    std::fs::create_dir_all(&real).unwrap();
+    let link = home.join("devin-link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let body = r#"{"name":"devin","path":"devin-link"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+}
+
+#[tokio::test]
+async fn project_accepts_home_root_with_dot() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"home","path":"."}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), home.to_str().unwrap());
+}
+
+#[tokio::test]
+async fn project_accepts_home_root_with_empty_path() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"home","path":""}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), home.to_str().unwrap());
+}
+
+#[tokio::test]
+async fn project_rejects_traversal() {
+    let (state, _db) = app_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"devin","path":"devin/../etc"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("invalid"), "body: {body}");
+}
+
+#[tokio::test]
+async fn project_rejects_windows_style_traversal() {
+    let (state, _db) = app_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"devin","path":"devin\\..\\etc"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("invalid"), "body: {body}");
+}
+
+#[tokio::test]
+async fn project_accepts_tilde_with_trailing_slash() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"home","path":"~/"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), home.to_str().unwrap());
+}
+
+#[tokio::test]
 async fn file_manager_lists_absolute_path_with_spaces() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
