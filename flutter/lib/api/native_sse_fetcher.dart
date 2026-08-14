@@ -38,21 +38,29 @@ Stream<SseEvent> nativeSseStream({
     ));
   }
 
-  final controller = StreamController<SseEvent>(
-    onCancel: () {
+  var clientClosed = false;
+  void closeClient() {
+    if (clientClosed) return;
+    clientClosed = true;
+    try {
       client.close();
-    },
+    } catch (_) {}
+  }
+
+  final controller = StreamController<SseEvent>(
+    onCancel: closeClient,
   );
 
-  _run(client, req, controller);
+  _run(client, req, controller, onDone: closeClient);
   return controller.stream;
 }
 
 Future<void> _run(
   http.Client client,
   http.MultipartRequest req,
-  StreamController<SseEvent> controller,
-) async {
+  StreamController<SseEvent> controller, {
+  required void Function() onDone,
+}) async {
   try {
     final streamed = await client.send(req);
     if (streamed.statusCode >= 400) {
@@ -95,5 +103,6 @@ Future<void> _run(
     }
   } finally {
     if (!controller.isClosed) controller.close();
+    onDone();
   }
 }
