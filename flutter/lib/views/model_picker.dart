@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 
 /// A Devin-style model picker: a search-able, two-pane popup that shows
@@ -22,7 +23,7 @@ class ModelPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final selected = _findSelected(models, value);
+    final selected = _findSelected(models, value, l10n(context));
     final disabledColor = theme.colorScheme.onSurface.withValues(alpha: 0.38);
     final contentColor = enabled
         ? theme.colorScheme.onSurface
@@ -103,10 +104,11 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
     final isNarrow = media.size.width < 640;
+    final l = l10n(context);
     final filtered = _filter(widget.models, _search);
-    final grouped = _groupModels(filtered);
+    final grouped = _groupModels(filtered, l);
     final selectedId = _hoveredId ?? widget.value;
-    final selected = _findSelected(widget.models, selectedId);
+    final selected = _findSelected(widget.models, selectedId, l);
 
     final modelList = _ModelList(
       grouped: grouped,
@@ -202,7 +204,7 @@ class _SearchField extends StatelessWidget {
       autofocus: autofocus,
       onChanged: onChanged,
       decoration: InputDecoration(
-        hintText: 'Search models',
+        hintText: l10n(context).searchModels,
         prefixIcon: Icon(
           Icons.search,
           color: theme.colorScheme.onSurfaceVariant,
@@ -242,7 +244,7 @@ class _ModelList extends StatelessWidget {
     if (bases.isEmpty) {
       return Center(
         child: Text(
-          'No models match',
+          l10n(context).noModelsMatch,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -370,8 +372,9 @@ class _ModelRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = l10n(context);
     final isFree = _isFree(model);
-    final contextText = '${_formatTokens(model.maxContextTokens)} context';
+    final contextText = l.contextWithTokens(_formatTokens(model.maxContextTokens, l));
 
     return InkWell(
       onTap: onSelect,
@@ -412,12 +415,12 @@ class _ModelRow extends StatelessWidget {
                     children: [
                       if (isFree)
                         _Badge(
-                          text: 'Free',
+                          text: l10n(context).free,
                           color: theme.colorScheme.tertiary,
                         )
                       else if (_isPromo(model))
                         _Badge(
-                          text: 'Promo',
+                          text: l10n(context).promo,
                           color: theme.colorScheme.primary,
                         )
                       else
@@ -432,14 +435,14 @@ class _ModelRow extends StatelessWidget {
                       if (model.isNew) ...[
                         const SizedBox(width: 6),
                         _Badge(
-                          text: 'New',
+                          text: l10n(context).newLabel,
                           color: theme.colorScheme.primary,
                         ),
                       ],
                       if (model.isBeta) ...[
                         const SizedBox(width: 6),
                         _Badge(
-                          text: 'Beta',
+                          text: l10n(context).beta,
                           color: theme.colorScheme.error,
                         ),
                       ],
@@ -475,11 +478,12 @@ class _ModelDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = l10n(context);
 
     if (model.id.isEmpty) {
       return Center(
         child: Text(
-          'No model selected',
+          l10n(context).noModelSelected,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -500,20 +504,20 @@ class _ModelDetails extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _DetailRow(
-            label: 'Context',
-            value: _formatTokens(model.maxContextTokens),
+            label: l.modelContextLabel,
+            value: _formatTokens(model.maxContextTokens, l),
           ),
           _DetailRow(
-            label: 'Output',
-            value: _formatTokens(model.maxOutputTokens),
+            label: l.modelOutputLabel,
+            value: _formatTokens(model.maxOutputTokens, l),
           ),
           _DetailRow(
-            label: 'Cost tier',
-            value: model.costTier.isEmpty ? '—' : model.costTier,
+            label: l.costTierLabel,
+            value: model.costTier.isEmpty ? l.noValue : model.costTier,
           ),
           if (model.costSummary.isNotEmpty)
             _DetailRow(
-              label: 'Pricing',
+              label: l.pricingLabel,
               value: model.costSummary,
             ),
           const SizedBox(height: 16),
@@ -523,22 +527,22 @@ class _ModelDetails extends StatelessWidget {
             children: [
               if (_isFree(model))
                 _Badge(
-                  text: 'Free',
+                  text: l.free,
                   color: theme.colorScheme.tertiary,
                 ),
               if (_isPromo(model))
                 _Badge(
-                  text: 'Promo',
+                  text: l.promo,
                   color: theme.colorScheme.primary,
                 ),
               if (model.isNew)
                 _Badge(
-                  text: 'New',
+                  text: l.newLabel,
                   color: theme.colorScheme.primary,
                 ),
               if (model.isBeta)
                 _Badge(
-                  text: 'Beta',
+                  text: l.beta,
                   color: theme.colorScheme.error,
                 ),
             ],
@@ -549,7 +553,7 @@ class _ModelDetails extends StatelessWidget {
               width: double.infinity,
               child: FilledButton(
                 onPressed: onSelect,
-                child: Text(isSelected ? 'Selected' : 'Select model'),
+                child: Text(isSelected ? l.selected : l.selectModel),
               ),
             ),
         ],
@@ -716,15 +720,19 @@ bool _isPromo(ModelInfo m) {
       m.costSummary.toLowerCase().contains('promo');
 }
 
-String _formatTokens(int tokens) {
-  if (tokens <= 0) return '—';
+String _formatTokens(int tokens, AppLocalizations l) {
+  if (tokens <= 0) return l.noValue;
   if (tokens >= 1_000_000) {
-    return '${(tokens / 1_000_000).toStringAsFixed(tokens % 1_000_000 == 0 ? 0 : 1)}M';
+    final count = (tokens / 1_000_000).toStringAsFixed(
+        tokens % 1_000_000 == 0 ? 0 : 1);
+    return l.tokensMillionSuffix(count);
   }
   if (tokens >= 1_000) {
-    return '${(tokens / 1_000).toStringAsFixed(tokens % 1_000 == 0 ? 0 : 1)}K';
+    final count = (tokens / 1_000).toStringAsFixed(
+        tokens % 1_000 == 0 ? 0 : 1);
+    return l.tokensThousandSuffix(count);
   }
-  return '$tokens';
+  return l.tokensCount('$tokens');
 }
 
 Color _tierColor(String tier, ColorScheme scheme) {
@@ -745,9 +753,9 @@ double _tierBarWidth(String tier) {
   return 0.4;
 }
 
-({String base, String sub}) _splitFamily(String family) {
+({String base, String sub}) _splitFamily(String family, AppLocalizations l) {
   final f = family.trim();
-  if (f.isEmpty) return (base: 'Other', sub: '');
+  if (f.isEmpty) return (base: l.otherFamily, sub: '');
 
   String trySplit(String sep) {
     final parts = f.split(sep);
@@ -782,10 +790,10 @@ double _tierBarWidth(String tier) {
   return (base: f, sub: '');
 }
 
-Map<String, Map<String, List<ModelInfo>>> _groupModels(List<ModelInfo> models) {
+Map<String, Map<String, List<ModelInfo>>> _groupModels(List<ModelInfo> models, AppLocalizations l) {
   final groups = <String, Map<String, List<ModelInfo>>>{};
   for (final m in models) {
-    final split = _splitFamily(m.family);
+    final split = _splitFamily(m.family, l);
     groups
         .putIfAbsent(split.base, () => {})
         .putIfAbsent(split.sub, () => [])
@@ -809,11 +817,11 @@ List<ModelInfo> _filter(List<ModelInfo> models, String query) {
   }).toList();
 }
 
-ModelInfo _findSelected(List<ModelInfo> models, String value) {
+ModelInfo _findSelected(List<ModelInfo> models, String value, AppLocalizations l) {
   if (models.isEmpty) {
     return ModelInfo(
       id: '',
-      label: 'Model',
+      label: l.model,
       costTier: '',
       family: '',
     );
@@ -829,7 +837,7 @@ ModelInfo _findSelected(List<ModelInfo> models, String value) {
           )
         : ModelInfo(
             id: '',
-            label: 'Model',
+            label: l.model,
             costTier: '',
             family: '',
           ),

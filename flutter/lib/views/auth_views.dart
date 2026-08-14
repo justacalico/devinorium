@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../state/app_state.dart';
 
 class LoginView extends StatefulWidget {
@@ -57,30 +58,30 @@ class _LoginViewState extends State<LoginView> {
                     Icon(Icons.smart_toy_outlined,
                         size: 56, color: theme.colorScheme.primary),
                     const SizedBox(height: 12),
-                    Text('Devinorium',
+                    Text(l10n(context).appTitle,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 4),
-                    Text('Sign in to your account',
+                    Text(l10n(context).signInToYourAccount,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 24),
                     TextFormField(
                       controller: _username,
-                      decoration: const InputDecoration(
-                        labelText: 'Username',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n(context).username,
+                        border: const OutlineInputBorder(),
                       ),
                       textInputAction: TextInputAction.next,
                       validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'Required' : null,
+                          v == null || v.trim().isEmpty ? l10n(context).required : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _password,
                       decoration: InputDecoration(
-                        labelText: 'Password',
+                        labelText: l10n(context).password,
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
                           icon: Icon(_obscure
@@ -93,17 +94,17 @@ class _LoginViewState extends State<LoginView> {
                       obscureText: _obscure,
                       textInputAction: TextInputAction.done,
                       validator: (v) =>
-                          v == null || v.isEmpty ? 'Required' : null,
+                          v == null || v.isEmpty ? l10n(context).required : null,
                       onFieldSubmitted: (_) => _submit(),
                     ),
                     if (state.showTotpField) ...[
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _totp,
-                        decoration: const InputDecoration(
-                          labelText: 'TOTP code',
-                          hintText: '000000',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n(context).totpCode,
+                          hintText: l10n(context).totpHint,
+                          border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
                       ),
@@ -111,7 +112,7 @@ class _LoginViewState extends State<LoginView> {
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: _submit,
-                      child: const Text('Sign in'),
+                      child: Text(l10n(context).signIn),
                     ),
                     if (state.loginError.isNotEmpty) ...[
                       const SizedBox(height: 12),

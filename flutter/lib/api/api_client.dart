@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../l10n/global_l10n.dart';
 import '../models/models.dart';
 import 'api_types.dart';
 import 'client_factory_stub.dart' if (dart.library.js_interop) 'client_factory_web.dart';
@@ -145,13 +146,13 @@ class ApiClient implements BaseApiClient {
       if (text.isNotEmpty) {
         throw ApiException(text, resp.statusCode);
       }
-      throw ApiException('HTTP ${resp.statusCode}', resp.statusCode);
+      throw ApiException(appL10n.httpErrorStatus(resp.statusCode), resp.statusCode);
     }
     if (text.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(text);
     if (decoded is Map<String, dynamic>) return decoded;
     if (decoded is List) return {'_list': decoded};
-    throw ApiException('unexpected response shape', resp.statusCode);
+    throw ApiException(appL10n.unexpectedResponseShape, resp.statusCode);
   }
 
   @override
@@ -165,7 +166,7 @@ class ApiClient implements BaseApiClient {
       throw ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (resp.body.isNotEmpty ? resp.body : 'HTTP ${resp.statusCode}'),
+            : (resp.body.isNotEmpty ? resp.body : appL10n.httpErrorStatus(resp.statusCode)),
         resp.statusCode,
       );
     }
@@ -173,7 +174,7 @@ class ApiClient implements BaseApiClient {
     if (decoded is List) {
       return decoded.map((e) => e as Map<String, dynamic>).toList();
     }
-    throw ApiException('expected a list', resp.statusCode);
+    throw ApiException(appL10n.expectedAList, resp.statusCode);
   }
 
   @override

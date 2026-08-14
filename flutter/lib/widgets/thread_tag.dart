@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 class ThreadTag extends StatelessWidget {
   final String tag;
 
@@ -32,7 +34,7 @@ class ThreadTag extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Text(
-              _label(tag),
+              _label(context, tag),
               maxLines: 1,
               softWrap: false,
               style: theme.textTheme.labelSmall?.copyWith(
@@ -57,8 +59,15 @@ class ThreadTag extends StatelessWidget {
     };
   }
 
-  String _label(String tag) {
-    if (tag.isEmpty) return tag;
-    return tag.substring(0, 1).toUpperCase() + tag.substring(1);
+  String _label(BuildContext context, String tag) {
+    final l = l10n(context);
+    return switch (tag.toLowerCase()) {
+      'needs approval' => l.tagNeedsApproval,
+      'running' => l.tagRunning,
+      'working' => l.tagWorking,
+      'failed' => l.tagFailed,
+      'done' || 'completed' => l.tagDone,
+      _ => tag,
+    };
   }
 }

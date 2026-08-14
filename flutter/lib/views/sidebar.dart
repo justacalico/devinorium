@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../widgets/owner_badge.dart';
@@ -24,17 +25,17 @@ Color _projectColor(String name) {
   return colors[hash % colors.length];
 }
 
-String _timeAgo(String iso) {
+String _timeAgo(String iso, AppLocalizations l) {
   final dt = DateTime.tryParse(iso);
   if (dt == null) return '';
   final now = DateTime.now().toUtc();
   final diff = now.difference(dt.toUtc());
-  if (diff.inSeconds < 60) return 'just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24) return '${diff.inHours}h ago';
-  if (diff.inDays < 30) return '${diff.inDays}d ago';
-  if (diff.inDays < 365) return '${(diff.inDays / 30).floor()}mo ago';
-  return '${(diff.inDays / 365).floor()}y ago';
+  if (diff.inSeconds < 60) return l.timeAgoJustNow;
+  if (diff.inMinutes < 60) return l.timeAgoMinutes(diff.inMinutes);
+  if (diff.inHours < 24) return l.timeAgoHours(diff.inHours);
+  if (diff.inDays < 30) return l.timeAgoDays(diff.inDays);
+  if (diff.inDays < 365) return l.timeAgoMonths((diff.inDays / 30).floor());
+  return l.timeAgoYears((diff.inDays / 365).floor());
 }
 
 /// The sidebar: projects, threads, and user menu.
@@ -69,7 +70,7 @@ class Sidebar extends StatelessWidget {
                       state.setPage(MainPage.threads);
                     },
                     icon: const Icon(Icons.arrow_back),
-                    tooltip: 'Back',
+                    tooltip: l10n(context).back,
                   )
                 else
                   Icon(Icons.folder_outlined,
@@ -77,7 +78,7 @@ class Sidebar extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    isSettings ? 'Settings' : 'Projects',
+                    isSettings ? l10n(context).settings : l10n(context).projects,
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
@@ -85,7 +86,7 @@ class Sidebar extends StatelessWidget {
                   IconButton(
                     onPressed: () => state.openNewProjectDialog(),
                     icon: const Icon(Icons.create_new_folder_outlined),
-                    tooltip: 'New project',
+                    tooltip: l10n(context).newProject,
                   ),
               ],
             ),
@@ -120,7 +121,7 @@ class Sidebar extends StatelessWidget {
                   menuChildren: [
                     MenuItemButton(
                       leadingIcon: const Icon(Icons.settings_outlined),
-                      child: const Text('Settings'),
+                      child: Text(l10n(context).settings),
                       onPressed: () {
                         state.setPage(MainPage.settings);
                         state.setUserMenuOpen(false);
@@ -128,13 +129,13 @@ class Sidebar extends StatelessWidget {
                     ),
                     MenuItemButton(
                       leadingIcon: const Icon(Icons.logout),
-                      child: const Text('Sign out'),
+                      child: Text(l10n(context).signOut),
                       onPressed: () => state.logout(),
                     ),
                   ],
                   builder: (context, controller, child) {
                     return IconButton(
-                      tooltip: 'Menu',
+                      tooltip: l10n(context).menu,
                       icon: const Icon(Icons.more_vert),
                       onPressed: () {
                         if (controller.isOpen) {
@@ -310,7 +311,7 @@ class _ProjectExpandableTile extends StatelessWidget {
                 children: [
                   if (onNewThread != null)
                     IconButton(
-                      tooltip: 'New thread in ${project.name}',
+                      tooltip: l10n(context).newThreadIn(project.name),
                       icon: const Icon(Icons.add, size: 18),
                       onPressed: onNewThread,
                     ),
@@ -361,7 +362,7 @@ class _NoProjects extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'No projects yet.\nCreate one to get started.',
+          l10n(context).noProjectsYet,
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -380,7 +381,7 @@ class _NoThreads extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Text(
-        'No threads yet',
+        l10n(context).noThreadsYet,
         style: theme.textTheme.labelMedium
             ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),
@@ -403,7 +404,8 @@ class _ThreadTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
     final theme = Theme.of(context);
-    final time = _timeAgo(thread.updatedAt);
+    final l = l10n(context);
+    final time = _timeAgo(thread.updatedAt, l);
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 2, 8, 2),
       decoration: BoxDecoration(
@@ -439,11 +441,11 @@ class _ThreadTile extends StatelessWidget {
                 ),
               const SizedBox(width: 4),
               IconButton(
-                tooltip: 'Delete',
+                tooltip: l.delete,
                 icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
                 onPressed: () async {
                   if (await _confirm(
-                      context, 'Delete this thread? This cannot be undone.')) {
+                      context, l.deleteThreadConfirm)) {
                     state.deleteThread(thread.id);
                   }
                 },
@@ -491,19 +493,20 @@ class _SettingsNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
+    final l = l10n(context);
     final topics = [
-      (icon: Icons.person_outline, label: 'Account'),
-      (icon: Icons.cloud_outlined, label: 'Providers'),
-      (icon: Icons.devices_outlined, label: 'Devices'),
-      (icon: Icons.palette_outlined, label: 'Personalization'),
+      (icon: Icons.person_outline, label: l.account),
+      (icon: Icons.cloud_outlined, label: l.providers),
+      (icon: Icons.devices_outlined, label: l.devices),
+      (icon: Icons.palette_outlined, label: l.personalization),
       if (state.isOwner)
-        (icon: Icons.manage_accounts_outlined, label: 'Manage'),
+        (icon: Icons.manage_accounts_outlined, label: l.manage),
     ];
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       children: [
-        const _SectionHeader('Topics'),
+        _SectionHeader(l.topics),
         for (var i = 0; i < topics.length; i++)
           Material(
             color: Colors.transparent,
@@ -515,7 +518,7 @@ class _SettingsNav extends StatelessWidget {
               title: Row(
                 children: [
                   Text(topics[i].label),
-                  if (topics[i].label == 'Manage') ...[
+                  if (topics[i].label == l.manage) ...[
                     const SizedBox(width: 6),
                     const OwnerBadge(),
                   ],
@@ -536,6 +539,7 @@ class _SettingsNav extends StatelessWidget {
 }
 
 Future<bool> _confirm(BuildContext context, String message) async {
+  final l = l10n(context);
   final result = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -543,11 +547,11 @@ Future<bool> _confirm(BuildContext context, String message) async {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Cancel'),
+          child: Text(l.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Delete'),
+          child: Text(l.delete),
         ),
       ],
     ),

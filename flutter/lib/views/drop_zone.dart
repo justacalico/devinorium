@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dropzone/flutter_dropzone.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../state/app_state.dart';
 
 typedef Attachment = ({String filename, String mime, Uint8List bytes});
@@ -43,19 +44,20 @@ class _DropZoneState extends State<DropZone> {
     if (_ctrl == null) return [];
     final attachments = <Attachment>[];
     final errors = <String>[];
+    final l = l10n(context);
     for (final f in files) {
       try {
         final name = await _ctrl!.getFilename(f);
         final mime = await _ctrl!.getFileMIME(f);
         final size = await _ctrl!.getFileSize(f);
         if (size > _maxSize) {
-          errors.add('$name is too large (max 8 MB)');
+          errors.add(l.dropZoneFileTooLarge(name));
           continue;
         }
         final bytes = await _ctrl!.getFileData(f);
         attachments.add((filename: name, mime: mime, bytes: bytes));
       } catch (e) {
-        errors.add('Failed to read file: $e');
+        errors.add(l.dropZoneReadFileFailed('$e'));
       }
     }
     if (errors.isNotEmpty && mounted) {
@@ -79,7 +81,7 @@ class _DropZoneState extends State<DropZone> {
     } catch (e) {
       if (mounted) {
         final appState = context.read<AppState>();
-        appState.setGlobalError('Failed to attach files: $e');
+        appState.setGlobalError(l10n(context).dropZoneAttachFilesFailed('$e'));
       }
     }
     if (mounted) setState(() => _hovering = false);
@@ -93,7 +95,7 @@ class _DropZoneState extends State<DropZone> {
     } catch (e) {
       if (mounted) {
         final appState = context.read<AppState>();
-        appState.setGlobalError('Failed to pick files: $e');
+        appState.setGlobalError(l10n(context).dropZonePickFilesFailed('$e'));
       }
       return [];
     }
@@ -154,7 +156,7 @@ class _DropOverlay extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Drop files here to attach',
+              l10n(context).dropZoneDropHere,
               style: theme.textTheme.titleMedium?.copyWith(
                 color: theme.colorScheme.onSurface,
               ),

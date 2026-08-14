@@ -1,0 +1,367 @@
+{
+  "@@locale": "en",
+  "appTitle": "Devinorium",
+  "@appTitle": {
+    "description": "Application title shown in the taskbar"
+  },
+  "connectionFailed": "connection failed",
+  "importFailed": "import failed",
+  "totpPrompt": "Enter your 6-digit TOTP code.",
+  "selectProjectFirst": "Select a project first",
+  "newThread": "New thread",
+  "invalidPermissionRequest": "Invalid permission request: {error}",
+  "@invalidPermissionRequest": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failedToDecodePermissionRequest": "Failed to decode permission request",
+  "serverUrlNotConfigured": "server URL not configured",
+  "authenticationTokenNotSet": "authentication token not set",
+  "httpErrorStatus": "HTTP {statusCode}",
+  "@httpErrorStatus": {
+    "placeholders": {
+      "statusCode": {
+        "type": "int"
+      }
+    }
+  },
+  "httpErrorWithText": "HTTP {statusCode}: {text}",
+  "@httpErrorWithText": {
+    "placeholders": {
+      "statusCode": {
+        "type": "int"
+      },
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "unexpectedResponseShape": "unexpected response shape",
+  "expectedAList": "expected a list",
+  "sseOnlySupportedOnWeb": "SSE streaming is only supported on the web",
+  "noResponseBody": "no response body",
+  "unexpectedStreamChunkType": "Unexpected stream chunk type",
+  "genericRequestError": "{error}",
+  "@genericRequestError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "signInToYourAccount": "Sign in to your account",
+  "totpCode": "TOTP code",
+  "totpHint": "000000",
+  "atLeast12Characters": "At least 12 characters",
+  "createUser": "Create user",
+  "cancel": "Cancel",
+  "create": "Create",
+  "delete": "Delete",
+  "ok": "OK",
+  "back": "Back",
+  "close": "Close",
+  "required": "Required",
+  "username": "Username",
+  "password": "Password",
+  "test": "Test",
+  "error": "Error",
+  "on": "On",
+  "off": "Off",
+  "enabled": "Enabled",
+  "disabled": "Disabled",
+  "light": "Light",
+  "dark": "Dark",
+  "system": "System",
+  "save": "Save",
+  "signIn": "Sign in",
+  "signOut": "Sign out",
+  "settings": "Settings",
+  "account": "Account",
+  "providers": "Providers",
+  "provider": "Provider",
+  "devices": "Devices",
+  "personalization": "Personalization",
+  "manage": "Manage",
+  "projects": "Projects",
+  "language": "Language",
+  "theme": "Theme",
+  "root": "root",
+  "home": "Home",
+  "up": "Up",
+  "newProject": "New project",
+  "newFolder": "New folder",
+  "ownerBadge": "Owner",
+  "revoke": "Revoke",
+  "enable2fa": "Enable 2FA",
+  "totpSetupInstructions": "Scan this secret in your authenticator app, then enter the current code.",
+  "verify": "Verify",
+  "name": "Name",
+  "myProjectHint": "My project",
+  "path": "Path",
+  "projectPathHint": "relative/path or /absolute/project/path",
+  "browseToThisPath": "Browse to this path",
+  "selectCurrentFolder": "Select current folder",
+  "homeDirectoryShortcutNotSupported": "Home directory shortcut is not supported here; type the full path",
+  "pathTraversalNotAllowed": "Path traversal is not allowed",
+  "nameAndPathRequired": "Name and path are required",
+  "noSubfoldersHere": "No subfolders here",
+  "permissionRequest": "Permission request",
+  "allowThisAction": "Allow this action?",
+  "allowOnce": "Allow once",
+  "allowAlways": "Allow always",
+  "rejectOnce": "Reject once",
+  "rejectAlways": "Reject always",
+  "dropZoneFileTooLarge": "{name} is too large (max 8 MB)",
+  "@dropZoneFileTooLarge": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZoneReadFileFailed": "Failed to read file: {error}",
+  "@dropZoneReadFileFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZoneAttachFilesFailed": "Failed to attach files: {error}",
+  "@dropZoneAttachFilesFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZonePickFilesFailed": "Failed to pick files: {error}",
+  "@dropZonePickFilesFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZoneDropHere": "Drop files here to attach",
+  "files": "Files",
+  "emptyFolder": "Empty folder",
+  "folderNameHint": "Folder name",
+  "deleteName": "Delete {name}?",
+  "@deleteName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "searchModels": "Search models",
+  "noModelsMatch": "No models match",
+  "free": "Free",
+  "promo": "Promo",
+  "newLabel": "New",
+  "beta": "Beta",
+  "noModelSelected": "No model selected",
+  "model": "Model",
+  "selected": "Selected",
+  "selectModel": "Select model",
+  "modelContextLabel": "Context",
+  "modelOutputLabel": "Output",
+  "costTierLabel": "Cost tier",
+  "pricingLabel": "Pricing",
+  "contextWithTokens": "{count} context",
+  "@contextWithTokens": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "otherFamily": "Other",
+  "pairingSetupSubtitle": "Import a pairing file to connect to the server.",
+  "selectPairingFile": "Select pairing file",
+  "enterPairingFilePath": "Enter pairing file path",
+  "pairingFilePathHint": "/path/to/devinorium-pairing.json",
+  "couldNotParseFile": "Could not parse file",
+  "couldNotOpenFilePicker": "Could not open file picker",
+  "noFileSelected": "No file selected",
+  "couldNotReadFileContent": "Could not read file content",
+  "pairingFileTooLarge": "Pairing file is too large",
+  "invalidFileFormat": "Invalid file format",
+  "pairingFileMissingFields": "Pairing file is missing required fields",
+  "couldNotGetServerAddress": "Could not get server address",
+  "createPairingFailed": "Failed to create pairing: {error}",
+  "@createPairingFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pairingFileDescription": "Download a pairing file to set up the mobile or desktop app.",
+  "pair": "Pair",
+  "noPairedDevices": "No paired devices.",
+  "deviceToken": "Device {tokenPrefix}",
+  "@deviceToken": {
+    "placeholders": {
+      "tokenPrefix": {
+        "type": "String"
+      }
+    }
+  },
+  "current": "Current",
+  "paired": "Paired",
+  "revokeDeviceTitle": "Revoke device?",
+  "revokeDeviceBody": "This device will be signed out immediately.",
+  "disable2faTitle": "Disable 2FA?",
+  "disable2faConfirmation": "This will remove TOTP-based two-factor authentication from your account. Are you sure?",
+  "disable2fa": "Disable 2FA",
+  "twoFactorAuthentication": "Two-factor authentication",
+  "twoFactorShort": "2FA",
+  "user": "User",
+  "active": "Active",
+  "noUsersYet": "No users yet.",
+  "command": "Command",
+  "providerIsReachable": "Provider is reachable",
+  "providerCommandHint": "devin",
+  "providerTestFailed": "Provider test failed: {error}",
+  "@providerTestFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "languageEnglish": "English",
+  "menu": "Menu",
+  "newThreadIn": "New thread in {projectName}",
+  "@newThreadIn": {
+    "placeholders": {
+      "projectName": {
+        "type": "String"
+      }
+    }
+  },
+  "noProjectsYet": "No projects yet.\nCreate one to get started.",
+  "noThreadsYet": "No threads yet",
+  "deleteThreadConfirm": "Delete this thread? This cannot be undone.",
+  "topics": "Topics",
+  "timeAgoJustNow": "just now",
+  "timeAgoMinutes": "{count}m ago",
+  "@timeAgoMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoHours": "{count}h ago",
+  "@timeAgoHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoDays": "{count}d ago",
+  "@timeAgoDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoMonths": "{count}mo ago",
+  "@timeAgoMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoYears": "{count}y ago",
+  "@timeAgoYears": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectOrCreateThread": "Select or create a thread",
+  "fileManager": "File manager",
+  "selectOrCreateThreadToChat": "Select or create a thread to start chatting.",
+  "startConversationHint": "Start the conversation by sending a message below.",
+  "messageRoleYou": "You",
+  "messageRoleAssistant": "Assistant",
+  "messageRoleError": "Error",
+  "thinking": "Thinking",
+  "hideThinking": "Hide thinking",
+  "showThinking": "Show thinking",
+  "composerHint": "Ask a question or drop files here",
+  "permissionModeNormal": "Ask every time",
+  "permissionModeAcceptEdits": "Confirm edits",
+  "permissionModeSmart": "Smart confirm",
+  "permissionModeBypass": "Auto-run",
+  "preview": "Preview",
+  "output": "Output",
+  "changed": "Changed",
+  "tagNeedsApproval": "Needs approval",
+  "tagRunning": "Running",
+  "tagWorking": "Working",
+  "tagFailed": "Failed",
+  "tagDone": "Done",
+  "noValue": "—",
+  "tokensMillionSuffix": "{count}M",
+  "@tokensMillionSuffix": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tokensThousandSuffix": "{count}K",
+  "@tokensThousandSuffix": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tokensCount": "{count}",
+  "@tokensCount": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeBytes": "{count} B",
+  "@sizeBytes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeKilobytes": "{count} KB",
+  "@sizeKilobytes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeMegabytes": "{count} MB",
+  "@sizeMegabytes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "breadcrumbSeparator": " / ",
+  "messageLoading": "..."
+}
