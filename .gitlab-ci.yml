@@ -111,6 +111,9 @@ release:
   stage: release
   tags: [linux-truenas]
   resource_group: release
+  retry:
+    max: 2
+    when: script_failure
   before_script:
     - *install
     - git config user.name "GitLab CI"
@@ -121,9 +124,15 @@ release:
         exit 1
       fi
       git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-    - git checkout -B main
+    - git fetch origin +refs/heads/main:refs/remotes/origin/main
+    - git checkout -B main origin/main
     - git branch --set-upstream-to=origin/main main
   script:
+    - |
+      if ! cog bump --dry-run --auto >/dev/null 2>&1; then
+        echo "No version bump required, skipping release"
+        exit 0
+      fi
     - cog bump --auto --skip-ci
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
