@@ -633,6 +633,80 @@ void main() {
       await controller.close();
       expect(state.globalError, 'blocked by policy');
       expect(state.sending, isFalse);
+      expect(state.composerText, 'hello');
+    });
+
+    test('sendMessage preserves composer on stream error', () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (state.globalError.isNotEmpty) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      controller.addError(ApiException('network down', 500));
+
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+      expect(state.sending, isFalse);
+      expect(state.composerText, 'hello');
     });
 
     test('sendMessage resumes on 409 conflict', () async {
@@ -696,6 +770,7 @@ void main() {
       await completer.future.timeout(Duration(seconds: 2));
       expect(state.sending, isTrue);
       expect(state.streamingText, 'world');
+      expect(state.composerText, 'hello');
 
       await sendController.close();
       await eventsController.close();
@@ -784,7 +859,6 @@ void main() {
             {'id': 2, 'thread_id': 'a', 'role': 'assistant', 'content': 'done', 'thinking': null, 'attachments': [], 'created_at': ''},
           ],
         }),
-        _json(200, []),
       ]);
       final api = _StreamableApiService(client);
       api.runResponse = {'status': 'completed'};
@@ -797,6 +871,115 @@ void main() {
       expect(state.sending, isFalse);
       expect(state.activeThreadDetail!.messages, hasLength(2));
       expect(state.activeThreadDetail!.messages.last.content, 'done');
+    });
+
+    test('resumeThread refetches idle runs with stale detail', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [
+            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
+          ],
+        }),
+        _json(200, {'project_id': 1, 'path': '/'}),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [
+            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
+            {'id': 2, 'thread_id': 'a', 'role': 'assistant', 'content': 'persisted', 'thinking': null, 'attachments': [], 'created_at': ''},
+          ],
+        }),
+      ]);
+      final api = _StreamableApiService(client);
+      api.runResponse = {'status': 'idle'};
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+      );
+      await state.openThread('a');
+
+      expect(state.sending, isFalse);
+      expect(state.activeThreadDetail!.messages, hasLength(2));
+      expect(state.activeThreadDetail!.messages.last.content, 'persisted');
+    });
+
+    test('sendMessage clears composer only after user_message event', () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (state.activeThreadDetail!.messages.isNotEmpty) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      expect(state.composerText, 'hello');
+      controller.add(SseEvent('user_message', '{"role":"user","content":"hello"}'));
+      await completer.future.timeout(Duration(seconds: 2));
+      expect(state.composerText, '');
+
+      await controller.close();
     });
   });
 
