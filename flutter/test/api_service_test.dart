@@ -281,6 +281,23 @@ void main() {
       expect(d.thread.id, 'a');
     });
 
+    test('getThreadRun fetches run status', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/threads/a/run'));
+        return _json(200, {
+          'run_id': 'r1',
+          'thread_id': 'a',
+          'status': 'running',
+          'started_at': '2024-01-01T00:00:00Z',
+          'updated_at': '2024-01-01T00:00:00Z',
+          'error': null,
+        });
+      });
+      final service = _serviceFor(mock);
+      final run = await service.getThreadRun('a');
+      expect(run['status'], 'running');
+    });
+
     test('renameThread patches title', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('PATCH', '/api/threads/a'));

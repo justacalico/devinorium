@@ -28,9 +28,11 @@ ApiClient _clientFor(List<http.Response> responses) {
   }));
 }
 
-/// [ApiService] whose streaming send can be replaced by a test stream.
+/// [ApiService] whose streaming and run endpoints can be replaced by test fakes.
 class _StreamableApiService extends ApiService {
   Stream<SseEvent> Function()? streamBuilder;
+  Stream<SseEvent> Function()? eventsBuilder;
+  Map<String, dynamic>? runResponse;
 
   _StreamableApiService(ApiClient client) : super(client: client);
 
@@ -41,6 +43,16 @@ class _StreamableApiService extends ApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments = const [],
   }) {
     return streamBuilder?.call() ?? Stream.empty();
+  }
+
+  @override
+  Future<Map<String, dynamic>> getThreadRun(String id) async {
+    return runResponse ?? {'status': 'idle'};
+  }
+
+  @override
+  Stream<SseEvent> watchThreadEvents(String id) {
+    return eventsBuilder?.call() ?? Stream.empty();
   }
 }
 
@@ -621,6 +633,170 @@ void main() {
       await controller.close();
       expect(state.globalError, 'blocked by policy');
       expect(state.sending, isFalse);
+    });
+
+    test('sendMessage resumes on 409 conflict', () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final sendController = StreamController<SseEvent>();
+      api.streamBuilder = () => sendController.stream;
+
+      final eventsController = StreamController<SseEvent>();
+      api.eventsBuilder = () => eventsController.stream;
+      api.runResponse = {'status': 'running'};
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (state.sending && state.streamingText == 'world') {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      sendController.addError(ApiException('already running', 409));
+      eventsController.add(SseEvent('chunk', 'world'));
+
+      await completer.future.timeout(Duration(seconds: 2));
+      expect(state.sending, isTrue);
+      expect(state.streamingText, 'world');
+
+      await sendController.close();
+      await eventsController.close();
+    });
+
+    test('resumeThread attaches to a running backend run', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {'project_id': 1, 'path': '/'}),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {'status': 'running'}),
+      ]);
+      final api = _StreamableApiService(client);
+      api.runResponse = {'status': 'running'};
+      final controller = StreamController<SseEvent>();
+      api.eventsBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+      );
+      await state.openThread('a');
+
+      expect(state.sending, isTrue);
+      expect(state.activeThreadDetail?.messages, hasLength(0));
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (!state.sending && state.activeThreadDetail!.messages.isNotEmpty) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      controller.add(SseEvent('done', '{"role":"assistant","content":"hi"}'));
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+
+      expect(state.sending, isFalse);
+      expect(state.activeThreadDetail!.messages, hasLength(1));
+      expect(state.activeThreadDetail!.messages.last.content, 'hi');
+    });
+
+    test('resumeThread refetches completed runs', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [
+            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
+          ],
+        }),
+        _json(200, {'project_id': 1, 'path': '/'}),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [
+            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
+            {'id': 2, 'thread_id': 'a', 'role': 'assistant', 'content': 'done', 'thinking': null, 'attachments': [], 'created_at': ''},
+          ],
+        }),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      api.runResponse = {'status': 'completed'};
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+      );
+      await state.openThread('a');
+
+      expect(state.sending, isFalse);
+      expect(state.activeThreadDetail!.messages, hasLength(2));
+      expect(state.activeThreadDetail!.messages.last.content, 'done');
     });
   });
 

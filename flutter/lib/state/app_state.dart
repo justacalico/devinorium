@@ -670,6 +670,9 @@ class AppState extends ChangeNotifier {
 
       // Load the threads list for the active project.
       await refreshThreadsAndGroups();
+
+      // If the backend is already running this thread, reconnect to it.
+      await resumeThread(id);
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -753,16 +756,179 @@ class AppState extends ChangeNotifier {
 
   // ---- Streaming send ----
 
+  void _handleRunEvent(String tid, SseEvent ev) {
+    switch (ev.event) {
+      case 'user_message':
+        clearAttachments();
+        final msg = parseSseMessage(ev.data);
+        if (msg != null && _activeThreadDetail != null) {
+          _activeThreadDetail = _activeThreadDetail!.copyWith(
+            messages: [..._activeThreadDetail!.messages, msg],
+          );
+          notifyListeners();
+        }
+        break;
+      case 'permission_request':
+        final decoded = tryDecodeJson(ev.data);
+        if (decoded != null) {
+          try {
+            _pendingPermissionRequest = PermissionRequest.fromJson(decoded);
+            _dialog = DialogKind.permissionRequest;
+            notifyListeners();
+          } catch (e) {
+            _globalError = appL10n.invalidPermissionRequest('$e');
+            notifyListeners();
+          }
+        } else {
+          _globalError = appL10n.failedToDecodePermissionRequest;
+          notifyListeners();
+        }
+        break;
+      case 'thinking':
+        _streamingThinking = (_streamingThinking ?? '') + ev.data;
+        _streamingThinkingActive = true;
+        notifyListeners();
+        break;
+      case 'chunk':
+        _streamingText = (_streamingText ?? '') + ev.data;
+        _streamingThinkingActive = false;
+        notifyListeners();
+        break;
+      case 'tool_call':
+        final decoded = tryDecodeJson(ev.data);
+        if (decoded != null) {
+          final tc = ToolCallData.fromJson(decoded);
+          _streamingToolCalls[tc.id] = tc;
+          notifyListeners();
+        }
+        break;
+      case 'done':
+        final msg = parseSseMessage(ev.data);
+        _streamingText = null;
+        _streamingThinking = null;
+        _streamingThinkingActive = false;
+        if (msg != null && _activeThreadDetail != null) {
+          _activeThreadDetail = _activeThreadDetail!.copyWith(
+            messages: [..._activeThreadDetail!.messages, msg],
+          );
+        }
+        _sending = false;
+        _sendSubscription = null;
+        notifyListeners();
+        refreshThreadsAndGroups();
+        break;
+      case 'error':
+        _clearPermissionRequest();
+        _streamingText = null;
+        _streamingThinking = null;
+        _streamingThinkingActive = false;
+        _streamingToolCalls.clear();
+        _sending = false;
+        _sendSubscription = null;
+        _globalError = ev.data;
+        notifyListeners();
+        api.getThread(tid).then((d) {
+          _activeThreadDetail = d;
+          notifyListeners();
+        }).catchError((_) {});
+        break;
+    }
+  }
+
+  void _handleRunError(String tid, Object e) {
+    _sendSubscription = null;
+    _clearPermissionRequest();
+    if (e is ApiException && e.statusCode == 409) {
+      resumeThread(tid);
+      return;
+    }
+    _streamingText = null;
+    _streamingThinking = null;
+    _streamingThinkingActive = false;
+    _streamingToolCalls.clear();
+    _sending = false;
+    _globalError = '$e';
+    notifyListeners();
+    api.getThread(tid).then((d) {
+      _activeThreadDetail = d;
+      notifyListeners();
+    }).catchError((_) {});
+  }
+
+  void _handleRunOnDone(String tid) {
+    _sendSubscription = null;
+    _clearPermissionRequest();
+    if (_sending) {
+      _sending = false;
+      _streamingText = null;
+      _streamingThinking = null;
+      _streamingThinkingActive = false;
+      _streamingToolCalls.clear();
+      notifyListeners();
+      api.getThread(tid).then((d) {
+        _activeThreadDetail = d;
+        notifyListeners();
+      }).catchError((_) {});
+    }
+  }
+
+  Future<void> resumeThread(String id) async {
+    await _sendSubscription?.cancel();
+    _sendSubscription = null;
+    _clearPermissionRequest();
+
+    try {
+      final run = await api.getThreadRun(id);
+      final status = run['status'] as String? ?? 'idle';
+      if (status == 'running') {
+        _sending = true;
+        _streamingText = '';
+        _streamingThinking = null;
+        _streamingThinkingActive = false;
+        _streamingToolCalls.clear();
+        _composerText = '';
+        clearAttachments();
+        notifyListeners();
+
+        late StreamSubscription? sub;
+        sub = api.watchThreadEvents(id).listen(
+          (ev) {
+            if (_sendSubscription != sub) return;
+            _handleRunEvent(id, ev);
+          },
+          onError: (e) {
+            if (_sendSubscription != sub) return;
+            _handleRunError(id, e);
+          },
+          onDone: () {
+            if (_sendSubscription != sub) return;
+            _handleRunOnDone(id);
+          },
+        );
+        _sendSubscription = sub;
+      } else if (status == 'completed' || status == 'failed') {
+        _sending = false;
+        _activeThreadDetail = await api.getThread(id);
+        notifyListeners();
+        await refreshThreadsAndGroups();
+      } else {
+        _sending = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      _sending = false;
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
   Future<void> sendMessage() async {
     final text = _composerText.trim();
     final tid = _activeThreadId;
     if (text.isEmpty || tid == null) return;
 
-    // Persist the current model and permission mode before sending, so the
-    // backend uses the latest settings.
     await saveThreadSettings();
 
-    // Cancel any in-flight send before starting a new one.
     await _sendSubscription?.cancel();
     _sendSubscription = null;
     _clearPermissionRequest();
@@ -780,119 +946,15 @@ class AppState extends ChangeNotifier {
     sub = api.sendMessageStream(threadId: tid, prompt: text, attachments: attachments).listen(
       (ev) {
         if (_sendSubscription != sub) return;
-        switch (ev.event) {
-          case 'user_message':
-            clearAttachments();
-            final msg = parseSseMessage(ev.data);
-            if (msg != null && _activeThreadDetail != null) {
-              _activeThreadDetail = _activeThreadDetail!.copyWith(
-                messages: [..._activeThreadDetail!.messages, msg],
-              );
-              notifyListeners();
-            }
-            break;
-          case 'permission_request':
-            final decoded = tryDecodeJson(ev.data);
-            if (decoded != null) {
-              try {
-                _pendingPermissionRequest = PermissionRequest.fromJson(decoded);
-                _dialog = DialogKind.permissionRequest;
-                notifyListeners();
-              } catch (e) {
-                _globalError = appL10n.invalidPermissionRequest('$e');
-                notifyListeners();
-              }
-            } else {
-              _globalError = appL10n.failedToDecodePermissionRequest;
-              notifyListeners();
-            }
-            break;
-          case 'thinking':
-            _streamingThinking = (_streamingThinking ?? '') + ev.data;
-            _streamingThinkingActive = true;
-            notifyListeners();
-            break;
-          case 'chunk':
-            _streamingText = (_streamingText ?? '') + ev.data;
-            _streamingThinkingActive = false;
-            notifyListeners();
-            break;
-          case 'tool_call':
-            final decoded = tryDecodeJson(ev.data);
-            if (decoded != null) {
-              final tc = ToolCallData.fromJson(decoded);
-              _streamingToolCalls[tc.id] = tc;
-              notifyListeners();
-            }
-            break;
-          case 'done':
-            final msg = parseSseMessage(ev.data);
-            _streamingText = null;
-            _streamingThinking = null;
-            _streamingThinkingActive = false;
-            if (msg != null && _activeThreadDetail != null) {
-              _activeThreadDetail = _activeThreadDetail!.copyWith(
-                messages: [..._activeThreadDetail!.messages, msg],
-              );
-            }
-            _sending = false;
-            _sendSubscription = null;
-            notifyListeners();
-            // Refresh thread list in background (title may have changed).
-            refreshThreadsAndGroups();
-            break;
-          case 'error':
-            _clearPermissionRequest();
-            _streamingText = null;
-            _streamingThinking = null;
-            _streamingThinkingActive = false;
-            _streamingToolCalls.clear();
-            _sending = false;
-            _sendSubscription = null;
-            _globalError = ev.data;
-            notifyListeners();
-            // Reload thread detail to recover consistent state.
-            api.getThread(tid).then((d) {
-              _activeThreadDetail = d;
-              notifyListeners();
-            }).catchError((_) {});
-            break;
-        }
+        _handleRunEvent(tid, ev);
       },
       onError: (e) {
         if (_sendSubscription != sub) return;
-        _clearPermissionRequest();
-        _streamingText = null;
-        _streamingThinking = null;
-        _streamingThinkingActive = false;
-        _streamingToolCalls.clear();
-        _sending = false;
-        _sendSubscription = null;
-        _globalError = '$e';
-        notifyListeners();
-        api.getThread(tid).then((d) {
-          _activeThreadDetail = d;
-          notifyListeners();
-        }).catchError((_) {});
+        _handleRunError(tid, e);
       },
       onDone: () {
         if (_sendSubscription != sub) return;
-        _sendSubscription = null;
-        _clearPermissionRequest();
-        if (_sending) {
-          // Stream ended without an explicit done/error event.
-          _sending = false;
-          _streamingText = null;
-          _streamingThinking = null;
-          _streamingThinkingActive = false;
-          _streamingToolCalls.clear();
-          notifyListeners();
-          // Reload to ensure consistency.
-          api.getThread(tid).then((d) {
-            _activeThreadDetail = d;
-            notifyListeners();
-          }).catchError((_) {});
-        }
+        _handleRunOnDone(tid);
       },
     );
     _sendSubscription = sub;

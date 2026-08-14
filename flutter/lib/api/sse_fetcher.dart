@@ -9,18 +9,20 @@ import 'api_types.dart';
 // dart:js_interop, which are not available in the VM test runner.
 import 'sse_fetcher_stub.dart' if (dart.library.js_interop) 'sse_fetcher_web.dart';
 
-/// Reads a streaming Server-Sent Events response from the backend's
-/// `/api/threads/:id/send/stream` endpoint.
+/// Reads a streaming Server-Sent Events response from the backend.
+/// Use [fields] and [attachments] for POST multipart; omit them for GET.
 Stream<SseEvent> fetchSseStream({
   required http.Client client,
   required String path,
-  required String prompt,
-  required List<({String filename, String mime, Uint8List bytes})> attachments,
+  String method = 'POST',
+  Map<String, String>? fields,
+  List<({String filename, String mime, Uint8List bytes})>? attachments,
 }) {
   return platformFetchSseStream(
     client: client,
     path: path,
-    prompt: prompt,
+    method: method,
+    fields: fields,
     attachments: attachments,
   );
 }

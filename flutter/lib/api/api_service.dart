@@ -296,6 +296,16 @@ class ApiService {
 
   // ---- Streaming send ----
 
+  /// Get the current run status for a thread.
+  Future<Map<String, dynamic>> getThreadRun(String id) async {
+    return await _client.get('/api/threads/$id/run');
+  }
+
+  /// Watch an existing backend run as an SSE event stream.
+  Stream<SseEvent> watchThreadEvents(String id) {
+    return _client.getStream(path: '/api/threads/$id/events');
+  }
+
   /// Stream a message send. Returns a stream of [SseEvent] records with
   /// `event` ∈ {`user_message`, `permission_request`, `thinking`, `chunk`, `tool_call`, `done`, `error`}.
   Stream<SseEvent> sendMessageStream({

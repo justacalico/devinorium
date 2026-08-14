@@ -201,16 +201,27 @@ class NativeApiClient implements BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
-    // Use a dedicated client for each SSE stream. Closing it on cancel
-    // only aborts the active request and does not break the shared client
-    // used for regular API calls.
     return nativeSseStream(
       client: http.Client(),
       baseUrl: _baseUrl,
       token: _token,
       path: path,
-      prompt: prompt,
+      method: 'POST',
+      fields: {'prompt': prompt},
       attachments: attachments,
+    );
+  }
+
+  @override
+  Stream<SseEvent> getStream({
+    required String path,
+  }) {
+    return nativeSseStream(
+      client: http.Client(),
+      baseUrl: _baseUrl,
+      token: _token,
+      path: path,
+      method: 'GET',
     );
   }
 
