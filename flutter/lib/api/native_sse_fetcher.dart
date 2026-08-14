@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../l10n/global_l10n.dart';
 import '../models/models.dart';
 import 'api_types.dart';
 import 'sse_parser.dart';
@@ -18,10 +19,10 @@ Stream<SseEvent> nativeSseStream({
       const [],
 }) {
   if (baseUrl.isEmpty) {
-    return Stream.error(ApiException('server URL not configured', 401));
+    return Stream.error(ApiException(appL10n.serverUrlNotConfigured, 401));
   }
   if (token.isEmpty) {
-    return Stream.error(ApiException('authentication token not set', 401));
+    return Stream.error(ApiException(appL10n.authenticationTokenNotSet, 401));
   }
 
   final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
@@ -69,7 +70,7 @@ Future<void> _run(
       controller.addError(ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (body.isNotEmpty ? body : 'HTTP ${streamed.statusCode}'),
+            : (body.isNotEmpty ? body : appL10n.httpErrorStatus(streamed.statusCode)),
         streamed.statusCode,
       ));
       return;

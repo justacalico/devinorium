@@ -4,6 +4,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/thread_status.dart';
@@ -20,7 +21,7 @@ class ThreadPage extends StatelessWidget {
     final theme = Theme.of(context);
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final thread = state.activeThreadDetail?.thread;
-    final title = thread?.title ?? 'Select or create a thread';
+    final title = thread?.title ?? l10n(context).selectOrCreateThread;
     final tag = thread != null
         ? activeThreadTag(
             sending: state.sending,
@@ -50,7 +51,7 @@ class ThreadPage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            tooltip: 'File manager',
+            tooltip: l10n(context).fileManager,
             icon: const Icon(Icons.folder_outlined),
             onPressed: state.openFilesPanel,
           ),
@@ -193,7 +194,7 @@ class _MessagesPanel extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(48),
           child: Text(
-            'Select or create a thread to start chatting.',
+            l10n(context).selectOrCreateThreadToChat,
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             textAlign: TextAlign.center,
@@ -210,7 +211,7 @@ class _MessagesPanel extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(48),
           child: Text(
-            'Start the conversation by sending a message below.',
+            l10n(context).startConversationHint,
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             textAlign: TextAlign.center,
@@ -305,22 +306,23 @@ class _MessageItemState extends State<_MessageItem> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final message = widget.message;
+    final l = l10n(context);
     final (icon, label, avatarBg, avatarFg) = switch (message.role) {
       'user' => (
         Icons.person_outline,
-        'You',
+        l.messageRoleYou,
         theme.colorScheme.primaryContainer,
         theme.colorScheme.onPrimaryContainer,
       ),
       'assistant' => (
         Icons.smart_toy_outlined,
-        'Assistant',
+        l.messageRoleAssistant,
         theme.colorScheme.secondaryContainer,
         theme.colorScheme.onSecondaryContainer,
       ),
       _ => (
         Icons.warning_amber_outlined,
-        'Error',
+        l.messageRoleError,
         theme.colorScheme.errorContainer,
         theme.colorScheme.onErrorContainer,
       ),
@@ -370,8 +372,8 @@ class _MessageItemState extends State<_MessageItem> {
 
     Widget thinkingSection() {
       final label = _working
-          ? 'Thinking'
-          : (_expanded ? 'Hide thinking' : 'Show thinking');
+          ? l.thinking
+          : (_expanded ? l.hideThinking : l.showThinking);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -498,7 +500,7 @@ class _MessageItemState extends State<_MessageItem> {
                         message.content.isEmpty &&
                         !hasThinking)
                       Text(
-                        '...',
+                        l10n(context).messageLoading,
                         style: theme.textTheme.bodyLarge?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -675,11 +677,10 @@ class _ComposerState extends State<_Composer> {
                         minLines: 1,
                         maxLines: 6,
                         enabled: hasActiveThread && !isSending,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: InputBorder.none,
                           isCollapsed: true,
-                          hintText:
-                              'Ask a question or drop files here',
+                          hintText: l10n(context).composerHint,
                         ),
                         style: theme.textTheme.bodyLarge,
                         onChanged: state.setComposerText,
@@ -770,11 +771,12 @@ class _PermissionDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const modes = [
-      ('normal', 'Ask every time'),
-      ('accept-edits', 'Confirm edits'),
-      ('smart', 'Smart confirm'),
-      ('bypass', 'Auto-run'),
+    final l = l10n(context);
+    final modes = [
+      ('normal', l.permissionModeNormal),
+      ('accept-edits', l.permissionModeAcceptEdits),
+      ('smart', l.permissionModeSmart),
+      ('bypass', l.permissionModeBypass),
     ];
     final fallback = !modes.any((m) => m.$1 == value)
         ? [DropdownMenuItem<String>(value: value, child: Text(value))]
@@ -827,6 +829,7 @@ class _ToolCallItemState extends State<_ToolCallItem> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = l10n(context);
     final tool = widget.tool;
     final preview = tool.outputPreview ?? tool.command ?? '';
 
@@ -887,22 +890,22 @@ class _ToolCallItemState extends State<_ToolCallItem> {
                         children: [
                           if (preview.isNotEmpty)
                             _ToolDetailRow(
-                              label: 'Preview',
+                              label: l.preview,
                               value: preview,
                             ),
                           if (tool.command != null && tool.command!.isNotEmpty)
                             _ToolDetailRow(
-                              label: 'Command',
+                              label: l.command,
                               value: tool.command!,
                             ),
                           if (tool.output != null && tool.output!.isNotEmpty)
                             _ToolDetailRow(
-                              label: 'Output',
+                              label: l.output,
                               value: tool.output!,
                             ),
                           if (tool.changedFiles.isNotEmpty)
                             _ToolDetailRow(
-                              label: 'Changed',
+                              label: l.changed,
                               value: tool.changedFiles.join('\n'),
                             ),
                         ],

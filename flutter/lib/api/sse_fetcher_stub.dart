@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../l10n/global_l10n.dart';
 import 'api_types.dart';
 
 Stream<SseEvent> platformFetchSseStream({
@@ -11,5 +12,5 @@ Stream<SseEvent> platformFetchSseStream({
   required String prompt,
   required List<({String filename, String mime, Uint8List bytes})> attachments,
 }) {
-  return Stream.error(ApiException('SSE streaming is only supported on the web', 0));
+  return Stream.error(ApiException(appL10n.sseOnlySupportedOnWeb, 0));
 }

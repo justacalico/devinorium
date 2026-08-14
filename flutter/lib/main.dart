@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'l10n/l10n.dart';
 import 'state/app_state.dart';
 import 'views/app_view.dart';
 import 'views/auth_views.dart';
@@ -20,12 +21,15 @@ class DevinoriumApp extends StatelessWidget {
       create: (_) => AppState()..bootstrap(),
       child: Builder(
         builder: (context) {
-          final themeMode = context.select<AppState, ThemeMode>(
-            (state) => state.themeMode,
+          final (themeMode, locale) = context.select<AppState, (ThemeMode, Locale)>(
+            (state) => (state.themeMode, state.locale),
           );
           return MaterialApp(
-            title: 'Devinorium',
+            onGenerateTitle: (context) => l10n(context).appTitle,
             debugShowCheckedModeBanner: false,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: locale,
             theme: ThemeData(
               useMaterial3: true,
               colorSchemeSeed: const Color(0xFF6750A4),

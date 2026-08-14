@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 
+import '../l10n/global_l10n.dart';
 import '../models/models.dart' show tryDecodeJson;
 import 'api_types.dart';
 import 'sse_parser.dart';
@@ -67,13 +68,15 @@ Future<void> _runSse({
       throw ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (text.isNotEmpty ? 'HTTP ${response.status}: $text' : 'HTTP ${response.status}'),
+            : (text.isNotEmpty
+                ? appL10n.httpErrorWithText(response.status, text)
+                : appL10n.httpErrorStatus(response.status)),
         response.status,
       );
     }
 
     final body = response.body;
-    if (body == null) throw ApiException('no response body', response.status);
+    if (body == null) throw ApiException(appL10n.noResponseBody, response.status);
     reader = web.ReadableStreamDefaultReader(body);
 
     final decoder = web.TextDecoder(
@@ -91,7 +94,7 @@ Future<void> _runSse({
       final value = result.value;
       if (value == null) continue;
       if (!value.typeofEquals('object')) {
-        throw ApiException('Unexpected stream chunk type', 0);
+        throw ApiException(appL10n.unexpectedStreamChunkType, 0);
       }
       buffer += decoder.decode(
         value as JSObject,

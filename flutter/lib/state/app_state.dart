@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../api/api_service.dart';
+import '../l10n/global_l10n.dart';
 import '../models/models.dart';
 
 enum AppView { loading, login, setup, app }
@@ -39,10 +40,12 @@ class AppState extends ChangeNotifier {
     List<String> filesPath = const [],
     String? globalError,
     ThemeMode? themeMode,
+    Locale? locale,
     int? settingsTopicIndex,
     bool sending = false,
   })  : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
+    _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _sending = sending;
     _user = user;
@@ -107,6 +110,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription? _sendSubscription;
   PermissionRequest? _pendingPermissionRequest;
   ThemeMode _themeMode = ThemeMode.system;
+  Locale _locale = const Locale('en');
   int _settingsTopicIndex = 0;
 
   // Getters
@@ -155,6 +159,7 @@ class AppState extends ChangeNotifier {
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
   ThemeMode get themeMode => _themeMode;
+  Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
 
   // ---- Setters / mutations ----
@@ -226,6 +231,28 @@ class AppState extends ChangeNotifier {
       default:
         return ThemeMode.system;
     }
+  }
+
+  Future<void> setLanguage(String language) async {
+    _locale = Locale(language);
+    setAppL10n(_locale);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('devinorium_language', language);
+    } catch (_) {}
+  }
+
+  Future<void> _loadLanguage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final value = prefs.getString('devinorium_language') ?? 'en';
+      _locale = Locale(value);
+    } catch (_) {
+      _locale = const Locale('en');
+    }
+    setAppL10n(_locale);
+    notifyListeners();
   }
 
   String? _projectPathById(int id) {
@@ -315,6 +342,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     await _loadThemeMode();
+    await _loadLanguage();
+    setAppL10n(_locale);
     try {
       final configured = await api.client.isConfigured;
       if (!configured) {
@@ -336,7 +365,7 @@ class AppState extends ChangeNotifier {
       if (e is ApiException && e.statusCode == 401) {
         await api.client.clearCredentials();
       }
-      _setupError = e is ApiException ? e.message : 'connection failed';
+      _setupError = e is ApiException ? e.message : appL10n.connectionFailed;
       _view = api.client.isNative ? AppView.setup : AppView.login;
       notifyListeners();
     }
@@ -349,7 +378,7 @@ class AppState extends ChangeNotifier {
       await api.client.setUsername(pairing.username);
       await bootstrap();
     } catch (e) {
-      _setupError = e is ApiException ? e.message : 'import failed';
+      _setupError = e is ApiException ? e.message : appL10n.importFailed;
       _view = AppView.setup;
       notifyListeners();
     }
@@ -381,7 +410,7 @@ class AppState extends ChangeNotifier {
       if (res.totpRequired) {
         _view = AppView.login;
         _showTotpField = true;
-        _loginError = 'Enter your 6-digit TOTP code.';
+        _loginError = appL10n.totpPrompt;
         notifyListeners();
         return;
       }
@@ -571,7 +600,7 @@ class AppState extends ChangeNotifier {
   Future<void> createNewThread({int? projectId}) async {
     final targetId = projectId ?? _activeProjectId;
     if (targetId == null) {
-      _globalError = 'Select a project first';
+      _globalError = appL10n.selectProjectFirst;
       notifyListeners();
       return;
     }
@@ -588,7 +617,7 @@ class AppState extends ChangeNotifier {
     try {
       final t = await api.createThread(
         projectId: targetId,
-        title: 'New thread',
+        title: appL10n.newThread,
         model: _selectedModel.isEmpty ? null : _selectedModel,
         permissionMode: _selectedPermission,
       );
@@ -770,11 +799,11 @@ class AppState extends ChangeNotifier {
                 _dialog = DialogKind.permissionRequest;
                 notifyListeners();
               } catch (e) {
-                _globalError = 'Invalid permission request: $e';
+                _globalError = appL10n.invalidPermissionRequest('$e');
                 notifyListeners();
               }
             } else {
-              _globalError = 'Failed to decode permission request';
+              _globalError = appL10n.failedToDecodePermissionRequest;
               notifyListeners();
             }
             break;

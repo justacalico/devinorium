@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 
@@ -58,10 +59,10 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Enable 2FA', style: theme.textTheme.headlineSmall),
+                    Text(l10n(context).enable2fa, style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Scan this secret in your authenticator app, then enter the current code.',
+                    Text(
+                      l10n(context).totpSetupInstructions,
                     ),
                     const SizedBox(height: 16),
                     Container(
@@ -79,10 +80,10 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _codeController,
-                      decoration: const InputDecoration(
-                        labelText: 'TOTP code',
-                        hintText: '000000',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n(context).totpCode,
+                        hintText: l10n(context).totpHint,
+                        border: const OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.number,
                     ),
@@ -92,14 +93,14 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
                       children: [
                         TextButton(
                           onPressed: state.closeDialog,
-                          child: const Text('Cancel'),
+                          child: Text(l10n(context).cancel),
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
                           onPressed: () {
                             state.verifyTotp(_codeController.text.trim());
                           },
-                          child: const Text('Verify'),
+                          child: Text(l10n(context).verify),
                         ),
                       ],
                     ),
@@ -216,12 +217,12 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
       return;
     }
     if (text == '~' || text.startsWith('~/')) {
-      setState(() => _error = 'Home directory shortcut is not supported here; type the full path');
+      setState(() => _error = l10n(context).homeDirectoryShortcutNotSupported);
       return;
     }
     final normalized = text.replaceAll(RegExp(r'/+'), '/');
     if (normalized.contains('..')) {
-      setState(() => _error = 'Path traversal is not allowed');
+      setState(() => _error = l10n(context).pathTraversalNotAllowed);
       return;
     }
     _isAbsolute = normalized.startsWith('/');
@@ -239,7 +240,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     final name = _nameController.text.trim();
     final path = _pathController.text.trim();
     if (name.isEmpty || path.isEmpty) {
-      setState(() => _error = 'Name and path are required');
+      setState(() => _error = l10n(context).nameAndPathRequired);
       return;
     }
 
@@ -296,16 +297,16 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('New project', style: theme.textTheme.headlineSmall),
+                    Text(l10n(context).newProject, style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _nameController,
                       autofocus: true,
                       enabled: !_submitting,
-                      decoration: const InputDecoration(
-                        labelText: 'Name',
-                        hintText: 'My project',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n(context).name,
+                        hintText: l10n(context).myProjectHint,
+                        border: const OutlineInputBorder(),
                       ),
                       textInputAction: TextInputAction.next,
                       onChanged: (_) => setState(() => _error = null),
@@ -315,11 +316,11 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                       controller: _pathController,
                       enabled: !_submitting,
                       decoration: InputDecoration(
-                        labelText: 'Path',
-                        hintText: 'relative/path or /absolute/project/path',
+                        labelText: l10n(context).path,
+                        hintText: l10n(context).projectPathHint,
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
-                          tooltip: 'Browse to this path',
+                          tooltip: l10n(context).browseToThisPath,
                           icon: const Icon(Icons.refresh, size: 18),
                           onPressed: _submitting ? null : _jumpToTextPath,
                         ),
@@ -357,14 +358,14 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                       child: TextButton.icon(
                         onPressed: (_loading || _submitting) ? null : _selectCurrent,
                         icon: const Icon(Icons.check, size: 18),
-                        label: const Text('Select current folder'),
+                        label: Text(l10n(context).selectCurrentFolder),
                       ),
                     ),
                     if (globalError.isNotEmpty || _error != null) ...[
                       const SizedBox(height: 8),
                       Semantics(
                         liveRegion: true,
-                        label: 'Error',
+                        label: l10n(context).error,
                         child: Text(
                           globalError.isNotEmpty ? globalError : _error!,
                           style: TextStyle(color: theme.colorScheme.error),
@@ -377,7 +378,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                       children: [
                         TextButton(
                           onPressed: closeDialog,
-                          child: const Text('Cancel'),
+                          child: Text(l10n(context).cancel),
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
@@ -388,7 +389,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                                   height: 16,
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2))
-                              : const Text('Create'),
+                              : Text(l10n(context).create),
                         ),
                       ],
                     ),
@@ -423,7 +424,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            'No subfolders here',
+            l10n(context).noSubfoldersHere,
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
@@ -469,7 +470,7 @@ class _BrowserHeader extends StatelessWidget {
         .split('/')
         .where((s) => s.isNotEmpty)
         .toList();
-    final rootLabel = isAbsolute ? 'root' : 'Home';
+    final rootLabel = isAbsolute ? l10n(context).root : l10n(context).home;
     final crumbs = <String>[rootLabel, ...segs];
 
     return Row(
@@ -477,7 +478,7 @@ class _BrowserHeader extends StatelessWidget {
         TextButton.icon(
           onPressed: enabled ? onUp : null,
           icon: const Icon(Icons.arrow_upward, size: 18),
-          label: const Text('Up'),
+          label: Text(l10n(context).up),
         ),
         const SizedBox(width: 4),
         Expanded(
@@ -487,7 +488,8 @@ class _BrowserHeader extends StatelessWidget {
               children: [
                 for (var i = 0; i < crumbs.length; i++) ...[
                   if (i > 0)
-                    Text(' / ', style: theme.textTheme.labelMedium),
+                    Text(l10n(context).breadcrumbSeparator,
+                        style: theme.textTheme.labelMedium),
                   InkWell(
                     onTap: enabled ? () => onCrumb(i - 1) : null,
                     child: Text(
@@ -541,7 +543,7 @@ class _PermissionRequestDialog extends StatelessWidget {
         ),
         Center(
           child: AlertDialog(
-            title: const Text('Permission request'),
+            title: Text(l10n(context).permissionRequest),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420, maxHeight: 500),
               child: SingleChildScrollView(
@@ -572,7 +574,7 @@ class _PermissionRequestDialog extends StatelessWidget {
                     ],
                     const SizedBox(height: 20),
                     Text(
-                      'Allow this action?',
+                      l10n(context).allowThisAction,
                       style: theme.textTheme.bodyMedium,
                     ),
                   ],
@@ -586,7 +588,7 @@ class _PermissionRequestDialog extends StatelessWidget {
                 children: [
                   FilledButton(
                     onPressed: () => state.respondToPermissionRequest(allowOnce.id),
-                    child: Text(allowOnce.label ?? 'Allow once'),
+                    child: Text(allowOnce.label ?? l10n(context).allowOnce),
                   ),
                   const SizedBox(height: 8),
                   if (otherOptions.isNotEmpty)
@@ -598,7 +600,7 @@ class _PermissionRequestDialog extends StatelessWidget {
                           OutlinedButton(
                             onPressed: () =>
                                 state.respondToPermissionRequest(option.id),
-                            child: Text(option.label ?? _displayKind(option.kind)),
+                            child: Text(option.label ?? _displayKind(context, option.kind)),
                           ),
                       ],
                     ),
@@ -607,7 +609,7 @@ class _PermissionRequestDialog extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () => state.respondToPermissionRequest(null),
-                      child: const Text('Cancel'),
+                      child: Text(l10n(context).cancel),
                     ),
                   ),
                 ],
@@ -619,12 +621,12 @@ class _PermissionRequestDialog extends StatelessWidget {
     );
   }
 
-  String _displayKind(String kind) {
+  String _displayKind(BuildContext context, String kind) {
     return switch (kind) {
-      'AllowOnce' => 'Allow once',
-      'AllowAlways' => 'Allow always',
-      'RejectOnce' => 'Reject once',
-      'RejectAlways' => 'Reject always',
+      'AllowOnce' => l10n(context).allowOnce,
+      'AllowAlways' => l10n(context).allowAlways,
+      'RejectOnce' => l10n(context).rejectOnce,
+      'RejectAlways' => l10n(context).rejectAlways,
       _ => kind,
     };
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../state/app_state.dart';
 
 class FilesPanel extends StatelessWidget {
@@ -23,15 +24,15 @@ class FilesPanel extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text('Files', style: theme.textTheme.titleMedium),
+                  child: Text(l10n(context).files, style: theme.textTheme.titleMedium),
                 ),
                 IconButton(
-                  tooltip: 'New folder',
+                  tooltip: l10n(context).newFolder,
                   icon: const Icon(Icons.create_new_folder_outlined),
                   onPressed: () => _promptMkdir(context, state),
                 ),
                 IconButton(
-                  tooltip: 'Close',
+                  tooltip: l10n(context).close,
                   icon: const Icon(Icons.close),
                   onPressed: state.closeFilesPanel,
                 ),
@@ -46,11 +47,11 @@ class FilesPanel extends StatelessWidget {
               children: [
                 InkWell(
                   onTap: () => state.navigateFilesTo(const []),
-                  child: Text('root',
+                  child: Text(l10n(context).root,
                       style: TextStyle(color: theme.colorScheme.primary)),
                 ),
                 for (final (i, p) in path.indexed) ...[
-                  Text(' / '),
+                  Text(l10n(context).breadcrumbSeparator),
                   InkWell(
                     onTap: () => state.navigateFilesTo(path.sublist(0, i + 1)),
                     child: Text(p,
@@ -71,7 +72,7 @@ class FilesPanel extends StatelessWidget {
                 : entries.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Text('Empty folder',
+                        child: Text(l10n(context).emptyFolder,
                             style: theme.textTheme.bodyMedium?.copyWith(
                                 color:
                                     theme.colorScheme.onSurfaceVariant)),
@@ -93,15 +94,15 @@ class FilesPanel extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   if (!e.isDir)
-                                    Text(_formatSize(e.size),
+                                    Text(_formatSize(e.size, l10n(context)),
                                         style: theme.textTheme.labelSmall),
                                   IconButton(
-                                    tooltip: 'Delete',
+                                    tooltip: l10n(context).delete,
                                     icon: const Icon(Icons.delete_outline,
                                         color: Colors.red, size: 18),
                                     onPressed: () async {
                                       if (await _confirm(
-                                          context, 'Delete ${e.name}?')) {
+                                          context, l10n(context).deleteName(e.name))) {
                                         state.deleteFile(e.name);
                                       }
                                     },
@@ -135,10 +136,12 @@ class FilesPanel extends StatelessWidget {
     return Icons.insert_drive_file_outlined;
   }
 
-  String _formatSize(int n) {
-    if (n < 1024) return '$n B';
-    if (n < 1048576) return '${(n / 1024).toStringAsFixed(1)} KB';
-    return '${(n / 1048576).toStringAsFixed(1)} MB';
+  String _formatSize(int n, AppLocalizations l) {
+    if (n < 1024) return l.sizeBytes('$n');
+    if (n < 1048576) {
+      return l.sizeKilobytes((n / 1024).toStringAsFixed(1));
+    }
+    return l.sizeMegabytes((n / 1048576).toStringAsFixed(1));
   }
 
   Future<void> _promptMkdir(BuildContext context, AppState state) async {
@@ -146,22 +149,22 @@ class FilesPanel extends StatelessWidget {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New folder'),
+        title: Text(l10n(context).newFolder),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'Folder name'),
+          decoration: InputDecoration(hintText: l10n(context).folderNameHint),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n(context).cancel),
           ),
           FilledButton(
             onPressed: () {
               Navigator.of(ctx).pop(controller.text.trim());
             },
-            child: const Text('Create'),
+            child: Text(l10n(context).create),
           ),
         ],
       ),
@@ -180,11 +183,11 @@ class FilesPanel extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
+            child: Text(l10n(context).delete),
           ),
         ],
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/download.dart';
@@ -35,7 +36,7 @@ class SettingsPage extends StatelessWidget {
                 onPressed: () => Scaffold.of(context).openDrawer(),
               )
             : null,
-        title: const Text('Settings'),
+        title: Text(l10n(context).settings),
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
@@ -56,18 +57,18 @@ class _AccountSection extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Disable 2FA?'),
-        content: const Text(
-          'This will remove TOTP-based two-factor authentication from your account. Are you sure?',
+        title: Text(l10n(context).disable2faTitle),
+        content: Text(
+          l10n(context).disable2faConfirmation,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Disable'),
+            child: Text(l10n(context).disable2fa),
           ),
         ],
       ),
@@ -83,27 +84,28 @@ class _AccountSection extends StatelessWidget {
     final username = user?.username ?? '';
     final totpEnabled = user?.totpEnabled ?? false;
 
+    final l = l10n(context);
     return _SectionCard(
-      title: 'Account',
+      title: l.account,
       children: [
         _SettingsRow(
-          label: 'Username',
+          label: l.username,
           value: username.isEmpty ? '—' : username,
         ),
         const Divider(),
         _SettingsRow(
-          label: 'Two-factor authentication',
-          value: totpEnabled ? 'Enabled' : 'Disabled',
+          label: l.twoFactorAuthentication,
+          value: totpEnabled ? l.enabled : l.disabled,
           trailing: totpEnabled
               ? OutlinedButton.icon(
                   onPressed: () => _confirmDisableTotp(context),
                   icon: const Icon(Icons.lock_open_outlined, size: 18),
-                  label: const Text('Disable 2FA'),
+                  label: Text(l.disable2fa),
                 )
               : FilledButton.icon(
                   onPressed: state.openTotpSetup,
                   icon: const Icon(Icons.lock_outline, size: 18),
-                  label: const Text('Enable 2FA'),
+                  label: Text(l.enable2fa),
                 ),
         ),
       ],
@@ -137,6 +139,7 @@ class _DevicesSectionState extends State<_DevicesSection> {
   }
 
   Future<void> _downloadPairing() async {
+    final l = l10n(context);
     setState(() => _creating = true);
     try {
       final serverUrl = kIsWeb
@@ -145,20 +148,20 @@ class _DevicesSectionState extends State<_DevicesSection> {
       if (serverUrl.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not get server address')),
+            SnackBar(content: Text(l.couldNotGetServerAddress)),
           );
         }
         return;
       }
       final pairing = await widget.state.createPairing(
         serverUrl: serverUrl,
-        name: 'Devinorium native client',
+        name: l.appTitle,
       );
       downloadTextFile(pairing.toJsonString(), 'devinorium-pairing.json');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create pairing: $e')),
+          SnackBar(content: Text(l.createPairingFailed('$e'))),
         );
       }
     } finally {
@@ -170,16 +173,16 @@ class _DevicesSectionState extends State<_DevicesSection> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Revoke device?'),
-        content: const Text('This device will be signed out immediately.'),
+        title: Text(l10n(context).revokeDeviceTitle),
+        content: Text(l10n(context).revokeDeviceBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Revoke'),
+            child: Text(l10n(context).revoke),
           ),
         ],
       ),
@@ -192,15 +195,16 @@ class _DevicesSectionState extends State<_DevicesSection> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = l10n(context);
     return _SectionCard(
-      title: 'Devices',
+      title: l.devices,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(
               child: Text(
-                'Download a pairing file to set up the mobile or desktop app.',
+                l.pairingFileDescription,
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -215,7 +219,7 @@ class _DevicesSectionState extends State<_DevicesSection> {
                 : FilledButton.icon(
                     onPressed: _downloadPairing,
                     icon: const Icon(Icons.download, size: 18),
-                    label: const Text('Pair'),
+                    label: Text(l.pair),
                   ),
           ],
         ),
@@ -226,7 +230,7 @@ class _DevicesSectionState extends State<_DevicesSection> {
             final devices = widget.state.devices;
             if (devices.isEmpty) {
               return Text(
-                'No paired devices.',
+                l.noPairedDevices,
                 style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant),
               );
@@ -259,7 +263,7 @@ class _DeviceRow extends StatelessWidget {
     final theme = Theme.of(context);
     final display = device.name?.isNotEmpty == true
         ? device.name!
-        : 'Device ${device.tokenPrefix}';
+        : l10n(context).deviceToken(device.tokenPrefix);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -274,7 +278,7 @@ class _DeviceRow extends StatelessWidget {
                       ?.copyWith(fontWeight: FontWeight.w500),
                 ),
                 Text(
-                  device.isCurrent ? 'Current' : 'Paired',
+                  device.isCurrent ? l10n(context).current : l10n(context).paired,
                   style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant),
                 ),
@@ -284,7 +288,7 @@ class _DeviceRow extends StatelessWidget {
           if (!device.isCurrent)
             IconButton(
               icon: const Icon(Icons.logout, size: 20),
-              tooltip: 'Revoke',
+              tooltip: l10n(context).revoke,
               onPressed: () => onRevoke(device.deviceId),
             ),
         ],
@@ -301,12 +305,13 @@ class _ProviderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = state.user;
     final providers = state.providers;
+    final l = l10n(context);
 
     return _SectionCard(
-      title: 'Provider',
+      title: l.provider,
       children: [
         _SettingsRow(
-          label: 'Provider',
+          label: l.provider,
           value: _providerName(providers, user?.providerId ?? ''),
           trailing: _ProviderDropdown(state: state),
         ),
@@ -412,13 +417,13 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Provider is reachable')),
+          SnackBar(content: Text(l10n(context).providerIsReachable)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Provider test failed: $e')),
+          SnackBar(content: Text(l10n(context).providerTestFailed('$e'))),
         );
       }
     } finally {
@@ -434,11 +439,11 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
         Expanded(
           child: TextField(
             controller: _controller,
-            decoration: const InputDecoration(
-              labelText: 'Command',
-              hintText: 'devin',
+            decoration: InputDecoration(
+              labelText: l10n(context).command,
+              hintText: l10n(context).providerCommandHint,
               isDense: true,
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
             ),
             onSubmitted: (_) => _save(),
           ),
@@ -452,7 +457,7 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Test'),
+              : Text(l10n(context).test),
         ),
       ],
     );
@@ -467,36 +472,61 @@ class _PersonalizationSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = l10n(context);
     return _SectionCard(
-      title: 'Personalization',
+      title: l.personalization,
       children: [
         Row(
           children: [
             Text(
-              'Theme',
+              l.theme,
               style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: SegmentedButton<ThemeMode>(
-                segments: const [
+                segments: [
                   ButtonSegment(
                     value: ThemeMode.light,
-                    label: Text('Light'),
+                    label: Text(l.light),
                   ),
                   ButtonSegment(
                     value: ThemeMode.dark,
-                    label: Text('Dark'),
+                    label: Text(l.dark),
                   ),
                   ButtonSegment(
                     value: ThemeMode.system,
-                    label: Text('System'),
+                    label: Text(l.system),
                   ),
                 ],
                 selected: {state.themeMode},
                 onSelectionChanged: (modes) {
                   if (modes.isNotEmpty) state.setThemeMode(modes.first);
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Text(
+              l.language,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: DropdownButton<String>(
+                value: state.locale.languageCode,
+                isExpanded: true,
+                underline: const SizedBox.shrink(),
+                items: [
+                  DropdownMenuItem(value: 'en', child: Text(l.languageEnglish)),
+                ],
+                onChanged: (value) {
+                  if (value != null) state.setLanguage(value);
                 },
               ),
             ),
@@ -533,15 +563,16 @@ class _AccountsSectionState extends State<_AccountsSection> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = l10n(context);
     return _SectionCard(
-      title: 'Manage',
+      title: l.manage,
       titleBadge: const OwnerBadge(),
       children: [
         SizedBox(
           width: double.infinity,
           child: FilledButton(
             onPressed: _showCreateDialog,
-            child: const Text('Create user'),
+            child: Text(l.createUser),
           ),
         ),
         const SizedBox(height: 16),
@@ -550,7 +581,7 @@ class _AccountsSectionState extends State<_AccountsSection> {
             Expanded(
               flex: 3,
               child: Text(
-                'User',
+                l.user,
                 style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -558,7 +589,7 @@ class _AccountsSectionState extends State<_AccountsSection> {
             Expanded(
               flex: 2,
               child: Text(
-                '2FA',
+                l.twoFactorShort,
                 textAlign: TextAlign.right,
                 style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant),
@@ -567,7 +598,7 @@ class _AccountsSectionState extends State<_AccountsSection> {
             Expanded(
               flex: 2,
               child: Text(
-                'Active',
+                l.active,
                 textAlign: TextAlign.right,
                 style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant),
@@ -582,7 +613,7 @@ class _AccountsSectionState extends State<_AccountsSection> {
             final users = widget.state.users;
             if (users.isEmpty) {
               return Text(
-                'No users yet.',
+                l.noUsersYet,
                 style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant),
               );
@@ -649,7 +680,7 @@ class _UserRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  user.totpEnabled ? 'On' : 'Off',
+                  user.totpEnabled ? l10n(context).on : l10n(context).off,
                   style: theme.textTheme.bodySmall,
                 ),
               ],

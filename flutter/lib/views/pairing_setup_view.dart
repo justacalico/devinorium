@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/pairing_file_picker.dart' as picker;
@@ -23,6 +24,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
   bool _picking = false;
 
   Future<void> _pickFile() async {
+    final l = l10n(context);
     setState(() => _picking = true);
     try {
       final pick = widget.pickFile ?? picker.pickPairingFileContent;
@@ -34,34 +36,35 @@ class _PairingSetupViewState extends State<PairingSetupView> {
         await _handleBytes(bytes);
       }
     } on FormatException {
-      _showSnack('Could not parse file');
+      _showSnack(l.couldNotParseFile);
     } on Exception {
-      _showSnack('Could not open file picker');
+      _showSnack(l.couldNotOpenFilePicker);
     } finally {
       if (mounted) setState(() => _picking = false);
     }
   }
 
   Future<void> _manualPathFallback() async {
+    final l = l10n(context);
     final controller = TextEditingController();
     final path = await showDialog<String?>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Enter pairing file path'),
+        title: Text(l.enterPairingFilePath),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            hintText: '/path/to/devinorium-pairing.json',
+          decoration: InputDecoration(
+            hintText: l.pairingFilePathHint,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('OK'),
+            child: Text(l.ok),
           ),
         ],
       ),
@@ -69,7 +72,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
     controller.dispose();
 
     if (path == null || path.isEmpty) {
-      _showSnack('No file selected');
+      _showSnack(l.noFileSelected);
       return;
     }
 
@@ -78,24 +81,25 @@ class _PairingSetupViewState extends State<PairingSetupView> {
   }
 
   Future<void> _handleBytes(Uint8List? bytes) async {
+    final l = l10n(context);
     if (bytes == null || bytes.isEmpty) {
-      _showSnack('Could not read file content');
+      _showSnack(l.couldNotReadFileContent);
       return;
     }
     if (bytes.length > 1024 * 1024) {
-      _showSnack('Pairing file is too large');
+      _showSnack(l.pairingFileTooLarge);
       return;
     }
 
     final json = jsonDecode(utf8.decode(bytes));
     if (json is! Map<String, dynamic>) {
-      _showSnack('Invalid file format');
+      _showSnack(l.invalidFileFormat);
       return;
     }
 
     final pairing = PairingResponse.fromJson(json);
     if (pairing.token.isEmpty || pairing.serverUrl.isEmpty) {
-      _showSnack('Pairing file is missing required fields');
+      _showSnack(l.pairingFileMissingFields);
       return;
     }
 
@@ -125,12 +129,12 @@ class _PairingSetupViewState extends State<PairingSetupView> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Devinorium',
+                  l10n(context).appTitle,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Import a pairing file to connect to the server.',
+                  l10n(context).pairingSetupSubtitle,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
@@ -158,7 +162,7 @@ class _PairingSetupViewState extends State<PairingSetupView> {
                           ),
                         )
                       : const Icon(Icons.file_open),
-                  label: const Text('Select pairing file'),
+                  label: Text(l10n(context).selectPairingFile),
                 ),
               ],
             ),
