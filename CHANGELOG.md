@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.7.1 - 2026-08-14
+#### Bug Fixes
+- 取消 SSE 时不再关闭 native 客户端的共享 http client - (09a3e84) - HttpAnimations
+
+- - -
+
 ## v0.7.0 - 2026-08-14
 #### Features
 - 前端根据运行状态和消息内容计算线程标签 - (759a78f) - HttpAnimations
