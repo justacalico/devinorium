@@ -363,5 +363,33 @@
     }
   },
   "breadcrumbSeparator": " / ",
-  "messageLoading": "..."
+  "messageLoading": "...",
+  "readFileTitle": "Read {fileName}",
+  "@readFileTitle": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "readFileLineCount": "{count, plural, =1{1 line} other{{count} lines}}",
+  "@readFileLineCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "readFileLineRange": "{start}-{end}",
+  "@readFileLineRange": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      }
+    }
+  },
+  "readFileNoContent": "No content"
 }

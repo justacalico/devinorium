@@ -1191,6 +1191,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'...'**
   String get messageLoading;
+
+  /// No description provided for @readFileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Read {fileName}'**
+  String readFileTitle(String fileName);
+
+  /// No description provided for @readFileLineCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 line} other{{count} lines}}'**
+  String readFileLineCount(int count);
+
+  /// No description provided for @readFileLineRange.
+  ///
+  /// In en, this message translates to:
+  /// **'{start}-{end}'**
+  String readFileLineRange(int start, int end);
+
+  /// No description provided for @readFileNoContent.
+  ///
+  /// In en, this message translates to:
+  /// **'No content'**
+  String get readFileNoContent;
 }
 
 class _AppLocalizationsDelegate
