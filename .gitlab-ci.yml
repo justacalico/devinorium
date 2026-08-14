@@ -44,14 +44,34 @@ default:
     fi
   - export CARGO_HOME="$HOME/.cargo"
 
-verify:
+verify-cog:
   stage: verify
   tags: [linux-truenas]
   before_script:
     - *install
   script:
     - cog check
-    - cd flutter && flutter pub get && flutter analyze --no-pub && flutter test --no-pub && cd ..
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+verify-frontend:
+  stage: verify
+  tags: [linux-truenas]
+  before_script:
+    - *install
+  script:
+    - cd flutter && flutter pub get && flutter analyze --no-pub && flutter test --no-pub
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+verify-backend:
+  stage: verify
+  tags: [linux-truenas]
+  before_script:
+    - *install
+  script:
     - cargo test
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
