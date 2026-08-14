@@ -617,4 +617,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get messageLoading => '...';
+
+  @override
+  String readFileTitle(String fileName) {
+    return 'Read $fileName';
+  }
+
+  @override
+  String readFileLineCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String readFileLineRange(int start, int end) {
+    return '$start-$end';
+  }
+
+  @override
+  String get readFileNoContent => 'No content';
 }

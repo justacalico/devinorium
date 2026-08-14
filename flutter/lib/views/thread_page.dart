@@ -11,6 +11,7 @@ import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'drop_zone.dart';
 import 'model_picker.dart';
+import 'read_file_tool.dart';
 
 class ThreadPage extends StatelessWidget {
   const ThreadPage({super.key});
@@ -832,6 +833,10 @@ class _ToolCallItemState extends State<_ToolCallItem> {
     final l = l10n(context);
     final tool = widget.tool;
     final preview = tool.outputPreview ?? tool.command ?? '';
+
+    if (tool.kind == 'read') {
+      return ReadFileTool(key: ValueKey(tool.id), tool: tool);
+    }
 
     final (icon, iconColor) = _toolIconAndColor(tool.kind, theme);
 
