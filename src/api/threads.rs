@@ -4,7 +4,6 @@
 //! (`provider.start`); subsequent sends continue it (`provider.send`). Every
 //! user message and assistant reply is persisted in the `messages` table.
 
-use std::convert::Infallible;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -18,8 +17,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use futures::stream::{BoxStream, StreamExt as FuturesStreamExt};
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt as TokioStreamExt;
 use uuid::Uuid;
 
 use crate::auth::session::CurrentUser;
@@ -28,6 +28,7 @@ use crate::providers::{
     Attachment, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions,
     StartRequest, StreamChunkCallback,
 };
+use crate::thread_runner::{RunState, RunStatus};
 use crate::{AppState, PendingPermissionRequest};
 
 pub fn router() -> Router<AppState> {
@@ -40,6 +41,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/threads/:id/messages", get(list_messages))
         .route("/api/threads/:id/send", post(send))
         .route("/api/threads/:id/send/stream", post(send_stream))
+        .route("/api/threads/:id/run", get(get_run))
+        .route("/api/threads/:id/events", get(events))
         .route(
             "/api/threads/:id/permission/:request_id",
             post(respond_permission),
@@ -363,8 +366,72 @@ async fn list_messages(
     }
 }
 
+/// Get the current run status for a thread. Returns the active or most recent
+/// run, or `{"status":"idle"}` if the thread has no run in memory.
+async fn get_run(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    }
+
+    match state.thread_runner.get(&id).await {
+        Some(run) => Json(run.snapshot().await).into_response(),
+        None => Json(serde_json::json!({
+            "run_id": null,
+            "thread_id": id,
+            "status": RunStatus::Idle.to_string(),
+            "started_at": null,
+            "updated_at": null,
+            "error": null,
+        }))
+        .into_response(),
+    }
+}
+
+/// Subscribe to the events of the current run as an SSE stream. Reconnecting
+/// clients can resume watching a long-running thread without sending a new
+/// message.
+async fn events(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    }
+
+    match state.thread_runner.get(&id).await {
+        Some(run) => events_stream(run).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("no active run")),
+        )
+            .into_response(),
+    }
+}
+
 /// Send a message to a thread. Multipart form: `prompt` (text, required),
-/// optional file parts (attachments).
+/// optional file parts (attachments). The provider runs in the background so
+/// the work continues even if the client disconnects.
 async fn send(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -388,55 +455,72 @@ async fn send(
         Err(resp) => return resp,
     };
 
-    let user_msg = match persist_user_message(&state, &id, &input.prompt, &input.att_meta).await {
-        Ok(m) => m,
-        Err(resp) => return resp,
-    };
-
-    let provider_result =
-        call_provider(&state, &user, &thread, &input.prompt, input.attachments, None, None, None, None).await;
-
-    let (reply, thinking, new_session_id, new_title) = match provider_result {
-        Ok(t) => t,
-        Err(e) => {
-            let _ = state
-                .db
-                .add_message(NewMessage {
-                    thread_id: id.clone(),
-                    role: "error".into(),
-                    content: format!("provider error: {e}"),
-                    thinking: None,
-                    attachments: "[]".into(),
-                })
-                .await;
-            let _ = state.db.touch_thread(&id).await;
+    let run = match state
+        .thread_runner
+        .start(id.clone(), {
+            let state = state.clone();
+            move |run| run_thread(state, run, user, thread, input)
+        })
+        .await
+    {
+        Ok(run) => run,
+        Err(crate::thread_runner::StartError::AlreadyRunning) => {
             return (
-                StatusCode::BAD_GATEWAY,
-                Json(crate::api::ApiError::new("provider error")),
+                StatusCode::CONFLICT,
+                Json(crate::api::ApiError::new("thread is already running")),
             )
                 .into_response();
         }
     };
 
-    let assistant_msg = match persist_assistant_reply(
-        &state,
-        &id,
-        user.id,
-        &reply,
-        Some(&thinking),
-        new_session_id,
-        new_title,
-    )
-    .await
-    {
-        Ok(m) => m,
-        Err(resp) => return resp,
+    let mut rx = match run.subscribe() {
+        Some(rx) => rx,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(crate::api::ApiError::new("run already closed")),
+            )
+                .into_response();
+        }
     };
+    loop {
+        match rx.recv().await {
+            Ok(crate::thread_runner::RunEvent { event, .. }) if event == "done" => break,
+            Ok(crate::thread_runner::RunEvent { event, data }) if event == "error" => {
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(crate::api::ApiError::new(&data)),
+                )
+                    .into_response();
+            }
+            Ok(_) => continue,
+            Err(_) => break,
+        }
+    }
+
+    let messages = state.db.list_messages(&id).await.unwrap_or_default();
+    if messages.len() < 2 {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(crate::api::ApiError::new("provider error")),
+        )
+            .into_response();
+    }
+
+    let user_msg = &messages[messages.len() - 2];
+    let assistant_msg = &messages[messages.len() - 1];
+    if user_msg.role != "user" || assistant_msg.role != "assistant" {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(crate::api::ApiError::new("provider error")),
+        )
+            .into_response();
+    }
 
     Json(serde_json::json!({
-        "user_message": MessageOut::from(user_msg),
+        "user_message": MessageOut::from(user_msg.clone()),
         "assistant_message": MessageOut::from(assistant_msg.clone()),
-        "reply": reply,
+        "reply": assistant_msg.content,
         "thinking": assistant_msg.thinking,
     }))
     .into_response()
@@ -446,180 +530,172 @@ fn sanitize_sse_data(s: &str) -> String {
     s.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// Stream a message response as Server-Sent Events. Same multipart input as
-/// `send`, but the assistant reply is emitted chunk by chunk so the UI can
-/// render a streaming effect.
+/// Stream a message response as Server-Sent Events. The provider call starts
+/// in the background and outlives this HTTP connection, so the thread keeps
+/// running even if the client disconnects.
 async fn send_stream(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
     multipart: Multipart,
-) -> Sse<UnboundedReceiverStream<Result<Event, Infallible>>> {
-    let (tx, rx) = mpsc::unbounded_channel::<Result<Event, Infallible>>();
-    let permission_callback =
-        build_permission_callback(state.clone(), user.id, id.clone(), tx.clone());
-    let tx_text = tx.clone();
-    let text_callback: StreamChunkCallback = Arc::new(move |chunk: String| {
-        let _ = tx_text.send(Ok(
-            Event::default().event("chunk").data(sanitize_sse_data(&chunk)),
-        ));
-    });
-    let tx_thinking = tx.clone();
-    let thinking_callback: StreamChunkCallback = Arc::new(move |chunk: String| {
-        let _ = tx_thinking.send(Ok(
-            Event::default().event("thinking").data(sanitize_sse_data(&chunk)),
-        ));
-    });
-    let tx_tool = tx.clone();
-    let tool_callback: crate::providers::ToolCallCallback = Arc::new(move |ev| {
-        let payload = match serde_json::to_string(&ev) {
-            Ok(json) => json,
-            Err(_) => return,
-        };
-        let _ = tx_tool.send(Ok(
-            Event::default().event("tool_call").data(sanitize_sse_data(&payload)),
-        ));
-    });
-
-    tokio::spawn(async move {
-        let send_event = |tx: &mpsc::UnboundedSender<Result<Event, Infallible>>,
-                          ev: Event|
-         -> bool { tx.send(Ok(ev)).is_ok() };
-
-        let thread = match state.db.get_thread(&id, user.id).await {
-            Ok(Some(t)) => t,
-            Ok(None) => {
-                send_event(&tx, Event::default().event("error").data("not found"));
-                return;
-            }
-            Err(e) => {
-                send_event(
-                    &tx,
-                    Event::default()
-                        .event("error")
-                        .data(sanitize_sse_data(&format!("internal error: {e}"))),
-                );
-                return;
-            }
-        };
-
-        let input = match parse_send_multipart(multipart).await {
-            Ok(parsed) => parsed,
-            Err(_) => {
-                send_event(&tx, Event::default().event("error").data("invalid request"));
-                return;
-            }
-        };
-
-        let user_msg = match persist_user_message(&state, &id, &input.prompt, &input.att_meta).await
-        {
-            Ok(m) => m,
-            Err(_) => {
-                send_event(
-                    &tx,
-                    Event::default()
-                        .event("error")
-                        .data("failed to save user message"),
-                );
-                return;
-            }
-        };
-        if !send_event(
-            &tx,
-            Event::default()
-                .event("user_message")
-                .data(&match serde_json::to_string(&MessageOut::from(user_msg)) {
-                    Ok(json) => json,
-                    Err(_) => return,
-                }),
-        ) {
-            return;
+) -> Response {
+    let thread = match state.db.get_thread(&id, user.id).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
         }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
 
-        // Keep the SSE connection alive while devin CLI runs, since a long
-        // tool call can leave the response idle and trigger proxy timeouts.
-        let tx2 = tx.clone();
-        let mut keepalive = tokio::time::interval(Duration::from_secs(10));
-        keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let keepalive_handle = tokio::spawn(async move {
-            // tokio::time::interval fires the first tick immediately.
-            // Consume it so the loop then waits a full 10 s before each ping.
-            keepalive.tick().await;
-            loop {
-                keepalive.tick().await;
-                if tx2
-                    .send(Ok(Event::default().comment("keep-alive")))
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
+    let input = match parse_send_multipart(multipart).await {
+        Ok(parsed) => parsed,
+        Err(resp) => return resp,
+    };
 
-        let provider_result = call_provider(
-            &state,
-            &user,
-            &thread,
-            &input.prompt,
-            input.attachments,
-            Some(permission_callback),
-            Some(text_callback),
-            Some(thinking_callback),
-            Some(tool_callback),
-        )
-        .await;
-        keepalive_handle.abort();
+    let run = match state
+        .thread_runner
+        .start(id.clone(), {
+            let state = state.clone();
+            move |run| run_thread(state, run, user, thread, input)
+        })
+        .await
+    {
+        Ok(run) => run,
+        Err(crate::thread_runner::StartError::AlreadyRunning) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(crate::api::ApiError::new("thread is already running")),
+            )
+                .into_response();
+        }
+    };
 
-        let (reply, thinking, new_session_id, new_title) = match provider_result {
-            Ok(t) => t,
-            Err(e) => {
-                let _ = state
-                    .db
-                    .add_message(NewMessage {
-                        thread_id: id.clone(),
-                        role: "error".into(),
-                        content: format!("provider error: {e}"),
-                        thinking: None,
-                        attachments: "[]".into(),
-                    })
-                    .await;
-                let _ = state.db.touch_thread(&id).await;
-                send_event(&tx, Event::default().event("error").data("provider error"));
-                return;
-            }
-        };
-
-        let assistant_msg =
-            match persist_assistant_reply(&state, &id, user.id, &reply, Some(&thinking), new_session_id, new_title)
-                .await
-            {
-                Ok(m) => m,
-                Err(_) => {
-                    send_event(
-                        &tx,
-                        Event::default()
-                            .event("error")
-                            .data("failed to save assistant message"),
-                    );
-                    return;
-                }
-            };
-        send_event(
-            &tx,
-            Event::default()
-                .event("done")
-                .data(
-                    &match serde_json::to_string(&MessageOut::from(assistant_msg)) {
-                        Ok(json) => json,
-                        Err(_) => return,
-                    },
-                ),
-        );
-    });
-
-    Sse::new(UnboundedReceiverStream::new(rx))
+    events_stream(run).into_response()
 }
 
+fn events_stream(run: Arc<RunState>) -> Sse<BoxStream<'static, Result<Event, std::convert::Infallible>>> {
+    match run.subscribe() {
+        Some(receiver) => {
+            let stream = TokioStreamExt::filter_map(BroadcastStream::new(receiver), |res| {
+                match res {
+                    Ok(ev) => {
+                        let data = sanitize_sse_data(&ev.data);
+                        Some(Ok::<_, std::convert::Infallible>(
+                            Event::default().event(&ev.event).data(data),
+                        ))
+                    }
+                    Err(_) => None,
+                }
+            });
+            Sse::new(FuturesStreamExt::boxed(stream))
+        }
+        None => Sse::new(FuturesStreamExt::boxed(tokio_stream::empty())),
+    }
+}
+
+async fn run_thread(
+    state: AppState,
+    run: Arc<RunState>,
+    user: crate::db::UserRow,
+    thread: ThreadRow,
+    input: SendInput,
+) -> anyhow::Result<()> {
+    let user_msg = state
+        .db
+        .add_message(NewMessage {
+            thread_id: thread.id.clone(),
+            role: "user".into(),
+            content: input.prompt.clone(),
+            thinking: None,
+            attachments: serde_json::to_string(&input.att_meta).unwrap_or_else(|_| "[]".into()),
+        })
+        .await?;
+
+    run.emit(
+        "user_message",
+        &serde_json::to_string(&MessageOut::from(user_msg)).unwrap_or_else(|_| "{}".into()),
+    );
+
+    let text_callback: StreamChunkCallback = Arc::new({
+        let run = run.clone();
+        move |chunk: String| {
+            run.emit("chunk", &chunk);
+        }
+    });
+    let thinking_callback: StreamChunkCallback = Arc::new({
+        let run = run.clone();
+        move |chunk: String| {
+            run.emit("thinking", &chunk);
+        }
+    });
+    let tool_callback: crate::providers::ToolCallCallback = Arc::new({
+        let run = run.clone();
+        move |ev| {
+            if let Ok(json) = serde_json::to_string(&ev) {
+                run.emit("tool_call", &json);
+            }
+        }
+    });
+    let permission_callback =
+        build_permission_callback(state.clone(), user.id, thread.id.clone(), run.clone());
+
+    let provider_result = call_provider(
+        &state,
+        &user,
+        &thread,
+        &input.prompt,
+        input.attachments,
+        Some(permission_callback),
+        Some(text_callback),
+        Some(thinking_callback),
+        Some(tool_callback),
+    )
+    .await;
+
+    let (reply, thinking, new_session_id, new_title) = match provider_result {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = state
+                .db
+                .add_message(NewMessage {
+                    thread_id: thread.id.clone(),
+                    role: "error".into(),
+                    content: format!("provider error: {e}"),
+                    thinking: None,
+                    attachments: "[]".into(),
+                })
+                .await;
+            let _ = state.db.touch_thread(&thread.id).await;
+            return Err(e);
+        }
+    };
+
+    let assistant_msg = persist_assistant_reply(
+        &state,
+        &thread.id,
+        user.id,
+        &reply,
+        Some(&thinking),
+        new_session_id,
+        new_title,
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("failed to save assistant message"))?;
+
+    run.emit(
+        "done",
+        &serde_json::to_string(&MessageOut::from(assistant_msg))
+            .unwrap_or_else(|_| "{}".into()),
+    );
+
+    Ok(())
+}
+
+#[derive(Clone)]
 struct SendInput {
     prompt: String,
     attachments: Vec<Attachment>,
@@ -690,25 +766,6 @@ async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Res
     })
 }
 
-async fn persist_user_message(
-    state: &AppState,
-    thread_id: &str,
-    prompt: &str,
-    att_meta: &[serde_json::Value],
-) -> Result<MessageRow, Response> {
-    state
-        .db
-        .add_message(NewMessage {
-            thread_id: thread_id.into(),
-            role: "user".into(),
-            content: prompt.into(),
-            thinking: None,
-            attachments: serde_json::to_string(att_meta).unwrap_or_else(|_| "[]".into()),
-        })
-        .await
-        .map_err(|e| crate::api::map_err_internal(e).into_response())
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn call_provider(
     state: &AppState,
@@ -760,12 +817,12 @@ fn build_permission_callback(
     state: AppState,
     user_id: i64,
     thread_id: String,
-    tx: mpsc::UnboundedSender<Result<Event, Infallible>>,
+    run: Arc<RunState>,
 ) -> PermissionCallback {
     Arc::new(
         move |req: PermissionRequest| -> Pin<Box<dyn Future<Output = PermissionOutcome> + Send>> {
             let state = state.clone();
-            let tx = tx.clone();
+            let run = run.clone();
             let thread_id = thread_id.clone();
             Box::pin(async move {
                 let (response_tx, response_rx) = tokio::sync::oneshot::channel::<String>();
@@ -787,12 +844,15 @@ fn build_permission_callback(
                     Ok(json) => json,
                     Err(_) => return PermissionOutcome::Cancel,
                 };
-                let event = Event::default().event("permission_request").data(&payload);
-                if tx.send(Ok(event)).is_err() {
-                    return PermissionOutcome::Cancel;
-                }
+                run.emit("permission_request", &payload);
 
-                let result = tokio::time::timeout(Duration::from_secs(120), response_rx).await;
+                // Long timeout so users can disconnect, reload, and still
+                // respond to permission requests for multi-day runs.
+                let result = tokio::time::timeout(
+                    Duration::from_secs(7 * 24 * 60 * 60),
+                    response_rx,
+                )
+                .await;
 
                 match result {
                     Ok(Ok(option_id)) if !option_id.is_empty() => {

@@ -54,7 +54,7 @@ pub struct RunSnapshot {
 pub struct RunState {
     pub run_id: String,
     pub thread_id: String,
-    pub events: broadcast::Sender<RunEvent>,
+    events: std::sync::Mutex<Option<broadcast::Sender<RunEvent>>>,
     pub status: RwLock<RunStatus>,
     pub error: RwLock<Option<String>>,
     pub started_at: String,
@@ -65,13 +65,28 @@ pub struct RunState {
 impl RunState {
     /// Emit an event to all current listeners. Returns the number of receivers.
     pub fn emit(&self, event: &str, data: &str) -> usize {
-        match self.events.send(RunEvent {
-            event: event.to_string(),
-            data: data.to_string(),
-        }) {
-            Ok(n) => n,
-            Err(_) => 0,
+        let guard = self.events.lock().unwrap();
+        if let Some(sender) = guard.as_ref() {
+            match sender.send(RunEvent {
+                event: event.to_string(),
+                data: data.to_string(),
+            }) {
+                Ok(n) => n,
+                Err(_) => 0,
+            }
+        } else {
+            0
         }
+    }
+
+    /// Create a new event receiver, or `None` if the sender has closed.
+    pub fn subscribe(&self) -> Option<broadcast::Receiver<RunEvent>> {
+        self.events.lock().unwrap().as_ref().map(|s| s.subscribe())
+    }
+
+    /// Close the event sender so SSE streams end.
+    pub fn close(&self) {
+        let _ = self.events.lock().unwrap().take();
     }
 
     pub async fn set_status(&self, status: RunStatus) {
@@ -126,7 +141,7 @@ impl ThreadRunner {
     }
 
     pub async fn subscribe(&self, thread_id: &str) -> Option<broadcast::Receiver<RunEvent>> {
-        self.runs.lock().await.get(thread_id).map(|r| r.events.subscribe())
+        self.runs.lock().await.get(thread_id)?.subscribe()
     }
 
     /// Start a new background run for `thread_id`. If a run is already active,
@@ -150,7 +165,7 @@ impl ThreadRunner {
         let state = Arc::new(RunState {
             run_id: Uuid::new_v4().to_string(),
             thread_id: thread_id.clone(),
-            events,
+            events: std::sync::Mutex::new(Some(events)),
             status: RwLock::new(RunStatus::Running),
             error: RwLock::new(None),
             started_at: now.clone(),
@@ -159,6 +174,8 @@ impl ThreadRunner {
         });
 
         let state_for_task = state.clone();
+        let runs_for_cleanup = self.runs.clone();
+        let thread_id_for_cleanup = thread_id.clone();
         let handle = tokio::spawn(async move {
             let result = f(state_for_task.clone()).await;
             match result {
@@ -171,6 +188,11 @@ impl ThreadRunner {
                     state_for_task.emit("error", &e.to_string());
                 }
             }
+            // Close the broadcast so in-flight SSE streams end, but keep the
+            // run record around briefly so clients can query the final status.
+            state_for_task.close();
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            runs_for_cleanup.lock().await.remove(&thread_id_for_cleanup);
         });
 
         {
