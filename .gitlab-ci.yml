@@ -1,5 +1,6 @@
 stages:
   - verify
+  - build
   - release
 
 variables:
@@ -76,6 +77,35 @@ verify-backend:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
+
+build-image:
+  stage: build
+  tags: [linux-truenas]
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - |
+      auth=$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}\n' "$CI_REGISTRY" "$auth" > /kaniko/.docker/config.json
+  script:
+    - |
+      destinations="--destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        destinations="$destinations --destination $CI_REGISTRY_IMAGE:latest"
+      fi
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/Containerfile" \
+        $destinations \
+        --cache=true \
+        --cache-repo "$CI_REGISTRY_IMAGE/cache"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "feat/container-image"
+  timeout: 2h
 
 release:
   stage: release
