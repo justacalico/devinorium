@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.9.0 - 2026-08-14
+#### Features
+- 添加多阶段容器镜像 - (821e1c5) - HttpAnimations
+
+- - -
+
 ## v0.8.1 - 2026-08-14
 #### Bug Fixes
 - 当项目工作目录不可写时正确传递附件 - (171489e) - HttpAnimations
