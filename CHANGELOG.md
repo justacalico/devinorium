@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.8.1 - 2026-08-14
+#### Bug Fixes
+- 当项目工作目录不可写时正确传递附件 - (171489e) - HttpAnimations
+
+- - -
+
 ## v0.8.0 - 2026-08-14
 #### Features
 - 前端文案全部迁移到 AppLocalizations（仅支持英文） - (b6f66cc) - HttpAnimations
