@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.7.0 - 2026-08-14
+#### Features
+- 前端根据运行状态和消息内容计算线程标签 - (759a78f) - HttpAnimations
+- 前端展示线程标签 - (49417fe) - HttpAnimations
+- 后端根据消息和权限请求计算线程标签 - (00903eb) - HttpAnimations
+#### Bug Fixes
+- 防止 ThreadTag 在线程列表项中溢出 - (fc23354) - HttpAnimations
+#### Reverts
+- 移除后端线程标签计算 - (86da340) - HttpAnimations
+
+- - -
+
 ## v0.6.0 - 2026-08-13
 #### Features
 - 从 flutter_markdown 迁移到 flutter_markdown_plus - (7281409) - HttpAnimations
