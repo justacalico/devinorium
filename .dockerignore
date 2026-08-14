@@ -1,0 +1,11 @@
+/.git/
+/target/
+/data/
+/.devinorium-attachments/
+/frontend/dist/
+/flutter/build/
+/flutter/.dart_tool/
+*.db
+*.db-shm
+*.db-wal
+*.log
