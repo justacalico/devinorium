@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.10.0 - 2026-08-14
+#### Features
+- 前端支持重连后台 run 并订阅事件 - (7e9d636) - HttpAnimations
+- 在后台运行线程并添加状态端点 - (b15baa5) - HttpAnimations
+- wire thread runner into app state - (76789ba) - HttpAnimations
+- add background thread runner - (07d3e40) - HttpAnimations
+#### Bug Fixes
+- resume 时不重复刷新列表，保留运行中 composer - (ab0a9c1) - HttpAnimations
+- 恢复未发送输入并在 resume 时刷新消息 - (8a3448b) - HttpAnimations
+- 修复线程互斥、权限校验和同步 send 超时 - (dca7324) - HttpAnimations
+
+- - -
+
 ## v0.9.1 - 2026-08-14
 #### Bug Fixes
 - readme.md - (d0a136b) - HttpAnimations
