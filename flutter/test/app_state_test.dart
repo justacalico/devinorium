@@ -633,6 +633,80 @@ void main() {
       await controller.close();
       expect(state.globalError, 'blocked by policy');
       expect(state.sending, isFalse);
+      expect(state.composerText, 'hello');
+    });
+
+    test('sendMessage preserves composer on stream error', () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (state.globalError.isNotEmpty) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      controller.addError(ApiException('network down', 500));
+
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+      expect(state.sending, isFalse);
+      expect(state.composerText, 'hello');
     });
 
     test('sendMessage resumes on 409 conflict', () async {
@@ -785,7 +859,6 @@ void main() {
             {'id': 2, 'thread_id': 'a', 'role': 'assistant', 'content': 'done', 'thinking': null, 'attachments': [], 'created_at': ''},
           ],
         }),
-        _json(200, []),
       ]);
       final api = _StreamableApiService(client);
       api.runResponse = {'status': 'completed'};
@@ -834,8 +907,6 @@ void main() {
             {'id': 2, 'thread_id': 'a', 'role': 'assistant', 'content': 'persisted', 'thinking': null, 'attachments': [], 'created_at': ''},
           ],
         }),
-        _json(200, []),
-        _json(200, []),
       ]);
       final api = _StreamableApiService(client);
       api.runResponse = {'status': 'idle'};

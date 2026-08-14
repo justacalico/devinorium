@@ -645,6 +645,7 @@ class AppState extends ChangeNotifier {
     _streamingToolCalls.clear();
     _attachments.clear();
     _composerText = '';
+    _resumingThreadId = null;
 
     _activeThreadId = id;
     notifyListeners();
@@ -893,6 +894,7 @@ class AppState extends ChangeNotifier {
         _streamingThinkingActive = false;
         _streamingToolCalls.clear();
         clearAttachments();
+        if (_resumingThreadId != id) _composerText = '';
         notifyListeners();
 
         late StreamSubscription? sub;
@@ -915,7 +917,6 @@ class AppState extends ChangeNotifier {
         _sending = false;
         _activeThreadDetail = await api.getThread(id);
         notifyListeners();
-        await refreshThreadsAndGroups();
       }
     } catch (e) {
       _sending = false;
