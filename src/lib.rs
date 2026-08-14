@@ -10,6 +10,7 @@ pub mod config;
 pub mod db;
 pub mod providers;
 pub mod security;
+pub mod thread_runner;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,6 +35,7 @@ pub struct AppState {
     pub db: db::Db,
     pub provider: Arc<dyn providers::Provider>,
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
+    pub thread_runner: crate::thread_runner::ThreadRunner,
 }
 
 impl AppState {

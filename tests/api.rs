@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
 use axum::Router;
+use futures::stream::StreamExt;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -24,7 +25,10 @@ use devinorium::{
 };
 
 /// A stub provider that echoes the prompt back, for deterministic tests.
-struct StubProvider;
+/// `delay_ms` sleeps before returning, letting tests simulate long runs.
+struct StubProvider {
+    delay_ms: u64,
+}
 
 #[async_trait]
 impl Provider for StubProvider {
@@ -61,6 +65,9 @@ impl Provider for StubProvider {
         ])
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        if self.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        }
         let reply = format!("echo: {}", req.prompt);
         let thinking = "reasoning about the prompt".to_string();
         if let Some(cb) = &req.options.thinking_callback {
@@ -89,6 +96,9 @@ impl Provider for StubProvider {
         })
     }
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        if self.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        }
         let reply = format!("echo: {}", req.prompt);
         let thinking = "reasoning about the prompt".to_string();
         if let Some(cb) = &req.options.thinking_callback {
@@ -164,16 +174,23 @@ async fn app_state() -> (AppState, db::Db) {
     let state = AppState {
         config: Arc::new(cfg),
         db: database.clone(),
-        provider: Arc::new(StubProvider) as Arc<dyn Provider>,
+        provider: Arc::new(StubProvider { delay_ms: 0 }) as Arc<dyn Provider>,
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        thread_runner: devinorium::thread_runner::ThreadRunner::new(),
     };
     (state, database)
 }
 
 async fn make_app() -> (Router, db::Db) {
     let (state, database) = app_state().await;
+    (devinorium::build_app(state), database)
+}
+
+async fn make_app_with_delay(delay_ms: u64) -> (Router, db::Db) {
+    let (mut state, database) = app_state().await;
+    state.provider = Arc::new(StubProvider { delay_ms }) as Arc<dyn Provider>;
     (devinorium::build_app(state), database)
 }
 
@@ -613,6 +630,117 @@ async fn thread_send_streams_reply_as_sse() {
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
     assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "reasoning about the prompt"));
+}
+
+#[tokio::test]
+async fn thread_runs_in_backend_with_zero_frontends() {
+    let (app, db) = make_app_with_delay(300).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----zeroboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+
+    // Start a stream but immediately drop the response without reading the
+    // body, simulating a client that closes the app.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "send/stream should start a run");
+
+    // Poll the run status until it completes or times out.
+    let mut status = String::new();
+    for _ in 0..50 {
+        let resp = app
+            .clone()
+            .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_str(resp.into_body()).await;
+        let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+        status = v["status"].as_str().unwrap_or("idle").to_string();
+        if status == "completed" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(status, "completed", "run should complete without a frontend");
+
+    // Verify messages persisted in DB.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[0].role, "user");
+    assert_eq!(msgs[0].content, "Hello world");
+    assert_eq!(msgs[1].role, "assistant");
+    assert_eq!(msgs[1].content, "echo: Hello world");
+}
+
+#[tokio::test]
+async fn thread_events_can_be_resumed_by_reconnecting_client() {
+    let (app, _db) = make_app_with_delay(100).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----reconnectboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+
+    // Start a stream and immediately drop it.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Subscribe to the active run's events before it completes.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/events"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Collect the SSE events from the response stream.
+    let events = to_bytes(resp.into_body(), 10_000).await.unwrap();
+    let text = String::from_utf8_lossy(&events);
+    assert!(text.contains("event: done"), "reconnected client should receive the done event");
 }
 
 #[tokio::test]

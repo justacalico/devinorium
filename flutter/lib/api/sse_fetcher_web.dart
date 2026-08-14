@@ -13,8 +13,9 @@ import 'sse_parser.dart';
 Stream<SseEvent> platformFetchSseStream({
   required http.Client client,
   required String path,
-  required String prompt,
-  required List<({String filename, String mime, Uint8List bytes})> attachments,
+  String method = 'POST',
+  Map<String, String>? fields,
+  List<({String filename, String mime, Uint8List bytes})>? attachments,
 }) {
   final abort = web.AbortController();
   final controller = StreamController<SseEvent>(
@@ -28,7 +29,8 @@ Stream<SseEvent> platformFetchSseStream({
     controller: controller,
     abort: abort,
     path: path,
-    prompt: prompt,
+    method: method,
+    fields: fields,
     attachments: attachments,
   );
   return controller.stream;
@@ -38,24 +40,33 @@ Future<void> _runSse({
   required StreamController<SseEvent> controller,
   required web.AbortController abort,
   required String path,
-  required String prompt,
-  required List<({String filename, String mime, Uint8List bytes})> attachments,
+  String method = 'POST',
+  Map<String, String>? fields,
+  List<({String filename, String mime, Uint8List bytes})>? attachments,
 }) async {
   web.ReadableStreamDefaultReader? reader;
   try {
-    final form = web.FormData();
-    form.append('prompt', prompt.toJS);
-    for (final a in attachments) {
-      final blob = web.Blob(
-        [a.bytes.toJS].toJS,
-        web.BlobPropertyBag(type: a.mime),
-      );
-      form.append('file', blob, a.filename);
+    web.FormData? requestBody;
+    if (method == 'POST') {
+      final form = web.FormData();
+      if (fields != null) {
+        for (final e in fields.entries) {
+          form.append(e.key, e.value.toJS);
+        }
+      }
+      for (final a in attachments ?? []) {
+        final blob = web.Blob(
+          <JSAny>[a.bytes.toJS].toJS,
+          web.BlobPropertyBag(type: a.mime),
+        );
+        form.append('file', blob, a.filename);
+      }
+      requestBody = form;
     }
 
     final init = web.RequestInit(
-      method: 'POST',
-      body: form,
+      method: method,
+      body: requestBody,
       credentials: 'include',
       signal: abort.signal,
     );

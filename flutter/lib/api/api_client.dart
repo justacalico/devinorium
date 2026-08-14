@@ -32,6 +32,10 @@ abstract class BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments,
   });
 
+  Stream<SseEvent> getStream({
+    required String path,
+  });
+
   /// Whether the client has enough configuration to make requests.
   Future<bool> get isConfigured;
 
@@ -210,8 +214,20 @@ class ApiClient implements BaseApiClient {
     return fetchSseStream(
       client: _client,
       path: path,
-      prompt: prompt,
+      method: 'POST',
+      fields: {'prompt': prompt},
       attachments: attachments,
+    );
+  }
+
+  @override
+  Stream<SseEvent> getStream({
+    required String path,
+  }) {
+    return fetchSseStream(
+      client: _client,
+      path: path,
+      method: 'GET',
     );
   }
 }

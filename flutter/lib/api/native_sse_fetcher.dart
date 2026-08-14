@@ -14,9 +14,9 @@ Stream<SseEvent> nativeSseStream({
   required String baseUrl,
   required String token,
   required String path,
-  required String prompt,
-  List<({String filename, String mime, Uint8List bytes})> attachments =
-      const [],
+  String method = 'POST',
+  Map<String, String>? fields,
+  List<({String filename, String mime, Uint8List bytes})>? attachments,
 }) {
   if (baseUrl.isEmpty) {
     return Stream.error(ApiException(appL10n.serverUrlNotConfigured, 401));
@@ -27,17 +27,23 @@ Stream<SseEvent> nativeSseStream({
 
   final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
   final uri = Uri.parse('$base$path');
-  final req = http.MultipartRequest('POST', uri);
-  req.headers['Authorization'] = 'Bearer $token';
-  req.fields['prompt'] = prompt;
-  for (final a in attachments) {
-    req.files.add(http.MultipartFile.fromBytes(
-      'file',
-      a.bytes,
-      filename: a.filename,
-      contentType: http.MediaType.parse(a.mime),
-    ));
+  late final http.BaseRequest req;
+  if (method == 'GET') {
+    req = http.Request('GET', uri);
+  } else {
+    final multipart = http.MultipartRequest('POST', uri);
+    if (fields != null) multipart.fields.addAll(fields);
+    for (final a in attachments ?? []) {
+      multipart.files.add(http.MultipartFile.fromBytes(
+        'file',
+        a.bytes,
+        filename: a.filename,
+        contentType: http.MediaType.parse(a.mime),
+      ));
+    }
+    req = multipart;
   }
+  req.headers['Authorization'] = 'Bearer $token';
 
   var clientClosed = false;
   void closeClient() {
@@ -58,7 +64,7 @@ Stream<SseEvent> nativeSseStream({
 
 Future<void> _run(
   http.Client client,
-  http.MultipartRequest req,
+  http.BaseRequest req,
   StreamController<SseEvent> controller, {
   required void Function() onDone,
 }) async {

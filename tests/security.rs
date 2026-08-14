@@ -58,6 +58,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        thread_runner: devinorium::thread_runner::ThreadRunner::new(),
     };
     (devinorium::build_app(state), database)
 }
@@ -266,6 +267,7 @@ async fn body_size_limit_rejects_oversized() {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        thread_runner: devinorium::thread_runner::ThreadRunner::new(),
     };
     let app = devinorium::build_app(state);
 
