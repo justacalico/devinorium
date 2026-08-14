@@ -6,11 +6,12 @@
 //! callback is configured, permission requests are rejected.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use base64::Engine as _;
 use serde::Deserialize;
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -22,7 +23,7 @@ use super::{
 };
 use agent_client_protocol::{
     schema::v1::{
-        ContentBlock, EmbeddedResourceResource, InitializeRequest, LoadSessionRequest,
+        ContentBlock, EmbeddedResourceResource, ImageContent, InitializeRequest, LoadSessionRequest,
         LoadSessionResponse, NewSessionRequest, NewSessionResponse,
         PermissionOption as AcpPermissionOption, PromptRequest, RequestPermissionOutcome,
         RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
@@ -90,10 +91,6 @@ impl DevinAcpProvider {
         maybe_session: Option<&str>,
         prompt: String,
     ) -> anyhow::Result<(String, String, String)> {
-        let prompt = self
-            .with_attachments(prompt, &options.attachments, &options.working_dir)
-            .await?;
-
         let text_acc = Arc::new(Mutex::new(String::new()));
         let thinking_acc = Arc::new(Mutex::new(String::new()));
         let tool_calls: Arc<Mutex<HashMap<String, ToolCallEvent>>> =
@@ -196,7 +193,11 @@ impl DevinAcpProvider {
                     )
                     .await?;
 
-                    let prompt_blocks = vec![ContentBlock::Text(TextContent::new(prompt))];
+                    let mut prompt_blocks = vec![ContentBlock::Text(TextContent::new(prompt))];
+                    prompt_blocks.extend(
+                        self.attachment_blocks(&options.attachments, &options.working_dir)
+                            .await?,
+                    );
 
                     // The session-load replay is over once we send the new prompt.
                     replaying.store(false, Ordering::SeqCst);
@@ -218,35 +219,42 @@ impl DevinAcpProvider {
         result
     }
 
-    async fn with_attachments(
+    async fn attachment_blocks(
         &self,
-        prompt: String,
         attachments: &[Attachment],
         working_dir: &Path,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<Vec<ContentBlock>> {
         if attachments.is_empty() {
-            return Ok(prompt);
+            return Ok(Vec::new());
         }
 
-        let att_dir = working_dir.join(".devinorium-attachments");
-        tokio::fs::create_dir_all(&att_dir).await?;
+        // Clients upload attachments as raw bytes, so images can be sent as ACP
+        // ContentBlock::Image blocks without touching the filesystem. Non-image files
+        // (e.g. skill .md files) still need to be written to a writable directory so
+        // the agent can read them via @path; if the project's working directory is not
+        // writable we fall back to a process-scoped temp directory.
+        let att_dir = ensure_writable_attachment_dir(working_dir).await?;
+        let mut blocks = Vec::new();
 
-        let mut parts = vec![prompt];
         for (i, att) in attachments.iter().enumerate() {
-            let name = format!("{}_{}", i, sanitize(&att.filename));
-            let path = att_dir.join(&name);
-            tokio::fs::write(&path, &att.data).await?;
-            parts.push(format!(
-                "\n\n[Attachment {}: {} ({} bytes)]\n@{}
-",
-                i,
-                att.filename,
-                att.data.len(),
-                path.display()
-            ));
+            if att.mime.starts_with("image/") && !att.mime.ends_with("svg+xml") {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&att.data);
+                blocks.push(ContentBlock::Image(ImageContent::new(b64, att.mime.clone())));
+            } else {
+                let name = format!("{}_{}", i, sanitize(&att.filename));
+                let path = att_dir.join(&name);
+                tokio::fs::write(&path, &att.data).await?;
+                blocks.push(ContentBlock::Text(TextContent::new(format!(
+                    "\n\n[Attachment {}: {} ({} bytes)]\n@{}\n",
+                    i,
+                    att.filename,
+                    att.data.len(),
+                    path.display()
+                ))));
+            }
         }
 
-        Ok(parts.join(""))
+        Ok(blocks)
     }
 
     /// Run `devin models list --format json` and parse the same JSON shape as
@@ -318,6 +326,25 @@ impl DevinAcpProvider {
 
         Ok(models)
     }
+}
+
+async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<PathBuf> {
+    let preferred = working_dir.join(".devinorium-attachments");
+    if tokio::fs::create_dir_all(&preferred).await.is_ok() {
+        let probe = preferred.join(format!(".probe-{}", uuid::Uuid::new_v4()));
+        if tokio::fs::write(&probe, b"").await.is_ok() {
+            let _ = tokio::fs::remove_file(&probe).await;
+            return Ok(preferred);
+        }
+    }
+
+    let fallback = std::env::temp_dir().join("devinorium-attachments").join(format!(
+        "{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    tokio::fs::create_dir_all(&fallback).await?;
+    Ok(fallback)
 }
 
 async fn apply_session_config(
@@ -804,5 +831,153 @@ impl Provider for DevinAcpProvider {
 
     async fn health_check(&self) -> anyhow::Result<()> {
         self.do_health_check().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    fn provider() -> DevinAcpProvider {
+        DevinAcpProvider::new("devin".into(), "swe-1-7".into())
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn fallback_to_temp_when_working_dir_not_writable() {
+        let root = tempfile::tempdir().unwrap();
+        let locked = root.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let dir = ensure_writable_attachment_dir(&locked).await.unwrap();
+        assert!(dir.starts_with(std::env::temp_dir()));
+
+        // Restore permissions so tempdir cleanup can remove the root.
+        fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn image_attachment_produces_image_block() {
+        let root = tempfile::tempdir().unwrap();
+        let png = vec![0x89, 0x50, 0x4e, 0x47];
+        let attachments = vec![Attachment {
+            filename: "pixel.png".into(),
+            mime: "image/png".into(),
+            data: png.clone(),
+        }];
+
+        let blocks = provider()
+            .attachment_blocks(&attachments, root.path())
+            .await
+            .unwrap();
+
+        assert_eq!(blocks.len(), 1);
+        let ContentBlock::Image(img) = &blocks[0] else {
+            panic!("expected image block, got {:?}", blocks[0]);
+        };
+        assert_eq!(img.data, base64::engine::general_purpose::STANDARD.encode(&png));
+        assert_eq!(img.mime_type, "image/png");
+    }
+
+    #[tokio::test]
+    async fn text_attachment_is_written_and_referenced() {
+        let root = tempfile::tempdir().unwrap();
+        let attachments = vec![Attachment {
+            filename: "secret.txt".into(),
+            mime: "text/plain".into(),
+            data: b"PINEAPPLE".to_vec(),
+        }];
+
+        let blocks = provider()
+            .attachment_blocks(&attachments, root.path())
+            .await
+            .unwrap();
+
+        assert_eq!(blocks.len(), 1);
+        let ContentBlock::Text(text) = &blocks[0] else {
+            panic!("expected text block, got {:?}", blocks[0]);
+        };
+        assert!(text.text.contains("@"));
+        assert!(text.text.contains("secret.txt"));
+
+        // The file should have been written under the working dir.
+        let att_dir = root.path().join(".devinorium-attachments");
+        let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        assert_eq!(entries.len(), 1);
+        let content = fs::read_to_string(entries[0].path()).unwrap();
+        assert_eq!(content, "PINEAPPLE");
+    }
+
+    #[tokio::test]
+    async fn empty_attachments_returns_empty_blocks() {
+        let blocks = provider()
+            .attachment_blocks(&[], std::env::temp_dir().as_path())
+            .await
+            .unwrap();
+        assert!(blocks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn svg_attachment_is_written_not_embedded() {
+        let root = tempfile::tempdir().unwrap();
+        let svg = b"<svg></svg>".to_vec();
+        let attachments = vec![Attachment {
+            filename: "icon.svg".into(),
+            mime: "image/svg+xml".into(),
+            data: svg,
+        }];
+
+        let blocks = provider()
+            .attachment_blocks(&attachments, root.path())
+            .await
+            .unwrap();
+
+        assert_eq!(blocks.len(), 1);
+        assert!(
+            matches!(blocks[0], ContentBlock::Text(_)),
+            "SVG files should be written as text attachments, got {:?}",
+            blocks[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn multiple_attachments_use_unique_names() {
+        let root = tempfile::tempdir().unwrap();
+        let attachments = vec![
+            Attachment {
+                filename: "a.txt".into(),
+                mime: "text/plain".into(),
+                data: b"first".to_vec(),
+            },
+            Attachment {
+                filename: "a.txt".into(),
+                mime: "text/plain".into(),
+                data: b"second".to_vec(),
+            },
+        ];
+
+        let blocks = provider()
+            .attachment_blocks(&attachments, root.path())
+            .await
+            .unwrap();
+
+        assert_eq!(blocks.len(), 2);
+        let ContentBlock::Text(first) = &blocks[0] else {
+            panic!("expected text block");
+        };
+        let ContentBlock::Text(second) = &blocks[1] else {
+            panic!("expected text block");
+        };
+
+        // Each block should reference a distinct filename.
+        assert_ne!(first.text, second.text);
+
+        let att_dir = root.path().join(".devinorium-attachments");
+        let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        assert_eq!(entries.len(), 2);
     }
 }
