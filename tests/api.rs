@@ -14,11 +14,9 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use devinorium::{
-    api::threads::resolve_thread_tags,
     auth,
     config::Config,
     db,
-    db::{NewMessage, NewThread},
     providers::{
         ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse, ToolCallEvent,
     },
@@ -338,6 +336,8 @@ async fn thread_create_get_list_delete() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(!body.contains("\"tags\""), "list should not include tags: {body}");
 
     // Rename.
     let resp = app
@@ -517,171 +517,6 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     // Thread now has a session id.
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
     assert!(thread.devin_session_id.is_some());
-}
-
-#[tokio::test]
-async fn resolve_thread_tags_reflects_message_state() {
-    let (state, db) = app_state().await;
-    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
-    let tid = Uuid::new_v4().to_string();
-    db.create_thread(NewThread {
-        id: tid.clone(),
-        user_id: user.id,
-        project_id: 1,
-        thread_group_id: None,
-        title: "T".into(),
-        model: "stub".into(),
-        permission_mode: "normal".into(),
-        permissions: None,
-    })
-    .await
-    .unwrap();
-
-    assert!(resolve_thread_tags(&state, &tid).await.is_empty());
-
-    db.add_message(NewMessage {
-        thread_id: tid.clone(),
-        role: "user".into(),
-        content: "hello".into(),
-        thinking: None,
-        attachments: "[]".into(),
-    })
-    .await
-    .unwrap();
-    assert_eq!(resolve_thread_tags(&state, &tid).await, vec!["working"]);
-
-    db.add_message(NewMessage {
-        thread_id: tid.clone(),
-        role: "assistant".into(),
-        content: "done".into(),
-        thinking: None,
-        attachments: "[]".into(),
-    })
-    .await
-    .unwrap();
-    assert_eq!(resolve_thread_tags(&state, &tid).await, vec!["completed"]);
-
-    db.add_message(NewMessage {
-        thread_id: tid.clone(),
-        role: "error".into(),
-        content: "oops".into(),
-        thinking: None,
-        attachments: "[]".into(),
-    })
-    .await
-    .unwrap();
-    assert_eq!(resolve_thread_tags(&state, &tid).await, vec!["failed"]);
-}
-
-#[tokio::test]
-async fn resolve_thread_tags_prefers_pending_approval() {
-    let (state, db) = app_state().await;
-    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
-    let tid = Uuid::new_v4().to_string();
-    db.create_thread(NewThread {
-        id: tid.clone(),
-        user_id: user.id,
-        project_id: 1,
-        thread_group_id: None,
-        title: "T".into(),
-        model: "stub".into(),
-        permission_mode: "normal".into(),
-        permissions: None,
-    })
-    .await
-    .unwrap();
-
-    db.add_message(NewMessage {
-        thread_id: tid.clone(),
-        role: "error".into(),
-        content: "oops".into(),
-        thinking: None,
-        attachments: "[]".into(),
-    })
-    .await
-    .unwrap();
-
-    let (tx, _rx) = tokio::sync::oneshot::channel::<String>();
-    {
-        let mut reqs = state.pending_permission_requests.lock().await;
-        reqs.insert(
-            "req-1".into(),
-            devinorium::PendingPermissionRequest {
-                user_id: user.id,
-                thread_id: tid.clone(),
-                sender: tx,
-            },
-        );
-    }
-
-    assert_eq!(
-        resolve_thread_tags(&state, &tid).await,
-        vec!["needs approval"]
-    );
-}
-
-#[tokio::test]
-async fn thread_list_and_get_include_tags() {
-    let (app, _db) = make_app().await;
-    let cookie = login(&app).await;
-
-    let pid = create_project(&app, &cookie).await;
-    let tid = make_thread(&app, &cookie, pid, "T").await;
-
-    // List returns empty tags for a new thread.
-    let resp = app
-        .clone()
-        .oneshot(authed("GET", "/api/threads", &cookie, ""))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_str(resp.into_body()).await;
-    assert!(body.contains("\"tags\":[]"), "list should include empty tags: {body}");
-
-    // Send a message so the last message is from the assistant.
-    let boundary = "----tagboundary";
-    let send_body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHi\r\n--{boundary}--\r\n"
-    );
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                .header(
-                    "content-type",
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
-                .body(Body::from(send_body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    // List now shows completed.
-    let resp = app
-        .clone()
-        .oneshot(authed("GET", "/api/threads", &cookie, ""))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_str(resp.into_body()).await;
-    assert!(body.contains("completed"), "list should include completed tag: {body}");
-
-    // Get one also shows completed.
-    let resp = app
-        .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_str(resp.into_body()).await;
-    assert!(body.contains("completed"), "get should include completed tag: {body}");
 }
 
 #[tokio::test]

@@ -36,14 +36,4 @@ impl super::Db {
         .await
         .map_err(Into::into)
     }
-
-    pub async fn last_message_role(&self, thread_id: &str) -> anyhow::Result<Option<String>> {
-        sqlx::query_scalar::<_, String>(
-            "SELECT role FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1",
-        )
-        .bind(thread_id)
-        .fetch_optional(self.pool())
-        .await
-        .map_err(Into::into)
-    }
 }
