@@ -427,6 +427,7 @@ class _ThreadTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium,
           ),
+          subtitle: null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

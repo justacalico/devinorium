@@ -105,7 +105,9 @@ impl From<MessageRow> for MessageOut {
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.list_threads(user.id).await {
-        Ok(rows) => Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response(),
+        Ok(rows) => {
+            Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response()
+        }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }

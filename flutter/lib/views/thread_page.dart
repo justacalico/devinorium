@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/thread_status.dart';
+import '../widgets/thread_tag.dart';
 import 'drop_zone.dart';
 import 'model_picker.dart';
 
@@ -17,8 +19,15 @@ class ThreadPage extends StatelessWidget {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final isNarrow = MediaQuery.of(context).size.width < 768;
-    final title = state.activeThreadDetail?.thread.title ??
-        'Select or create a thread';
+    final thread = state.activeThreadDetail?.thread;
+    final title = thread?.title ?? 'Select or create a thread';
+    final tag = thread != null
+        ? activeThreadTag(
+            sending: state.sending,
+            messages: state.activeThreadDetail?.messages ?? const [],
+            pendingPermissionRequest: state.pendingPermissionRequest,
+          )
+        : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -28,7 +37,17 @@ class ThreadPage extends StatelessWidget {
                 onPressed: () => Scaffold.of(context).openDrawer(),
               )
             : null,
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (tag != null) ...[
+              const SizedBox(height: 2),
+              ThreadTag(tag),
+            ],
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'File manager',

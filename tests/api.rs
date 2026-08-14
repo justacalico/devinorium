@@ -127,7 +127,7 @@ impl Provider for StubProvider {
     }
 }
 
-async fn make_app() -> (Router, db::Db) {
+async fn app_state() -> (AppState, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
     let database = db::Db::connect(&db_url).await.unwrap();
@@ -169,6 +169,11 @@ async fn make_app() -> (Router, db::Db) {
             std::collections::HashMap::new(),
         )),
     };
+    (state, database)
+}
+
+async fn make_app() -> (Router, db::Db) {
+    let (state, database) = app_state().await;
     (devinorium::build_app(state), database)
 }
 
@@ -331,6 +336,8 @@ async fn thread_create_get_list_delete() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(!body.contains("\"tags\""), "list should not include tags: {body}");
 
     // Rename.
     let resp = app
