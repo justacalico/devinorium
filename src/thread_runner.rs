@@ -65,7 +65,9 @@ pub struct RunState {
 impl RunState {
     /// Emit an event to all current listeners. Returns the number of receivers.
     pub fn emit(&self, event: &str, data: &str) -> usize {
-        let guard = self.events.lock().unwrap();
+        let Ok(guard) = self.events.lock() else {
+            return 0;
+        };
         if let Some(sender) = guard.as_ref() {
             sender
                 .send(RunEvent {
@@ -80,12 +82,14 @@ impl RunState {
 
     /// Create a new event receiver, or `None` if the sender has closed.
     pub fn subscribe(&self) -> Option<broadcast::Receiver<RunEvent>> {
-        self.events.lock().unwrap().as_ref().map(|s| s.subscribe())
+        self.events.lock().ok().and_then(|g| g.as_ref().map(|s| s.subscribe()))
     }
 
     /// Close the event sender so SSE streams end.
     pub fn close(&self) {
-        let _ = self.events.lock().unwrap().take();
+        if let Ok(mut guard) = self.events.lock() {
+            guard.take();
+        }
     }
 
     pub async fn set_status(&self, status: RunStatus) {

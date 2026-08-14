@@ -483,19 +483,39 @@ async fn send(
                 .into_response();
         }
     };
+    let mut permission_request = None;
     loop {
-        match rx.recv().await {
-            Ok(crate::thread_runner::RunEvent { event, .. }) if event == "done" => break,
-            Ok(crate::thread_runner::RunEvent { event, data }) if event == "error" => {
+        match tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await {
+            Ok(Ok(crate::thread_runner::RunEvent { event, .. })) if event == "done" => break,
+            Ok(Ok(crate::thread_runner::RunEvent { event, data })) if event == "error" => {
                 return (
                     StatusCode::BAD_GATEWAY,
                     Json(crate::api::ApiError::new(&data)),
                 )
                     .into_response();
             }
-            Ok(_) => continue,
-            Err(_) => break,
+            Ok(Ok(crate::thread_runner::RunEvent { event, data })) if event == "permission_request" => {
+                permission_request = Some(data);
+                break;
+            }
+            Ok(Ok(_)) => continue,
+            Ok(Err(_)) => break,
+            Err(_) => {
+                return (
+                    StatusCode::GATEWAY_TIMEOUT,
+                    Json(crate::api::ApiError::new("run did not finish in time")),
+                )
+                    .into_response();
+            }
         }
+    }
+
+    if let Some(data) = permission_request {
+        return (
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({ "permission_request": data })),
+        )
+            .into_response();
     }
 
     let messages = state.db.list_messages(&id).await.unwrap_or_default();
@@ -908,6 +928,11 @@ async fn respond_permission(
     Path((thread_id, request_id)): Path<(String, String)>,
     Json(body): Json<PermissionResponseBody>,
 ) -> impl IntoResponse {
+    // Verify the user still owns the thread before accepting a response.
+    if !matches!(state.db.get_thread(&thread_id, user.id).await, Ok(Some(_))) {
+        return StatusCode::NOT_FOUND;
+    }
+
     let sender = {
         let mut map = state.pending_permission_requests.lock().await;
         map.remove(&request_id)

@@ -108,6 +108,7 @@ class AppState extends ChangeNotifier {
   final Map<String, ToolCallData> _streamingToolCalls = {};
   String _globalError = '';
   StreamSubscription? _sendSubscription;
+  String? _resumingThreadId;
   PermissionRequest? _pendingPermissionRequest;
   ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('en');
@@ -838,8 +839,11 @@ class AppState extends ChangeNotifier {
   void _handleRunError(String tid, Object e) {
     _sendSubscription = null;
     _clearPermissionRequest();
-    if (e is ApiException && e.statusCode == 409) {
-      resumeThread(tid);
+    if (e is ApiException && e.statusCode == 409 && _resumingThreadId != tid) {
+      _resumingThreadId = tid;
+      resumeThread(tid).whenComplete(() {
+        if (_resumingThreadId == tid) _resumingThreadId = null;
+      });
       return;
     }
     _streamingText = null;

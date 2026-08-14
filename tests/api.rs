@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
 use axum::Router;
+use futures::stream::StreamExt;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -692,6 +693,54 @@ async fn thread_runs_in_backend_with_zero_frontends() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
+}
+
+#[tokio::test]
+async fn thread_events_can_be_resumed_by_reconnecting_client() {
+    let (app, _db) = make_app_with_delay(100).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----reconnectboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+
+    // Start a stream and immediately drop it.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Subscribe to the active run's events before it completes.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/events"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Collect the SSE events from the response stream.
+    let events = to_bytes(resp.into_body(), 10_000).await.unwrap();
+    let text = String::from_utf8_lossy(&events);
+    assert!(text.contains("event: done"), "reconnected client should receive the done event");
 }
 
 #[tokio::test]
