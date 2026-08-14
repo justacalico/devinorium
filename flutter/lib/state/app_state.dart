@@ -644,6 +644,7 @@ class AppState extends ChangeNotifier {
     _streamingThinkingActive = false;
     _streamingToolCalls.clear();
     _attachments.clear();
+    _composerText = '';
 
     _activeThreadId = id;
     notifyListeners();
@@ -761,6 +762,7 @@ class AppState extends ChangeNotifier {
     switch (ev.event) {
       case 'user_message':
         clearAttachments();
+        _composerText = '';
         final msg = parseSseMessage(ev.data);
         if (msg != null && _activeThreadDetail != null) {
           _activeThreadDetail = _activeThreadDetail!.copyWith(
@@ -890,7 +892,6 @@ class AppState extends ChangeNotifier {
         _streamingThinking = null;
         _streamingThinkingActive = false;
         _streamingToolCalls.clear();
-        _composerText = '';
         clearAttachments();
         notifyListeners();
 
@@ -910,14 +911,11 @@ class AppState extends ChangeNotifier {
           },
         );
         _sendSubscription = sub;
-      } else if (status == 'completed' || status == 'failed') {
+      } else {
         _sending = false;
         _activeThreadDetail = await api.getThread(id);
         notifyListeners();
         await refreshThreadsAndGroups();
-      } else {
-        _sending = false;
-        notifyListeners();
       }
     } catch (e) {
       _sending = false;
@@ -942,7 +940,6 @@ class AppState extends ChangeNotifier {
     _streamingThinking = null;
     _streamingThinkingActive = false;
     _streamingToolCalls.clear();
-    _composerText = '';
     final attachments = List<({String filename, String mime, Uint8List bytes})>.from(_attachments);
     notifyListeners();
 
