@@ -13,4 +13,15 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: ThreadTag('needs approval')));
     expect(find.text('Needs approval'), findsOneWidget);
   });
+
+  testWidgets('ThreadTag renders running and done', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ThreadTag('running')));
+    expect(find.text('Running'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: ThreadTag('done')));
+    expect(find.text('Done'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: ThreadTag('failed')));
+    expect(find.text('Failed'), findsOneWidget);
+  });
 }

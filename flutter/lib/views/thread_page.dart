@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'drop_zone.dart';
 import 'model_picker.dart';
@@ -20,6 +21,13 @@ class ThreadPage extends StatelessWidget {
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final thread = state.activeThreadDetail?.thread;
     final title = thread?.title ?? 'Select or create a thread';
+    final tag = thread != null
+        ? activeThreadTag(
+            sending: state.sending,
+            messages: state.activeThreadDetail?.messages ?? const [],
+            pendingPermissionRequest: state.pendingPermissionRequest,
+          )
+        : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -34,9 +42,9 @@ class ThreadPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            if (thread != null && thread.tags.isNotEmpty) ...[
+            if (tag != null) ...[
               const SizedBox(height: 2),
-              ThreadTag(thread.tags.first),
+              ThreadTag(tag),
             ],
           ],
         ),

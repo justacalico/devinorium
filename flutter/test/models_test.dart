@@ -225,25 +225,6 @@ void main() {
       expect(t.model, isEmpty);
       expect(t.permissionMode, 'normal');
     });
-
-    test('parses tags', () {
-      final t = Thread.fromJson({
-        'id': 'abc',
-        'title': 'Thread',
-        'project_id': 1,
-        'tags': ['working', 'completed'],
-      });
-      expect(t.tags, ['working', 'completed']);
-    });
-
-    test('defaults missing tags to empty', () {
-      final t = Thread.fromJson({
-        'id': 'abc',
-        'title': 'Thread',
-        'project_id': 1,
-      });
-      expect(t.tags, isEmpty);
-    });
   });
 
   group('ThreadGroup', () {

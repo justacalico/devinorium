@@ -50,9 +50,9 @@ class ThreadTag extends StatelessWidget {
     final cs = theme.colorScheme;
     return switch (tag.toLowerCase()) {
       'needs approval' => (cs.primary, cs.primaryContainer),
-      'working' => (cs.tertiary, cs.tertiaryContainer),
+      'running' || 'working' => (cs.tertiary, cs.tertiaryContainer),
       'failed' => (Color(0xFFB3261E), cs.errorContainer),
-      'completed' => (cs.secondary, cs.secondaryContainer),
+      'done' || 'completed' => (cs.secondary, cs.secondaryContainer),
       _ => (cs.onSurfaceVariant, cs.surfaceContainerHighest),
     };
   }

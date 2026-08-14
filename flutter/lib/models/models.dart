@@ -268,7 +268,6 @@ class Thread {
   final String model;
   final String permissionMode;
   final String? permissions;
-  final List<String> tags;
   final String createdAt;
   final String updatedAt;
 
@@ -281,7 +280,6 @@ class Thread {
     required this.model,
     required this.permissionMode,
     this.permissions,
-    this.tags = const [],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -295,9 +293,6 @@ class Thread {
         model: j['model'] as String? ?? '',
         permissionMode: j['permission_mode'] as String? ?? 'normal',
         permissions: j['permissions'] as String?,
-        tags: ((j['tags'] as List<dynamic>?) ?? [])
-            .map((t) => t as String)
-            .toList(),
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
       );
