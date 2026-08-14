@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.11.1 - 2026-08-14
+#### Bug Fixes
+- 移除 dialogs_test 中未使用的导入 - (1056e88) - HttpAnimations
+- 修复从主目录添加项目时提示 invalid project path 的问题 - (d23c394) - HttpAnimations
+
+- - -
+
 ## v0.11.0 - 2026-08-14
 #### Features
 - 美化读文件工具卡片 - (c2f0c9d) - HttpAnimations
