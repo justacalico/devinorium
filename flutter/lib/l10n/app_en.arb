@@ -104,7 +104,6 @@
   "projectPathHint": "relative/path or /absolute/project/path",
   "browseToThisPath": "Browse to this path",
   "selectCurrentFolder": "Select current folder",
-  "homeDirectoryShortcutNotSupported": "Home directory shortcut is not supported here; type the full path",
   "pathTraversalNotAllowed": "Path traversal is not allowed",
   "nameAndPathRequired": "Name and path are required",
   "noSubfoldersHere": "No subfolders here",

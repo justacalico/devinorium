@@ -514,12 +514,6 @@ abstract class AppLocalizations {
   /// **'Select current folder'**
   String get selectCurrentFolder;
 
-  /// No description provided for @homeDirectoryShortcutNotSupported.
-  ///
-  /// In en, this message translates to:
-  /// **'Home directory shortcut is not supported here; type the full path'**
-  String get homeDirectoryShortcutNotSupported;
-
   /// No description provided for @pathTraversalNotAllowed.
   ///
   /// In en, this message translates to:

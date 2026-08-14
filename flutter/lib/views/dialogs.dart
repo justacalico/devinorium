@@ -204,7 +204,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
   }
 
   void _selectCurrent() {
-    _pathController.text = _currentPath;
+    _pathController.text = _currentPath.isEmpty ? '.' : _currentPath;
   }
 
   void _jumpToTextPath() {
@@ -216,8 +216,17 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
       _load();
       return;
     }
+    // `~` is expanded by the backend; treat it as the home directory here.
     if (text == '~' || text.startsWith('~/')) {
-      setState(() => _error = l10n(context).homeDirectoryShortcutNotSupported);
+      final rest = text == '~' ? '' : text.substring(2);
+      _isAbsolute = false;
+      _pathSegments
+        ..clear()
+        ..addAll(rest
+            .split('/')
+            .where((s) => s.isNotEmpty && s != '.')
+            .toList());
+      _load();
       return;
     }
     final normalized = text.replaceAll(RegExp(r'/+'), '/');

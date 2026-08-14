@@ -230,10 +230,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get selectCurrentFolder => 'Select current folder';
 
   @override
-  String get homeDirectoryShortcutNotSupported =>
-      'Home directory shortcut is not supported here; type the full path';
-
-  @override
   String get pathTraversalNotAllowed => 'Path traversal is not allowed';
 
   @override
