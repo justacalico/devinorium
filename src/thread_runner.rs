@@ -67,13 +67,12 @@ impl RunState {
     pub fn emit(&self, event: &str, data: &str) -> usize {
         let guard = self.events.lock().unwrap();
         if let Some(sender) = guard.as_ref() {
-            match sender.send(RunEvent {
-                event: event.to_string(),
-                data: data.to_string(),
-            }) {
-                Ok(n) => n,
-                Err(_) => 0,
-            }
+            sender
+                .send(RunEvent {
+                    event: event.to_string(),
+                    data: data.to_string(),
+                })
+                .unwrap_or_default()
         } else {
             0
         }
@@ -127,6 +126,12 @@ impl std::fmt::Display for StartError {
 #[derive(Clone)]
 pub struct ThreadRunner {
     runs: Arc<Mutex<HashMap<String, Arc<RunState>>>>,
+}
+
+impl Default for ThreadRunner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ThreadRunner {
