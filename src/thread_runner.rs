@@ -108,12 +108,6 @@ impl std::fmt::Display for StartError {
     }
 }
 
-impl std::fmt::Debug for StartError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self, f)
-    }
-}
-
 /// Manages background runs keyed by thread id.
 #[derive(Clone)]
 pub struct ThreadRunner {

@@ -168,6 +168,7 @@ async fn app_state() -> (AppState, db::Db) {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        thread_runner: devinorium::thread_runner::ThreadRunner::new(),
     };
     (state, database)
 }

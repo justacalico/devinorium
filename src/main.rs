@@ -39,6 +39,7 @@ async fn main() -> Result<()> {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        thread_runner: devinorium::thread_runner::ThreadRunner::new(),
     };
 
     let app = devinorium::build_app(state);
