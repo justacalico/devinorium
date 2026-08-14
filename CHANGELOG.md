@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.11.0 - 2026-08-14
+#### Features
+- 美化读文件工具卡片 - (c2f0c9d) - HttpAnimations
+
+- - -
+
 ## v0.10.0 - 2026-08-14
 #### Features
 - 前端支持重连后台 run 并订阅事件 - (7e9d636) - HttpAnimations
