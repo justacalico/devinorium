@@ -27,6 +27,7 @@ cp .env.example .env
 
 ./scripts/build-flutter.sh   # requires Flutter SDK; builds into frontend/dist/
 cargo build --release          # embeds the freshly built frontend/dist/
+mkdir -p data                # creates a place to store the database
 ./target/release/devinorium
 ```
 
