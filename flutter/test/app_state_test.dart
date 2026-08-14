@@ -6,7 +6,7 @@ import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -777,6 +777,26 @@ void main() {
       final restored = AppState.test();
       await restored.bootstrap();
       expect(restored.themeMode, ThemeMode.dark);
+    });
+  });
+
+  group('Language persistence', () {
+    setUpAll(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('setLanguage saves and loadLanguage restores the value', () async {
+      final state = AppState.test();
+      await state.setLanguage('en-GB');
+      expect(state.locale, const Locale('en-GB'));
+      expect(
+        (await SharedPreferences.getInstance()).getString('devinorium_language'),
+        'en-GB',
+      );
+
+      final restored = AppState.test();
+      await restored.bootstrap();
+      expect(restored.locale, const Locale('en-GB'));
     });
   });
 }

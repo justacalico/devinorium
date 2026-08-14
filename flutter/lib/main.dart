@@ -20,12 +20,18 @@ class DevinoriumApp extends StatelessWidget {
       create: (_) => AppState()..bootstrap(),
       child: Builder(
         builder: (context) {
-          final themeMode = context.select<AppState, ThemeMode>(
-            (state) => state.themeMode,
+          final (themeMode, locale) = context.select<AppState, (ThemeMode, Locale)>(
+            (state) => (state.themeMode, state.locale),
           );
           return MaterialApp(
             title: 'Devinorium',
             debugShowCheckedModeBanner: false,
+            localizationsDelegates: const [
+              DefaultMaterialLocalizations.delegate,
+              DefaultWidgetsLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+            locale: locale,
             theme: ThemeData(
               useMaterial3: true,
               colorSchemeSeed: const Color(0xFF6750A4),

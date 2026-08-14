@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
@@ -39,10 +39,12 @@ class AppState extends ChangeNotifier {
     List<String> filesPath = const [],
     String? globalError,
     ThemeMode? themeMode,
+    Locale? locale,
     int? settingsTopicIndex,
     bool sending = false,
   })  : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
+    _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _sending = sending;
     _user = user;
@@ -107,6 +109,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription? _sendSubscription;
   PermissionRequest? _pendingPermissionRequest;
   ThemeMode _themeMode = ThemeMode.system;
+  Locale _locale = const Locale('en');
   int _settingsTopicIndex = 0;
 
   // Getters
@@ -155,6 +158,7 @@ class AppState extends ChangeNotifier {
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
   ThemeMode get themeMode => _themeMode;
+  Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
 
   // ---- Setters / mutations ----
@@ -226,6 +230,26 @@ class AppState extends ChangeNotifier {
       default:
         return ThemeMode.system;
     }
+  }
+
+  Future<void> setLanguage(String language) async {
+    _locale = Locale(language);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('devinorium_language', language);
+    } catch (_) {}
+  }
+
+  Future<void> _loadLanguage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final value = prefs.getString('devinorium_language') ?? 'en';
+      _locale = Locale(value);
+    } catch (_) {
+      _locale = const Locale('en');
+    }
+    notifyListeners();
   }
 
   String? _projectPathById(int id) {
@@ -315,6 +339,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     await _loadThemeMode();
+    await _loadLanguage();
     try {
       final configured = await api.client.isConfigured;
       if (!configured) {

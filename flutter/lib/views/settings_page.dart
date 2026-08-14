@@ -502,6 +502,30 @@ class _PersonalizationSection extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Text(
+              'Language',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: DropdownButton<String>(
+                value: state.locale.languageCode,
+                isExpanded: true,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 'en', child: Text('English')),
+                ],
+                onChanged: (value) {
+                  if (value != null) state.setLanguage(value);
+                },
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
