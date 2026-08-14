@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.9.1 - 2026-08-14
+#### Bug Fixes
+- readme.md - (d0a136b) - HttpAnimations
+- 修复 release 任务在 main 分支上的竞态失败 - (1902885) - HttpAnimations
+
+- - -
+
 ## v0.9.0 - 2026-08-14
 #### Features
 - 添加多阶段容器镜像 - (821e1c5) - HttpAnimations
