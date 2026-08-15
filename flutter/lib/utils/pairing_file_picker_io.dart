@@ -34,16 +34,14 @@ Future<Uint8List?> readPairingFileFromPath(String path) async {
 }
 
 Future<Uint8List?> _pickWithFilePicker() async {
-  final result = await FilePicker.pickFiles(
+  final file = await FilePicker.pickFile(
     type: FileType.any,
-    allowMultiple: false,
-    withData: true,
   );
 
-  if (result == null || result.files.isEmpty) return null;
+  if (file == null) return null;
 
-  final bytes = result.files.first.bytes;
-  if (bytes == null || bytes.isEmpty) return null;
+  final bytes = await file.readAsBytes();
+  if (bytes.isEmpty) return null;
 
   return bytes;
 }
