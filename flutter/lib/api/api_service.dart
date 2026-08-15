@@ -97,6 +97,12 @@ class ApiService {
     await _client.delete('/api/projects/$id');
   }
 
+  Future<void> reorderProjects(List<int> projectIds) async {
+    await _client.patch('/api/projects/reorder', {
+      'project_ids': projectIds,
+    });
+  }
+
   Future<List<Thread>> listThreadsForProject(int id) async {
     final list = await _client.getList('/api/projects/$id/threads');
     return list.map(Thread.fromJson).toList();

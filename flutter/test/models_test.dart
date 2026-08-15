@@ -179,14 +179,25 @@ void main() {
         'id': 1,
         'name': 'My Project',
         'path': '/tmp/my-project',
+        'position': 5,
         'created_at': '2026-01-01',
         'updated_at': '2026-01-02',
       });
       expect(p.id, 1);
       expect(p.name, 'My Project');
       expect(p.path, '/tmp/my-project');
+      expect(p.position, 5);
       expect(p.createdAt, '2026-01-01');
       expect(p.updatedAt, '2026-01-02');
+    });
+
+    test('defaults missing position to 0', () {
+      final p = Project.fromJson({
+        'id': 1,
+        'name': 'x',
+        'path': 'y',
+      });
+      expect(p.position, 0);
     });
 
     test('defaults missing timestamps to empty', () {

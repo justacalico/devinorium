@@ -221,25 +221,38 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       }
     }
 
-    return ListView(
+    return ReorderableListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      children: [
-        for (final p in projects)
-          _ProjectExpandableTile(
-            project: p,
-            threads: threadsByProject[p.id] ?? [],
-            isActive: activeProjectId == p.id,
-            isExpanded: _expandedIds.contains(p.id),
-            activeThreadId: activeThreadId,
-            onToggle: () => _onToggle(p.id),
-            onNewThread: () {
-              Scaffold.of(context).closeDrawer();
-              state.createNewThread(projectId: p.id);
-            },
-            onThreadTap: (id) => state.openThread(id),
-          ),
-      ],
+      buildDefaultDragHandles: false,
+      onReorderItem: _onReorder,
+      itemCount: projects.length,
+      itemBuilder: (context, index) {
+        final p = projects[index];
+        return _ProjectExpandableTile(
+          key: ValueKey(p.id),
+          index: index,
+          project: p,
+          threads: threadsByProject[p.id] ?? [],
+          isActive: activeProjectId == p.id,
+          isExpanded: _expandedIds.contains(p.id),
+          activeThreadId: activeThreadId,
+          onToggle: () => _onToggle(p.id),
+          onNewThread: () {
+            Scaffold.of(context).closeDrawer();
+            state.createNewThread(projectId: p.id);
+          },
+          onThreadTap: (id) => state.openThread(id),
+        );
+      },
     );
+  }
+
+  void _onReorder(int oldIndex, int newIndex) {
+    final state = context.read<AppState>();
+    final ids = state.projects.map((p) => p.id).toList();
+    final moved = ids.removeAt(oldIndex);
+    ids.insert(newIndex, moved);
+    state.reorderProjects(ids);
   }
 
   void _onToggle(int id) {
@@ -269,6 +282,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
 }
 
 class _ProjectExpandableTile extends StatelessWidget {
+  final int index;
   final Project project;
   final List<Thread> threads;
   final bool isActive;
@@ -279,6 +293,8 @@ class _ProjectExpandableTile extends StatelessWidget {
   final ValueChanged<String> onThreadTap;
 
   const _ProjectExpandableTile({
+    super.key,
+    required this.index,
     required this.project,
     required this.threads,
     required this.isActive,
@@ -320,13 +336,30 @@ class _ProjectExpandableTile extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: ListTile(
-              leading: CircleAvatar(
-                radius: 14,
-                backgroundColor: color,
-                child: Text(
-                  project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
-                  style: const TextStyle(fontSize: 12, color: Colors.white),
-                ),
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.grab,
+                      child: Icon(
+                        Icons.drag_handle,
+                        size: 18,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: color,
+                    child: Text(
+                      project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
+                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                    ),
+                  ),
+                ],
               ),
               title: Text(
                 project.name,

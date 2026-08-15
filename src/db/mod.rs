@@ -112,6 +112,7 @@ pub struct ProjectRow {
     pub user_id: i64,
     pub name: String,
     pub path: String,
+    pub position: i64,
     pub created_at: String,
     pub updated_at: String,
 }

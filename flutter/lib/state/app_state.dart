@@ -590,6 +590,24 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> reorderProjects(List<int> ids) async {
+    final oldProjects = _projects;
+    final map = <int, Project>{};
+    for (final p in oldProjects) {
+      map[p.id] = p;
+    }
+    _projects = ids.map((id) => map[id]!).toList();
+    notifyListeners();
+
+    try {
+      await api.reorderProjects(ids);
+    } catch (e) {
+      _projects = oldProjects;
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
   Future<void> openNewProjectDialog() async {
     _dialog = DialogKind.newProject;
     _userMenuOpen = false;

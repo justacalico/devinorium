@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, Router};
+use axum::routing::{delete, get, patch, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +17,7 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/projects", get(list).post(create))
+        .route("/api/projects/reorder", patch(reorder))
         .route("/api/projects/:id", delete(delete_one))
         .route("/api/projects/:id/threads", get(list_threads))
 }
@@ -26,6 +27,7 @@ pub struct ProjectOut {
     pub id: i64,
     pub name: String,
     pub path: String,
+    pub position: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -36,6 +38,7 @@ impl From<ProjectRow> for ProjectOut {
             id: p.id,
             name: p.name,
             path: p.path,
+            position: p.position,
             created_at: p.created_at,
             updated_at: p.updated_at,
         }
@@ -99,15 +102,52 @@ async fn create(
         }
     };
 
+    let position = match state.db.next_project_position(user.id).await {
+        Ok(p) => p,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
     let new = NewProject {
         user_id: user.id,
         name: name.to_string(),
         path: path_str,
+        position,
     };
 
     match state.db.create_project(new).await {
         Ok(p) => (StatusCode::CREATED, Json(ProjectOut::from(p))).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReorderProjects {
+    pub project_ids: Vec<i64>,
+}
+
+async fn reorder(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<ReorderProjects>,
+) -> Response {
+    if req.project_ids.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("project_ids is required")),
+        )
+            .into_response();
+    }
+
+    match state.db.update_project_positions(user.id, &req.project_ids).await {
+        Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(e) => {
+            tracing::warn!(error = %e, user_id = user.id, "project reorder failed");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(&e.to_string())),
+            )
+                .into_response()
+        }
     }
 }
 

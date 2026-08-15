@@ -177,6 +177,17 @@ void main() {
       await service.deleteProject(1);
     });
 
+    test('reorderProjects patches project_ids', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('PATCH', '/api/projects/reorder'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['project_ids'], [3, 1, 2]);
+        return _json(200, {});
+      });
+      final service = _serviceFor(mock);
+      await service.reorderProjects([3, 1, 2]);
+    });
+
     test('listThreadsForProject uses project id', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/projects/1/threads'));
