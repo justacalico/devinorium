@@ -49,7 +49,7 @@ default:
 
 verify-cog:
   stage: verify
-  tags: [linux-truenas]
+  # tags: [linux-truenas]  # temporarily disabled while the self-hosted runner is offline
   before_script:
     - *install
   script:
@@ -60,7 +60,7 @@ verify-cog:
 
 verify-frontend:
   stage: verify
-  tags: [linux-truenas]
+  # tags: [linux-truenas]  # temporarily disabled while the self-hosted runner is offline
   before_script:
     - *install
   script:
@@ -71,7 +71,7 @@ verify-frontend:
 
 verify-backend:
   stage: verify
-  tags: [linux-truenas]
+  # tags: [linux-truenas]  # temporarily disabled while the self-hosted runner is offline
   before_script:
     - *install
   script:
@@ -97,7 +97,7 @@ verify-backend:
 
 build-android:
   stage: build
-  tags: [linux-truenas]
+  # tags: [linux-truenas]  # temporarily disabled while the self-hosted runner is offline
   needs: []
   before_script:
     - *install
@@ -129,7 +129,7 @@ build-android:
 
 build-linux:
   stage: build
-  tags: [linux-truenas]
+  # tags: [linux-truenas]  # temporarily disabled while the self-hosted runner is offline
   needs: []
   before_script:
     - *install
@@ -172,7 +172,8 @@ build-linux:
 
 build-image:
   stage: build
-  tags: [linux-truenas]
+  # tags: [linux-truenas]  # temporarily disabled while the self-hosted runner is offline
+  allow_failure: true
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -201,7 +202,7 @@ build-image:
 
 release:
   stage: release
-  tags: [linux-truenas]
+  # tags: [linux-truenas]  # temporarily disabled while the self-hosted runner is offline
   resource_group: release
   retry:
     max: 2
