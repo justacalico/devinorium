@@ -221,11 +221,17 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       }
     }
 
-    return ListView(
+    return ReorderableListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      children: [
-        for (final p in projects)
-          _ProjectExpandableTile(
+      buildDefaultDragHandles: false,
+      onReorderItem: _onReorder,
+      itemCount: projects.length,
+      itemBuilder: (context, index) {
+        final p = projects[index];
+        return ReorderableDragStartListener(
+          key: ValueKey(p.id),
+          index: index,
+          child: _ProjectExpandableTile(
             project: p,
             threads: threadsByProject[p.id] ?? [],
             isActive: activeProjectId == p.id,
@@ -238,8 +244,17 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
             },
             onThreadTap: (id) => state.openThread(id),
           ),
-      ],
+        );
+      },
     );
+  }
+
+  void _onReorder(int oldIndex, int newIndex) {
+    final state = context.read<AppState>();
+    final ids = state.projects.map((p) => p.id).toList();
+    final moved = ids.removeAt(oldIndex);
+    ids.insert(newIndex, moved);
+    state.reorderProjects(ids);
   }
 
   void _onToggle(int id) {

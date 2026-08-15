@@ -295,6 +295,25 @@ void main() {
       expect(base.activeProjectId, 2);
     });
 
+    test('reorderProjects reorders list and calls API', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, {}),
+        ])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+          Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+          Project(id: 3, name: 'p3', path: '/z', createdAt: '', updatedAt: ''),
+        ],
+      );
+      base.setView(AppView.app);
+      await base.reorderProjects([3, 1, 2]);
+      expect(base.projects.map((p) => p.id).toList(), [3, 1, 2]);
+    });
+
     test('openThread loads detail and updates active project', () async {
       final state = AppState(
         api: ApiService(client: _clientFor([

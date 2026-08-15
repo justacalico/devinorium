@@ -239,6 +239,7 @@ class Project {
   final int id;
   final String name;
   final String path;
+  final int position;
   final String createdAt;
   final String updatedAt;
 
@@ -246,6 +247,7 @@ class Project {
     required this.id,
     required this.name,
     required this.path,
+    this.position = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -254,6 +256,7 @@ class Project {
         id: (j['id'] as num).toInt(),
         name: j['name'] as String,
         path: j['path'] as String,
+        position: (j['position'] as num?)?.toInt() ?? 0,
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
       );

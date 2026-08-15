@@ -1065,6 +1065,50 @@ async fn project_rejects_windows_style_traversal() {
 }
 
 #[tokio::test]
+async fn project_reorder_updates_list() {
+    let (state, _db) = app_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let id1 = create_project(&app, &cookie).await;
+    let id2 = create_project(&app, &cookie).await;
+    let id3 = create_project(&app, &cookie).await;
+
+    let body = format!(r#"{{"project_ids":[{id3},{id1},{id2}]}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("PATCH", "/api/projects/reorder", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let ids: Vec<i64> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, vec![id3, id1, id2]);
+
+    // Missing a project is rejected.
+    let body = format!(r#"{{"project_ids":[{id3},{id1}]}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("PATCH", "/api/projects/reorder", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn project_accepts_tilde_with_trailing_slash() {
     let (state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
