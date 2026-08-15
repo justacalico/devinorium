@@ -171,29 +171,44 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   List<Thread> _lastThreads = [];
 
   @override
-  Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final projects = state.projects;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = context.read<AppState>();
     final activeProjectId = state.activeProjectId;
-    final threads = state.threads;
     final activeThreadId = state.activeThreadId;
+    final threads = state.threads;
+    final projects = state.projects;
 
-    // On initial load no thread is selected, so all projects start collapsed.
-    // When a thread becomes active, expand the project that owns it.
     if (activeThreadId != _lastActiveThreadId ||
         activeProjectId != _lastActiveProjectId ||
         threads != _lastThreads) {
       _lastActiveThreadId = activeThreadId;
       _lastActiveProjectId = activeProjectId;
       _lastThreads = threads;
+
+      // On initial load no thread is selected, so all projects start collapsed.
+      // When a thread becomes active, expand the project that owns it.
       if (activeThreadId != null) {
         final projectId = _projectIdForThread(threads, activeThreadId) ??
             activeProjectId;
-        if (projectId != null) {
-          _expandedIds.add(projectId);
+        if (projectId != null && !_expandedIds.contains(projectId)) {
+          setState(() {
+            _expandedIds.add(projectId);
+          });
         }
       }
     }
+
+    _expandedIds.removeWhere((id) => !projects.any((p) => p.id == id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final projects = state.projects;
+    final activeProjectId = state.activeProjectId;
+    final threads = state.threads;
+    final activeThreadId = state.activeThreadId;
 
     if (projects.isEmpty) {
       return const _NoProjects();
