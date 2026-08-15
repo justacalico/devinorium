@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.12.0 - 2026-08-15
+#### Features
+- 选择当前文件夹时自动填充项目名称 - (6f1d0fe) - HttpAnimations
+#### Bug Fixes
+- 加载时侧边栏项目默认折叠 - (e191dbe) - HttpAnimations
+
+- - -
+
 ## v0.11.2 - 2026-08-15
 #### Bug Fixes
 - 修复 README 配置表格格式 - (5e1ab3d) - HttpAnimations
