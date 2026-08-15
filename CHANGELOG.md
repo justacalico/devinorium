@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.11.2 - 2026-08-15
+#### Bug Fixes
+- 修复 README 配置表格格式 - (5e1ab3d) - HttpAnimations
+
+- - -
+
 ## v0.11.1 - 2026-08-14
 #### Bug Fixes
 - 移除 dialogs_test 中未使用的导入 - (1056e88) - HttpAnimations
