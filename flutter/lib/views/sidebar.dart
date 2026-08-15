@@ -167,6 +167,40 @@ class _ProjectThreadList extends StatefulWidget {
 class _ProjectThreadListState extends State<_ProjectThreadList> {
   final Set<int> _expandedIds = {};
   int? _lastActiveProjectId;
+  String? _lastActiveThreadId;
+  List<Thread> _lastThreads = [];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = context.read<AppState>();
+    final activeProjectId = state.activeProjectId;
+    final activeThreadId = state.activeThreadId;
+    final threads = state.threads;
+    final projects = state.projects;
+
+    if (activeThreadId != _lastActiveThreadId ||
+        activeProjectId != _lastActiveProjectId ||
+        threads != _lastThreads) {
+      _lastActiveThreadId = activeThreadId;
+      _lastActiveProjectId = activeProjectId;
+      _lastThreads = threads;
+
+      // On initial load no thread is selected, so all projects start collapsed.
+      // When a thread becomes active, expand the project that owns it.
+      if (activeThreadId != null) {
+        final projectId = _projectIdForThread(threads, activeThreadId) ??
+            activeProjectId;
+        if (projectId != null && !_expandedIds.contains(projectId)) {
+          setState(() {
+            _expandedIds.add(projectId);
+          });
+        }
+      }
+    }
+
+    _expandedIds.removeWhere((id) => !projects.any((p) => p.id == id));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -175,14 +209,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     final activeProjectId = state.activeProjectId;
     final threads = state.threads;
     final activeThreadId = state.activeThreadId;
-
-    // Auto-expand when the active project changes.
-    if (activeProjectId != _lastActiveProjectId) {
-      _lastActiveProjectId = activeProjectId;
-      if (activeProjectId != null) {
-        _expandedIds.add(activeProjectId);
-      }
-    }
 
     if (projects.isEmpty) {
       return const _NoProjects();
@@ -219,6 +245,9 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   void _onToggle(int id) {
     final state = context.read<AppState>();
     if (state.activeProjectId != id) {
+      setState(() {
+        _expandedIds.add(id);
+      });
       state.selectProject(id);
     } else {
       setState(() {
@@ -229,6 +258,13 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
         }
       });
     }
+  }
+
+  int? _projectIdForThread(List<Thread> threads, String threadId) {
+    for (final t in threads) {
+      if (t.id == threadId) return t.projectId;
+    }
+    return null;
   }
 }
 
