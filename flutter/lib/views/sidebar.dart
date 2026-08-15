@@ -228,20 +228,22 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       itemCount: projects.length,
       itemBuilder: (context, index) {
         final p = projects[index];
-        return _ProjectExpandableTile(
+        return ReorderableDragStartListener(
           key: ValueKey(p.id),
           index: index,
-          project: p,
-          threads: threadsByProject[p.id] ?? [],
-          isActive: activeProjectId == p.id,
-          isExpanded: _expandedIds.contains(p.id),
-          activeThreadId: activeThreadId,
-          onToggle: () => _onToggle(p.id),
-          onNewThread: () {
-            Scaffold.of(context).closeDrawer();
-            state.createNewThread(projectId: p.id);
-          },
-          onThreadTap: (id) => state.openThread(id),
+          child: _ProjectExpandableTile(
+            project: p,
+            threads: threadsByProject[p.id] ?? [],
+            isActive: activeProjectId == p.id,
+            isExpanded: _expandedIds.contains(p.id),
+            activeThreadId: activeThreadId,
+            onToggle: () => _onToggle(p.id),
+            onNewThread: () {
+              Scaffold.of(context).closeDrawer();
+              state.createNewThread(projectId: p.id);
+            },
+            onThreadTap: (id) => state.openThread(id),
+          ),
         );
       },
     );
@@ -282,7 +284,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
 }
 
 class _ProjectExpandableTile extends StatelessWidget {
-  final int index;
   final Project project;
   final List<Thread> threads;
   final bool isActive;
@@ -293,8 +294,6 @@ class _ProjectExpandableTile extends StatelessWidget {
   final ValueChanged<String> onThreadTap;
 
   const _ProjectExpandableTile({
-    super.key,
-    required this.index,
     required this.project,
     required this.threads,
     required this.isActive,
@@ -336,30 +335,13 @@ class _ProjectExpandableTile extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: ListTile(
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ReorderableDragStartListener(
-                    index: index,
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.grab,
-                      child: Icon(
-                        Icons.drag_handle,
-                        size: 18,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: color,
-                    child: Text(
-                      project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
-                    ),
-                  ),
-                ],
+              leading: CircleAvatar(
+                radius: 14,
+                backgroundColor: color,
+                child: Text(
+                  project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
+                  style: const TextStyle(fontSize: 12, color: Colors.white),
+                ),
               ),
               title: Text(
                 project.name,
