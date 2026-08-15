@@ -16,11 +16,12 @@ default:
     key:
       files:
         - Cargo.lock
-        - flutter/pubspec.lock
+        - flutter/pubspec.yaml
     paths:
       - /root/.cargo
       - /root/.local
       - /root/.pub-cache
+      - /root/.gradle
 
 .install: &install
   - export PATH="$HOME/.local/bin:$HOME/.local/flutter/bin:$PATH"
@@ -77,6 +78,95 @@ verify-backend:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
+
+.install-android-sdk: &install-android-sdk
+  - export ANDROID_HOME="$HOME/.local/android-sdk"
+  - export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+  - |
+    if [ ! -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+      apt-get update -qq
+      apt-get install -y -qq openjdk-17-jdk-headless unzip
+      curl -fsSL --retry 3 -o /tmp/cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+      mkdir -p "$ANDROID_HOME/cmdline-tools"
+      unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+      mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+      rm -f /tmp/cmdline-tools.zip
+      yes | sdkmanager --licenses >/dev/null
+      sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;26.1.10909125" >/dev/null
+    fi
+
+build-android:
+  stage: build
+  tags: [linux-truenas]
+  needs: []
+  before_script:
+    - *install
+    - *install-android-sdk
+    - |
+      if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+        printf '%s\n' "$ANDROID_KEYSTORE_BASE64" | base64 -d > flutter/android/app/upload-keystore.jks
+        printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
+          "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
+      fi
+    - cd flutter && flutter pub get && flutter config --enable-android
+  script:
+    - cd flutter
+    - flutter build apk --release
+    - cp build/app/outputs/flutter-apk/app-release.apk "$CI_PROJECT_DIR/devinorium-android.apk"
+    - flutter build appbundle --release
+    - cp build/app/outputs/bundle/release/app-release.aab "$CI_PROJECT_DIR/devinorium-android.aab"
+  artifacts:
+    paths:
+      - devinorium-android.apk
+      - devinorium-android.aab
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  timeout: 2h
+
+build-linux:
+  stage: build
+  tags: [linux-truenas]
+  needs: []
+  before_script:
+    - *install
+    - apt-get update -qq
+    - apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev zip dpkg-dev
+    - cd flutter && flutter pub get && flutter config --enable-linux-desktop
+  script:
+    - cd flutter
+    - flutter build linux --release
+    - cd build/linux/x64/release/bundle
+    - tar -czf "$CI_PROJECT_DIR/devinorium-linux-x86_64.tar.gz" .
+    - zip -r "$CI_PROJECT_DIR/devinorium-linux-x86_64.zip" . >/dev/null
+    - |
+      pkgdir="$CI_PROJECT_DIR/devinorium-linux-x86_64-deb"
+      rm -rf "$pkgdir"
+      mkdir -p "$pkgdir/opt/devinorium" "$pkgdir/usr/bin" "$pkgdir/DEBIAN"
+      cp -r . "$pkgdir/opt/devinorium/"
+      ln -sf /opt/devinorium/devinorium_frontend "$pkgdir/usr/bin/devinorium"
+      version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$CI_PROJECT_DIR/Cargo.toml" | head -1)
+      {
+        echo "Package: devinorium"
+        echo "Version: $version"
+        echo "Section: misc"
+        echo "Priority: optional"
+        echo "Architecture: amd64"
+        echo "Maintainer: Devinorium CI <ci@gitlab.com>"
+        echo "Description: Devinorium desktop client"
+      } > "$pkgdir/DEBIAN/control"
+      dpkg-deb --build "$pkgdir" "$CI_PROJECT_DIR/devinorium-linux-x86_64.deb" >/dev/null
+  artifacts:
+    paths:
+      - devinorium-linux-x86_64.tar.gz
+      - devinorium-linux-x86_64.zip
+      - devinorium-linux-x86_64.deb
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  timeout: 2h
 
 build-image:
   stage: build
