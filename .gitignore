@@ -19,6 +19,9 @@
 /frontend/dist/favicon.png
 /frontend/dist/.last_build_id
 
+# CI tool cache
+/.ci-tools/
+
 # Flutter/Dart build artifacts
 /flutter/build/
 /flutter/.dart_tool/

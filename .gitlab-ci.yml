@@ -91,7 +91,7 @@ verify-backend:
       unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
       mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
       rm -f /tmp/cmdline-tools.zip
-      yes | sdkmanager --licenses >/dev/null
+      for _ in $(seq 1 50); do echo y; done | sdkmanager --licenses >/dev/null
       sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;26.1.10909125" >/dev/null
     fi
 
