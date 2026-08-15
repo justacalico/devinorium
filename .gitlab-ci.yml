@@ -82,10 +82,10 @@ verify-backend:
 
 .install-android-sdk: &install-android-sdk
   - export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+  - apt-get update -qq
+  - apt-get install -y -qq openjdk-17-jdk-headless unzip
   - |
     if [ ! -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-      apt-get update -qq
-      apt-get install -y -qq openjdk-17-jdk-headless unzip
       curl -fsSL --retry 3 -o /tmp/cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
       mkdir -p "$ANDROID_HOME/cmdline-tools"
       unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
