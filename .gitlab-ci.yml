@@ -122,6 +122,8 @@ build-android:
       - devinorium-android.apk
       - devinorium-android.aab
     expire_in: 30 days
+  after_script:
+    - rm -f flutter/android/app/upload-keystore.jks flutter/android/app/key.properties
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"

@@ -22,6 +22,11 @@
 # CI tool cache
 /.ci-tools/
 
+# Android signing files (generated in CI from secrets)
+/flutter/android/app/key.properties
+/flutter/android/app/*.jks
+/flutter/android/app/*.keystore
+
 # Flutter/Dart build artifacts
 /flutter/build/
 /flutter/.dart_tool/
