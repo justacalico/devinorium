@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.13.0 - 2026-08-15
+#### Features
+- 添加侧边栏项目拖拽排序 - (be58f7d) - HttpAnimations
+#### Bug Fixes
+- 整个项目卡片支持点击拖动 - (6495da5) - HttpAnimations
+
+- - -
+
 ## v0.12.0 - 2026-08-15
 #### Features
 - 选择当前文件夹时自动填充项目名称 - (6f1d0fe) - HttpAnimations
