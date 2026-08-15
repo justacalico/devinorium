@@ -110,7 +110,7 @@ build-android:
       printf '%s\n' "$ANDROID_KEYSTORE_BASE64" | base64 -d > flutter/android/app/upload-keystore.jks
       printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
         "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
-    - cd flutter && flutter pub get && flutter config --enable-android
+    - (cd flutter && flutter pub get && flutter config --enable-android)
   script:
     - cd flutter
     - flutter build apk --release
@@ -135,7 +135,7 @@ build-linux:
     - *install
     - apt-get update -qq
     - apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev zip dpkg-dev
-    - cd flutter && flutter pub get && flutter config --enable-linux-desktop
+    - (cd flutter && flutter pub get && flutter config --enable-linux-desktop)
   script:
     - cd flutter
     - flutter build linux --release
