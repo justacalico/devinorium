@@ -80,6 +80,47 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('select current folder fills name with folder name', (tester) async {
+      final client = _clientFor([
+        _json(200, [
+          {'name': 'devinorium', 'is_dir': true, 'size': 0},
+        ]),
+        _json(200, []),
+      ]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.newProject,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('devinorium'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Select current folder'));
+      await tester.pump();
+
+      final nameField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Name',
+      );
+      final nameText = tester.widget<TextField>(nameField);
+      expect(nameText.controller?.text, 'devinorium');
+
+      final pathField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Path',
+      );
+      final pathText = tester.widget<TextField>(pathField);
+      expect(pathText.controller?.text, 'devinorium');
+    });
+
     testWidgets('expands ~ to home directory', (tester) async {
       final client = _clientFor([
         _json(200, []),
