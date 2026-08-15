@@ -103,11 +103,13 @@ build-android:
     - *install
     - *install-android-sdk
     - |
-      if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-        printf '%s\n' "$ANDROID_KEYSTORE_BASE64" | base64 -d > flutter/android/app/upload-keystore.jks
-        printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
-          "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
+      if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+        echo "Error: ANDROID_KEYSTORE_BASE64 is required for release builds" >&2
+        exit 1
       fi
+      printf '%s\n' "$ANDROID_KEYSTORE_BASE64" | base64 -d > flutter/android/app/upload-keystore.jks
+      printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
+        "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
     - cd flutter && flutter pub get && flutter config --enable-android
   script:
     - cd flutter

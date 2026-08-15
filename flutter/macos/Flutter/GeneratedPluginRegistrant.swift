@@ -5,7 +5,7 @@
 import FlutterMacOS
 import Foundation
 
-import file_picker_darwin
+import file_picker
 import shared_preferences_foundation
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
