@@ -205,6 +205,10 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
 
   void _selectCurrent() {
     _pathController.text = _currentPath.isEmpty ? '.' : _currentPath;
+    if (_nameController.text.trim().isEmpty && _pathSegments.isNotEmpty) {
+      _nameController.text = _pathSegments.last;
+    }
+    setState(() => _error = null);
   }
 
   void _jumpToTextPath() {
