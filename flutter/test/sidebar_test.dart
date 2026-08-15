@@ -130,4 +130,43 @@ void main() {
     expect(find.text('My thread'), findsOneWidget);
     expect(find.byType(ThreadTag), findsNothing);
   });
+
+  testWidgets('Projects start collapsed when no thread is active', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('My thread'), findsNothing);
+
+    await tester.tap(find.text('p'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('My thread'), findsOneWidget);
+  });
 }
