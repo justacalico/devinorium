@@ -9,6 +9,11 @@ variables:
   GLAB_ENABLE_CI_AUTOLOGIN: "true"
   FLUTTER_VERSION: "3.44.9"
   GIT_DEPTH: "0"
+  TOOLS_DIR: "$CI_PROJECT_DIR/.ci-tools"
+  CARGO_HOME: "$CI_PROJECT_DIR/.ci-tools/cargo"
+  PUB_CACHE: "$CI_PROJECT_DIR/.ci-tools/pub-cache"
+  ANDROID_HOME: "$CI_PROJECT_DIR/.ci-tools/android-sdk"
+  FLUTTER_HOME: "$CI_PROJECT_DIR/.ci-tools/flutter"
 
 default:
   image: rust:1.88.0
@@ -18,33 +23,29 @@ default:
         - Cargo.lock
         - flutter/pubspec.yaml
     paths:
-      - /root/.cargo
-      - /root/.local
-      - /root/.pub-cache
-      - /root/.gradle
+      - .ci-tools
 
 .install: &install
-  - export PATH="$HOME/.local/bin:$HOME/.local/flutter/bin:$PATH"
+  - export PATH="$TOOLS_DIR/bin:$FLUTTER_HOME/bin:$PATH"
   - |
     if ! command -v flutter >/dev/null 2>&1; then
-      mkdir -p "$HOME/.local"
-      git clone -b "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$HOME/.local/flutter"
+      mkdir -p "$TOOLS_DIR"
+      git clone -b "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$FLUTTER_HOME"
     fi
     flutter config --no-analytics >/dev/null
   - |
     if ! command -v cog >/dev/null 2>&1; then
       apt-get update -qq
       apt-get install -y -qq libgit2-dev cmake
-      cargo install cocogitto --version "$COCO_GITTO_VERSION" --root "$HOME/.local"
+      cargo install cocogitto --version "$COCO_GITTO_VERSION" --root "$TOOLS_DIR"
     fi
   - |
     if ! command -v glab >/dev/null 2>&1; then
-      mkdir -p "$HOME/.local"
+      mkdir -p "$TOOLS_DIR"
       curl -fsSL --retry 3 -o /tmp/glab.tar.gz "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_amd64.tar.gz"
-      tar -xzf /tmp/glab.tar.gz -C "$HOME/.local"
-      chmod +x "$HOME/.local/bin/glab"
+      tar -xzf /tmp/glab.tar.gz -C "$TOOLS_DIR"
+      chmod +x "$TOOLS_DIR/bin/glab"
     fi
-  - export CARGO_HOME="$HOME/.cargo"
 
 verify-cog:
   stage: verify
@@ -80,7 +81,6 @@ verify-backend:
     - if: $CI_COMMIT_BRANCH == "main"
 
 .install-android-sdk: &install-android-sdk
-  - export ANDROID_HOME="$HOME/.local/android-sdk"
   - export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
   - |
     if [ ! -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
