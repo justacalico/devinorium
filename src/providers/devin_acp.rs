@@ -978,10 +978,9 @@ fn json_to_compact_string(value: &serde_json::Value) -> String {
 }
 
 fn truncate_preview(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len])
+    match s.char_indices().nth(max_len) {
+        Some((idx, _)) => format!("{}...", &s[..idx]),
+        None => s.to_string(),
     }
 }
 
@@ -1364,5 +1363,49 @@ mod tests {
     fn apply_interaction_mode_prefix_leaves_code_prompt_unchanged() {
         let out = DevinAcpProvider::apply_interaction_mode_prefix("go".into(), "code");
         assert_eq!(out, "go");
+    }
+
+    #[test]
+    fn truncate_preview_respects_char_boundaries() {
+        assert_eq!(truncate_preview("hello world", 5), "hello...");
+
+        let cjk = "这是一个中文字符串";
+        assert_eq!(truncate_preview(cjk, 5), "这是一个中...");
+
+        let emoji = "🌍🌎🌏🚀✨";
+        assert_eq!(truncate_preview(emoji, 3), "🌍🌎🌏...");
+
+        let mixed = "hello 世界 🌍 more";
+        assert_eq!(truncate_preview(mixed, 8), "hello 世界...");
+    }
+
+    #[test]
+    fn tool_call_output_from_content_handles_chinese() {
+        let text = "中文工具输出";
+        let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(text)))];
+        let (output, changed) = tool_call_output_from_content(&content);
+        assert_eq!(output.as_deref(), Some(text));
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn merge_tool_call_update_truncates_chinese_preview() {
+        use agent_client_protocol::schema::v1::ToolCallUpdateFields;
+
+        let long = "这是一个测试".repeat(25);
+        let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(&long)))];
+        let update = ToolCallUpdate::new(
+            "tc-1",
+            ToolCallUpdateFields::new()
+                .status(ToolCallStatus::Completed)
+                .content(content),
+        );
+
+        let event = merge_tool_call_update(None, &update);
+        assert_eq!(event.output.as_deref(), Some(long.as_str()));
+
+        let preview = event.output_preview.expect("preview should be set");
+        assert_eq!(preview, "这是一个测试".repeat(20) + "...");
+        assert_eq!(preview.chars().count(), 123);
     }
 }

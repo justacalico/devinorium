@@ -220,6 +220,18 @@ void main() {
       expect(updated.output, 'ok');
       expect(updated.title, 'x');
     });
+
+    test('preserves multibyte output preview', () {
+      const preview = '中文工具输出 🌍 这是一个测试...';
+      final tc = ToolCallData.fromJson({
+        'id': '1',
+        'title': 'Run tests',
+        'kind': 'command',
+        'status': 'done',
+        'output_preview': preview,
+      });
+      expect(tc.outputPreview, preview);
+    });
   });
 
   group('MessagePart', () {
