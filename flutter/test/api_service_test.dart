@@ -272,6 +272,84 @@ void main() {
     });
 
     test('getThread returns ThreadDetail', () async {
+      var call = 0;
+      final mock = MockClient((req) async {
+        if (call == 0) {
+          expect(req, _requestTo('GET', '/api/threads/a'));
+          call++;
+          return _json(200, {
+            'thread': {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': '',
+              'permission_mode': 'normal',
+              'created_at': '',
+              'updated_at': '',
+            },
+            'total_messages': 1,
+            'messages': [],
+          });
+        }
+        expect(req, _requestTo('GET', '/api/threads/a/messages'));
+        return _json(200, {
+          'messages': [
+            {
+              'id': 1,
+              'role': 'user',
+              'content': 'hello',
+            }
+          ],
+          'total': 1,
+        });
+      });
+      final service = _serviceFor(mock);
+      final d = await service.getThread('a');
+      expect(d.thread.id, 'a');
+      expect(d.messages.length, 1);
+      expect(d.totalMessages, 1);
+    });
+
+    test('getThreadMessages fetches a page', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/threads/a/messages'));
+        return _json(200, {
+          'messages': [
+            {
+              'id': 1,
+              'role': 'user',
+              'content': 'hello',
+            }
+          ],
+          'total': 1,
+        });
+      });
+      final service = _serviceFor(mock);
+      final msgs = await service.getThreadMessages('a');
+      expect(msgs.length, 1);
+      expect(msgs.first.id, 1);
+    });
+
+    test('getThreadMessages encodes beforeId, afterId and limit', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/threads/a/messages');
+        final q = req.url.queryParameters;
+        expect(q['before_id'], '10');
+        expect(q['after_id'], '5');
+        expect(q['limit'], '25');
+        return _json(200, {'messages': [], 'total': 0});
+      });
+      final service = _serviceFor(mock);
+      await service.getThreadMessages(
+        'a',
+        beforeId: 10,
+        afterId: 5,
+        limit: 25,
+      );
+    });
+
+    test('getThread reuses inline messages when present', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/threads/a'));
         return _json(200, {
@@ -284,12 +362,16 @@ void main() {
             'created_at': '',
             'updated_at': '',
           },
-          'messages': [],
+          'total_messages': 1,
+          'messages': [
+            {'id': 1, 'role': 'user', 'content': 'hello'}
+          ],
         });
       });
       final service = _serviceFor(mock);
       final d = await service.getThread('a');
-      expect(d.thread.id, 'a');
+      expect(d.messages.length, 1);
+      expect(d.messages.first.id, 1);
     });
 
     test('getThreadRun fetches run status', () async {

@@ -2359,3 +2359,192 @@ async fn project_list_includes_git_branch() {
     assert!(project["is_repo"].as_bool().unwrap());
     assert_eq!(project["branch"].as_str().unwrap(), "main");
 }
+
+#[tokio::test]
+async fn thread_get_one_returns_total_messages() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["total_messages"], 0);
+    assert!(v["messages"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn thread_messages_pagination() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // Seed 120 messages directly to bypass provider streaming.
+    for i in 0..120 {
+        db.add_message(db::NewMessage {
+            thread_id: tid.clone(),
+            role: if i % 2 == 0 { "user".to_string() } else { "assistant".to_string() },
+            content: format!("msg {i}"),
+            thinking: None,
+            parts: "[]".to_string(),
+            attachments: "[]".to_string(),
+        })
+        .await
+        .unwrap();
+    }
+
+    // Default page is the most recent 50.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let latest = v["messages"].as_array().unwrap();
+    assert_eq!(latest.len(), 50);
+    assert!(v["total"].as_i64().unwrap() >= 120);
+    let latest_first_id = latest[0]["id"].as_i64().unwrap();
+    let latest_last_id = latest[latest.len() - 1]["id"].as_i64().unwrap();
+
+    // Page before the first id gets the next older 50.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages?before_id={latest_first_id}&limit=50"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let older = v["messages"].as_array().unwrap();
+    assert_eq!(older.len(), 50);
+    assert!(older[older.len() - 1]["id"].as_i64().unwrap() < latest_first_id);
+    let older_last_id = older[older.len() - 1]["id"].as_i64().unwrap();
+
+    // Page after the older page returns the previously fetched latest 50.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages?after_id={older_last_id}&limit=50"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let newer = v["messages"].as_array().unwrap();
+    assert_eq!(newer.len(), 50);
+    assert_eq!(newer[0]["id"].as_i64().unwrap(), latest_first_id);
+    assert_eq!(newer[newer.len() - 1]["id"].as_i64().unwrap(), latest_last_id);
+}
+
+#[tokio::test]
+async fn thread_messages_pagination_empty_thread() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Empty").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["messages"].as_array().unwrap().is_empty());
+    assert_eq!(v["total"], 0);
+}
+
+#[tokio::test]
+async fn thread_messages_rejects_before_and_after_together() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Bad").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages?before_id=1&after_id=2"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn huge_thread_messages_pagination_is_fast() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Huge").await;
+
+    // Seed 5,000 messages directly; this should complete quickly.
+    for i in 0..5000 {
+        db.add_message(db::NewMessage {
+            thread_id: tid.clone(),
+            role: if i % 2 == 0 { "user".to_string() } else { "assistant".to_string() },
+            content: format!("message {i}"),
+            thinking: None,
+            parts: "[]".to_string(),
+            attachments: "[]".to_string(),
+        })
+        .await
+        .unwrap();
+    }
+
+    let start = std::time::Instant::now();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages?limit=50"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let elapsed = start.elapsed();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let msgs = v["messages"].as_array().unwrap();
+    assert_eq!(msgs.len(), 50);
+    assert!(elapsed.as_millis() < 500, "pagination took {} ms", elapsed.as_millis());
+}

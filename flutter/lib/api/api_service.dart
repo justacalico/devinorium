@@ -250,8 +250,31 @@ class ApiService {
   }
 
   Future<ThreadDetail> getThread(String id) async {
-    final j = await _client.get('/api/threads/$id');
-    return ThreadDetail.fromJson(j);
+    final meta = await _client.get('/api/threads/$id');
+    final detail = ThreadDetail.fromJson(meta);
+    if (detail.messages.isEmpty && detail.totalMessages > 0) {
+      final messages = await getThreadMessages(id);
+      detail.messages = messages;
+    }
+    return detail;
+  }
+
+  Future<List<Message>> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int limit = 50,
+  }) async {
+    final q = <String, String>{'limit': limit.toString()};
+    if (beforeId != null) q['before_id'] = beforeId.toString();
+    if (afterId != null) q['after_id'] = afterId.toString();
+    final query = q.entries
+        .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    final j = await _client.get('/api/threads/$id/messages?$query');
+    return ((j['messages'] as List<dynamic>?) ?? [])
+        .map((m) => Message.fromJson(m as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> renameThread(String id, String title) async {
