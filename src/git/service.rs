@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::Context;
 use mini_moka::sync::Cache;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -104,6 +103,34 @@ impl GitService {
         self.git.is_some()
     }
 
+    fn is_safe_branch_name(&self, name: &str) -> bool {
+        if name.is_empty() || name.trim().is_empty() {
+            return false;
+        }
+        if name.starts_with('/') || name.starts_with('~') {
+            return false;
+        }
+        if name.contains("..") || name.contains('\0') {
+            return false;
+        }
+        if name == "." || name == ".." {
+            return false;
+        }
+        true
+    }
+
+    /// Worktree names are used as filesystem directory names, so we disallow
+    /// path separators entirely to prevent traversal.
+    fn is_safe_worktree_name(&self, name: &str) -> bool {
+        if !self.is_safe_branch_name(name) {
+            return false;
+        }
+        if name.contains('/') || name.contains('\\') {
+            return false;
+        }
+        true
+    }
+
     /// Return repository status for a project path.
     pub async fn repo_status(&self, path: &Path) -> Result<RepoStatus, GitError> {
         if self.git.is_none() {
@@ -166,9 +193,24 @@ impl GitService {
     ) -> Result<String, GitError> {
         self.repo_status(path).await?;
 
+        if !self.is_safe_branch_name(name) {
+            return Err(GitError::Other("invalid branch name".to_string()));
+        }
+
+        // Use git check-ref-format to reject branches that look like paths or
+        // contain otherwise invalid characters.
+        let mut check = self.git_cmd(path);
+        check.arg("check-ref-format").arg("--branch").arg(name);
+        if let Err(e) = self.run(&mut check, Duration::from_secs(5)).await {
+            return Err(GitError::Other(format!("invalid branch name: {e}")));
+        }
+
         let mut cmd = self.git_cmd(path);
         cmd.arg("branch").arg(name);
         if let Some(base) = base {
+            if base.trim().is_empty() {
+                return Err(GitError::Other("invalid base branch".to_string()));
+            }
             cmd.arg(base);
         }
         self.run(&mut cmd, Duration::from_secs(5)).await?;
@@ -189,6 +231,10 @@ impl GitService {
         track: bool,
     ) -> Result<String, GitError> {
         self.repo_status(path).await?;
+
+        if ref_name.trim().is_empty() {
+            return Err(GitError::Other("ref name is required".to_string()));
+        }
 
         let mut cmd = self.git_cmd(path);
         cmd.arg("checkout");
@@ -212,7 +258,18 @@ impl GitService {
     ) -> Result<Worktree, GitError> {
         self.repo_status(path).await?;
 
+        if !self.is_safe_worktree_name(name) {
+            return Err(GitError::Other("invalid worktree name".to_string()));
+        }
+        if base.trim().is_empty() {
+            return Err(GitError::Other("base branch is required".to_string()));
+        }
+
         let worktree_path = path.join(name);
+        if tokio::fs::try_exists(&worktree_path).await.unwrap_or(false) {
+            return Err(GitError::Other("worktree path already exists".to_string()));
+        }
+
         let mut cmd = self.git_cmd(path);
         cmd.arg("worktree").arg("add");
         if new_branch {
@@ -228,19 +285,21 @@ impl GitService {
         worktrees
             .into_iter()
             .find(|w| w.path == worktree_path)
-            .or_else(|| Some(Worktree {
-                path: worktree_path,
-                head: base.to_string(),
-                branch: Some(base.to_string()),
-                is_main: false,
-            }))
-            .context("failed to resolve new worktree")
-            .map_err(|e| GitError::Other(e.to_string()))
+            .ok_or_else(|| GitError::Other("failed to resolve new worktree".to_string()))
     }
 
     /// Remove a worktree at `worktree_path`.
     pub async fn remove_worktree(&self, path: &Path, worktree_path: &Path) -> Result<(), GitError> {
         self.repo_status(path).await?;
+
+        let worktrees = self.list_worktrees(path).await?;
+        let target = worktrees
+            .into_iter()
+            .find(|w| w.path == worktree_path)
+            .ok_or_else(|| GitError::Other("worktree not found".to_string()))?;
+        if target.is_main {
+            return Err(GitError::Other("cannot remove the main worktree".to_string()));
+        }
 
         let mut cmd = self.git_cmd(path);
         cmd.arg("worktree").arg("remove").arg("--force").arg(worktree_path);
@@ -307,9 +366,9 @@ impl GitService {
 
     fn invalidate(&self, path: &Path) {
         let key = path.to_string_lossy().to_string();
+        self.repo_cache.invalidate(&key);
         self.branch_cache.invalidate(&key);
         self.worktree_cache.invalidate(&key);
-        // Keep repo detection cached; it rarely changes and is cheap.
     }
 
     fn git_cmd(&self, cwd: &Path) -> Command {
@@ -489,7 +548,6 @@ impl GitService {
         let mut path_buf = None;
         let mut head = String::new();
         let mut branch = None;
-        let mut bare = false;
 
         for token in out.split('\0') {
             if token.is_empty() {
@@ -497,7 +555,9 @@ impl GitService {
             }
             if token.starts_with("worktree ") {
                 if let Some(p) = path_buf.take() {
-                    let is_main = !bare && head.len() >= 7;
+                    // The first worktree listed by `git worktree list` is always
+                    // the main (original) worktree.
+                    let is_main = worktrees.is_empty();
                     worktrees.push(Worktree {
                         path: p,
                         head: head.clone(),
@@ -508,22 +568,20 @@ impl GitService {
                 path_buf = Some(PathBuf::from(token.split_at(9).1));
                 head.clear();
                 branch = None;
-                bare = false;
             } else if token.starts_with("HEAD ") {
                 head = token.split_at(5).1.to_string();
             } else if token.starts_with("branch ") {
                 branch = Some(token.split_at(7).1.to_string());
-            } else if token == "bare" {
-                bare = true;
             }
         }
 
         if let Some(p) = path_buf {
+            let is_main = worktrees.is_empty();
             worktrees.push(Worktree {
                 path: p,
                 head,
                 branch,
-                is_main: !bare,
+                is_main,
             });
         }
 

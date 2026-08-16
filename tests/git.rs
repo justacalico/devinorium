@@ -109,6 +109,51 @@ async fn creates_and_switches_branch() {
 }
 
 #[tokio::test]
+async fn rejects_path_traversal_in_worktree_name() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let err = svc
+        .create_worktree(tmp.path(), "../escape", "HEAD", false)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+    assert!(!tmp.path().parent().unwrap().join("escape").exists());
+}
+
+#[tokio::test]
+async fn rejects_invalid_branch_name() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let err = svc
+        .create_branch(tmp.path(), "../bad", None, false)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+}
+
+#[tokio::test]
+async fn cannot_remove_main_worktree() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let err = svc
+        .remove_worktree(tmp.path(), tmp.path())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+}
+
+#[tokio::test]
+async fn cannot_remove_unknown_worktree() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let err = svc
+        .remove_worktree(tmp.path(), Path::new("/tmp/nowhere"))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+}
+
+#[tokio::test]
 async fn worktree_create_and_remove() {
     let tmp = make_repo();
     let svc = GitService::new();

@@ -246,11 +246,20 @@ async fn checkout(
         }
     };
 
+    let ref_name = req.ref_name.trim();
+    if ref_name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("ref name is required")),
+        )
+            .into_response();
+    }
+
     match state
         .git
         .checkout(
             PathBuf::from(&project.path).as_path(),
-            &req.ref_name,
+            ref_name,
             req.track,
         )
         .await
@@ -303,12 +312,29 @@ async fn create_worktree(
         }
     };
 
+    let name = req.name.trim();
+    let base = req.base.trim();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("worktree name is required")),
+        )
+            .into_response();
+    }
+    if base.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("base branch is required")),
+        )
+            .into_response();
+    }
+
     match state
         .git
         .create_worktree(
             PathBuf::from(&project.path).as_path(),
-            &req.name,
-            &req.base,
+            name,
+            base,
             req.new_branch,
         )
         .await

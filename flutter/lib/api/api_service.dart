@@ -99,7 +99,7 @@ class ApiService {
     return list.map(GitBranch.fromJson).toList();
   }
 
-  Future<GitBranch> gitCreateBranch(
+  Future<String> gitCreateBranch(
     int projectId,
     String name, {
     String? base,
@@ -110,7 +110,7 @@ class ApiService {
       'base': base,
       'switch': switchBranch,
     });
-    return GitBranch.fromJson(j);
+    return j['name'] as String;
   }
 
   Future<void> gitCheckout(
