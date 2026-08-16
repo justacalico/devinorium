@@ -13,7 +13,7 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use tower::ServiceExt;
 
-use devinorium::{auth, config::Config, db, providers, AppState};
+use devinorium::{auth, config::Config, db, git::GitService, providers, AppState};
 
 async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
@@ -59,6 +59,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        git: Arc::new(GitService::new()),
     };
     (devinorium::build_app(state), database)
 }
@@ -268,6 +269,7 @@ async fn body_size_limit_rejects_oversized() {
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        git: Arc::new(GitService::new()),
     };
     let app = devinorium::build_app(state);
 

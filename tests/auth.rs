@@ -12,7 +12,7 @@ use axum::http::{Request, StatusCode};
 use axum::routing::{get, Router};
 use tower::ServiceExt;
 
-use devinorium::{auth, config::Config, db, providers, AppState};
+use devinorium::{auth, config::Config, db, git::GitService, providers, AppState};
 
 async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db) {
     let dir = tempfile::tempdir().expect("tempdir").keep();
@@ -64,6 +64,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        git: Arc::new(GitService::new()),
     };
     (state, database)
 }

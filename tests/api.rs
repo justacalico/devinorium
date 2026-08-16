@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
 use axum::Router;
-use futures::stream::StreamExt;
+
 use tower::ServiceExt;
 use uuid::Uuid;
 
