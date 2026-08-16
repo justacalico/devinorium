@@ -429,7 +429,9 @@ class _BranchList extends StatelessWidget {
         return ListTile(
           dense: true,
           leading: Icon(
-            isCurrent ? Icons.check_circle : Icons.call_split,
+            isCurrent
+                ? Icons.check_circle
+                : (b.isRemote ? Icons.cloud : Icons.call_split),
             color: isCurrent ? Theme.of(context).colorScheme.primary : null,
           ),
           title: Text(b.name),
