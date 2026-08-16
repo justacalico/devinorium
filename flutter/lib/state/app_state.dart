@@ -46,6 +46,7 @@ class AppState extends ChangeNotifier {
     Locale? locale,
     int? settingsTopicIndex,
     bool sending = false,
+    String? lastRunStatus,
     List<MessagePart> streamingParts = const [],
     bool streamingThinkingActive = false,
     ComposerMode composerMode = ComposerMode.code,
@@ -54,6 +55,7 @@ class AppState extends ChangeNotifier {
     _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _sending = sending;
+    _lastRunStatus = lastRunStatus;
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;
     _user = user;
@@ -122,6 +124,7 @@ class AppState extends ChangeNotifier {
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   String? _resumingThreadId;
+  String? _lastRunStatus;
   PermissionRequest? _pendingPermissionRequest;
   ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('en');
@@ -173,6 +176,7 @@ class AppState extends ChangeNotifier {
   String get totpSecret => _totpSecret;
   String get composerText => _composerText;
   bool get sending => _sending;
+  String? get lastRunStatus => _lastRunStatus;
   List<({String filename, String mime, Uint8List bytes})> get attachments =>
       _attachments;
   String get selectedModel => _selectedModel;
@@ -810,6 +814,7 @@ class AppState extends ChangeNotifier {
     _attachments.clear();
     _composerText = '';
     _resumingThreadId = null;
+    _lastRunStatus = null;
 
     _activeThreadId = id;
     notifyListeners();
@@ -953,7 +958,8 @@ class AppState extends ChangeNotifier {
         final decoded = tryDecodeJson(ev.data);
         if (decoded != null) {
           final status = decoded['status'] as String? ?? 'running';
-          if (status == 'completed' || status == 'failed') {
+          _lastRunStatus = status;
+          if (status == 'completed' || status == 'failed' || status == 'stopped') {
             _finishRun(
               tid,
               error: status == 'failed' ? decoded['error'] as String? : null,
@@ -964,6 +970,7 @@ class AppState extends ChangeNotifier {
         }
         break;
       case 'user_message':
+        _lastRunStatus = 'running';
         clearAttachments();
         _composerText = '';
         final msg = parseSseMessage(ev.data);
@@ -992,6 +999,7 @@ class AppState extends ChangeNotifier {
         }
         break;
       case 'part':
+        _lastRunStatus = 'running';
         final decoded = tryDecodeJson(ev.data);
         if (decoded != null) {
           try {
@@ -1005,6 +1013,7 @@ class AppState extends ChangeNotifier {
         }
         break;
       case 'part_update':
+        _lastRunStatus = 'running';
         final decoded = tryDecodeJson(ev.data);
         if (decoded != null) {
           try {
@@ -1028,6 +1037,7 @@ class AppState extends ChangeNotifier {
         }
         break;
       case 'done':
+        _lastRunStatus = 'completed';
         final msg = parseSseMessage(ev.data);
         if (msg != null && _activeThreadDetail != null) {
           _activeThreadDetail!.messages.add(msg);
@@ -1035,7 +1045,19 @@ class AppState extends ChangeNotifier {
         }
         _finishRun(tid);
         break;
+      case 'stopped':
+        _lastRunStatus = 'stopped';
+        _clearPermissionRequest();
+        _streamingParts.clear();
+        _streamingThinkingActive = false;
+        _sending = false;
+        _sendSubscription = null;
+        notifyListeners();
+        refreshThreadsAndGroups();
+        _refreshTail(tid);
+        break;
       case 'error':
+        _lastRunStatus = 'failed';
         _finishRun(tid, error: ev.data);
         break;
     }
@@ -1131,6 +1153,7 @@ class AppState extends ChangeNotifier {
       });
       return;
     }
+    _lastRunStatus = 'failed';
     _finishRun(tid, error: '$e');
   }
 
@@ -1150,6 +1173,7 @@ class AppState extends ChangeNotifier {
     try {
       final run = await api.getThreadRun(id);
       final status = run['status'] as String? ?? 'idle';
+      _lastRunStatus = status;
       if (status == 'running') {
         _runningThreadIds.add(id);
         _setStreamingFromSnapshot(run);
@@ -1181,8 +1205,11 @@ class AppState extends ChangeNotifier {
         _sending = false;
         _streamingParts.clear();
         _streamingThinkingActive = false;
+        _streamingLastSeq = 0;
         if (status == 'failed' && run['error'] is String) {
           _globalError = run['error'] as String;
+        } else if (status == 'stopped') {
+          _globalError = '';
         } else {
           _globalError = '';
         }
@@ -1194,6 +1221,8 @@ class AppState extends ChangeNotifier {
       _sending = false;
       _streamingParts.clear();
       _streamingThinkingActive = false;
+      _streamingLastSeq = 0;
+      _lastRunStatus = null;
       _globalError = '$e';
       notifyListeners();
     }
@@ -1211,6 +1240,7 @@ class AppState extends ChangeNotifier {
     _clearPermissionRequest();
 
     _sending = true;
+    _lastRunStatus = 'running';
     _runningThreadIds.add(tid);
     _streamingParts.clear();
     _streamingThinkingActive = false;
@@ -1245,7 +1275,20 @@ class AppState extends ChangeNotifier {
           );
       _sendSubscription = sub;
     } catch (e) {
+      _lastRunStatus = 'failed';
       _finishRun(tid, error: '$e');
+    }
+  }
+
+  Future<void> stopThread() async {
+    final tid = _activeThreadId;
+    if (tid == null || !_sending) return;
+
+    try {
+      await api.stopThread(tid);
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
     }
   }
 

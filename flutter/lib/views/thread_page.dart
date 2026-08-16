@@ -37,6 +37,7 @@ class ThreadPage extends StatelessWidget {
             sending: state.sending,
             messages: state.activeThreadDetail?.messages ?? const [],
             pendingPermissionRequest: state.pendingPermissionRequest,
+            runStatus: state.lastRunStatus,
           )
         : null;
 
@@ -1049,18 +1050,19 @@ class _ComposerState extends State<_Composer> {
                           ),
                         ),
                         IconButton.filled(
+                          tooltip: isSending
+                              ? l10n(context).stopGenerating
+                              : l10n(context).send,
                           icon: isSending
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
+                              ? const Icon(Icons.stop, size: 18)
                               : const Icon(Icons.send, size: 18),
-                          onPressed: (hasActiveThread && !isSending)
+                          onPressed: hasActiveThread
                               ? () {
-                                  if (state.composerText.trim().isNotEmpty) {
+                                  if (isSending) {
+                                    state.stopThread();
+                                  } else if (state.composerText
+                                      .trim()
+                                      .isNotEmpty) {
                                     widget.controller.clear();
                                     state.sendMessage();
                                   }

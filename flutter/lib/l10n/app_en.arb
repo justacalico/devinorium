@@ -313,6 +313,7 @@
   "tagWorking": "Working",
   "tagFailed": "Failed",
   "tagDone": "Done",
+  "tagStopped": "Stopped",
   "noValue": "—",
   "tokensMillionSuffix": "{count}M",
   "@tokensMillionSuffix": {
@@ -445,5 +446,7 @@
   "gitlabNotInstalled": "GitLab CLI (glab) is not installed",
   "none": "None",
   "createAndSwitchBranch": "Create and switch",
-  "createAndNewBranch": "Create and new branch"
+  "createAndNewBranch": "Create and new branch",
+  "send": "Send",
+  "stopGenerating": "Stop generating"
 }

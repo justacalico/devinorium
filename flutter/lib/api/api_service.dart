@@ -460,8 +460,13 @@ class ApiService {
     return _client.getStream(path: '/api/threads/$id/events');
   }
 
+  /// Stop the currently running model/ACP session for a thread.
+  Future<void> stopThread(String id) async {
+    await _client.post('/api/threads/$id/stop', {});
+  }
+
   /// Stream a message send. Returns a stream of [SseEvent] records with
-  /// `event` ∈ {`user_message`, `permission_request`, `part`, `part_update`, `done`, `error`}.
+  /// `event` ∈ {`user_message`, `permission_request`, `part`, `part_update`, `done`, `stopped`, `error`}.
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,

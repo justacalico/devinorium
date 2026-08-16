@@ -55,6 +55,7 @@ class ThreadTag extends StatelessWidget {
       'running' || 'working' => (cs.tertiary, cs.tertiaryContainer),
       'failed' => (Color(0xFFB3261E), cs.errorContainer),
       'done' || 'completed' => (cs.secondary, cs.secondaryContainer),
+      'stopped' => (cs.outline, cs.surfaceContainerHighest),
       _ => (cs.onSurfaceVariant, cs.surfaceContainerHighest),
     };
   }
@@ -67,6 +68,7 @@ class ThreadTag extends StatelessWidget {
       'working' => l.tagWorking,
       'failed' => l.tagFailed,
       'done' || 'completed' => l.tagDone,
+      'stopped' => l.tagStopped,
       _ => tag,
     };
   }

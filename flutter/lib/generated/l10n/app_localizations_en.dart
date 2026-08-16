@@ -580,6 +580,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tagDone => 'Done';
 
   @override
+  String get tagStopped => 'Stopped';
+
+  @override
   String get noValue => '—';
 
   @override
@@ -746,4 +749,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get createAndNewBranch => 'Create and new branch';
+
+  @override
+  String get send => 'Send';
+
+  @override
+  String get stopGenerating => 'Stop generating';
 }

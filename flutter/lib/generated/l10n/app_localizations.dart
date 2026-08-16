@@ -1138,6 +1138,12 @@ abstract class AppLocalizations {
   /// **'Done'**
   String get tagDone;
 
+  /// No description provided for @tagStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get tagStopped;
+
   /// No description provided for @noValue.
   ///
   /// In en, this message translates to:
@@ -1413,6 +1419,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create and new branch'**
   String get createAndNewBranch;
+
+  /// No description provided for @send.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get send;
+
+  /// No description provided for @stopGenerating.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop generating'**
+  String get stopGenerating;
 }
 
 class _AppLocalizationsDelegate
