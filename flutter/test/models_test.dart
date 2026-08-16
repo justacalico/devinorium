@@ -1,4 +1,3 @@
-import 'package:devinorium_frontend/api/api_types.dart';
 import 'package:devinorium_frontend/api/sse_parser.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';

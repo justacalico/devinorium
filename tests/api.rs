@@ -673,6 +673,97 @@ async fn thread_send_streams_reply_as_sse() {
 }
 
 #[tokio::test]
+async fn thread_stop_ends_active_run() {
+    let (app, _db) = make_app_with_delay(5000).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----stopboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+
+    let send_app = app.clone();
+    let send_cookie = cookie.clone();
+    let send_tid = tid.clone();
+    let send_body = body.clone();
+    let send_boundary = boundary.to_string();
+    let send_task = tokio::spawn(async move {
+        send_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/threads/{send_tid}/send"))
+                    .header(header::HOST, "localhost")
+                    .header(header::ORIGIN, "http://localhost")
+                    .header("cookie", &send_cookie)
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={send_boundary}"),
+                    )
+                    .body(Body::from(send_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+
+    // Wait for the run to start.
+    for _ in 0..50 {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let resp = app
+            .clone()
+            .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+            .await
+            .unwrap();
+        if resp.status() == StatusCode::OK {
+            let body = body_str(resp.into_body()).await;
+            if body.contains(r#""status":"running""#) {
+                break;
+            }
+        }
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/threads/{tid}/stop"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""status":"stopped""#), "body: {body}");
+
+    let resp = send_task.await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""stopped":true"#), "body: {body}");
+
+    // The thread should still show a stopped run for a while.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""status":"stopped""#), "body: {body}");
+
+    // No assistant message should have been persisted.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/messages"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""role":"user""#), "body: {body}");
+    assert!(!body.contains(r#""role":"assistant""#), "body: {body}");
+}
+
+#[tokio::test]
 async fn thread_send_stream_uses_interaction_mode() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

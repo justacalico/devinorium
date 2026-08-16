@@ -36,8 +36,14 @@ class _StreamableApiService extends ApiService {
   Stream<SseEvent> Function()? streamBuilder;
   Stream<SseEvent> Function()? eventsBuilder;
   Map<String, dynamic>? runResponse;
+  String? stoppedThread;
 
   _StreamableApiService(ApiClient client) : super(client: client);
+
+  @override
+  Future<void> stopThread(String id) async {
+    stoppedThread = id;
+  }
 
   @override
   Stream<SseEvent> sendMessageStream({
@@ -823,6 +829,94 @@ void main() {
       await controller.close();
       expect(state.sending, isFalse);
       expect(state.composerText, 'hello');
+    });
+
+    test('sendMessage handles stopped event', () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (!state.sending) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      controller.add(SseEvent('stopped', r'{"status":"stopped"}'));
+
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+      expect(state.globalError, isEmpty);
+      expect(state.sending, isFalse);
+      expect(state.streamingParts, isEmpty);
+      expect(state.lastRunStatus, 'stopped');
+    });
+
+    test('stopThread calls the stop endpoint', () async {
+      final client = _clientFor([_json(200, {'status': 'stopped'})]);
+      final api = _StreamableApiService(client);
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        sending: true,
+      );
+      await state.stopThread();
+      expect(api.stoppedThread, 'a');
     });
 
     test('sendMessage resumes on 409 conflict', () async {

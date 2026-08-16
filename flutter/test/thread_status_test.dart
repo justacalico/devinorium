@@ -88,5 +88,45 @@ void main() {
       );
       expect(tag, isNull);
     });
+
+    test('returns stopped when run was stopped', () {
+      final tag = activeThreadTag(
+        sending: false,
+        messages: [Message(role: 'user', content: 'hi')],
+        pendingPermissionRequest: null,
+        runStatus: 'stopped',
+      );
+      expect(tag, 'stopped');
+    });
+
+    test('returns failed when run failed', () {
+      final tag = activeThreadTag(
+        sending: false,
+        messages: [Message(role: 'user', content: 'hi')],
+        pendingPermissionRequest: null,
+        runStatus: 'failed',
+      );
+      expect(tag, 'failed');
+    });
+
+    test('returns done when run completed', () {
+      final tag = activeThreadTag(
+        sending: false,
+        messages: [Message(role: 'user', content: 'hi')],
+        pendingPermissionRequest: null,
+        runStatus: 'completed',
+      );
+      expect(tag, 'done');
+    });
+
+    test('returns running over stopped while sending', () {
+      final tag = activeThreadTag(
+        sending: true,
+        messages: [Message(role: 'user', content: 'hi')],
+        pendingPermissionRequest: null,
+        runStatus: 'stopped',
+      );
+      expect(tag, 'running');
+    });
   });
 }

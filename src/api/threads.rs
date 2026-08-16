@@ -42,6 +42,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/threads/:id/send", post(send))
         .route("/api/threads/:id/send/stream", post(send_stream))
         .route("/api/threads/:id/run", get(get_run))
+        .route("/api/threads/:id/stop", post(stop))
         .route("/api/threads/:id/events", get(events))
         .route(
             "/api/threads/:id/permission/:request_id",
@@ -489,6 +490,34 @@ async fn get_run(
     }
 }
 
+/// Stop the currently running model/ACP session for a thread.
+async fn stop(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    }
+
+    match state.thread_runner.stop(&id).await {
+        Some(snapshot) => Json(snapshot).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("no active run")),
+        )
+            .into_response(),
+    }
+}
+
 /// Subscribe to the events of the current run as an SSE stream. Reconnecting
 /// clients can resume watching a long-running thread without sending a new
 /// message.
@@ -545,11 +574,16 @@ async fn send(
         Err(resp) => return resp,
     };
 
+    let user_msg = match persist_user_message(&state, &thread, &input).await {
+        Ok(m) => m,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
     let run = match state
         .thread_runner
         .start(id.clone(), {
             let state = state.clone();
-            move |run| run_thread(state, run, user, thread, input)
+            move |run| run_thread(state, run, user, thread, input, user_msg)
         })
         .await
     {
@@ -566,33 +600,52 @@ async fn send(
     let mut rx = match run.subscribe() {
         Some(rx) => rx,
         None => {
-            // The run finished before we could subscribe. Try to return the
-            // persisted result directly, otherwise report the final error.
-            let messages = state.db.list_messages(&id).await.unwrap_or_default();
-            if let Some(assistant) = build_send_reply(&messages) {
-                return assistant.into_response();
-            }
-            let snapshot = run.snapshot().await;
-            if snapshot.status == RunStatus::Failed {
-                return (
-                    StatusCode::BAD_GATEWAY,
-                    Json(crate::api::ApiError::new(
-                        snapshot.error.as_deref().unwrap_or("run failed"),
-                    )),
+            // The run finished before we could subscribe. Return the final
+            // result based on the run status and any persisted messages.
+            let status = *run.status.read().await;
+            return match status {
+                RunStatus::Stopped => Json(serde_json::json!({ "stopped": true })).into_response(),
+                RunStatus::Completed => {
+                    let messages = state.db.list_messages(&id).await.unwrap_or_default();
+                    if let Some(reply) = build_send_reply(&messages) {
+                        return reply;
+                    }
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(crate::api::ApiError::new("provider error")),
+                    )
+                        .into_response()
+                }
+                RunStatus::Failed => {
+                    let error = run
+                        .error
+                        .read()
+                        .await
+                        .clone()
+                        .unwrap_or_else(|| "provider error".into());
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        Json(crate::api::ApiError::new(&error)),
+                    )
+                        .into_response()
+                }
+                RunStatus::Running | RunStatus::Idle => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(crate::api::ApiError::new("run already closed")),
                 )
-                    .into_response();
-            }
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(crate::api::ApiError::new("run already closed")),
-            )
-                .into_response();
+                    .into_response(),
+            };
         }
     };
+    let mut stopped = false;
     let mut permission_request = None;
     loop {
         match tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await {
             Ok(Ok(crate::thread_runner::RunEvent { event, .. })) if event == "done" => break,
+            Ok(Ok(crate::thread_runner::RunEvent { event, .. })) if event == "stopped" => {
+                stopped = true;
+                break;
+            }
             Ok(Ok(crate::thread_runner::RunEvent { event, data, .. })) if event == "error" => {
                 return (
                     StatusCode::BAD_GATEWAY,
@@ -616,6 +669,15 @@ async fn send(
                     .into_response();
             }
         }
+    }
+
+    if stopped {
+        return Json(serde_json::json!({ "stopped": true })).into_response();
+    }
+
+    let status = *run.status.read().await;
+    if status == RunStatus::Stopped {
+        return Json(serde_json::json!({ "stopped": true })).into_response();
     }
 
     if let Some(data) = permission_request {
@@ -688,11 +750,16 @@ async fn send_stream(
         Err(resp) => return resp,
     };
 
+    let user_msg = match persist_user_message(&state, &thread, &input).await {
+        Ok(m) => m,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
     let run = match state
         .thread_runner
         .start(id.clone(), {
             let state = state.clone();
-            move |run| run_thread(state, run, user, thread, input)
+            move |run| run_thread(state, run, user, thread, input, user_msg)
         })
         .await
     {
@@ -746,16 +813,14 @@ async fn events_stream(
     Sse::new(FuturesStreamExt::boxed(FuturesStreamExt::chain(initial, live)))
 }
 
-async fn run_thread(
-    state: AppState,
-    run: Arc<RunState>,
-    user: crate::db::UserRow,
-    thread: ThreadRow,
-    input: SendInput,
-) -> anyhow::Result<()> {
+async fn persist_user_message(
+    state: &AppState,
+    thread: &ThreadRow,
+    input: &SendInput,
+) -> anyhow::Result<MessageRow> {
     let user_parts = serde_json::to_string(&[MessagePart::text(input.prompt.as_str())])
         .unwrap_or_else(|_| "[]".into());
-    let user_msg = state
+    state
         .db
         .add_message(NewMessage {
             thread_id: thread.id.clone(),
@@ -765,8 +830,17 @@ async fn run_thread(
             parts: user_parts,
             attachments: serde_json::to_string(&input.att_meta).unwrap_or_else(|_| "[]".into()),
         })
-        .await?;
+        .await
+}
 
+async fn run_thread(
+    state: AppState,
+    run: Arc<RunState>,
+    user: crate::db::UserRow,
+    thread: ThreadRow,
+    input: SendInput,
+    user_msg: MessageRow,
+) -> anyhow::Result<()> {
     run.emit(
         "user_message",
         &serde_json::to_string(&MessageOut::from(user_msg)).unwrap_or_else(|_| "{}".into()),
@@ -797,6 +871,10 @@ async fn run_thread(
     )
     .await;
 
+    if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(anyhow::anyhow!("stopped by user"));
+    }
+
     let (new_session_id, new_title, parts) = match provider_result {
         Ok(t) => t,
         Err(e) => {
@@ -816,6 +894,10 @@ async fn run_thread(
         }
     };
 
+    if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(anyhow::anyhow!("stopped by user"));
+    }
+
     let assistant_msg = persist_assistant_reply(
         &state,
         &thread.id,
@@ -823,9 +905,14 @@ async fn run_thread(
         &parts,
         new_session_id,
         new_title,
+        &run,
     )
     .await
     .map_err(|_| anyhow::anyhow!("failed to save assistant message"))?;
+
+    if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(anyhow::anyhow!("stopped by user"));
+    }
 
     let _ = run.set_status(RunStatus::Completed).await;
     run.emit(
@@ -1109,15 +1196,31 @@ async fn persist_assistant_reply(
     parts: &[MessagePart],
     new_session_id: Option<String>,
     new_title: Option<String>,
+    run: &RunState,
 ) -> Result<MessageRow, Response> {
+    if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
+
     let session_id_for_audit = new_session_id.clone();
     if let Some(sid) = new_session_id {
+        if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+        }
         let _ = state
             .db
             .update_thread_session(thread_id, &sid, new_title.as_deref())
             .await;
     }
+
+    if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
     let _ = state.db.touch_thread(thread_id).await;
+
+    if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
 
     let reply = collect_text(parts);
     let thinking = collect_thinking(parts);
@@ -1135,6 +1238,11 @@ async fn persist_assistant_reply(
         })
         .await
         .map_err(|e| crate::api::map_err_internal(e).into_response())?;
+
+    if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        let _ = state.db.delete_message(assistant_msg.id).await;
+        return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
 
     let _ = state
         .db

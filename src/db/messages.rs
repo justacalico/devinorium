@@ -29,6 +29,15 @@ impl super::Db {
         .map_err(Into::into)
     }
 
+    pub async fn delete_message(&self, id: i64) -> anyhow::Result<()> {
+        sqlx::query("DELETE FROM messages WHERE id = ?")
+            .bind(id)
+            .execute(self.pool())
+            .await
+            .map_err(Into::into)
+            .map(|_| ())
+    }
+
     pub async fn list_messages(&self, thread_id: &str) -> anyhow::Result<Vec<MessageRow>> {
         sqlx::query_as::<_, MessageRow>(
             "SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC",

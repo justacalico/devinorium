@@ -116,6 +116,9 @@ class _FakeApiService extends ApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) => Stream.fromFuture(Future.value(SseEvent('done', '')));
+
+  @override
+  Future<void> stopThread(String id) => Future.value();
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
@@ -887,5 +890,40 @@ void main() {
     await tester.pump();
 
     expect(state.composerMode, ComposerMode.plan);
+  });
+
+  testWidgets('stop button is shown while sending', (tester) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+      sending: true,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final stop = find.widgetWithIcon(IconButton, Icons.stop);
+    expect(stop, findsOneWidget);
   });
 }

@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -30,6 +31,7 @@ pub enum RunStatus {
     Running,
     Completed,
     Failed,
+    Stopped,
 }
 
 impl std::fmt::Display for RunStatus {
@@ -39,6 +41,7 @@ impl std::fmt::Display for RunStatus {
             RunStatus::Running => write!(f, "running"),
             RunStatus::Completed => write!(f, "completed"),
             RunStatus::Failed => write!(f, "failed"),
+            RunStatus::Stopped => write!(f, "stopped"),
         }
     }
 }
@@ -71,7 +74,8 @@ pub struct RunState {
     pub error: RwLock<Option<String>>,
     pub started_at: String,
     pub updated_at: RwLock<String>,
-    pub abort: Mutex<Option<AbortHandle>>,
+    pub abort: std::sync::Mutex<Option<AbortHandle>>,
+    pub cancelled: AtomicBool,
     pub parts: std::sync::Mutex<Vec<MessagePart>>,
     pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
 }
@@ -147,11 +151,19 @@ impl RunState {
     }
 
     pub async fn set_status(&self, status: RunStatus) {
-        *self.status.write().await = status;
-        *self.updated_at.write().await = chrono::Utc::now().to_rfc3339();
+        let mut guard = self.status.write().await;
+        if status != RunStatus::Stopped && self.cancelled.load(Ordering::SeqCst) {
+            return;
+        }
+        *guard = status;
+        let now = chrono::Utc::now().to_rfc3339();
+        *self.updated_at.write().await = now;
     }
 
     pub async fn set_error(&self, error: String) {
+        if self.cancelled.load(Ordering::SeqCst) {
+            return;
+        }
         *self.error.write().await = Some(error);
     }
 
@@ -236,7 +248,7 @@ impl ThreadRunner {
     }
 
     /// Start a new background run for `thread_id`. If a run is already active,
-    /// it is aborted and replaced.
+    /// returns `AlreadyRunning`.
     pub async fn start<F, Fut>(&self, thread_id: String, f: F) -> Result<Arc<RunState>, StartError>
     where
         F: FnOnce(Arc<RunState>) -> Fut + Send + 'static,
@@ -263,24 +275,28 @@ impl ThreadRunner {
             error: RwLock::new(None),
             started_at: now.clone(),
             updated_at: RwLock::new(now),
-            abort: Mutex::new(None),
+            abort: std::sync::Mutex::new(None),
+            cancelled: AtomicBool::new(false),
             parts: std::sync::Mutex::new(Vec::new()),
             permission_request: std::sync::Mutex::new(None),
         });
 
         let state_for_task = state.clone();
+        let state_for_cleanup = state.clone();
         let runs_for_cleanup = self.runs.clone();
         let thread_id_for_cleanup = thread_id.clone();
         let handle = tokio::spawn(async move {
             let result = f(state_for_task.clone()).await;
-            match result {
-                Ok(()) => {
-                    let _ = state_for_task.set_status(RunStatus::Completed).await;
-                }
-                Err(e) => {
-                    let _ = state_for_task.set_error(e.to_string()).await;
-                    let _ = state_for_task.set_status(RunStatus::Failed).await;
-                    state_for_task.emit("error", &e.to_string());
+            if !state_for_task.cancelled.load(Ordering::SeqCst) {
+                match result {
+                    Ok(()) => {
+                        let _ = state_for_task.set_status(RunStatus::Completed).await;
+                    }
+                    Err(e) => {
+                        let _ = state_for_task.set_status(RunStatus::Failed).await;
+                        let _ = state_for_task.set_error(e.to_string()).await;
+                        state_for_task.emit("error", &e.to_string());
+                    }
                 }
             }
             // Close the broadcast so in-flight SSE streams end, but keep the
@@ -290,19 +306,53 @@ impl ThreadRunner {
             tokio::time::sleep(std::time::Duration::from_secs(120)).await;
             let mut runs = runs_for_cleanup.lock().await;
             if let Some(current) = runs.get(&thread_id_for_cleanup) {
-                if Arc::ptr_eq(current, &state_for_task) {
+                if Arc::ptr_eq(current, &state_for_cleanup) {
                     runs.remove(&thread_id_for_cleanup);
                 }
             }
         });
 
-        {
-            let mut abort = state.abort.lock().await;
-            *abort = Some(handle.abort_handle());
-        }
-
+        *state.abort.lock().unwrap() = Some(handle.abort_handle());
         runs.insert(thread_id, state.clone());
         Ok(state)
+    }
+
+    /// Stop an active run for `thread_id`. Returns the final snapshot if a run
+    /// was stopped, or the current snapshot if it already finished or failed.
+    pub async fn stop(&self, thread_id: &str) -> Option<RunSnapshot> {
+        let runs = self.runs.lock().await;
+        let run = runs.get(thread_id).cloned()?;
+        let status = *run.status.read().await;
+
+        if status != RunStatus::Running {
+            drop(runs);
+            return Some(run.snapshot().await);
+        }
+
+        run.cancelled.store(true, Ordering::SeqCst);
+        let _ = run.set_status(RunStatus::Stopped).await;
+        run.emit("stopped", r#"{"status":"stopped"}"#);
+        run.close();
+
+        if let Some(handle) = run.abort.lock().unwrap().take() {
+            handle.abort();
+        }
+
+        let state = run.clone();
+        let runs_for_cleanup = self.runs.clone();
+        let id = thread_id.to_string();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+            let mut map = runs_for_cleanup.lock().await;
+            if let Some(r) = map.get(&id) {
+                if Arc::ptr_eq(r, &state) {
+                    map.remove(&id);
+                }
+            }
+        });
+
+        drop(runs);
+        Some(run.snapshot().await)
     }
 }
 
@@ -323,7 +373,8 @@ mod tests {
             error: RwLock::new(None),
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
-            abort: Mutex::new(None),
+            abort: std::sync::Mutex::new(None),
+            cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![
                 MessagePart::text("Hello "),
                 MessagePart::thinking("hmm"),
@@ -366,7 +417,8 @@ mod tests {
             error: RwLock::new(None),
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
-            abort: Mutex::new(None),
+            abort: std::sync::Mutex::new(None),
+            cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
         };
@@ -415,7 +467,8 @@ mod tests {
             error: RwLock::new(None),
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
-            abort: Mutex::new(None),
+            abort: std::sync::Mutex::new(None),
+            cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![
                 MessagePart::text("first "),
             ]),
@@ -442,7 +495,8 @@ mod tests {
             error: RwLock::new(None),
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
-            abort: Mutex::new(None),
+            abort: std::sync::Mutex::new(None),
+            cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
         };
