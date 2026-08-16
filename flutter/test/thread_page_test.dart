@@ -347,7 +347,7 @@ void main() {
     expect(find.text('read file'), findsOneWidget);
   });
 
-  testWidgets('merges split thinking parts into a single block',
+  testWidgets('merges consecutive thinking parts before a tool call',
       (tester) async {
     final state = AppState.test(
       user: User(
@@ -376,8 +376,16 @@ void main() {
             content: '',
             parts: [
               MessagePart.thinking(content: 'hmm1'),
-              MessagePart.text(content: 'a'),
               MessagePart.thinking(content: 'hmm2'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'search',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo search',
+                ),
+              ),
             ],
           ),
         ],
@@ -387,10 +395,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    expect(find.text('hmm1'), findsOneWidget);
-    expect(find.text('hmm2'), findsOneWidget);
-    final markdown = find.byType(MarkdownBody);
-    expect(markdown, findsOneWidget);
-    expect(tester.widget<MarkdownBody>(markdown).data, 'a');
+    expect(find.text('hmm1hmm2'), findsOneWidget);
+    expect(find.text('search'), findsOneWidget);
   });
 }

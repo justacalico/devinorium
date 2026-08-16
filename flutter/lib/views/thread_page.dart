@@ -316,10 +316,20 @@ class _MessageItemState extends State<_MessageItem> {
 
     for (final part in parts) {
       if (part.type == 'thinking') {
-        thinkingItems.add(_ThinkingItem(
-          type: 'thinking',
-          content: part.content,
-        ));
+        final text = part.content ?? '';
+        if (thinkingItems.isNotEmpty &&
+            thinkingItems.last.type == 'thinking') {
+          final merged = thinkingItems.last.content ?? '';
+          thinkingItems.last = _ThinkingItem(
+            type: 'thinking',
+            content: merged + text,
+          );
+        } else {
+          thinkingItems.add(_ThinkingItem(
+            type: 'thinking',
+            content: text,
+          ));
+        }
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
         if (tool != null) {
