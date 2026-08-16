@@ -25,7 +25,8 @@ use agent_client_protocol::{
     schema::v1::{
         ContentBlock, EmbeddedResourceResource, ImageContent, InitializeRequest,
         LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
-        PermissionOption as AcpPermissionOption, PromptRequest, RequestPermissionOutcome,
+        PermissionOption as AcpPermissionOption, PermissionOptionKind as AcpPermissionOptionKind,
+        PromptRequest, RequestPermissionOutcome,
         RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
         SessionConfigId, SessionConfigKind, SessionConfigOption, SessionConfigOptionValue,
         SessionConfigSelectOptions, SessionId, SessionModeId, SessionNotification,
@@ -167,15 +168,19 @@ impl DevinAcpProvider {
                 {
                     let permission_callback = permission_callback.clone();
                     let replaying = replaying.clone();
+                    let permission_mode = options.permission_mode.clone();
                     async move |request: RequestPermissionRequest, responder, _cx| {
                         if replaying.load(Ordering::SeqCst) {
                             responder.respond(RequestPermissionResponse::new(
                                 RequestPermissionOutcome::Cancelled,
                             ))
                         } else {
-                            let outcome =
-                                handle_permission_request(request, permission_callback.as_ref())
-                                    .await;
+                            let outcome = handle_permission_request(
+                                request,
+                                &permission_mode,
+                                permission_callback.as_ref(),
+                            )
+                            .await;
                             responder.respond(RequestPermissionResponse::new(outcome))
                         }
                     }
@@ -599,8 +604,26 @@ fn select_values(opt: &SessionConfigOption) -> Vec<String> {
 
 async fn handle_permission_request(
     request: RequestPermissionRequest,
+    permission_mode: &str,
     permission_callback: Option<&PermissionCallback>,
 ) -> RequestPermissionOutcome {
+    if is_bypass_mode(permission_mode) {
+        if let Some(option) = select_allow_option(&request.options) {
+            tracing::info!(
+                scope = %request.tool_call.tool_call_id,
+                option_id = %option.option_id,
+                "auto-allowing permission request in bypass mode"
+            );
+            return RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+                option.option_id.clone(),
+            ));
+        }
+        tracing::warn!(
+            scope = %request.tool_call.tool_call_id,
+            "bypass mode but no allow option found; forwarding to permission callback"
+        );
+    }
+
     if let Some(callback) = permission_callback {
         let permission_request = map_permission_request(&request);
         tracing::info!(scope = %permission_request.scope, "forwarding acp permission request");
@@ -618,6 +641,17 @@ async fn handle_permission_request(
         tracing::warn!("no permission callback configured; rejecting ACP permission request");
         RequestPermissionOutcome::Cancelled
     }
+}
+
+fn is_bypass_mode(mode: &str) -> bool {
+    matches!(mode.trim().to_lowercase().as_str(), "bypass" | "yolo")
+}
+
+fn select_allow_option(options: &[AcpPermissionOption]) -> Option<&AcpPermissionOption> {
+    options
+        .iter()
+        .find(|o| matches!(o.kind, AcpPermissionOptionKind::AllowOnce))
+        .or_else(|| options.iter().find(|o| matches!(o.kind, AcpPermissionOptionKind::AllowAlways)))
 }
 
 fn map_permission_request(request: &RequestPermissionRequest) -> PermissionRequest {
@@ -1095,6 +1129,7 @@ mod tests {
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     fn provider() -> DevinAcpProvider {
         DevinAcpProvider::new("devin".into(), "swe-1-7".into())
@@ -1407,5 +1442,107 @@ mod tests {
         let preview = event.output_preview.expect("preview should be set");
         assert_eq!(preview, "这是一个测试".repeat(20) + "...");
         assert_eq!(preview.chars().count(), 123);
+    }
+
+    fn make_permission_request(options: Vec<AcpPermissionOption>) -> RequestPermissionRequest {
+        use agent_client_protocol::schema::v1::ToolCallUpdateFields;
+        RequestPermissionRequest::new(
+            SessionId::new("sid"),
+            ToolCallUpdate::new("tc-1", ToolCallUpdateFields::new()),
+            options,
+        )
+    }
+
+    fn recording_callback(allowed_id: &'static str, called: Arc<AtomicBool>) -> PermissionCallback {
+        Arc::new(move |_req| {
+            called.store(true, Ordering::SeqCst);
+            Box::pin(async move { PermissionOutcome::Allow { option_id: allowed_id.into() } })
+        })
+    }
+
+    #[tokio::test]
+    async fn bypass_auto_selects_allow_once() {
+        let options = vec![
+            AcpPermissionOption::new("allow-once", "Allow", AcpPermissionOptionKind::AllowOnce),
+            AcpPermissionOption::new("reject", "Cancel", AcpPermissionOptionKind::RejectOnce),
+        ];
+        let request = make_permission_request(options);
+        let called = Arc::new(AtomicBool::new(false));
+        let callback = Some(recording_callback("allow-once", called.clone()));
+
+        let outcome = handle_permission_request(request, "bypass", callback.as_ref()).await;
+
+        assert!(!called.load(Ordering::SeqCst), "callback should not be invoked in bypass mode");
+        let RequestPermissionOutcome::Selected(selected) = outcome else {
+            panic!("expected Selected outcome, got {:?}", outcome);
+        };
+        assert_eq!(selected.option_id.0.as_ref(), "allow-once");
+    }
+
+    #[tokio::test]
+    async fn bypass_falls_back_to_allow_always() {
+        let options = vec![
+            AcpPermissionOption::new("allow-always", "Always", AcpPermissionOptionKind::AllowAlways),
+            AcpPermissionOption::new("reject", "Cancel", AcpPermissionOptionKind::RejectOnce),
+        ];
+        let request = make_permission_request(options);
+
+        let outcome = handle_permission_request(request, "bypass", None).await;
+
+        let RequestPermissionOutcome::Selected(selected) = outcome else {
+            panic!("expected Selected outcome, got {:?}", outcome);
+        };
+        assert_eq!(selected.option_id.0.as_ref(), "allow-always");
+    }
+
+    #[tokio::test]
+    async fn bypass_falls_back_to_callback_when_no_allow_option() {
+        let options = vec![
+            AcpPermissionOption::new("reject", "Cancel", AcpPermissionOptionKind::RejectOnce),
+        ];
+        let request = make_permission_request(options);
+        let called = Arc::new(AtomicBool::new(false));
+        let callback = Some(recording_callback("reject", called.clone()));
+
+        let outcome = handle_permission_request(request, "bypass", callback.as_ref()).await;
+
+        assert!(called.load(Ordering::SeqCst), "callback should be invoked when no allow option");
+        let RequestPermissionOutcome::Selected(selected) = outcome else {
+            panic!("expected Selected outcome, got {:?}", outcome);
+        };
+        assert_eq!(selected.option_id.0.as_ref(), "reject");
+    }
+
+    #[tokio::test]
+    async fn normal_mode_forwards_to_callback() {
+        let options = vec![
+            AcpPermissionOption::new("allow-once", "Allow", AcpPermissionOptionKind::AllowOnce),
+        ];
+        let request = make_permission_request(options);
+        let called = Arc::new(AtomicBool::new(false));
+        let callback = Some(recording_callback("allow-once", called.clone()));
+
+        let outcome = handle_permission_request(request, "normal", callback.as_ref()).await;
+
+        assert!(called.load(Ordering::SeqCst), "callback should be invoked in normal mode");
+        let RequestPermissionOutcome::Selected(selected) = outcome else {
+            panic!("expected Selected outcome, got {:?}", outcome);
+        };
+        assert_eq!(selected.option_id.0.as_ref(), "allow-once");
+    }
+
+    #[tokio::test]
+    async fn yolo_is_treated_as_bypass() {
+        let options = vec![
+            AcpPermissionOption::new("allow-always", "Always", AcpPermissionOptionKind::AllowAlways),
+        ];
+        let request = make_permission_request(options);
+
+        let outcome = handle_permission_request(request, " yolo ", None).await;
+
+        let RequestPermissionOutcome::Selected(selected) = outcome else {
+            panic!("expected Selected outcome, got {:?}", outcome);
+        };
+        assert_eq!(selected.option_id.0.as_ref(), "allow-always");
     }
 }
