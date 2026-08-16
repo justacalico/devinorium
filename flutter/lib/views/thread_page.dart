@@ -25,7 +25,9 @@ class ThreadPage extends StatelessWidget {
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final thread = state.activeThreadDetail?.thread;
     final title = thread?.title ?? l10n(context).selectOrCreateThread;
-    final repo = state.activeProjectId != null ? state.gitRepoInfo(state.activeProjectId!) : null;
+    final repo = state.activeProjectId != null
+        ? state.gitRepoInfo(state.activeProjectId!)
+        : null;
     final isGit = repo?.isRepo ?? false;
     final tag = thread != null
         ? activeThreadTag(
@@ -48,10 +50,7 @@ class ThreadPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            if (tag != null) ...[
-              const SizedBox(height: 2),
-              ThreadTag(tag),
-            ],
+            if (tag != null) ...[const SizedBox(height: 2), ThreadTag(tag)],
           ],
         ),
         actions: [
@@ -62,7 +61,8 @@ class ThreadPage extends StatelessWidget {
                 thread?.branch ?? repo!.branch,
                 style: const TextStyle(fontSize: 12),
               ),
-              onPressed: () => state.openGitBranchDialog(state.activeProjectId!),
+              onPressed: () =>
+                  state.openGitBranchDialog(state.activeProjectId!),
             ),
           IconButton(
             tooltip: l10n(context).fileManager,
@@ -192,8 +192,9 @@ class _MessagesPanel extends StatelessWidget {
           padding: const EdgeInsets.all(48),
           child: Text(
             l10n(context).selectOrCreateThreadToChat,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -209,8 +210,9 @@ class _MessagesPanel extends StatelessWidget {
           padding: const EdgeInsets.all(48),
           child: Text(
             l10n(context).startConversationHint,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -247,10 +249,7 @@ class _MessagesPanel extends StatelessWidget {
 class _MessageItem extends StatefulWidget {
   final Message message;
   final bool thinkingActive;
-  const _MessageItem({
-    required this.message,
-    this.thinkingActive = false,
-  });
+  const _MessageItem({required this.message, this.thinkingActive = false});
 
   @override
   State<_MessageItem> createState() => _MessageItemState();
@@ -267,11 +266,7 @@ class _PartGroup {
   final String type;
   final String? content;
   final List<_ThinkingItem> thinkingItems;
-  _PartGroup({
-    required this.type,
-    this.content,
-    this.thinkingItems = const [],
-  });
+  _PartGroup({required this.type, this.content, this.thinkingItems = const []});
 }
 
 class _MessageItemState extends State<_MessageItem> {
@@ -279,16 +274,18 @@ class _MessageItemState extends State<_MessageItem> {
 
   bool get _working {
     if (widget.thinkingActive) return true;
-    return widget.message.allParts.any((p) =>
-        p.type == 'tool_call' &&
-        p.toolCall != null &&
-        p.toolCall!.status != 'completed' &&
-        p.toolCall!.status != 'failed');
+    return widget.message.allParts.any(
+      (p) =>
+          p.type == 'tool_call' &&
+          p.toolCall != null &&
+          p.toolCall!.status != 'completed' &&
+          p.toolCall!.status != 'failed',
+    );
   }
 
   bool get _hasText => widget.message.allParts.any(
-        (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
-      );
+    (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
+  );
 
   @override
   void initState() {
@@ -319,18 +316,14 @@ class _MessageItemState extends State<_MessageItem> {
     for (final part in parts) {
       if (part.type == 'thinking') {
         final text = part.content ?? '';
-        if (thinkingItems.isNotEmpty &&
-            thinkingItems.last.type == 'thinking') {
+        if (thinkingItems.isNotEmpty && thinkingItems.last.type == 'thinking') {
           final merged = thinkingItems.last.content ?? '';
           thinkingItems.last = _ThinkingItem(
             type: 'thinking',
             content: merged + text,
           );
         } else {
-          thinkingItems.add(_ThinkingItem(
-            type: 'thinking',
-            content: text,
-          ));
+          thinkingItems.add(_ThinkingItem(type: 'thinking', content: text));
         }
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
@@ -388,8 +381,10 @@ class _MessageItemState extends State<_MessageItem> {
               color: theme.dividerColor.withAlpha(128),
             ),
           ),
-          tableCellsPadding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          tableCellsPadding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 4,
+          ),
         ),
       );
     }
@@ -409,15 +404,18 @@ class _MessageItemState extends State<_MessageItem> {
     final children = <Widget>[];
     for (final group in groups) {
       if (group.type == 'text') {
-        children.add(_buildTextContent(
-            context, group.content ?? '', widget.message.role));
+        children.add(
+          _buildTextContent(context, group.content ?? '', widget.message.role),
+        );
       } else if (group.type == 'thinking') {
-        children.add(_ThinkingBlock(
-          items: group.thinkingItems,
-          working: _working,
-          expanded: _expanded,
-          onToggle: () => setState(() => _expanded = !_expanded),
-        ));
+        children.add(
+          _ThinkingBlock(
+            items: group.thinkingItems,
+            working: _working,
+            expanded: _expanded,
+            onToggle: () => setState(() => _expanded = !_expanded),
+          ),
+        );
       }
     }
     return Column(
@@ -454,71 +452,70 @@ class _MessageItemState extends State<_MessageItem> {
     };
 
     final groups = _buildGroups(message.allParts);
-    final showLoading = message.role == 'assistant' &&
+    final showLoading =
+        message.role == 'assistant' &&
         message.content.isEmpty &&
         groups.isEmpty;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: avatarBg,
-                foregroundColor: avatarFg,
-                child: Icon(icon, size: 18),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 4),
-                    if (groups.isNotEmpty)
-                      SelectionArea(
-                        child: _buildPartWidgets(context, groups),
-                      ),
-                    if (showLoading)
-                      Text(
-                        l10n(context).messageLoading,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    if (message.attachments != null &&
-                        message.attachments!.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final a in message.attachments!)
-                            Chip(
-                              avatar: const Icon(Icons.attach_file, size: 14),
-                              label: Text(a.filename),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 0),
-                              visualDensity: VisualDensity.compact,
-                              backgroundColor:
-                                  theme.colorScheme.surfaceContainerHigh,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: avatarBg,
+            foregroundColor: avatarFg,
+            child: Icon(icon, size: 18),
           ),
-        ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (groups.isNotEmpty)
+                  SelectionArea(child: _buildPartWidgets(context, groups)),
+                if (showLoading)
+                  Text(
+                    l10n(context).messageLoading,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                if (message.attachments != null &&
+                    message.attachments!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final a in message.attachments!)
+                        Chip(
+                          avatar: const Icon(Icons.attach_file, size: 14),
+                          label: Text(a.filename),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 0,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor:
+                              theme.colorScheme.surfaceContainerHigh,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -626,16 +623,14 @@ class _ThinkingBlock extends StatelessWidget {
             padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
             decoration: BoxDecoration(
               border: Border(
-                left: BorderSide(
-                  color: theme.colorScheme.outline,
-                  width: 2,
-                ),
+                left: BorderSide(color: theme.colorScheme.outline, width: 2),
               ),
             ),
             child: expandedContent(),
           ),
-          crossFadeState:
-              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          crossFadeState: expanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 200),
           sizeCurve: Curves.easeInOut,
         ),
@@ -745,129 +740,122 @@ class _ComposerState extends State<_Composer> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Material(
-              color: theme.colorScheme.surfaceContainer,
-              elevation: 1,
-              borderRadius: BorderRadius.circular(28),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+        child: Material(
+          color: theme.colorScheme.surfaceContainer,
+          elevation: 1,
+          borderRadius: BorderRadius.circular(28),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (state.attachments.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (var i = 0; i < state.attachments.length; i++)
+                          Chip(
+                            avatar: const Icon(Icons.attach_file, size: 14),
+                            label: Text(state.attachments[i].filename),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 0,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor:
+                                theme.colorScheme.surfaceContainerHigh,
+                            onDeleted: () => state.removeAttachment(i),
+                          ),
+                      ],
+                    ),
+                  ),
+                CallbackShortcuts(
+                  bindings: <ShortcutActivator, VoidCallback>{
+                    const SingleActivator(LogicalKeyboardKey.enter): () =>
+                        _submit(state),
+                  },
+                  child: TextField(
+                    controller: widget.controller,
+                    focusNode: _focusNode,
+                    minLines: 1,
+                    maxLines: 6,
+                    enabled: hasActiveThread && !isSending,
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      hintText: l10n(context).composerHint,
+                    ),
+                    style: theme.textTheme.bodyLarge,
+                    onChanged: state.setComposerText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    if (state.attachments.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (var i = 0; i < state.attachments.length; i++)
-                              Chip(
-                                avatar:
-                                    const Icon(Icons.attach_file, size: 14),
-                                label: Text(state.attachments[i].filename),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 0,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                backgroundColor:
-                                    theme.colorScheme.surfaceContainerHigh,
-                                onDeleted: () => state.removeAttachment(i),
-                              ),
-                          ],
-                        ),
-                      ),
-                    CallbackShortcuts(
-                      bindings: <ShortcutActivator, VoidCallback>{
-                        const SingleActivator(LogicalKeyboardKey.enter):
-                            () => _submit(state),
-                      },
-                      child: TextField(
-                        controller: widget.controller,
-                        focusNode: _focusNode,
-                        minLines: 1,
-                        maxLines: 6,
-                        enabled: hasActiveThread && !isSending,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          isCollapsed: true,
-                          hintText: l10n(context).composerHint,
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                        onChanged: state.setComposerText,
+                    IconButton(
+                      icon: const Icon(Icons.attach_file, size: 20),
+                      onPressed: hasActiveThread && !isSending
+                          ? () async {
+                              final dz = DropZone.of(context);
+                              if (dz == null) return;
+                              final files = await dz.pick(multiple: true);
+                              if (files.isNotEmpty) {
+                                state.addAttachments(files);
+                              }
+                            }
+                          : null,
+                    ),
+                    Expanded(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 0,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          ModelPicker(
+                            value: state.selectedModel,
+                            models: state.models,
+                            enabled: hasActiveThread && !isSending,
+                            onChanged: (model) {
+                              state.setSelectedModel(model);
+                              state.saveThreadSettings();
+                            },
+                          ),
+                          _PermissionDropdown(
+                            value: state.selectedPermission,
+                            enabled: hasActiveThread && !isSending,
+                            onChanged: (mode) {
+                              state.setSelectedPermission(mode);
+                              state.saveThreadSettings();
+                            },
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.attach_file, size: 20),
-                          onPressed: hasActiveThread && !isSending
-                              ? () async {
-                                  final dz = DropZone.of(context);
-                                  if (dz == null) return;
-                                  final files = await dz.pick(multiple: true);
-                                  if (files.isNotEmpty) {
-                                    state.addAttachments(files);
-                                  }
-                                }
-                              : null,
-                        ),
-                        Expanded(
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 0,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              ModelPicker(
-                                value: state.selectedModel,
-                                models: state.models,
-                                enabled: hasActiveThread && !isSending,
-                                onChanged: (model) {
-                                  state.setSelectedModel(model);
-                                  state.saveThreadSettings();
-                                },
-                              ),
-                              _PermissionDropdown(
-                                value: state.selectedPermission,
-                                enabled: hasActiveThread && !isSending,
-                                onChanged: (mode) {
-                                  state.setSelectedPermission(mode);
-                                  state.saveThreadSettings();
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton.filled(
-                          icon: isSending
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                )
-                              : const Icon(Icons.send, size: 18),
-                          onPressed: (hasActiveThread && !isSending)
-                              ? () {
-                                  if (state.composerText.trim().isNotEmpty) {
-                                    widget.controller.clear();
-                                    state.sendMessage();
-                                  }
-                                }
-                              : null,
-                        ),
-                      ],
+                    IconButton.filled(
+                      icon: isSending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send, size: 18),
+                      onPressed: (hasActiveThread && !isSending)
+                          ? () {
+                              if (state.composerText.trim().isNotEmpty) {
+                                widget.controller.clear();
+                                state.sendMessage();
+                              }
+                            }
+                          : null,
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -977,64 +965,55 @@ class _ToolCallItemState extends State<_ToolCallItem> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         margin: const EdgeInsets.only(bottom: 2),
         child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(icon, size: 16, color: iconColor),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          tool.title,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Icon(statusIcon, size: 14, color: statusColor),
-                      const SizedBox(width: 4),
-                      Icon(
-                        _expanded ? Icons.expand_less : Icons.expand_more,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
-                  if (_expanded)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8, left: 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (preview.isNotEmpty)
-                            _ToolDetailRow(
-                              label: l.preview,
-                              value: preview,
-                            ),
-                          if (tool.command != null && tool.command!.isNotEmpty)
-                            _ToolDetailRow(
-                              label: l.command,
-                              value: tool.command!,
-                            ),
-                          if (tool.output != null && tool.output!.isNotEmpty)
-                            _ToolDetailRow(
-                              label: l.output,
-                              value: tool.output!,
-                            ),
-                          if (tool.changedFiles.isNotEmpty)
-                            _ToolDetailRow(
-                              label: l.changed,
-                              value: tool.changedFiles.join('\n'),
-                            ),
-                        ],
-                      ),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 16, color: iconColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    tool.title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w500,
                     ),
-                ],
-              ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(statusIcon, size: 14, color: statusColor),
+                const SizedBox(width: 4),
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 14,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
             ),
+            if (_expanded)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (preview.isNotEmpty)
+                      _ToolDetailRow(label: l.preview, value: preview),
+                    if (tool.command != null && tool.command!.isNotEmpty)
+                      _ToolDetailRow(label: l.command, value: tool.command!),
+                    if (tool.output != null && tool.output!.isNotEmpty)
+                      _ToolDetailRow(label: l.output, value: tool.output!),
+                    if (tool.changedFiles.isNotEmpty)
+                      _ToolDetailRow(
+                        label: l.changed,
+                        value: tool.changedFiles.join('\n'),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1071,5 +1050,3 @@ class _ToolDetailRow extends StatelessWidget {
     );
   }
 }
-
-
