@@ -10,7 +10,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{Multipart, Path, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
@@ -222,10 +222,11 @@ async fn get_one(
 ) -> Response {
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => {
-            let messages = state.db.list_messages(&id).await.unwrap_or_default();
+            let total = state.db.count_messages(&id).await.unwrap_or(0);
             Json(serde_json::json!({
                 "thread": ThreadOut::from(t),
-                "messages": messages.into_iter().map(MessageOut::from).collect::<Vec<_>>(),
+                "total_messages": total,
+                "messages": [],
             }))
             .into_response()
         }
@@ -388,10 +389,29 @@ async fn delete(
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ListMessages {
+    pub before_id: Option<i64>,
+    pub after_id: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+impl Default for ListMessages {
+    fn default() -> Self {
+        Self {
+            before_id: None,
+            after_id: None,
+            limit: Some(50),
+        }
+    }
+}
+
 async fn list_messages(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
+    Query(query): Query<ListMessages>,
 ) -> Response {
     // Ensure the thread belongs to the user.
     match state.db.get_thread(&id, user.id).await {
@@ -404,10 +424,27 @@ async fn list_messages(
                 .into_response()
         }
     }
-    match state.db.list_messages(&id).await {
-        Ok(rows) => {
-            Json(rows.into_iter().map(MessageOut::from).collect::<Vec<_>>()).into_response()
-        }
+
+    if query.before_id.is_some() && query.after_id.is_some() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("before_id and after_id cannot both be set")),
+        )
+            .into_response();
+    }
+
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    match state
+        .db
+        .list_messages_paginated(&id, query.before_id, query.after_id, limit)
+        .await
+    {
+        Ok(rows) => Json(serde_json::json!({
+            "messages": rows.into_iter().map(MessageOut::from).collect::<Vec<_>>(),
+            "total": state.db.count_messages(&id).await.unwrap_or(0),
+            "limit": limit,
+        }))
+        .into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }

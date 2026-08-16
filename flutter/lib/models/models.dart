@@ -1,5 +1,14 @@
 import 'dart:convert';
 
+bool _listEquals<T>(List<T>? a, List<T>? b) {
+  if (identical(a, b)) return true;
+  if (a == null || b == null || a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
 class User {
   final int id;
   final String username;
@@ -147,9 +156,20 @@ class Attachment {
         filename: j['filename'] as String,
         size: (j['size'] as num).toInt(),
       );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Attachment) return false;
+    return filename == other.filename && size == other.size;
+  }
+
+  @override
+  int get hashCode => Object.hash(filename, size);
 }
 
 class Message {
+  final int? id;
   final String role;
   final String content;
   final String? thinking;
@@ -157,6 +177,7 @@ class Message {
   final List<MessagePart>? parts;
 
   Message({
+    this.id,
     required this.role,
     required this.content,
     this.thinking,
@@ -165,6 +186,7 @@ class Message {
   });
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
+        id: (j['id'] as num?)?.toInt(),
         role: j['role'] as String,
         content: j['content'] as String? ?? '',
         thinking: j['thinking'] as String?,
@@ -186,16 +208,42 @@ class Message {
   }
 
   Message copyWith({
+    int? id,
     String? content,
     List<MessagePart>? parts,
   }) =>
       Message(
+        id: id ?? this.id,
         role: role,
         content: content ?? this.content,
         thinking: thinking,
         attachments: attachments,
         parts: parts ?? this.parts,
       );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Message) return false;
+    return id == other.id &&
+        role == other.role &&
+        content == other.content &&
+        thinking == other.thinking &&
+        _listEquals(attachments, other.attachments) &&
+        _listEquals(parts, other.parts);
+  }
+
+  @override
+  int get hashCode {
+    var h = Object.hash(id, role, content, thinking);
+    for (final a in attachments ?? const <Attachment>[]) {
+      h = Object.hash(h, a);
+    }
+    for (final p in parts ?? const <MessagePart>[]) {
+      h = Object.hash(h, p);
+    }
+    return h;
+  }
 }
 
 class ToolCallData {
@@ -252,6 +300,29 @@ class ToolCallData {
         outputPreview: outputPreview ?? this.outputPreview,
         changedFiles: changedFiles ?? this.changedFiles,
       );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ToolCallData) return false;
+    return id == other.id &&
+        title == other.title &&
+        kind == other.kind &&
+        status == other.status &&
+        command == other.command &&
+        output == other.output &&
+        outputPreview == other.outputPreview &&
+        _listEquals(changedFiles, other.changedFiles);
+  }
+
+  @override
+  int get hashCode {
+    var h = Object.hash(id, title, kind, status, command, output, outputPreview);
+    for (final f in changedFiles) {
+      h = Object.hash(h, f);
+    }
+    return h;
+  }
 }
 
 class MessagePart {
@@ -293,6 +364,19 @@ class MessagePart {
   @override
   String toString() =>
       'MessagePart(type: $type, id: $id, content: $content, toolCall: $toolCall)';
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! MessagePart) return false;
+    return type == other.type &&
+        id == other.id &&
+        content == other.content &&
+        toolCall == other.toolCall;
+  }
+
+  @override
+  int get hashCode => Object.hash(type, id, content, toolCall);
 }
 
 class Project {
@@ -392,6 +476,40 @@ class Thread {
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
       );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Thread) return false;
+    return id == other.id &&
+        title == other.title &&
+        threadGroupId == other.threadGroupId &&
+        projectId == other.projectId &&
+        devinSessionId == other.devinSessionId &&
+        model == other.model &&
+        permissionMode == other.permissionMode &&
+        permissions == other.permissions &&
+        branch == other.branch &&
+        worktreePath == other.worktreePath &&
+        createdAt == other.createdAt &&
+        updatedAt == other.updatedAt;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        title,
+        threadGroupId,
+        projectId,
+        devinSessionId,
+        model,
+        permissionMode,
+        permissions,
+        branch,
+        worktreePath,
+        createdAt,
+        updatedAt,
+      );
 }
 
 class ThreadGroup {
@@ -417,21 +535,43 @@ class ThreadGroup {
 
 class ThreadDetail {
   final Thread thread;
-  final List<Message> messages;
+  List<Message> messages;
+  int totalMessages;
 
-  ThreadDetail({required this.thread, required this.messages});
+  ThreadDetail({
+    required this.thread,
+    this.messages = const [],
+    this.totalMessages = 0,
+  });
 
   factory ThreadDetail.fromJson(Map<String, dynamic> j) => ThreadDetail(
         thread: Thread.fromJson(j['thread'] as Map<String, dynamic>),
         messages: ((j['messages'] as List<dynamic>?) ?? [])
             .map((m) => Message.fromJson(m as Map<String, dynamic>))
             .toList(),
+        totalMessages: (j['total_messages'] as num?)?.toInt() ??
+            ((j['messages'] as List<dynamic>?) ?? []).length,
       );
 
-  ThreadDetail copyWith({List<Message>? messages}) => ThreadDetail(
-        thread: thread,
+  ThreadDetail copyWith({
+    Thread? thread,
+    List<Message>? messages,
+    int? totalMessages,
+  }) => ThreadDetail(
+        thread: thread ?? this.thread,
         messages: messages ?? this.messages,
+        totalMessages: totalMessages ?? this.totalMessages,
       );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ThreadDetail) return false;
+    return thread == other.thread && totalMessages == other.totalMessages;
+  }
+
+  @override
+  int get hashCode => Object.hash(thread, totalMessages);
 }
 
 class ProviderInfo {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -89,23 +90,98 @@ class ChatView extends StatefulWidget {
   State<ChatView> createState() => _ChatViewState();
 }
 
+@immutable
+class _ChatModel {
+  final String? activeThreadId;
+  final ThreadDetail? detail;
+  final int messageCount;
+  final int streamingDigest;
+  final bool streamingThinkingActive;
+
+  const _ChatModel({
+    required this.activeThreadId,
+    required this.detail,
+    required this.messageCount,
+    required this.streamingDigest,
+    required this.streamingThinkingActive,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! _ChatModel) return false;
+    return activeThreadId == other.activeThreadId &&
+        detail == other.detail &&
+        messageCount == other.messageCount &&
+        streamingDigest == other.streamingDigest &&
+        streamingThinkingActive == other.streamingThinkingActive;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        activeThreadId,
+        detail,
+        messageCount,
+        streamingDigest,
+        streamingThinkingActive,
+      );
+}
+
+int _streamingDigest(List<MessagePart> parts) {
+  var h = parts.length;
+  for (var i = 0; i < parts.length; i++) {
+    final p = parts[i];
+    final t = p.toolCall;
+    h = Object.hash(
+      h,
+      p.type,
+      p.id,
+      p.content,
+      t?.status,
+      t?.output,
+      i,
+    );
+  }
+  return h;
+}
+
 class _ChatViewState extends State<ChatView> {
+  static const _loadMoreThreshold = 800.0;
+  static const _autoScrollThreshold = 80.0;
+
   final _scrollController = ScrollController();
   final _composerController = TextEditingController();
   bool _autoScroll = true;
   int _lastMessageCount = 0;
-  String _lastStreamingDigest = '';
+  int _lastStreamingDigest = 0;
   String? _lastThreadId;
+  bool _loadingMore = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(() {
-      // Disable auto-scroll when the user scrolls away from the bottom.
-      if (_scrollController.hasClients) {
-        final max = _scrollController.position.maxScrollExtent;
-        final pos = _scrollController.position.pixels;
-        _autoScroll = (max - pos) < 80;
+      if (!_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      final pos = _scrollController.position.pixels;
+      _autoScroll = (max - pos) < _autoScrollThreshold;
+
+      // Near the top means older messages are just off-screen.
+      if (pos < _loadMoreThreshold && pos > 0 && !_loadingMore) {
+        _loadingMore = true;
+        final oldMax = _scrollController.position.maxScrollExtent;
+        final state = context.read<AppState>();
+        state.loadMoreMessages().whenComplete(() {
+          _loadingMore = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_scrollController.hasClients) return;
+            final newMax = _scrollController.position.maxScrollExtent;
+            final delta = newMax - oldMax;
+            if (delta > 0 && pos < _loadMoreThreshold) {
+              _scrollController.jumpTo((pos + delta).clamp(0, newMax));
+            }
+          });
+        });
       }
     });
   }
@@ -121,52 +197,54 @@ class _ChatViewState extends State<ChatView> {
     if (!force && !_autoScroll) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-      );
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final detail = state.activeThreadDetail;
-    final streamingParts = state.streamingParts;
-    final thinkingActive = state.streamingThinkingActive;
+    return Selector<AppState, _ChatModel>(
+      selector: (_, state) => _ChatModel(
+        activeThreadId: state.activeThreadId,
+        detail: state.activeThreadDetail,
+        messageCount: state.activeThreadDetail?.messages.length ?? 0,
+        streamingDigest: _streamingDigest(state.streamingParts),
+        streamingThinkingActive: state.streamingThinkingActive,
+      ),
+      shouldRebuild: (prev, next) => prev != next,
+      builder: (context, model, child) {
+        final state = context.read<AppState>();
 
-    final msgCount = detail?.messages.length ?? 0;
-    final newMessage = msgCount != _lastMessageCount;
-    final digest = streamingParts
-        .map((p) => '${p.type}:${p.id ?? ''}:${p.content ?? ''}')
-        .join('|');
-    final newParts = digest != _lastStreamingDigest;
-    if (newMessage || newParts) {
-      _maybeScrollToBottom();
-    }
-    _lastMessageCount = msgCount;
-    _lastStreamingDigest = digest;
+        final msgCount = model.messageCount;
+        final newMessage = msgCount != _lastMessageCount;
+        final newParts = model.streamingDigest != _lastStreamingDigest;
+        if (newMessage || newParts) {
+          _maybeScrollToBottom();
+        }
+        _lastMessageCount = msgCount;
+        _lastStreamingDigest = model.streamingDigest;
 
-    final threadId = detail?.thread.id;
-    if (threadId != _lastThreadId) {
-      _lastThreadId = threadId;
-      _autoScroll = true;
-      _maybeScrollToBottom(force: true);
-    }
+        final threadId = model.activeThreadId;
+        if (threadId != _lastThreadId) {
+          _lastThreadId = threadId;
+          _autoScroll = true;
+          _maybeScrollToBottom(force: true);
+        }
 
-    return Column(
-      children: [
-        Expanded(
-          child: _MessagesPanel(
-            detail: detail,
-            streamingParts: streamingParts,
-            streamingThinkingActive: thinkingActive,
-            controller: _scrollController,
-          ),
-        ),
-        _Composer(controller: _composerController),
-      ],
+        return Column(
+          children: [
+            Expanded(
+              child: _MessagesPanel(
+                detail: model.detail,
+                streamingParts: state.streamingParts,
+                streamingThinkingActive: model.streamingThinkingActive,
+                controller: _scrollController,
+              ),
+            ),
+            _Composer(controller: _composerController),
+          ],
+        );
+      },
     );
   }
 }
@@ -220,29 +298,34 @@ class _MessagesPanel extends StatelessWidget {
       );
     }
 
-    Message? currentAssistant;
-    final history = messages.toList();
-    if (history.isNotEmpty && history.last.role == 'assistant') {
-      currentAssistant = history.removeLast();
-    }
-
-    return ListView(
-      controller: controller,
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      children: [
-        for (final m in history) _MessageItem(message: m),
-        if (currentAssistant != null) _MessageItem(message: currentAssistant),
-        if (hasStreaming)
-          _MessageItem(
-            message: Message(
-              role: 'assistant',
-              content: '',
-              attachments: null,
-              parts: streamingParts,
-            ),
-            thinkingActive: streamingThinkingActive,
-          ),
-      ],
+    return SelectionArea(
+      child: ListView.builder(
+        controller: controller,
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(200),
+        itemCount: messages.length + (hasStreaming ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (hasStreaming && index == messages.length) {
+            return _MessageItem(
+              key: const ValueKey('streaming'),
+              message: Message(
+                role: 'assistant',
+                content: '',
+                attachments: null,
+                parts: streamingParts,
+              ),
+              thinkingActive: streamingThinkingActive,
+            );
+          }
+          final message = messages[index];
+          return _MessageItem(
+            key: ValueKey(message.id ?? message.content),
+            message: message,
+          );
+        },
+      ),
     );
   }
 }
@@ -250,7 +333,7 @@ class _MessagesPanel extends StatelessWidget {
 class _MessageItem extends StatefulWidget {
   final Message message;
   final bool thinkingActive;
-  const _MessageItem({required this.message, this.thinkingActive = false});
+  const _MessageItem({super.key, required this.message, this.thinkingActive = false});
 
   @override
   State<_MessageItem> createState() => _MessageItemState();
@@ -357,6 +440,7 @@ class _MessageItemState extends State<_MessageItem> {
     if (role == 'assistant') {
       return MarkdownBody(
         data: text,
+        selectable: false,
         onTapLink: (txt, href, title) {
           if (href != null) openLink(href);
         },
@@ -557,7 +641,7 @@ class _ThinkingBlock extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: SelectableText(
+                  child: Text(
                     item.content!,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       height: 1.5,
@@ -1144,7 +1228,7 @@ class _ToolDetailRow extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          SelectableText(
+          Text(
             value,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface,

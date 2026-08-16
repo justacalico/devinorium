@@ -904,9 +904,8 @@ class AppState extends ChangeNotifier {
         _composerText = '';
         final msg = parseSseMessage(ev.data);
         if (msg != null && _activeThreadDetail != null) {
-          _activeThreadDetail = _activeThreadDetail!.copyWith(
-            messages: [..._activeThreadDetail!.messages, msg],
-          );
+          _activeThreadDetail!.messages.add(msg);
+          _activeThreadDetail!.totalMessages++;
           notifyListeners();
         }
         break;
@@ -961,14 +960,14 @@ class AppState extends ChangeNotifier {
         _streamingParts.clear();
         _streamingThinkingActive = false;
         if (msg != null && _activeThreadDetail != null) {
-          _activeThreadDetail = _activeThreadDetail!.copyWith(
-            messages: [..._activeThreadDetail!.messages, msg],
-          );
+          _activeThreadDetail!.messages.add(msg);
+          _activeThreadDetail!.totalMessages++;
         }
         _sending = false;
         _sendSubscription = null;
         notifyListeners();
         refreshThreadsAndGroups();
+        _refreshTail(tid);
         break;
       case 'error':
         _clearPermissionRequest();
@@ -995,6 +994,51 @@ class AppState extends ChangeNotifier {
         _streamingParts.isNotEmpty && _streamingParts.last.type == 'thinking';
   }
 
+  /// Refresh the tail of the active thread without discarding already loaded
+  /// older messages. Used after streaming ends or errors.
+  Future<void> _refreshTail(String tid) async {
+    if (_activeThreadId != tid) return;
+    try {
+      if (_activeThreadDetail == null || _activeThreadDetail!.messages.isEmpty) {
+        _activeThreadDetail = await api.getThread(tid);
+      } else {
+        final newestId = _activeThreadDetail!.messages.last.id;
+        if (newestId == null) {
+          _activeThreadDetail = await api.getThread(tid);
+        } else {
+          final tail = await api.getThreadMessages(tid, afterId: newestId);
+          if (tail.isNotEmpty) {
+            _activeThreadDetail!.messages.addAll(tail);
+            _activeThreadDetail!.totalMessages += tail.length;
+          }
+        }
+      }
+      notifyListeners();
+    } catch (_) {
+      // ignore refresh errors; the user can still retry
+    }
+  }
+
+  Future<void> loadMoreMessages() async {
+    final tid = _activeThreadId;
+    final detail = _activeThreadDetail;
+    if (tid == null || detail == null) return;
+    if (detail.messages.isEmpty) return;
+    if (detail.messages.length >= detail.totalMessages) return;
+    try {
+      final oldestId = detail.messages.first.id;
+      if (oldestId == null) return;
+      final older = await api.getThreadMessages(tid, beforeId: oldestId);
+      if (older.isNotEmpty) {
+        detail.messages.insertAll(0, older);
+        notifyListeners();
+      }
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
   void _handleRunError(String tid, Object e) {
     _sendSubscription = null;
     _clearPermissionRequest();
@@ -1010,13 +1054,7 @@ class AppState extends ChangeNotifier {
     _sending = false;
     _globalError = '$e';
     notifyListeners();
-    api
-        .getThread(tid)
-        .then((d) {
-          _activeThreadDetail = d;
-          notifyListeners();
-        })
-        .catchError((_) {});
+    _refreshTail(tid);
   }
 
   void _handleRunOnDone(String tid) {
@@ -1027,13 +1065,7 @@ class AppState extends ChangeNotifier {
       _streamingParts.clear();
       _streamingThinkingActive = false;
       notifyListeners();
-      api
-          .getThread(tid)
-          .then((d) {
-            _activeThreadDetail = d;
-            notifyListeners();
-          })
-          .catchError((_) {});
+      _refreshTail(tid);
     }
   }
 
