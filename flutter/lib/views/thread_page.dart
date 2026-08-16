@@ -11,6 +11,7 @@ import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/link_opener.dart';
+import '../utils/path_attachment.dart';
 import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'drop_zone.dart';
@@ -789,6 +790,75 @@ class _ComposerState extends State<_Composer> {
   bool _wasSending = false;
 
   @override
+  void initState() {
+    super.initState();
+    _focusNode.onKeyEvent = _handleKeyEvent;
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.keyV) {
+      return KeyEventResult.ignored;
+    }
+    if (!HardwareKeyboard.instance.isControlPressed &&
+        !HardwareKeyboard.instance.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+    _handlePaste();
+    return KeyEventResult.handled;
+  }
+
+  Future<void> _handlePaste() async {
+    final state = context.read<AppState>();
+    final l = l10n(context);
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+
+    final result = await maybeAttachPath(text);
+    if (!mounted) return;
+    switch (result) {
+      case PathAttached():
+        state.addAttachments([
+          (
+            filename: result.filename,
+            mime: result.mime,
+            bytes: result.bytes,
+          ),
+        ]);
+      case PathTooLarge():
+        state.setGlobalError(l.dropZoneFileTooLarge(result.filename));
+      case PathFallback():
+        _insertText(text);
+    }
+  }
+
+  void _insertText(String text) {
+    final state = context.read<AppState>();
+    final value = widget.controller.value;
+    final selection = value.selection;
+    late final String newText;
+    late final TextSelection newSelection;
+
+    if (selection.isValid && selection.isCollapsed) {
+      newText = value.text.replaceRange(selection.start, selection.end, text);
+      newSelection = TextSelection.collapsed(
+        offset: selection.start + text.length,
+      );
+    } else {
+      newText = value.text + text;
+      newSelection = TextSelection.collapsed(offset: newText.length);
+    }
+
+    widget.controller.value = value.copyWith(
+      text: newText,
+      selection: newSelection,
+    );
+    state.setComposerText(newText);
+  }
+
+  @override
   void dispose() {
     _focusNode.dispose();
     super.dispose();
@@ -910,6 +980,25 @@ class _ComposerState extends State<_Composer> {
                         ),
                         style: theme.textTheme.bodyLarge,
                         onChanged: state.setComposerText,
+                        contextMenuBuilder: (context, editableTextState) {
+                          final items =
+                              editableTextState.contextMenuButtonItems
+                                  .map((item) {
+                                    if (item.type ==
+                                        ContextMenuButtonType.paste) {
+                                      return ContextMenuButtonItem(
+                                        label: item.label,
+                                        onPressed: _handlePaste,
+                                      );
+                                    }
+                                    return item;
+                                  })
+                                  .toList();
+                          return AdaptiveTextSelectionToolbar.buttonItems(
+                            buttonItems: items,
+                            anchors: editableTextState.contextMenuAnchors,
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(height: 8),
