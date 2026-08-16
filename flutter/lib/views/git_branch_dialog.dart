@@ -359,7 +359,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
 
   Future<void> _checkout(int projectId, GitBranch branch) async {
     final state = context.read<AppState>();
-    await state.gitCheckout(projectId, branch.name);
+    await state.gitCheckout(projectId, branch.name, track: branch.isRemote);
   }
 
   Future<void> _useBranch(int projectId, GitBranch branch) async {

@@ -1127,9 +1127,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> gitCheckout(int projectId, String refName) async {
+  Future<void> gitCheckout(int projectId, String refName, {bool track = false}) async {
     try {
-      await api.gitCheckout(projectId, refName);
+      await api.gitCheckout(projectId, refName, track: track);
       _globalError = '';
       await loadGitRepoInfo(projectId);
       await loadGitBranches(projectId);
@@ -1145,6 +1145,9 @@ class AppState extends ChangeNotifier {
       await api.gitCreateWorktree(projectId, name, base, newBranch: newBranch);
       _globalError = '';
       await loadGitWorktrees(projectId);
+      if (newBranch) {
+        await loadGitBranches(projectId);
+      }
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
