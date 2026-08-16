@@ -13,6 +13,7 @@ class LoginView extends StatefulWidget {
 
 class _LoginViewState extends State<LoginView> {
   final _formKey = GlobalKey<FormState>();
+  final _serverUrl = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _totp = TextEditingController();
@@ -20,6 +21,7 @@ class _LoginViewState extends State<LoginView> {
 
   @override
   void dispose() {
+    _serverUrl.dispose();
     _username.dispose();
     _password.dispose();
     _totp.dispose();
@@ -30,10 +32,25 @@ class _LoginViewState extends State<LoginView> {
     if (!_formKey.currentState!.validate()) return;
     final state = context.read<AppState>();
     state.doLogin(
+      serverUrl: _serverUrl.text,
       username: _username.text,
       password: _password.text,
       totp: _totp.text,
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final state = context.read<AppState>();
+      if (state.api.client.isNative) {
+        final url = await state.api.client.serverUrl;
+        if (url != null && url.isNotEmpty) {
+          _serverUrl.text = url;
+        }
+      }
+    });
   }
 
   @override
@@ -67,6 +84,30 @@ class _LoginViewState extends State<LoginView> {
                         style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 24),
+                    if (state.api.client.isNative) ...[
+                      TextFormField(
+                        controller: _serverUrl,
+                        decoration: InputDecoration(
+                          labelText: l10n(context).serverUrl,
+                          hintText: l10n(context).serverUrlHint,
+                          border: const OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.next,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return l10n(context).required;
+                          }
+                          final trimmed = v.trim();
+                          if (!trimmed.startsWith('http://') &&
+                              !trimmed.startsWith('https://')) {
+                            return l10n(context).serverUrlInvalid;
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     TextFormField(
                       controller: _username,
                       decoration: InputDecoration(

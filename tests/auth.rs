@@ -130,6 +130,27 @@ async fn login(app: &Router, username: &str, password: &str) -> String {
         .to_string()
 }
 
+async fn login_token(app: &Router, username: &str, password: &str) -> String {
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"username":"{username}","password":"{password}"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_body(resp.into_body()).await;
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    v["token"].as_str().unwrap().to_string()
+}
+
 #[tokio::test]
 async fn bootstrap_creates_owner() {
     let (_state, db) = make_app("owner", "supersecret123").await;
@@ -161,6 +182,32 @@ async fn login_succeeds_with_correct_password() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = read_body(resp.into_body()).await;
     assert!(body.contains("\"ok\":true"), "body: {body}");
+}
+
+#[tokio::test]
+async fn login_returns_token_in_response() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_body(resp.into_body()).await;
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["username"], "owner");
+    assert!(v["token"].as_str().unwrap().len() >= 16);
 }
 
 #[tokio::test]
@@ -695,78 +742,11 @@ async fn owner_cannot_disable_another_owner() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
-async fn create_pairing(
-    app: &Router,
-    cookie: &str,
-    server_url: &str,
-    name: Option<&str>,
-) -> serde_json::Value {
-    let body = match name {
-        Some(n) => format!(r#"{{"server_url":"{server_url}","name":"{n}"}}"#),
-        None => format!(r#"{{"server_url":"{server_url}"}}"#),
-    };
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/pairing")
-                .header("content-type", "application/json")
-                .header("origin", server_url)
-                .header("cookie", cookie)
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    serde_json::from_str(&read_body(resp.into_body()).await).unwrap()
-}
-
-#[tokio::test]
-async fn pairing_creates_token_and_returns_username_and_server_url() {
-    let (state, _db) = make_app("owner", "supersecret123").await;
-    let app = build_router(state.clone());
-    let cookie = login(&app, "owner", "supersecret123").await;
-    let v = create_pairing(&app, &cookie, "http://localhost:7878", None).await;
-    assert_eq!(v["ok"], true);
-    assert_eq!(v["username"], "owner");
-    assert_eq!(v["server_url"], "http://localhost:7878");
-    assert!(v["token"].as_str().unwrap().len() >= 16);
-}
-
-#[tokio::test]
-async fn pairing_allows_custom_name() {
-    let (state, _db) = make_app("owner", "supersecret123").await;
-    let app = build_router(state.clone());
-    let cookie = login(&app, "owner", "supersecret123").await;
-    let v = create_pairing(&app, &cookie, "http://localhost:7878", Some("Phone")).await;
-    assert_eq!(v["ok"], true);
-
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/auth/devices")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let devices: Vec<serde_json::Value> =
-        serde_json::from_str(&read_body(resp.into_body()).await).unwrap();
-    assert!(devices.iter().any(|d| d["name"] == "Phone"));
-}
-
 #[tokio::test]
 async fn bearer_token_allows_access_to_me() {
     let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
-    let cookie = login(&app, "owner", "supersecret123").await;
-    let v = create_pairing(&app, &cookie, "http://localhost:7878", None).await;
-    let token = v["token"].as_str().unwrap().to_string();
+    let token = login_token(&app, "owner", "supersecret123").await;
 
     let resp = app
         .clone()
@@ -789,9 +769,7 @@ async fn device_list_and_revoke() {
     let (state, _db) = make_app("owner", "supersecret123").await;
     let app = build_router(state.clone());
     let cookie = login(&app, "owner", "supersecret123").await;
-    let v = create_pairing(&app, &cookie, "http://localhost:7878", None).await;
-    let token = v["token"].as_str().unwrap().to_string();
-    let device_id = v["device_id"].as_str().unwrap().to_string();
+    let token = login_token(&app, "owner", "supersecret123").await;
 
     let resp = app
         .clone()
@@ -808,10 +786,15 @@ async fn device_list_and_revoke() {
     let body = read_body(resp.into_body()).await;
     let devices: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
     assert!(devices.len() >= 1);
-    assert!(devices.iter().any(|d| d["device_id"] == device_id));
-    assert!(devices.iter().any(|d| d["token_prefix"]
-        .as_str()
-        .map_or(false, |p| token.starts_with(p))));
+    let device = devices
+        .iter()
+        .find(|d| {
+            d["token_prefix"]
+                .as_str()
+                .map_or(false, |p| token.starts_with(p))
+        })
+        .expect("token session should be listed");
+    let device_id = device["device_id"].as_str().unwrap().to_string();
 
     let resp = app
         .clone()
@@ -865,9 +848,24 @@ async fn cannot_revoke_device_owned_by_another_user() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
-    let alice_cookie = login(&app, "alice", "alicepass123").await;
-    let v = create_pairing(&app, &alice_cookie, "http://localhost:7878", None).await;
-    let device_id = v["device_id"].as_str().unwrap().to_string();
+    let alice_token = login_token(&app, "alice", "alicepass123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/devices")
+                .header("authorization", format!("Bearer {alice_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let devices: Vec<serde_json::Value> =
+        serde_json::from_str(&read_body(resp.into_body()).await).unwrap();
+    assert!(!devices.is_empty());
+    let device_id = devices[0]["device_id"].as_str().unwrap().to_string();
 
     let resp = app
         .clone()
@@ -885,105 +883,4 @@ async fn cannot_revoke_device_owned_by_another_user() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn pairing_rejects_missing_origin() {
-    let (state, _db) = make_app("owner", "supersecret123").await;
-    let app = build_router(state.clone());
-    let cookie = login(&app, "owner", "supersecret123").await;
 
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/pairing")
-                .header("content-type", "application/json")
-                .header("cookie", cookie)
-                .body(Body::from(r#"{"server_url":"http://localhost:7878"}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn pairing_rejects_mismatched_origin() {
-    let (state, _db) = make_app("owner", "supersecret123").await;
-    let app = build_router(state.clone());
-    let cookie = login(&app, "owner", "supersecret123").await;
-
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/pairing")
-                .header("content-type", "application/json")
-                .header("origin", "https://devinorium.example")
-                .header("cookie", cookie)
-                .body(Body::from(r#"{"server_url":"http://evil.com"}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn pairing_rejects_invalid_name() {
-    let (state, _db) = make_app("owner", "supersecret123").await;
-    let app = build_router(state.clone());
-    let cookie = login(&app, "owner", "supersecret123").await;
-
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/pairing")
-                .header("content-type", "application/json")
-                .header("origin", "http://localhost:7878")
-                .header("cookie", cookie)
-                .body(Body::from(
-                    r#"{"server_url":"http://localhost:7878","name":"a\n\nb"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn pairing_enforces_device_limit() {
-    let (state, _db) = make_app("owner", "supersecret123").await;
-    let app = build_router(state.clone());
-    let cookie = login(&app, "owner", "supersecret123").await;
-
-    for i in 0..9 {
-        create_pairing(
-            &app,
-            &cookie,
-            "http://localhost:7878",
-            Some(&format!("device-{i}")),
-        )
-        .await;
-    }
-
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/pairing")
-                .header("content-type", "application/json")
-                .header("origin", "http://localhost:7878")
-                .header("cookie", cookie)
-                .body(Body::from(r#"{"server_url":"http://localhost:7878"}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}

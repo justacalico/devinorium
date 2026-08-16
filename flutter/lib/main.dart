@@ -6,7 +6,6 @@ import 'state/app_state.dart';
 import 'views/app_view.dart';
 import 'views/auth_views.dart';
 import 'views/dialogs.dart';
-import 'views/pairing_setup_view.dart';
 
 void main() {
   runApp(const DevinoriumApp());
@@ -66,9 +65,6 @@ class RootScaffold extends StatelessWidget {
         break;
       case AppView.login:
         body = const LoginView();
-        break;
-      case AppView.setup:
-        body = const PairingSetupView();
         break;
       case AppView.app:
         body = const AppShell();

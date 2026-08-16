@@ -1,12 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
-import '../utils/download.dart';
-import '../utils/origin.dart';
 import '../widgets/owner_badge.dart';
 import 'create_user_dialog.dart';
 
@@ -131,43 +128,10 @@ class _DevicesSection extends StatefulWidget {
 }
 
 class _DevicesSectionState extends State<_DevicesSection> {
-  bool _creating = false;
-
   @override
   void initState() {
     super.initState();
     widget.state.loadDevices();
-  }
-
-  Future<void> _downloadPairing() async {
-    final l = l10n(context);
-    setState(() => _creating = true);
-    try {
-      final serverUrl = kIsWeb
-          ? currentOrigin()
-          : (await widget.state.api.client.serverUrl ?? '');
-      if (serverUrl.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l.couldNotGetServerAddress)),
-          );
-        }
-        return;
-      }
-      final pairing = await widget.state.createPairing(
-        serverUrl: serverUrl,
-        name: l.appTitle,
-      );
-      downloadTextFile(pairing.toJsonString(), 'devinorium-pairing.json');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l.createPairingFailed('$e'))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _creating = false);
-    }
   }
 
   Future<void> _revoke(String token) async {
@@ -200,29 +164,10 @@ class _DevicesSectionState extends State<_DevicesSection> {
     return _SectionCard(
       title: l.devices,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(
-                l.pairingFileDescription,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ),
-            const SizedBox(width: 12),
-            _creating
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : FilledButton.icon(
-                    onPressed: _downloadPairing,
-                    icon: const Icon(Icons.download, size: 18),
-                    label: Text(l.pair),
-                  ),
-          ],
+        Text(
+          l.devicesDescription,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const Divider(),
         ListenableBuilder(

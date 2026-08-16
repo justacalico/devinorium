@@ -344,57 +344,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get otherFamily => 'Other';
 
   @override
-  String get pairingSetupSubtitle =>
-      'Import a pairing file to connect to the server.';
+  String get serverUrl => 'Server URL';
 
   @override
-  String get selectPairingFile => 'Select pairing file';
+  String get serverUrlHint => 'https://example.com';
 
   @override
-  String get enterPairingFilePath => 'Enter pairing file path';
+  String get serverUrlInvalid =>
+      'Server URL must start with http:// or https://';
 
   @override
-  String get pairingFilePathHint => '/path/to/devinorium-pairing.json';
+  String get devicesDescription => 'Active sessions for your account.';
 
   @override
-  String get couldNotParseFile => 'Could not parse file';
-
-  @override
-  String get couldNotOpenFilePicker => 'Could not open file picker';
-
-  @override
-  String get noFileSelected => 'No file selected';
-
-  @override
-  String get couldNotReadFileContent => 'Could not read file content';
-
-  @override
-  String get pairingFileTooLarge => 'Pairing file is too large';
-
-  @override
-  String get invalidFileFormat => 'Invalid file format';
-
-  @override
-  String get pairingFileMissingFields =>
-      'Pairing file is missing required fields';
-
-  @override
-  String get couldNotGetServerAddress => 'Could not get server address';
-
-  @override
-  String createPairingFailed(String error) {
-    return 'Failed to create pairing: $error';
-  }
-
-  @override
-  String get pairingFileDescription =>
-      'Download a pairing file to set up the mobile or desktop app.';
-
-  @override
-  String get pair => 'Pair';
-
-  @override
-  String get noPairedDevices => 'No paired devices.';
+  String get noPairedDevices => 'No devices.';
 
   @override
   String deviceToken(String tokenPrefix) {

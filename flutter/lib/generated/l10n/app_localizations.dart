@@ -718,100 +718,34 @@ abstract class AppLocalizations {
   /// **'Other'**
   String get otherFamily;
 
-  /// No description provided for @pairingSetupSubtitle.
+  /// No description provided for @serverUrl.
   ///
   /// In en, this message translates to:
-  /// **'Import a pairing file to connect to the server.'**
-  String get pairingSetupSubtitle;
+  /// **'Server URL'**
+  String get serverUrl;
 
-  /// No description provided for @selectPairingFile.
+  /// No description provided for @serverUrlHint.
   ///
   /// In en, this message translates to:
-  /// **'Select pairing file'**
-  String get selectPairingFile;
+  /// **'https://example.com'**
+  String get serverUrlHint;
 
-  /// No description provided for @enterPairingFilePath.
+  /// No description provided for @serverUrlInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Enter pairing file path'**
-  String get enterPairingFilePath;
+  /// **'Server URL must start with http:// or https://'**
+  String get serverUrlInvalid;
 
-  /// No description provided for @pairingFilePathHint.
+  /// No description provided for @devicesDescription.
   ///
   /// In en, this message translates to:
-  /// **'/path/to/devinorium-pairing.json'**
-  String get pairingFilePathHint;
-
-  /// No description provided for @couldNotParseFile.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not parse file'**
-  String get couldNotParseFile;
-
-  /// No description provided for @couldNotOpenFilePicker.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not open file picker'**
-  String get couldNotOpenFilePicker;
-
-  /// No description provided for @noFileSelected.
-  ///
-  /// In en, this message translates to:
-  /// **'No file selected'**
-  String get noFileSelected;
-
-  /// No description provided for @couldNotReadFileContent.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not read file content'**
-  String get couldNotReadFileContent;
-
-  /// No description provided for @pairingFileTooLarge.
-  ///
-  /// In en, this message translates to:
-  /// **'Pairing file is too large'**
-  String get pairingFileTooLarge;
-
-  /// No description provided for @invalidFileFormat.
-  ///
-  /// In en, this message translates to:
-  /// **'Invalid file format'**
-  String get invalidFileFormat;
-
-  /// No description provided for @pairingFileMissingFields.
-  ///
-  /// In en, this message translates to:
-  /// **'Pairing file is missing required fields'**
-  String get pairingFileMissingFields;
-
-  /// No description provided for @couldNotGetServerAddress.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not get server address'**
-  String get couldNotGetServerAddress;
-
-  /// No description provided for @createPairingFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to create pairing: {error}'**
-  String createPairingFailed(String error);
-
-  /// No description provided for @pairingFileDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Download a pairing file to set up the mobile or desktop app.'**
-  String get pairingFileDescription;
-
-  /// No description provided for @pair.
-  ///
-  /// In en, this message translates to:
-  /// **'Pair'**
-  String get pair;
+  /// **'Active sessions for your account.'**
+  String get devicesDescription;
 
   /// No description provided for @noPairedDevices.
   ///
   /// In en, this message translates to:
-  /// **'No paired devices.'**
+  /// **'No devices.'**
   String get noPairedDevices;
 
   /// No description provided for @deviceToken.

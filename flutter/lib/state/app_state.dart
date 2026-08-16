@@ -10,7 +10,7 @@ import '../l10n/global_l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
 
-enum AppView { loading, login, setup, app }
+enum AppView { loading, login, app }
 
 enum MainPage { threads, settings }
 
@@ -457,7 +457,7 @@ class AppState extends ChangeNotifier {
     try {
       final configured = await api.client.isConfigured;
       if (!configured) {
-        _view = api.client.isNative ? AppView.setup : AppView.login;
+        _view = AppView.login;
         notifyListeners();
         return;
       }
@@ -476,23 +476,11 @@ class AppState extends ChangeNotifier {
         await api.client.clearCredentials();
       }
       _setupError = e is ApiException ? e.message : appL10n.connectionFailed;
-      _view = api.client.isNative ? AppView.setup : AppView.login;
+      _view = AppView.login;
       notifyListeners();
     }
   }
 
-  Future<void> completePairing(PairingResponse pairing) async {
-    try {
-      await api.client.setServerUrl(pairing.serverUrl);
-      await api.client.setToken(pairing.token);
-      await api.client.setUsername(pairing.username);
-      await bootstrap();
-    } catch (e) {
-      _setupError = e is ApiException ? e.message : appL10n.importFailed;
-      _view = AppView.setup;
-      notifyListeners();
-    }
-  }
 
   Future<void> loadProjects() async {
     try {
@@ -538,6 +526,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> doLogin({
+    required String serverUrl,
     required String username,
     required String password,
     String? totp,
@@ -545,6 +534,7 @@ class AppState extends ChangeNotifier {
     _loginError = '';
     notifyListeners();
     try {
+      await api.client.setServerUrl(serverUrl.trim());
       final res = await api.login(
         username: username,
         password: password,
@@ -556,6 +546,10 @@ class AppState extends ChangeNotifier {
         _loginError = appL10n.totpPrompt;
         notifyListeners();
         return;
+      }
+      if (res.token.isNotEmpty) {
+        await api.client.setToken(res.token);
+        await api.client.setUsername(res.username);
       }
       _user = await api.me();
       _view = AppView.app;
@@ -606,13 +600,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<PairingResponse> createPairing({
-    required String serverUrl,
-    String? name,
-  }) async {
-    return api.createPairing(serverUrl: serverUrl, name: name);
-  }
-
   Future<void> createUser({
     required String username,
     required String password,
@@ -650,7 +637,7 @@ class AppState extends ChangeNotifier {
     _user = null;
     _users = [];
     _settingsTopicIndex = 0;
-    _view = api.client.isNative ? AppView.setup : AppView.login;
+    _view = AppView.login;
     _page = MainPage.threads;
     _userMenuOpen = false;
     _activeThreadId = null;

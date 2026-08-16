@@ -591,39 +591,26 @@ void main() {
     });
   });
 
-  group('PairingResponse', () {
-    test('parses pairing fields', () {
-      final p = PairingResponse.fromJson({
+  group('LoginResponse', () {
+    test('parses login fields including token', () {
+      final p = LoginResponse.fromJson({
         'ok': true,
-        'token': 'abc123',
+        'totp_required': false,
         'username': 'owner',
-        'server_url': 'http://localhost:7878',
+        'token': 'abc123',
       });
-      expect(p.token, 'abc123');
-      expect(p.username, 'owner');
-      expect(p.serverUrl, 'http://localhost:7878');
       expect(p.ok, true);
+      expect(p.totpRequired, false);
+      expect(p.username, 'owner');
+      expect(p.token, 'abc123');
     });
 
     test('defaults missing fields', () {
-      final p = PairingResponse.fromJson({'ok': true});
+      final p = LoginResponse.fromJson({'ok': true});
       expect(p.token, '');
       expect(p.username, '');
-      expect(p.serverUrl, '');
+      expect(p.totpRequired, false);
       expect(p.ok, true);
-    });
-
-    test('toJsonString round-trips', () {
-      final p = PairingResponse(
-        ok: true,
-        token: 't',
-        username: 'u',
-        serverUrl: 'http://x',
-      );
-      final json = p.toJsonString();
-      expect(json.contains('"token":"t"'), true);
-      expect(json.contains('"username":"u"'), true);
-      expect(json.contains('"server_url":"http://x"'), true);
     });
   });
 
