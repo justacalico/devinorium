@@ -4,6 +4,7 @@
 - Do not blindly merge. Verify behavior and run tests first.
 - Add new tests for everything new. Every piece of new code must be testable, both in Dart (Flutter) and Rust (backend).
 - Do a final harsh subagent review of all changes before finishing.
+- Do not squash merge requests. Use a regular merge commit so each conventional commit is preserved for the changelog and history.
 
 ## Commit message format
 
