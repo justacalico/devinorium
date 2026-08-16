@@ -125,7 +125,6 @@ build-android:
   after_script:
     - rm -f flutter/android/app/upload-keystore.jks flutter/android/app/key.properties
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
   timeout: 2h
 
@@ -168,7 +167,6 @@ build-linux:
       - devinorium-linux-x86_64.deb
     expire_in: 30 days
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
   timeout: 2h
 
@@ -197,7 +195,6 @@ build-image:
         --cache=true \
         --cache-repo "$CI_REGISTRY_IMAGE/cache"
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "feat/container-image"
   timeout: 2h
