@@ -11,13 +11,15 @@ pub struct NewThread {
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
 }
 
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, model, permission_mode, permissions)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, model, permission_mode, permissions, branch, worktree_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
@@ -28,6 +30,8 @@ impl super::Db {
         .bind(&new.model)
         .bind(&new.permission_mode)
         .bind(&new.permissions)
+        .bind(&new.branch)
+        .bind(&new.worktree_path)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
@@ -128,6 +132,25 @@ impl super::Db {
             }
         }
         tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn update_thread_git(
+        &self,
+        id: &str,
+        user_id: i64,
+        branch: Option<&str>,
+        worktree_path: Option<&str>,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE threads SET branch = ?, worktree_path = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?",
+        )
+        .bind(branch)
+        .bind(worktree_path)
+        .bind(id)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
         Ok(())
     }
 

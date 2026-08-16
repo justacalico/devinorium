@@ -103,6 +103,8 @@ pub struct ThreadRow {
     pub updated_at: String,
     pub thread_group_id: Option<i64>,
     pub project_id: Option<i64>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
 }
 
 /// A row from the `projects` table.
