@@ -2,7 +2,10 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/model_picker.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -397,5 +400,157 @@ void main() {
 
     expect(find.text('hmm1hmm2'), findsOneWidget);
     expect(find.text('search'), findsOneWidget);
+  });
+
+  testWidgets('tapping assistant markdown link opens the url', (tester) async {
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    final launched = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'launch') {
+        final args = call.arguments as Map<dynamic, dynamic>;
+        launched.add(args['url'] as String);
+        return true;
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '[example](https://example.com)',
+            parts: [
+              MessagePart.text(content: '[example](https://example.com)'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final text = find.descendant(
+      of: find.byType(MarkdownBody),
+      matching: find.byType(Text),
+    );
+    expect(text, findsOneWidget);
+    final widget = tester.widget<Text>(text);
+    final span = widget.textSpan! as TextSpan;
+    TapGestureRecognizer? linkRecognizer;
+    span.visitChildren((inline) {
+      if (inline is TextSpan && inline.recognizer is TapGestureRecognizer) {
+        final text = inline.text ?? '';
+        if (text == 'example' && linkRecognizer == null) {
+          linkRecognizer = inline.recognizer as TapGestureRecognizer;
+        }
+      }
+      return true;
+    });
+    expect(linkRecognizer, isNotNull);
+    linkRecognizer!.onTap!();
+
+    expect(launched, ['https://example.com']);
+  });
+
+  testWidgets('tapping user linkified text opens the url', (tester) async {
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    final launched = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'launch') {
+        final args = call.arguments as Map<dynamic, dynamic>;
+        launched.add(args['url'] as String);
+        return true;
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'user',
+            content: 'see https://example.com',
+            parts: [
+              MessagePart.text(content: 'see https://example.com'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final rich = find.descendant(
+      of: find.byType(Linkify),
+      matching: find.byType(RichText),
+    );
+    expect(rich, findsOneWidget);
+    final widget = tester.widget<RichText>(rich);
+    final span = widget.text as TextSpan;
+    TapGestureRecognizer? linkRecognizer;
+    span.visitChildren((inline) {
+      if (inline is TextSpan && inline.recognizer is TapGestureRecognizer) {
+        final text = inline.text ?? '';
+        if (text == 'example.com' && linkRecognizer == null) {
+          linkRecognizer = inline.recognizer as TapGestureRecognizer;
+        }
+      }
+      return true;
+    });
+    expect(linkRecognizer, isNotNull);
+    linkRecognizer!.onTap!();
+
+    expect(launched, ['https://example.com']);
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
@@ -7,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/link_opener.dart';
 import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'drop_zone.dart';
@@ -361,7 +363,9 @@ class _MessageItemState extends State<_MessageItem> {
     if (role == 'assistant') {
       return MarkdownBody(
         data: text,
-        selectable: true,
+        onTapLink: (txt, href, title) {
+          if (href != null) openLink(href);
+        },
         extensionSet: markdown.ExtensionSet.gitHubFlavored,
         styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
           p: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
@@ -389,8 +393,16 @@ class _MessageItemState extends State<_MessageItem> {
         ),
       );
     }
-    return Text(text,
-        style: theme.textTheme.bodyLarge?.copyWith(height: 1.5));
+    return Linkify(
+      text: text,
+      onOpen: (link) => openLink(link.url),
+      style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+      linkStyle: theme.textTheme.bodyLarge?.copyWith(
+        height: 1.5,
+        color: theme.colorScheme.primary,
+        decoration: TextDecoration.underline,
+      ),
+    );
   }
 
   Widget _buildPartWidgets(BuildContext context, List<_PartGroup> groups) {
@@ -470,7 +482,10 @@ class _MessageItemState extends State<_MessageItem> {
                             color: theme.colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 4),
-                    if (groups.isNotEmpty) _buildPartWidgets(context, groups),
+                    if (groups.isNotEmpty)
+                      SelectionArea(
+                        child: _buildPartWidgets(context, groups),
+                      ),
                     if (showLoading)
                       Text(
                         l10n(context).messageLoading,
