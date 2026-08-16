@@ -501,6 +501,8 @@ class GitBranch {
   final bool isRemote;
   final int committerDate;
   final String? symref;
+  final int ahead;
+  final int behind;
 
   GitBranch({
     required this.name,
@@ -510,6 +512,8 @@ class GitBranch {
     this.isRemote = false,
     this.committerDate = 0,
     this.symref,
+    this.ahead = 0,
+    this.behind = 0,
   });
 
   factory GitBranch.fromJson(Map<String, dynamic> j) => GitBranch(
@@ -520,6 +524,8 @@ class GitBranch {
         isRemote: j['is_remote'] as bool? ?? false,
         committerDate: (j['committer_date'] as num?)?.toInt() ?? 0,
         symref: j['symref'] as String?,
+        ahead: (j['ahead'] as num?)?.toInt() ?? 0,
+        behind: (j['behind'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -529,6 +535,8 @@ class GitRepoInfo {
   final String worktreePath;
   final String toplevel;
   final String commonDir;
+  final int ahead;
+  final int behind;
 
   GitRepoInfo({
     this.isRepo = false,
@@ -536,6 +544,8 @@ class GitRepoInfo {
     this.worktreePath = '',
     this.toplevel = '',
     this.commonDir = '',
+    this.ahead = 0,
+    this.behind = 0,
   });
 
   factory GitRepoInfo.fromJson(Map<String, dynamic> j) => GitRepoInfo(
@@ -544,6 +554,8 @@ class GitRepoInfo {
         worktreePath: j['worktree_path'] as String? ?? '',
         toplevel: j['toplevel'] as String? ?? '',
         commonDir: j['common_dir'] as String? ?? '',
+        ahead: (j['ahead'] as num?)?.toInt() ?? 0,
+        behind: (j['behind'] as num?)?.toInt() ?? 0,
       );
 }
 

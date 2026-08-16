@@ -179,6 +179,80 @@ async fn worktree_create_and_remove() {
     assert!(!worktrees.iter().any(|w| w.path == wt.path));
 }
 
+#[tokio::test]
+async fn repo_status_includes_ahead_and_behind() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    git_cli(
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        local.path(),
+    );
+    git_cli(&["push", "-u", "origin", "main"], local.path());
+
+    std::fs::write(local.path().join("file2.txt"), "hello2").unwrap();
+    git_cli(&["add", "file2.txt"], local.path());
+    git_cli(&["commit", "-m", "second"], local.path());
+
+    let svc = GitService::new();
+    let status = svc.repo_status(local.path()).await.unwrap();
+    assert_eq!(status.branch, "main");
+    assert_eq!(status.ahead, 1);
+    assert_eq!(status.behind, 0);
+
+    let branches = svc.branches(local.path(), None, None).await.unwrap();
+    let main = branches.iter().find(|b| b.name == "main").unwrap();
+    assert_eq!(main.ahead, 1);
+    assert_eq!(main.behind, 0);
+
+    svc.push(local.path()).await.unwrap();
+    let status = svc.repo_status(local.path()).await.unwrap();
+    assert_eq!(status.ahead, 0);
+    assert_eq!(status.behind, 0);
+}
+
+#[tokio::test]
+async fn pull_fast_forwards_behind_commits() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    git_cli(
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        local.path(),
+    );
+    git_cli(&["push", "-u", "origin", "main"], local.path());
+
+    let other = TempDir::new().unwrap();
+    git_cli(
+        &["clone", remote.path().to_str().unwrap(), "."],
+        other.path(),
+    );
+    git_cli(
+        &["checkout", "-b", "main", "origin/main"],
+        other.path(),
+    );
+    std::fs::write(other.path().join("file2.txt"), "from other").unwrap();
+    git_cli(&["add", "file2.txt"], other.path());
+    git_cli(&["commit", "-m", "remote commit"], other.path());
+    git_cli(&["push", "-u", "origin", "main"], other.path());
+
+    let svc = GitService::new();
+    let status = svc.repo_status(local.path()).await.unwrap();
+    assert_eq!(status.branch, "main");
+    assert_eq!(status.behind, 1);
+    assert_eq!(status.ahead, 0);
+
+    svc.pull(local.path()).await.unwrap();
+    let status = svc.repo_status(local.path()).await.unwrap();
+    assert_eq!(status.behind, 0);
+    assert_eq!(status.ahead, 0);
+    assert!(local.path().join("file2.txt").exists());
+}
+
 fn write_fake_glab(dir: &Path) -> std::path::PathBuf {
     let bin_dir = dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();

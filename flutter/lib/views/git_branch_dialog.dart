@@ -20,6 +20,8 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
   bool _creatingBranchSwitch = false;
   bool _creatingWorktree = false;
   bool _creatingWorktreeNewBranch = false;
+  bool _pulling = false;
+  bool _pushing = false;
   String _query = '';
 
   @override
@@ -116,7 +118,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
 
   Widget _buildHeader(BuildContext context, GitRepoInfo? repo, String currentBranch) {
     final theme = Theme.of(context);
+    final state = context.read<AppState>();
+    final projectId = state.gitDialogProjectId ?? 0;
     final title = repo != null && repo.isRepo ? repo.toplevel.split('/').last : l10n(context).gitBranches;
+    final behind = repo?.behind ?? 0;
+    final ahead = repo?.ahead ?? 0;
     return Row(
       children: [
         Expanded(
@@ -124,7 +130,41 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
         ),
         if (repo != null && repo.isRepo) ...[
           const SizedBox(width: 8),
-          Text(currentBranch, style: theme.textTheme.labelLarge),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(
+              currentBranch,
+              style: theme.textTheme.labelLarge,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+          if (behind > 0 || ahead > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: _TrackingCounts(ahead: ahead, behind: behind, style: theme.textTheme.labelLarge),
+            ),
+          const SizedBox(width: 8),
+          if (behind > 0)
+            Tooltip(
+              message: l10n(context).pull,
+              child: TextButton(
+                onPressed: _pulling ? null : () => _pull(projectId),
+                child: _pulling
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(l10n(context).pull),
+              ),
+            ),
+          if (ahead > 0)
+            Tooltip(
+              message: l10n(context).push,
+              child: TextButton(
+                onPressed: _pushing ? null : () => _push(projectId),
+                child: _pushing
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(l10n(context).push),
+              ),
+            ),
         ],
       ],
     );
@@ -393,6 +433,22 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
       );
     }
   }
+
+  Future<void> _pull(int projectId) async {
+    setState(() => _pulling = true);
+    await context.read<AppState>().gitPull(projectId);
+    if (mounted) {
+      setState(() => _pulling = false);
+    }
+  }
+
+  Future<void> _push(int projectId) async {
+    setState(() => _pushing = true);
+    await context.read<AppState>().gitPush(projectId);
+    if (mounted) {
+      setState(() => _pushing = false);
+    }
+  }
 }
 
 class _BranchList extends StatelessWidget {
@@ -429,7 +485,11 @@ class _BranchList extends StatelessWidget {
             color: isCurrent ? Theme.of(context).colorScheme.primary : null,
           ),
           title: Text(b.name),
-          subtitle: b.isRemote ? const Text('remote') : null,
+          subtitle: b.isRemote
+              ? const Text('remote')
+              : (b.ahead > 0 || b.behind > 0)
+                  ? _TrackingCounts(ahead: b.ahead, behind: b.behind, style: Theme.of(context).textTheme.bodySmall)
+                  : null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -446,5 +506,26 @@ class _BranchList extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _TrackingCounts extends StatelessWidget {
+  final int ahead;
+  final int behind;
+  final TextStyle? style;
+
+  const _TrackingCounts({
+    required this.ahead,
+    required this.behind,
+    this.style,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[];
+    if (behind > 0) parts.add('↓$behind');
+    if (ahead > 0) parts.add('↑$ahead');
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Text(parts.join(' '), style: style);
   }
 }

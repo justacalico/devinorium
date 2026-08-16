@@ -125,6 +125,14 @@ class ApiService {
     });
   }
 
+  Future<void> gitPull(int projectId) async {
+    await _client.post('/api/projects/$projectId/git/pull', {});
+  }
+
+  Future<void> gitPush(int projectId) async {
+    await _client.post('/api/projects/$projectId/git/push', {});
+  }
+
   Future<List<GitWorktree>> gitWorktrees(int projectId) async {
     final list = await _client.getList('/api/projects/$projectId/git/worktrees');
     return list.map(GitWorktree.fromJson).toList();

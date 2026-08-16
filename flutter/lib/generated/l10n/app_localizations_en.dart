@@ -642,6 +642,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gitBranches => 'Branches';
 
   @override
+  String get pull => 'Pull';
+
+  @override
+  String get push => 'Push';
+
+  @override
   String get notAGitRepo => 'This project is not a Git repository.';
 
   @override

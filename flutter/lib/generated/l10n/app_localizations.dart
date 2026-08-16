@@ -1216,6 +1216,18 @@ abstract class AppLocalizations {
   /// **'Branches'**
   String get gitBranches;
 
+  /// No description provided for @pull.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull'**
+  String get pull;
+
+  /// No description provided for @push.
+  ///
+  /// In en, this message translates to:
+  /// **'Push'**
+  String get push;
+
   /// No description provided for @notAGitRepo.
   ///
   /// In en, this message translates to:

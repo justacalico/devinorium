@@ -567,16 +567,22 @@ void main() {
         'worktree_path': '/tmp/project',
         'toplevel': '/tmp/project',
         'common_dir': '/tmp/project/.git',
+        'ahead': 2,
+        'behind': 3,
       });
       expect(r.isRepo, isTrue);
       expect(r.branch, 'main');
       expect(r.worktreePath, '/tmp/project');
+      expect(r.ahead, 2);
+      expect(r.behind, 3);
     });
 
     test('defaults missing fields to empty', () {
       final r = GitRepoInfo.fromJson({});
       expect(r.isRepo, isFalse);
       expect(r.branch, isEmpty);
+      expect(r.ahead, 0);
+      expect(r.behind, 0);
     });
   });
 
@@ -589,6 +595,8 @@ void main() {
         'is_default': true,
         'is_remote': false,
         'committer_date': 1234567890,
+        'ahead': 2,
+        'behind': 3,
       });
       expect(b.name, 'main');
       expect(b.refname, 'refs/heads/main');
@@ -596,6 +604,8 @@ void main() {
       expect(b.isDefault, isTrue);
       expect(b.isRemote, isFalse);
       expect(b.committerDate, 1234567890);
+      expect(b.ahead, 2);
+      expect(b.behind, 3);
     });
   });
 

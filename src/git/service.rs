@@ -3,14 +3,16 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use regex::Regex;
+
 use mini_moka::sync::Cache;
 use tokio::process::Command;
 use tokio::time::timeout;
 
 /// Time-to-live for cached branch/ref snapshots.
 const BRANCH_CACHE_TTL: Duration = Duration::from_secs(120);
-/// TTL for repository detection.
-const REPO_CACHE_TTL: Duration = Duration::from_secs(5);
+/// TTL for repository detection and tracking counts.
+const REPO_CACHE_TTL: Duration = Duration::from_secs(300);
 /// Cache capacity to avoid memory bloat.
 const CACHE_CAPACITY: u64 = 256;
 
@@ -45,6 +47,8 @@ pub struct RepoStatus {
     pub common_dir: PathBuf,
     pub branch: String,
     pub worktree_path: PathBuf,
+    pub ahead: i64,
+    pub behind: i64,
 }
 
 /// A branch or remote ref.
@@ -57,6 +61,8 @@ pub struct Branch {
     pub is_remote: bool,
     pub committer_date: i64,
     pub symref: Option<String>,
+    pub ahead: i64,
+    pub behind: i64,
 }
 
 /// A worktree.
@@ -148,7 +154,9 @@ impl GitService {
         }
 
         let status = self.detect_repo(path).await?;
-        self.repo_cache.insert(key, status.clone());
+        self.repo_cache.insert(key.clone(), status.clone());
+        // Tracking fetches remote refs, so clear the branch cache for this path.
+        self.branch_cache.invalidate(&key);
         Ok(status)
     }
 
@@ -164,13 +172,25 @@ impl GitService {
         if !status.is_repo {
             return Err(GitError::NotRepo);
         }
-        let key = format!("{}:{}", path.to_string_lossy(), query.unwrap_or(""));
-        if let Some(branches) = self.branch_cache.get(&key) {
-            return Ok(branches);
+        let key = path.to_string_lossy().to_string();
+        let mut branches = if let Some(b) = self.branch_cache.get(&key) {
+            b
+        } else {
+            let b = self.list_branches(path).await?;
+            self.branch_cache.insert(key, b.clone());
+            b
+        };
+
+        if let Some(q) = query {
+            branches = branches
+                .into_iter()
+                .filter(|b| b.name.to_lowercase().contains(&q.to_lowercase()))
+                .collect();
         }
 
-        let branches = self.list_branches(path, query, limit).await?;
-        self.branch_cache.insert(key, branches.clone());
+        if let Some(limit) = limit {
+            branches.truncate(limit);
+        }
         Ok(branches)
     }
 
@@ -377,6 +397,74 @@ impl GitService {
         }))
     }
 
+    /// Pull the current branch's upstream using fast-forward only.
+    pub async fn pull(&self, path: &Path) -> Result<(), GitError> {
+        self.repo_status(path).await?;
+        let mut cmd = self.git_cmd(path);
+        cmd.arg("pull").arg("--ff-only");
+        self.run(&mut cmd, Duration::from_secs(60)).await?;
+        self.invalidate(path);
+        Ok(())
+    }
+
+    /// Push the current branch to its remote, setting upstream if needed.
+    pub async fn push(&self, path: &Path) -> Result<(), GitError> {
+        let status = self.repo_status(path).await?;
+        if status.branch.is_empty() || !self.is_safe_branch_name(&status.branch) {
+            return Err(GitError::Other(
+                "cannot push without a current branch".to_string(),
+            ));
+        }
+
+        let tracked_remote = self
+            .run_with(
+                path,
+                &["config", &format!("branch.{}.remote", status.branch)],
+                Duration::from_secs(5),
+            )
+            .await
+            .map(|s| s.trim().to_string())
+            .ok()
+            .filter(|s| !s.is_empty());
+
+        let remote = match tracked_remote {
+            Some(r) => r,
+            None => {
+                let remotes = self
+                    .run_with(path, &["remote"], Duration::from_secs(5))
+                    .await?;
+                let lines: Vec<&str> = remotes.lines().collect();
+                if lines.is_empty() {
+                    return Err(GitError::Other("no remote configured".to_string()));
+                }
+                lines
+                    .iter()
+                    .find(|&&r| r == "origin")
+                    .copied()
+                    .or(lines.first().copied())
+                    .map(str::to_string)
+                    .ok_or_else(|| GitError::Other("no remote configured".to_string()))?
+            }
+        };
+
+        let mut cmd = self.git_cmd(path);
+        cmd.arg("push").arg("-u").arg(remote).arg(&status.branch);
+        self.run(&mut cmd, Duration::from_secs(60)).await?;
+        self.invalidate(path);
+        Ok(())
+    }
+
+    /// Fetch refs from the configured remote. Errors are ignored so stale
+    /// tracking data does not block the UI.
+    async fn fetch(&self, path: &Path) {
+        if self.git.is_none() {
+            return;
+        }
+        let mut cmd = self.git_cmd(path);
+        cmd.arg("fetch");
+        let _ = self.run(&mut cmd, Duration::from_secs(30)).await;
+    }
+
     fn invalidate(&self, path: &Path) {
         let key = path.to_string_lossy().to_string();
         self.repo_cache.invalidate(&key);
@@ -419,6 +507,60 @@ impl GitService {
         self.run(&mut cmd, max).await
     }
 
+    async fn tracking(&self, path: &Path, branch: &str) -> Result<(i64, i64), GitError> {
+        if branch.is_empty() || !self.is_safe_branch_name(branch) {
+            return Ok((0, 0));
+        }
+
+        self.fetch(path).await;
+
+        let upstream_arg = format!("{}@{{u}}", branch);
+        let upstream = self
+            .run_with(
+                path,
+                &["rev-parse", "--symbolic-full-name", &upstream_arg],
+                Duration::from_secs(5),
+            )
+            .await
+            .map(|s| s.trim().to_string())
+            .ok()
+            .filter(|s| !s.is_empty());
+
+        let Some(upstream) = upstream else {
+            return Ok((0, 0));
+        };
+
+        let ahead = self
+            .run_with(
+                path,
+                &[
+                    "rev-list",
+                    "--count",
+                    &format!("{}..{}", upstream, branch),
+                ],
+                Duration::from_secs(10),
+            )
+            .await
+            .and_then(|s| s.trim().parse().map_err(|_| GitError::Other("invalid ahead count".to_string())))
+            .unwrap_or(0);
+
+        let behind = self
+            .run_with(
+                path,
+                &[
+                    "rev-list",
+                    "--count",
+                    &format!("{}..{}", branch, upstream),
+                ],
+                Duration::from_secs(10),
+            )
+            .await
+            .and_then(|s| s.trim().parse().map_err(|_| GitError::Other("invalid behind count".to_string())))
+            .unwrap_or(0);
+
+        Ok((ahead, behind))
+    }
+
     async fn detect_repo(&self, path: &Path) -> Result<RepoStatus, GitError> {
         let worktree_path = tokio::fs::canonicalize(path)
             .await
@@ -440,6 +582,8 @@ impl GitService {
                     common_dir: worktree_path.clone(),
                     branch: String::new(),
                     worktree_path,
+                    ahead: 0,
+                    behind: 0,
                 });
             }
             Err(e) => return Err(e),
@@ -465,21 +609,20 @@ impl GitService {
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
 
+        let (ahead, behind) = self.tracking(&top, &branch).await.unwrap_or((0, 0));
+
         Ok(RepoStatus {
             is_repo: true,
             toplevel: top,
             common_dir: common,
             branch,
             worktree_path,
+            ahead,
+            behind,
         })
     }
 
-    async fn list_branches(
-        &self,
-        path: &Path,
-        query: Option<&str>,
-        limit: Option<usize>,
-    ) -> Result<Vec<Branch>, GitError> {
+    async fn list_branches(&self, path: &Path) -> Result<Vec<Branch>, GitError> {
         let current = self
             .run_with(
                 path,
@@ -507,7 +650,7 @@ impl GitService {
                 path,
                 &[
                     "for-each-ref",
-                    "--format=%(refname)\t%(committerdate:unix)\t%(symref)",
+                    "--format=%(refname)\t%(committerdate:unix)\t%(symref)\t%(upstream:track)",
                     "refs/heads",
                     "refs/remotes",
                 ],
@@ -515,10 +658,13 @@ impl GitService {
             )
             .await?;
 
+        let ahead_re = Regex::new(r"ahead\s+(\d+)").expect("valid regex");
+        let behind_re = Regex::new(r"behind\s+(\d+)").expect("valid regex");
+
         let mut branches = Vec::new();
         for line in out.lines() {
             let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() < 2 {
+            if parts.len() < 4 {
                 continue;
             }
             let refname = parts[0];
@@ -531,6 +677,18 @@ impl GitService {
                     Some(s.to_string())
                 }
             });
+            let track = parts.get(3).copied().unwrap_or("");
+
+            let ahead = ahead_re
+                .captures(track)
+                .and_then(|c| c.get(1))
+                .and_then(|m| m.as_str().parse::<i64>().ok())
+                .unwrap_or(0);
+            let behind = behind_re
+                .captures(track)
+                .and_then(|c| c.get(1))
+                .and_then(|m| m.as_str().parse::<i64>().ok())
+                .unwrap_or(0);
 
             let (name, is_remote, is_current, is_default) =
                 if let Some(name) = refname.strip_prefix("refs/heads/") {
@@ -541,12 +699,6 @@ impl GitService {
                     continue;
                 };
 
-            if let Some(q) = query {
-                if !name.to_lowercase().contains(&q.to_lowercase()) {
-                    continue;
-                }
-            }
-
             branches.push(Branch {
                 name,
                 refname: refname.to_string(),
@@ -555,6 +707,8 @@ impl GitService {
                 is_remote,
                 committer_date: date,
                 symref,
+                ahead,
+                behind,
             });
         }
 
@@ -567,9 +721,6 @@ impl GitService {
                 .then_with(|| a.name.cmp(&b.name))
         });
 
-        if let Some(limit) = limit {
-            branches.truncate(limit);
-        }
         Ok(branches)
     }
 

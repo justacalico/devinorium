@@ -392,6 +392,8 @@
   },
   "readFileNoContent": "No content",
   "gitBranches": "Branches",
+  "pull": "Pull",
+  "push": "Push",
   "notAGitRepo": "This project is not a Git repository.",
   "searchBranches": "Search branches",
   "createBranch": "Create branch",
