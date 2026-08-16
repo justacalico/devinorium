@@ -95,7 +95,8 @@ class ApiService {
     final params = <String, String>{'limit': limit.toString()};
     if (query != null && query.isNotEmpty) params['query'] = query;
     final uri = _buildPath('/api/projects/$projectId/git/branches', params);
-    final list = await _client.getList(uri);
+    final j = await _client.get(uri);
+    final list = (j['branches'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     return list.map(GitBranch.fromJson).toList();
   }
 

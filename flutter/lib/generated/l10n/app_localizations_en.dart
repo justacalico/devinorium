@@ -727,4 +727,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gitlabNotInstalled => 'GitLab CLI (glab) is not installed';
+
+  @override
+  String get none => 'None';
+
+  @override
+  String get createAndSwitchBranch => 'Create and switch';
+
+  @override
+  String get createAndNewBranch => 'Create and new branch';
 }

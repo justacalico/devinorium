@@ -1377,6 +1377,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'GitLab CLI (glab) is not installed'**
   String get gitlabNotInstalled;
+
+  /// No description provided for @none.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get none;
+
+  /// No description provided for @createAndSwitchBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Create and switch'**
+  String get createAndSwitchBranch;
+
+  /// No description provided for @createAndNewBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Create and new branch'**
+  String get createAndNewBranch;
 }
 
 class _AppLocalizationsDelegate

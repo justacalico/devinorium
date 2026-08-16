@@ -16,10 +16,10 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
   final _branchController = TextEditingController();
   final _baseController = TextEditingController();
   final _worktreeController = TextEditingController();
-  bool _switchAfterCreate = false;
-  bool _newBranchWorktree = false;
   bool _creatingBranch = false;
+  bool _creatingBranchSwitch = false;
   bool _creatingWorktree = false;
+  bool _creatingWorktreeNewBranch = false;
   String _query = '';
 
   @override
@@ -80,7 +80,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                                 onUseForThread: (b) => _useBranch(projectId, b),
                               ),
                               const Divider(height: 32),
-                              _buildCreateBranch(context, projectId),
+                              _buildCreateBranch(context, projectId, branches),
                               const SizedBox(height: 16),
                               _buildWorktreeSection(context, projectId, branches),
                               if (worktrees.isNotEmpty)
@@ -151,8 +151,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     );
   }
 
-  Widget _buildCreateBranch(BuildContext context, int projectId) {
+  Widget _buildCreateBranch(BuildContext context, int projectId, List<GitBranch> branches) {
     final state = context.read<AppState>();
+    final branchNames = branches.map((b) => b.name).toList();
+    final baseValue = branchNames.contains(_baseController.text) ? _baseController.text : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -166,27 +169,44 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
           ),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _baseController,
+        DropdownButtonFormField<String?>(
+          value: baseValue,
+          isExpanded: true,
           decoration: InputDecoration(
             labelText: l10n(context).baseBranchOptional,
             border: const OutlineInputBorder(),
           ),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(l10n(context).none)),
+            ...branches.map((b) => DropdownMenuItem(value: b.name, child: Text(b.name))),
+          ],
+          onChanged: _creatingBranch ? null : (v) => setState(() => _baseController.text = v ?? ''),
         ),
-        const SizedBox(height: 8),
-        CheckboxListTile(
-          title: Text(l10n(context).switchAfterCreate),
-          value: _switchAfterCreate,
-          onChanged: _creatingBranch
-              ? null
-              : (v) => setState(() => _switchAfterCreate = v ?? false),
-          controlAffinity: ListTileControlAffinity.leading,
-        ),
-        FilledButton(
-          onPressed: _creatingBranch ? null : () => _createBranch(state, projectId),
-          child: _creatingBranch
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(l10n(context).createBranch),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _creatingBranch
+                    ? null
+                    : () => _createBranch(state, projectId, switchBranch: false),
+                child: _creatingBranch && !_creatingBranchSwitch
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(l10n(context).createBranch),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton(
+                onPressed: _creatingBranch
+                    ? null
+                    : () => _createBranch(state, projectId, switchBranch: true),
+                child: _creatingBranch && _creatingBranchSwitch
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(l10n(context).createAndSwitchBranch),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -194,6 +214,24 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
 
   Widget _buildWorktreeSection(BuildContext context, int projectId, List<GitBranch> branches) {
     final state = context.read<AppState>();
+    final branchNames = branches.map((b) => b.name).toList();
+    GitBranch? current;
+    for (final b in branches) {
+      if (b.isCurrent) {
+        current = b;
+        break;
+      }
+    }
+    String? selectedBase;
+    if (branchNames.contains(_baseController.text)) {
+      selectedBase = _baseController.text;
+    } else if (current != null) {
+      selectedBase = current.name;
+    } else if (branchNames.isNotEmpty) {
+      selectedBase = branchNames.first;
+    }
+    final baseValue = selectedBase;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -208,30 +246,41 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
         ),
         const SizedBox(height: 8),
         if (branches.isNotEmpty)
-          DropdownMenu<String>(
-            initialSelection: branches.firstWhere((b) => b.isCurrent, orElse: () => branches.first).name,
-            requestFocusOnTap: true,
-            label: Text(l10n(context).baseBranch),
-            onSelected: (v) {
-              if (v != null) _baseController.text = v;
-            },
-            dropdownMenuEntries: branches
-                .map((b) => DropdownMenuEntry(value: b.name, label: b.name))
-                .toList(),
+          DropdownButtonFormField<String>(
+            value: baseValue,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: l10n(context).baseBranch,
+              border: const OutlineInputBorder(),
+            ),
+            items: branches.map((b) => DropdownMenuItem(value: b.name, child: Text(b.name))).toList(),
+            onChanged: _creatingWorktree ? null : (v) => setState(() => _baseController.text = v ?? ''),
           ),
-        CheckboxListTile(
-          title: Text(l10n(context).newBranchInWorktree),
-          value: _newBranchWorktree,
-          onChanged: _creatingWorktree
-              ? null
-              : (v) => setState(() => _newBranchWorktree = v ?? false),
-          controlAffinity: ListTileControlAffinity.leading,
-        ),
-        FilledButton(
-          onPressed: _creatingWorktree ? null : () => _createWorktree(state, projectId),
-          child: _creatingWorktree
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(l10n(context).createWorktree),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _creatingWorktree
+                    ? null
+                    : () => _createWorktree(state, projectId, newBranch: false),
+                child: _creatingWorktree && !_creatingWorktreeNewBranch
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(l10n(context).createWorktree),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton(
+                onPressed: _creatingWorktree
+                    ? null
+                    : () => _createWorktree(state, projectId, newBranch: true),
+                child: _creatingWorktree && _creatingWorktreeNewBranch
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(l10n(context).createAndNewBranch),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -267,34 +316,42 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     return branches.where((b) => b.name.toLowerCase().contains(q)).toList();
   }
 
-  Future<void> _createBranch(AppState state, int projectId) async {
+  Future<void> _createBranch(AppState state, int projectId, {required bool switchBranch}) async {
     final name = _branchController.text.trim();
     if (name.isEmpty) return;
-    setState(() => _creatingBranch = true);
+    setState(() {
+      _creatingBranch = true;
+      _creatingBranchSwitch = switchBranch;
+    });
     await state.gitCreateBranch(
       projectId,
       name,
       base: _baseController.text.trim().isEmpty ? null : _baseController.text.trim(),
-      switchBranch: _switchAfterCreate,
+      switchBranch: switchBranch,
     );
     if (mounted) {
       setState(() {
         _creatingBranch = false;
+        _creatingBranchSwitch = false;
         _branchController.clear();
         _baseController.clear();
       });
     }
   }
 
-  Future<void> _createWorktree(AppState state, int projectId) async {
+  Future<void> _createWorktree(AppState state, int projectId, {required bool newBranch}) async {
     final name = _worktreeController.text.trim();
     final base = _baseController.text.trim();
     if (name.isEmpty || base.isEmpty) return;
-    setState(() => _creatingWorktree = true);
-    await state.gitCreateWorktree(projectId, name, base, newBranch: _newBranchWorktree);
+    setState(() {
+      _creatingWorktree = true;
+      _creatingWorktreeNewBranch = newBranch;
+    });
+    await state.gitCreateWorktree(projectId, name, base, newBranch: newBranch);
     if (mounted) {
       setState(() {
         _creatingWorktree = false;
+        _creatingWorktreeNewBranch = false;
         _worktreeController.clear();
       });
     }

@@ -439,5 +439,8 @@
     }
   },
   "loading": "Loading…",
-  "gitlabNotInstalled": "GitLab CLI (glab) is not installed"
+  "gitlabNotInstalled": "GitLab CLI (glab) is not installed",
+  "none": "None",
+  "createAndSwitchBranch": "Create and switch",
+  "createAndNewBranch": "Create and new branch"
 }
