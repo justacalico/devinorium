@@ -364,19 +364,35 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
 
   Future<void> _useBranch(int projectId, GitBranch branch) async {
     final state = context.read<AppState>();
-    final threadId = state.activeThreadId;
+    var threadId = state.activeThreadId;
+    if (threadId == null) {
+      await state.createNewThread(projectId: projectId);
+      threadId = state.activeThreadId;
+    }
     if (threadId != null) {
       await state.setThreadGit(threadId, branch: branch.name);
-    } else {
-      await state.gitCheckout(projectId, branch.name);
+    }
+    if (mounted) {
+      state.closeDialog();
     }
   }
 
   Future<void> _useWorktree(int projectId, GitWorktree worktree) async {
     final state = context.read<AppState>();
-    final threadId = state.activeThreadId;
+    var threadId = state.activeThreadId;
+    if (threadId == null) {
+      await state.createNewThread(projectId: projectId);
+      threadId = state.activeThreadId;
+    }
     if (threadId != null) {
-      await state.setThreadGit(threadId, branch: worktree.branch, worktreePath: worktree.path);
+      await state.setThreadGit(
+        threadId,
+        branch: worktree.branch,
+        worktreePath: worktree.path,
+      );
+    }
+    if (mounted) {
+      state.closeDialog();
     }
   }
 }
