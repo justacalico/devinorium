@@ -38,6 +38,10 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     final repo = state.gitRepoInfo(projectId);
     final branches = state.gitBranches(projectId);
     final worktrees = state.gitWorktrees(projectId);
+    final activeThread = state.activeThreadDetail?.thread;
+    final currentBranch = (activeThread != null && activeThread.projectId == projectId)
+        ? (activeThread.branch ?? repo?.branch ?? '')
+        : (repo?.branch ?? '');
 
     return Stack(
       children: [
@@ -56,7 +60,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildHeader(context, repo),
+                    _buildHeader(context, repo, currentBranch),
                     const SizedBox(height: 16),
                     Expanded(
                       child: SingleChildScrollView(
@@ -75,7 +79,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                               const SizedBox(height: 12),
                               _BranchList(
                                 branches: _filter(branches),
-                                currentBranch: repo.branch,
+                                currentBranch: currentBranch,
                                 onCheckout: (b) => _checkout(projectId, b),
                                 onUseForThread: (b) => _useBranch(projectId, b),
                               ),
@@ -110,7 +114,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, GitRepoInfo? repo) {
+  Widget _buildHeader(BuildContext context, GitRepoInfo? repo, String currentBranch) {
     final theme = Theme.of(context);
     final title = repo != null && repo.isRepo ? repo.toplevel.split('/').last : l10n(context).gitBranches;
     return Row(
@@ -120,7 +124,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
         ),
         if (repo != null && repo.isRepo) ...[
           const SizedBox(width: 8),
-          Text(repo.branch, style: theme.textTheme.labelLarge),
+          Text(currentBranch, style: theme.textTheme.labelLarge),
         ],
       ],
     );
@@ -434,11 +438,11 @@ class _BranchList extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextButton(
-                onPressed: () => onCheckout(b),
+                onPressed: isCurrent ? null : () => onCheckout(b),
                 child: const Text('Checkout'),
               ),
               TextButton(
-                onPressed: () => onUseForThread(b),
+                onPressed: isCurrent ? null : () => onUseForThread(b),
                 child: const Text('Use'),
               ),
             ],
