@@ -51,6 +51,12 @@ class NativeApiClient implements BaseApiClient {
 
   Map<String, String> get _headers {
     final h = <String, String>{'Accept': 'application/json'};
+    if (_baseUrl.isNotEmpty) {
+      final origin = Uri.tryParse(_baseUrl)?.origin;
+      if (origin != null && origin.isNotEmpty) {
+        h['Origin'] = origin;
+      }
+    }
     if (_token.isNotEmpty) {
       h['Authorization'] = 'Bearer $_token';
     }
