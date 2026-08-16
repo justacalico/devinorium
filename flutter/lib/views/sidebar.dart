@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -170,6 +172,27 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   int? _lastActiveProjectId;
   String? _lastActiveThreadId;
   List<Thread> _lastThreads = [];
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) {
+        if (mounted) context.read<AppState>().refreshRunningThreads();
+      },
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AppState>().refreshRunningThreads();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -506,6 +529,18 @@ class _ThreadTile extends StatelessWidget {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (state.runningThreadIds.contains(thread.id))
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
               if (time.isNotEmpty)
                 Text(
                   time,

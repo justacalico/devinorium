@@ -889,6 +889,70 @@ async fn thread_runs_in_backend_with_zero_frontends() {
 }
 
 #[tokio::test]
+async fn thread_run_snapshot_includes_accumulated_output() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----snapshotboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Collect the stream so the run completes and the snapshot is populated.
+    let _ = to_bytes(resp.into_body(), 100_000).await.unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/run"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["status"], "completed");
+    assert!(
+        v["text"].as_str().is_some_and(|s| !s.is_empty()),
+        "snapshot should include accumulated text"
+    );
+    assert!(
+        v["thinking"].as_str().is_some_and(|s| !s.is_empty()),
+        "snapshot should include accumulated thinking"
+    );
+    assert_eq!(v["thinking_active"], false);
+    assert_eq!(v["tool_calls"].as_array().unwrap().len(), 1);
+    assert_eq!(v["parts"].as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
 async fn thread_events_can_be_resumed_by_reconnecting_client() {
     let (app, _db) = make_app_with_delay(100).await;
     let cookie = login(&app).await;
@@ -939,8 +1003,96 @@ async fn thread_events_can_be_resumed_by_reconnecting_client() {
     let events = to_bytes(resp.into_body(), 10_000).await.unwrap();
     let text = String::from_utf8_lossy(&events);
     assert!(
+        text.contains("event: state"),
+        "reconnected client should first receive the current run state"
+    );
+    assert!(
         text.contains("event: done"),
         "reconnected client should receive the done event"
+    );
+
+    // The state event should contain the accumulated snapshot.
+    let state_block = text
+        .split("\n\n")
+        .find(|b| b.contains("event: state"))
+        .expect("state block");
+    let state_data = state_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("state data");
+    let state_json: serde_json::Value =
+        serde_json::from_str(&state_data[6..]).expect("valid state json");
+    assert_eq!(state_json["status"], "running");
+    assert!(
+        state_json["parts"].is_array(),
+        "state should include the parts array"
+    );
+}
+
+#[tokio::test]
+async fn thread_events_seeds_terminal_state_after_run_completes() {
+    let (app, _db) = make_app_with_delay(100).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----terminalboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+
+    // Start and fully collect the stream so the run finishes.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let _ = to_bytes(resp.into_body(), 100_000).await.unwrap();
+
+    // Reconnect to the completed run.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/events"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let events = to_bytes(resp.into_body(), 10_000).await.unwrap();
+    let text = String::from_utf8_lossy(&events);
+    let state_block = text
+        .split("\n\n")
+        .find(|b| b.contains("event: state"))
+        .expect("state block");
+    let state_data = state_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("state data");
+    let state_json: serde_json::Value =
+        serde_json::from_str(&state_data[6..]).expect("valid state json");
+    assert_eq!(state_json["status"], "completed");
+    assert!(
+        state_json["text"].as_str().is_some_and(|s| !s.is_empty()),
+        "terminal state should include accumulated text"
     );
 }
 

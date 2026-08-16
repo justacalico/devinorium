@@ -1,3 +1,5 @@
+import 'package:devinorium_frontend/api/api_types.dart';
+import 'package:devinorium_frontend/api/sse_parser.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -766,6 +768,20 @@ void main() {
       expect(ComposerModeX.fromString('plan'), ComposerMode.plan);
       expect(ComposerModeX.fromString('ask'), ComposerMode.ask);
       expect(ComposerModeX.fromString('code'), ComposerMode.code);
+    });
+  });
+
+  group('SSE parser', () {
+    test('parses event, id and data lines', () {
+      final ev = parseSseBlock('event: part\nid: 7\ndata: {"type":"text"}\n\n');
+      expect(ev, isNotNull);
+      expect(ev!.event, 'part');
+      expect(ev.id, '7');
+      expect(ev.data, '{"type":"text"}');
+    });
+
+    test('returns null for block without event', () {
+      expect(parseSseBlock('data: hello\n\n'), isNull);
     });
   });
 }

@@ -1080,6 +1080,95 @@ void main() {
       expect(state.activeThreadDetail!.messages.last.content, 'persisted');
     });
 
+    test('state event with completed status finishes run and stops sending', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {'project_id': 1, 'path': '/'}),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final eventsController = StreamController<SseEvent>();
+      api.eventsBuilder = () => eventsController.stream;
+      api.runResponse = {
+        'status': 'running',
+        'parts': [
+          {'type': 'text', 'content': 'seeded'},
+        ],
+        'thinking_active': false,
+      };
+
+      final state = AppState.test(api: api, activeProjectId: 1);
+      await state.openThread('a');
+
+      expect(state.sending, isTrue);
+      expect(state.streamingParts, hasLength(1));
+
+      eventsController.add(SseEvent(
+        'state',
+        '{"status":"completed","parts":[{"type":"text","content":"done"}]}',
+      ));
+      await eventsController.close();
+      await pumpEventQueue();
+
+      expect(state.sending, isFalse);
+      expect(state.runningThreadIds, isNot(contains('a')));
+      expect(state.streamingParts, isEmpty);
+    });
+
+    test('resumeThread seeds streaming parts from run snapshot', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {'project_id': 1, 'path': '/'}),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final eventsController = StreamController<SseEvent>();
+      api.eventsBuilder = () => eventsController.stream;
+      api.runResponse = {
+        'status': 'running',
+        'parts': [
+          {'type': 'text', 'content': 'seeded'},
+          {'type': 'thinking', 'content': 'hmm'},
+        ],
+        'thinking_active': true,
+      };
+
+      final state = AppState.test(api: api, activeProjectId: 1);
+      await state.openThread('a');
+
+      expect(state.sending, isTrue);
+      expect(state.streamingParts, hasLength(2));
+      expect(state.streamingParts[0].content, 'seeded');
+      expect(state.streamingParts[1].content, 'hmm');
+      expect(state.streamingThinkingActive, isTrue);
+
+      await eventsController.close();
+    });
+
     test('sendMessage clears composer only after user_message event', () async {
       final client = _clientFor([
         _json(200, {}),

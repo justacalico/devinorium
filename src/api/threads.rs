@@ -477,6 +477,13 @@ async fn get_run(
             "started_at": null,
             "updated_at": null,
             "error": null,
+            "text": "",
+            "thinking": "",
+            "thinking_active": false,
+            "parts": [],
+            "tool_calls": [],
+            "permission_request": null,
+            "last_seq": 0,
         }))
         .into_response(),
     }
@@ -503,7 +510,7 @@ async fn events(
     }
 
     match state.thread_runner.get(&id).await {
-        Some(run) => events_stream(run).into_response(),
+        Some(run) => events_stream(run).await.into_response(),
         None => (
             StatusCode::NOT_FOUND,
             Json(crate::api::ApiError::new("no active run")),
@@ -559,6 +566,22 @@ async fn send(
     let mut rx = match run.subscribe() {
         Some(rx) => rx,
         None => {
+            // The run finished before we could subscribe. Try to return the
+            // persisted result directly, otherwise report the final error.
+            let messages = state.db.list_messages(&id).await.unwrap_or_default();
+            if let Some(assistant) = build_send_reply(&messages) {
+                return assistant.into_response();
+            }
+            let snapshot = run.snapshot().await;
+            if snapshot.status == RunStatus::Failed {
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(crate::api::ApiError::new(
+                        snapshot.error.as_deref().unwrap_or("run failed"),
+                    )),
+                )
+                    .into_response();
+            }
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(crate::api::ApiError::new("run already closed")),
@@ -570,14 +593,14 @@ async fn send(
     loop {
         match tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await {
             Ok(Ok(crate::thread_runner::RunEvent { event, .. })) if event == "done" => break,
-            Ok(Ok(crate::thread_runner::RunEvent { event, data })) if event == "error" => {
+            Ok(Ok(crate::thread_runner::RunEvent { event, data, .. })) if event == "error" => {
                 return (
                     StatusCode::BAD_GATEWAY,
                     Json(crate::api::ApiError::new(&data)),
                 )
                     .into_response();
             }
-            Ok(Ok(crate::thread_runner::RunEvent { event, data }))
+            Ok(Ok(crate::thread_runner::RunEvent { event, data, .. }))
                 if event == "permission_request" =>
             {
                 permission_request = Some(data);
@@ -604,31 +627,35 @@ async fn send(
     }
 
     let messages = state.db.list_messages(&id).await.unwrap_or_default();
-    if messages.len() < 2 {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Json(crate::api::ApiError::new("provider error")),
-        )
-            .into_response();
+    if let Some(reply) = build_send_reply(&messages) {
+        return reply;
     }
 
+    (
+        StatusCode::BAD_GATEWAY,
+        Json(crate::api::ApiError::new("provider error")),
+    )
+        .into_response()
+}
+
+fn build_send_reply(messages: &[MessageRow]) -> Option<Response> {
+    if messages.len() < 2 {
+        return None;
+    }
     let user_msg = &messages[messages.len() - 2];
     let assistant_msg = &messages[messages.len() - 1];
     if user_msg.role != "user" || assistant_msg.role != "assistant" {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Json(crate::api::ApiError::new("provider error")),
-        )
-            .into_response();
+        return None;
     }
-
-    Json(serde_json::json!({
-        "user_message": MessageOut::from(user_msg.clone()),
-        "assistant_message": MessageOut::from(assistant_msg.clone()),
-        "reply": assistant_msg.content,
-        "thinking": assistant_msg.thinking,
-    }))
-    .into_response()
+    Some(
+        Json(serde_json::json!({
+            "user_message": MessageOut::from(user_msg.clone()),
+            "assistant_message": MessageOut::from(assistant_msg.clone()),
+            "reply": assistant_msg.content,
+            "thinking": assistant_msg.thinking,
+        }))
+        .into_response(),
+    )
 }
 
 fn sanitize_sse_data(s: &str) -> String {
@@ -679,28 +706,44 @@ async fn send_stream(
         }
     };
 
-    events_stream(run).into_response()
+    events_stream(run).await.into_response()
 }
 
-fn events_stream(
+async fn events_stream(
     run: Arc<RunState>,
 ) -> Sse<BoxStream<'static, Result<Event, std::convert::Infallible>>> {
-    match run.subscribe() {
-        Some(receiver) => {
-            let stream =
-                TokioStreamExt::filter_map(BroadcastStream::new(receiver), |res| match res {
-                    Ok(ev) => {
-                        let data = sanitize_sse_data(&ev.data);
-                        Some(Ok::<_, std::convert::Infallible>(
-                            Event::default().event(&ev.event).data(data),
-                        ))
-                    }
-                    Err(_) => None,
-                });
-            Sse::new(FuturesStreamExt::boxed(stream))
-        }
-        None => Sse::new(FuturesStreamExt::boxed(tokio_stream::empty())),
-    }
+    // Subscribe first so events emitted while the snapshot is being built are
+    // captured in the live stream and not lost.
+    let live: BoxStream<'static, Result<Event, std::convert::Infallible>> = match run.subscribe() {
+        Some(receiver) => FuturesStreamExt::boxed(TokioStreamExt::filter_map(
+            BroadcastStream::new(receiver),
+            |res| match res {
+                Ok(ev) => {
+                    let data = if ev.event == "error" {
+                        sanitize_sse_data(&ev.data)
+                    } else {
+                        ev.data
+                    };
+                    Some(Ok::<_, std::convert::Infallible>(
+                        Event::default()
+                            .event(&ev.event)
+                            .id(ev.seq.to_string())
+                            .data(data),
+                    ))
+                }
+                Err(_) => None,
+            },
+        )),
+        None => FuturesStreamExt::boxed(tokio_stream::empty()),
+    };
+
+    let snapshot = run.snapshot().await;
+    let state_json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
+    let state_event =
+        Ok::<_, std::convert::Infallible>(Event::default().event("state").data(state_json));
+    let initial = tokio_stream::once(state_event);
+
+    Sse::new(FuturesStreamExt::boxed(FuturesStreamExt::chain(initial, live)))
 }
 
 async fn run_thread(
@@ -732,11 +775,10 @@ async fn run_thread(
     let part_callback: PartCallback = Arc::new({
         let run = run.clone();
         move |ev: PartEvent| {
-            let event = if ev.is_update() {
-                "part_update"
-            } else {
-                "part"
-            };
+            let part = ev.part().clone();
+            let is_tool_update = ev.is_update() && part.tool_id().is_some();
+            run.apply_part(part, is_tool_update);
+            let event = if is_tool_update { "part_update" } else { "part" };
             if let Ok(json) = serde_json::to_string(ev.part()) {
                 run.emit(event, &json);
             }
@@ -785,6 +827,7 @@ async fn run_thread(
     .await
     .map_err(|_| anyhow::anyhow!("failed to save assistant message"))?;
 
+    let _ = run.set_status(RunStatus::Completed).await;
     run.emit(
         "done",
         &serde_json::to_string(&MessageOut::from(assistant_msg)).unwrap_or_else(|_| "{}".into()),
@@ -934,7 +977,7 @@ fn build_permission_callback(
             let thread_id = thread_id.clone();
             Box::pin(async move {
                 let (response_tx, response_rx) = tokio::sync::oneshot::channel::<String>();
-                let _cleanup = RemoveOnDrop::new(state.clone(), req.request_id.clone());
+                let _cleanup = RemoveOnDrop::new(state.clone(), run.clone(), req.request_id.clone());
 
                 {
                     let mut map = state.pending_permission_requests.lock().await;
@@ -948,9 +991,13 @@ fn build_permission_callback(
                     );
                 }
 
+                run.set_permission_request(Some(req.clone()));
                 let payload = match serde_json::to_string(&req) {
                     Ok(json) => json,
-                    Err(_) => return PermissionOutcome::Cancel,
+                    Err(_) => {
+                        run.set_permission_request(None);
+                        return PermissionOutcome::Cancel;
+                    }
                 };
                 run.emit("permission_request", &payload);
 
@@ -958,6 +1005,8 @@ fn build_permission_callback(
                 // respond to permission requests for multi-day runs.
                 let result =
                     tokio::time::timeout(Duration::from_secs(7 * 24 * 60 * 60), response_rx).await;
+
+                run.set_permission_request(None);
 
                 match result {
                     Ok(Ok(option_id)) if !option_id.is_empty() => {
@@ -970,18 +1019,20 @@ fn build_permission_callback(
     ) as PermissionCallback
 }
 
-/// Removes a pending permission request from the map when the callback future
-/// is dropped (e.g. cancelled or the connection closes), preventing memory
-/// leaks and abandoned senders.
+/// Removes a pending permission request from the map and the run snapshot
+/// when the callback future is dropped (e.g. cancelled or the connection
+/// closes), preventing memory leaks and abandoned senders.
 struct RemoveOnDrop {
     state: Option<AppState>,
+    run: Option<Arc<RunState>>,
     request_id: String,
 }
 
 impl RemoveOnDrop {
-    fn new(state: AppState, request_id: String) -> Self {
+    fn new(state: AppState, run: Arc<RunState>, request_id: String) -> Self {
         Self {
             state: Some(state),
+            run: Some(run),
             request_id,
         }
     }
@@ -998,6 +1049,17 @@ impl Drop for RemoveOnDrop {
                     .await
                     .remove(&request_id);
             });
+        }
+        if let Some(run) = self.run.take() {
+            if let Ok(guard) = run.permission_request.lock() {
+                if guard
+                    .as_ref()
+                    .is_some_and(|r| r.request_id == self.request_id)
+                {
+                    drop(guard);
+                    run.set_permission_request(None);
+                }
+            }
         }
     }
 }

@@ -89,6 +89,7 @@ class AppState extends ChangeNotifier {
   User? _user;
   List<Project> _projects = [];
   List<Thread> _threads = [];
+  final Set<String> _runningThreadIds = {};
   List<ThreadGroup> _groups = [];
   List<ModelInfo> _models = [];
   List<ProviderInfo> _providers = [];
@@ -115,8 +116,9 @@ class AppState extends ChangeNotifier {
   String _selectedModel = '';
   String _selectedPermission = 'normal';
   ComposerMode _composerMode = ComposerMode.code;
-  final List<MessagePart> _streamingParts = [];
+  List<MessagePart> _streamingParts = [];
   bool _streamingThinkingActive = false;
+  int _streamingLastSeq = 0;
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   String? _resumingThreadId;
@@ -141,6 +143,7 @@ class AppState extends ChangeNotifier {
   User? get user => _user;
   List<Project> get projects => _projects;
   List<Thread> get threads => _threads;
+  Set<String> get runningThreadIds => _runningThreadIds;
   List<ThreadGroup> get groups => _groups;
   List<ModelInfo> get models => _models;
   List<ProviderInfo> get providers => _providers;
@@ -503,6 +506,31 @@ class AppState extends ChangeNotifier {
       _groups = await api.listThreadGroups();
     } catch (_) {}
     notifyListeners();
+    unawaited(refreshRunningThreads());
+  }
+
+  Future<void> refreshRunningThreads() async {
+    if (_threads.isEmpty) {
+      _runningThreadIds.clear();
+      notifyListeners();
+      return;
+    }
+
+    final results = await Future.wait(
+      _threads.map((t) async {
+        try {
+          final run = await api.getThreadRun(t.id);
+          return (t.id, run['status'] as String? ?? 'idle');
+        } catch (_) {
+          return (t.id, 'idle');
+        }
+      }),
+    );
+
+    _runningThreadIds
+      ..clear()
+      ..addAll(results.where((r) => r.$2 == 'running').map((r) => r.$1));
+    notifyListeners();
   }
 
   Future<void> doLogin({
@@ -634,6 +662,7 @@ class AppState extends ChangeNotifier {
     _streamingParts.clear();
     _streamingThinkingActive = false;
     _sending = false;
+    _runningThreadIds.clear();
     notifyListeners();
   }
 
@@ -897,8 +926,43 @@ class AppState extends ChangeNotifier {
 
   // ---- Streaming send ----
 
+  void _finishRun(String tid, {String? error}) {
+    _clearPermissionRequest();
+    _streamingParts.clear();
+    _streamingThinkingActive = false;
+    _streamingLastSeq = 0;
+    _sending = false;
+    unawaited(_sendSubscription?.cancel());
+    _sendSubscription = null;
+    _runningThreadIds.remove(tid);
+    _globalError = error ?? '';
+    notifyListeners();
+    refreshThreadsAndGroups();
+    _refreshTail(tid);
+  }
+
+  int? _eventSeq(SseEvent ev) => int.tryParse(ev.id ?? '');
+
   void _handleRunEvent(String tid, SseEvent ev) {
+    final seq = _eventSeq(ev);
+    if (seq != null && ev.event != 'state' && seq <= _streamingLastSeq) {
+      return;
+    }
     switch (ev.event) {
+      case 'state':
+        final decoded = tryDecodeJson(ev.data);
+        if (decoded != null) {
+          final status = decoded['status'] as String? ?? 'running';
+          if (status == 'completed' || status == 'failed') {
+            _finishRun(
+              tid,
+              error: status == 'failed' ? decoded['error'] as String? : null,
+            );
+          } else {
+            _setStreamingFromSnapshot(decoded);
+          }
+        }
+        break;
       case 'user_message':
         clearAttachments();
         _composerText = '';
@@ -906,6 +970,7 @@ class AppState extends ChangeNotifier {
         if (msg != null && _activeThreadDetail != null) {
           _activeThreadDetail!.messages.add(msg);
           _activeThreadDetail!.totalMessages++;
+          if (seq != null) _streamingLastSeq = seq;
           notifyListeners();
         }
         break;
@@ -915,6 +980,7 @@ class AppState extends ChangeNotifier {
           try {
             _pendingPermissionRequest = PermissionRequest.fromJson(decoded);
             _dialog = DialogKind.permissionRequest;
+            if (seq != null) _streamingLastSeq = seq;
             notifyListeners();
           } catch (e) {
             _globalError = appL10n.invalidPermissionRequest('$e');
@@ -931,6 +997,7 @@ class AppState extends ChangeNotifier {
           try {
             _streamingParts.add(MessagePart.fromJson(decoded));
             _updateStreamingThinkingActive();
+            if (seq != null) _streamingLastSeq = seq;
             notifyListeners();
           } catch (e) {
             // ignore malformed part
@@ -942,13 +1009,18 @@ class AppState extends ChangeNotifier {
         if (decoded != null) {
           try {
             final part = MessagePart.fromJson(decoded);
-            final idx = _streamingParts.indexWhere((p) => p.id == part.id);
-            if (idx >= 0) {
-              _streamingParts[idx] = part;
-            } else {
+            if (part.id == null) {
               _streamingParts.add(part);
+            } else {
+              final idx = _streamingParts.indexWhere((p) => p.id == part.id);
+              if (idx >= 0) {
+                _streamingParts[idx] = part;
+              } else {
+                _streamingParts.add(part);
+              }
             }
             _updateStreamingThinkingActive();
+            if (seq != null) _streamingLastSeq = seq;
             notifyListeners();
           } catch (e) {
             // ignore malformed part update
@@ -957,34 +1029,14 @@ class AppState extends ChangeNotifier {
         break;
       case 'done':
         final msg = parseSseMessage(ev.data);
-        _streamingParts.clear();
-        _streamingThinkingActive = false;
         if (msg != null && _activeThreadDetail != null) {
           _activeThreadDetail!.messages.add(msg);
           _activeThreadDetail!.totalMessages++;
         }
-        _sending = false;
-        _sendSubscription = null;
-        notifyListeners();
-        refreshThreadsAndGroups();
-        _refreshTail(tid);
+        _finishRun(tid);
         break;
       case 'error':
-        _clearPermissionRequest();
-        _streamingParts.clear();
-        _streamingThinkingActive = false;
-
-        _sending = false;
-        _sendSubscription = null;
-        _globalError = ev.data;
-        notifyListeners();
-        api
-            .getThread(tid)
-            .then((d) {
-              _activeThreadDetail = d;
-              notifyListeners();
-            })
-            .catchError((_) {});
+        _finishRun(tid, error: ev.data);
         break;
     }
   }
@@ -992,6 +1044,36 @@ class AppState extends ChangeNotifier {
   void _updateStreamingThinkingActive() {
     _streamingThinkingActive =
         _streamingParts.isNotEmpty && _streamingParts.last.type == 'thinking';
+  }
+
+  void _setStreamingFromSnapshot(Map<String, dynamic> j) {
+    final status = j['status'] as String?;
+    if (status != null) _sending = status == 'running';
+
+    final parts = (j['parts'] as List<dynamic>?) ?? [];
+    _streamingParts = [];
+    for (final p in parts) {
+      if (p is! Map<String, dynamic>) continue;
+      try {
+        _streamingParts.add(MessagePart.fromJson(p));
+      } catch (_) {
+        // ignore malformed part
+      }
+    }
+    _streamingThinkingActive = j['thinking_active'] as bool? ?? false;
+    _streamingLastSeq = (j['last_seq'] as num?)?.toInt() ?? 0;
+
+    final permission = j['permission_request'];
+    if (permission is Map<String, dynamic>) {
+      try {
+        _pendingPermissionRequest = PermissionRequest.fromJson(permission);
+        _dialog = DialogKind.permissionRequest;
+      } catch (_) {
+        // ignore malformed permission request
+      }
+    }
+
+    notifyListeners();
   }
 
   /// Refresh the tail of the active thread without discarding already loaded
@@ -1049,23 +1131,14 @@ class AppState extends ChangeNotifier {
       });
       return;
     }
-    _streamingParts.clear();
-    _streamingThinkingActive = false;
-    _sending = false;
-    _globalError = '$e';
-    notifyListeners();
-    _refreshTail(tid);
+    _finishRun(tid, error: '$e');
   }
 
   void _handleRunOnDone(String tid) {
     _sendSubscription = null;
     _clearPermissionRequest();
     if (_sending) {
-      _sending = false;
-      _streamingParts.clear();
-      _streamingThinkingActive = false;
-      notifyListeners();
-      _refreshTail(tid);
+      _finishRun(tid);
     }
   }
 
@@ -1078,9 +1151,9 @@ class AppState extends ChangeNotifier {
       final run = await api.getThreadRun(id);
       final status = run['status'] as String? ?? 'idle';
       if (status == 'running') {
+        _runningThreadIds.add(id);
+        _setStreamingFromSnapshot(run);
         _sending = true;
-        _streamingParts.clear();
-        _streamingThinkingActive = false;
         clearAttachments();
         if (_resumingThreadId != id) _composerText = '';
         notifyListeners();
@@ -1104,12 +1177,23 @@ class AppState extends ChangeNotifier {
             );
         _sendSubscription = sub;
       } else {
+        _runningThreadIds.remove(id);
         _sending = false;
+        _streamingParts.clear();
+        _streamingThinkingActive = false;
+        if (status == 'failed' && run['error'] is String) {
+          _globalError = run['error'] as String;
+        } else {
+          _globalError = '';
+        }
         _activeThreadDetail = await api.getThread(id);
         notifyListeners();
       }
     } catch (e) {
+      _runningThreadIds.remove(id);
       _sending = false;
+      _streamingParts.clear();
+      _streamingThinkingActive = false;
       _globalError = '$e';
       notifyListeners();
     }
@@ -1127,6 +1211,7 @@ class AppState extends ChangeNotifier {
     _clearPermissionRequest();
 
     _sending = true;
+    _runningThreadIds.add(tid);
     _streamingParts.clear();
     _streamingThinkingActive = false;
     final attachments =
@@ -1135,29 +1220,33 @@ class AppState extends ChangeNotifier {
         );
     notifyListeners();
 
-    late StreamSubscription? sub;
-    sub = api
-        .sendMessageStream(
-          threadId: tid,
-          prompt: text,
-          mode: _composerMode.name,
-          attachments: attachments,
-        )
-        .listen(
-          (ev) {
-            if (_sendSubscription != sub) return;
-            _handleRunEvent(tid, ev);
-          },
-          onError: (e) {
-            if (_sendSubscription != sub) return;
-            _handleRunError(tid, e);
-          },
-          onDone: () {
-            if (_sendSubscription != sub) return;
-            _handleRunOnDone(tid);
-          },
-        );
-    _sendSubscription = sub;
+    try {
+      late StreamSubscription? sub;
+      sub = api
+          .sendMessageStream(
+            threadId: tid,
+            prompt: text,
+            mode: _composerMode.name,
+            attachments: attachments,
+          )
+          .listen(
+            (ev) {
+              if (_sendSubscription != sub) return;
+              _handleRunEvent(tid, ev);
+            },
+            onError: (e) {
+              if (_sendSubscription != sub) return;
+              _handleRunError(tid, e);
+            },
+            onDone: () {
+              if (_sendSubscription != sub) return;
+              _handleRunOnDone(tid);
+            },
+          );
+      _sendSubscription = sub;
+    } catch (e) {
+      _finishRun(tid, error: '$e');
+    }
   }
 
   // ---- TOTP ----
