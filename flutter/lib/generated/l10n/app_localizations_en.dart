@@ -474,6 +474,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Delete this thread? This cannot be undone.';
 
   @override
+  String get deleteThreadTooltip =>
+      'Delete thread (Shift+click to skip confirmation)';
+
+  @override
   String get topics => 'Topics';
 
   @override
