@@ -28,17 +28,25 @@ pub struct ProjectOut {
     pub name: String,
     pub path: String,
     pub position: i64,
+    pub is_repo: bool,
+    pub branch: String,
     pub created_at: String,
     pub updated_at: String,
 }
 
-impl From<ProjectRow> for ProjectOut {
-    fn from(p: ProjectRow) -> Self {
+impl ProjectOut {
+    pub async fn from_row(state: &AppState, p: ProjectRow) -> Self {
+        let (is_repo, branch) = match state.git.repo_status(std::path::Path::new(&p.path)).await {
+            Ok(s) => (s.is_repo, s.branch),
+            Err(_) => (false, String::new()),
+        };
         Self {
             id: p.id,
             name: p.name,
             path: p.path,
             position: p.position,
+            is_repo,
+            branch,
             created_at: p.created_at,
             updated_at: p.updated_at,
         }
@@ -54,7 +62,11 @@ pub struct CreateProject {
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.list_projects(user.id).await {
         Ok(rows) => {
-            Json(rows.into_iter().map(ProjectOut::from).collect::<Vec<_>>()).into_response()
+            let mut out = Vec::with_capacity(rows.len());
+            for p in rows {
+                out.push(ProjectOut::from_row(&state, p).await);
+            }
+            Json(out).into_response()
         }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
@@ -115,7 +127,10 @@ async fn create(
     };
 
     match state.db.create_project(new).await {
-        Ok(p) => (StatusCode::CREATED, Json(ProjectOut::from(p))).into_response(),
+        Ok(p) => {
+            let out = ProjectOut::from_row(&state, p).await;
+            (StatusCode::CREATED, Json(out)).into_response()
+        }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -144,7 +159,7 @@ async fn reorder(
             tracing::warn!(error = %e, user_id = user.id, "project reorder failed");
             (
                 StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new(&e.to_string())),
+                Json(crate::api::ApiError::new(e.to_string())),
             )
                 .into_response()
         }
@@ -201,7 +216,7 @@ async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<
     }
 
     // Reject `..` in any path component to prevent traversal through symlinks.
-    if path.split(|c: char| c == '/' || c == '\\').any(|c| c == "..") {
+    if path.split(['/', '\\']).any(|c| c == "..") {
         return Err(anyhow::anyhow!("path traversal is not allowed"));
     }
 

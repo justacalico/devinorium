@@ -307,8 +307,7 @@ class _ProjectExpandableTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final repo = state.gitRepoInfo(project.id);
-    final isRepo = repo?.isRepo ?? false;
+    final isRepo = project.isRepo;
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
     final borderColor = isActive
@@ -365,11 +364,11 @@ class _ProjectExpandableTile extends StatelessWidget {
                 children: [
                   if (isRepo)
                     Tooltip(
-                      message: repo!.branch.isNotEmpty ? repo.branch : l10n(context).gitBranches,
+                      message: project.gitBranch.isNotEmpty ? project.gitBranch : l10n(context).gitBranches,
                       child: TextButton.icon(
                         icon: const Icon(Icons.call_split, size: 16),
                         label: Text(
-                          repo.branch.isNotEmpty ? repo.branch : l10n(context).gitBranches,
+                          project.gitBranch.isNotEmpty ? project.gitBranch : l10n(context).gitBranches,
                           style: const TextStyle(fontSize: 11),
                         ),
                         onPressed: () => state.openGitBranchDialog(project.id),

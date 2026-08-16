@@ -180,6 +180,8 @@ void main() {
         'name': 'My Project',
         'path': '/tmp/my-project',
         'position': 5,
+        'is_repo': true,
+        'branch': 'main',
         'created_at': '2026-01-01',
         'updated_at': '2026-01-02',
       });
@@ -187,8 +189,24 @@ void main() {
       expect(p.name, 'My Project');
       expect(p.path, '/tmp/my-project');
       expect(p.position, 5);
+      expect(p.isRepo, true);
+      expect(p.gitBranch, 'main');
       expect(p.createdAt, '2026-01-01');
       expect(p.updatedAt, '2026-01-02');
+    });
+
+    test('copyWith updates git fields', () {
+      final p = Project(
+        id: 1,
+        name: 'x',
+        path: '/tmp/x',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final updated = p.copyWith(isRepo: true, gitBranch: 'develop');
+      expect(updated.isRepo, true);
+      expect(updated.gitBranch, 'develop');
+      expect(updated.name, 'x');
     });
 
     test('parses branch and worktree_path', () {

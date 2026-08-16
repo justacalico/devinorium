@@ -458,7 +458,7 @@ impl GitService {
         let branch = self
             .run_with(
                 &top,
-                &["rev-parse", "--abbrev-ref", "HEAD"],
+                &["symbolic-ref", "--short", "HEAD"],
                 Duration::from_secs(5),
             )
             .await

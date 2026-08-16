@@ -1177,4 +1177,27 @@ void main() {
       expect(restored.locale, const Locale('en-GB'));
     });
   });
+
+  group('Git state', () {
+    test('loadGitRepoInfo updates project branch', () async {
+      final client = _clientFor([
+        _json(200, {
+          'is_repo': true,
+          'branch': 'develop',
+          'toplevel': '/x',
+          'common_dir': '/x/.git',
+          'worktree_path': '/x',
+        }),
+      ]);
+      final state = AppState.test(
+        api: _StreamableApiService(client),
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      await state.loadGitRepoInfo(1);
+      expect(state.projects[0].isRepo, true);
+      expect(state.projects[0].gitBranch, 'develop');
+    });
+  });
 }

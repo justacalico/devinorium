@@ -2099,3 +2099,61 @@ async fn git_connections_login_defaults_to_gitlab_com() {
     assert_eq!(v["host"], "gitlab.com");
     assert!(v["authed"].as_bool().unwrap());
 }
+
+fn git_cli(args: &[&str], cwd: &std::path::Path) {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()
+        .expect("git command failed");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[tokio::test]
+async fn project_list_includes_git_branch() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let repo_dir = home.join("repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    git_cli(&["init"], &repo_dir);
+    git_cli(&["checkout", "-b", "main"], &repo_dir);
+
+    let body = format!(r#"{{"name":"repo","path":"{}"}}"#, repo_dir.display());
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["is_repo"].as_bool().unwrap());
+    assert_eq!(v["branch"].as_str().unwrap(), "main");
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let projects = v.as_array().unwrap();
+    let project = projects
+        .iter()
+        .find(|p| p["name"].as_str() == Some("repo"))
+        .unwrap();
+    assert!(project["is_repo"].as_bool().unwrap());
+    assert_eq!(project["branch"].as_str().unwrap(), "main");
+}

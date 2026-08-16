@@ -1075,11 +1075,22 @@ class AppState extends ChangeNotifier {
       final info = await api.gitRepoStatus(projectId);
       _gitRepoInfo[projectId] = info;
       _globalError = '';
+      _syncProjectBranch(projectId, info);
     } catch (e) {
       // 404 / not a repo is not an error; clear the state.
       _gitRepoInfo.remove(projectId);
     }
     notifyListeners();
+  }
+
+  void _syncProjectBranch(int projectId, GitRepoInfo info) {
+    final idx = _projects.indexWhere((p) => p.id == projectId);
+    if (idx == -1) return;
+    _projects = [
+      ..._projects.sublist(0, idx),
+      _projects[idx].copyWith(isRepo: info.isRepo, gitBranch: info.branch),
+      ..._projects.sublist(idx + 1),
+    ];
   }
 
   Future<void> loadGitBranches(int projectId, {String? query}) async {
@@ -1121,6 +1132,7 @@ class AppState extends ChangeNotifier {
       await api.gitCreateBranch(projectId, name, base: base, switchBranch: switchBranch);
       _globalError = '';
       await loadGitBranches(projectId);
+      await loadGitRepoInfo(projectId);
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1148,6 +1160,7 @@ class AppState extends ChangeNotifier {
       if (newBranch) {
         await loadGitBranches(projectId);
       }
+      await loadGitRepoInfo(projectId);
     } catch (e) {
       _globalError = '$e';
       notifyListeners();

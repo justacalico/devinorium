@@ -204,4 +204,34 @@ void main() {
 
     expect(find.text('My thread'), findsOneWidget);
   });
+
+  testWidgets('Sidebar shows project git branch', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(
+          id: 1,
+          name: 'p',
+          path: '/x',
+          isRepo: true,
+          gitBranch: 'main',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('main'), findsOneWidget);
+  });
 }

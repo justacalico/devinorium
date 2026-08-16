@@ -240,6 +240,8 @@ class Project {
   final String name;
   final String path;
   final int position;
+  final bool isRepo;
+  final String gitBranch;
   final String createdAt;
   final String updatedAt;
 
@@ -248,6 +250,8 @@ class Project {
     required this.name,
     required this.path,
     this.position = 0,
+    this.isRepo = false,
+    this.gitBranch = '',
     required this.createdAt,
     required this.updatedAt,
   });
@@ -257,8 +261,31 @@ class Project {
         name: j['name'] as String,
         path: j['path'] as String,
         position: (j['position'] as num?)?.toInt() ?? 0,
+        isRepo: j['is_repo'] as bool? ?? false,
+        gitBranch: j['branch'] as String? ?? '',
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
+      );
+
+  Project copyWith({
+    int? id,
+    String? name,
+    String? path,
+    int? position,
+    bool? isRepo,
+    String? gitBranch,
+    String? createdAt,
+    String? updatedAt,
+  }) =>
+      Project(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        path: path ?? this.path,
+        position: position ?? this.position,
+        isRepo: isRepo ?? this.isRepo,
+        gitBranch: gitBranch ?? this.gitBranch,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
 }
 
