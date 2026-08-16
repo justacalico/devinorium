@@ -254,11 +254,22 @@ class _MessageItem extends StatefulWidget {
   State<_MessageItem> createState() => _MessageItemState();
 }
 
+class _ThinkingItem {
+  final String type;
+  final String? content;
+  final ToolCallData? tool;
+  _ThinkingItem({required this.type, this.content, this.tool});
+}
+
 class _PartGroup {
   final String type;
   final String? content;
-  final List<ToolCallData> tools;
-  _PartGroup({required this.type, this.content, this.tools = const []});
+  final List<_ThinkingItem> thinkingItems;
+  _PartGroup({
+    required this.type,
+    this.content,
+    this.thinkingItems = const [],
+  });
 }
 
 class _MessageItemState extends State<_MessageItem> {
@@ -300,36 +311,35 @@ class _MessageItemState extends State<_MessageItem> {
   }
 
   List<_PartGroup> _buildGroups(List<MessagePart> parts) {
-    var thinkingBuffer = '';
-    final toolCalls = <ToolCallData>[];
+    final thinkingItems = <_ThinkingItem>[];
     final groups = <_PartGroup>[];
 
     for (final part in parts) {
-      switch (part.type) {
-        case 'thinking':
-          thinkingBuffer += part.content ?? '';
-        case 'tool_call':
-          final tool = part.toolCall;
-          if (tool != null) toolCalls.add(tool);
-        case 'text':
-          final text = part.content ?? '';
-          if (groups.isNotEmpty && groups.last.type == 'text') {
-            final merged = groups.last.content ?? '';
-            groups.last = _PartGroup(type: 'text', content: merged + text);
-          } else {
-            groups.add(_PartGroup(type: 'text', content: text));
-          }
+      if (part.type == 'thinking') {
+        thinkingItems.add(_ThinkingItem(
+          type: 'thinking',
+          content: part.content,
+        ));
+      } else if (part.type == 'tool_call') {
+        final tool = part.toolCall;
+        if (tool != null) {
+          thinkingItems.add(_ThinkingItem(type: 'tool_call', tool: tool));
+        }
+      } else if (part.type == 'text') {
+        final text = part.content ?? '';
+        if (groups.isNotEmpty && groups.last.type == 'text') {
+          final merged = groups.last.content ?? '';
+          groups.last = _PartGroup(type: 'text', content: merged + text);
+        } else {
+          groups.add(_PartGroup(type: 'text', content: text));
+        }
       }
     }
 
-    if (thinkingBuffer.isNotEmpty || toolCalls.isNotEmpty) {
+    if (thinkingItems.isNotEmpty) {
       groups.insert(
         0,
-        _PartGroup(
-          type: 'thinking',
-          content: thinkingBuffer,
-          tools: toolCalls,
-        ),
+        _PartGroup(type: 'thinking', thinkingItems: thinkingItems),
       );
     }
 
@@ -376,18 +386,16 @@ class _MessageItemState extends State<_MessageItem> {
   Widget _buildPartWidgets(BuildContext context, List<_PartGroup> groups) {
     final children = <Widget>[];
     for (final group in groups) {
-      switch (group.type) {
-        case 'text':
-          children.add(_buildTextContent(
-              context, group.content ?? '', widget.message.role));
-        case 'thinking':
-          children.add(_ThinkingBlock(
-            content: group.content ?? '',
-            toolCalls: group.tools,
-            working: _working,
-            expanded: _expanded,
-            onToggle: () => setState(() => _expanded = !_expanded),
-          ));
+      if (group.type == 'text') {
+        children.add(_buildTextContent(
+            context, group.content ?? '', widget.message.role));
+      } else if (group.type == 'thinking') {
+        children.add(_ThinkingBlock(
+          items: group.thinkingItems,
+          working: _working,
+          expanded: _expanded,
+          onToggle: () => setState(() => _expanded = !_expanded),
+        ));
       }
     }
     return Column(
@@ -492,14 +500,12 @@ class _MessageItemState extends State<_MessageItem> {
 }
 
 class _ThinkingBlock extends StatelessWidget {
-  final String content;
-  final List<ToolCallData> toolCalls;
+  final List<_ThinkingItem> items;
   final bool working;
   final bool expanded;
   final VoidCallback onToggle;
   const _ThinkingBlock({
-    required this.content,
-    this.toolCalls = const [],
+    required this.items,
     required this.working,
     required this.expanded,
     required this.onToggle,
@@ -515,32 +521,36 @@ class _ThinkingBlock extends StatelessWidget {
 
     Widget expandedContent() {
       final children = <Widget>[];
-      if (content.isNotEmpty) {
-        children.add(
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.access_time,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SelectableText(
-                  content,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    height: 1.5,
-                    color: theme.colorScheme.onSurfaceVariant,
+      for (final item in items) {
+        if (item.type == 'thinking' && (item.content?.isNotEmpty ?? false)) {
+          children.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.access_time,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SelectableText(
+                    item.content!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      height: 1.5,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }
-      for (final t in toolCalls) {
-        children.add(_ToolCallItem(tool: t));
+              ],
+            ),
+          );
+        } else if (item.type == 'tool_call') {
+          final tool = item.tool;
+          if (tool != null) {
+            children.add(_ToolCallItem(tool: tool));
+          }
+        }
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -284,6 +284,69 @@ void main() {
     expect(find.text('Run another'), findsOneWidget);
   });
 
+  testWidgets('interleaves thinking text and tool calls in order',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'let me search'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'search',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo search',
+                ),
+              ),
+              MessagePart.thinking(content: 'ok let me read'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-2',
+                  title: 'read file',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo read',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('let me search'), findsOneWidget);
+    expect(find.text('ok let me read'), findsOneWidget);
+    expect(find.text('search'), findsOneWidget);
+    expect(find.text('read file'), findsOneWidget);
+  });
+
   testWidgets('merges split thinking parts into a single block',
       (tester) async {
     final state = AppState.test(
@@ -324,7 +387,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    expect(find.text('hmm1hmm2'), findsOneWidget);
+    expect(find.text('hmm1'), findsOneWidget);
+    expect(find.text('hmm2'), findsOneWidget);
     final markdown = find.byType(MarkdownBody);
     expect(markdown, findsOneWidget);
     expect(tester.widget<MarkdownBody>(markdown).data, 'a');
