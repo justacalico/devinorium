@@ -748,8 +748,8 @@ class _GitSectionState extends State<_GitSection> {
     );
     if (mounted) {
       setState(() => _busy = false);
+      _tokenController.clear();
       if (widget.state.globalError.isEmpty) {
-        _tokenController.clear();
         _hostnameController.clear();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -793,7 +793,9 @@ class _GitSectionState extends State<_GitSection> {
       children.add(const SizedBox(height: 16));
     }
 
-    if (connections.isEmpty) {
+    if (isLoading && connections.isEmpty) {
+      children.add(Text(l.loading));
+    } else if (connections.isEmpty) {
       children.add(Text(l.gitConnections));
     } else {
       for (final conn in connections) {

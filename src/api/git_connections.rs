@@ -5,11 +5,11 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, Router};
 use axum::Json;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::api::ApiError;
 use crate::auth::session::CurrentUser;
-use crate::git::RemoteError;
+use crate::git::{GitConnection, RemoteError};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -28,25 +28,6 @@ pub struct GitLabLoginRequest {
 #[derive(Debug, Deserialize)]
 pub struct GitLabLogoutRequest {
     pub hostname: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct GitLabAuthOut {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub host: String,
-    pub account: String,
-}
-
-impl From<crate::git::GitLabStatus> for GitLabAuthOut {
-    fn from(status: crate::git::GitLabStatus) -> Self {
-        Self {
-            id: "gitlab",
-            name: "GitLab",
-            host: status.host,
-            account: status.account.unwrap_or_default(),
-        }
-    }
 }
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
@@ -79,7 +60,17 @@ async fn login_gitlab(
         .login_gitlab(user.id, token, hostname.as_deref())
         .await
     {
-        Ok(status) => Json(GitLabAuthOut::from(status)).into_response(),
+        Ok(status) => Json(GitConnection {
+            id: "gitlab",
+            name: "GitLab",
+            enabled: true,
+            available: true,
+            authed: true,
+            account: status.account,
+            host: Some(status.host),
+            coming_soon: false,
+        })
+        .into_response(),
         Err(RemoteError::GitLabNotAvailable) => (
             StatusCode::NOT_FOUND,
             Json(ApiError::new("gitlab cli is not installed")),

@@ -438,5 +438,6 @@
       }
     }
   },
+  "loading": "Loading…",
   "gitlabNotInstalled": "GitLab CLI (glab) is not installed"
 }

@@ -235,7 +235,10 @@ impl GitRemoteService {
 
     fn parse_gitlab_status(output: &str) -> Result<GitLabStatus, RemoteError> {
         static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        let re = RE.get_or_init(|| Regex::new(r"Logged in to\s+(\S+)\s+as\s+(\S+)").unwrap());
+        let re = RE.get_or_init(|| {
+            Regex::new(r"(?:[✓✗xX!]\s+)?Logged in to\s+(\S+)\s+as\s+(\S+)")
+                .unwrap()
+        });
 
         if let Some(caps) = re.captures(output) {
             return Ok(GitLabStatus {
@@ -245,17 +248,38 @@ impl GitRemoteService {
             });
         }
 
-        let host = output
-            .lines()
-            .map(str::trim)
-            .find(|l| !l.is_empty() && !l.starts_with('✓') && !l.starts_with('✗') && !l.starts_with('x') && !l.starts_with('!'))
-            .map(str::to_string);
+        // No explicit "Logged in" line; try to extract the configured host.
+        for line in output.lines().map(str::trim) {
+            if line.is_empty() {
+                continue;
+            }
+            // glab prefixes status lines with these markers; the host line
+            // is the first unmarked, non-whitespace line.
+            if line.starts_with('✓')
+                || line.starts_with('✗')
+                || line.starts_with('x')
+                || line.starts_with('X')
+                || line.starts_with('!')
+                || line.starts_with("- ")
+                || line.starts_with("ERROR")
+                || line.starts_with("could not")
+            {
+                continue;
+            }
+            // Hosts look like hostnames; reject obvious noise.
+            if line.contains(' ') || line.contains('\n') {
+                continue;
+            }
+            return Ok(GitLabStatus {
+                host: line.to_string(),
+                authed: false,
+                account: None,
+            });
+        }
 
-        Ok(GitLabStatus {
-            host: host.unwrap_or_else(|| "gitlab.com".to_string()),
-            authed: false,
-            account: None,
-        })
+        Err(RemoteError::StatusFailed(
+            "could not parse glab auth status output".into(),
+        ))
     }
 
     /// Run a glab/gh command and treat non-zero exit as an error.
@@ -281,7 +305,7 @@ impl GitRemoteService {
         bin: &Path,
         args: &[&str],
     ) -> Result<(String, bool), RemoteError> {
-        let mut cmd = self.env_cmd(user_id, bin);
+        let mut cmd = self.env_cmd(user_id, bin)?;
         cmd.args(args);
 
         let output = timeout(Duration::from_secs(30), cmd.output())
@@ -295,10 +319,11 @@ impl GitRemoteService {
         Ok((combined, output.status.success()))
     }
 
-    fn env_cmd(&self, user_id: i64, bin: &Path) -> Command {
+    fn env_cmd(&self, user_id: i64, bin: &Path) -> Result<Command, RemoteError> {
         let user_dir = self.config_root.join("glab").join(user_id.to_string());
         let xdg_config = user_dir.join(".config");
-        std::fs::create_dir_all(&xdg_config).ok();
+        std::fs::create_dir_all(&xdg_config)
+            .map_err(|e| RemoteError::StatusFailed(format!("config dir failed: {e}")))?;
 
         let mut cmd = Command::new(bin);
         cmd.current_dir(&user_dir)
@@ -326,6 +351,6 @@ impl GitRemoteService {
             cmd.env_remove(key);
         }
 
-        cmd
+        Ok(cmd)
     }
 }

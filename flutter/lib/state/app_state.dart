@@ -50,7 +50,7 @@ class AppState extends ChangeNotifier {
     _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _sending = sending;
-    _gitConnections = gitConnections;
+    _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;
     _user = user;
     _users = users;
@@ -1199,10 +1199,12 @@ class AppState extends ChangeNotifier {
   }) async {
     try {
       final updated = await api.connectGitLab(token: token, hostname: hostname);
-      _gitConnections = [
-        for (final c in _gitConnections)
-          if (c.id == updated.id) updated else c,
-      ];
+      final index = _gitConnections.indexWhere((c) => c.id == updated.id);
+      if (index >= 0) {
+        _gitConnections[index] = updated;
+      } else {
+        _gitConnections.add(updated);
+      }
       _globalError = '';
       notifyListeners();
     } catch (e) {

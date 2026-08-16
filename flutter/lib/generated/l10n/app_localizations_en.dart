@@ -723,5 +723,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get loading => 'Loading…';
+
+  @override
   String get gitlabNotInstalled => 'GitLab CLI (glab) is not installed';
 }

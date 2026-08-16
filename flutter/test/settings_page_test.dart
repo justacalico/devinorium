@@ -476,4 +476,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.locale, const Locale('en'));
   });
+
+  testWidgets('Git section lists GitLab and GitHub', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Git'), findsOneWidget);
+    expect(find.text('GitLab'), findsOneWidget);
+    expect(find.text('GitHub'), findsOneWidget);
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.text('Connect'), findsOneWidget);
+  });
 }

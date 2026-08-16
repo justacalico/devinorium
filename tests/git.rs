@@ -259,3 +259,42 @@ async fn git_remote_gitlab_login_and_logout() {
     let after_logout = svc.connections(1).await;
     assert!(!after_logout[0].authed);
 }
+
+#[tokio::test]
+async fn git_remote_gitlab_login_uses_custom_host() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let status = svc
+        .login_gitlab(1, "glpat-test-token", Some("gitlab.example.com"))
+        .await
+        .unwrap();
+    assert_eq!(status.host, "gitlab.example.com");
+    assert!(status.authed);
+}
+
+fn write_garbage_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    std::fs::write(&bin, "#!/bin/sh\necho 'garbage output'\nexit 1\n").unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_status_fails_on_unparseable_output() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_garbage_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let err = svc.gitlab_status(1).await.unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
