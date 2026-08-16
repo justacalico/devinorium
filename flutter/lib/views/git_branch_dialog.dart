@@ -376,9 +376,6 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     if (threadId != null) {
       await state.setThreadGit(threadId, branch: branch.name);
     }
-    if (mounted) {
-      state.closeDialog();
-    }
   }
 
   Future<void> _useWorktree(int projectId, GitWorktree worktree) async {
@@ -394,9 +391,6 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
         branch: worktree.branch,
         worktreePath: worktree.path,
       );
-    }
-    if (mounted) {
-      state.closeDialog();
     }
   }
 }
