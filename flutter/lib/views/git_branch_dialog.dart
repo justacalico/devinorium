@@ -54,32 +54,42 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildHeader(context, repo),
                     const SizedBox(height: 16),
-                    if (repo == null)
-                      const Center(child: CircularProgressIndicator())
-                    else if (!repo.isRepo)
-                      _buildNotRepo(context)
-                    else ...[
-                      _buildSearchField(context),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: _BranchList(
-                          branches: _filter(branches),
-                          currentBranch: repo.branch,
-                          onCheckout: (b) => _checkout(projectId, b),
-                          onUseForThread: (b) => _useBranch(projectId, b),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (repo == null)
+                              const SizedBox(
+                                height: 200,
+                                child: Center(child: CircularProgressIndicator()),
+                              )
+                            else if (!repo.isRepo)
+                              _buildNotRepo(context)
+                            else ...[
+                              _buildSearchField(context),
+                              const SizedBox(height: 12),
+                              _BranchList(
+                                branches: _filter(branches),
+                                currentBranch: repo.branch,
+                                onCheckout: (b) => _checkout(projectId, b),
+                                onUseForThread: (b) => _useBranch(projectId, b),
+                              ),
+                              const Divider(height: 32),
+                              _buildCreateBranch(context, projectId),
+                              const SizedBox(height: 16),
+                              _buildWorktreeSection(context, projectId, branches),
+                              if (worktrees.isNotEmpty)
+                                _buildWorktreeList(context, projectId, worktrees),
+                            ],
+                          ],
                         ),
                       ),
-                      const Divider(height: 32),
-                      _buildCreateBranch(context, projectId),
-                      const SizedBox(height: 16),
-                      _buildWorktreeSection(context, projectId, branches),
-                      if (worktrees.isNotEmpty) _buildWorktreeList(context, projectId, worktrees),
-                    ],
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -334,6 +344,7 @@ class _BranchList extends StatelessWidget {
     }
     return ListView.builder(
       shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: branches.length,
       itemBuilder: (context, index) {
         final b = branches[index];
