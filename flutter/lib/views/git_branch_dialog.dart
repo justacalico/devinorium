@@ -100,7 +100,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                       children: [
                         TextButton(
                           onPressed: state.closeDialog,
-                          child: Text(l10n(context).cancel),
+                          child: Text(l10n(context).close),
                         ),
                       ],
                     ),
