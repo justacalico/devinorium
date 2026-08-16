@@ -1,6 +1,5 @@
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
-import 'package:devinorium_frontend/api/api_types.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
@@ -27,8 +26,6 @@ class _ThrowingClient extends BaseApiClient {
   Future<void> setToken(String token) => Future.value();
   @override
   Future<void> setUsername(String username) => Future.value();
-  @override
-  Future<void> close() => Future.value();
   @override
   Future<Map<String, dynamic>> get(String path) => throw UnimplementedError();
   @override

@@ -1,6 +1,5 @@
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
-import 'package:devinorium_frontend/api/api_types.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
@@ -80,9 +79,6 @@ class _ThrowingClient extends BaseApiClient {
 
   @override
   Future<String?> get serverUrl => Future.value(null);
-
-  @override
-  Future<void> close() => Future.value();
 }
 
 class _FakeApiService extends ApiService {

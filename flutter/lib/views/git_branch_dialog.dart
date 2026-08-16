@@ -214,6 +214,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String?>(
+          // ignore: deprecated_member_use
           value: baseValue,
           isExpanded: true,
           decoration: InputDecoration(
@@ -291,6 +292,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
         const SizedBox(height: 8),
         if (branches.isNotEmpty)
           DropdownButtonFormField<String>(
+            // ignore: deprecated_member_use
             value: baseValue,
             isExpanded: true,
             decoration: InputDecoration(
