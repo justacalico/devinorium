@@ -1089,8 +1089,8 @@ class _ComposerState extends State<_Composer> {
                   ),
                   child: Text(
                     mode.label,
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface,
+                    style: const TextStyle(
+                      color: Colors.black87,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
