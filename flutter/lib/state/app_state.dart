@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import '../api/api_service.dart';
 import '../l10n/global_l10n.dart';
+import '../models/composer_mode.dart';
 import '../models/models.dart';
 
 enum AppView { loading, login, setup, app }
@@ -47,7 +48,8 @@ class AppState extends ChangeNotifier {
     bool sending = false,
     List<MessagePart> streamingParts = const [],
     bool streamingThinkingActive = false,
-  })  : api = api ?? ApiService() {
+    ComposerMode composerMode = ComposerMode.code,
+  }) : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
@@ -72,6 +74,7 @@ class AppState extends ChangeNotifier {
     _streamingParts.clear();
     _streamingParts.addAll(streamingParts);
     _streamingThinkingActive = streamingThinkingActive;
+    _composerMode = composerMode;
   }
 
   @override
@@ -111,6 +114,7 @@ class AppState extends ChangeNotifier {
   bool _sending = false;
   String _selectedModel = '';
   String _selectedPermission = 'normal';
+  ComposerMode _composerMode = ComposerMode.code;
   final List<MessagePart> _streamingParts = [];
   bool _streamingThinkingActive = false;
   String _globalError = '';
@@ -170,6 +174,7 @@ class AppState extends ChangeNotifier {
       _attachments;
   String get selectedModel => _selectedModel;
   String get selectedPermission => _selectedPermission;
+  ComposerMode get composerMode => _composerMode;
   List<MessagePart> get streamingParts => _streamingParts;
   bool get streamingThinkingActive => _streamingThinkingActive;
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
@@ -180,7 +185,8 @@ class AppState extends ChangeNotifier {
 
   GitRepoInfo? gitRepoInfo(int projectId) => _gitRepoInfo[projectId];
   List<GitBranch> gitBranches(int projectId) => _gitBranches[projectId] ?? [];
-  List<GitWorktree> gitWorktrees(int projectId) => _gitWorktrees[projectId] ?? [];
+  List<GitWorktree> gitWorktrees(int projectId) =>
+      _gitWorktrees[projectId] ?? [];
   int? get gitDialogProjectId => _gitDialogProjectId;
 
   List<GitConnection> get gitConnections => _gitConnections;
@@ -188,12 +194,36 @@ class AppState extends ChangeNotifier {
 
   // ---- Setters / mutations ----
 
-  void setView(AppView v) { _view = v; notifyListeners(); }
-  void setPage(MainPage p) { _page = p; notifyListeners(); }
-  void setSettingsTopicIndex(int index) { _settingsTopicIndex = index; notifyListeners(); }
-  void toggleUserMenu() { _userMenuOpen = !_userMenuOpen; notifyListeners(); }
-  void setUserMenuOpen(bool v) { _userMenuOpen = v; notifyListeners(); }
-  void setComposerText(String t) { _composerText = t; notifyListeners(); }
+  void setView(AppView v) {
+    _view = v;
+    notifyListeners();
+  }
+
+  void setPage(MainPage p) {
+    _page = p;
+    notifyListeners();
+  }
+
+  void setSettingsTopicIndex(int index) {
+    _settingsTopicIndex = index;
+    notifyListeners();
+  }
+
+  void toggleUserMenu() {
+    _userMenuOpen = !_userMenuOpen;
+    notifyListeners();
+  }
+
+  void setUserMenuOpen(bool v) {
+    _userMenuOpen = v;
+    notifyListeners();
+  }
+
+  void setComposerText(String t) {
+    _composerText = t;
+    notifyListeners();
+  }
+
   void addAttachments(
     List<({String filename, String mime, Uint8List bytes})> files,
   ) {
@@ -211,12 +241,57 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSelectedModel(String m) { _selectedModel = m; notifyListeners(); }
-  void setSelectedPermission(String p) { _selectedPermission = p; notifyListeners(); }
-  void setLoginError(String e) { _loginError = e; notifyListeners(); }
-  void setShowTotpField(bool v) { _showTotpField = v; notifyListeners(); }
-  void setGlobalError(String e) { _globalError = e; notifyListeners(); }
-  void clearGlobalError() { _globalError = ''; notifyListeners(); }
+  void setSelectedModel(String m) {
+    _selectedModel = m;
+    notifyListeners();
+  }
+
+  void setSelectedPermission(String p) {
+    _selectedPermission = p;
+    notifyListeners();
+  }
+
+  void setComposerMode(ComposerMode m) {
+    _composerMode = m;
+    notifyListeners();
+    unawaited(_saveComposerMode(m));
+  }
+
+  Future<void> _saveComposerMode(ComposerMode m) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('devinorium_composer_mode', m.name);
+    } catch (_) {}
+  }
+
+  Future<void> _loadComposerMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final value = prefs.getString('devinorium_composer_mode');
+      _composerMode = ComposerModeX.fromString(value);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  void setLoginError(String e) {
+    _loginError = e;
+    notifyListeners();
+  }
+
+  void setShowTotpField(bool v) {
+    _showTotpField = v;
+    notifyListeners();
+  }
+
+  void setGlobalError(String e) {
+    _globalError = e;
+    notifyListeners();
+  }
+
+  void clearGlobalError() {
+    _globalError = '';
+    notifyListeners();
+  }
 
   Future<void> setThemeMode(ThemeMode mode) async {
     _themeMode = mode;
@@ -294,7 +369,10 @@ class AppState extends ChangeNotifier {
     await reloadFiles();
   }
 
-  void closeFilesPanel() { _filesPanelOpen = false; notifyListeners(); }
+  void closeFilesPanel() {
+    _filesPanelOpen = false;
+    notifyListeners();
+  }
 
   Future<void> navigateFilesInto(String name) async {
     _filesPath = [..._filesPath, name];
@@ -367,6 +445,7 @@ class AppState extends ChangeNotifier {
   Future<void> bootstrap() async {
     await _loadThemeMode();
     await _loadLanguage();
+    await _loadComposerMode();
     setAppL10n(_locale);
     try {
       final configured = await api.client.isConfigured;
@@ -426,11 +505,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> doLogin({required String username, required String password, String? totp}) async {
+  Future<void> doLogin({
+    required String username,
+    required String password,
+    String? totp,
+  }) async {
     _loginError = '';
     notifyListeners();
     try {
-      final res = await api.login(username: username, password: password, totp: totp);
+      final res = await api.login(
+        username: username,
+        password: password,
+        totp: totp,
+      );
       if (res.totpRequired) {
         _view = AppView.login;
         _showTotpField = true;
@@ -494,7 +581,10 @@ class AppState extends ChangeNotifier {
     return api.createPairing(serverUrl: serverUrl, name: name);
   }
 
-  Future<void> createUser({required String username, required String password}) async {
+  Future<void> createUser({
+    required String username,
+    required String password,
+  }) async {
     try {
       await api.createUser(username: username, password: password);
       _globalError = '';
@@ -519,7 +609,9 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     await _sendSubscription?.cancel();
     _sendSubscription = null;
-    try { await api.logout(); } catch (_) {}
+    try {
+      await api.logout();
+    } catch (_) {}
     try {
       await api.client.clearCredentials();
     } catch (_) {}
@@ -537,6 +629,7 @@ class AppState extends ChangeNotifier {
     _showTotpField = false;
     _loginError = '';
     _composerText = '';
+    _composerMode = ComposerMode.code;
     _attachments.clear();
     _streamingParts.clear();
     _streamingThinkingActive = false;
@@ -573,7 +666,10 @@ class AppState extends ChangeNotifier {
     await refreshThreadsAndGroups();
   }
 
-  Future<void> createProject({required String name, required String path}) async {
+  Future<void> createProject({
+    required String name,
+    required String path,
+  }) async {
     _globalError = '';
     notifyListeners();
     try {
@@ -701,10 +797,13 @@ class AppState extends ChangeNotifier {
         final info = await api.getThreadProject(id);
         final projectId = (info['project_id'] as num).toInt();
         _activeProjectId = projectId;
-        _activeProjectPath = info['path'] as String? ?? _projectPathById(projectId);
+        _activeProjectPath =
+            info['path'] as String? ?? _projectPathById(projectId);
       } catch (_) {
         final projectId = _activeThreadDetail?.thread.projectId;
-        if (projectId != null && projectId != 0 && projectId != _activeProjectId) {
+        if (projectId != null &&
+            projectId != 0 &&
+            projectId != _activeProjectId) {
           _activeProjectId = projectId;
           _activeProjectPath = _projectPathById(projectId);
         }
@@ -875,22 +974,25 @@ class AppState extends ChangeNotifier {
         _clearPermissionRequest();
         _streamingParts.clear();
         _streamingThinkingActive = false;
-    
+
         _sending = false;
         _sendSubscription = null;
         _globalError = ev.data;
         notifyListeners();
-        api.getThread(tid).then((d) {
-          _activeThreadDetail = d;
-          notifyListeners();
-        }).catchError((_) {});
+        api
+            .getThread(tid)
+            .then((d) {
+              _activeThreadDetail = d;
+              notifyListeners();
+            })
+            .catchError((_) {});
         break;
     }
   }
 
   void _updateStreamingThinkingActive() {
-    _streamingThinkingActive = _streamingParts.isNotEmpty &&
-        _streamingParts.last.type == 'thinking';
+    _streamingThinkingActive =
+        _streamingParts.isNotEmpty && _streamingParts.last.type == 'thinking';
   }
 
   void _handleRunError(String tid, Object e) {
@@ -908,10 +1010,13 @@ class AppState extends ChangeNotifier {
     _sending = false;
     _globalError = '$e';
     notifyListeners();
-    api.getThread(tid).then((d) {
-      _activeThreadDetail = d;
-      notifyListeners();
-    }).catchError((_) {});
+    api
+        .getThread(tid)
+        .then((d) {
+          _activeThreadDetail = d;
+          notifyListeners();
+        })
+        .catchError((_) {});
   }
 
   void _handleRunOnDone(String tid) {
@@ -922,10 +1027,13 @@ class AppState extends ChangeNotifier {
       _streamingParts.clear();
       _streamingThinkingActive = false;
       notifyListeners();
-      api.getThread(tid).then((d) {
-        _activeThreadDetail = d;
-        notifyListeners();
-      }).catchError((_) {});
+      api
+          .getThread(tid)
+          .then((d) {
+            _activeThreadDetail = d;
+            notifyListeners();
+          })
+          .catchError((_) {});
     }
   }
 
@@ -946,20 +1054,22 @@ class AppState extends ChangeNotifier {
         notifyListeners();
 
         late StreamSubscription? sub;
-        sub = api.watchThreadEvents(id).listen(
-          (ev) {
-            if (_sendSubscription != sub) return;
-            _handleRunEvent(id, ev);
-          },
-          onError: (e) {
-            if (_sendSubscription != sub) return;
-            _handleRunError(id, e);
-          },
-          onDone: () {
-            if (_sendSubscription != sub) return;
-            _handleRunOnDone(id);
-          },
-        );
+        sub = api
+            .watchThreadEvents(id)
+            .listen(
+              (ev) {
+                if (_sendSubscription != sub) return;
+                _handleRunEvent(id, ev);
+              },
+              onError: (e) {
+                if (_sendSubscription != sub) return;
+                _handleRunError(id, e);
+              },
+              onDone: () {
+                if (_sendSubscription != sub) return;
+                _handleRunOnDone(id);
+              },
+            );
         _sendSubscription = sub;
       } else {
         _sending = false;
@@ -987,24 +1097,34 @@ class AppState extends ChangeNotifier {
     _sending = true;
     _streamingParts.clear();
     _streamingThinkingActive = false;
-    final attachments = List<({String filename, String mime, Uint8List bytes})>.from(_attachments);
+    final attachments =
+        List<({String filename, String mime, Uint8List bytes})>.from(
+          _attachments,
+        );
     notifyListeners();
 
     late StreamSubscription? sub;
-    sub = api.sendMessageStream(threadId: tid, prompt: text, attachments: attachments).listen(
-      (ev) {
-        if (_sendSubscription != sub) return;
-        _handleRunEvent(tid, ev);
-      },
-      onError: (e) {
-        if (_sendSubscription != sub) return;
-        _handleRunError(tid, e);
-      },
-      onDone: () {
-        if (_sendSubscription != sub) return;
-        _handleRunOnDone(tid);
-      },
-    );
+    sub = api
+        .sendMessageStream(
+          threadId: tid,
+          prompt: text,
+          mode: _composerMode.name,
+          attachments: attachments,
+        )
+        .listen(
+          (ev) {
+            if (_sendSubscription != sub) return;
+            _handleRunEvent(tid, ev);
+          },
+          onError: (e) {
+            if (_sendSubscription != sub) return;
+            _handleRunError(tid, e);
+          },
+          onDone: () {
+            if (_sendSubscription != sub) return;
+            _handleRunOnDone(tid);
+          },
+        );
     _sendSubscription = sub;
   }
 
@@ -1132,9 +1252,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> gitCreateBranch(int projectId, String name, {String? base, bool switchBranch = false}) async {
+  Future<void> gitCreateBranch(
+    int projectId,
+    String name, {
+    String? base,
+    bool switchBranch = false,
+  }) async {
     try {
-      await api.gitCreateBranch(projectId, name, base: base, switchBranch: switchBranch);
+      await api.gitCreateBranch(
+        projectId,
+        name,
+        base: base,
+        switchBranch: switchBranch,
+      );
       _globalError = '';
       await loadGitBranches(projectId);
       await loadGitRepoInfo(projectId);
@@ -1144,7 +1274,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> gitCheckout(int projectId, String refName, {bool track = false}) async {
+  Future<void> gitCheckout(
+    int projectId,
+    String refName, {
+    bool track = false,
+  }) async {
     try {
       await api.gitCheckout(projectId, refName, track: track);
       _globalError = '';
@@ -1185,7 +1319,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> gitCreateWorktree(int projectId, String name, String base, {bool newBranch = false}) async {
+  Future<void> gitCreateWorktree(
+    int projectId,
+    String name,
+    String base, {
+    bool newBranch = false,
+  }) async {
     try {
       await api.gitCreateWorktree(projectId, name, base, newBranch: newBranch);
       _globalError = '';
@@ -1211,12 +1350,21 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> setThreadGit(String threadId, {String? branch, String? worktreePath}) async {
+  Future<void> setThreadGit(
+    String threadId, {
+    String? branch,
+    String? worktreePath,
+  }) async {
     try {
-      await api.updateThreadGit(threadId, branch: branch, worktreePath: worktreePath);
+      await api.updateThreadGit(
+        threadId,
+        branch: branch,
+        worktreePath: worktreePath,
+      );
       _globalError = '';
       await refreshThreadsAndGroups();
-      if (_activeThreadDetail != null && _activeThreadDetail!.thread.id == threadId) {
+      if (_activeThreadDetail != null &&
+          _activeThreadDetail!.thread.id == threadId) {
         _activeThreadDetail = await api.getThread(threadId);
         notifyListeners();
       }
@@ -1242,10 +1390,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> connectGitLab({
-    required String token,
-    String? hostname,
-  }) async {
+  Future<void> connectGitLab({required String token, String? hostname}) async {
     try {
       final updated = await api.connectGitLab(token: token, hostname: hostname);
       final index = _gitConnections.indexWhere((c) => c.id == updated.id);

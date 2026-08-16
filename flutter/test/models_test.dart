@@ -1,3 +1,4 @@
+import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -738,6 +739,33 @@ void main() {
     test('returns null for invalid JSON', () {
       final decoded = tryDecodeJson('not json');
       expect(decoded, isNull);
+    });
+  });
+
+  group('ComposerMode', () {
+    test('name returns lowercase mode identifier', () {
+      expect(ComposerMode.code.name, 'code');
+      expect(ComposerMode.plan.name, 'plan');
+      expect(ComposerMode.ask.name, 'ask');
+    });
+
+    test('label returns display label', () {
+      expect(ComposerMode.code.label, 'Code');
+      expect(ComposerMode.plan.label, 'Plan');
+      expect(ComposerMode.ask.label, 'Ask');
+    });
+
+    test('fromString defaults to code for null, empty or unknown values', () {
+      expect(ComposerModeX.fromString(null), ComposerMode.code);
+      expect(ComposerModeX.fromString(''), ComposerMode.code);
+      expect(ComposerModeX.fromString('nope'), ComposerMode.code);
+      expect(ComposerModeX.fromString('CODE'), ComposerMode.code);
+    });
+
+    test('fromString parses valid mode values', () {
+      expect(ComposerModeX.fromString('plan'), ComposerMode.plan);
+      expect(ComposerModeX.fromString('ask'), ComposerMode.ask);
+      expect(ComposerModeX.fromString('code'), ComposerMode.code);
     });
   });
 }

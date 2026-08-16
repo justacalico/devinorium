@@ -43,14 +43,14 @@ class NativeApiClient implements BaseApiClient {
     if (_baseUrl.isEmpty) {
       throw ApiException(appL10n.serverUrlNotConfigured, 401);
     }
-    final base = _baseUrl.endsWith('/') ? _baseUrl.substring(0, _baseUrl.length - 1) : _baseUrl;
+    final base = _baseUrl.endsWith('/')
+        ? _baseUrl.substring(0, _baseUrl.length - 1)
+        : _baseUrl;
     return Uri.parse('$base$path');
   }
 
   Map<String, String> get _headers {
-    final h = <String, String>{
-      'Accept': 'application/json',
-    };
+    final h = <String, String>{'Accept': 'application/json'};
     if (_token.isNotEmpty) {
       h['Authorization'] = 'Bearer $_token';
     }
@@ -125,7 +125,10 @@ class NativeApiClient implements BaseApiClient {
       if (text.isNotEmpty) {
         throw ApiException(text, resp.statusCode);
       }
-      throw ApiException(appL10n.httpErrorStatus(resp.statusCode), resp.statusCode);
+      throw ApiException(
+        appL10n.httpErrorStatus(resp.statusCode),
+        resp.statusCode,
+      );
     }
     if (text.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(text);
@@ -146,7 +149,8 @@ class NativeApiClient implements BaseApiClient {
       _json('PATCH', path, body);
 
   @override
-  Future<Map<String, dynamic>> delete(String path) => _json('DELETE', path, null);
+  Future<Map<String, dynamic>> delete(String path) =>
+      _json('DELETE', path, null);
 
   @override
   Future<Map<String, dynamic>> deleteWithBody(String path, Object body) =>
@@ -164,7 +168,9 @@ class NativeApiClient implements BaseApiClient {
       throw ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (resp.body.isNotEmpty ? resp.body : appL10n.httpErrorStatus(resp.statusCode)),
+            : (resp.body.isNotEmpty
+                  ? resp.body
+                  : appL10n.httpErrorStatus(resp.statusCode)),
         resp.statusCode,
       );
     }
@@ -186,12 +192,14 @@ class NativeApiClient implements BaseApiClient {
     req.headers.addAll(_headers);
     req.fields.addAll(fields);
     for (final f in files) {
-      req.files.add(http.MultipartFile.fromBytes(
-        'file',
-        f.bytes,
-        filename: f.filename,
-        contentType: http.MediaType.parse(f.mime),
-      ));
+      req.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          f.bytes,
+          filename: f.filename,
+          contentType: http.MediaType.parse(f.mime),
+        ),
+      );
     }
     final streamed = await _client.send(req);
     final resp = await http.Response.fromStream(streamed);
@@ -202,24 +210,25 @@ class NativeApiClient implements BaseApiClient {
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
+    String? mode,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
+    final fields = <String, String>{'prompt': prompt};
+    if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
     return nativeSseStream(
       client: http.Client(),
       baseUrl: _baseUrl,
       token: _token,
       path: path,
       method: 'POST',
-      fields: {'prompt': prompt},
+      fields: fields,
       attachments: attachments,
     );
   }
 
   @override
-  Stream<SseEvent> getStream({
-    required String path,
-  }) {
+  Stream<SseEvent> getStream({required String path}) {
     return nativeSseStream(
       client: http.Client(),
       baseUrl: _baseUrl,

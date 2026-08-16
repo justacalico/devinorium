@@ -23,8 +23,8 @@ use super::{
 };
 use agent_client_protocol::{
     schema::v1::{
-        ContentBlock, EmbeddedResourceResource, ImageContent, InitializeRequest, LoadSessionRequest,
-        LoadSessionResponse, NewSessionRequest, NewSessionResponse,
+        ContentBlock, EmbeddedResourceResource, ImageContent, InitializeRequest,
+        LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
         PermissionOption as AcpPermissionOption, PromptRequest, RequestPermissionOutcome,
         RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
         SessionConfigId, SessionConfigKind, SessionConfigOption, SessionConfigOptionValue,
@@ -64,19 +64,16 @@ impl DevinAcpProvider {
 
         // Open an ACP connection and send Initialize, with a timeout so the
         // test button can’t hang if the binary is unresponsive.
-        let health = Client
-            .builder()
-            .name("devinorium")
-            .connect_with(
-                AcpAgent::from_args([&self.bin, "acp"])?,
-                async move |connection: ConnectionTo<Agent>| {
-                    let _ = connection
-                        .send_request(InitializeRequest::new(ProtocolVersion::V1))
-                        .block_task()
-                        .await?;
-                    Ok::<_, agent_client_protocol::Error>(())
-                },
-            );
+        let health = Client.builder().name("devinorium").connect_with(
+            AcpAgent::from_args([&self.bin, "acp"])?,
+            async move |connection: ConnectionTo<Agent>| {
+                let _ = connection
+                    .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+                Ok::<_, agent_client_protocol::Error>(())
+            },
+        );
 
         tokio::time::timeout(std::time::Duration::from_secs(15), health)
             .await
@@ -234,7 +231,10 @@ impl DevinAcpProvider {
         for (i, att) in attachments.iter().enumerate() {
             if att.mime.starts_with("image/") && !att.mime.ends_with("svg+xml") {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&att.data);
-                blocks.push(ContentBlock::Image(ImageContent::new(b64, att.mime.clone())));
+                blocks.push(ContentBlock::Image(ImageContent::new(
+                    b64,
+                    att.mime.clone(),
+                )));
             } else {
                 let name = format!("{}_{}", i, sanitize(&att.filename));
                 let path = att_dir.join(&name);
@@ -333,11 +333,9 @@ async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<Pa
         }
     }
 
-    let fallback = std::env::temp_dir().join("devinorium-attachments").join(format!(
-        "{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
+    let fallback = std::env::temp_dir()
+        .join("devinorium-attachments")
+        .join(format!("{}-{}", std::process::id(), uuid::Uuid::new_v4()));
     tokio::fs::create_dir_all(&fallback).await?;
     Ok(fallback)
 }
@@ -389,6 +387,65 @@ async fn apply_session_config(
             .await
         {
             tracing::warn!(session_id = %session_id, error = %e, "failed to set devin acp model");
+        }
+    }
+
+    if let Some(interaction_opt) = config_options
+        .iter()
+        .find(|o| o.id.0.as_ref() == "interaction_mode")
+    {
+        let choices = select_values(interaction_opt);
+        let requested = options.interaction_mode.trim();
+        let mut value = if choices.iter().any(|v| v == requested) {
+            requested.to_string()
+        } else if requested == "code" {
+            // Providers expose the default builder mode under different names.
+            if let Some(v) = choices.iter().find(|v| *v == "default" || *v == "build") {
+                tracing::info!(
+                    session_id = %session_id,
+                    requested = %requested,
+                    value = %v,
+                    "mapping code interaction mode to provider value"
+                );
+                v.clone()
+            } else {
+                requested.to_string()
+            }
+        } else {
+            requested.to_string()
+        };
+
+        if !choices.iter().any(|v| v.as_str() == value) {
+            if let Some(first) = choices.first() {
+                tracing::warn!(
+                    session_id = %session_id,
+                    requested = %requested,
+                    value = %first,
+                    "interaction mode not in ACP choices, using fallback"
+                );
+                value = first.clone();
+            } else {
+                tracing::warn!(
+                    session_id = %session_id,
+                    requested = %requested,
+                    "ACP agent has no interaction mode choices, skipping"
+                );
+            }
+        }
+
+        if choices.iter().any(|v| v.as_str() == value) {
+            tracing::info!(session_id = %session_id, value = %value, "setting devin acp interaction mode");
+            if let Err(e) = connection
+                .send_request(SetSessionConfigOptionRequest::new(
+                    session_id.clone(),
+                    SessionConfigId::new("interaction_mode"),
+                    SessionConfigOptionValue::value_id(value),
+                ))
+                .block_task()
+                .await
+            {
+                tracing::warn!(session_id = %session_id, error = %e, "failed to set devin acp interaction mode");
+            }
         }
     }
 
@@ -590,7 +647,10 @@ fn apply_notification(
         }
         SessionUpdate::ToolCallUpdate(update) => {
             let update_id = update.tool_call_id.to_string();
-            if let Some(idx) = parts.iter().position(|p| p.tool_id() == Some(update_id.as_str())) {
+            if let Some(idx) = parts
+                .iter()
+                .position(|p| p.tool_id() == Some(update_id.as_str()))
+            {
                 let existing = match &parts[idx] {
                     MessagePart::ToolCall { payload } => payload.clone(),
                     _ => return None,
@@ -689,7 +749,9 @@ fn merge_tool_call_update(
         .filter(|s| !s.is_empty());
 
     let mut output = None;
-    let mut changed_files = existing.map(|e| e.changed_files.clone()).unwrap_or_default();
+    let mut changed_files = existing
+        .map(|e| e.changed_files.clone())
+        .unwrap_or_default();
 
     if let Some(content) = update.fields.content.as_deref() {
         let (text, changed) = tool_call_output_from_content(content);
@@ -705,7 +767,9 @@ fn merge_tool_call_update(
     }
 
     if output.is_none() {
-        output = existing.and_then(|e| e.output.clone()).filter(|s| !s.is_empty());
+        output = existing
+            .and_then(|e| e.output.clone())
+            .filter(|s| !s.is_empty());
     }
 
     if let Some(locations) = update.fields.locations.as_deref() {
@@ -1017,14 +1081,12 @@ mod tests {
         use agent_client_protocol::schema::v1::{SessionUpdate, ToolCallUpdateFields};
         SessionNotification::new(
             "session",
-            SessionUpdate::ToolCallUpdate(
-                agent_client_protocol::schema::v1::ToolCallUpdate::new(
-                    id.to_string(),
-                    ToolCallUpdateFields::new()
-                        .status(status)
-                        .raw_output(serde_json::Value::String(output.into())),
-                ),
-            ),
+            SessionUpdate::ToolCallUpdate(agent_client_protocol::schema::v1::ToolCallUpdate::new(
+                id.to_string(),
+                ToolCallUpdateFields::new()
+                    .status(status)
+                    .raw_output(serde_json::Value::String(output.into())),
+            )),
         )
     }
 
@@ -1048,7 +1110,10 @@ mod tests {
     #[test]
     fn tool_call_update_before_initial_call_does_not_duplicate() {
         let mut parts = Vec::new();
-        apply_notification(&tool_update("tc-1", ToolCallStatus::Completed, "ok"), &mut parts);
+        apply_notification(
+            &tool_update("tc-1", ToolCallStatus::Completed, "ok"),
+            &mut parts,
+        );
         apply_notification(&tool_call("tc-1", "Read main.rs"), &mut parts);
 
         assert_eq!(parts.len(), 1);
@@ -1063,7 +1128,10 @@ mod tests {
         let mut parts = Vec::new();
         apply_notification(&tool_call("tc-1", "Read main.rs"), &mut parts);
         apply_notification(&note("found it"), &mut parts);
-        apply_notification(&tool_update("tc-1", ToolCallStatus::Completed, "ok"), &mut parts);
+        apply_notification(
+            &tool_update("tc-1", ToolCallStatus::Completed, "ok"),
+            &mut parts,
+        );
 
         assert_eq!(parts.len(), 2);
         let first = &parts[0];
@@ -1108,7 +1176,10 @@ mod tests {
         let ContentBlock::Image(img) = &blocks[0] else {
             panic!("expected image block, got {:?}", blocks[0]);
         };
-        assert_eq!(img.data, base64::engine::general_purpose::STANDARD.encode(&png));
+        assert_eq!(
+            img.data,
+            base64::engine::general_purpose::STANDARD.encode(&png)
+        );
         assert_eq!(img.mime_type, "image/png");
     }
 

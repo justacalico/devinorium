@@ -6,7 +6,8 @@ import 'package:http/http.dart' as http;
 import '../l10n/global_l10n.dart';
 import '../models/models.dart';
 import 'api_types.dart';
-import 'client_factory_stub.dart' if (dart.library.js_interop) 'client_factory_web.dart';
+import 'client_factory_stub.dart'
+    if (dart.library.js_interop) 'client_factory_web.dart';
 import 'sse_fetcher.dart';
 
 export 'api_types.dart';
@@ -30,12 +31,11 @@ abstract class BaseApiClient {
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
+    String? mode,
     List<({String filename, String mime, Uint8List bytes})> attachments,
   });
 
-  Stream<SseEvent> getStream({
-    required String path,
-  });
+  Stream<SseEvent> getStream({required String path});
 
   /// Whether the client has enough configuration to make requests.
   Future<bool> get isConfigured;
@@ -79,7 +79,8 @@ class ApiClient implements BaseApiClient {
 
   /// Create a client backed by an arbitrary [http.Client]. Used in tests
   /// with a fake client so network calls can be mocked.
-  factory ApiClient.withClient(http.Client client) => ApiClient._internal(client);
+  factory ApiClient.withClient(http.Client client) =>
+      ApiClient._internal(client);
 
   final http.Client _client;
 
@@ -155,7 +156,10 @@ class ApiClient implements BaseApiClient {
       if (text.isNotEmpty) {
         throw ApiException(text, resp.statusCode);
       }
-      throw ApiException(appL10n.httpErrorStatus(resp.statusCode), resp.statusCode);
+      throw ApiException(
+        appL10n.httpErrorStatus(resp.statusCode),
+        resp.statusCode,
+      );
     }
     if (text.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(text);
@@ -175,7 +179,9 @@ class ApiClient implements BaseApiClient {
       throw ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (resp.body.isNotEmpty ? resp.body : appL10n.httpErrorStatus(resp.statusCode)),
+            : (resp.body.isNotEmpty
+                  ? resp.body
+                  : appL10n.httpErrorStatus(resp.statusCode)),
         resp.statusCode,
       );
     }
@@ -197,12 +203,14 @@ class ApiClient implements BaseApiClient {
     req.headers.addAll({'Accept': 'application/json'});
     req.fields.addAll(fields);
     for (final f in files) {
-      req.files.add(http.MultipartFile.fromBytes(
-        'file',
-        f.bytes,
-        filename: f.filename,
-        contentType: http.MediaType.parse(f.mime),
-      ));
+      req.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          f.bytes,
+          filename: f.filename,
+          contentType: http.MediaType.parse(f.mime),
+        ),
+      );
     }
     final streamed = await _client.send(req);
     final resp = await http.Response.fromStream(streamed);
@@ -213,26 +221,23 @@ class ApiClient implements BaseApiClient {
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
+    String? mode,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
+    final fields = <String, String>{'prompt': prompt};
+    if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
     return fetchSseStream(
       client: _client,
       path: path,
       method: 'POST',
-      fields: {'prompt': prompt},
+      fields: fields,
       attachments: attachments,
     );
   }
 
   @override
-  Stream<SseEvent> getStream({
-    required String path,
-  }) {
-    return fetchSseStream(
-      client: _client,
-      path: path,
-      method: 'GET',
-    );
+  Stream<SseEvent> getStream({required String path}) {
+    return fetchSseStream(client: _client, path: path, method: 'GET');
   }
 }

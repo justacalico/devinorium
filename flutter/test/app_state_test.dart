@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:flutter/material.dart' show Locale, ThemeMode;
@@ -13,19 +14,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 http.Response _json(int status, Object body) => http.Response(
-      jsonEncode(body),
-      status,
-      headers: {'content-type': 'application/json'},
-    );
+  jsonEncode(body),
+  status,
+  headers: {'content-type': 'application/json'},
+);
 
 ApiClient _clientFor(List<http.Response> responses) {
   var index = 0;
-  return ApiClient.withClient(MockClient((req) async {
-    if (index >= responses.length) {
-      return _json(404, {'error': 'unexpected request to ${req.url.path}'});
-    }
-    return responses[index++];
-  }));
+  return ApiClient.withClient(
+    MockClient((req) async {
+      if (index >= responses.length) {
+        return _json(404, {'error': 'unexpected request to ${req.url.path}'});
+      }
+      return responses[index++];
+    }),
+  );
 }
 
 /// [ApiService] whose streaming and run endpoints can be replaced by test fakes.
@@ -40,7 +43,9 @@ class _StreamableApiService extends ApiService {
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,
-    List<({String filename, String mime, Uint8List bytes})> attachments = const [],
+    String? mode,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
   }) {
     return streamBuilder?.call() ?? Stream.empty();
   }
@@ -60,7 +65,11 @@ void main() {
   group('Basic state mutations', () {
     test('attachments can be added and removed', () {
       final state = AppState.test();
-      final file = (filename: 'a.txt', mime: 'text/plain', bytes: Uint8List.fromList([1]));
+      final file = (
+        filename: 'a.txt',
+        mime: 'text/plain',
+        bytes: Uint8List.fromList([1]),
+      );
       state.addAttachments([file]);
       expect(state.attachments, hasLength(1));
       state.removeAttachment(0);
@@ -78,6 +87,27 @@ void main() {
       expect(state.selectedModel, 'glm-5-2');
       state.setSelectedPermission('accept-edits');
       expect(state.selectedPermission, 'accept-edits');
+      expect(state.composerMode, ComposerMode.code);
+      state.setComposerMode(ComposerMode.plan);
+      expect(state.composerMode, ComposerMode.plan);
+    });
+
+    test('composer mode is persisted', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test();
+      state.setComposerMode(ComposerMode.ask);
+      await Future.delayed(Duration.zero);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_composer_mode'), 'ask');
+    });
+
+    test('composer mode is loaded from shared preferences', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_composer_mode': 'plan',
+      });
+      final state = AppState.test();
+      await state.bootstrap();
+      expect(state.composerMode, ComposerMode.plan);
     });
 
     test('menu and dialog toggles', () {
@@ -117,30 +147,46 @@ void main() {
   group('Auth flow', () {
     test('bootstrap sets user and loads projects', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {
-            'id': 1,
-            'username': 'owner',
-            'role': 'user',
-            'is_owner': true,
-            'totp_enabled': false,
-            'provider_id': 'devin-cli',
-            'provider_command': 'devin',
-          }),
-          _json(200, [
-            {'id': 'glm-5-2', 'label': 'GLM'},
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+            _json(200, [
+              {'id': 'glm-5-2', 'label': 'GLM'},
+            ]),
+            _json(200, [
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, [
+              {
+                'id': 'a',
+                'title': 't',
+                'project_id': 1,
+                'model': '',
+                'permission_mode': 'normal',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
           ]),
-          _json(200, [
-            {'id': 'devin-cli', 'name': 'Devin CLI'},
-          ]),
-          _json(200, [
-            {'id': 1, 'name': 'p', 'path': '/x', 'created_at': '', 'updated_at': ''},
-          ]),
-          _json(200, [
-            {'id': 'a', 'title': 't', 'project_id': 1, 'model': '', 'permission_mode': 'normal', 'created_at': '', 'updated_at': ''},
-          ]),
-          _json(200, []),
-        ])),
+        ),
       );
 
       await state.bootstrap();
@@ -154,7 +200,9 @@ void main() {
 
     test('bootstrap falls back to login on error', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([http.Response('unauthorized', 401)])),
+        api: ApiService(
+          client: _clientFor([http.Response('unauthorized', 401)]),
+        ),
       );
       await state.bootstrap();
       expect(state.view, AppView.login);
@@ -162,29 +210,41 @@ void main() {
 
     test('doLogin navigates to app and loads data', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {'ok': true, 'totp_required': false, 'username': 'owner'}),
-          _json(200, {
-            'id': 1,
-            'username': 'owner',
-            'role': 'user',
-            'is_owner': true,
-            'totp_enabled': false,
-            'provider_id': 'devin-cli',
-            'provider_command': 'devin',
-          }),
-          _json(200, [
-            {'id': 'glm-5-2', 'label': 'GLM'},
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'ok': true,
+              'totp_required': false,
+              'username': 'owner',
+            }),
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+            _json(200, [
+              {'id': 'glm-5-2', 'label': 'GLM'},
+            ]),
+            _json(200, [
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
+            _json(200, []),
           ]),
-          _json(200, [
-            {'id': 'devin-cli', 'name': 'Devin CLI'},
-          ]),
-          _json(200, [
-            {'id': 1, 'name': 'p', 'path': '/x', 'created_at': '', 'updated_at': ''},
-          ]),
-          _json(200, []),
-          _json(200, []),
-        ])),
+        ),
       );
 
       await state.doLogin(username: 'owner', password: 'pw');
@@ -195,9 +255,15 @@ void main() {
 
     test('doLogin shows TOTP field when required', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {'ok': true, 'totp_required': true, 'username': 'owner'}),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'ok': true,
+              'totp_required': true,
+              'username': 'owner',
+            }),
+          ]),
+        ),
       );
       await state.doLogin(username: 'owner', password: 'pw');
       expect(state.showTotpField, isTrue);
@@ -207,9 +273,11 @@ void main() {
 
     test('doLogin sets error on failure', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(401, {'error': 'bad password'}),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(401, {'error': 'bad password'}),
+          ]),
+        ),
       );
       await state.doLogin(username: 'owner', password: 'pw');
       expect(state.view, AppView.login);
@@ -230,22 +298,33 @@ void main() {
       expect(state.projects, isEmpty);
       expect(state.settingsTopicIndex, 0);
     });
-
   });
 
   group('Projects and threads', () {
     test('selectProject sets active and loads threads', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, [
-            {'id': 'a', 'title': 't', 'project_id': 1, 'model': '', 'permission_mode': 'normal', 'created_at': '', 'updated_at': ''},
+        api: ApiService(
+          client: _clientFor([
+            _json(200, [
+              {
+                'id': 'a',
+                'title': 't',
+                'project_id': 1,
+                'model': '',
+                'permission_mode': 'normal',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
           ]),
-          _json(200, []),
-        ])),
+        ),
       );
       final base = AppState.test(
         api: state.api,
-        projects: [Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: '')],
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
       );
       base.setView(AppView.app);
       await base.selectProject(1);
@@ -256,15 +335,25 @@ void main() {
 
     test('createProject adds to list and selects it', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {'id': 2, 'name': 'p2', 'path': '/y', 'created_at': '', 'updated_at': ''}),
-          _json(200, []),
-          _json(200, []),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 2,
+              'name': 'p2',
+              'path': '/y',
+              'created_at': '',
+              'updated_at': '',
+            }),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
       );
       final base = AppState.test(
         api: state.api,
-        projects: [Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: '')],
+        projects: [
+          Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+        ],
       );
       base.setView(AppView.app);
       await base.createProject(name: 'p2', path: '/y');
@@ -274,11 +363,9 @@ void main() {
 
     test('deleteProject removes project and selects another', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, []),
-          _json(200, []),
-        ])),
+        api: ApiService(
+          client: _clientFor([_json(200, {}), _json(200, []), _json(200, [])]),
+        ),
       );
       final base = AppState.test(
         api: state.api,
@@ -297,9 +384,7 @@ void main() {
 
     test('reorderProjects reorders list and calls API', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-        ])),
+        api: ApiService(client: _clientFor([_json(200, {})])),
       );
       final base = AppState.test(
         api: state.api,
@@ -316,27 +401,31 @@ void main() {
 
     test('openThread loads detail and updates active project', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {
-            'thread': {
-              'id': 'a',
-              'title': 't',
-              'project_id': 1,
-              'model': 'glm-5-2',
-              'permission_mode': 'normal',
-              'created_at': '',
-              'updated_at': '',
-            },
-            'messages': [],
-          }),
-          _json(200, {'project_id': 1, 'path': '/x'}),
-          _json(200, []),
-          _json(200, []),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'thread': {
+                'id': 'a',
+                'title': 't',
+                'project_id': 1,
+                'model': 'glm-5-2',
+                'permission_mode': 'normal',
+                'created_at': '',
+                'updated_at': '',
+              },
+              'messages': [],
+            }),
+            _json(200, {'project_id': 1, 'path': '/x'}),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
       );
       final base = AppState.test(
         api: state.api,
-        projects: [Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: '')],
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
       );
       await base.openThread('a');
       expect(base.activeThreadId, 'a');
@@ -353,11 +442,9 @@ void main() {
 
     test('deleteThread clears active thread', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, []),
-          _json(200, []),
-        ])),
+        api: ApiService(
+          client: _clientFor([_json(200, {}), _json(200, []), _json(200, [])]),
+        ),
       );
       final base = AppState.test(api: state.api, activeThreadId: 'a');
       await base.deleteThread('a');
@@ -366,23 +453,25 @@ void main() {
 
     test('saveThreadSettings updates active thread detail', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, {
-            'thread': {
-              'id': 'a',
-              'title': 't',
-              'project_id': 1,
-              'model': 'glm-5-2',
-              'permission_mode': 'normal',
-              'created_at': '',
-              'updated_at': '',
-            },
-            'messages': [],
-          }),
-          _json(200, []),
-          _json(200, []),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {}),
+            _json(200, {
+              'thread': {
+                'id': 'a',
+                'title': 't',
+                'project_id': 1,
+                'model': 'glm-5-2',
+                'permission_mode': 'normal',
+                'created_at': '',
+                'updated_at': '',
+              },
+              'messages': [],
+            }),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
       );
       final base = AppState.test(api: state.api, activeThreadId: 'a');
       base.setSelectedModel('glm-5-2');
@@ -395,17 +484,19 @@ void main() {
   group('Provider settings', () {
     test('saveProvider updates user and clears global error', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {
-            'id': 1,
-            'username': 'owner',
-            'role': 'user',
-            'is_owner': true,
-            'totp_enabled': false,
-            'provider_id': 'devin-cli',
-            'provider_command': 'devin-cli',
-          }),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin-cli',
+            }),
+          ]),
+        ),
       );
       final base = AppState.test(
         api: state.api,
@@ -425,9 +516,11 @@ void main() {
 
     test('testProvider sets global error on failure', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(400, {'error': 'not found'}),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(400, {'error': 'not found'}),
+          ]),
+        ),
       );
       final base = AppState.test(
         api: state.api,
@@ -452,11 +545,13 @@ void main() {
   group('Files', () {
     test('openFilesPanel loads entries', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, [
-            {'name': 'a.txt', 'is_dir': false, 'size': 1},
+        api: ApiService(
+          client: _clientFor([
+            _json(200, [
+              {'name': 'a.txt', 'is_dir': false, 'size': 1},
+            ]),
           ]),
-        ])),
+        ),
       );
       final base = AppState.test(api: state.api, activeProjectId: 1);
       await base.openFilesPanel();
@@ -467,13 +562,19 @@ void main() {
 
     test('navigateFilesInto updates path and reloads', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, [
-            {'name': 'b.txt', 'is_dir': false, 'size': 2},
+        api: ApiService(
+          client: _clientFor([
+            _json(200, [
+              {'name': 'b.txt', 'is_dir': false, 'size': 2},
+            ]),
           ]),
-        ])),
+        ),
       );
-      final base = AppState.test(api: state.api, activeProjectId: 1, filesPath: []);
+      final base = AppState.test(
+        api: state.api,
+        activeProjectId: 1,
+        filesPath: [],
+      );
       await base.navigateFilesInto('dir');
       expect(base.filesPath, ['dir']);
       expect(base.filesEntries, hasLength(1));
@@ -481,10 +582,7 @@ void main() {
 
     test('mkdir creates directory and reloads', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, []),
-        ])),
+        api: ApiService(client: _clientFor([_json(200, {}), _json(200, [])])),
       );
       final base = AppState.test(api: state.api, activeProjectId: 1);
       await base.mkdir('newdir');
@@ -493,10 +591,7 @@ void main() {
 
     test('deleteFile removes and reloads', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, []),
-        ])),
+        api: ApiService(client: _clientFor([_json(200, {}), _json(200, [])])),
       );
       final base = AppState.test(api: state.api, activeProjectId: 1);
       await base.deleteFile('a.txt');
@@ -572,7 +667,9 @@ void main() {
 
       await state.sendMessage();
       controller.add(SseEvent('part', '{"type":"text","content":"world"}'));
-      controller.add(SseEvent('done', '{"role":"assistant","content":"hello world"}'));
+      controller.add(
+        SseEvent('done', '{"role":"assistant","content":"hello world"}'),
+      );
 
       await completer.future.timeout(Duration(seconds: 2));
       await controller.close();
@@ -786,7 +883,9 @@ void main() {
 
       await state.sendMessage();
       sendController.addError(ApiException('already running', 409));
-      eventsController.add(SseEvent('part', '{"type":"text","content":"world"}'));
+      eventsController.add(
+        SseEvent('part', '{"type":"text","content":"world"}'),
+      );
 
       await completer.future.timeout(Duration(seconds: 2));
       expect(state.sending, isTrue);
@@ -821,10 +920,7 @@ void main() {
       final controller = StreamController<SseEvent>();
       api.eventsBuilder = () => controller.stream;
 
-      final state = AppState.test(
-        api: api,
-        activeProjectId: 1,
-      );
+      final state = AppState.test(api: api, activeProjectId: 1);
       await state.openThread('a');
 
       expect(state.sending, isTrue);
@@ -859,7 +955,15 @@ void main() {
             'updated_at': '',
           },
           'messages': [
-            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
+            {
+              'id': 1,
+              'thread_id': 'a',
+              'role': 'user',
+              'content': 'hello',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
           ],
         }),
         _json(200, {'project_id': 1, 'path': '/'}),
@@ -876,17 +980,30 @@ void main() {
             'updated_at': '',
           },
           'messages': [
-            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
-            {'id': 2, 'thread_id': 'a', 'role': 'assistant', 'content': 'done', 'thinking': null, 'attachments': [], 'created_at': ''},
+            {
+              'id': 1,
+              'thread_id': 'a',
+              'role': 'user',
+              'content': 'hello',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
+            {
+              'id': 2,
+              'thread_id': 'a',
+              'role': 'assistant',
+              'content': 'done',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
           ],
         }),
       ]);
       final api = _StreamableApiService(client);
       api.runResponse = {'status': 'completed'};
-      final state = AppState.test(
-        api: api,
-        activeProjectId: 1,
-      );
+      final state = AppState.test(api: api, activeProjectId: 1);
       await state.openThread('a');
 
       expect(state.sending, isFalse);
@@ -907,7 +1024,15 @@ void main() {
             'updated_at': '',
           },
           'messages': [
-            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
+            {
+              'id': 1,
+              'thread_id': 'a',
+              'role': 'user',
+              'content': 'hello',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
           ],
         }),
         _json(200, {'project_id': 1, 'path': '/'}),
@@ -924,17 +1049,30 @@ void main() {
             'updated_at': '',
           },
           'messages': [
-            {'id': 1, 'thread_id': 'a', 'role': 'user', 'content': 'hello', 'thinking': null, 'attachments': [], 'created_at': ''},
-            {'id': 2, 'thread_id': 'a', 'role': 'assistant', 'content': 'persisted', 'thinking': null, 'attachments': [], 'created_at': ''},
+            {
+              'id': 1,
+              'thread_id': 'a',
+              'role': 'user',
+              'content': 'hello',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
+            {
+              'id': 2,
+              'thread_id': 'a',
+              'role': 'assistant',
+              'content': 'persisted',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
           ],
         }),
       ]);
       final api = _StreamableApiService(client);
       api.runResponse = {'status': 'idle'};
-      final state = AppState.test(
-        api: api,
-        activeProjectId: 1,
-      );
+      final state = AppState.test(api: api, activeProjectId: 1);
       await state.openThread('a');
 
       expect(state.sending, isFalse);
@@ -996,7 +1134,9 @@ void main() {
 
       await state.sendMessage();
       expect(state.composerText, 'hello');
-      controller.add(SseEvent('user_message', '{"role":"user","content":"hello"}'));
+      controller.add(
+        SseEvent('user_message', '{"role":"user","content":"hello"}'),
+      );
       await completer.future.timeout(Duration(seconds: 2));
       expect(state.composerText, '');
 
@@ -1007,9 +1147,11 @@ void main() {
   group('TOTP, dialog and accounts', () {
     test('openTotpSetup sets secret and dialog', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {'secret': 's', 'otpauth_uri': 'otpauth://x'}),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'secret': 's', 'otpauth_uri': 'otpauth://x'}),
+          ]),
+        ),
       );
       await state.openTotpSetup();
       expect(state.totpSecret, 's');
@@ -1018,18 +1160,20 @@ void main() {
 
     test('verifyTotp closes dialog and refreshes user', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, {
-            'id': 1,
-            'username': 'owner',
-            'role': 'user',
-            'is_owner': true,
-            'totp_enabled': true,
-            'provider_id': 'devin-cli',
-            'provider_command': 'devin',
-          }),
-        ])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {}),
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': true,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+          ]),
+        ),
       );
       final base = AppState.test(api: state.api, dialog: DialogKind.totpSetup);
       await base.verifyTotp('123456');
@@ -1065,19 +1209,21 @@ void main() {
 
     test('loadUsers populates users list', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, [
-            {
-              'id': 1,
-              'username': 'owner',
-              'role': 'user',
-              'is_owner': true,
-              'disabled': false,
-              'totp_enabled': false,
-              'created_at': '',
-            },
+        api: ApiService(
+          client: _clientFor([
+            _json(200, [
+              {
+                'id': 1,
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'disabled': false,
+                'totp_enabled': false,
+                'created_at': '',
+              },
+            ]),
           ]),
-        ])),
+        ),
       );
       await state.loadUsers();
       expect(state.users, hasLength(1));
@@ -1087,29 +1233,31 @@ void main() {
 
     test('createUser reloads users', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {'ok': true, 'id': 2, 'username': 'alice'}),
-          _json(200, [
-            {
-              'id': 1,
-              'username': 'owner',
-              'role': 'user',
-              'is_owner': true,
-              'disabled': false,
-              'totp_enabled': false,
-              'created_at': '',
-            },
-            {
-              'id': 2,
-              'username': 'alice',
-              'role': 'user',
-              'is_owner': false,
-              'disabled': false,
-              'totp_enabled': false,
-              'created_at': '',
-            },
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'ok': true, 'id': 2, 'username': 'alice'}),
+            _json(200, [
+              {
+                'id': 1,
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'disabled': false,
+                'totp_enabled': false,
+                'created_at': '',
+              },
+              {
+                'id': 2,
+                'username': 'alice',
+                'role': 'user',
+                'is_owner': false,
+                'disabled': false,
+                'totp_enabled': false,
+                'created_at': '',
+              },
+            ]),
           ]),
-        ])),
+        ),
       );
       await state.createUser(username: 'alice', password: 'pw');
       expect(state.users, hasLength(2));
@@ -1170,7 +1318,9 @@ void main() {
       await state.setLanguage('en-GB');
       expect(state.locale, const Locale('en-GB'));
       expect(
-        (await SharedPreferences.getInstance()).getString('devinorium_language'),
+        (await SharedPreferences.getInstance()).getString(
+          'devinorium_language',
+        ),
         'en-GB',
       );
 
