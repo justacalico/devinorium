@@ -484,7 +484,7 @@ class _BranchList extends StatelessWidget {
                 : (b.isRemote ? Icons.cloud : Icons.call_split),
             color: isCurrent ? Theme.of(context).colorScheme.primary : null,
           ),
-          title: Text(b.name),
+          title: Text(b.name, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: b.isRemote
               ? const Text('remote')
               : (b.ahead > 0 || b.behind > 0)
