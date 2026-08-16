@@ -277,10 +277,6 @@ class _MessageItemState extends State<_MessageItem> {
         (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
       );
 
-  bool get _hasThinkingOrTools => widget.message.allParts.any(
-        (p) => p.type == 'thinking' || p.type == 'tool_call',
-      );
-
   @override
   void initState() {
     super.initState();
@@ -304,43 +300,36 @@ class _MessageItemState extends State<_MessageItem> {
   }
 
   List<_PartGroup> _buildGroups(List<MessagePart> parts) {
-    final groups = <_PartGroup>[];
     var thinkingBuffer = '';
-    var thinkingInsertIndex = -1;
+    final toolCalls = <ToolCallData>[];
+    final groups = <_PartGroup>[];
 
     for (final part in parts) {
-      if (part.type == 'thinking') {
-        thinkingBuffer += part.content ?? '';
-        if (thinkingInsertIndex < 0) {
-          thinkingInsertIndex = groups.length;
-        }
-        continue;
-      }
-
-      if (part.type == 'tool_call') {
-        final tool = part.toolCall;
-        if (tool != null) {
-          if (groups.isNotEmpty && groups.last.type == 'tool_call') {
-            groups.last.tools.add(tool);
+      switch (part.type) {
+        case 'thinking':
+          thinkingBuffer += part.content ?? '';
+        case 'tool_call':
+          final tool = part.toolCall;
+          if (tool != null) toolCalls.add(tool);
+        case 'text':
+          final text = part.content ?? '';
+          if (groups.isNotEmpty && groups.last.type == 'text') {
+            final merged = groups.last.content ?? '';
+            groups.last = _PartGroup(type: 'text', content: merged + text);
           } else {
-            groups.add(_PartGroup(type: 'tool_call', tools: [tool]));
+            groups.add(_PartGroup(type: 'text', content: text));
           }
-        }
-      } else {
-        final text = part.content ?? '';
-        if (groups.isNotEmpty && groups.last.type == 'text') {
-          final merged = groups.last.content ?? '';
-          groups.last = _PartGroup(type: 'text', content: merged + text);
-        } else {
-          groups.add(_PartGroup(type: 'text', content: text));
-        }
       }
     }
 
-    if (thinkingBuffer.isNotEmpty) {
+    if (thinkingBuffer.isNotEmpty || toolCalls.isNotEmpty) {
       groups.insert(
-        thinkingInsertIndex.clamp(0, groups.length),
-        _PartGroup(type: 'thinking', content: thinkingBuffer),
+        0,
+        _PartGroup(
+          type: 'thinking',
+          content: thinkingBuffer,
+          tools: toolCalls,
+        ),
       );
     }
 
@@ -386,25 +375,19 @@ class _MessageItemState extends State<_MessageItem> {
 
   Widget _buildPartWidgets(BuildContext context, List<_PartGroup> groups) {
     final children = <Widget>[];
-    var thinkingIndex = 0;
     for (final group in groups) {
       switch (group.type) {
         case 'text':
           children.add(_buildTextContent(
               context, group.content ?? '', widget.message.role));
         case 'thinking':
-          final isFirst = thinkingIndex == 0;
           children.add(_ThinkingBlock(
             content: group.content ?? '',
-            working: isFirst && _working,
+            toolCalls: group.tools,
+            working: _working,
             expanded: _expanded,
             onToggle: () => setState(() => _expanded = !_expanded),
           ));
-          thinkingIndex++;
-        case 'tool_call':
-          for (final t in group.tools) {
-            children.add(_ToolCallItem(tool: t));
-          }
       }
     }
     return Column(
@@ -510,11 +493,13 @@ class _MessageItemState extends State<_MessageItem> {
 
 class _ThinkingBlock extends StatelessWidget {
   final String content;
+  final List<ToolCallData> toolCalls;
   final bool working;
   final bool expanded;
   final VoidCallback onToggle;
   const _ThinkingBlock({
     required this.content,
+    this.toolCalls = const [],
     required this.working,
     required this.expanded,
     required this.onToggle,
@@ -527,6 +512,43 @@ class _ThinkingBlock extends StatelessWidget {
     final label = working
         ? l.thinking
         : (expanded ? l.hideThinking : l.showThinking);
+
+    Widget expandedContent() {
+      final children = <Widget>[];
+      if (content.isNotEmpty) {
+        children.add(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.access_time,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SelectableText(
+                  content,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    height: 1.5,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      for (final t in toolCalls) {
+        children.add(_ToolCallItem(tool: t));
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -575,26 +597,7 @@ class _ThinkingBlock extends StatelessWidget {
                 ),
               ),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.access_time,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SelectableText(
-                    content,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      height: 1.5,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            child: expandedContent(),
           ),
           crossFadeState:
               expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,

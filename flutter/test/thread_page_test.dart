@@ -217,12 +217,71 @@ void main() {
     expect(find.text('hmm'), findsOneWidget);
 
     final markdown = find.byType(MarkdownBody);
-    expect(markdown, findsNWidgets(2));
-    final bodies = tester.widgetList<MarkdownBody>(markdown).toList();
-    expect(bodies[0].data, 'hello');
-    expect(bodies[1].data, ' done');
+    expect(markdown, findsOneWidget);
+    expect(tester.widget<MarkdownBody>(markdown).data, 'hello done');
 
     expect(find.text('Run cmd'), findsOneWidget);
+  });
+
+  testWidgets('tool calls render inside the expanded thinking block',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'hmm'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'Run cmd',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo hello',
+                ),
+              ),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-2',
+                  title: 'Run another',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo world',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('hmm'), findsOneWidget);
+    expect(find.text('Run cmd'), findsOneWidget);
+    expect(find.text('Run another'), findsOneWidget);
   });
 
   testWidgets('merges split thinking parts into a single block',
