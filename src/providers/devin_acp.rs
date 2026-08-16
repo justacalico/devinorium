@@ -28,8 +28,9 @@ use agent_client_protocol::{
         PermissionOption as AcpPermissionOption, PromptRequest, RequestPermissionOutcome,
         RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
         SessionConfigId, SessionConfigKind, SessionConfigOption, SessionConfigOptionValue,
-        SessionConfigSelectOptions, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-        TextContent, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolKind,
+        SessionConfigSelectOptions, SessionId, SessionModeId, SessionNotification,
+        SetSessionConfigOptionRequest, SetSessionModeRequest, TextContent, ToolCallContent,
+        ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolKind,
     },
     schema::ProtocolVersion,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -63,6 +64,22 @@ run tools, edit files, or execute commands until the user confirms.\n\n{prompt}"
 not use tools, edit files, or execute commands.\n\n{prompt}"
             ),
             _ => prompt,
+        }
+    }
+
+    /// Map the composer interaction mode to a Devin ACP session mode id.
+    /// `code` is sent as `default` to restore the normal builder mode.
+    fn devin_mode_id(mode: &str) -> Option<SessionModeId> {
+        let id = match mode.trim().to_lowercase().as_str() {
+            "ask" => "ask",
+            "plan" => "plan",
+            "code" => "default",
+            _ => "default",
+        };
+        if id.is_empty() {
+            None
+        } else {
+            Some(SessionModeId::new(id))
         }
     }
 
@@ -198,6 +215,23 @@ impl DevinAcpProvider {
                         config_options.as_deref(),
                     )
                     .await?;
+
+                    if let Some(mode_id) = Self::devin_mode_id(&options.interaction_mode) {
+                        if let Err(e) = connection
+                            .send_request(SetSessionModeRequest::new(
+                                SessionId::new(session_id.clone()),
+                                mode_id,
+                            ))
+                            .block_task()
+                            .await
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %e,
+                                "failed to set devin acp session mode"
+                            );
+                        }
+                    }
 
                     let prompt =
                         Self::apply_interaction_mode_prefix(prompt, &options.interaction_mode);
@@ -1300,6 +1334,14 @@ mod tests {
         let att_dir = root.path().join(".devinorium-attachments");
         let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
         assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn devin_mode_id_maps_interaction_modes() {
+        assert_eq!(DevinAcpProvider::devin_mode_id("plan").unwrap().0.as_ref(), "plan");
+        assert_eq!(DevinAcpProvider::devin_mode_id("ask").unwrap().0.as_ref(), "ask");
+        assert_eq!(DevinAcpProvider::devin_mode_id("code").unwrap().0.as_ref(), "default");
+        assert_eq!(DevinAcpProvider::devin_mode_id("unknown").unwrap().0.as_ref(), "default");
     }
 
     #[test]
