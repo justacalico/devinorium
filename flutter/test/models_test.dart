@@ -738,6 +738,44 @@ void main() {
     });
   });
 
+  group('PermissionRequest', () {
+    test('parses request with options', () {
+      final req = PermissionRequest.fromJson({
+        'request_id': 'r1',
+        'scope': 'Exec(curl)',
+        'title': 'Run curl?',
+        'input': 'curl https://x',
+        'options': [
+          {'id': 'allow-once', 'kind': 'AllowOnce', 'label': 'Allow'},
+          {'id': 'reject', 'kind': 'RejectOnce', 'label': 'Cancel'},
+        ],
+      });
+      expect(req.requestId, 'r1');
+      expect(req.scope, 'Exec(curl)');
+      expect(req.title, 'Run curl?');
+      expect(req.input, 'curl https://x');
+      expect(req.options, hasLength(2));
+      expect(req.options[0].id, 'allow-once');
+      expect(req.options[0].kind, 'AllowOnce');
+      expect(req.options[0].label, 'Allow');
+    });
+
+    test('defaults missing option label and input', () {
+      final req = PermissionRequest.fromJson({
+        'request_id': 'r1',
+        'scope': 'x',
+        'title': 'Run?',
+        'options': [
+          {'id': 'allow-always', 'kind': 'AllowAlways'},
+        ],
+      });
+      expect(req.options.first.id, 'allow-always');
+      expect(req.options.first.kind, 'AllowAlways');
+      expect(req.options.first.label, isNull);
+      expect(req.input, isNull);
+    });
+  });
+
   group('tryDecodeJson', () {
     test('decodes JSON object', () {
       final decoded = tryDecodeJson('{"ok": true}');
