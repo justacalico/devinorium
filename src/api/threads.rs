@@ -123,6 +123,8 @@ pub struct CreateThread {
     pub model: Option<String>,
     pub permission_mode: Option<String>,
     pub permissions: Option<String>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
 }
 
 async fn create(
@@ -186,6 +188,8 @@ async fn create(
         model,
         permission_mode,
         permissions: req.permissions,
+        branch: req.branch,
+        worktree_path: req.worktree_path,
     };
     match state.db.create_thread(new).await {
         Ok(t) => (StatusCode::CREATED, Json(ThreadOut::from(t))).into_response(),

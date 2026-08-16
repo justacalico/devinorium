@@ -8,6 +8,7 @@ pub mod assets;
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod git;
 pub mod providers;
 pub mod security;
 pub mod thread_runner;
@@ -36,6 +37,7 @@ pub struct AppState {
     pub provider: Arc<dyn providers::Provider>,
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
     pub thread_runner: crate::thread_runner::ThreadRunner,
+    pub git: Arc<crate::git::GitService>,
 }
 
 impl AppState {

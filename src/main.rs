@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use devinorium::{auth, config, db, providers, AppState};
+use devinorium::{auth, config, db, git, providers, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,6 +40,7 @@ async fn main() -> Result<()> {
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        git: Arc::new(git::GitService::new()),
     };
 
     let app = devinorium::build_app(state);
