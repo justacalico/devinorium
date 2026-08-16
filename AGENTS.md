@@ -1,10 +1,29 @@
 - Read README.md, AGENTS.md, and CLAUDE.md before proposing or making any changes.
 - Use subagents to review code harshly for bugs, issues, and correctness before any merge.
 - Do not create god files; keep modules focused and small.
-- Do not blindly merge. Verify behavior and run tests first.
+- Do not blindly merge. Verify behavior by running the full backend and frontend test suites locally. Do not finish until `cargo test` and `flutter test` both pass. Do not push commits or check GitLab pipeline status as a substitute for local verification.
 - Add new tests for everything new. Every piece of new code must be testable, both in Dart (Flutter) and Rust (backend).
 - Do a final harsh subagent review of all changes before finishing.
 - Do not squash merge requests. Use a regular merge commit so each conventional commit is preserved for the changelog and history.
+
+## Local verification
+
+Run the full test suites locally and confirm they are green before considering any task complete. Do not finish, open a merge request, or push commits just to trigger CI while tests are failing.
+
+Backend:
+
+```bash
+cargo test
+```
+
+Frontend (from the `flutter/` directory):
+
+```bash
+cd flutter
+flutter test
+```
+
+Do not rely on GitLab pipeline status or `git push` output instead of running these commands locally. Both suites must pass before finishing.
 
 ## Commit message format
 
