@@ -2057,3 +2057,45 @@ async fn git_connections_list_login_logout() {
     let gitlab = list.iter().find(|c| c["id"] == "gitlab").unwrap();
     assert!(!gitlab["authed"].as_bool().unwrap());
 }
+
+#[tokio::test]
+async fn git_connections_rejects_empty_token() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"token":"   "}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_connections_login_defaults_to_gitlab_com() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"token":"glpat-test"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["host"], "gitlab.com");
+    assert!(v["authed"].as_bool().unwrap());
+}

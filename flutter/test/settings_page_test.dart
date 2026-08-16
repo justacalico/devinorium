@@ -501,7 +501,7 @@ void main() {
     expect(find.text('Git'), findsOneWidget);
     expect(find.text('GitLab'), findsOneWidget);
     expect(find.text('GitHub'), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.text('Coming soon'), findsNWidgets(2));
     expect(find.text('Connect'), findsOneWidget);
   });
 }
