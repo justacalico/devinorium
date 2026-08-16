@@ -306,6 +306,9 @@ class _ProjectExpandableTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final repo = state.gitRepoInfo(project.id);
+    final isRepo = repo?.isRepo ?? false;
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
     final borderColor = isActive
@@ -360,6 +363,18 @@ class _ProjectExpandableTile extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (isRepo)
+                    Tooltip(
+                      message: repo!.branch.isNotEmpty ? repo.branch : l10n(context).gitBranches,
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.call_split, size: 16),
+                        label: Text(
+                          repo.branch.isNotEmpty ? repo.branch : l10n(context).gitBranches,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        onPressed: () => state.openGitBranchDialog(project.id),
+                      ),
+                    ),
                   if (onNewThread != null)
                     IconButton(
                       tooltip: l10n(context).newThreadIn(project.name),
@@ -480,7 +495,7 @@ class _ThreadTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium,
           ),
-          subtitle: null,
+          subtitle: _threadSubtitle(thread, theme),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -515,6 +530,22 @@ class _ThreadTile extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget? _threadSubtitle(Thread thread, ThemeData theme) {
+  final parts = <String>[];
+  if (thread.branch != null && thread.branch!.isNotEmpty) {
+    parts.add(thread.branch!);
+  }
+  if (thread.worktreePath != null && thread.worktreePath!.isNotEmpty) {
+    parts.add(thread.worktreePath!.split('/').last);
+  }
+  if (parts.isEmpty) return null;
+  return Text(
+    parts.join('  '),
+    style: theme.textTheme.labelSmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+  );
 }
 
 class _SectionHeader extends StatelessWidget {
