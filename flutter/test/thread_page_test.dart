@@ -3,6 +3,7 @@ import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/model_picker.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -162,5 +163,239 @@ void main() {
     await tester.tap(modelPicker);
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget);
+  });
+
+  testWidgets('renders thinking, text and tool call parts in order',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'hmm'),
+              MessagePart.text(content: 'hello'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'Run cmd',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo hello',
+                ),
+              ),
+              MessagePart.text(content: ' done'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('hmm'), findsOneWidget);
+
+    final markdown = find.byType(MarkdownBody);
+    expect(markdown, findsOneWidget);
+    expect(tester.widget<MarkdownBody>(markdown).data, 'hello done');
+
+    expect(find.text('Run cmd'), findsOneWidget);
+  });
+
+  testWidgets('tool calls render inside the expanded thinking block',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'hmm'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'Run cmd',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo hello',
+                ),
+              ),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-2',
+                  title: 'Run another',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo world',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('hmm'), findsOneWidget);
+    expect(find.text('Run cmd'), findsOneWidget);
+    expect(find.text('Run another'), findsOneWidget);
+  });
+
+  testWidgets('interleaves thinking text and tool calls in order',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'let me search'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'search',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo search',
+                ),
+              ),
+              MessagePart.thinking(content: 'ok let me read'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-2',
+                  title: 'read file',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo read',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('let me search'), findsOneWidget);
+    expect(find.text('ok let me read'), findsOneWidget);
+    expect(find.text('search'), findsOneWidget);
+    expect(find.text('read file'), findsOneWidget);
+  });
+
+  testWidgets('merges consecutive thinking parts before a tool call',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'hmm1'),
+              MessagePart.thinking(content: 'hmm2'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'search',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo search',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('hmm1hmm2'), findsOneWidget);
+    expect(find.text('search'), findsOneWidget);
   });
 }

@@ -45,6 +45,8 @@ class AppState extends ChangeNotifier {
     Locale? locale,
     int? settingsTopicIndex,
     bool sending = false,
+    List<MessagePart> streamingParts = const [],
+    bool streamingThinkingActive = false,
   })  : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
@@ -67,6 +69,9 @@ class AppState extends ChangeNotifier {
     _pendingPermissionRequest = pendingPermissionRequest;
     _filesPath = filesPath;
     _globalError = globalError ?? '';
+    _streamingParts.clear();
+    _streamingParts.addAll(streamingParts);
+    _streamingThinkingActive = streamingThinkingActive;
   }
 
   @override
@@ -106,10 +111,8 @@ class AppState extends ChangeNotifier {
   bool _sending = false;
   String _selectedModel = '';
   String _selectedPermission = 'normal';
-  String? _streamingText;
-  String? _streamingThinking;
+  final List<MessagePart> _streamingParts = [];
   bool _streamingThinkingActive = false;
-  final Map<String, ToolCallData> _streamingToolCalls = {};
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   String? _resumingThreadId;
@@ -167,10 +170,8 @@ class AppState extends ChangeNotifier {
       _attachments;
   String get selectedModel => _selectedModel;
   String get selectedPermission => _selectedPermission;
-  String? get streamingText => _streamingText;
-  String? get streamingThinking => _streamingThinking;
+  List<MessagePart> get streamingParts => _streamingParts;
   bool get streamingThinkingActive => _streamingThinkingActive;
-  Map<String, ToolCallData> get streamingToolCalls => _streamingToolCalls;
   PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
   String get globalError => _globalError;
   ThemeMode get themeMode => _themeMode;
@@ -537,8 +538,7 @@ class AppState extends ChangeNotifier {
     _loginError = '';
     _composerText = '';
     _attachments.clear();
-    _streamingText = null;
-    _streamingThinking = null;
+    _streamingParts.clear();
     _streamingThinkingActive = false;
     _sending = false;
     notifyListeners();
@@ -680,10 +680,8 @@ class AppState extends ChangeNotifier {
     _sendSubscription = null;
     _clearPermissionRequest();
     _sending = false;
-    _streamingText = null;
-    _streamingThinking = null;
+    _streamingParts.clear();
     _streamingThinkingActive = false;
-    _streamingToolCalls.clear();
     _attachments.clear();
     _composerText = '';
     _resumingThreadId = null;
@@ -829,28 +827,39 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
         break;
-      case 'thinking':
-        _streamingThinking = (_streamingThinking ?? '') + ev.data;
-        _streamingThinkingActive = true;
-        notifyListeners();
-        break;
-      case 'chunk':
-        _streamingText = (_streamingText ?? '') + ev.data;
-        _streamingThinkingActive = false;
-        notifyListeners();
-        break;
-      case 'tool_call':
+      case 'part':
         final decoded = tryDecodeJson(ev.data);
         if (decoded != null) {
-          final tc = ToolCallData.fromJson(decoded);
-          _streamingToolCalls[tc.id] = tc;
-          notifyListeners();
+          try {
+            _streamingParts.add(MessagePart.fromJson(decoded));
+            _updateStreamingThinkingActive();
+            notifyListeners();
+          } catch (e) {
+            // ignore malformed part
+          }
+        }
+        break;
+      case 'part_update':
+        final decoded = tryDecodeJson(ev.data);
+        if (decoded != null) {
+          try {
+            final part = MessagePart.fromJson(decoded);
+            final idx = _streamingParts.indexWhere((p) => p.id == part.id);
+            if (idx >= 0) {
+              _streamingParts[idx] = part;
+            } else {
+              _streamingParts.add(part);
+            }
+            _updateStreamingThinkingActive();
+            notifyListeners();
+          } catch (e) {
+            // ignore malformed part update
+          }
         }
         break;
       case 'done':
         final msg = parseSseMessage(ev.data);
-        _streamingText = null;
-        _streamingThinking = null;
+        _streamingParts.clear();
         _streamingThinkingActive = false;
         if (msg != null && _activeThreadDetail != null) {
           _activeThreadDetail = _activeThreadDetail!.copyWith(
@@ -864,10 +873,9 @@ class AppState extends ChangeNotifier {
         break;
       case 'error':
         _clearPermissionRequest();
-        _streamingText = null;
-        _streamingThinking = null;
+        _streamingParts.clear();
         _streamingThinkingActive = false;
-        _streamingToolCalls.clear();
+    
         _sending = false;
         _sendSubscription = null;
         _globalError = ev.data;
@@ -880,6 +888,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void _updateStreamingThinkingActive() {
+    _streamingThinkingActive = _streamingParts.isNotEmpty &&
+        _streamingParts.last.type == 'thinking';
+  }
+
   void _handleRunError(String tid, Object e) {
     _sendSubscription = null;
     _clearPermissionRequest();
@@ -890,10 +903,8 @@ class AppState extends ChangeNotifier {
       });
       return;
     }
-    _streamingText = null;
-    _streamingThinking = null;
+    _streamingParts.clear();
     _streamingThinkingActive = false;
-    _streamingToolCalls.clear();
     _sending = false;
     _globalError = '$e';
     notifyListeners();
@@ -908,10 +919,8 @@ class AppState extends ChangeNotifier {
     _clearPermissionRequest();
     if (_sending) {
       _sending = false;
-      _streamingText = null;
-      _streamingThinking = null;
+      _streamingParts.clear();
       _streamingThinkingActive = false;
-      _streamingToolCalls.clear();
       notifyListeners();
       api.getThread(tid).then((d) {
         _activeThreadDetail = d;
@@ -930,10 +939,8 @@ class AppState extends ChangeNotifier {
       final status = run['status'] as String? ?? 'idle';
       if (status == 'running') {
         _sending = true;
-        _streamingText = '';
-        _streamingThinking = null;
+        _streamingParts.clear();
         _streamingThinkingActive = false;
-        _streamingToolCalls.clear();
         clearAttachments();
         if (_resumingThreadId != id) _composerText = '';
         notifyListeners();
@@ -978,10 +985,8 @@ class AppState extends ChangeNotifier {
     _clearPermissionRequest();
 
     _sending = true;
-    _streamingText = '';
-    _streamingThinking = null;
+    _streamingParts.clear();
     _streamingThinkingActive = false;
-    _streamingToolCalls.clear();
     final attachments = List<({String filename, String mime, Uint8List bytes})>.from(_attachments);
     notifyListeners();
 

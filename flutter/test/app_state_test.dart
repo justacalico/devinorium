@@ -565,13 +565,13 @@ void main() {
       state.setComposerText('hello');
 
       state.addListener(() {
-        if (!state.sending && state.streamingText == null) {
+        if (!state.sending && state.streamingParts.isEmpty) {
           if (!completer.isCompleted) completer.complete();
         }
       });
 
       await state.sendMessage();
-      controller.add(SseEvent('chunk', 'world'));
+      controller.add(SseEvent('part', '{"type":"text","content":"world"}'));
       controller.add(SseEvent('done', '{"role":"assistant","content":"hello world"}'));
 
       await completer.future.timeout(Duration(seconds: 2));
@@ -777,18 +777,20 @@ void main() {
 
       final completer = Completer<void>();
       state.addListener(() {
-        if (state.sending && state.streamingText == 'world') {
+        if (state.sending &&
+            state.streamingParts.isNotEmpty &&
+            state.streamingParts.first.content == 'world') {
           if (!completer.isCompleted) completer.complete();
         }
       });
 
       await state.sendMessage();
       sendController.addError(ApiException('already running', 409));
-      eventsController.add(SseEvent('chunk', 'world'));
+      eventsController.add(SseEvent('part', '{"type":"text","content":"world"}'));
 
       await completer.future.timeout(Duration(seconds: 2));
       expect(state.sending, isTrue);
-      expect(state.streamingText, 'world');
+      expect(state.streamingParts.first.content, 'world');
       expect(state.composerText, 'hello');
 
       await sendController.close();

@@ -25,8 +25,8 @@ use uuid::Uuid;
 use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, NewMessage, NewThread, ThreadRow};
 use crate::providers::{
-    Attachment, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions,
-    StartRequest, StreamChunkCallback,
+    collect_text, collect_thinking, Attachment, MessagePart, PartCallback, PartEvent,
+    PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions, StartRequest,
 };
 use crate::thread_runner::{RunState, RunStatus};
 use crate::{AppState, PendingPermissionRequest};
@@ -91,6 +91,7 @@ pub struct MessageOut {
     pub role: String,
     pub content: String,
     pub thinking: Option<String>,
+    pub parts: Vec<MessagePart>,
     pub attachments: serde_json::Value,
     pub created_at: String,
 }
@@ -99,11 +100,26 @@ impl From<MessageRow> for MessageOut {
     fn from(m: MessageRow) -> Self {
         let attachments: serde_json::Value =
             serde_json::from_str(&m.attachments).unwrap_or(serde_json::json!([]));
+        let parts: Vec<MessagePart> = m
+            .parts
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_else(|| {
+                let mut ps = vec![MessagePart::text(m.content.as_str())];
+                if let Some(t) = m.thinking.as_deref().filter(|s| !s.is_empty()) {
+                    ps.push(MessagePart::thinking(t));
+                }
+                ps
+            });
+        let content = collect_text(&parts);
+        let thinking = collect_thinking(&parts);
+        let thinking = (!thinking.is_empty()).then_some(thinking);
         Self {
             id: m.id,
             role: m.role,
-            content: m.content,
-            thinking: m.thinking.filter(|s| !s.is_empty()),
+            content,
+            thinking,
+            parts,
             attachments,
             created_at: m.created_at,
         }
@@ -657,6 +673,8 @@ async fn run_thread(
     thread: ThreadRow,
     input: SendInput,
 ) -> anyhow::Result<()> {
+    let user_parts = serde_json::to_string(&[MessagePart::text(input.prompt.as_str())])
+        .unwrap_or_else(|_| "[]".into());
     let user_msg = state
         .db
         .add_message(NewMessage {
@@ -664,6 +682,7 @@ async fn run_thread(
             role: "user".into(),
             content: input.prompt.clone(),
             thinking: None,
+            parts: user_parts,
             attachments: serde_json::to_string(&input.att_meta).unwrap_or_else(|_| "[]".into()),
         })
         .await?;
@@ -673,23 +692,12 @@ async fn run_thread(
         &serde_json::to_string(&MessageOut::from(user_msg)).unwrap_or_else(|_| "{}".into()),
     );
 
-    let text_callback: StreamChunkCallback = Arc::new({
+    let part_callback: PartCallback = Arc::new({
         let run = run.clone();
-        move |chunk: String| {
-            run.emit("chunk", &chunk);
-        }
-    });
-    let thinking_callback: StreamChunkCallback = Arc::new({
-        let run = run.clone();
-        move |chunk: String| {
-            run.emit("thinking", &chunk);
-        }
-    });
-    let tool_callback: crate::providers::ToolCallCallback = Arc::new({
-        let run = run.clone();
-        move |ev| {
-            if let Ok(json) = serde_json::to_string(&ev) {
-                run.emit("tool_call", &json);
+        move |ev: PartEvent| {
+            let event = if ev.is_update() { "part_update" } else { "part" };
+            if let Ok(json) = serde_json::to_string(ev.part()) {
+                run.emit(event, &json);
             }
         }
     });
@@ -703,13 +711,11 @@ async fn run_thread(
         &input.prompt,
         input.attachments,
         Some(permission_callback),
-        Some(text_callback),
-        Some(thinking_callback),
-        Some(tool_callback),
+        Some(part_callback),
     )
     .await;
 
-    let (reply, thinking, new_session_id, new_title) = match provider_result {
+    let (new_session_id, new_title, parts) = match provider_result {
         Ok(t) => t,
         Err(e) => {
             let _ = state
@@ -719,6 +725,7 @@ async fn run_thread(
                     role: "error".into(),
                     content: format!("provider error: {e}"),
                     thinking: None,
+                    parts: "[]".into(),
                     attachments: "[]".into(),
                 })
                 .await;
@@ -731,8 +738,7 @@ async fn run_thread(
         &state,
         &thread.id,
         user.id,
-        &reply,
-        Some(&thinking),
+        &parts,
         new_session_id,
         new_title,
     )
@@ -818,7 +824,6 @@ async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Res
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn call_provider(
     state: &AppState,
     user: &crate::db::UserRow,
@@ -826,10 +831,8 @@ async fn call_provider(
     prompt: &str,
     attachments: Vec<Attachment>,
     permission_callback: Option<PermissionCallback>,
-    text_callback: Option<StreamChunkCallback>,
-    thinking_callback: Option<StreamChunkCallback>,
-    tool_callback: Option<crate::providers::ToolCallCallback>,
-) -> anyhow::Result<(String, String, Option<String>, Option<String>)> {
+    part_callback: Option<PartCallback>,
+) -> anyhow::Result<(Option<String>, Option<String>, Vec<MessagePart>)> {
     let provider = state.provider_for_user(user);
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
@@ -840,9 +843,7 @@ async fn call_provider(
         permissions: thread.permissions.clone(),
         attachments,
         permission_callback,
-        text_callback,
-        thinking_callback,
-        tool_callback,
+        part_callback,
     };
 
     if let Some(sid) = thread.devin_session_id.as_ref() {
@@ -853,7 +854,7 @@ async fn call_provider(
                 options,
             })
             .await
-            .map(|r| (r.reply, r.thinking, None, None))
+            .map(|r| (None, None, r.parts))
     } else {
         provider
             .start(StartRequest {
@@ -861,7 +862,7 @@ async fn call_provider(
                 options,
             })
             .await
-            .map(|r| (r.reply, r.thinking, Some(r.session_id), Some(r.title)))
+            .map(|r| (Some(r.session_id), Some(r.title), r.parts))
     }
 }
 
@@ -988,8 +989,7 @@ async fn persist_assistant_reply(
     state: &AppState,
     thread_id: &str,
     user_id: i64,
-    reply: &str,
-    thinking: Option<&str>,
+    parts: &[MessagePart],
     new_session_id: Option<String>,
     new_title: Option<String>,
 ) -> Result<MessageRow, Response> {
@@ -1002,14 +1002,18 @@ async fn persist_assistant_reply(
     }
     let _ = state.db.touch_thread(thread_id).await;
 
-    let thinking = thinking.filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let reply = collect_text(parts);
+    let thinking = collect_thinking(parts);
+    let thinking = (!thinking.is_empty()).then_some(thinking);
+    let parts_json = serde_json::to_string(parts).unwrap_or_else(|_| "[]".into());
     let assistant_msg = state
         .db
         .add_message(NewMessage {
             thread_id: thread_id.into(),
             role: "assistant".into(),
-            content: reply.into(),
+            content: reply,
             thinking,
+            parts: parts_json,
             attachments: "[]".into(),
         })
         .await
