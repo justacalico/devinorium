@@ -60,6 +60,8 @@ pub struct ThreadOut {
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -75,6 +77,8 @@ impl From<ThreadRow> for ThreadOut {
             model: t.model,
             permission_mode: t.permission_mode,
             permissions: t.permissions,
+            branch: t.branch,
+            worktree_path: t.worktree_path,
             created_at: t.created_at,
             updated_at: t.updated_at,
         }
@@ -237,6 +241,11 @@ pub struct UpdateThread {
     ///   - field string: set permissions
     #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub permissions: Option<Option<String>>,
+    /// Distinguish between absent and null for optional Git context.
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub branch: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub worktree_path: Option<Option<String>>,
 }
 
 /// Custom deserializer that maps `null` → `Some(None)` and a number → `Some(Some(n))`.
@@ -332,6 +341,23 @@ async fn rename(
             return crate::api::map_err_internal(e).into_response();
         }
     }
+
+    if req.branch.is_some() || req.worktree_path.is_some() {
+        let branch = req
+            .branch
+            .as_ref()
+            .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()))
+            .flatten();
+        let worktree_path = req
+            .worktree_path
+            .as_ref()
+            .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()))
+            .flatten();
+        if let Err(e) = state.db.update_thread_git(&id, user.id, branch, worktree_path).await {
+            return crate::api::map_err_internal(e).into_response();
+        }
+    }
+
     Json(serde_json::json!({"ok": true})).into_response()
 }
 

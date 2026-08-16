@@ -271,6 +271,8 @@ class Thread {
   final String model;
   final String permissionMode;
   final String? permissions;
+  final String? branch;
+  final String? worktreePath;
   final String createdAt;
   final String updatedAt;
 
@@ -283,6 +285,8 @@ class Thread {
     required this.model,
     required this.permissionMode,
     this.permissions,
+    this.branch,
+    this.worktreePath,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -296,6 +300,8 @@ class Thread {
         model: j['model'] as String? ?? '',
         permissionMode: j['permission_mode'] as String? ?? 'normal',
         permissions: j['permissions'] as String?,
+        branch: j['branch'] as String?,
+        worktreePath: j['worktree_path'] as String?,
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
       );
@@ -457,6 +463,108 @@ class PermissionRequest {
                 ?.map((o) => PermissionOption.fromJson(o as Map<String, dynamic>))
                 .toList() ??
             [],
+      );
+}
+
+class GitBranch {
+  final String name;
+  final String refname;
+  final bool isCurrent;
+  final bool isDefault;
+  final bool isRemote;
+  final int committerDate;
+  final String? symref;
+
+  GitBranch({
+    required this.name,
+    required this.refname,
+    this.isCurrent = false,
+    this.isDefault = false,
+    this.isRemote = false,
+    this.committerDate = 0,
+    this.symref,
+  });
+
+  factory GitBranch.fromJson(Map<String, dynamic> j) => GitBranch(
+        name: j['name'] as String,
+        refname: j['refname'] as String,
+        isCurrent: j['is_current'] as bool? ?? false,
+        isDefault: j['is_default'] as bool? ?? false,
+        isRemote: j['is_remote'] as bool? ?? false,
+        committerDate: (j['committer_date'] as num?)?.toInt() ?? 0,
+        symref: j['symref'] as String?,
+      );
+}
+
+class GitRepoInfo {
+  final bool isRepo;
+  final String branch;
+  final String worktreePath;
+  final String toplevel;
+  final String commonDir;
+
+  GitRepoInfo({
+    this.isRepo = false,
+    this.branch = '',
+    this.worktreePath = '',
+    this.toplevel = '',
+    this.commonDir = '',
+  });
+
+  factory GitRepoInfo.fromJson(Map<String, dynamic> j) => GitRepoInfo(
+        isRepo: j['is_repo'] as bool? ?? false,
+        branch: j['branch'] as String? ?? '',
+        worktreePath: j['worktree_path'] as String? ?? '',
+        toplevel: j['toplevel'] as String? ?? '',
+        commonDir: j['common_dir'] as String? ?? '',
+      );
+}
+
+class GitWorktree {
+  final String path;
+  final String head;
+  final String? branch;
+  final bool isMain;
+
+  GitWorktree({
+    required this.path,
+    required this.head,
+    this.branch,
+    this.isMain = false,
+  });
+
+  factory GitWorktree.fromJson(Map<String, dynamic> j) => GitWorktree(
+        path: j['path'] as String,
+        head: j['head'] as String,
+        branch: j['branch'] as String?,
+        isMain: j['is_main'] as bool? ?? false,
+      );
+}
+
+class GitStatus {
+  final int ahead;
+  final int behind;
+  final int dirtyFiles;
+  final int changedFiles;
+  final int insertions;
+  final int deletions;
+
+  GitStatus({
+    this.ahead = 0,
+    this.behind = 0,
+    this.dirtyFiles = 0,
+    this.changedFiles = 0,
+    this.insertions = 0,
+    this.deletions = 0,
+  });
+
+  factory GitStatus.fromJson(Map<String, dynamic> j) => GitStatus(
+        ahead: (j['ahead'] as num?)?.toInt() ?? 0,
+        behind: (j['behind'] as num?)?.toInt() ?? 0,
+        dirtyFiles: (j['dirty_files'] as num?)?.toInt() ?? 0,
+        changedFiles: (j['changed_files'] as num?)?.toInt() ?? 0,
+        insertions: (j['insertions'] as num?)?.toInt() ?? 0,
+        deletions: (j['deletions'] as num?)?.toInt() ?? 0,
       );
 }
 

@@ -20,6 +20,7 @@ abstract class BaseApiClient {
   Future<Map<String, dynamic>> post(String path, [Object? body]);
   Future<Map<String, dynamic>> patch(String path, [Object? body]);
   Future<Map<String, dynamic>> delete(String path);
+  Future<Map<String, dynamic>> deleteWithBody(String path, Object body);
   Future<List<Map<String, dynamic>>> getList(String path);
   Future<Map<String, dynamic>> uploadMultipart(
     String path,
@@ -123,6 +124,10 @@ class ApiClient implements BaseApiClient {
   @override
   Future<Map<String, dynamic>> delete(String path) async =>
       _json('DELETE', path, null);
+
+  @override
+  Future<Map<String, dynamic>> deleteWithBody(String path, Object body) async =>
+      _json('DELETE', path, body);
 
   Future<Map<String, dynamic>> _json(
     String method,
