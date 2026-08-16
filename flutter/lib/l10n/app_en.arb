@@ -402,5 +402,41 @@
   "worktreeName": "Worktree name",
   "baseBranch": "Base branch",
   "newBranchInWorktree": "Create new branch in worktree",
-  "worktrees": "Worktrees"
+  "worktrees": "Worktrees",
+  "git": "Git",
+  "gitConnections": "Connections",
+  "gitlab": "GitLab",
+  "github": "GitHub",
+  "comingSoon": "Coming soon",
+  "connect": "Connect",
+  "disconnect": "Disconnect",
+  "notConnected": "Not connected",
+  "connectedAs": "Connected as {account}",
+  "@connectedAs": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "token": "Token",
+  "hostname": "Hostname",
+  "gitlabComHint": "gitlab.com",
+  "gitlabConnectFailed": "GitLab connect failed: {error}",
+  "@gitlabConnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gitlabDisconnectFailed": "GitLab disconnect failed: {error}",
+  "@gitlabDisconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gitlabNotInstalled": "GitLab CLI (glab) is not installed"
 }

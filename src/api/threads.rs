@@ -1038,15 +1038,19 @@ async fn project_working_dir_for_thread(
     state: &AppState,
     thread: &ThreadRow,
 ) -> anyhow::Result<PathBuf> {
-    if let Some(wt) = &thread.worktree_path {
-        let path = PathBuf::from(wt);
-        if path.is_absolute() && path.exists() {
-            return Ok(path);
-        }
-    }
     if let Some(pid) = thread.project_id {
         if let Ok(Some(p)) = state.db.get_project(pid, thread.user_id).await {
-            return Ok(PathBuf::from(&p.path));
+            let project_path = tokio::fs::canonicalize(&p.path).await.unwrap_or_else(|_| PathBuf::from(&p.path));
+            if let Some(wt) = &thread.worktree_path {
+                let path = PathBuf::from(wt);
+                if path.is_absolute() {
+                    match tokio::fs::canonicalize(&path).await {
+                        Ok(canonical) if canonical.starts_with(&project_path) => return Ok(canonical),
+                        _ => {}
+                    }
+                }
+            }
+            return Ok(project_path);
         }
     }
     Ok(state.config.home_dir.clone())

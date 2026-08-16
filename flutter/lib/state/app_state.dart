@@ -31,6 +31,8 @@ class AppState extends ChangeNotifier {
     List<ThreadGroup> groups = const [],
     List<ModelInfo> models = const [],
     List<ProviderInfo> providers = const [],
+    List<GitConnection> gitConnections = const [],
+    bool loadingGitConnections = false,
     int? activeProjectId,
     String? activeProjectPath,
     String? activeThreadId,
@@ -48,6 +50,8 @@ class AppState extends ChangeNotifier {
     _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _sending = sending;
+    _gitConnections = gitConnections;
+    _loadingGitConnections = loadingGitConnections;
     _user = user;
     _users = users;
     _projects = projects;
@@ -177,6 +181,9 @@ class AppState extends ChangeNotifier {
   List<GitBranch> gitBranches(int projectId) => _gitBranches[projectId] ?? [];
   List<GitWorktree> gitWorktrees(int projectId) => _gitWorktrees[projectId] ?? [];
   int? get gitDialogProjectId => _gitDialogProjectId;
+
+  List<GitConnection> get gitConnections => _gitConnections;
+  bool get loadingGitConnections => _loadingGitConnections;
 
   // ---- Setters / mutations ----
 
@@ -1164,6 +1171,50 @@ class AppState extends ChangeNotifier {
         _activeThreadDetail = await api.getThread(threadId);
         notifyListeners();
       }
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  // ---- Git connections ----
+
+  Future<void> loadGitConnections() async {
+    _loadingGitConnections = true;
+    notifyListeners();
+    try {
+      _gitConnections = await api.listGitConnections();
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    } finally {
+      _loadingGitConnections = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> connectGitLab({
+    required String token,
+    String? hostname,
+  }) async {
+    try {
+      final updated = await api.connectGitLab(token: token, hostname: hostname);
+      _gitConnections = [
+        for (final c in _gitConnections)
+          if (c.id == updated.id) updated else c,
+      ];
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> disconnectGitLab({String? hostname}) async {
+    try {
+      await api.disconnectGitLab(hostname: hostname);
+      await loadGitConnections();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();

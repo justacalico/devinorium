@@ -578,7 +578,7 @@ class GitConnection {
   final String? host;
   final bool comingSoon;
 
-  GitConnection({
+  const GitConnection({
     required this.id,
     required this.name,
     this.enabled = false,

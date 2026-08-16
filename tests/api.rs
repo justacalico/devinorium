@@ -4,6 +4,7 @@
 
 #![cfg(test)]
 
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -1757,4 +1758,183 @@ async fn custom_provider_command_is_used() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}
+
+fn init_git_repo(path: &std::path::Path) {
+    std::fs::create_dir_all(path).unwrap();
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("init").current_dir(path);
+    assert!(cmd.output().unwrap().status.success());
+    let mut cfg = std::process::Command::new("git");
+    cfg.args(["config", "user.email", "test@example.com"])
+        .current_dir(path);
+    assert!(cfg.output().unwrap().status.success());
+    let mut cfg = std::process::Command::new("git");
+    cfg.args(["config", "user.name", "Test"]).current_dir(path);
+    assert!(cfg.output().unwrap().status.success());
+    std::fs::write(path.join("file.txt"), "hello").unwrap();
+    let mut add = std::process::Command::new("git");
+    add.args(["add", "file.txt"]).current_dir(path);
+    assert!(add.output().unwrap().status.success());
+    let mut commit = std::process::Command::new("git");
+    commit
+        .args(["commit", "-m", "initial"])
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .current_dir(path);
+    assert!(commit.output().unwrap().status.success());
+}
+
+async fn create_git_project(app: &Router, cookie: &str, path: &std::path::Path) -> i64 {
+    let body = format!(
+        r#"{{"name":"git-{}","path":"{}"}}"#,
+        Uuid::new_v4(),
+        path.display()
+    );
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_i64()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn git_status_for_non_git_project() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/projects/{pid}/git"), &cookie, ""))
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body = body_str(resp.into_body()).await;
+    if status != StatusCode::OK {
+        eprintln!("status: {status}, body: {body}");
+    }
+    assert_eq!(status, StatusCode::OK);
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["is_repo"], false);
+}
+
+#[tokio::test]
+async fn git_branches_and_checkout() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/projects/{pid}/git/branches"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let branches = v["branches"].as_array().unwrap();
+    let default = v["default"].as_str().unwrap();
+    assert!(!default.is_empty());
+    assert!(branches.iter().any(|b| b["name"] == default));
+
+    let body = r#"{"name":"new-feature","switch":true}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/branches"), &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body = format!(r#"{{"ref_name":"{default}"}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/checkout"), &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn git_worktree_create_delete() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let body = r#"{"name":"wt1","base":"HEAD","new_branch":true}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/worktrees"), &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let wt_path = v["path"].as_str().unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/projects/{pid}/git/worktrees"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = format!(r#"{{"worktree_path":"{wt_path}"}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("DELETE", &format!("/api/projects/{pid}/git/worktrees"), &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn git_rejects_path_traversal_worktree() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let body = r#"{"name":"../escape","base":"HEAD","new_branch":true}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/worktrees"), &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_create_with_git_context() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let body = format!(r#"{{"project_id":{pid},"title":"git-thread","branch":"main","worktree_path":""}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/threads", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["branch"], "main");
 }

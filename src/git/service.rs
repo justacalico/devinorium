@@ -266,8 +266,10 @@ impl GitService {
         }
 
         let worktree_path = path.join(name);
-        if tokio::fs::try_exists(&worktree_path).await.unwrap_or(false) {
-            return Err(GitError::Other("worktree path already exists".to_string()));
+        match tokio::fs::try_exists(&worktree_path).await {
+            Ok(true) => return Err(GitError::Other("worktree path already exists".to_string())),
+            Ok(false) => {}
+            Err(e) => return Err(GitError::Other(format!("filesystem error: {e}"))),
         }
 
         let mut cmd = self.git_cmd(path);
@@ -416,13 +418,26 @@ impl GitService {
             .await
             .unwrap_or_else(|_| path.to_path_buf());
 
-        let top_out = self
+        let top_out = match self
             .run_with(
                 &worktree_path,
                 &["rev-parse", "--show-toplevel"],
                 Duration::from_secs(5),
             )
-            .await?;
+            .await
+        {
+            Ok(s) => s,
+            Err(GitError::NotRepo) => {
+                return Ok(RepoStatus {
+                    is_repo: false,
+                    toplevel: worktree_path.clone(),
+                    common_dir: worktree_path.clone(),
+                    branch: String::new(),
+                    worktree_path,
+                });
+            }
+            Err(e) => return Err(e),
+        };
         let top = PathBuf::from(top_out.trim());
 
         let common_out = self
@@ -479,7 +494,7 @@ impl GitService {
             .await
             .ok()
             .and_then(|s| s.strip_prefix("refs/remotes/origin/").map(str::to_string))
-            .unwrap_or_default();
+            .unwrap_or_else(|| current.clone());
 
         let out = self
             .run_with(

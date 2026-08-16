@@ -673,4 +673,55 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get worktrees => 'Worktrees';
+
+  @override
+  String get git => 'Git';
+
+  @override
+  String get gitConnections => 'Connections';
+
+  @override
+  String get gitlab => 'GitLab';
+
+  @override
+  String get github => 'GitHub';
+
+  @override
+  String get comingSoon => 'Coming soon';
+
+  @override
+  String get connect => 'Connect';
+
+  @override
+  String get disconnect => 'Disconnect';
+
+  @override
+  String get notConnected => 'Not connected';
+
+  @override
+  String connectedAs(String account) {
+    return 'Connected as $account';
+  }
+
+  @override
+  String get token => 'Token';
+
+  @override
+  String get hostname => 'Hostname';
+
+  @override
+  String get gitlabComHint => 'gitlab.com';
+
+  @override
+  String gitlabConnectFailed(String error) {
+    return 'GitLab connect failed: $error';
+  }
+
+  @override
+  String gitlabDisconnectFailed(String error) {
+    return 'GitLab disconnect failed: $error';
+  }
+
+  @override
+  String get gitlabNotInstalled => 'GitLab CLI (glab) is not installed';
 }

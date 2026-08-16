@@ -1281,6 +1281,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Worktrees'**
   String get worktrees;
+
+  /// No description provided for @git.
+  ///
+  /// In en, this message translates to:
+  /// **'Git'**
+  String get git;
+
+  /// No description provided for @gitConnections.
+  ///
+  /// In en, this message translates to:
+  /// **'Connections'**
+  String get gitConnections;
+
+  /// No description provided for @gitlab.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab'**
+  String get gitlab;
+
+  /// No description provided for @github.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub'**
+  String get github;
+
+  /// No description provided for @comingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming soon'**
+  String get comingSoon;
+
+  /// No description provided for @connect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get connect;
+
+  /// No description provided for @disconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect'**
+  String get disconnect;
+
+  /// No description provided for @notConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected'**
+  String get notConnected;
+
+  /// No description provided for @connectedAs.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected as {account}'**
+  String connectedAs(String account);
+
+  /// No description provided for @token.
+  ///
+  /// In en, this message translates to:
+  /// **'Token'**
+  String get token;
+
+  /// No description provided for @hostname.
+  ///
+  /// In en, this message translates to:
+  /// **'Hostname'**
+  String get hostname;
+
+  /// No description provided for @gitlabComHint.
+  ///
+  /// In en, this message translates to:
+  /// **'gitlab.com'**
+  String get gitlabComHint;
+
+  /// No description provided for @gitlabConnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab connect failed: {error}'**
+  String gitlabConnectFailed(String error);
+
+  /// No description provided for @gitlabDisconnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab disconnect failed: {error}'**
+  String gitlabDisconnectFailed(String error);
+
+  /// No description provided for @gitlabNotInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab CLI (glab) is not installed'**
+  String get gitlabNotInstalled;
 }
 
 class _AppLocalizationsDelegate

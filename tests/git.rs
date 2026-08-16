@@ -2,12 +2,13 @@
 
 #![cfg(test)]
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
 use tempfile::TempDir;
 
-use devinorium::git::GitService;
+use devinorium::git::{GitRemoteService, GitService};
 
 fn git_cli(args: &[&str], cwd: &Path) {
     let out = Command::new("git")
@@ -48,8 +49,8 @@ async fn detects_git_repository() {
 async fn non_repo_returns_not_repo() {
     let tmp = TempDir::new().unwrap();
     let svc = GitService::new();
-    let err = svc.repo_status(tmp.path()).await.unwrap_err();
-    assert!(matches!(err, devinorium::git::GitError::NotRepo));
+    let status = svc.repo_status(tmp.path()).await.unwrap();
+    assert!(!status.is_repo);
 }
 
 #[tokio::test]
@@ -176,4 +177,85 @@ async fn worktree_create_and_remove() {
     svc.remove_worktree(tmp.path(), &wt.path).await.unwrap();
     let worktrees = svc.worktrees(tmp.path()).await.unwrap();
     assert!(!worktrees.iter().any(|w| w.path == wt.path));
+}
+
+fn write_fake_glab(dir: &Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "config" ] && [ "$2" = "set" ]; then
+  if [ "$3" = "token" ]; then
+    mkdir -p "$XDG_CONFIG_HOME"
+    printf '%s' "$4" > "$XDG_CONFIG_HOME/token"
+  fi
+  exit 0
+fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    echo "$host"
+    echo "  Logged in to $host as testuser"
+    exit 0
+  else
+    echo "$host"
+    echo "  ! No token found"
+    exit 1
+  fi
+fi
+if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
+  rm -f "$XDG_CONFIG_HOME/token"
+  echo "Successfully logged out"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_remote_connection_list_reflects_glab_status() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let list = svc.connections(1).await;
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0].id, "gitlab");
+    assert!(!list[0].authed);
+    assert_eq!(list[1].id, "github");
+    assert!(list[1].coming_soon);
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_login_and_logout() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let status = svc.login_gitlab(1, "glpat-test-token", None).await.unwrap();
+    assert!(status.authed);
+    assert_eq!(status.account.as_deref(), Some("testuser"));
+    assert_eq!(status.host, "gitlab.com");
+
+    let after_login = svc.connections(1).await;
+    assert!(after_login[0].authed);
+
+    svc.logout_gitlab(1, None).await.unwrap();
+
+    let after_logout = svc.connections(1).await;
+    assert!(!after_logout[0].authed);
 }
