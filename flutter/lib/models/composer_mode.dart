@@ -16,6 +16,12 @@ extension ComposerModeX on ComposerMode {
     ComposerMode.ask => 'Ask',
   };
 
+  ComposerMode get next => switch (this) {
+    ComposerMode.code => ComposerMode.ask,
+    ComposerMode.ask => ComposerMode.plan,
+    ComposerMode.plan => ComposerMode.code,
+  };
+
   static const _default = ComposerMode.code;
 
   static ComposerMode fromString(String? value) => switch (value) {

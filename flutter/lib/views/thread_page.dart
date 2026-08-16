@@ -803,6 +803,10 @@ class _ComposerState extends State<_Composer> {
     }
   }
 
+  void _cycleComposerMode(AppState state) {
+    state.setComposerMode(state.composerMode.next);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -888,6 +892,10 @@ class _ComposerState extends State<_Composer> {
                       bindings: <ShortcutActivator, VoidCallback>{
                         const SingleActivator(LogicalKeyboardKey.enter): () =>
                             _submit(state),
+                        const SingleActivator(
+                          LogicalKeyboardKey.tab,
+                          shift: true,
+                        ): () => _cycleComposerMode(state),
                       },
                       child: TextField(
                         controller: widget.controller,

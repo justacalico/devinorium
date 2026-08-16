@@ -838,4 +838,54 @@ void main() {
     expect(find.text('Ask'), findsNWidgets(2));
     expect(find.text('Code'), findsNothing);
   });
+
+  testWidgets('shift+tab in composer cycles composer modes', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final field = find.byType(TextField);
+    expect(field, findsOneWidget);
+    await tester.tap(field);
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.code);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.ask);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.plan);
+  });
 }
