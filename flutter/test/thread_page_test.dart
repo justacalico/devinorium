@@ -716,4 +716,63 @@ void main() {
     expect(state.sending, isFalse);
     expect(focusNodeAfter?.hasFocus, isTrue);
   });
+
+  testWidgets('messages use full width on wide screens', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1.0;
+
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: 'A' * 2000,
+            attachments: null,
+          ),
+          Message(
+            role: 'user',
+            content: 'B' * 2000,
+            attachments: null,
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final item = find.byType(ListView);
+    expect(item, findsOneWidget);
+
+    final firstMessage = find.ancestor(
+      of: find.byType(CircleAvatar).first,
+      matching: find.byType(Row),
+    );
+    expect(firstMessage, findsOneWidget);
+    final size = tester.getSize(firstMessage);
+    expect(size.width, closeTo(1920 - 48, 1));
+
+    expect(tester.takeException(), isNull);
+  });
 }
