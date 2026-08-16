@@ -154,12 +154,14 @@ class Message {
   final String content;
   final String? thinking;
   final List<Attachment>? attachments;
+  final List<MessagePart>? parts;
 
   Message({
     required this.role,
     required this.content,
     this.thinking,
     this.attachments,
+    this.parts,
   });
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
@@ -169,13 +171,30 @@ class Message {
         attachments: (j['attachments'] as List<dynamic>?)
             ?.map((a) => Attachment.fromJson(a as Map<String, dynamic>))
             .toList(),
+        parts: (j['parts'] as List<dynamic>?)
+            ?.map((p) => MessagePart.fromJson(p as Map<String, dynamic>))
+            .toList(),
       );
 
-  Message copyWith({String? content}) => Message(
+  List<MessagePart> get allParts {
+    if (parts != null && parts!.isNotEmpty) return parts!;
+    final list = <MessagePart>[MessagePart.text(content: content)];
+    if (thinking != null && thinking!.isNotEmpty) {
+      list.add(MessagePart.thinking(content: thinking!));
+    }
+    return list;
+  }
+
+  Message copyWith({
+    String? content,
+    List<MessagePart>? parts,
+  }) =>
+      Message(
         role: role,
         content: content ?? this.content,
         thinking: thinking,
         attachments: attachments,
+        parts: parts ?? this.parts,
       );
 }
 
@@ -233,6 +252,47 @@ class ToolCallData {
         outputPreview: outputPreview ?? this.outputPreview,
         changedFiles: changedFiles ?? this.changedFiles,
       );
+}
+
+class MessagePart {
+  final String type;
+  final String? id;
+  final String? content;
+  final ToolCallData? toolCall;
+
+  MessagePart._({
+    required this.type,
+    this.id,
+    this.content,
+    this.toolCall,
+  });
+
+  factory MessagePart.text({required String content}) =>
+      MessagePart._(type: 'text', content: content);
+
+  factory MessagePart.thinking({required String content}) =>
+      MessagePart._(type: 'thinking', content: content);
+
+  factory MessagePart.toolCall({required ToolCallData toolCall}) =>
+      MessagePart._(type: 'tool_call', id: toolCall.id, toolCall: toolCall);
+
+  factory MessagePart.fromJson(Map<String, dynamic> j) {
+    final type = j['type'] as String? ?? 'text';
+    switch (type) {
+      case 'text':
+        return MessagePart.text(content: j['content'] as String? ?? '');
+      case 'thinking':
+        return MessagePart.thinking(content: j['content'] as String? ?? '');
+      case 'tool_call':
+        return MessagePart.toolCall(toolCall: ToolCallData.fromJson(j));
+      default:
+        return MessagePart.text(content: j['content'] as String? ?? '');
+    }
+  }
+
+  @override
+  String toString() =>
+      'MessagePart(type: $type, id: $id, content: $content, toolCall: $toolCall)';
 }
 
 class Project {

@@ -127,6 +127,7 @@ pub struct MessageRow {
     pub role: String,
     pub content: String,
     pub thinking: Option<String>,
+    pub parts: Option<String>,
     pub attachments: String,
     pub created_at: String,
 }

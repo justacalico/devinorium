@@ -130,6 +130,53 @@ void main() {
       expect(updated.content, 'hello');
       expect(updated.role, 'user');
     });
+
+    test('allParts falls back to content and thinking', () {
+      final m = Message(
+        role: 'assistant',
+        content: 'hello',
+        thinking: 'hmm',
+      );
+      expect(m.allParts, hasLength(2));
+      expect(m.allParts.first.type, 'text');
+      expect(m.allParts.first.content, 'hello');
+      expect(m.allParts[1].type, 'thinking');
+      expect(m.allParts[1].content, 'hmm');
+    });
+
+    test('parses ordered parts', () {
+      final m = Message.fromJson({
+        'role': 'assistant',
+        'content': 'final',
+        'parts': [
+          {'type': 'thinking', 'content': 'hmm'},
+          {'type': 'text', 'content': 'hello'},
+          {
+            'type': 'tool_call',
+            'id': 'tc-1',
+            'title': 'Read file',
+            'kind': 'read',
+            'status': 'completed',
+          },
+        ],
+      });
+      expect(m.allParts, hasLength(3));
+      expect(m.allParts[0].type, 'thinking');
+      expect(m.allParts[1].type, 'text');
+      expect(m.allParts[2].type, 'tool_call');
+      expect(m.allParts[2].toolCall?.id, 'tc-1');
+    });
+
+    test('allParts uses parts field when present', () {
+      final m = Message.fromJson({
+        'role': 'assistant',
+        'content': 'legacy',
+        'parts': [
+          {'type': 'text', 'content': 'new'},
+        ],
+      });
+      expect(m.allParts.first.content, 'new');
+    });
   });
 
   group('ToolCallData', () {
@@ -170,6 +217,44 @@ void main() {
       expect(updated.status, 'done');
       expect(updated.output, 'ok');
       expect(updated.title, 'x');
+    });
+  });
+
+  group('MessagePart', () {
+    test('parses text and thinking', () {
+      final p = MessagePart.fromJson({'type': 'text', 'content': 'hello'});
+      expect(p.type, 'text');
+      expect(p.content, 'hello');
+
+      final t = MessagePart.fromJson({'type': 'thinking', 'content': 'hmm'});
+      expect(t.type, 'thinking');
+      expect(t.content, 'hmm');
+    });
+
+    test('parses tool call', () {
+      final p = MessagePart.fromJson({
+        'type': 'tool_call',
+        'id': 'tc-1',
+        'title': 'Read file',
+        'kind': 'read',
+        'status': 'completed',
+        'command': 'cat file.txt',
+      });
+      expect(p.type, 'tool_call');
+      expect(p.id, 'tc-1');
+      expect(p.toolCall?.title, 'Read file');
+    });
+
+    test('tool_call part carries id', () {
+      final p = MessagePart.toolCall(
+        toolCall: ToolCallData(
+          id: 'tc-1',
+          title: 'x',
+          kind: 'read',
+          status: 'completed',
+        ),
+      );
+      expect(p.id, 'tc-1');
     });
   });
 

@@ -5,7 +5,6 @@
 //! API layer through the optional [`SendOptions::permission_callback`]; if no
 //! callback is configured, permission requests are rejected.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -17,9 +16,10 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use super::{
-    title_from_prompt, Attachment, ModelInfo, PermissionCallback, PermissionOption,
-    PermissionOutcome, PermissionRequest, Provider, SendOptions, SendRequest, SendResponse,
-    StartRequest, StartResponse, StreamChunkCallback, ToolCallCallback, ToolCallEvent,
+    collect_text, collect_thinking, title_from_prompt, Attachment, MessagePart, ModelInfo,
+    PartCallback, PartEvent, PermissionCallback, PermissionOption, PermissionOutcome,
+    PermissionRequest, Provider, SendOptions, SendRequest, SendResponse, StartRequest,
+    StartResponse, ToolCallEvent,
 };
 use agent_client_protocol::{
     schema::v1::{
@@ -29,7 +29,7 @@ use agent_client_protocol::{
         RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
         SessionConfigId, SessionConfigKind, SessionConfigOption, SessionConfigOptionValue,
         SessionConfigSelectOptions, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-        TextContent, ToolCallContent, ToolCallStatus, ToolKind,
+        TextContent, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolKind,
     },
     schema::ProtocolVersion,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -84,20 +84,24 @@ impl DevinAcpProvider {
             .map_err(|e| anyhow::anyhow!("acp health check failed: {e}"))?;
         Ok(())
     }
+}
 
+struct PromptResult {
+    session_id: String,
+    reply: String,
+    thinking: String,
+    parts: Vec<MessagePart>,
+}
+
+impl DevinAcpProvider {
     async fn run_prompt(
         &self,
         options: &SendOptions,
         maybe_session: Option<&str>,
         prompt: String,
-    ) -> anyhow::Result<(String, String, String)> {
-        let text_acc = Arc::new(Mutex::new(String::new()));
-        let thinking_acc = Arc::new(Mutex::new(String::new()));
-        let tool_calls: Arc<Mutex<HashMap<String, ToolCallEvent>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let text_callback = options.text_callback.clone();
-        let thinking_callback = options.thinking_callback.clone();
-        let tool_callback = options.tool_callback.clone();
+    ) -> anyhow::Result<PromptResult> {
+        let parts = Arc::new(Mutex::new(Vec::<MessagePart>::new()));
+        let part_callback: Option<PartCallback> = options.part_callback.clone();
 
         let cwd = options.working_dir.clone();
         let maybe_session = maybe_session.map(|s| s.to_string());
@@ -109,32 +113,19 @@ impl DevinAcpProvider {
             .name("devinorium")
             .on_receive_notification(
                 {
-                    let text_acc = text_acc.clone();
-                    let thinking_acc = thinking_acc.clone();
-                    let text_callback = text_callback.clone();
-                    let thinking_callback = thinking_callback.clone();
-                    let tool_calls = tool_calls.clone();
-                    let tool_callback = tool_callback.clone();
+                    let parts = parts.clone();
+                    let part_callback = part_callback.clone();
                     let replaying = replaying.clone();
                     async move |notification: SessionNotification, _cx| {
-                        // Ignore notifications that are part of the session-load replay.
-                        // We only want text/thinking/tool-calls from the new prompt.
                         if replaying.load(Ordering::SeqCst) {
                             return Ok(());
                         }
-                        let (text, thinking) = extract_text_from_notification(&notification).await;
-                        if let Some(t) = text {
-                            emit_chunk(&text_acc, text_callback.as_ref(), t).await;
+                        let mut guard = parts.lock().await;
+                        let event = apply_notification(&notification, &mut guard);
+                        drop(guard);
+                        if let (Some(cb), Some(ev)) = (part_callback.as_ref(), event) {
+                            cb(ev);
                         }
-                        if let Some(t) = thinking {
-                            emit_chunk(&thinking_acc, thinking_callback.as_ref(), t).await;
-                        }
-                        handle_tool_call_notification(
-                            &notification,
-                            &tool_calls,
-                            tool_callback.as_ref(),
-                        )
-                        .await;
                         Ok(())
                     }
                 },
@@ -199,18 +190,22 @@ impl DevinAcpProvider {
                             .await?,
                     );
 
-                    // The session-load replay is over once we send the new prompt.
                     replaying.store(false, Ordering::SeqCst);
                     let _prompt_response = connection
                         .send_request(PromptRequest::new(session_id.clone(), prompt_blocks))
                         .block_task()
                         .await?;
 
-                    // After the prompt completes, gather any text/thinking that arrived.
-                    let reply = text_acc.lock().await.clone();
-                    let thinking = thinking_acc.lock().await.clone();
+                    let parts = parts.lock().await.clone();
+                    let reply = collect_text(&parts);
+                    let thinking = collect_thinking(&parts);
 
-                    Ok::<_, agent_client_protocol::Error>((session_id, reply, thinking))
+                    Ok::<_, agent_client_protocol::Error>(PromptResult {
+                        session_id,
+                        reply,
+                        thinking,
+                        parts,
+                    })
                 },
             )
             .await
@@ -555,126 +550,276 @@ fn map_permission_option(option: &AcpPermissionOption) -> PermissionOption {
     }
 }
 
-async fn extract_text_from_notification(
+fn apply_notification(
     notification: &SessionNotification,
-) -> (Option<String>, Option<String>) {
+    parts: &mut Vec<MessagePart>,
+) -> Option<PartEvent> {
     use agent_client_protocol::schema::v1::SessionUpdate;
     match &notification.update {
         SessionUpdate::AgentMessageChunk(chunk) => {
-            (text_from_content_block(&chunk.content), None)
+            text_from_content_block(&chunk.content).map(|text| {
+                let part = MessagePart::text(text);
+                parts.push(part.clone());
+                PartEvent::New(part)
+            })
         }
         SessionUpdate::AgentThoughtChunk(chunk) => {
-            (None, text_from_content_block(&chunk.content))
+            text_from_content_block(&chunk.content).map(|text| {
+                let part = MessagePart::thinking(text);
+                parts.push(part.clone());
+                PartEvent::New(part)
+            })
         }
-        SessionUpdate::ToolCall(_) | SessionUpdate::ToolCallUpdate(_) => (None, None),
-        _ => (None, None),
+        SessionUpdate::ToolCall(tool_call) => {
+            let id = tool_call.tool_call_id.to_string();
+            if let Some(idx) = parts.iter().position(|p| p.tool_id() == Some(id.as_str())) {
+                let existing = match &parts[idx] {
+                    MessagePart::ToolCall { payload } => payload.clone(),
+                    _ => return None,
+                };
+                let merged = merge_tool_call_with_existing(&existing, tool_call);
+                let part = MessagePart::tool_call(merged);
+                parts[idx] = part.clone();
+                Some(PartEvent::Update(part))
+            } else {
+                let ev = build_tool_call_event(tool_call);
+                let part = MessagePart::tool_call(ev);
+                parts.push(part.clone());
+                Some(PartEvent::New(part))
+            }
+        }
+        SessionUpdate::ToolCallUpdate(update) => {
+            let update_id = update.tool_call_id.to_string();
+            if let Some(idx) = parts.iter().position(|p| p.tool_id() == Some(update_id.as_str())) {
+                let existing = match &parts[idx] {
+                    MessagePart::ToolCall { payload } => payload.clone(),
+                    _ => return None,
+                };
+                let updated = merge_tool_call_update(Some(&existing), update);
+                let part = MessagePart::tool_call(updated);
+                parts[idx] = part.clone();
+                Some(PartEvent::Update(part))
+            } else {
+                let ev = merge_tool_call_update(None, update);
+                let part = MessagePart::tool_call(ev);
+                parts.push(part.clone());
+                Some(PartEvent::New(part))
+            }
+        }
+        _ => None,
     }
 }
 
-async fn handle_tool_call_notification(
-    notification: &SessionNotification,
-    tool_calls: &Mutex<HashMap<String, ToolCallEvent>>,
-    callback: Option<&ToolCallCallback>,
-) {
-    use agent_client_protocol::schema::v1::{SessionUpdate, ToolCallStatus};
-
-    let (id, title, kind, status, raw_input, raw_output, content) = match &notification.update {
-        SessionUpdate::ToolCall(tool_call) => (
-            tool_call.tool_call_id.to_string(),
-            Some(tool_call.title.clone()),
-            Some(tool_call.kind),
-            Some(tool_call.status),
-            tool_call.raw_input.clone(),
-            tool_call.raw_output.clone(),
-            Some(tool_call.content.clone()),
-        ),
-        SessionUpdate::ToolCallUpdate(update) => {
-            let f = &update.fields;
-            (
-                update.tool_call_id.to_string(),
-                f.title.clone(),
-                f.kind,
-                f.status,
-                f.raw_input.clone(),
-                f.raw_output.clone(),
-                f.content.clone(),
-            )
-        }
-        _ => return,
-    };
-
-    let mut map = tool_calls.lock().await;
-    let existing = map.get(&id).cloned();
-    let mut ev = existing.unwrap_or_else(|| ToolCallEvent {
-        id: id.clone(),
-        title: title.clone().unwrap_or_else(|| "Tool call".to_string()),
-        kind: kind_to_string(None),
-        status: status_to_string(None),
-        command: None,
-        output: None,
-        output_preview: None,
-        changed_files: Vec::new(),
-    });
-
-    if let Some(t) = title {
-        ev.title = t;
+fn merge_tool_call_with_existing(
+    existing: &ToolCallEvent,
+    tool_call: &agent_client_protocol::schema::v1::ToolCall,
+) -> ToolCallEvent {
+    let mut ev = build_tool_call_event(tool_call);
+    if matches!(existing.status.as_str(), "completed" | "failed")
+        && !matches!(ev.status.as_str(), "completed" | "failed")
+    {
+        ev.status = existing.status.clone();
     }
-    if let Some(k) = kind {
-        ev.kind = kind_to_string(Some(k));
+    if ev.output.is_none() {
+        ev.output = existing.output.clone();
     }
-    if let Some(s) = status {
-        ev.status = status_to_string(Some(s));
-    } else if ev.status.is_empty() {
-        ev.status = status_to_string(None);
+    if ev.output_preview.is_none() {
+        ev.output_preview = existing.output_preview.clone();
     }
+    if ev.command.is_none() {
+        ev.command = existing.command.clone();
+    }
+    if ev.changed_files.is_empty() && !existing.changed_files.is_empty() {
+        ev.changed_files = existing.changed_files.clone();
+    }
+    ev
+}
 
-    if let Some(input) = raw_input {
-        ev.command = Some(json_to_compact_string(&input));
-    }
-    if let Some(output) = raw_output {
-        let text = json_to_compact_string(&output);
-        if !text.is_empty() {
-            ev.output = Some(text);
-        }
-    }
-
-    if let Some(content) = content {
-        let mut output_parts = Vec::new();
-        let mut changed = Vec::new();
-        for c in content {
-            match c {
-                ToolCallContent::Content(content) => {
-                    if let Some(text) = text_from_content_block(&content.content) {
-                        output_parts.push(text);
-                    }
-                }
-                ToolCallContent::Diff(diff) => {
-                    changed.push(diff.path.to_string_lossy().into_owned());
-                }
-                _ => {}
-            }
-        }
-        if !output_parts.is_empty() {
-            let text = output_parts.join("");
-            ev.output = Some(text);
-        }
-        if !changed.is_empty() {
-            ev.changed_files = changed;
-        }
-    }
-
-    if let Some(output) = ev.output.as_deref() {
-        ev.output_preview = Some(truncate_preview(output, 120));
-    }
-
-    // Treat any non-terminal status as "in progress" until completed/failed.
-    if !matches!(ev.status.as_str(), "completed" | "failed") && status.is_some() {
+fn build_tool_call_event(tool_call: &agent_client_protocol::schema::v1::ToolCall) -> ToolCallEvent {
+    let id = tool_call.tool_call_id.to_string();
+    let mut ev = build_tool_call_event_core(
+        id,
+        Some(&tool_call.title),
+        Some(tool_call.kind),
+        Some(tool_call.status),
+        tool_call.raw_input.as_ref(),
+        tool_call.raw_output.as_ref(),
+        Some(&tool_call.content),
+        Some(&tool_call.locations),
+    );
+    if !matches!(ev.status.as_str(), "completed" | "failed") {
         ev.status = status_to_string(Some(ToolCallStatus::InProgress));
     }
+    ev
+}
 
-    map.insert(id, ev.clone());
-    if let Some(cb) = callback {
-        cb(ev);
+fn merge_tool_call_update(
+    existing: Option<&ToolCallEvent>,
+    update: &ToolCallUpdate,
+) -> ToolCallEvent {
+    use agent_client_protocol::schema::v1::ToolCallStatus;
+
+    let title = update
+        .fields
+        .title
+        .as_deref()
+        .or(existing.map(|e| e.title.as_str()))
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Tool call");
+    let kind = update
+        .fields
+        .kind
+        .or(existing.map(|e| tool_kind_from_string(&e.kind)))
+        .unwrap_or_default();
+    let status_opt = update
+        .fields
+        .status
+        .or(existing.and_then(|e| tool_status_from_string(&e.status)));
+    let mut status = status_to_string(status_opt);
+    if !matches!(status.as_str(), "completed" | "failed") && update.fields.status.is_some() {
+        status = status_to_string(Some(ToolCallStatus::InProgress));
+    }
+
+    let command = update
+        .fields
+        .raw_input
+        .as_ref()
+        .map(json_to_compact_string)
+        .or(existing.and_then(|e| e.command.clone()))
+        .filter(|s| !s.is_empty());
+
+    let mut output = None;
+    let mut changed_files = existing.map(|e| e.changed_files.clone()).unwrap_or_default();
+
+    if let Some(content) = update.fields.content.as_deref() {
+        let (text, changed) = tool_call_output_from_content(content);
+        output = text;
+        changed_files = changed;
+    }
+
+    if let Some(raw_output) = update.fields.raw_output.as_ref() {
+        let text = json_to_compact_string(raw_output);
+        if !text.is_empty() {
+            output = Some(text);
+        }
+    }
+
+    if output.is_none() {
+        output = existing.and_then(|e| e.output.clone()).filter(|s| !s.is_empty());
+    }
+
+    if let Some(locations) = update.fields.locations.as_deref() {
+        changed_files = locations
+            .iter()
+            .map(|l| l.path.to_string_lossy().into_owned())
+            .collect();
+    }
+
+    let output_preview = output.as_deref().map(|o| truncate_preview(o, 120));
+
+    ToolCallEvent {
+        id: update.tool_call_id.to_string(),
+        title: title.to_string(),
+        kind: kind_to_string(Some(kind)),
+        status,
+        command,
+        output,
+        output_preview,
+        changed_files,
+    }
+}
+
+fn build_tool_call_event_core(
+    id: impl AsRef<str>,
+    title: Option<&str>,
+    kind: Option<ToolKind>,
+    status: Option<ToolCallStatus>,
+    raw_input: Option<&serde_json::Value>,
+    raw_output: Option<&serde_json::Value>,
+    content: Option<&[ToolCallContent]>,
+    locations: Option<&[ToolCallLocation]>,
+) -> ToolCallEvent {
+    let title = title.filter(|s| !s.is_empty()).unwrap_or("Tool call");
+    let status = status_to_string(status);
+    let command = raw_input.map(json_to_compact_string);
+
+    let (mut output, mut changed_files) = content
+        .map(tool_call_output_from_content)
+        .unwrap_or((None, Vec::new()));
+
+    if let Some(raw_output) = raw_output {
+        let text = json_to_compact_string(raw_output);
+        if !text.is_empty() {
+            output = Some(text);
+        }
+    }
+
+    if let Some(locations) = locations {
+        for l in locations {
+            changed_files.push(l.path.to_string_lossy().into_owned());
+        }
+    }
+
+    let output_preview = output.as_deref().map(|o| truncate_preview(o, 120));
+
+    ToolCallEvent {
+        id: id.as_ref().to_string(),
+        title: title.to_string(),
+        kind: kind_to_string(kind),
+        status,
+        command,
+        output,
+        output_preview,
+        changed_files,
+    }
+}
+
+fn tool_call_output_from_content(content: &[ToolCallContent]) -> (Option<String>, Vec<String>) {
+    let mut output_parts = Vec::new();
+    let mut changed = Vec::new();
+    for c in content {
+        match c {
+            ToolCallContent::Content(content) => {
+                if let Some(text) = text_from_content_block(&content.content) {
+                    output_parts.push(text);
+                }
+            }
+            ToolCallContent::Diff(diff) => {
+                changed.push(diff.path.to_string_lossy().into_owned());
+            }
+            _ => {}
+        }
+    }
+    let output = if output_parts.is_empty() {
+        None
+    } else {
+        Some(output_parts.join(""))
+    };
+    (output, changed)
+}
+
+fn tool_kind_from_string(s: &str) -> ToolKind {
+    match s {
+        "read" => ToolKind::Read,
+        "edit" => ToolKind::Edit,
+        "delete" => ToolKind::Delete,
+        "move" => ToolKind::Move,
+        "search" => ToolKind::Search,
+        "execute" => ToolKind::Execute,
+        "think" => ToolKind::Think,
+        "fetch" => ToolKind::Fetch,
+        "switch_mode" => ToolKind::SwitchMode,
+        _ => ToolKind::Other,
+    }
+}
+
+fn tool_status_from_string(s: &str) -> Option<ToolCallStatus> {
+    match s {
+        "pending" => Some(ToolCallStatus::Pending),
+        "in_progress" => Some(ToolCallStatus::InProgress),
+        "completed" => Some(ToolCallStatus::Completed),
+        "failed" => Some(ToolCallStatus::Failed),
+        _ => None,
     }
 }
 
@@ -718,18 +863,6 @@ fn truncate_preview(s: &str, max_len: usize) -> String {
         s.to_string()
     } else {
         format!("{}...", &s[..max_len])
-    }
-}
-
-async fn emit_chunk(
-    acc: &Mutex<String>,
-    callback: Option<&StreamChunkCallback>,
-    chunk: String,
-) {
-    let mut guard = acc.lock().await;
-    guard.push_str(&chunk);
-    if let Some(cb) = callback {
-        cb(chunk);
     }
 }
 
@@ -802,23 +935,27 @@ impl Provider for DevinAcpProvider {
 
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
         let title = title_from_prompt(&req.prompt);
-        let (session_id, reply, thinking) =
-            self.run_prompt(&req.options, None, req.prompt).await?;
+        let result = self.run_prompt(&req.options, None, req.prompt).await?;
 
         Ok(StartResponse {
-            session_id,
+            session_id: result.session_id,
             title,
-            reply,
-            thinking,
+            reply: result.reply,
+            thinking: result.thinking,
+            parts: result.parts,
         })
     }
 
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
-        let (_, reply, thinking) = self
+        let result = self
             .run_prompt(&req.options, Some(&req.session_id), req.prompt)
             .await?;
 
-        Ok(SendResponse { reply, thinking })
+        Ok(SendResponse {
+            reply: result.reply,
+            thinking: result.thinking,
+            parts: result.parts,
+        })
     }
 
     async fn export(
@@ -843,6 +980,98 @@ mod tests {
 
     fn provider() -> DevinAcpProvider {
         DevinAcpProvider::new("devin".into(), "swe-1-7".into())
+    }
+
+    fn note(text: &str) -> SessionNotification {
+        use agent_client_protocol::schema::v1::{ContentChunk, SessionUpdate};
+        SessionNotification::new(
+            "session",
+            SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+                TextContent::new(text),
+            ))),
+        )
+    }
+
+    fn thought(text: &str) -> SessionNotification {
+        use agent_client_protocol::schema::v1::{ContentChunk, SessionUpdate};
+        SessionNotification::new(
+            "session",
+            SessionUpdate::AgentThoughtChunk(ContentChunk::new(ContentBlock::Text(
+                TextContent::new(text),
+            ))),
+        )
+    }
+
+    fn tool_call(id: &str, title: &str) -> SessionNotification {
+        use agent_client_protocol::schema::v1::SessionUpdate;
+        SessionNotification::new(
+            "session",
+            SessionUpdate::ToolCall(
+                agent_client_protocol::schema::v1::ToolCall::new(id.to_string(), title.to_string())
+                    .kind(ToolKind::Read),
+            ),
+        )
+    }
+
+    fn tool_update(id: &str, status: ToolCallStatus, output: &str) -> SessionNotification {
+        use agent_client_protocol::schema::v1::{SessionUpdate, ToolCallUpdateFields};
+        SessionNotification::new(
+            "session",
+            SessionUpdate::ToolCallUpdate(
+                agent_client_protocol::schema::v1::ToolCallUpdate::new(
+                    id.to_string(),
+                    ToolCallUpdateFields::new()
+                        .status(status)
+                        .raw_output(serde_json::Value::String(output.into())),
+                ),
+            ),
+        )
+    }
+
+    #[test]
+    fn parts_keep_text_thinking_tool_order() {
+        let mut parts = Vec::new();
+        apply_notification(&note("hello "), &mut parts);
+        apply_notification(&thought("hmm"), &mut parts);
+        apply_notification(&note("world"), &mut parts);
+        apply_notification(&tool_call("tc-1", "Read main.rs"), &mut parts);
+
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], MessagePart::text("hello "));
+        assert_eq!(parts[1], MessagePart::thinking("hmm"));
+        assert_eq!(parts[2], MessagePart::text("world"));
+        assert!(matches!(&parts[3], MessagePart::ToolCall { payload } if payload.id == "tc-1"));
+        assert_eq!(collect_text(&parts), "hello world");
+        assert_eq!(collect_thinking(&parts), "hmm");
+    }
+
+    #[test]
+    fn tool_call_update_before_initial_call_does_not_duplicate() {
+        let mut parts = Vec::new();
+        apply_notification(&tool_update("tc-1", ToolCallStatus::Completed, "ok"), &mut parts);
+        apply_notification(&tool_call("tc-1", "Read main.rs"), &mut parts);
+
+        assert_eq!(parts.len(), 1);
+        assert!(
+            matches!(&parts[0], MessagePart::ToolCall { payload } if payload.id == "tc-1" && payload.title == "Read main.rs" && payload.output.as_deref() == Some("ok")),
+            "update before the initial call should still resolve to a single part"
+        );
+    }
+
+    #[test]
+    fn tool_call_update_maps_to_same_index() {
+        let mut parts = Vec::new();
+        apply_notification(&tool_call("tc-1", "Read main.rs"), &mut parts);
+        apply_notification(&note("found it"), &mut parts);
+        apply_notification(&tool_update("tc-1", ToolCallStatus::Completed, "ok"), &mut parts);
+
+        assert_eq!(parts.len(), 2);
+        let first = &parts[0];
+        assert!(
+            matches!(first, MessagePart::ToolCall { payload } if payload.id == "tc-1" && payload.status == "completed" && payload.output.as_deref() == Some("ok")),
+            "tool call update should replace the original part in place"
+        );
+        assert_eq!(parts[1], MessagePart::text("found it"));
     }
 
     #[tokio::test]

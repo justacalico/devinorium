@@ -91,9 +91,7 @@ class _ChatViewState extends State<ChatView> {
   final _composerController = TextEditingController();
   bool _autoScroll = true;
   int _lastMessageCount = 0;
-  String? _lastStreamingText;
-  String? _lastStreamingThinking;
-  int _lastToolCallCount = 0;
+  String _lastStreamingDigest = '';
   String? _lastThreadId;
 
   @override
@@ -132,30 +130,21 @@ class _ChatViewState extends State<ChatView> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final detail = state.activeThreadDetail;
-    final streaming = state.streamingText;
-    final thinking = state.streamingThinking;
+    final streamingParts = state.streamingParts;
     final thinkingActive = state.streamingThinkingActive;
-    final toolCalls = state.streamingToolCalls;
 
-    // Auto-scroll only when:
-    // - A new message was added (message count changed), OR
-    // - Streaming text/thinking grew (new chunk arrived)
-    // AND the user is already near the bottom.
     final msgCount = detail?.messages.length ?? 0;
     final newMessage = msgCount != _lastMessageCount;
-    final newChunk = streaming != null && streaming != _lastStreamingText;
-    final newThinking = thinking != null && thinking != _lastStreamingThinking;
-    final toolCount = toolCalls.length;
-    final newToolCall = toolCount != _lastToolCallCount;
-    if (newMessage || newChunk || newThinking || newToolCall) {
+    final digest = streamingParts
+        .map((p) => '${p.type}:${p.id ?? ''}:${p.content ?? ''}')
+        .join('|');
+    final newParts = digest != _lastStreamingDigest;
+    if (newMessage || newParts) {
       _maybeScrollToBottom();
     }
     _lastMessageCount = msgCount;
-    _lastStreamingText = streaming;
-    _lastStreamingThinking = thinking;
-    _lastToolCallCount = toolCount;
+    _lastStreamingDigest = digest;
 
-    // When switching threads, reset auto-scroll and jump to bottom.
     final threadId = detail?.thread.id;
     if (threadId != _lastThreadId) {
       _lastThreadId = threadId;
@@ -168,10 +157,8 @@ class _ChatViewState extends State<ChatView> {
         Expanded(
           child: _MessagesPanel(
             detail: detail,
-            streamingText: streaming,
-            streamingThinking: thinking,
+            streamingParts: streamingParts,
             streamingThinkingActive: thinkingActive,
-            toolCalls: toolCalls,
             controller: _scrollController,
           ),
         ),
@@ -183,17 +170,13 @@ class _ChatViewState extends State<ChatView> {
 
 class _MessagesPanel extends StatelessWidget {
   final ThreadDetail? detail;
-  final String? streamingText;
-  final String? streamingThinking;
+  final List<MessagePart> streamingParts;
   final bool streamingThinkingActive;
-  final Map<String, ToolCallData> toolCalls;
   final ScrollController controller;
   const _MessagesPanel({
     required this.detail,
-    required this.streamingText,
-    required this.streamingThinking,
+    required this.streamingParts,
     required this.streamingThinkingActive,
-    required this.toolCalls,
     required this.controller,
   });
 
@@ -216,7 +199,7 @@ class _MessagesPanel extends StatelessWidget {
     }
 
     final messages = detail!.messages;
-    final hasStreaming = streamingText != null;
+    final hasStreaming = streamingParts.isNotEmpty;
 
     if (messages.isEmpty && !hasStreaming) {
       return Center(
@@ -232,10 +215,6 @@ class _MessagesPanel extends StatelessWidget {
       );
     }
 
-    // Tool calls belong to the current assistant turn, which is the last
-    // assistant message (or the streaming assistant bubble when active).
-    final thinking = streamingThinking;
-    final activeToolCalls = toolCalls.values.toList();
     Message? currentAssistant;
     final history = messages.toList();
     if (history.isNotEmpty && history.last.role == 'assistant') {
@@ -247,21 +226,16 @@ class _MessagesPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 24),
       children: [
         for (final m in history) _MessageItem(message: m),
-        if (currentAssistant != null)
-          _MessageItem(
-            message: currentAssistant,
-            toolCalls: activeToolCalls,
-          ),
+        if (currentAssistant != null) _MessageItem(message: currentAssistant),
         if (hasStreaming)
           _MessageItem(
             message: Message(
               role: 'assistant',
-              content: streamingText!,
-              thinking: thinking,
+              content: '',
               attachments: null,
+              parts: streamingParts,
             ),
             thinkingActive: streamingThinkingActive,
-            toolCalls: activeToolCalls,
           ),
       ],
     );
@@ -271,15 +245,20 @@ class _MessagesPanel extends StatelessWidget {
 class _MessageItem extends StatefulWidget {
   final Message message;
   final bool thinkingActive;
-  final List<ToolCallData> toolCalls;
   const _MessageItem({
     required this.message,
     this.thinkingActive = false,
-    this.toolCalls = const [],
   });
 
   @override
   State<_MessageItem> createState() => _MessageItemState();
+}
+
+class _PartGroup {
+  final String type;
+  final String? content;
+  final List<ToolCallData> tools;
+  _PartGroup({required this.type, this.content, this.tools = const []});
 }
 
 class _MessageItemState extends State<_MessageItem> {
@@ -287,31 +266,136 @@ class _MessageItemState extends State<_MessageItem> {
 
   bool get _working {
     if (widget.thinkingActive) return true;
-    return widget.toolCalls.any(
-      (t) => t.status != 'completed' && t.status != 'failed',
-    );
+    return widget.message.allParts.any((p) =>
+        p.type == 'tool_call' &&
+        p.toolCall != null &&
+        p.toolCall!.status != 'completed' &&
+        p.toolCall!.status != 'failed');
   }
+
+  bool get _hasText => widget.message.allParts.any(
+        (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
+      );
+
+  bool get _hasThinkingOrTools => widget.message.allParts.any(
+        (p) => p.type == 'thinking' || p.type == 'tool_call',
+      );
 
   @override
   void initState() {
     super.initState();
-    // Keep the thinking box open while working; collapse once the final
-    // reply or the first text chunk starts arriving.
-    _expanded = _working && widget.message.content.isEmpty;
+    _expanded = _working && !_hasText;
   }
 
   @override
   void didUpdateWidget(covariant _MessageItem old) {
     super.didUpdateWidget(old);
-    if ((old.message.content.isEmpty && widget.message.content.isNotEmpty) ||
-        (old.thinkingActive && !widget.thinkingActive &&
-            widget.message.content.isNotEmpty)) {
+    final oldHasText = old.message.allParts.any(
+      (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
+    );
+    if ((oldHasText == false && _hasText) ||
+        (old.thinkingActive && !widget.thinkingActive && _hasText)) {
       if (_expanded) setState(() => _expanded = false);
       return;
     }
-    if ((_working || widget.toolCalls.isNotEmpty) && !_expanded) {
+    if (_working && !_expanded) {
       setState(() => _expanded = true);
     }
+  }
+
+  List<_PartGroup> _buildGroups(List<MessagePart> parts) {
+    final groups = <_PartGroup>[];
+    for (final part in parts) {
+      if (part.type == 'tool_call') {
+        final tool = part.toolCall;
+        if (tool != null) {
+          if (groups.isNotEmpty && groups.last.type == 'tool_call') {
+            groups.last.tools.add(tool);
+          } else {
+            groups.add(_PartGroup(type: 'tool_call', tools: [tool]));
+          }
+        }
+      } else {
+        final text = part.content ?? '';
+        if (groups.isNotEmpty && groups.last.type == part.type) {
+          final merged = groups.last.content ?? '';
+          groups.last = _PartGroup(
+            type: part.type,
+            content: merged + text,
+          );
+        } else {
+          groups.add(_PartGroup(type: part.type, content: text));
+        }
+      }
+    }
+    return groups;
+  }
+
+  Widget _buildTextContent(BuildContext context, String text, String role) {
+    final theme = Theme.of(context);
+    if (role == 'assistant') {
+      return MarkdownBody(
+        data: text,
+        selectable: true,
+        extensionSet: markdown.ExtensionSet.gitHubFlavored,
+        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+          p: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+          code: theme.textTheme.bodySmall?.copyWith(
+            fontFamily: 'monospace',
+            backgroundColor: theme.colorScheme.surfaceContainerHigh,
+          ),
+          codeblockDecoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          codeblockPadding: const EdgeInsets.all(12),
+          tableHead: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSurface,
+          ),
+          tableBody: theme.textTheme.bodyMedium,
+          tableBorder: TableBorder(
+            horizontalInside: BorderSide(
+              color: theme.dividerColor.withAlpha(128),
+            ),
+          ),
+          tableCellsPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        ),
+      );
+    }
+    return Text(text,
+        style: theme.textTheme.bodyLarge?.copyWith(height: 1.5));
+  }
+
+  Widget _buildPartWidgets(BuildContext context, List<_PartGroup> groups) {
+    final children = <Widget>[];
+    var thinkingIndex = 0;
+    for (final group in groups) {
+      switch (group.type) {
+        case 'text':
+          children.add(_buildTextContent(
+              context, group.content ?? '', widget.message.role));
+        case 'thinking':
+          final isFirst = thinkingIndex == 0;
+          children.add(_ThinkingBlock(
+            content: group.content ?? '',
+            working: isFirst && _working,
+            expanded: _expanded,
+            onToggle: () => setState(() => _expanded = !_expanded),
+          ));
+          thinkingIndex++;
+        case 'tool_call':
+          for (final t in group.tools) {
+            children.add(_ToolCallItem(tool: t));
+          }
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
   }
 
   @override
@@ -340,111 +424,10 @@ class _MessageItemState extends State<_MessageItem> {
       ),
     };
 
-    final thinking = message.thinking;
-    final hasThinking =
-        (thinking != null && thinking.isNotEmpty) || widget.toolCalls.isNotEmpty;
-
-    Widget buildExpandedContent() {
-      final children = <Widget>[];
-      if (thinking != null && thinking.isNotEmpty) {
-        children.add(
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.access_time,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SelectableText(
-                  thinking,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    height: 1.5,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-      if (widget.toolCalls.isNotEmpty) {
-        children.addAll(
-          widget.toolCalls.map((t) => _ToolCallItem(tool: t)),
-        );
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
-      );
-    }
-
-    Widget thinkingSection() {
-      final label = _working
-          ? l.thinking
-          : (_expanded ? l.hideThinking : l.showThinking);
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  if (_working) _ThinkingDots(active: widget.thinkingActive),
-                ],
-              ),
-            ),
-          ),
-          AnimatedCrossFade(
-            firstChild: const SizedBox.shrink(),
-            secondChild: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(
-                    color: theme.colorScheme.outline,
-                    width: 2,
-                  ),
-                ),
-              ),
-              child: buildExpandedContent(),
-            ),
-            crossFadeState:
-                _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 200),
-            sizeCurve: Curves.easeInOut,
-          ),
-          const SizedBox(height: 12),
-        ],
-      );
-    }
+    final groups = _buildGroups(message.allParts);
+    final showLoading = message.role == 'assistant' &&
+        message.content.isEmpty &&
+        groups.isEmpty;
 
     return Center(
       child: ConstrainedBox(
@@ -470,47 +453,8 @@ class _MessageItemState extends State<_MessageItem> {
                             color: theme.colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 4),
-                    if (hasThinking) thinkingSection(),
-                    if (message.content.isNotEmpty)
-                      if (message.role == 'assistant')
-                        MarkdownBody(
-                          data: message.content,
-                          selectable: true,
-                          extensionSet: markdown.ExtensionSet.gitHubFlavored,
-                          styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                            p: theme.textTheme.bodyLarge
-                                ?.copyWith(height: 1.5),
-                            code: theme.textTheme.bodySmall?.copyWith(
-                              fontFamily: 'monospace',
-                              backgroundColor:
-                                  theme.colorScheme.surfaceContainerHigh,
-                            ),
-                            codeblockDecoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            codeblockPadding: const EdgeInsets.all(12),
-                            tableHead: theme.textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                            tableBody: theme.textTheme.bodyMedium,
-                            tableBorder: TableBorder(
-                              horizontalInside: BorderSide(
-                                color: theme.dividerColor.withAlpha(128),
-                              ),
-                            ),
-                            tableCellsPadding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                          ),
-                        )
-                      else
-                        Text(message.content,
-                            style: theme.textTheme.bodyLarge
-                                ?.copyWith(height: 1.5)),
-                    if (message.role == 'assistant' &&
-                        message.content.isEmpty &&
-                        !hasThinking)
+                    if (groups.isNotEmpty) _buildPartWidgets(context, groups),
+                    if (showLoading)
                       Text(
                         l10n(context).messageLoading,
                         style: theme.textTheme.bodyLarge?.copyWith(
@@ -544,6 +488,105 @@ class _MessageItemState extends State<_MessageItem> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ThinkingBlock extends StatelessWidget {
+  final String content;
+  final bool working;
+  final bool expanded;
+  final VoidCallback onToggle;
+  const _ThinkingBlock({
+    required this.content,
+    required this.working,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final label = working
+        ? l.thinking
+        : (expanded ? l.hideThinking : l.showThinking);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onToggle,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (working) _ThinkingDots(active: working),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                  color: theme.colorScheme.outline,
+                  width: 2,
+                ),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.access_time,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SelectableText(
+                    content,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      height: 1.5,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          crossFadeState:
+              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 200),
+          sizeCurve: Curves.easeInOut,
+        ),
+        const SizedBox(height: 12),
+      ],
     );
   }
 }

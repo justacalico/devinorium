@@ -13,6 +13,9 @@
 //! See [`docs/providers.md`] for a walkthrough.
 
 pub mod devin_acp;
+pub mod parts;
+
+pub use parts::{collect_text, collect_thinking, MessagePart, PartCallback, PartEvent};
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -68,10 +71,8 @@ pub type PermissionCallback = Arc<
         + Sync,
 >;
 
-pub type StreamChunkCallback = Arc<dyn Fn(String) + Send + Sync + 'static>;
-
 /// A tool call streamed from the agent, rendered separately from the reply.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolCallEvent {
     pub id: String,
     pub title: String,
@@ -82,8 +83,6 @@ pub struct ToolCallEvent {
     pub output_preview: Option<String>,
     pub changed_files: Vec<String>,
 }
-
-pub type ToolCallCallback = Arc<dyn Fn(ToolCallEvent) + Send + Sync + 'static>;
 
 /// Options shared by [`Provider::start`] and [`Provider::send`].
 #[derive(Clone)]
@@ -102,12 +101,8 @@ pub struct SendOptions {
     pub attachments: Vec<Attachment>,
     /// Optional callback that handles interactive permission requests.
     pub permission_callback: Option<PermissionCallback>,
-    /// Optional callback for each chunk of the assistant's reply.
-    pub text_callback: Option<StreamChunkCallback>,
-    /// Optional callback for each chunk of the assistant's thinking/reasoning.
-    pub thinking_callback: Option<StreamChunkCallback>,
-    /// Optional callback for tool call progress updates.
-    pub tool_callback: Option<ToolCallCallback>,
+    /// Optional callback for each ordered message part.
+    pub part_callback: Option<PartCallback>,
 }
 
 impl std::fmt::Debug for SendOptions {
@@ -119,9 +114,7 @@ impl std::fmt::Debug for SendOptions {
             .field("permissions", &self.permissions)
             .field("attachments", &self.attachments.len())
             .field("permission_callback", &self.permission_callback.is_some())
-            .field("text_callback", &self.text_callback.is_some())
-            .field("thinking_callback", &self.thinking_callback.is_some())
-            .field("tool_callback", &self.tool_callback.is_some())
+            .field("part_callback", &self.part_callback.is_some())
             .finish()
     }
 }
@@ -142,6 +135,8 @@ pub struct StartResponse {
     pub reply: String,
     /// The assistant's internal reasoning / thinking, if any.
     pub thinking: String,
+    /// The ordered parts that make up the reply.
+    pub parts: Vec<MessagePart>,
     /// A suggested title for the thread (e.g. derived from the first prompt).
     pub title: String,
 }
@@ -160,6 +155,7 @@ pub struct SendRequest {
 pub struct SendResponse {
     pub reply: String,
     pub thinking: String,
+    pub parts: Vec<MessagePart>,
 }
 
 /// Metadata about a provider the backend knows.

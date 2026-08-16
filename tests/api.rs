@@ -21,7 +21,8 @@ use devinorium::{
     db,
     git::{GitRemoteService, GitService},
     providers::{
-        ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse, ToolCallEvent,
+        MessagePart, ModelInfo, PartEvent, Provider, SendRequest, SendResponse, StartRequest,
+        StartResponse, ToolCallEvent,
     },
     AppState,
 };
@@ -72,11 +73,9 @@ impl Provider for StubProvider {
         }
         let reply = format!("echo: {}", req.prompt);
         let thinking = "reasoning about the prompt".to_string();
-        if let Some(cb) = &req.options.thinking_callback {
-            cb(thinking.clone());
-        }
-        if let Some(cb) = &req.options.tool_callback {
-            cb(ToolCallEvent {
+        let parts = vec![
+            MessagePart::thinking(thinking.clone()),
+            MessagePart::tool_call(ToolCallEvent {
                 id: "stub-tool-1".into(),
                 title: "Stub tool".into(),
                 kind: "execute".into(),
@@ -85,15 +84,19 @@ impl Provider for StubProvider {
                 output: Some("stub output".into()),
                 output_preview: Some("stub output".into()),
                 changed_files: vec![],
-            });
-        }
-        if let Some(cb) = &req.options.text_callback {
-            cb(reply.clone());
+            }),
+            MessagePart::text(reply.clone()),
+        ];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+            }
         }
         Ok(StartResponse {
             session_id: format!("stub-session-{}", req.prompt.len()),
             reply,
             thinking,
+            parts,
             title: "Stub Thread".into(),
         })
     }
@@ -103,11 +106,9 @@ impl Provider for StubProvider {
         }
         let reply = format!("echo: {}", req.prompt);
         let thinking = "reasoning about the prompt".to_string();
-        if let Some(cb) = &req.options.thinking_callback {
-            cb(thinking.clone());
-        }
-        if let Some(cb) = &req.options.tool_callback {
-            cb(ToolCallEvent {
+        let parts = vec![
+            MessagePart::thinking(thinking.clone()),
+            MessagePart::tool_call(ToolCallEvent {
                 id: "stub-tool-1".into(),
                 title: "Stub tool".into(),
                 kind: "execute".into(),
@@ -116,12 +117,19 @@ impl Provider for StubProvider {
                 output: Some("stub output".into()),
                 output_preview: Some("stub output".into()),
                 changed_files: vec![],
-            });
+            }),
+            MessagePart::text(reply.clone()),
+        ];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+            }
         }
-        if let Some(cb) = &req.options.text_callback {
-            cb(reply.clone());
-        }
-        Ok(SendResponse { reply, thinking })
+        Ok(SendResponse {
+            reply,
+            thinking,
+            parts,
+        })
     }
     async fn export(
         &self,
@@ -585,28 +593,36 @@ async fn thread_send_streams_reply_as_sse() {
 
     let body = body_str(resp.into_body()).await;
     assert!(body.contains("event: user_message"), "body: {body}");
-    assert!(body.contains("event: thinking"), "body: {body}");
-    assert!(body.contains("event: tool_call"), "body: {body}");
-    assert!(body.contains("event: chunk"), "body: {body}");
+    assert!(body.contains("event: part"), "body: {body}");
     assert!(body.contains("event: done"), "body: {body}");
 
-    let thinking_pos = body.find("event: thinking").expect("thinking event");
-    let tool_call_pos = body.find("event: tool_call").expect("tool_call event");
-    let chunk_pos = body.find("event: chunk").expect("chunk event");
+    let part_positions: Vec<usize> = body.match_indices("event: part").map(|(i, _)| i).collect();
+    assert_eq!(part_positions.len(), 3, "expected three part events");
     let done_pos = body.find("event: done").expect("done event");
-    assert!(
-        thinking_pos < tool_call_pos,
-        "thinking should come before tool_call"
-    );
-    assert!(
-        tool_call_pos < chunk_pos,
-        "tool_call should come before chunk"
-    );
-    assert!(chunk_pos < done_pos, "chunk should come before done");
+    assert!(part_positions.last().unwrap() < &done_pos, "parts should come before done");
 
-    let tool_call_block = body
+    let part_blocks = body
         .split("\n\n")
-        .find(|b| b.contains("event: tool_call"))
+        .filter(|b| b.contains("event: part"))
+        .collect::<Vec<_>>();
+    assert_eq!(part_blocks.len(), 3);
+    let part_types: Vec<String> = part_blocks
+        .iter()
+        .map(|b| {
+            let data = b
+                .lines()
+                .find(|l| l.starts_with("data: "))
+                .expect("part data");
+            let json: serde_json::Value =
+                serde_json::from_str(&data[6..]).expect("valid part json");
+            json["type"].as_str().unwrap_or("").to_string()
+        })
+        .collect();
+    assert_eq!(part_types, vec!["thinking", "tool_call", "text"]);
+
+    let tool_call_block = part_blocks
+        .iter()
+        .find(|b| b.contains("\"type\":\"tool_call"))
         .expect("tool_call block");
     let tool_call_data = tool_call_block
         .lines()
