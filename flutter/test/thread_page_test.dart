@@ -224,4 +224,50 @@ void main() {
 
     expect(find.text('Run cmd'), findsOneWidget);
   });
+
+  testWidgets('merges split thinking parts into a single block',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'hmm1'),
+              MessagePart.text(content: 'a'),
+              MessagePart.thinking(content: 'hmm2'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('hmm1hmm2'), findsOneWidget);
+    final markdown = find.byType(MarkdownBody);
+    expect(markdown, findsOneWidget);
+    expect(tester.widget<MarkdownBody>(markdown).data, 'a');
+  });
 }

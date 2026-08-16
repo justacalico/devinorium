@@ -305,7 +305,18 @@ class _MessageItemState extends State<_MessageItem> {
 
   List<_PartGroup> _buildGroups(List<MessagePart> parts) {
     final groups = <_PartGroup>[];
+    var thinkingBuffer = '';
+    var thinkingInsertIndex = -1;
+
     for (final part in parts) {
+      if (part.type == 'thinking') {
+        thinkingBuffer += part.content ?? '';
+        if (thinkingInsertIndex < 0) {
+          thinkingInsertIndex = groups.length;
+        }
+        continue;
+      }
+
       if (part.type == 'tool_call') {
         final tool = part.toolCall;
         if (tool != null) {
@@ -317,17 +328,22 @@ class _MessageItemState extends State<_MessageItem> {
         }
       } else {
         final text = part.content ?? '';
-        if (groups.isNotEmpty && groups.last.type == part.type) {
+        if (groups.isNotEmpty && groups.last.type == 'text') {
           final merged = groups.last.content ?? '';
-          groups.last = _PartGroup(
-            type: part.type,
-            content: merged + text,
-          );
+          groups.last = _PartGroup(type: 'text', content: merged + text);
         } else {
-          groups.add(_PartGroup(type: part.type, content: text));
+          groups.add(_PartGroup(type: 'text', content: text));
         }
       }
     }
+
+    if (thinkingBuffer.isNotEmpty) {
+      groups.insert(
+        thinkingInsertIndex.clamp(0, groups.length),
+        _PartGroup(type: 'thinking', content: thinkingBuffer),
+      );
+    }
+
     return groups;
   }
 
