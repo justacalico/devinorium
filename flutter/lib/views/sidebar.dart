@@ -345,39 +345,41 @@ class _ProjectExpandableTile extends StatelessWidget {
                   style: const TextStyle(fontSize: 12, color: Colors.white),
                 ),
               ),
-              title: Text(
-                project.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w500),
+              title: Tooltip(
+                message: project.path,
+                child: Text(
+                  project.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w500),
+                ),
               ),
-              subtitle: Text(
-                project.path,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
+              subtitle: project.isRepo && project.gitBranch.isNotEmpty
+                  ? Text(
+                      project.gitBranch,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    )
+                  : Text(
+                      project.path,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (isRepo)
-                    Tooltip(
-                      message: project.gitBranch.isNotEmpty ? project.gitBranch : l10n(context).gitBranches,
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.call_split, size: 16),
-                        label: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 100),
-                          child: Text(
-                            project.gitBranch.isNotEmpty ? project.gitBranch : l10n(context).gitBranches,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        ),
-                        onPressed: () => state.openGitBranchDialog(project.id),
-                      ),
+                    IconButton(
+                      tooltip: project.gitBranch.isNotEmpty
+                          ? project.gitBranch
+                          : l10n(context).gitBranches,
+                      icon: const Icon(Icons.call_split, size: 16),
+                      onPressed: () => state.openGitBranchDialog(project.id),
                     ),
                   if (onNewThread != null)
                     IconButton(
