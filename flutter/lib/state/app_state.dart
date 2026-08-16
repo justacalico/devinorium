@@ -118,6 +118,7 @@ class AppState extends ChangeNotifier {
   ComposerMode _composerMode = ComposerMode.code;
   List<MessagePart> _streamingParts = [];
   bool _streamingThinkingActive = false;
+  int _streamingLastSeq = 0;
   String _globalError = '';
   StreamSubscription? _sendSubscription;
   String? _resumingThreadId;
@@ -925,11 +926,42 @@ class AppState extends ChangeNotifier {
 
   // ---- Streaming send ----
 
+  void _finishRun(String tid, {String? error}) {
+    _clearPermissionRequest();
+    _streamingParts.clear();
+    _streamingThinkingActive = false;
+    _streamingLastSeq = 0;
+    _sending = false;
+    unawaited(_sendSubscription?.cancel());
+    _sendSubscription = null;
+    _runningThreadIds.remove(tid);
+    _globalError = error ?? '';
+    notifyListeners();
+    refreshThreadsAndGroups();
+    _refreshTail(tid);
+  }
+
+  int? _eventSeq(SseEvent ev) => int.tryParse(ev.id ?? '');
+
   void _handleRunEvent(String tid, SseEvent ev) {
+    final seq = _eventSeq(ev);
+    if (seq != null && ev.event != 'state' && seq <= _streamingLastSeq) {
+      return;
+    }
     switch (ev.event) {
       case 'state':
         final decoded = tryDecodeJson(ev.data);
-        if (decoded != null) _setStreamingFromSnapshot(decoded);
+        if (decoded != null) {
+          final status = decoded['status'] as String? ?? 'running';
+          if (status == 'completed' || status == 'failed') {
+            _finishRun(
+              tid,
+              error: status == 'failed' ? decoded['error'] as String? : null,
+            );
+          } else {
+            _setStreamingFromSnapshot(decoded);
+          }
+        }
         break;
       case 'user_message':
         clearAttachments();
@@ -938,6 +970,7 @@ class AppState extends ChangeNotifier {
         if (msg != null && _activeThreadDetail != null) {
           _activeThreadDetail!.messages.add(msg);
           _activeThreadDetail!.totalMessages++;
+          if (seq != null) _streamingLastSeq = seq;
           notifyListeners();
         }
         break;
@@ -947,6 +980,7 @@ class AppState extends ChangeNotifier {
           try {
             _pendingPermissionRequest = PermissionRequest.fromJson(decoded);
             _dialog = DialogKind.permissionRequest;
+            if (seq != null) _streamingLastSeq = seq;
             notifyListeners();
           } catch (e) {
             _globalError = appL10n.invalidPermissionRequest('$e');
@@ -963,6 +997,7 @@ class AppState extends ChangeNotifier {
           try {
             _streamingParts.add(MessagePart.fromJson(decoded));
             _updateStreamingThinkingActive();
+            if (seq != null) _streamingLastSeq = seq;
             notifyListeners();
           } catch (e) {
             // ignore malformed part
@@ -974,13 +1009,18 @@ class AppState extends ChangeNotifier {
         if (decoded != null) {
           try {
             final part = MessagePart.fromJson(decoded);
-            final idx = _streamingParts.indexWhere((p) => p.id == part.id);
-            if (idx >= 0) {
-              _streamingParts[idx] = part;
-            } else {
+            if (part.id == null) {
               _streamingParts.add(part);
+            } else {
+              final idx = _streamingParts.indexWhere((p) => p.id == part.id);
+              if (idx >= 0) {
+                _streamingParts[idx] = part;
+              } else {
+                _streamingParts.add(part);
+              }
             }
             _updateStreamingThinkingActive();
+            if (seq != null) _streamingLastSeq = seq;
             notifyListeners();
           } catch (e) {
             // ignore malformed part update
@@ -989,36 +1029,14 @@ class AppState extends ChangeNotifier {
         break;
       case 'done':
         final msg = parseSseMessage(ev.data);
-        _streamingParts.clear();
-        _streamingThinkingActive = false;
         if (msg != null && _activeThreadDetail != null) {
           _activeThreadDetail!.messages.add(msg);
           _activeThreadDetail!.totalMessages++;
         }
-        _sending = false;
-        _sendSubscription = null;
-        _runningThreadIds.remove(tid);
-        notifyListeners();
-        refreshThreadsAndGroups();
-        _refreshTail(tid);
+        _finishRun(tid);
         break;
       case 'error':
-        _clearPermissionRequest();
-        _streamingParts.clear();
-        _streamingThinkingActive = false;
-
-        _sending = false;
-        _sendSubscription = null;
-        _runningThreadIds.remove(tid);
-        _globalError = ev.data;
-        notifyListeners();
-        api
-            .getThread(tid)
-            .then((d) {
-              _activeThreadDetail = d;
-              notifyListeners();
-            })
-            .catchError((_) {});
+        _finishRun(tid, error: ev.data);
         break;
     }
   }
@@ -1033,13 +1051,20 @@ class AppState extends ChangeNotifier {
     if (status != null) _sending = status == 'running';
 
     final parts = (j['parts'] as List<dynamic>?) ?? [];
-    _streamingParts = parts
-        .map((p) => MessagePart.fromJson(p as Map<String, dynamic>))
-        .toList();
+    _streamingParts = [];
+    for (final p in parts) {
+      if (p is! Map<String, dynamic>) continue;
+      try {
+        _streamingParts.add(MessagePart.fromJson(p));
+      } catch (_) {
+        // ignore malformed part
+      }
+    }
     _streamingThinkingActive = j['thinking_active'] as bool? ?? false;
+    _streamingLastSeq = (j['last_seq'] as num?)?.toInt() ?? 0;
 
-    final permission = j['permission_request'] as Map<String, dynamic>?;
-    if (permission != null) {
+    final permission = j['permission_request'];
+    if (permission is Map<String, dynamic>) {
       try {
         _pendingPermissionRequest = PermissionRequest.fromJson(permission);
         _dialog = DialogKind.permissionRequest;
@@ -1106,23 +1131,14 @@ class AppState extends ChangeNotifier {
       });
       return;
     }
-    _streamingParts.clear();
-    _streamingThinkingActive = false;
-    _sending = false;
-    _globalError = '$e';
-    notifyListeners();
-    _refreshTail(tid);
+    _finishRun(tid, error: '$e');
   }
 
   void _handleRunOnDone(String tid) {
     _sendSubscription = null;
     _clearPermissionRequest();
     if (_sending) {
-      _sending = false;
-      _streamingParts.clear();
-      _streamingThinkingActive = false;
-      notifyListeners();
-      _refreshTail(tid);
+      _finishRun(tid);
     }
   }
 
@@ -1174,7 +1190,10 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
+      _runningThreadIds.remove(id);
       _sending = false;
+      _streamingParts.clear();
+      _streamingThinkingActive = false;
       _globalError = '$e';
       notifyListeners();
     }
@@ -1201,29 +1220,33 @@ class AppState extends ChangeNotifier {
         );
     notifyListeners();
 
-    late StreamSubscription? sub;
-    sub = api
-        .sendMessageStream(
-          threadId: tid,
-          prompt: text,
-          mode: _composerMode.name,
-          attachments: attachments,
-        )
-        .listen(
-          (ev) {
-            if (_sendSubscription != sub) return;
-            _handleRunEvent(tid, ev);
-          },
-          onError: (e) {
-            if (_sendSubscription != sub) return;
-            _handleRunError(tid, e);
-          },
-          onDone: () {
-            if (_sendSubscription != sub) return;
-            _handleRunOnDone(tid);
-          },
-        );
-    _sendSubscription = sub;
+    try {
+      late StreamSubscription? sub;
+      sub = api
+          .sendMessageStream(
+            threadId: tid,
+            prompt: text,
+            mode: _composerMode.name,
+            attachments: attachments,
+          )
+          .listen(
+            (ev) {
+              if (_sendSubscription != sub) return;
+              _handleRunEvent(tid, ev);
+            },
+            onError: (e) {
+              if (_sendSubscription != sub) return;
+              _handleRunError(tid, e);
+            },
+            onDone: () {
+              if (_sendSubscription != sub) return;
+              _handleRunOnDone(tid);
+            },
+          );
+      _sendSubscription = sub;
+    } catch (e) {
+      _finishRun(tid, error: '$e');
+    }
   }
 
   // ---- TOTP ----

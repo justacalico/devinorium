@@ -6,10 +6,14 @@ import 'api_types.dart';
 /// not contain an event name.
 SseEvent? parseSseBlock(String block) {
   String event = '';
+  String? id;
   final dataLines = <String>[];
   for (final line in block.split('\n')) {
     if (line.startsWith('event:')) {
       event = line.substring(6).trim();
+    } else if (line.startsWith('id:')) {
+      final rest = line.substring(3);
+      id = rest.startsWith(' ') ? rest.substring(1).trim() : rest.trim();
     } else if (line.startsWith('data:')) {
       final rest = line.substring(5);
       final stripped = rest.startsWith(' ') ? rest.substring(1) : rest;
@@ -17,5 +21,5 @@ SseEvent? parseSseBlock(String block) {
     }
   }
   if (event.isEmpty) return null;
-  return SseEvent(event, dataLines.join('\n'));
+  return SseEvent(event, dataLines.join('\n'), id: id);
 }

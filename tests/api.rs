@@ -1030,6 +1030,73 @@ async fn thread_events_can_be_resumed_by_reconnecting_client() {
 }
 
 #[tokio::test]
+async fn thread_events_seeds_terminal_state_after_run_completes() {
+    let (app, _db) = make_app_with_delay(100).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----terminalboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+
+    // Start and fully collect the stream so the run finishes.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let _ = to_bytes(resp.into_body(), 100_000).await.unwrap();
+
+    // Reconnect to the completed run.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/events"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let events = to_bytes(resp.into_body(), 10_000).await.unwrap();
+    let text = String::from_utf8_lossy(&events);
+    let state_block = text
+        .split("\n\n")
+        .find(|b| b.contains("event: state"))
+        .expect("state block");
+    let state_data = state_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("state data");
+    let state_json: serde_json::Value =
+        serde_json::from_str(&state_data[6..]).expect("valid state json");
+    assert_eq!(state_json["status"], "completed");
+    assert!(
+        state_json["text"].as_str().is_some_and(|s| !s.is_empty()),
+        "terminal state should include accumulated text"
+    );
+}
+
+#[tokio::test]
 async fn accounts_owner_create_and_list() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

@@ -15,5 +15,6 @@ class ApiException implements Exception {
 class SseEvent {
   final String event;
   final String data;
-  SseEvent(this.event, this.data);
+  final String? id;
+  SseEvent(this.event, this.data, {this.id});
 }
