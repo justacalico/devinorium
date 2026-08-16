@@ -706,6 +706,7 @@ class _Composer extends StatefulWidget {
 
 class _ComposerState extends State<_Composer> {
   final _focusNode = FocusNode();
+  bool _wasSending = false;
 
   @override
   void dispose() {
@@ -720,6 +721,18 @@ class _ComposerState extends State<_Composer> {
       widget.controller.clear();
       state.sendMessage();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = context.read<AppState>();
+    if (_wasSending && !state.sending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    }
+    _wasSending = state.sending;
   }
 
   @override
@@ -770,19 +783,14 @@ class _ComposerState extends State<_Composer> {
                           ],
                         ),
                       ),
-                    KeyboardListener(
-                      focusNode: _focusNode,
-                      onKeyEvent: (event) {
-                        // Enter (without Shift) sends the message.
-                        // Shift+Enter inserts a newline (default behavior).
-                        if (event is KeyDownEvent &&
-                            event.logicalKey == LogicalKeyboardKey.enter &&
-                            !HardwareKeyboard.instance.isShiftPressed) {
-                          _submit(state);
-                        }
+                    CallbackShortcuts(
+                      bindings: <ShortcutActivator, VoidCallback>{
+                        const SingleActivator(LogicalKeyboardKey.enter):
+                            () => _submit(state),
                       },
                       child: TextField(
                         controller: widget.controller,
+                        focusNode: _focusNode,
                         minLines: 1,
                         maxLines: 6,
                         enabled: hasActiveThread && !isSending,

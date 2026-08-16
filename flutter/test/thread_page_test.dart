@@ -1,3 +1,6 @@
+import 'package:devinorium_frontend/api/api_client.dart';
+import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/api/api_types.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/model_picker.dart';
@@ -9,6 +12,115 @@ import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
+class _ThrowingClient extends BaseApiClient {
+  @override
+  Future<bool> get isConfigured => Future.value(false);
+
+  @override
+  Future<Map<String, dynamic>> get(String path) => throw UnimplementedError();
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(String path) =>
+      throw UnimplementedError();
+
+  @override
+  Stream<SseEvent> getStream({required String path}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Map<String, dynamic>> post(String path, [Object? body]) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Map<String, dynamic>> patch(String path, [Object? body]) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Map<String, dynamic>> delete(String path) => throw UnimplementedError();
+
+  @override
+  Future<Map<String, dynamic>> deleteWithBody(String path, Object body) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Map<String, dynamic>> uploadMultipart(
+    String path,
+    Map<String, String> fields,
+    List<({String filename, String mime, Uint8List bytes})> files,
+  ) =>
+      throw UnimplementedError();
+
+  @override
+  Stream<SseEvent> sendStream({
+    required String path,
+    required String prompt,
+    List<({String filename, String mime, Uint8List bytes})>? attachments,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> setServerUrl(String serverUrl) => Future.value();
+
+  @override
+  Future<void> setToken(String token) => Future.value();
+
+  @override
+  Future<void> setUsername(String username) => Future.value();
+
+  @override
+  Future<void> clearCredentials() => Future.value();
+
+  @override
+  Future<void> init() => Future.value();
+
+  @override
+  bool get isNative => true;
+
+  @override
+  Future<String?> get serverUrl => Future.value(null);
+
+  @override
+  Future<void> close() => Future.value();
+}
+
+class _FakeApiService extends ApiService {
+  _FakeApiService() : super(client: _ThrowingClient());
+
+  @override
+  Future<void> updateThreadSettings(
+    String id, {
+    String? model,
+    String? permissionMode,
+    String? permissions,
+  }) =>
+      Future.value();
+
+  @override
+  Future<ThreadDetail> getThread(String id) => Future.value(
+        ThreadDetail(
+          thread: Thread(
+            id: id,
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+
+  @override
+  Stream<SseEvent> sendMessageStream({
+    required String threadId,
+    required String prompt,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) =>
+      Stream.fromFuture(Future.value(SseEvent('done', '')));
+}
 
 Widget _buildWithState(AppState state) => MaterialApp(
       home: ChangeNotifierProvider<AppState>.value(
@@ -552,5 +664,56 @@ void main() {
     linkRecognizer!.onTap!();
 
     expect(launched, ['https://example.com']);
+  });
+
+  testWidgets('input is refocused after sending a message', (tester) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final textField = find.byType(TextField);
+    expect(textField, findsOneWidget);
+
+    await tester.tap(textField);
+    await tester.pump();
+    final focusNode = tester.widget<TextField>(textField).focusNode;
+    expect(focusNode?.hasFocus, isTrue);
+
+    await tester.enterText(textField, 'hello');
+    await tester.pump();
+
+    final send = find.widgetWithIcon(IconButton, Icons.send);
+    expect(send, findsOneWidget);
+    await tester.tap(send);
+    await tester.pumpAndSettle();
+
+    final focusNodeAfter = tester.widget<TextField>(textField).focusNode;
+    expect(state.sending, isFalse);
+    expect(focusNodeAfter?.hasFocus, isTrue);
   });
 }
