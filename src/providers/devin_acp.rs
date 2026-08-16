@@ -48,6 +48,24 @@ impl DevinAcpProvider {
         Self { bin, default_model }
     }
 
+    /// Prepend a mode instruction to the prompt so the Devin CLI
+    /// behaves according to the selected composer mode (plan/ask/code).
+    /// This is the fallback for ACP agents that do not expose a native
+    /// `interaction_mode` session config option.
+    fn apply_interaction_mode_prefix(prompt: String, mode: &str) -> String {
+        match mode.trim().to_lowercase().as_str() {
+            "plan" => format!(
+                "You are in Plan mode. First produce a concise plan and do not \
+run tools, edit files, or execute commands until the user confirms.\n\n{prompt}"
+            ),
+            "ask" => format!(
+                "You are in Ask mode. Answer the user's question directly and do \
+not use tools, edit files, or execute commands.\n\n{prompt}"
+            ),
+            _ => prompt,
+        }
+    }
+
     /// Verify the binary is on PATH and the ACP handshake succeeds
     /// without creating a session or sending a prompt.
     pub async fn do_health_check(&self) -> anyhow::Result<()> {
@@ -180,6 +198,9 @@ impl DevinAcpProvider {
                         config_options.as_deref(),
                     )
                     .await?;
+
+                    let prompt =
+                        Self::apply_interaction_mode_prefix(prompt, &options.interaction_mode);
 
                     let mut prompt_blocks = vec![ContentBlock::Text(TextContent::new(prompt))];
                     prompt_blocks.extend(
@@ -1279,5 +1300,27 @@ mod tests {
         let att_dir = root.path().join(".devinorium-attachments");
         let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
         assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn apply_interaction_mode_prefix_adds_plan_instruction() {
+        let out = DevinAcpProvider::apply_interaction_mode_prefix("hello".into(), "plan");
+        assert!(out.contains("Plan mode"));
+        assert!(out.contains("hello"));
+        assert!(out.contains("do not run tools"));
+    }
+
+    #[test]
+    fn apply_interaction_mode_prefix_adds_ask_instruction() {
+        let out = DevinAcpProvider::apply_interaction_mode_prefix("hi".into(), "ask");
+        assert!(out.contains("Ask mode"));
+        assert!(out.contains("hi"));
+        assert!(out.contains("do not use tools"));
+    }
+
+    #[test]
+    fn apply_interaction_mode_prefix_leaves_code_prompt_unchanged() {
+        let out = DevinAcpProvider::apply_interaction_mode_prefix("go".into(), "code");
+        assert_eq!(out, "go");
     }
 }
