@@ -1,6 +1,6 @@
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
-import 'package:devinorium_frontend/api/api_types.dart';
+import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/model_picker.dart';
@@ -37,7 +37,8 @@ class _ThrowingClient extends BaseApiClient {
       throw UnimplementedError();
 
   @override
-  Future<Map<String, dynamic>> delete(String path) => throw UnimplementedError();
+  Future<Map<String, dynamic>> delete(String path) =>
+      throw UnimplementedError();
 
   @override
   Future<Map<String, dynamic>> deleteWithBody(String path, Object body) =>
@@ -48,16 +49,15 @@ class _ThrowingClient extends BaseApiClient {
     String path,
     Map<String, String> fields,
     List<({String filename, String mime, Uint8List bytes})> files,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
 
   @override
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
+    String? mode,
     List<({String filename, String mime, Uint8List bytes})>? attachments,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<void> setServerUrl(String serverUrl) => Future.value();
@@ -79,9 +79,6 @@ class _ThrowingClient extends BaseApiClient {
 
   @override
   Future<String?> get serverUrl => Future.value(null);
-
-  @override
-  Future<void> close() => Future.value();
 }
 
 class _FakeApiService extends ApiService {
@@ -93,195 +90,201 @@ class _FakeApiService extends ApiService {
     String? model,
     String? permissionMode,
     String? permissions,
-  }) =>
-      Future.value();
+  }) => Future.value();
 
   @override
   Future<ThreadDetail> getThread(String id) => Future.value(
-        ThreadDetail(
+    ThreadDetail(
+      thread: Thread(
+        id: id,
+        title: 'Test',
+        projectId: 1,
+        model: 'm1',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+      messages: [],
+    ),
+  );
+
+  @override
+  Stream<SseEvent> sendMessageStream({
+    required String threadId,
+    required String prompt,
+    String? mode,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) => Stream.fromFuture(Future.value(SseEvent('done', '')));
+}
+
+Widget _buildWithState(AppState state) => MaterialApp(
+  home: ChangeNotifierProvider<AppState>.value(
+    value: state,
+    child: const ThreadPage(),
+  ),
+);
+
+void main() {
+  testWidgets(
+    'Model picker and permission dropdown are disabled without a thread',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        models: [
+          ModelInfo(
+            id: 'm1',
+            label: 'Model 1',
+            costTier: 'free',
+            family: 'test',
+          ),
+        ],
+      );
+      state.setSelectedModel('m1');
+      state.setSelectedPermission('normal');
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      final modelPicker = find.byType(ModelPicker);
+      final dropdown = find.byType(DropdownButton<String>);
+
+      expect(modelPicker, findsOneWidget);
+      expect(dropdown, findsOneWidget);
+
+      final button = tester.widget<DropdownButton<String>>(dropdown);
+      expect(button.onChanged, isNull);
+
+      await tester.tap(modelPicker);
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Model picker and permission dropdown are disabled while sending',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        models: [
+          ModelInfo(
+            id: 'm1',
+            label: 'Model 1',
+            costTier: 'free',
+            family: 'test',
+          ),
+        ],
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
           thread: Thread(
-            id: id,
-            title: 'Test',
+            id: 't1',
+            title: 'Test thread',
             projectId: 1,
             model: 'm1',
             permissionMode: 'normal',
             createdAt: '',
             updatedAt: '',
           ),
-          messages: [],
+          messages: const [],
+        ),
+        sending: true,
+      );
+      state.setSelectedModel('m1');
+      state.setSelectedPermission('normal');
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pump();
+
+      final modelPicker = find.byType(ModelPicker);
+      final dropdown = find.byType(DropdownButton<String>);
+
+      expect(modelPicker, findsOneWidget);
+      expect(dropdown, findsOneWidget);
+
+      final button = tester.widget<DropdownButton<String>>(dropdown);
+      expect(button.onChanged, isNull);
+
+      await tester.tap(modelPicker);
+      await tester.pump();
+      expect(find.byType(Dialog), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Model picker and permission dropdown are enabled with an active thread',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        models: [
+          ModelInfo(
+            id: 'm1',
+            label: 'Model 1',
+            costTier: 'free',
+            family: 'test',
+          ),
+        ],
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
         ),
       );
+      state.setSelectedModel('m1');
+      state.setSelectedPermission('normal');
 
-  @override
-  Stream<SseEvent> sendMessageStream({
-    required String threadId,
-    required String prompt,
-    List<({String filename, String mime, Uint8List bytes})> attachments =
-        const [],
-  }) =>
-      Stream.fromFuture(Future.value(SseEvent('done', '')));
-}
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-Widget _buildWithState(AppState state) => MaterialApp(
-      home: ChangeNotifierProvider<AppState>.value(
-        value: state,
-        child: const ThreadPage(),
-      ),
-    );
+      final modelPicker = find.byType(ModelPicker);
+      final dropdown = find.byType(DropdownButton<String>);
 
-void main() {
-  testWidgets('Model picker and permission dropdown are disabled without a thread',
-      (tester) async {
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      models: [
-        ModelInfo(
-          id: 'm1',
-          label: 'Model 1',
-          costTier: 'free',
-          family: 'test',
-        ),
-      ],
-    );
-    state.setSelectedModel('m1');
-    state.setSelectedPermission('normal');
+      expect(modelPicker, findsOneWidget);
+      expect(dropdown, findsOneWidget);
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      final button = tester.widget<DropdownButton<String>>(dropdown);
+      expect(button.onChanged, isNotNull);
 
-    final modelPicker = find.byType(ModelPicker);
-    final dropdown = find.byType(DropdownButton<String>);
+      await tester.tap(modelPicker);
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+    },
+  );
 
-    expect(modelPicker, findsOneWidget);
-    expect(dropdown, findsOneWidget);
-
-    final button = tester.widget<DropdownButton<String>>(dropdown);
-    expect(button.onChanged, isNull);
-
-    await tester.tap(modelPicker);
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing);
-  });
-
-  testWidgets('Model picker and permission dropdown are disabled while sending',
-      (tester) async {
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      models: [
-        ModelInfo(
-          id: 'm1',
-          label: 'Model 1',
-          costTier: 'free',
-          family: 'test',
-        ),
-      ],
-      activeThreadId: 't1',
-      activeThreadDetail: ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test thread',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
-        ),
-        messages: const [],
-      ),
-      sending: true,
-    );
-    state.setSelectedModel('m1');
-    state.setSelectedPermission('normal');
-
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pump();
-
-    final modelPicker = find.byType(ModelPicker);
-    final dropdown = find.byType(DropdownButton<String>);
-
-    expect(modelPicker, findsOneWidget);
-    expect(dropdown, findsOneWidget);
-
-    final button = tester.widget<DropdownButton<String>>(dropdown);
-    expect(button.onChanged, isNull);
-
-    await tester.tap(modelPicker);
-    await tester.pump();
-    expect(find.byType(Dialog), findsNothing);
-  });
-
-  testWidgets('Model picker and permission dropdown are enabled with an active thread',
-      (tester) async {
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      models: [
-        ModelInfo(
-          id: 'm1',
-          label: 'Model 1',
-          costTier: 'free',
-          family: 'test',
-        ),
-      ],
-      activeThreadId: 't1',
-      activeThreadDetail: ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test thread',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
-        ),
-        messages: const [],
-      ),
-    );
-    state.setSelectedModel('m1');
-    state.setSelectedPermission('normal');
-
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
-
-    final modelPicker = find.byType(ModelPicker);
-    final dropdown = find.byType(DropdownButton<String>);
-
-    expect(modelPicker, findsOneWidget);
-    expect(dropdown, findsOneWidget);
-
-    final button = tester.widget<DropdownButton<String>>(dropdown);
-    expect(button.onChanged, isNotNull);
-
-    await tester.tap(modelPicker);
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
-  });
-
-  testWidgets('renders thinking, text and tool call parts in order',
-      (tester) async {
+  testWidgets('renders thinking, text and tool call parts in order', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -338,8 +341,9 @@ void main() {
     expect(find.text('Run cmd'), findsOneWidget);
   });
 
-  testWidgets('tool calls render inside the expanded thinking block',
-      (tester) async {
+  testWidgets('tool calls render inside the expanded thinking block', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -399,8 +403,9 @@ void main() {
     expect(find.text('Run another'), findsOneWidget);
   });
 
-  testWidgets('interleaves thinking text and tool calls in order',
-      (tester) async {
+  testWidgets('interleaves thinking text and tool calls in order', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -462,8 +467,9 @@ void main() {
     expect(find.text('read file'), findsOneWidget);
   });
 
-  testWidgets('merges consecutive thinking parts before a tool call',
-      (tester) async {
+  testWidgets('merges consecutive thinking parts before a tool call', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -519,13 +525,13 @@ void main() {
     final launched = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'launch') {
-        final args = call.arguments as Map<dynamic, dynamic>;
-        launched.add(args['url'] as String);
-        return true;
-      }
-      return null;
-    });
+          if (call.method == 'launch') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            launched.add(args['url'] as String);
+            return true;
+          }
+          return null;
+        });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -595,13 +601,13 @@ void main() {
     final launched = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'launch') {
-        final args = call.arguments as Map<dynamic, dynamic>;
-        launched.add(args['url'] as String);
-        return true;
-      }
-      return null;
-    });
+          if (call.method == 'launch') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            launched.add(args['url'] as String);
+            return true;
+          }
+          return null;
+        });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -632,9 +638,7 @@ void main() {
           Message(
             role: 'user',
             content: 'see https://example.com',
-            parts: [
-              MessagePart.text(content: 'see https://example.com'),
-            ],
+            parts: [MessagePart.text(content: 'see https://example.com')],
           ),
         ],
       ),
@@ -745,16 +749,8 @@ void main() {
           updatedAt: '',
         ),
         messages: [
-          Message(
-            role: 'assistant',
-            content: 'A' * 2000,
-            attachments: null,
-          ),
-          Message(
-            role: 'user',
-            content: 'B' * 2000,
-            attachments: null,
-          ),
+          Message(role: 'assistant', content: 'A' * 2000, attachments: null),
+          Message(role: 'user', content: 'B' * 2000, attachments: null),
         ],
       ),
     );
@@ -774,5 +770,72 @@ void main() {
     expect(size.width, closeTo(1920 - 48, 1));
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('composer mode defaults to code and can be switched', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Code'), findsOneWidget);
+    expect(find.text('Plan'), findsNothing);
+
+    await tester.tap(find.text('Code'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Plan').last);
+    await tester.pumpAndSettle();
+
+    expect(state.composerMode, ComposerMode.plan);
+    expect(find.text('Plan'), findsNWidgets(2));
+
+    await tester.tap(find.text('Plan').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ask').last);
+    await tester.pumpAndSettle();
+
+    expect(state.composerMode, ComposerMode.ask);
+    expect(find.text('Ask'), findsNWidgets(2));
+  });
+
+  testWidgets('plan and ask modes show a badge', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      composerMode: ComposerMode.ask,
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ask'), findsNWidgets(2));
+    expect(find.text('Code'), findsNothing);
   });
 }

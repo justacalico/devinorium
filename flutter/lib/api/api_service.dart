@@ -96,7 +96,8 @@ class ApiService {
     if (query != null && query.isNotEmpty) params['query'] = query;
     final uri = _buildPath('/api/projects/$projectId/git/branches', params);
     final j = await _client.get(uri);
-    final list = (j['branches'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final list = (j['branches'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
     return list.map(GitBranch.fromJson).toList();
   }
 
@@ -134,7 +135,9 @@ class ApiService {
   }
 
   Future<List<GitWorktree>> gitWorktrees(int projectId) async {
-    final list = await _client.getList('/api/projects/$projectId/git/worktrees');
+    final list = await _client.getList(
+      '/api/projects/$projectId/git/worktrees',
+    );
     return list.map(GitWorktree.fromJson).toList();
   }
 
@@ -205,9 +208,7 @@ class ApiService {
   }
 
   Future<void> reorderProjects(List<int> projectIds) async {
-    await _client.patch('/api/projects/reorder', {
-      'project_ids': projectIds,
-    });
+    await _client.patch('/api/projects/reorder', {'project_ids': projectIds});
   }
 
   Future<List<Thread>> listThreadsForProject(int id) async {
@@ -236,9 +237,7 @@ class ApiService {
     String? branch,
     String? worktreePath,
   }) async {
-    final body = <String, dynamic>{
-      'project_id': projectId,
-    };
+    final body = <String, dynamic>{'project_id': projectId};
     if (title != null) body['title'] = title;
     if (threadGroupId != null) body['thread_group_id'] = threadGroupId;
     if (model != null) body['model'] = model;
@@ -269,7 +268,9 @@ class ApiService {
     if (model != null && model.isNotEmpty) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
     // An empty permissions string is sent as JSON null, which clears the field.
-    if (permissions != null) body['permissions'] = permissions.isEmpty ? null : permissions;
+    if (permissions != null) {
+      body['permissions'] = permissions.isEmpty ? null : permissions;
+    }
     if (body.isNotEmpty) {
       await _client.patch('/api/threads/$id', body);
     }
@@ -441,12 +442,14 @@ class ApiService {
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,
+    String? mode,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
     return _client.sendStream(
       path: '/api/threads/$threadId/send/stream',
       prompt: prompt,
+      mode: mode,
       attachments: attachments,
     );
   }

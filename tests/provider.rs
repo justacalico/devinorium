@@ -70,6 +70,7 @@ async fn provider_start_and_send_text() {
                 part_callback: None,
                 working_dir: dir.clone(),
                 permission_mode: "normal".to_string(),
+                interaction_mode: "code".to_string(),
                 attachments: vec![],
             },
         })
@@ -89,6 +90,7 @@ async fn provider_start_and_send_text() {
                 part_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
+                interaction_mode: "code".to_string(),
                 attachments: vec![],
             },
         })
@@ -130,6 +132,7 @@ async fn provider_start_with_image_attachment() {
                 part_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
+                interaction_mode: "code".to_string(),
                 attachments: vec![providers::Attachment {
                     filename: "pixel.png".to_string(),
                     mime: "image/png".to_string(),
@@ -154,10 +157,7 @@ fn registry_knows_devin_cli() {
 
 #[test]
 fn provider_name_looks_up_display_name() {
-    assert_eq!(
-        providers::provider_name("devin-cli"),
-        Some("Devin CLI")
-    );
+    assert_eq!(providers::provider_name("devin-cli"), Some("Devin CLI"));
     assert_eq!(providers::provider_name("nope"), None);
 }
 
@@ -173,10 +173,8 @@ fn registry_rejects_unknown() {
 
 #[tokio::test]
 async fn devin_acp_health_check_fails_for_missing_binary() {
-    let p = devin_acp::DevinAcpProvider::new(
-        "/nonexistent/devin".to_string(),
-        "glm-5-2".to_string(),
-    );
+    let p =
+        devin_acp::DevinAcpProvider::new("/nonexistent/devin".to_string(), "glm-5-2".to_string());
     let res = p.health_check().await;
     assert!(res.is_err(), "missing binary should fail health check");
 }
@@ -201,6 +199,7 @@ async fn provider_acp_start() {
                 part_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
+                interaction_mode: "code".to_string(),
                 attachments: vec![],
             },
         })
@@ -230,6 +229,7 @@ async fn provider_generates_code() {
                 part_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
+                interaction_mode: "code".to_string(),
                 attachments: vec![],
             },
         })
@@ -264,6 +264,7 @@ async fn provider_writes_file_in_working_dir() {
                 part_callback: None,
                 working_dir: dir.clone(),
                 permission_mode: "accept-edits".to_string(),
+                interaction_mode: "code".to_string(),
                 attachments: vec![],
             },
         })
@@ -317,6 +318,7 @@ async fn provider_accepts_all_permission_modes() {
                     part_callback: None,
                     working_dir: dir,
                     permission_mode: mode.to_string(),
+                    interaction_mode: "code".to_string(),
                     attachments: vec![],
                 },
             })
@@ -352,6 +354,7 @@ async fn provider_accepts_text_attachment() {
                 part_callback: None,
                 working_dir: dir,
                 permission_mode: "normal".to_string(),
+                interaction_mode: "code".to_string(),
                 attachments: vec![providers::Attachment {
                     filename: "secret.txt".to_string(),
                     mime: "text/plain".to_string(),

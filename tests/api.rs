@@ -71,8 +71,9 @@ impl Provider for StubProvider {
         if self.delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
         }
-        let reply = format!("echo: {}", req.prompt);
-        let thinking = "reasoning about the prompt".to_string();
+        let mode = req.options.interaction_mode.clone();
+        let reply = format!("echo: {} ({})", req.prompt, mode);
+        let thinking = format!("reasoning about the prompt in {} mode", mode);
         let parts = vec![
             MessagePart::thinking(thinking.clone()),
             MessagePart::tool_call(ToolCallEvent {
@@ -104,8 +105,9 @@ impl Provider for StubProvider {
         if self.delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
         }
-        let reply = format!("echo: {}", req.prompt);
-        let thinking = "reasoning about the prompt".to_string();
+        let mode = req.options.interaction_mode.clone();
+        let reply = format!("echo: {} ({})", req.prompt, mode);
+        let thinking = format!("reasoning about the prompt in {} mode", mode);
         let parts = vec![
             MessagePart::thinking(thinking.clone()),
             MessagePart::tool_call(ToolCallEvent {
@@ -531,8 +533,11 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains("echo: Hello world"), "body: {body}");
-    assert!(body.contains("reasoning about the prompt"), "body: {body}");
+    assert!(body.contains("echo: Hello world (code)"), "body: {body}");
+    assert!(
+        body.contains("reasoning about the prompt in code mode"),
+        "body: {body}"
+    );
 
     // Verify messages persisted in DB.
     let msgs = db.list_messages(&tid).await.unwrap();
@@ -540,11 +545,11 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     assert_eq!(msgs[0].role, "user");
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
-    assert_eq!(msgs[1].content, "echo: Hello world");
+    assert_eq!(msgs[1].content, "echo: Hello world (code)");
     assert!(msgs[1]
         .thinking
         .as_ref()
-        .is_some_and(|s| s == "reasoning about the prompt"));
+        .is_some_and(|s| s == "reasoning about the prompt in code mode"));
 
     // Thread now has a session id.
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
@@ -599,7 +604,10 @@ async fn thread_send_streams_reply_as_sse() {
     let part_positions: Vec<usize> = body.match_indices("event: part").map(|(i, _)| i).collect();
     assert_eq!(part_positions.len(), 3, "expected three part events");
     let done_pos = body.find("event: done").expect("done event");
-    assert!(part_positions.last().unwrap() < &done_pos, "parts should come before done");
+    assert!(
+        part_positions.last().unwrap() < &done_pos,
+        "parts should come before done"
+    );
 
     let part_blocks = body
         .split("\n\n")
@@ -645,10 +653,10 @@ async fn thread_send_streams_reply_as_sse() {
     let done_json: serde_json::Value =
         serde_json::from_str(&done_data[6..]).expect("valid done json");
     assert_eq!(done_json["role"], "assistant");
-    assert_eq!(done_json["content"], "echo: Hello world");
+    assert_eq!(done_json["content"], "echo: Hello world (code)");
     assert_eq!(
         done_json["thinking"].as_str(),
-        Some("reasoning about the prompt")
+        Some("reasoning about the prompt in code mode")
     );
 
     // Verify messages persisted in DB.
@@ -657,11 +665,152 @@ async fn thread_send_streams_reply_as_sse() {
     assert_eq!(msgs[0].role, "user");
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
-    assert_eq!(msgs[1].content, "echo: Hello world");
+    assert_eq!(msgs[1].content, "echo: Hello world (code)");
     assert!(msgs[1]
         .thinking
         .as_ref()
-        .is_some_and(|s| s == "reasoning about the prompt"));
+        .is_some_and(|s| s == "reasoning about the prompt in code mode"));
+}
+
+#[tokio::test]
+async fn thread_send_stream_uses_interaction_mode() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----modeboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"mode\"\r\n\r\nplan\r\n--{boundary}--\r\n"
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    assert_eq!(done_json["content"], "echo: Hello world (plan)");
+}
+
+#[tokio::test]
+async fn thread_send_stream_defaults_interaction_mode_to_code() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----modeboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    assert_eq!(done_json["content"], "echo: Hello world (code)");
+}
+
+#[tokio::test]
+async fn thread_send_stream_normalizes_unknown_interaction_mode() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----modeboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"mode\"\r\n\r\nunknown\r\n--{boundary}--\r\n"
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    assert_eq!(done_json["content"], "echo: Hello world (code)");
 }
 
 #[tokio::test]
@@ -736,7 +885,7 @@ async fn thread_runs_in_backend_with_zero_frontends() {
     assert_eq!(msgs[0].role, "user");
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
-    assert_eq!(msgs[1].content, "echo: Hello world");
+    assert_eq!(msgs[1].content, "echo: Hello world (code)");
 }
 
 #[tokio::test]
@@ -1828,7 +1977,12 @@ async fn git_status_for_non_git_project() {
     let pid = create_project(&app, &cookie).await;
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/projects/{pid}/git"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     let status = resp.status();
@@ -1852,7 +2006,12 @@ async fn git_branches_and_checkout() {
 
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/projects/{pid}/git/branches"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/branches"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1866,7 +2025,12 @@ async fn git_branches_and_checkout() {
     let body = r#"{"name":"new-feature","switch":true}"#;
     let resp = app
         .clone()
-        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/branches"), &cookie, body))
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/branches"),
+            &cookie,
+            body,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
@@ -1874,7 +2038,12 @@ async fn git_branches_and_checkout() {
     let body = format!(r#"{{"ref_name":"{default}"}}"#);
     let resp = app
         .clone()
-        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/checkout"), &cookie, &body))
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/checkout"),
+            &cookie,
+            &body,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1892,7 +2061,12 @@ async fn git_worktree_create_delete() {
     let body = r#"{"name":"wt1","base":"HEAD","new_branch":true}"#;
     let resp = app
         .clone()
-        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/worktrees"), &cookie, body))
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/worktrees"),
+            &cookie,
+            body,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
@@ -1902,7 +2076,12 @@ async fn git_worktree_create_delete() {
 
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/projects/{pid}/git/worktrees"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/worktrees"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1910,7 +2089,12 @@ async fn git_worktree_create_delete() {
     let body = format!(r#"{{"worktree_path":"{wt_path}"}}"#);
     let resp = app
         .clone()
-        .oneshot(authed("DELETE", &format!("/api/projects/{pid}/git/worktrees"), &cookie, &body))
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/projects/{pid}/git/worktrees"),
+            &cookie,
+            &body,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
@@ -1928,7 +2112,12 @@ async fn git_rejects_path_traversal_worktree() {
     let body = r#"{"name":"../escape","base":"HEAD","new_branch":true}"#;
     let resp = app
         .clone()
-        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/worktrees"), &cookie, body))
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/worktrees"),
+            &cookie,
+            body,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -1943,7 +2132,9 @@ async fn thread_create_with_git_context() {
     init_git_repo(&repo);
     let pid = create_git_project(&app, &cookie, &repo).await;
 
-    let body = format!(r#"{{"project_id":{pid},"title":"git-thread","branch":"main","worktree_path":""}}"#);
+    let body = format!(
+        r#"{{"project_id":{pid},"title":"git-thread","branch":"main","worktree_path":""}}"#
+    );
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/threads", &cookie, &body))
@@ -2025,12 +2216,7 @@ async fn git_connections_list_login_logout() {
     let body = r#"{"token":"glpat-test","hostname":"gitlab.example.com"}"#;
     let resp = app
         .clone()
-        .oneshot(authed(
-            "POST",
-            "/api/git-connections/gitlab",
-            &cookie,
-            body,
-        ))
+        .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);

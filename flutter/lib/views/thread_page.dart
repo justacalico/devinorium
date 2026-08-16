@@ -6,6 +6,7 @@ import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
+import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/link_opener.dart';
@@ -730,134 +731,192 @@ class _ComposerState extends State<_Composer> {
     _wasSending = state.sending;
   }
 
+  static Color _modeColor(ComposerMode mode) => switch (mode) {
+    ComposerMode.code => Colors.transparent,
+    ComposerMode.plan => const Color(0xFFFFC107),
+    ComposerMode.ask => const Color(0xFF4CAF50),
+  };
+
+  static Color? _badgeBackground(ComposerMode mode) => switch (mode) {
+    ComposerMode.code => null,
+    ComposerMode.plan => const Color(0xFFFFECB3),
+    ComposerMode.ask => const Color(0xFFC8E6C9),
+  };
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final isSending = state.sending;
     final hasActiveThread = state.activeThreadId != null;
+    final mode = state.composerMode;
+    final modeColor = _modeColor(mode);
+    final showBadge = mode != ComposerMode.code;
+
+    final borderSide = mode == ComposerMode.code
+        ? BorderSide.none
+        : BorderSide(color: modeColor, width: 2);
 
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-        child: Material(
-          color: theme.colorScheme.surfaceContainer,
-          elevation: 1,
-          borderRadius: BorderRadius.circular(28),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (state.attachments.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (var i = 0; i < state.attachments.length; i++)
-                          Chip(
-                            avatar: const Icon(Icons.attach_file, size: 14),
-                            label: Text(state.attachments[i].filename),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 0,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                            backgroundColor:
-                                theme.colorScheme.surfaceContainerHigh,
-                            onDeleted: () => state.removeAttachment(i),
-                          ),
-                      ],
-                    ),
-                  ),
-                CallbackShortcuts(
-                  bindings: <ShortcutActivator, VoidCallback>{
-                    const SingleActivator(LogicalKeyboardKey.enter): () =>
-                        _submit(state),
-                  },
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    minLines: 1,
-                    maxLines: 6,
-                    enabled: hasActiveThread && !isSending,
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      isCollapsed: true,
-                      hintText: l10n(context).composerHint,
-                    ),
-                    style: theme.textTheme.bodyLarge,
-                    onChanged: state.setComposerText,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Material(
+              color: theme.colorScheme.surfaceContainer,
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: borderSide,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.attach_file, size: 20),
-                      onPressed: hasActiveThread && !isSending
-                          ? () async {
-                              final dz = DropZone.of(context);
-                              if (dz == null) return;
-                              final files = await dz.pick(multiple: true);
-                              if (files.isNotEmpty) {
-                                state.addAttachments(files);
-                              }
-                            }
-                          : null,
-                    ),
-                    Expanded(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 0,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          ModelPicker(
-                            value: state.selectedModel,
-                            models: state.models,
-                            enabled: hasActiveThread && !isSending,
-                            onChanged: (model) {
-                              state.setSelectedModel(model);
-                              state.saveThreadSettings();
-                            },
-                          ),
-                          _PermissionDropdown(
-                            value: state.selectedPermission,
-                            enabled: hasActiveThread && !isSending,
-                            onChanged: (mode) {
-                              state.setSelectedPermission(mode);
-                              state.saveThreadSettings();
-                            },
-                          ),
-                        ],
+                    if (state.attachments.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (var i = 0; i < state.attachments.length; i++)
+                              Chip(
+                                avatar: const Icon(Icons.attach_file, size: 14),
+                                label: Text(state.attachments[i].filename),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 0,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                backgroundColor:
+                                    theme.colorScheme.surfaceContainerHigh,
+                                onDeleted: () => state.removeAttachment(i),
+                              ),
+                          ],
+                        ),
+                      ),
+                    CallbackShortcuts(
+                      bindings: <ShortcutActivator, VoidCallback>{
+                        const SingleActivator(LogicalKeyboardKey.enter): () =>
+                            _submit(state),
+                      },
+                      child: TextField(
+                        controller: widget.controller,
+                        focusNode: _focusNode,
+                        minLines: 1,
+                        maxLines: 6,
+                        enabled: hasActiveThread && !isSending,
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          isCollapsed: true,
+                          hintText: l10n(context).composerHint,
+                        ),
+                        style: theme.textTheme.bodyLarge,
+                        onChanged: state.setComposerText,
                       ),
                     ),
-                    IconButton.filled(
-                      icon: isSending
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send, size: 18),
-                      onPressed: (hasActiveThread && !isSending)
-                          ? () {
-                              if (state.composerText.trim().isNotEmpty) {
-                                widget.controller.clear();
-                                state.sendMessage();
-                              }
-                            }
-                          : null,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.attach_file, size: 20),
+                          onPressed: hasActiveThread && !isSending
+                              ? () async {
+                                  final dz = DropZone.of(context);
+                                  if (dz == null) return;
+                                  final files = await dz.pick(multiple: true);
+                                  if (files.isNotEmpty) {
+                                    state.addAttachments(files);
+                                  }
+                                }
+                              : null,
+                        ),
+                        Expanded(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 0,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              ModelPicker(
+                                value: state.selectedModel,
+                                models: state.models,
+                                enabled: hasActiveThread && !isSending,
+                                onChanged: (model) {
+                                  state.setSelectedModel(model);
+                                  state.saveThreadSettings();
+                                },
+                              ),
+                              _PermissionDropdown(
+                                value: state.selectedPermission,
+                                enabled: hasActiveThread && !isSending,
+                                onChanged: (mode) {
+                                  state.setSelectedPermission(mode);
+                                  state.saveThreadSettings();
+                                },
+                              ),
+                              _ModeDropdown(
+                                value: state.composerMode,
+                                enabled: hasActiveThread && !isSending,
+                                onChanged: state.setComposerMode,
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton.filled(
+                          icon: isSending
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.send, size: 18),
+                          onPressed: (hasActiveThread && !isSending)
+                              ? () {
+                                  if (state.composerText.trim().isNotEmpty) {
+                                    widget.controller.clear();
+                                    state.sendMessage();
+                                  }
+                                }
+                              : null,
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
+            if (showBadge)
+              Positioned(
+                top: -10,
+                left: 20,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _badgeBackground(mode),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: modeColor),
+                  ),
+                  child: Text(
+                    mode.label,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -905,6 +964,53 @@ class _PermissionDropdown extends StatelessWidget {
           : null,
     );
   }
+}
+
+class _ModeDropdown extends StatelessWidget {
+  final ComposerMode value;
+  final ValueChanged<ComposerMode> onChanged;
+  final bool enabled;
+  const _ModeDropdown({
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      for (final mode in ComposerMode.values)
+        DropdownMenuItem<ComposerMode>(
+          value: mode,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_modeIcon(mode), size: 14),
+              const SizedBox(width: 6),
+              Text(mode.label),
+            ],
+          ),
+        ),
+    ];
+
+    return DropdownButton<ComposerMode>(
+      value: value,
+      underline: const SizedBox(),
+      isDense: true,
+      items: items,
+      onChanged: enabled
+          ? (v) {
+              if (v != null) onChanged(v);
+            }
+          : null,
+    );
+  }
+
+  static IconData _modeIcon(ComposerMode mode) => switch (mode) {
+    ComposerMode.code => Icons.code,
+    ComposerMode.plan => Icons.lightbulb_outline,
+    ComposerMode.ask => Icons.help_outline,
+  };
 }
 
 (IconData, Color) _toolIconAndColor(String kind, ThemeData theme) {

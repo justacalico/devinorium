@@ -1,6 +1,5 @@
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
-import 'package:devinorium_frontend/api/api_types.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
@@ -28,8 +27,6 @@ class _ThrowingClient extends BaseApiClient {
   @override
   Future<void> setUsername(String username) => Future.value();
   @override
-  Future<void> close() => Future.value();
-  @override
   Future<Map<String, dynamic>> get(String path) => throw UnimplementedError();
   @override
   Future<List<Map<String, dynamic>>> getList(String path) =>
@@ -44,7 +41,8 @@ class _ThrowingClient extends BaseApiClient {
   Future<Map<String, dynamic>> patch(String path, [Object? body]) =>
       throw UnimplementedError();
   @override
-  Future<Map<String, dynamic>> delete(String path) => throw UnimplementedError();
+  Future<Map<String, dynamic>> delete(String path) =>
+      throw UnimplementedError();
   @override
   Future<Map<String, dynamic>> deleteWithBody(String path, Object body) =>
       throw UnimplementedError();
@@ -53,15 +51,14 @@ class _ThrowingClient extends BaseApiClient {
     String path,
     Map<String, String> fields,
     List<({String filename, String mime, Uint8List bytes})> files,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
   @override
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
+    String? mode,
     List<({String filename, String mime, Uint8List bytes})>? attachments,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 class _FakeApiService extends ApiService {
@@ -83,14 +80,14 @@ class _FakeApiService extends ApiService {
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
-      home: ChangeNotifierProvider<AppState>.value(
-        value: state,
-        child: const Scaffold(
-          drawer: Drawer(child: Sidebar()),
-          body: SizedBox.shrink(),
-        ),
-      ),
-    );
+  home: ChangeNotifierProvider<AppState>.value(
+    value: state,
+    child: const Scaffold(
+      drawer: Drawer(child: Sidebar()),
+      body: SizedBox.shrink(),
+    ),
+  ),
+);
 
 Future<void> _openDrawer(WidgetTester tester) async {
   final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold));
@@ -242,7 +239,9 @@ void main() {
     expect(find.text('My thread'), findsOneWidget);
   });
 
-  testWidgets('Projects start collapsed when no thread is active', (tester) async {
+  testWidgets('Projects start collapsed when no thread is active', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -311,7 +310,9 @@ void main() {
     expect(find.text('main'), findsOneWidget);
   });
 
-  testWidgets('Sidebar renders long git branch without layout exception', (tester) async {
+  testWidgets('Sidebar renders long git branch without layout exception', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -342,8 +343,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Shift+click delete skips confirmation and removes thread',
-      (tester) async {
+  testWidgets('Shift+click delete skips confirmation and removes thread', (
+    tester,
+  ) async {
     final api = _FakeApiService();
     final state = AppState.test(
       api: api,
@@ -388,14 +390,16 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pump();
 
-    expect(find.text('Delete this thread? This cannot be undone.'), findsNothing);
+    expect(
+      find.text('Delete this thread? This cannot be undone.'),
+      findsNothing,
+    );
     expect(find.text('My thread'), findsNothing);
     expect(api.deletedThreadIds, contains('a'));
     expect(state.threads, isEmpty);
   });
 
-  testWidgets('Click delete without shift shows confirmation',
-      (tester) async {
+  testWidgets('Click delete without shift shows confirmation', (tester) async {
     final state = AppState.test(
       api: _FakeApiService(),
       user: User(
@@ -433,6 +437,9 @@ void main() {
     await tester.tap(delete);
     await tester.pumpAndSettle();
 
-    expect(find.text('Delete this thread? This cannot be undone.'), findsOneWidget);
+    expect(
+      find.text('Delete this thread? This cannot be undone.'),
+      findsOneWidget,
+    );
   });
 }

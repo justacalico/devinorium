@@ -695,7 +695,11 @@ async fn run_thread(
     let part_callback: PartCallback = Arc::new({
         let run = run.clone();
         move |ev: PartEvent| {
-            let event = if ev.is_update() { "part_update" } else { "part" };
+            let event = if ev.is_update() {
+                "part_update"
+            } else {
+                "part"
+            };
             if let Ok(json) = serde_json::to_string(ev.part()) {
                 run.emit(event, &json);
             }
@@ -708,8 +712,7 @@ async fn run_thread(
         &state,
         &user,
         &thread,
-        &input.prompt,
-        input.attachments,
+        &input,
         Some(permission_callback),
         Some(part_callback),
     )
@@ -756,12 +759,23 @@ async fn run_thread(
 #[derive(Clone)]
 struct SendInput {
     prompt: String,
+    mode: String,
     attachments: Vec<Attachment>,
     att_meta: Vec<serde_json::Value>,
 }
 
+fn normalize_mode(raw: &str) -> String {
+    let trimmed = raw.trim().to_lowercase();
+    match trimmed.as_str() {
+        "plan" => "plan".to_string(),
+        "ask" => "ask".to_string(),
+        _ => "code".to_string(),
+    }
+}
+
 async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Response> {
     let mut prompt: Option<String> = None;
+    let mut mode: String = "code".to_string();
     let mut attachments: Vec<Attachment> = Vec::new();
     let mut att_meta: Vec<serde_json::Value> = Vec::new();
 
@@ -778,6 +792,9 @@ async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Res
         };
         if name == "prompt" {
             prompt = Some(String::from_utf8_lossy(&bytes).to_string());
+        } else if name == "mode" {
+            let raw = String::from_utf8_lossy(&bytes).to_string();
+            mode = normalize_mode(&raw);
         } else if !filename.is_empty() {
             if bytes.len() > 8 * 1024 * 1024 {
                 return Err((
@@ -819,6 +836,7 @@ async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Res
     }
     Ok(SendInput {
         prompt,
+        mode,
         attachments,
         att_meta,
     })
@@ -828,8 +846,7 @@ async fn call_provider(
     state: &AppState,
     user: &crate::db::UserRow,
     thread: &ThreadRow,
-    prompt: &str,
-    attachments: Vec<Attachment>,
+    input: &SendInput,
     permission_callback: Option<PermissionCallback>,
     part_callback: Option<PartCallback>,
 ) -> anyhow::Result<(Option<String>, Option<String>, Vec<MessagePart>)> {
@@ -841,16 +858,17 @@ async fn call_provider(
         working_dir,
         permission_mode: thread.permission_mode.clone(),
         permissions: thread.permissions.clone(),
-        attachments,
+        attachments: input.attachments.clone(),
         permission_callback,
         part_callback,
+        interaction_mode: input.mode.clone(),
     };
 
     if let Some(sid) = thread.devin_session_id.as_ref() {
         provider
             .send(crate::providers::SendRequest {
                 session_id: sid.clone(),
-                prompt: prompt.into(),
+                prompt: input.prompt.clone(),
                 options,
             })
             .await
@@ -858,7 +876,7 @@ async fn call_provider(
     } else {
         provider
             .start(StartRequest {
-                prompt: prompt.into(),
+                prompt: input.prompt.clone(),
                 options,
             })
             .await
@@ -1042,12 +1060,16 @@ async fn project_working_dir_for_thread(
 ) -> anyhow::Result<PathBuf> {
     if let Some(pid) = thread.project_id {
         if let Ok(Some(p)) = state.db.get_project(pid, thread.user_id).await {
-            let project_path = tokio::fs::canonicalize(&p.path).await.unwrap_or_else(|_| PathBuf::from(&p.path));
+            let project_path = tokio::fs::canonicalize(&p.path)
+                .await
+                .unwrap_or_else(|_| PathBuf::from(&p.path));
             if let Some(wt) = &thread.worktree_path {
                 let path = PathBuf::from(wt);
                 if path.is_absolute() {
                     match tokio::fs::canonicalize(&path).await {
-                        Ok(canonical) if canonical.starts_with(&project_path) => return Ok(canonical),
+                        Ok(canonical) if canonical.starts_with(&project_path) => {
+                            return Ok(canonical)
+                        }
                         _ => {}
                     }
                 }

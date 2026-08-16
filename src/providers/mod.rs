@@ -103,6 +103,8 @@ pub struct SendOptions {
     pub permission_callback: Option<PermissionCallback>,
     /// Optional callback for each ordered message part.
     pub part_callback: Option<PartCallback>,
+    /// Provider interaction mode: "code", "plan", "ask".
+    pub interaction_mode: String,
 }
 
 impl std::fmt::Debug for SendOptions {
@@ -115,6 +117,7 @@ impl std::fmt::Debug for SendOptions {
             .field("attachments", &self.attachments.len())
             .field("permission_callback", &self.permission_callback.is_some())
             .field("part_callback", &self.part_callback.is_some())
+            .field("interaction_mode", &self.interaction_mode)
             .finish()
     }
 }
