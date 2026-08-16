@@ -344,13 +344,11 @@ async fn rename(
         let branch = req
             .branch
             .as_ref()
-            .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()))
-            .flatten();
+            .and_then(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
         let worktree_path = req
             .worktree_path
             .as_ref()
-            .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()))
-            .flatten();
+            .and_then(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
         if let Err(e) = state
             .db
             .update_thread_git(&id, user.id, branch, worktree_path)

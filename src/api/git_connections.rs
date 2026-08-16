@@ -85,7 +85,7 @@ async fn login_gitlab(
             Json(ApiError::new("gitlab cli is not installed")),
         )
             .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(&e.to_string()))).into_response(),
+        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
     }
 }
 
@@ -103,6 +103,6 @@ async fn logout_gitlab(
             Json(ApiError::new("gitlab cli is not installed")),
         )
             .into_response(),
-        Err(e) => (e.status_code(), Json(ApiError::new(&e.to_string()))).into_response(),
+        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
     }
 }

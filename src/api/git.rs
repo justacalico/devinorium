@@ -407,7 +407,7 @@ fn not_repo() -> Response {
 fn error_response(e: GitError) -> Response {
     (
         e.status_code(),
-        Json(crate::api::ApiError::new(&e.to_string())),
+        Json(crate::api::ApiError::new(e.to_string())),
     )
         .into_response()
 }

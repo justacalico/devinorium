@@ -1938,3 +1938,122 @@ async fn thread_create_with_git_context() {
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     assert_eq!(v["branch"], "main");
 }
+
+fn write_fake_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "config" ] && [ "$2" = "set" ]; then
+  if [ "$3" = "token" ]; then
+    mkdir -p "$XDG_CONFIG_HOME"
+    printf '%s' "$4" > "$XDG_CONFIG_HOME/token"
+  fi
+  exit 0
+fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    echo "$host"
+    echo "  Logged in to $host as testuser"
+    exit 0
+  else
+    echo "$host"
+    echo "  ! No token found"
+    exit 1
+  fi
+fi
+if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
+  rm -f "$XDG_CONFIG_HOME/token"
+  echo "Successfully logged out"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_connections_list_login_logout() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/git-connections", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0]["id"], "gitlab");
+    assert!(!list[0]["authed"].as_bool().unwrap());
+    assert_eq!(list[1]["id"], "github");
+    assert!(list[1]["coming_soon"].as_bool().unwrap());
+
+    let body = r#"{"token":"glpat-test","hostname":"gitlab.example.com"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["account"], "testuser");
+    assert_eq!(v["host"], "gitlab.example.com");
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/git-connections", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    let gitlab = list.iter().find(|c| c["id"] == "gitlab").unwrap();
+    assert!(gitlab["authed"].as_bool().unwrap());
+    assert_eq!(gitlab["account"], "testuser");
+
+    let body = r#"{"hostname":"gitlab.example.com"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/git-connections/gitlab",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/git-connections", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    let gitlab = list.iter().find(|c| c["id"] == "gitlab").unwrap();
+    assert!(!gitlab["authed"].as_bool().unwrap());
+}

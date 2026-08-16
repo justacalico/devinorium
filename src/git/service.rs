@@ -77,6 +77,12 @@ pub struct GitService {
     worktree_cache: Cache<String, Vec<Worktree>>,
 }
 
+impl Default for GitService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GitService {
     /// Look up the `git` binary. If none is on PATH, all operations return
     /// `GitError::NotEnabled`.
