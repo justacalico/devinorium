@@ -1011,6 +1011,12 @@ async fn project_working_dir_for_thread(
     state: &AppState,
     thread: &ThreadRow,
 ) -> anyhow::Result<PathBuf> {
+    if let Some(wt) = &thread.worktree_path {
+        let path = PathBuf::from(wt);
+        if path.is_absolute() && path.exists() {
+            return Ok(path);
+        }
+    }
     if let Some(pid) = thread.project_id {
         if let Ok(Some(p)) = state.db.get_project(pid, thread.user_id).await {
             return Ok(PathBuf::from(&p.path));
