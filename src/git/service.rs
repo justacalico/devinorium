@@ -329,7 +329,11 @@ impl GitService {
                     Ok(String::from_utf8_lossy(&out.stdout).to_string())
                 } else {
                     let msg = String::from_utf8_lossy(&out.stderr);
-                    Err(GitError::Other(msg.trim().to_string()))
+                    if msg.contains("not a git repository") {
+                        Err(GitError::NotRepo)
+                    } else {
+                        Err(GitError::Other(msg.trim().to_string()))
+                    }
                 }
             }
             Ok(Err(e)) => Err(GitError::Other(e.to_string())),

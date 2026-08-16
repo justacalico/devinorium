@@ -18,6 +18,7 @@ use devinorium::{
     auth,
     config::Config,
     db,
+    git::GitService,
     providers::{
         ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse, ToolCallEvent,
     },
@@ -179,6 +180,7 @@ async fn app_state() -> (AppState, db::Db) {
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        git: Arc::new(GitService::new()),
     };
     (state, database)
 }
