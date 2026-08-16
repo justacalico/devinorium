@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
-import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/auth_views.dart';
 import 'package:flutter/material.dart';
@@ -135,6 +134,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(TextFormField, 'Server URL'), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
     expect(find.widgetWithText(TextFormField, 'Username'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
   });
@@ -155,8 +155,13 @@ void main() {
     await tester.pumpWidget(_buildLogin(client: client));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('http://'));
+    await tester.pumpAndSettle();
+
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Server URL'), 'http://localhost:7878');
+        find.widgetWithText(TextFormField, 'Server URL'), 'localhost:7878');
     await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
 
@@ -168,13 +173,27 @@ void main() {
     expect(client.lastUsername, 'owner');
   });
 
-  testWidgets('LoginView rejects an invalid server URL on native', (tester) async {
+  testWidgets('LoginView rejects an empty server URL on native', (tester) async {
+    final client = _FakeClient(isNative: true);
+    await tester.pumpWidget(_buildLogin(client: client));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(client.lastServerUrl, isNull);
+  });
+
+  testWidgets('LoginView rejects a host that includes a scheme', (tester) async {
     final client = _FakeClient(isNative: true);
     await tester.pumpWidget(_buildLogin(client: client));
     await tester.pumpAndSettle();
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Server URL'), 'not-a-url');
+        find.widgetWithText(TextFormField, 'Server URL'), 'http://localhost:7878');
     await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
     await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
 

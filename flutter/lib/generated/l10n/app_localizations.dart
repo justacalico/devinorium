@@ -727,13 +727,13 @@ abstract class AppLocalizations {
   /// No description provided for @serverUrlHint.
   ///
   /// In en, this message translates to:
-  /// **'https://example.com'**
+  /// **'example.com'**
   String get serverUrlHint;
 
   /// No description provided for @serverUrlInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Server URL must start with http:// or https://'**
+  /// **'Do not include http:// or https:// in the server address'**
   String get serverUrlInvalid;
 
   /// No description provided for @devicesDescription.

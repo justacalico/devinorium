@@ -347,11 +347,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverUrl => 'Server URL';
 
   @override
-  String get serverUrlHint => 'https://example.com';
+  String get serverUrlHint => 'example.com';
 
   @override
   String get serverUrlInvalid =>
-      'Server URL must start with http:// or https://';
+      'Do not include http:// or https:// in the server address';
 
   @override
   String get devicesDescription => 'Active sessions for your account.';
