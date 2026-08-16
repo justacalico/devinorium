@@ -234,4 +234,35 @@ void main() {
 
     expect(find.text('main'), findsOneWidget);
   });
+
+  testWidgets('Sidebar renders long git branch without layout exception', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(
+          id: 1,
+          name: 'p',
+          path: '/x',
+          isRepo: true,
+          gitBranch: 'feature/very-long-branch-name',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.byType(ListTile), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

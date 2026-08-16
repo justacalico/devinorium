@@ -367,9 +367,14 @@ class _ProjectExpandableTile extends StatelessWidget {
                       message: project.gitBranch.isNotEmpty ? project.gitBranch : l10n(context).gitBranches,
                       child: TextButton.icon(
                         icon: const Icon(Icons.call_split, size: 16),
-                        label: Text(
-                          project.gitBranch.isNotEmpty ? project.gitBranch : l10n(context).gitBranches,
-                          style: const TextStyle(fontSize: 11),
+                        label: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 100),
+                          child: Text(
+                            project.gitBranch.isNotEmpty ? project.gitBranch : l10n(context).gitBranches,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11),
+                          ),
                         ),
                         onPressed: () => state.openGitBranchDialog(project.id),
                       ),
