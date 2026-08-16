@@ -772,7 +772,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteThread(String id, {bool skipConfirm = false}) async {
+  Future<void> deleteThread(String id) async {
     try {
       await api.deleteThread(id);
       if (_activeThreadId == id) {
@@ -786,7 +786,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteThreadGroup(int id, {bool skipConfirm = false}) async {
+  Future<void> deleteThreadGroup(int id) async {
     try {
       await api.deleteThreadGroup(id);
       await refreshThreadsAndGroups();

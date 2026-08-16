@@ -247,6 +247,7 @@
   "noProjectsYet": "No projects yet.\nCreate one to get started.",
   "noThreadsYet": "No threads yet",
   "deleteThreadConfirm": "Delete this thread? This cannot be undone.",
+  "deleteThreadTooltip": "Delete thread (Shift+click to skip confirmation)",
   "topics": "Topics",
   "timeAgoJustNow": "just now",
   "timeAgoMinutes": "{count}m ago",

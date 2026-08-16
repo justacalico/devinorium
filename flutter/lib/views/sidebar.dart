@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -513,11 +514,11 @@ class _ThreadTile extends StatelessWidget {
                 ),
               const SizedBox(width: 4),
               IconButton(
-                tooltip: l.delete,
+                tooltip: l.deleteThreadTooltip,
                 icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
                 onPressed: () async {
-                  if (await _confirm(
-                      context, l.deleteThreadConfirm)) {
+                  if (HardwareKeyboard.instance.isShiftPressed ||
+                      await _confirm(context, l.deleteThreadConfirm)) {
                     state.deleteThread(thread.id);
                   }
                 },
