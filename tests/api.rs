@@ -18,7 +18,7 @@ use devinorium::{
     auth,
     config::Config,
     db,
-    git::GitService,
+    git::{GitRemoteService, GitService},
     providers::{
         ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse, ToolCallEvent,
     },
@@ -120,10 +120,7 @@ impl Provider for StubProvider {
         if let Some(cb) = &req.options.text_callback {
             cb(reply.clone());
         }
-        Ok(SendResponse {
-            reply,
-            thinking,
-        })
+        Ok(SendResponse { reply, thinking })
     }
     async fn export(
         &self,
@@ -173,7 +170,7 @@ async fn app_state() -> (AppState, db::Db) {
     };
 
     let state = AppState {
-        config: Arc::new(cfg),
+        config: Arc::new(cfg.clone()),
         db: database.clone(),
         provider: Arc::new(StubProvider { delay_ms: 0 }) as Arc<dyn Provider>,
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
@@ -181,6 +178,7 @@ async fn app_state() -> (AppState, db::Db) {
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(GitService::new()),
+        git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
     };
     (state, database)
 }
@@ -356,7 +354,10 @@ async fn thread_create_get_list_delete() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(!body.contains("\"tags\""), "list should not include tags: {body}");
+    assert!(
+        !body.contains("\"tags\""),
+        "list should not include tags: {body}"
+    );
 
     // Rename.
     let resp = app
@@ -531,7 +532,10 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
-    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "reasoning about the prompt"));
+    assert!(msgs[1]
+        .thinking
+        .as_ref()
+        .is_some_and(|s| s == "reasoning about the prompt"));
 
     // Thread now has a session id.
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
@@ -589,8 +593,14 @@ async fn thread_send_streams_reply_as_sse() {
     let tool_call_pos = body.find("event: tool_call").expect("tool_call event");
     let chunk_pos = body.find("event: chunk").expect("chunk event");
     let done_pos = body.find("event: done").expect("done event");
-    assert!(thinking_pos < tool_call_pos, "thinking should come before tool_call");
-    assert!(tool_call_pos < chunk_pos, "tool_call should come before chunk");
+    assert!(
+        thinking_pos < tool_call_pos,
+        "thinking should come before tool_call"
+    );
+    assert!(
+        tool_call_pos < chunk_pos,
+        "tool_call should come before chunk"
+    );
     assert!(chunk_pos < done_pos, "chunk should come before done");
 
     let tool_call_block = body
@@ -631,7 +641,10 @@ async fn thread_send_streams_reply_as_sse() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
-    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "reasoning about the prompt"));
+    assert!(msgs[1]
+        .thinking
+        .as_ref()
+        .is_some_and(|s| s == "reasoning about the prompt"));
 }
 
 #[tokio::test]
@@ -667,14 +680,23 @@ async fn thread_runs_in_backend_with_zero_frontends() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "send/stream should start a run");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "send/stream should start a run"
+    );
 
     // Poll the run status until it completes or times out.
     let mut status = String::new();
     for _ in 0..50 {
         let resp = app
             .clone()
-            .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/run"),
+                &cookie,
+                "",
+            ))
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -686,7 +708,10 @@ async fn thread_runs_in_backend_with_zero_frontends() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    assert_eq!(status, "completed", "run should complete without a frontend");
+    assert_eq!(
+        status, "completed",
+        "run should complete without a frontend"
+    );
 
     // Verify messages persisted in DB.
     let msgs = db.list_messages(&tid).await.unwrap();
@@ -734,7 +759,12 @@ async fn thread_events_can_be_resumed_by_reconnecting_client() {
     // Subscribe to the active run's events before it completes.
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/events"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/events"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -742,7 +772,10 @@ async fn thread_events_can_be_resumed_by_reconnecting_client() {
     // Collect the SSE events from the response stream.
     let events = to_bytes(resp.into_body(), 10_000).await.unwrap();
     let text = String::from_utf8_lossy(&events);
-    assert!(text.contains("event: done"), "reconnected client should receive the done event");
+    assert!(
+        text.contains("event: done"),
+        "reconnected client should receive the done event"
+    );
 }
 
 #[tokio::test]
@@ -774,7 +807,9 @@ async fn accounts_owner_create_and_list() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
     let users = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
-    assert!(users.iter().any(|u| u["username"] == "alice" && u["is_owner"] == false));
+    assert!(users
+        .iter()
+        .any(|u| u["username"] == "alice" && u["is_owner"] == false));
 }
 
 #[tokio::test]
@@ -874,7 +909,12 @@ async fn project_accepts_absolute_path_with_spaces() {
         .oneshot(authed("POST", "/api/projects", &cookie, &body))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED, "body: {}", body_str(resp.into_body()).await);
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
     let body = body_str(resp.into_body()).await;
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     assert!(v["path"].as_str().unwrap().contains("my drive"));
@@ -1146,7 +1186,12 @@ async fn file_manager_lists_absolute_path_with_spaces() {
     let encoded = target.to_string_lossy().replace(' ', "%20");
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/files?path={encoded}"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?path={encoded}"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1175,7 +1220,10 @@ async fn file_manager_uploads_to_absolute_dir_with_spaces() {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
-                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -1602,7 +1650,10 @@ async fn update_provider_persists_and_validates() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+    assert!(
+        body.contains(r#""provider_id":"devin-cli""#),
+        "body: {body}"
+    );
 
     // Confirm it actually persisted.
     let resp = app
@@ -1612,7 +1663,10 @@ async fn update_provider_persists_and_validates() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+    assert!(
+        body.contains(r#""provider_id":"devin-cli""#),
+        "body: {body}"
+    );
 }
 
 #[tokio::test]

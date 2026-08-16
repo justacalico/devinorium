@@ -97,7 +97,11 @@ async fn status(
         }
     };
 
-    match state.git.repo_status(PathBuf::from(&project.path).as_path()).await {
+    match state
+        .git
+        .repo_status(PathBuf::from(&project.path).as_path())
+        .await
+    {
         Ok(s) => Json(RepoStatusOut {
             is_repo: s.is_repo,
             branch: s.branch,
@@ -128,7 +132,11 @@ async fn status_summary(
         }
     };
 
-    match state.git.status(PathBuf::from(&project.path).as_path()).await {
+    match state
+        .git
+        .status(PathBuf::from(&project.path).as_path())
+        .await
+    {
         Ok(v) => Json(v).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -257,11 +265,7 @@ async fn checkout(
 
     match state
         .git
-        .checkout(
-            PathBuf::from(&project.path).as_path(),
-            ref_name,
-            req.track,
-        )
+        .checkout(PathBuf::from(&project.path).as_path(), ref_name, req.track)
         .await
     {
         Ok(name) => Json(serde_json::json!({"name": name})).into_response(),
@@ -287,7 +291,11 @@ async fn list_worktrees(
         }
     };
 
-    match state.git.worktrees(PathBuf::from(&project.path).as_path()).await {
+    match state
+        .git
+        .worktrees(PathBuf::from(&project.path).as_path())
+        .await
+    {
         Ok(worktrees) => Json(worktrees).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -381,7 +389,9 @@ async fn delete_worktree(
 fn not_enabled() -> Response {
     (
         StatusCode::NOT_FOUND,
-        Json(crate::api::ApiError::new("git support is not enabled on this backend")),
+        Json(crate::api::ApiError::new(
+            "git support is not enabled on this backend",
+        )),
     )
         .into_response()
 }

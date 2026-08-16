@@ -149,6 +149,30 @@ class ApiService {
     });
   }
 
+  // ---- Git connections ----
+
+  Future<List<GitConnection>> listGitConnections() async {
+    final list = await _client.getList('/api/git-connections');
+    return list.map(GitConnection.fromJson).toList();
+  }
+
+  Future<GitConnection> connectGitLab({
+    required String token,
+    String? hostname,
+  }) async {
+    final j = await _client.post('/api/git-connections/gitlab', {
+      'token': token,
+      if (hostname != null && hostname.isNotEmpty) 'hostname': hostname,
+    });
+    return GitConnection.fromJson(j);
+  }
+
+  Future<void> disconnectGitLab({String? hostname}) async {
+    await _client.deleteWithBody('/api/git-connections/gitlab', {
+      if (hostname != null && hostname.isNotEmpty) 'hostname': hostname,
+    });
+  }
+
   // ---- Projects ----
 
   Future<List<Project>> listProjects() async {

@@ -12,7 +12,7 @@ use axum::http::{Request, StatusCode};
 use axum::routing::{get, Router};
 use tower::ServiceExt;
 
-use devinorium::{auth, config::Config, db, git::GitService, providers, AppState};
+use devinorium::{auth, config::Config, db, git::{GitRemoteService, GitService}, providers, AppState};
 
 async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db) {
     let dir = tempfile::tempdir().expect("tempdir").keep();
@@ -22,13 +22,11 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         .await
         .expect("bootstrap");
 
-    sqlx::query(
-        "UPDATE users SET provider_command = '' WHERE username = ?",
-    )
-    .bind(bootstrap_user)
-    .execute(database.pool())
-    .await
-    .unwrap();
+    sqlx::query("UPDATE users SET provider_command = '' WHERE username = ?")
+        .bind(bootstrap_user)
+        .execute(database.pool())
+        .await
+        .unwrap();
 
     let mut cfg = Config::from_env().unwrap_or_else(|_| Config {
         host: "127.0.0.1".into(),
@@ -37,8 +35,9 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         db_url: db_url.clone(),
         bootstrap_username: bootstrap_user.into(),
         bootstrap_password: bootstrap_pw.into(),
-        home_dir: devinorium::config::default_home_dir()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
+        home_dir: devinorium::config::default_home_dir().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        }),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 1024 * 1024,
@@ -57,7 +56,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
     .expect("provider");
 
     let state = AppState {
-        config: Arc::new(cfg),
+        config: Arc::new(cfg.clone()),
         db: database.clone(),
         provider: Arc::from(provider),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
@@ -65,6 +64,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(GitService::new()),
+        git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
     };
     (state, database)
 }
@@ -411,8 +411,12 @@ async fn owner_can_list_users() {
     let body = read_body(resp.into_body()).await;
     let users = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
     assert_eq!(users.len(), 2);
-    assert!(users.iter().any(|u| u["username"] == "owner" && u["is_owner"] == true));
-    assert!(users.iter().any(|u| u["username"] == "alice" && u["is_owner"] == false));
+    assert!(users
+        .iter()
+        .any(|u| u["username"] == "owner" && u["is_owner"] == true));
+    assert!(users
+        .iter()
+        .any(|u| u["username"] == "alice" && u["is_owner"] == false));
     // Sorted by id.
     assert!(users[0]["id"].as_i64().unwrap() < users[1]["id"].as_i64().unwrap());
 }
@@ -805,7 +809,9 @@ async fn device_list_and_revoke() {
     let devices: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
     assert!(devices.len() >= 1);
     assert!(devices.iter().any(|d| d["device_id"] == device_id));
-    assert!(devices.iter().any(|d| d["token_prefix"].as_str().map_or(false, |p| token.starts_with(p))));
+    assert!(devices.iter().any(|d| d["token_prefix"]
+        .as_str()
+        .map_or(false, |p| token.starts_with(p))));
 
     let resp = app
         .clone()

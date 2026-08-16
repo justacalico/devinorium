@@ -298,11 +298,16 @@ impl GitService {
             .find(|w| w.path == worktree_path)
             .ok_or_else(|| GitError::Other("worktree not found".to_string()))?;
         if target.is_main {
-            return Err(GitError::Other("cannot remove the main worktree".to_string()));
+            return Err(GitError::Other(
+                "cannot remove the main worktree".to_string(),
+            ));
         }
 
         let mut cmd = self.git_cmd(path);
-        cmd.arg("worktree").arg("remove").arg("--force").arg(worktree_path);
+        cmd.arg("worktree")
+            .arg("remove")
+            .arg("--force")
+            .arg(worktree_path);
         self.run(&mut cmd, Duration::from_secs(15)).await?;
 
         self.invalidate(path);
@@ -400,32 +405,41 @@ impl GitService {
         }
     }
 
-    async fn run_with(
-        &self,
-        cwd: &Path,
-        args: &[&str],
-        max: Duration,
-    ) -> Result<String, GitError> {
+    async fn run_with(&self, cwd: &Path, args: &[&str], max: Duration) -> Result<String, GitError> {
         let mut cmd = self.git_cmd(cwd);
         cmd.args(args);
         self.run(&mut cmd, max).await
     }
 
     async fn detect_repo(&self, path: &Path) -> Result<RepoStatus, GitError> {
-        let worktree_path = tokio::fs::canonicalize(path).await.unwrap_or_else(|_| path.to_path_buf());
+        let worktree_path = tokio::fs::canonicalize(path)
+            .await
+            .unwrap_or_else(|_| path.to_path_buf());
 
         let top_out = self
-            .run_with(&worktree_path, &["rev-parse", "--show-toplevel"], Duration::from_secs(5))
+            .run_with(
+                &worktree_path,
+                &["rev-parse", "--show-toplevel"],
+                Duration::from_secs(5),
+            )
             .await?;
         let top = PathBuf::from(top_out.trim());
 
         let common_out = self
-            .run_with(&top, &["rev-parse", "--git-common-dir"], Duration::from_secs(5))
+            .run_with(
+                &top,
+                &["rev-parse", "--git-common-dir"],
+                Duration::from_secs(5),
+            )
             .await?;
         let common = top.join(common_out.trim());
 
         let branch = self
-            .run_with(&top, &["rev-parse", "--abbrev-ref", "HEAD"], Duration::from_secs(5))
+            .run_with(
+                &top,
+                &["rev-parse", "--abbrev-ref", "HEAD"],
+                Duration::from_secs(5),
+            )
             .await
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
@@ -446,7 +460,11 @@ impl GitService {
         limit: Option<usize>,
     ) -> Result<Vec<Branch>, GitError> {
         let current = self
-            .run_with(path, &["rev-parse", "--abbrev-ref", "HEAD"], Duration::from_secs(5))
+            .run_with(
+                path,
+                &["rev-parse", "--abbrev-ref", "HEAD"],
+                Duration::from_secs(5),
+            )
             .await
             .unwrap_or_default()
             .trim()
@@ -486,26 +504,21 @@ impl GitService {
             let date = parts[1].parse::<i64>().unwrap_or(0);
             let symref = parts.get(2).and_then(|s| {
                 let s = *s;
-                if s.is_empty() { None } else { Some(s.to_string()) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
             });
 
-            let (name, is_remote, is_current, is_default) = if let Some(name) = refname.strip_prefix("refs/heads/") {
-                (
-                    name.to_string(),
-                    false,
-                    name == current,
-                    name == default,
-                )
-            } else if let Some(name) = refname.strip_prefix("refs/remotes/") {
-                (
-                    name.to_string(),
-                    true,
-                    false,
-                    name == default,
-                )
-            } else {
-                continue;
-            };
+            let (name, is_remote, is_current, is_default) =
+                if let Some(name) = refname.strip_prefix("refs/heads/") {
+                    (name.to_string(), false, name == current, name == default)
+                } else if let Some(name) = refname.strip_prefix("refs/remotes/") {
+                    (name.to_string(), true, false, name == default)
+                } else {
+                    continue;
+                };
 
             if let Some(q) = query {
                 if !name.to_lowercase().contains(&q.to_lowercase()) {
@@ -541,7 +554,11 @@ impl GitService {
 
     async fn list_worktrees(&self, path: &Path) -> Result<Vec<Worktree>, GitError> {
         let out = self
-            .run_with(path, &["worktree", "list", "--porcelain", "-z"], Duration::from_secs(5))
+            .run_with(
+                path,
+                &["worktree", "list", "--porcelain", "-z"],
+                Duration::from_secs(5),
+            )
             .await?;
 
         let mut worktrees = Vec::new();

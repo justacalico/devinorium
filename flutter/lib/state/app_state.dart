@@ -120,6 +120,10 @@ class AppState extends ChangeNotifier {
   final Map<int, List<GitWorktree>> _gitWorktrees = {};
   int? _gitDialogProjectId;
 
+  // Git host connections.
+  List<GitConnection> _gitConnections = [];
+  bool _loadingGitConnections = false;
+
   // Getters
   AppView get view => _view;
   MainPage get page => _page;

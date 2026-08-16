@@ -32,8 +32,9 @@ async fn main() -> Result<()> {
     })?;
 
     let secure_cookie = cfg.secure_cookie;
+    let cfg = Arc::new(cfg);
     let state = AppState {
-        config: Arc::new(cfg),
+        config: cfg.clone(),
         db: database,
         provider: Arc::from(provider),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
@@ -41,6 +42,7 @@ async fn main() -> Result<()> {
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(git::GitService::new()),
+        git_remote: Arc::new(git::GitRemoteService::new(cfg.home_dir.clone())),
     };
 
     let app = devinorium::build_app(state);

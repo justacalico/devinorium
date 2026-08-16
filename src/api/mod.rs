@@ -5,6 +5,7 @@ pub mod auth;
 pub mod devices;
 pub mod files;
 pub mod git;
+pub mod git_connections;
 pub mod models;
 pub mod projects;
 pub mod providers;

@@ -16,8 +16,8 @@ use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, Router};
 use axum::Json;
-use serde::{Deserialize, Serialize};
 use futures::stream::{BoxStream, StreamExt as FuturesStreamExt};
+use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
 use uuid::Uuid;
@@ -112,9 +112,7 @@ impl From<MessageRow> for MessageOut {
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.list_threads(user.id).await {
-        Ok(rows) => {
-            Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response()
-        }
+        Ok(rows) => Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -353,7 +351,11 @@ async fn rename(
             .as_ref()
             .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()))
             .flatten();
-        if let Err(e) = state.db.update_thread_git(&id, user.id, branch, worktree_path).await {
+        if let Err(e) = state
+            .db
+            .update_thread_git(&id, user.id, branch, worktree_path)
+            .await
+        {
             return crate::api::map_err_internal(e).into_response();
         }
     }
@@ -524,7 +526,9 @@ async fn send(
                 )
                     .into_response();
             }
-            Ok(Ok(crate::thread_runner::RunEvent { event, data })) if event == "permission_request" => {
+            Ok(Ok(crate::thread_runner::RunEvent { event, data }))
+                if event == "permission_request" =>
+            {
                 permission_request = Some(data);
                 break;
             }
@@ -627,11 +631,13 @@ async fn send_stream(
     events_stream(run).into_response()
 }
 
-fn events_stream(run: Arc<RunState>) -> Sse<BoxStream<'static, Result<Event, std::convert::Infallible>>> {
+fn events_stream(
+    run: Arc<RunState>,
+) -> Sse<BoxStream<'static, Result<Event, std::convert::Infallible>>> {
     match run.subscribe() {
         Some(receiver) => {
-            let stream = TokioStreamExt::filter_map(BroadcastStream::new(receiver), |res| {
-                match res {
+            let stream =
+                TokioStreamExt::filter_map(BroadcastStream::new(receiver), |res| match res {
                     Ok(ev) => {
                         let data = sanitize_sse_data(&ev.data);
                         Some(Ok::<_, std::convert::Infallible>(
@@ -639,8 +645,7 @@ fn events_stream(run: Arc<RunState>) -> Sse<BoxStream<'static, Result<Event, std
                         ))
                     }
                     Err(_) => None,
-                }
-            });
+                });
             Sse::new(FuturesStreamExt::boxed(stream))
         }
         None => Sse::new(FuturesStreamExt::boxed(tokio_stream::empty())),
@@ -738,8 +743,7 @@ async fn run_thread(
 
     run.emit(
         "done",
-        &serde_json::to_string(&MessageOut::from(assistant_msg))
-            .unwrap_or_else(|_| "{}".into()),
+        &serde_json::to_string(&MessageOut::from(assistant_msg)).unwrap_or_else(|_| "{}".into()),
     );
 
     Ok(())
@@ -898,11 +902,8 @@ fn build_permission_callback(
 
                 // Long timeout so users can disconnect, reload, and still
                 // respond to permission requests for multi-day runs.
-                let result = tokio::time::timeout(
-                    Duration::from_secs(7 * 24 * 60 * 60),
-                    response_rx,
-                )
-                .await;
+                let result =
+                    tokio::time::timeout(Duration::from_secs(7 * 24 * 60 * 60), response_rx).await;
 
                 match result {
                     Ok(Ok(option_id)) if !option_id.is_empty() => {

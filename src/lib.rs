@@ -38,6 +38,7 @@ pub struct AppState {
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
     pub thread_runner: crate::thread_runner::ThreadRunner,
     pub git: Arc<crate::git::GitService>,
+    pub git_remote: Arc<crate::git::GitRemoteService>,
 }
 
 impl AppState {
@@ -101,6 +102,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::files::router())
         .merge(api::projects::router())
         .merge(api::git::router())
+        .merge(api::git_connections::router())
         .merge(api::thread_groups::router())
         .merge(api::accounts::router())
         .merge(api::models::router())

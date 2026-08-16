@@ -19,7 +19,11 @@ fn git_cli(args: &[&str], cwd: &Path) {
         .env("GIT_COMMITTER_EMAIL", "test@example.com")
         .output()
         .expect("git command failed");
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 fn make_repo() -> TempDir {
@@ -70,7 +74,10 @@ async fn filters_branches_by_query() {
     git_cli(&["checkout", "-b", "feature-b"], tmp.path());
 
     let svc = GitService::new();
-    let branches = svc.branches(tmp.path(), Some("feature-a"), None).await.unwrap();
+    let branches = svc
+        .branches(tmp.path(), Some("feature-a"), None)
+        .await
+        .unwrap();
     assert_eq!(branches.len(), 1);
     assert_eq!(branches[0].name, "feature-a");
 }

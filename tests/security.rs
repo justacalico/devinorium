@@ -13,7 +13,7 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use tower::ServiceExt;
 
-use devinorium::{auth, config::Config, db, git::GitService, providers, AppState};
+use devinorium::{auth, config::Config, db, git::{GitRemoteService, GitService}, providers, AppState};
 
 async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
@@ -35,8 +35,9 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         db_url: db_url.clone(),
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
-        home_dir: devinorium::config::default_home_dir()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
+        home_dir: devinorium::config::default_home_dir().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        }),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 1024 * 1024,
@@ -52,7 +53,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
     .unwrap();
 
     let state = AppState {
-        config: Arc::new(cfg),
+        config: Arc::new(cfg.clone()),
         db: database.clone(),
         provider: Arc::from(provider),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
@@ -60,6 +61,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(GitService::new()),
+        git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
     };
     (devinorium::build_app(state), database)
 }
@@ -247,8 +249,9 @@ async fn body_size_limit_rejects_oversized() {
         db_url,
         bootstrap_username: "owner".into(),
         bootstrap_password: "supersecret123".into(),
-        home_dir: devinorium::config::default_home_dir()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
+        home_dir: devinorium::config::default_home_dir().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        }),
         default_model: "glm-5-2".into(),
         trust_proxy: false,
         max_body_bytes: 64,
@@ -262,7 +265,7 @@ async fn body_size_limit_rejects_oversized() {
     })
     .unwrap();
     let state = AppState {
-        config: Arc::new(cfg),
+        config: Arc::new(cfg.clone()),
         db: database,
         provider: Arc::from(provider),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
@@ -270,6 +273,7 @@ async fn body_size_limit_rejects_oversized() {
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(GitService::new()),
+        git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
     };
     let app = devinorium::build_app(state);
 
@@ -290,12 +294,7 @@ async fn body_size_limit_rejects_oversized() {
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
-async fn login_with_origin(
-    app: &Router,
-    username: &str,
-    password: &str,
-    origin: &str,
-) -> String {
+async fn login_with_origin(app: &Router, username: &str, password: &str, origin: &str) -> String {
     let resp = app
         .clone()
         .oneshot(
@@ -389,9 +388,17 @@ async fn cors_preflight_for_api() {
         h.get("access-control-allow-origin").unwrap(),
         "https://devinorium.example"
     );
-    let allow_methods = h.get("access-control-allow-methods").unwrap().to_str().unwrap();
+    let allow_methods = h
+        .get("access-control-allow-methods")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(allow_methods.contains("GET"), "methods: {allow_methods}");
-    let allow_headers = h.get("access-control-allow-headers").unwrap().to_str().unwrap();
+    let allow_headers = h
+        .get("access-control-allow-headers")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(
         allow_headers.to_lowercase().contains("authorization"),
         "headers: {allow_headers}"
@@ -401,7 +408,13 @@ async fn cors_preflight_for_api() {
 #[tokio::test]
 async fn bearer_token_bypasses_csrf_with_cors() {
     let (app, _db) = make_app(Some("https://devinorium.example".into())).await;
-    let cookie = login_with_origin(&app, "owner", "supersecret123", "https://devinorium.example").await;
+    let cookie = login_with_origin(
+        &app,
+        "owner",
+        "supersecret123",
+        "https://devinorium.example",
+    )
+    .await;
     let token = token_from_cookie(&cookie);
 
     let resp = app

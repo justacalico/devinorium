@@ -21,8 +21,8 @@ pub mod thread_groups;
 pub mod threads;
 pub mod users;
 
-pub use projects::NewProject;
 pub use messages::NewMessage;
+pub use projects::NewProject;
 pub use thread_groups::NewThreadGroup;
 pub use threads::NewThread;
 pub use users::NewUser;

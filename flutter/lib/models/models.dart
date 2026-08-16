@@ -568,6 +568,39 @@ class GitStatus {
       );
 }
 
+class GitConnection {
+  final String id;
+  final String name;
+  final bool enabled;
+  final bool available;
+  final bool authed;
+  final String? account;
+  final String? host;
+  final bool comingSoon;
+
+  GitConnection({
+    required this.id,
+    required this.name,
+    this.enabled = false,
+    this.available = false,
+    this.authed = false,
+    this.account,
+    this.host,
+    this.comingSoon = false,
+  });
+
+  factory GitConnection.fromJson(Map<String, dynamic> j) => GitConnection(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        enabled: (j['enabled'] as bool?) ?? false,
+        available: (j['available'] as bool?) ?? false,
+        authed: (j['authed'] as bool?) ?? false,
+        account: j['account'] as String?,
+        host: j['host'] as String?,
+        comingSoon: (j['coming_soon'] as bool?) ?? false,
+      );
+}
+
 /// Decode a JSON body that may be either a raw string (error) or a JSON object.
 Map<String, dynamic>? tryDecodeJson(String body) {
   try {
