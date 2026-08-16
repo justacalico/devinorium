@@ -14,6 +14,8 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::task::AbortHandle;
 use uuid::Uuid;
 
+use crate::providers::{collect_text, collect_thinking, MessagePart, PermissionRequest};
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunEvent {
     pub event: String,
@@ -40,7 +42,7 @@ impl std::fmt::Display for RunStatus {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct RunSnapshot {
     pub run_id: String,
     pub thread_id: String,
@@ -48,6 +50,12 @@ pub struct RunSnapshot {
     pub started_at: String,
     pub updated_at: String,
     pub error: Option<String>,
+    pub text: String,
+    pub thinking: String,
+    pub thinking_active: bool,
+    pub parts: Vec<MessagePart>,
+    pub tool_calls: Vec<MessagePart>,
+    pub permission_request: Option<PermissionRequest>,
 }
 
 /// Shared state for a single run.
@@ -60,9 +68,34 @@ pub struct RunState {
     pub started_at: String,
     pub updated_at: RwLock<String>,
     pub abort: Mutex<Option<AbortHandle>>,
+    pub parts: std::sync::Mutex<Vec<MessagePart>>,
+    pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
 }
 
 impl RunState {
+    /// Add or replace a streamed part. Tool-call parts are replaced by id so
+    /// updates (progress, output) keep the same slot; text and thinking parts
+    /// are appended.
+    pub fn apply_part(&self, part: MessagePart) {
+        let mut parts = self
+            .parts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(tool_id) = part.tool_id() {
+            if let Some(idx) = parts.iter().position(|p| p.tool_id() == Some(tool_id)) {
+                parts[idx] = part;
+                return;
+            }
+        }
+        parts.push(part);
+    }
+
+    pub fn set_permission_request(&self, req: Option<PermissionRequest>) {
+        if let Ok(mut guard) = self.permission_request.lock() {
+            *guard = req;
+        }
+    }
+
     /// Emit an event to all current listeners. Returns the number of receivers.
     pub fn emit(&self, event: &str, data: &str) -> usize {
         let Ok(guard) = self.events.lock() else {
@@ -102,6 +135,25 @@ impl RunState {
     }
 
     pub async fn snapshot(&self) -> RunSnapshot {
+        let parts = self
+            .parts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let permission_request = self
+            .permission_request
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let text = collect_text(&parts);
+        let thinking = collect_thinking(&parts);
+        let thinking_active = matches!(parts.last(), Some(MessagePart::Thinking { .. }));
+        let tool_calls = parts
+            .iter()
+            .filter(|p| matches!(p, MessagePart::ToolCall { .. }))
+            .cloned()
+            .collect();
+
         RunSnapshot {
             run_id: self.run_id.clone(),
             thread_id: self.thread_id.clone(),
@@ -109,6 +161,12 @@ impl RunState {
             started_at: self.started_at.clone(),
             updated_at: self.updated_at.read().await.clone(),
             error: self.error.read().await.clone(),
+            text,
+            thinking,
+            thinking_active,
+            parts,
+            tool_calls,
+            permission_request,
         }
     }
 }
@@ -180,6 +238,8 @@ impl ThreadRunner {
             started_at: now.clone(),
             updated_at: RwLock::new(now),
             abort: Mutex::new(None),
+            parts: std::sync::Mutex::new(Vec::new()),
+            permission_request: std::sync::Mutex::new(None),
         });
 
         let state_for_task = state.clone();
@@ -198,9 +258,10 @@ impl ThreadRunner {
                 }
             }
             // Close the broadcast so in-flight SSE streams end, but keep the
-            // run record around briefly so clients can query the final status.
+            // run record around long enough for clients to reconnect and see
+            // the final snapshot after a long run.
             state_for_task.close();
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(120)).await;
             runs_for_cleanup.lock().await.remove(&thread_id_for_cleanup);
         });
 
@@ -211,5 +272,90 @@ impl ThreadRunner {
 
         runs.insert(thread_id, state.clone());
         Ok(state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::{MessagePart, ToolCallEvent};
+
+    #[tokio::test]
+    async fn run_state_accumulates_text_and_thinking_for_snapshot() {
+        let state = RunState {
+            run_id: "r1".into(),
+            thread_id: "t1".into(),
+            events: std::sync::Mutex::new(None),
+            status: RwLock::new(RunStatus::Running),
+            error: RwLock::new(None),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
+            abort: Mutex::new(None),
+            parts: std::sync::Mutex::new(vec![
+                MessagePart::text("Hello "),
+                MessagePart::thinking("hmm"),
+                MessagePart::text("world"),
+            ]),
+            permission_request: std::sync::Mutex::new(None),
+        };
+
+        state.apply_part(MessagePart::tool_call(ToolCallEvent {
+            id: "tc-1".into(),
+            title: "Read".into(),
+            kind: "read".into(),
+            status: "completed".into(),
+            command: None,
+            output: None,
+            output_preview: None,
+            changed_files: vec![],
+        }));
+
+        let snapshot = state.snapshot().await;
+        assert_eq!(snapshot.text, "Hello world");
+        assert_eq!(snapshot.thinking, "hmm");
+        assert!(!snapshot.thinking_active);
+        assert_eq!(snapshot.tool_calls.len(), 1);
+        assert_eq!(snapshot.parts.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn run_state_replaces_tool_call_by_id() {
+        let state = RunState {
+            run_id: "r1".into(),
+            thread_id: "t1".into(),
+            events: std::sync::Mutex::new(None),
+            status: RwLock::new(RunStatus::Running),
+            error: RwLock::new(None),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
+            abort: Mutex::new(None),
+            parts: std::sync::Mutex::new(vec![]),
+            permission_request: std::sync::Mutex::new(None),
+        };
+
+        state.apply_part(MessagePart::tool_call(ToolCallEvent {
+            id: "tc-1".into(),
+            title: "Read".into(),
+            kind: "read".into(),
+            status: "in_progress".into(),
+            command: None,
+            output: None,
+            output_preview: None,
+            changed_files: vec![],
+        }));
+        state.apply_part(MessagePart::tool_call(ToolCallEvent {
+            id: "tc-1".into(),
+            title: "Read".into(),
+            kind: "read".into(),
+            status: "completed".into(),
+            command: Some("cat file".into()),
+            output: Some("hello".into()),
+            output_preview: None,
+            changed_files: vec![],
+        }));
+
+        let snapshot = state.snapshot().await;
+        assert_eq!(snapshot.parts.len(), 1);
+        assert_eq!(snapshot.tool_calls.len(), 1);
     }
 }

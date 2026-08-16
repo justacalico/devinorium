@@ -503,7 +503,7 @@ async fn events(
     }
 
     match state.thread_runner.get(&id).await {
-        Some(run) => events_stream(run).into_response(),
+        Some(run) => events_stream(run).await.into_response(),
         None => (
             StatusCode::NOT_FOUND,
             Json(crate::api::ApiError::new("no active run")),
@@ -679,28 +679,35 @@ async fn send_stream(
         }
     };
 
-    events_stream(run).into_response()
+    events_stream(run).await.into_response()
 }
 
-fn events_stream(
+async fn events_stream(
     run: Arc<RunState>,
 ) -> Sse<BoxStream<'static, Result<Event, std::convert::Infallible>>> {
-    match run.subscribe() {
-        Some(receiver) => {
-            let stream =
-                TokioStreamExt::filter_map(BroadcastStream::new(receiver), |res| match res {
-                    Ok(ev) => {
-                        let data = sanitize_sse_data(&ev.data);
-                        Some(Ok::<_, std::convert::Infallible>(
-                            Event::default().event(&ev.event).data(data),
-                        ))
-                    }
-                    Err(_) => None,
-                });
-            Sse::new(FuturesStreamExt::boxed(stream))
-        }
-        None => Sse::new(FuturesStreamExt::boxed(tokio_stream::empty())),
-    }
+    let snapshot = run.snapshot().await;
+    let state_json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
+    let state_event =
+        Ok::<_, std::convert::Infallible>(Event::default().event("state").data(state_json));
+    let initial = tokio_stream::once(state_event);
+
+    let live: BoxStream<'static, Result<Event, std::convert::Infallible>> = match run.subscribe() {
+        Some(receiver) => FuturesStreamExt::boxed(TokioStreamExt::filter_map(
+            BroadcastStream::new(receiver),
+            |res| match res {
+                Ok(ev) => {
+                    let data = sanitize_sse_data(&ev.data);
+                    Some(Ok::<_, std::convert::Infallible>(
+                        Event::default().event(&ev.event).data(data),
+                    ))
+                }
+                Err(_) => None,
+            },
+        )),
+        None => FuturesStreamExt::boxed(tokio_stream::empty()),
+    };
+
+    Sse::new(FuturesStreamExt::boxed(FuturesStreamExt::chain(initial, live)))
 }
 
 async fn run_thread(
@@ -732,11 +739,9 @@ async fn run_thread(
     let part_callback: PartCallback = Arc::new({
         let run = run.clone();
         move |ev: PartEvent| {
-            let event = if ev.is_update() {
-                "part_update"
-            } else {
-                "part"
-            };
+            let part = ev.part().clone();
+            run.apply_part(part);
+            let event = if ev.is_update() { "part_update" } else { "part" };
             if let Ok(json) = serde_json::to_string(ev.part()) {
                 run.emit(event, &json);
             }
@@ -948,9 +953,13 @@ fn build_permission_callback(
                     );
                 }
 
+                run.set_permission_request(Some(req.clone()));
                 let payload = match serde_json::to_string(&req) {
                     Ok(json) => json,
-                    Err(_) => return PermissionOutcome::Cancel,
+                    Err(_) => {
+                        run.set_permission_request(None);
+                        return PermissionOutcome::Cancel;
+                    }
                 };
                 run.emit("permission_request", &payload);
 
@@ -958,6 +967,8 @@ fn build_permission_callback(
                 // respond to permission requests for multi-day runs.
                 let result =
                     tokio::time::timeout(Duration::from_secs(7 * 24 * 60 * 60), response_rx).await;
+
+                run.set_permission_request(None);
 
                 match result {
                     Ok(Ok(option_id)) if !option_id.is_empty() => {
