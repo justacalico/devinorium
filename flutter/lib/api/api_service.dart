@@ -107,7 +107,7 @@ class ApiService {
   }) async {
     final j = await _client.post('/api/projects/$projectId/git/branches', {
       'name': name,
-      if (base != null) 'base': base,
+      'base': base,
       'switch': switchBranch,
     });
     return GitBranch.fromJson(j);

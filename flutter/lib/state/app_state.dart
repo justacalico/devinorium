@@ -13,7 +13,7 @@ enum AppView { loading, login, setup, app }
 
 enum MainPage { threads, settings }
 
-enum DialogKind { none, totpSetup, newProject, permissionRequest }
+enum DialogKind { none, totpSetup, newProject, permissionRequest, gitBranches }
 
 /// Central app state.
 class AppState extends ChangeNotifier {
@@ -114,6 +114,12 @@ class AppState extends ChangeNotifier {
   Locale _locale = const Locale('en');
   int _settingsTopicIndex = 0;
 
+  // Git state (per project).
+  final Map<int, GitRepoInfo> _gitRepoInfo = {};
+  final Map<int, List<GitBranch>> _gitBranches = {};
+  final Map<int, List<GitWorktree>> _gitWorktrees = {};
+  int? _gitDialogProjectId;
+
   // Getters
   AppView get view => _view;
   MainPage get page => _page;
@@ -162,6 +168,11 @@ class AppState extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
+
+  GitRepoInfo? gitRepoInfo(int projectId) => _gitRepoInfo[projectId];
+  List<GitBranch> gitBranches(int projectId) => _gitBranches[projectId] ?? [];
+  List<GitWorktree> gitWorktrees(int projectId) => _gitWorktrees[projectId] ?? [];
+  int? get gitDialogProjectId => _gitDialogProjectId;
 
   // ---- Setters / mutations ----
 
@@ -535,6 +546,7 @@ class AppState extends ChangeNotifier {
     _composerText = '';
     notifyListeners();
     await refreshThreadsAndGroups();
+    unawaited(loadGitRepoInfo(id));
   }
 
   Future<void> selectAllProjects() async {
@@ -1045,8 +1057,118 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ---- Git ----
+
+  Future<void> loadGitRepoInfo(int projectId) async {
+    try {
+      final info = await api.gitRepoStatus(projectId);
+      _gitRepoInfo[projectId] = info;
+      _globalError = '';
+    } catch (e) {
+      // 404 / not a repo is not an error; clear the state.
+      _gitRepoInfo.remove(projectId);
+    }
+    notifyListeners();
+  }
+
+  Future<void> loadGitBranches(int projectId, {String? query}) async {
+    try {
+      final branches = await api.gitBranches(projectId, query: query);
+      _gitBranches[projectId] = branches;
+      _globalError = '';
+    } catch (e) {
+      _gitBranches.remove(projectId);
+    }
+    notifyListeners();
+  }
+
+  Future<void> loadGitWorktrees(int projectId) async {
+    try {
+      final worktrees = await api.gitWorktrees(projectId);
+      _gitWorktrees[projectId] = worktrees;
+      _globalError = '';
+    } catch (e) {
+      _gitWorktrees.remove(projectId);
+    }
+    notifyListeners();
+  }
+
+  Future<void> openGitBranchDialog(int projectId) async {
+    _gitDialogProjectId = projectId;
+    _dialog = DialogKind.gitBranches;
+    _userMenuOpen = false;
+    await loadGitRepoInfo(projectId);
+    if (gitRepoInfo(projectId)?.isRepo ?? false) {
+      await loadGitBranches(projectId);
+      await loadGitWorktrees(projectId);
+    }
+    notifyListeners();
+  }
+
+  Future<void> gitCreateBranch(int projectId, String name, {String? base, bool switchBranch = false}) async {
+    try {
+      await api.gitCreateBranch(projectId, name, base: base, switchBranch: switchBranch);
+      _globalError = '';
+      await loadGitBranches(projectId);
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> gitCheckout(int projectId, String refName) async {
+    try {
+      await api.gitCheckout(projectId, refName);
+      _globalError = '';
+      await loadGitRepoInfo(projectId);
+      await loadGitBranches(projectId);
+      await loadGitWorktrees(projectId);
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> gitCreateWorktree(int projectId, String name, String base, {bool newBranch = false}) async {
+    try {
+      await api.gitCreateWorktree(projectId, name, base, newBranch: newBranch);
+      _globalError = '';
+      await loadGitWorktrees(projectId);
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> gitDeleteWorktree(int projectId, String worktreePath) async {
+    try {
+      await api.gitDeleteWorktree(projectId, worktreePath);
+      _globalError = '';
+      await loadGitWorktrees(projectId);
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> setThreadGit(String threadId, {String? branch, String? worktreePath}) async {
+    try {
+      await api.updateThreadGit(threadId, branch: branch, worktreePath: worktreePath);
+      _globalError = '';
+      await refreshThreadsAndGroups();
+      if (_activeThreadDetail != null && _activeThreadDetail!.thread.id == threadId) {
+        _activeThreadDetail = await api.getThread(threadId);
+        notifyListeners();
+      }
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
   void closeDialog() {
     _dialog = DialogKind.none;
+    _gitDialogProjectId = null;
     notifyListeners();
   }
 }

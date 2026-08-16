@@ -1209,6 +1209,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No content'**
   String get readFileNoContent;
+
+  /// No description provided for @gitBranches.
+  ///
+  /// In en, this message translates to:
+  /// **'Branches'**
+  String get gitBranches;
+
+  /// No description provided for @notAGitRepo.
+  ///
+  /// In en, this message translates to:
+  /// **'This project is not a Git repository.'**
+  String get notAGitRepo;
+
+  /// No description provided for @searchBranches.
+  ///
+  /// In en, this message translates to:
+  /// **'Search branches'**
+  String get searchBranches;
+
+  /// No description provided for @createBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Create branch'**
+  String get createBranch;
+
+  /// No description provided for @branchName.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch name'**
+  String get branchName;
+
+  /// No description provided for @baseBranchOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Base branch (optional)'**
+  String get baseBranchOptional;
+
+  /// No description provided for @switchAfterCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to new branch'**
+  String get switchAfterCreate;
+
+  /// No description provided for @createWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Create worktree'**
+  String get createWorktree;
+
+  /// No description provided for @worktreeName.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree name'**
+  String get worktreeName;
+
+  /// No description provided for @baseBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Base branch'**
+  String get baseBranch;
+
+  /// No description provided for @newBranchInWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Create new branch in worktree'**
+  String get newBranchInWorktree;
+
+  /// No description provided for @worktrees.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktrees'**
+  String get worktrees;
 }
 
 class _AppLocalizationsDelegate

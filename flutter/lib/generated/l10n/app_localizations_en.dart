@@ -637,4 +637,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get readFileNoContent => 'No content';
+
+  @override
+  String get gitBranches => 'Branches';
+
+  @override
+  String get notAGitRepo => 'This project is not a Git repository.';
+
+  @override
+  String get searchBranches => 'Search branches';
+
+  @override
+  String get createBranch => 'Create branch';
+
+  @override
+  String get branchName => 'Branch name';
+
+  @override
+  String get baseBranchOptional => 'Base branch (optional)';
+
+  @override
+  String get switchAfterCreate => 'Switch to new branch';
+
+  @override
+  String get createWorktree => 'Create worktree';
+
+  @override
+  String get worktreeName => 'Worktree name';
+
+  @override
+  String get baseBranch => 'Base branch';
+
+  @override
+  String get newBranchInWorktree => 'Create new branch in worktree';
+
+  @override
+  String get worktrees => 'Worktrees';
 }
