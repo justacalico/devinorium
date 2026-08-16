@@ -306,6 +306,8 @@ class _ProjectExpandableTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final isRepo = project.isRepo;
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
     final borderColor = isActive
@@ -343,23 +345,42 @@ class _ProjectExpandableTile extends StatelessWidget {
                   style: const TextStyle(fontSize: 12, color: Colors.white),
                 ),
               ),
-              title: Text(
-                project.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w500),
+              title: Tooltip(
+                message: project.path,
+                child: Text(
+                  project.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w500),
+                ),
               ),
-              subtitle: Text(
-                project.path,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
+              subtitle: project.isRepo && project.gitBranch.isNotEmpty
+                  ? Text(
+                      project.gitBranch,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    )
+                  : Text(
+                      project.path,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (isRepo)
+                    IconButton(
+                      tooltip: project.gitBranch.isNotEmpty
+                          ? project.gitBranch
+                          : l10n(context).gitBranches,
+                      icon: const Icon(Icons.call_split, size: 16),
+                      onPressed: () => state.openGitBranchDialog(project.id),
+                    ),
                   if (onNewThread != null)
                     IconButton(
                       tooltip: l10n(context).newThreadIn(project.name),
@@ -480,7 +501,7 @@ class _ThreadTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium,
           ),
-          subtitle: null,
+          subtitle: _threadSubtitle(thread, theme),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -517,6 +538,22 @@ class _ThreadTile extends StatelessWidget {
   }
 }
 
+Widget? _threadSubtitle(Thread thread, ThemeData theme) {
+  final parts = <String>[];
+  if (thread.branch != null && thread.branch!.isNotEmpty) {
+    parts.add(thread.branch!);
+  }
+  if (thread.worktreePath != null && thread.worktreePath!.isNotEmpty) {
+    parts.add(thread.worktreePath!.split('/').last);
+  }
+  if (parts.isEmpty) return null;
+  return Text(
+    parts.join('  '),
+    style: theme.textTheme.labelSmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+  );
+}
+
 class _SectionHeader extends StatelessWidget {
   final String text;
   const _SectionHeader(this.text);
@@ -550,6 +587,7 @@ class _SettingsNav extends StatelessWidget {
       (icon: Icons.cloud_outlined, label: l.providers),
       (icon: Icons.devices_outlined, label: l.devices),
       (icon: Icons.palette_outlined, label: l.personalization),
+      (icon: Icons.code_outlined, label: l.git),
       if (state.isOwner)
         (icon: Icons.manage_accounts_outlined, label: l.manage),
     ];

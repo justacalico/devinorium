@@ -149,6 +149,10 @@ class NativeApiClient implements BaseApiClient {
   Future<Map<String, dynamic>> delete(String path) => _json('DELETE', path, null);
 
   @override
+  Future<Map<String, dynamic>> deleteWithBody(String path, Object body) =>
+      _json('DELETE', path, body);
+
+  @override
   Future<List<Map<String, dynamic>>> getList(String path) async {
     await _ensureLoaded();
     final req = http.Request('GET', _url(path));

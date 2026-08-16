@@ -16,8 +16,8 @@ use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, Router};
 use axum::Json;
-use serde::{Deserialize, Serialize};
 use futures::stream::{BoxStream, StreamExt as FuturesStreamExt};
+use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
 use uuid::Uuid;
@@ -60,6 +60,8 @@ pub struct ThreadOut {
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -75,6 +77,8 @@ impl From<ThreadRow> for ThreadOut {
             model: t.model,
             permission_mode: t.permission_mode,
             permissions: t.permissions,
+            branch: t.branch,
+            worktree_path: t.worktree_path,
             created_at: t.created_at,
             updated_at: t.updated_at,
         }
@@ -108,9 +112,7 @@ impl From<MessageRow> for MessageOut {
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.list_threads(user.id).await {
-        Ok(rows) => {
-            Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response()
-        }
+        Ok(rows) => Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -123,6 +125,8 @@ pub struct CreateThread {
     pub model: Option<String>,
     pub permission_mode: Option<String>,
     pub permissions: Option<String>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
 }
 
 async fn create(
@@ -186,6 +190,8 @@ async fn create(
         model,
         permission_mode,
         permissions: req.permissions,
+        branch: req.branch,
+        worktree_path: req.worktree_path,
     };
     match state.db.create_thread(new).await {
         Ok(t) => (StatusCode::CREATED, Json(ThreadOut::from(t))).into_response(),
@@ -233,6 +239,11 @@ pub struct UpdateThread {
     ///   - field string: set permissions
     #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub permissions: Option<Option<String>>,
+    /// Distinguish between absent and null for optional Git context.
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub branch: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub worktree_path: Option<Option<String>>,
 }
 
 /// Custom deserializer that maps `null` → `Some(None)` and a number → `Some(Some(n))`.
@@ -328,6 +339,25 @@ async fn rename(
             return crate::api::map_err_internal(e).into_response();
         }
     }
+
+    if req.branch.is_some() || req.worktree_path.is_some() {
+        let branch = req
+            .branch
+            .as_ref()
+            .and_then(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
+        let worktree_path = req
+            .worktree_path
+            .as_ref()
+            .and_then(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
+        if let Err(e) = state
+            .db
+            .update_thread_git(&id, user.id, branch, worktree_path)
+            .await
+        {
+            return crate::api::map_err_internal(e).into_response();
+        }
+    }
+
     Json(serde_json::json!({"ok": true})).into_response()
 }
 
@@ -494,7 +524,9 @@ async fn send(
                 )
                     .into_response();
             }
-            Ok(Ok(crate::thread_runner::RunEvent { event, data })) if event == "permission_request" => {
+            Ok(Ok(crate::thread_runner::RunEvent { event, data }))
+                if event == "permission_request" =>
+            {
                 permission_request = Some(data);
                 break;
             }
@@ -597,11 +629,13 @@ async fn send_stream(
     events_stream(run).into_response()
 }
 
-fn events_stream(run: Arc<RunState>) -> Sse<BoxStream<'static, Result<Event, std::convert::Infallible>>> {
+fn events_stream(
+    run: Arc<RunState>,
+) -> Sse<BoxStream<'static, Result<Event, std::convert::Infallible>>> {
     match run.subscribe() {
         Some(receiver) => {
-            let stream = TokioStreamExt::filter_map(BroadcastStream::new(receiver), |res| {
-                match res {
+            let stream =
+                TokioStreamExt::filter_map(BroadcastStream::new(receiver), |res| match res {
                     Ok(ev) => {
                         let data = sanitize_sse_data(&ev.data);
                         Some(Ok::<_, std::convert::Infallible>(
@@ -609,8 +643,7 @@ fn events_stream(run: Arc<RunState>) -> Sse<BoxStream<'static, Result<Event, std
                         ))
                     }
                     Err(_) => None,
-                }
-            });
+                });
             Sse::new(FuturesStreamExt::boxed(stream))
         }
         None => Sse::new(FuturesStreamExt::boxed(tokio_stream::empty())),
@@ -708,8 +741,7 @@ async fn run_thread(
 
     run.emit(
         "done",
-        &serde_json::to_string(&MessageOut::from(assistant_msg))
-            .unwrap_or_else(|_| "{}".into()),
+        &serde_json::to_string(&MessageOut::from(assistant_msg)).unwrap_or_else(|_| "{}".into()),
     );
 
     Ok(())
@@ -868,11 +900,8 @@ fn build_permission_callback(
 
                 // Long timeout so users can disconnect, reload, and still
                 // respond to permission requests for multi-day runs.
-                let result = tokio::time::timeout(
-                    Duration::from_secs(7 * 24 * 60 * 60),
-                    response_rx,
-                )
-                .await;
+                let result =
+                    tokio::time::timeout(Duration::from_secs(7 * 24 * 60 * 60), response_rx).await;
 
                 match result {
                     Ok(Ok(option_id)) if !option_id.is_empty() => {
@@ -1009,7 +1038,17 @@ async fn project_working_dir_for_thread(
 ) -> anyhow::Result<PathBuf> {
     if let Some(pid) = thread.project_id {
         if let Ok(Some(p)) = state.db.get_project(pid, thread.user_id).await {
-            return Ok(PathBuf::from(&p.path));
+            let project_path = tokio::fs::canonicalize(&p.path).await.unwrap_or_else(|_| PathBuf::from(&p.path));
+            if let Some(wt) = &thread.worktree_path {
+                let path = PathBuf::from(wt);
+                if path.is_absolute() {
+                    match tokio::fs::canonicalize(&path).await {
+                        Ok(canonical) if canonical.starts_with(&project_path) => return Ok(canonical),
+                        _ => {}
+                    }
+                }
+            }
+            return Ok(project_path);
         }
     }
     Ok(state.config.home_dir.clone())

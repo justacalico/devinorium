@@ -24,6 +24,7 @@ class SettingsPage extends StatelessWidget {
       _ProviderCard(state: state),
       _DevicesSection(state: state),
       _PersonalizationSection(state: state),
+      _GitSection(state: state),
       if (state.isOwner) _AccountsSection(state: state),
     ];
     final index = state.settingsTopicIndex.clamp(0, sections.length - 1);
@@ -699,6 +700,252 @@ class _UserRow extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GitSection extends StatefulWidget {
+  final AppState state;
+
+  const _GitSection({required this.state});
+
+  @override
+  State<_GitSection> createState() => _GitSectionState();
+}
+
+class _GitSectionState extends State<_GitSection> {
+  final _tokenController = TextEditingController();
+  final _hostnameController = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.state.loadGitConnections();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    _hostnameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    final token = _tokenController.text.trim();
+    if (token.isEmpty) return;
+
+    setState(() => _busy = true);
+    final host = _hostnameController.text.trim();
+    await widget.state.connectGitLab(
+      token: token,
+      hostname: host.isNotEmpty ? host : null,
+    );
+    if (mounted) {
+      setState(() => _busy = false);
+      _tokenController.clear();
+      if (widget.state.globalError.isEmpty) {
+        _hostnameController.clear();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n(context).gitlabConnectFailed(widget.state.globalError))),
+        );
+      }
+    }
+  }
+
+  Future<void> _disconnect(GitConnection connection) async {
+    setState(() => _busy = true);
+    await widget.state.disconnectGitLab(hostname: connection.host);
+    if (mounted) {
+      setState(() => _busy = false);
+      if (widget.state.globalError.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n(context).gitlabDisconnectFailed(widget.state.globalError))),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final state = context.watch<AppState>();
+    final connections = state.gitConnections;
+    final isLoading = state.loadingGitConnections;
+
+    List<Widget> children = [];
+
+    if (state.globalError.isNotEmpty && !state.loadingGitConnections) {
+      children.add(
+        Text(
+          state.globalError,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.error),
+        ),
+      );
+      children.add(const SizedBox(height: 16));
+    }
+
+    if (isLoading && connections.isEmpty) {
+      children.add(Text(l.loading));
+    } else if (connections.isEmpty) {
+      children.add(Text(l.gitConnections));
+    } else {
+      for (final conn in connections) {
+        if (conn.id == 'gitlab') {
+          children.add(_buildGitLabRow(context, theme, l, conn));
+        } else if (conn.id == 'github') {
+          children.add(_buildGitHubRow(context, theme, l, conn));
+        }
+        children.add(const SizedBox(height: 16));
+      }
+    }
+
+    return _SectionCard(
+      title: l.git,
+      children: children,
+    );
+  }
+
+  Widget _buildGitLabRow(
+    BuildContext context,
+    ThemeData theme,
+    AppLocalizations l,
+    GitConnection conn,
+  ) {
+    final status = conn.authed
+        ? (conn.host != null
+            ? '${l.connectedAs(conn.account ?? '')} (${conn.host})'
+            : l.connectedAs(conn.account ?? ''))
+        : l.notConnected;
+
+    if (!conn.enabled) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l.gitlab, style: theme.textTheme.bodyLarge),
+              Text(
+                l.gitlabNotInstalled,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          const SizedBox.shrink(),
+        ],
+      );
+    }
+
+    if (conn.authed) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l.gitlab, style: theme.textTheme.bodyLarge),
+              const SizedBox(height: 2),
+              Text(
+                status,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.primary),
+              ),
+            ],
+          ),
+          if (_busy)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            OutlinedButton(
+              onPressed: () => _disconnect(conn),
+              child: Text(l.disconnect),
+            ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(l.gitlab, style: theme.textTheme.bodyLarge),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _tokenController,
+          obscureText: true,
+          decoration: InputDecoration(
+            labelText: l.token,
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _hostnameController,
+          decoration: InputDecoration(
+            labelText: l.hostname,
+            hintText: l.gitlabComHint,
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (_busy)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              FilledButton(
+                onPressed: _connect,
+                child: Text(l.connect),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGitHubRow(
+    BuildContext context,
+    ThemeData theme,
+    AppLocalizations l,
+    GitConnection conn,
+  ) {
+    return Opacity(
+      opacity: 0.55,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l.github, style: theme.textTheme.bodyLarge),
+              Text(
+                l.comingSoon,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          Chip(
+            label: Text(l.comingSoon),
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),

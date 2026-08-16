@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import 'git_branch_dialog.dart';
 
 class DialogLayer extends StatelessWidget {
   const DialogLayer({super.key});
@@ -20,6 +21,8 @@ class DialogLayer extends StatelessWidget {
         return const _NewProjectDialog();
       case DialogKind.permissionRequest:
         return const _PermissionRequestDialog();
+      case DialogKind.gitBranches:
+        return const GitBranchDialog();
     }
   }
 }

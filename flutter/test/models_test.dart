@@ -180,6 +180,8 @@ void main() {
         'name': 'My Project',
         'path': '/tmp/my-project',
         'position': 5,
+        'is_repo': true,
+        'branch': 'main',
         'created_at': '2026-01-01',
         'updated_at': '2026-01-02',
       });
@@ -187,8 +189,36 @@ void main() {
       expect(p.name, 'My Project');
       expect(p.path, '/tmp/my-project');
       expect(p.position, 5);
+      expect(p.isRepo, true);
+      expect(p.gitBranch, 'main');
       expect(p.createdAt, '2026-01-01');
       expect(p.updatedAt, '2026-01-02');
+    });
+
+    test('copyWith updates git fields', () {
+      final p = Project(
+        id: 1,
+        name: 'x',
+        path: '/tmp/x',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final updated = p.copyWith(isRepo: true, gitBranch: 'develop');
+      expect(updated.isRepo, true);
+      expect(updated.gitBranch, 'develop');
+      expect(updated.name, 'x');
+    });
+
+    test('parses branch and worktree_path', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'branch': 'feature-x',
+        'worktree_path': '/tmp/project-wt',
+      });
+      expect(t.branch, 'feature-x');
+      expect(t.worktreePath, '/tmp/project-wt');
     });
 
     test('defaults missing position to 0', () {
@@ -526,6 +556,86 @@ void main() {
       expect(d.lastSeenAt, '');
       expect(d.expiresAt, '');
       expect(d.isCurrent, false);
+    });
+  });
+
+  group('GitRepoInfo', () {
+    test('parses repo status', () {
+      final r = GitRepoInfo.fromJson({
+        'is_repo': true,
+        'branch': 'main',
+        'worktree_path': '/tmp/project',
+        'toplevel': '/tmp/project',
+        'common_dir': '/tmp/project/.git',
+        'ahead': 2,
+        'behind': 3,
+      });
+      expect(r.isRepo, isTrue);
+      expect(r.branch, 'main');
+      expect(r.worktreePath, '/tmp/project');
+      expect(r.ahead, 2);
+      expect(r.behind, 3);
+    });
+
+    test('defaults missing fields to empty', () {
+      final r = GitRepoInfo.fromJson({});
+      expect(r.isRepo, isFalse);
+      expect(r.branch, isEmpty);
+      expect(r.ahead, 0);
+      expect(r.behind, 0);
+    });
+  });
+
+  group('GitBranch', () {
+    test('parses branch flags', () {
+      final b = GitBranch.fromJson({
+        'name': 'main',
+        'refname': 'refs/heads/main',
+        'is_current': true,
+        'is_default': true,
+        'is_remote': false,
+        'committer_date': 1234567890,
+        'ahead': 2,
+        'behind': 3,
+      });
+      expect(b.name, 'main');
+      expect(b.refname, 'refs/heads/main');
+      expect(b.isCurrent, isTrue);
+      expect(b.isDefault, isTrue);
+      expect(b.isRemote, isFalse);
+      expect(b.committerDate, 1234567890);
+      expect(b.ahead, 2);
+      expect(b.behind, 3);
+    });
+  });
+
+  group('GitWorktree', () {
+    test('parses worktree', () {
+      final w = GitWorktree.fromJson({
+        'path': '/tmp/project-wt',
+        'head': 'abc123',
+        'branch': 'refs/heads/main',
+        'is_main': false,
+      });
+      expect(w.path, '/tmp/project-wt');
+      expect(w.branch, 'refs/heads/main');
+      expect(w.isMain, isFalse);
+    });
+  });
+
+  group('GitStatus', () {
+    test('parses status counters', () {
+      final s = GitStatus.fromJson({
+        'ahead': 1,
+        'behind': 2,
+        'dirty_files': 3,
+        'changed_files': 4,
+        'insertions': 5,
+        'deletions': 6,
+      });
+      expect(s.ahead, 1);
+      expect(s.dirtyFiles, 3);
+      expect(s.insertions, 5);
     });
   });
 

@@ -50,6 +50,20 @@ void main() {
       await client.patch('/api/threads/1', {'title': 'new'});
     });
 
+    test('deleteWithBody sends JSON body for 204', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'DELETE');
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['worktree_path'], '/tmp/wt');
+        return http.Response('', 204);
+      });
+      final client = ApiClient.withClient(mock);
+      final res = await client.deleteWithBody('/api/projects/1/git/worktrees', {
+        'worktree_path': '/tmp/wt',
+      });
+      expect(res, isEmpty);
+    });
+
     test('delete returns empty object for 204', () async {
       final mock = MockClient((req) async {
         expect(req.method, 'DELETE');

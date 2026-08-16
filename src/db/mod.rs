@@ -21,8 +21,8 @@ pub mod thread_groups;
 pub mod threads;
 pub mod users;
 
-pub use projects::NewProject;
 pub use messages::NewMessage;
+pub use projects::NewProject;
 pub use thread_groups::NewThreadGroup;
 pub use threads::NewThread;
 pub use users::NewUser;
@@ -103,6 +103,8 @@ pub struct ThreadRow {
     pub updated_at: String,
     pub thread_group_id: Option<i64>,
     pub project_id: Option<i64>,
+    pub branch: Option<String>,
+    pub worktree_path: Option<String>,
 }
 
 /// A row from the `projects` table.

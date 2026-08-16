@@ -637,4 +637,109 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get readFileNoContent => 'No content';
+
+  @override
+  String get gitBranches => 'Branches';
+
+  @override
+  String get pull => 'Pull';
+
+  @override
+  String get push => 'Push';
+
+  @override
+  String get notAGitRepo => 'This project is not a Git repository.';
+
+  @override
+  String get searchBranches => 'Search branches';
+
+  @override
+  String get createBranch => 'Create branch';
+
+  @override
+  String get branchName => 'Branch name';
+
+  @override
+  String get baseBranchOptional => 'Base branch (optional)';
+
+  @override
+  String get switchAfterCreate => 'Switch to new branch';
+
+  @override
+  String get createWorktree => 'Create worktree';
+
+  @override
+  String get worktreeName => 'Worktree name';
+
+  @override
+  String get baseBranch => 'Base branch';
+
+  @override
+  String get newBranchInWorktree => 'Create new branch in worktree';
+
+  @override
+  String get worktrees => 'Worktrees';
+
+  @override
+  String get git => 'Git';
+
+  @override
+  String get gitConnections => 'Connections';
+
+  @override
+  String get gitlab => 'GitLab';
+
+  @override
+  String get github => 'GitHub';
+
+  @override
+  String get comingSoon => 'Coming soon';
+
+  @override
+  String get connect => 'Connect';
+
+  @override
+  String get disconnect => 'Disconnect';
+
+  @override
+  String get notConnected => 'Not connected';
+
+  @override
+  String connectedAs(String account) {
+    return 'Connected as $account';
+  }
+
+  @override
+  String get token => 'Token';
+
+  @override
+  String get hostname => 'Hostname';
+
+  @override
+  String get gitlabComHint => 'gitlab.com';
+
+  @override
+  String gitlabConnectFailed(String error) {
+    return 'GitLab connect failed: $error';
+  }
+
+  @override
+  String gitlabDisconnectFailed(String error) {
+    return 'GitLab disconnect failed: $error';
+  }
+
+  @override
+  String get loading => 'Loading…';
+
+  @override
+  String get gitlabNotInstalled => 'GitLab CLI (glab) is not installed';
+
+  @override
+  String get none => 'None';
+
+  @override
+  String get createAndSwitchBranch => 'Create and switch';
+
+  @override
+  String get createAndNewBranch => 'Create and new branch';
 }

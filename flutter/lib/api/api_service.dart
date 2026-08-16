@@ -75,6 +75,113 @@ class ApiService {
     await _client.post('/api/auth/devices/revoke', {'device_id': deviceId});
   }
 
+  // ---- Git ----
+
+  Future<GitRepoInfo> gitRepoStatus(int projectId) async {
+    final j = await _client.get('/api/projects/$projectId/git');
+    return GitRepoInfo.fromJson(j);
+  }
+
+  Future<GitStatus> gitStatus(int projectId) async {
+    final j = await _client.get('/api/projects/$projectId/git/status');
+    return GitStatus.fromJson(j);
+  }
+
+  Future<List<GitBranch>> gitBranches(
+    int projectId, {
+    String? query,
+    int limit = 100,
+  }) async {
+    final params = <String, String>{'limit': limit.toString()};
+    if (query != null && query.isNotEmpty) params['query'] = query;
+    final uri = _buildPath('/api/projects/$projectId/git/branches', params);
+    final j = await _client.get(uri);
+    final list = (j['branches'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    return list.map(GitBranch.fromJson).toList();
+  }
+
+  Future<String> gitCreateBranch(
+    int projectId,
+    String name, {
+    String? base,
+    bool switchBranch = false,
+  }) async {
+    final j = await _client.post('/api/projects/$projectId/git/branches', {
+      'name': name,
+      'base': base,
+      'switch': switchBranch,
+    });
+    return j['name'] as String;
+  }
+
+  Future<void> gitCheckout(
+    int projectId,
+    String refName, {
+    bool track = false,
+  }) async {
+    await _client.post('/api/projects/$projectId/git/checkout', {
+      'ref_name': refName,
+      'track': track,
+    });
+  }
+
+  Future<void> gitPull(int projectId) async {
+    await _client.post('/api/projects/$projectId/git/pull', {});
+  }
+
+  Future<void> gitPush(int projectId) async {
+    await _client.post('/api/projects/$projectId/git/push', {});
+  }
+
+  Future<List<GitWorktree>> gitWorktrees(int projectId) async {
+    final list = await _client.getList('/api/projects/$projectId/git/worktrees');
+    return list.map(GitWorktree.fromJson).toList();
+  }
+
+  Future<GitWorktree> gitCreateWorktree(
+    int projectId,
+    String name,
+    String base, {
+    bool newBranch = false,
+  }) async {
+    final j = await _client.post('/api/projects/$projectId/git/worktrees', {
+      'name': name,
+      'base': base,
+      'new_branch': newBranch,
+    });
+    return GitWorktree.fromJson(j);
+  }
+
+  Future<void> gitDeleteWorktree(int projectId, String worktreePath) async {
+    await _client.deleteWithBody('/api/projects/$projectId/git/worktrees', {
+      'worktree_path': worktreePath,
+    });
+  }
+
+  // ---- Git connections ----
+
+  Future<List<GitConnection>> listGitConnections() async {
+    final list = await _client.getList('/api/git-connections');
+    return list.map(GitConnection.fromJson).toList();
+  }
+
+  Future<GitConnection> connectGitLab({
+    required String token,
+    String? hostname,
+  }) async {
+    final j = await _client.post('/api/git-connections/gitlab', {
+      'token': token,
+      if (hostname != null && hostname.isNotEmpty) 'hostname': hostname,
+    });
+    return GitConnection.fromJson(j);
+  }
+
+  Future<void> disconnectGitLab({String? hostname}) async {
+    await _client.deleteWithBody('/api/git-connections/gitlab', {
+      if (hostname != null && hostname.isNotEmpty) 'hostname': hostname,
+    });
+  }
+
   // ---- Projects ----
 
   Future<List<Project>> listProjects() async {
@@ -126,6 +233,8 @@ class ApiService {
     String? model,
     String? permissionMode,
     String? permissions,
+    String? branch,
+    String? worktreePath,
   }) async {
     final body = <String, dynamic>{
       'project_id': projectId,
@@ -135,6 +244,8 @@ class ApiService {
     if (model != null) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
     if (permissions != null) body['permissions'] = permissions;
+    if (branch != null) body['branch'] = branch;
+    if (worktreePath != null) body['worktree_path'] = worktreePath;
     final j = await _client.post('/api/threads', body);
     return Thread.fromJson(j);
   }
@@ -172,6 +283,19 @@ class ApiService {
     await _client.post('/api/threads/$threadId/permission/$requestId', {
       'option_id': optionId,
     });
+  }
+
+  Future<void> updateThreadGit(
+    String id, {
+    String? branch,
+    String? worktreePath,
+  }) async {
+    final body = <String, dynamic>{};
+    if (branch != null) body['branch'] = branch;
+    if (worktreePath != null) body['worktree_path'] = worktreePath;
+    if (body.isNotEmpty) {
+      await _client.patch('/api/threads/$id', body);
+    }
   }
 
   Future<void> moveThreadToGroup(String id, int? groupId) async {

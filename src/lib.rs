@@ -8,6 +8,7 @@ pub mod assets;
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod git;
 pub mod providers;
 pub mod security;
 pub mod thread_runner;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub provider: Arc<dyn providers::Provider>,
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
     pub thread_runner: crate::thread_runner::ThreadRunner,
+    pub git: Arc<crate::git::GitService>,
+    pub git_remote: Arc<crate::git::GitRemoteService>,
 }
 
 impl AppState {
@@ -98,6 +101,8 @@ pub fn build_app(state: AppState) -> Router {
     let protected = api::threads::router()
         .merge(api::files::router())
         .merge(api::projects::router())
+        .merge(api::git::router())
+        .merge(api::git_connections::router())
         .merge(api::thread_groups::router())
         .merge(api::accounts::router())
         .merge(api::models::router())

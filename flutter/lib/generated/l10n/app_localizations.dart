@@ -1209,6 +1209,204 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No content'**
   String get readFileNoContent;
+
+  /// No description provided for @gitBranches.
+  ///
+  /// In en, this message translates to:
+  /// **'Branches'**
+  String get gitBranches;
+
+  /// No description provided for @pull.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull'**
+  String get pull;
+
+  /// No description provided for @push.
+  ///
+  /// In en, this message translates to:
+  /// **'Push'**
+  String get push;
+
+  /// No description provided for @notAGitRepo.
+  ///
+  /// In en, this message translates to:
+  /// **'This project is not a Git repository.'**
+  String get notAGitRepo;
+
+  /// No description provided for @searchBranches.
+  ///
+  /// In en, this message translates to:
+  /// **'Search branches'**
+  String get searchBranches;
+
+  /// No description provided for @createBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Create branch'**
+  String get createBranch;
+
+  /// No description provided for @branchName.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch name'**
+  String get branchName;
+
+  /// No description provided for @baseBranchOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Base branch (optional)'**
+  String get baseBranchOptional;
+
+  /// No description provided for @switchAfterCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to new branch'**
+  String get switchAfterCreate;
+
+  /// No description provided for @createWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Create worktree'**
+  String get createWorktree;
+
+  /// No description provided for @worktreeName.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree name'**
+  String get worktreeName;
+
+  /// No description provided for @baseBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Base branch'**
+  String get baseBranch;
+
+  /// No description provided for @newBranchInWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Create new branch in worktree'**
+  String get newBranchInWorktree;
+
+  /// No description provided for @worktrees.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktrees'**
+  String get worktrees;
+
+  /// No description provided for @git.
+  ///
+  /// In en, this message translates to:
+  /// **'Git'**
+  String get git;
+
+  /// No description provided for @gitConnections.
+  ///
+  /// In en, this message translates to:
+  /// **'Connections'**
+  String get gitConnections;
+
+  /// No description provided for @gitlab.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab'**
+  String get gitlab;
+
+  /// No description provided for @github.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub'**
+  String get github;
+
+  /// No description provided for @comingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming soon'**
+  String get comingSoon;
+
+  /// No description provided for @connect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get connect;
+
+  /// No description provided for @disconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect'**
+  String get disconnect;
+
+  /// No description provided for @notConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected'**
+  String get notConnected;
+
+  /// No description provided for @connectedAs.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected as {account}'**
+  String connectedAs(String account);
+
+  /// No description provided for @token.
+  ///
+  /// In en, this message translates to:
+  /// **'Token'**
+  String get token;
+
+  /// No description provided for @hostname.
+  ///
+  /// In en, this message translates to:
+  /// **'Hostname'**
+  String get hostname;
+
+  /// No description provided for @gitlabComHint.
+  ///
+  /// In en, this message translates to:
+  /// **'gitlab.com'**
+  String get gitlabComHint;
+
+  /// No description provided for @gitlabConnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab connect failed: {error}'**
+  String gitlabConnectFailed(String error);
+
+  /// No description provided for @gitlabDisconnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab disconnect failed: {error}'**
+  String gitlabDisconnectFailed(String error);
+
+  /// No description provided for @loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get loading;
+
+  /// No description provided for @gitlabNotInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab CLI (glab) is not installed'**
+  String get gitlabNotInstalled;
+
+  /// No description provided for @none.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get none;
+
+  /// No description provided for @createAndSwitchBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Create and switch'**
+  String get createAndSwitchBranch;
+
+  /// No description provided for @createAndNewBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Create and new branch'**
+  String get createAndNewBranch;
 }
 
 class _AppLocalizationsDelegate

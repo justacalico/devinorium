@@ -96,6 +96,22 @@ class _FakeApiService extends ApiService {
   Future<List<Device>> listDevices() async => List.unmodifiable(_devices);
 
   @override
+  Future<List<GitConnection>> listGitConnections() async => const [
+        GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
+        GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+      ];
+
+  @override
+  Future<GitConnection> connectGitLab({
+    required String token,
+    String? hostname,
+  }) async =>
+      const GitConnection(id: 'gitlab', name: 'GitLab', enabled: true, authed: true, account: 'owner');
+
+  @override
+  Future<void> disconnectGitLab({String? hostname}) async {}
+
+  @override
   Future<void> revokeDevice(String deviceId) async {
     revokeDeviceCalls++;
     _devices.removeWhere((d) => d.deviceId == deviceId);
@@ -292,7 +308,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(5);
     await tester.pumpAndSettle();
 
     expect(find.text('Manage'), findsOneWidget);
@@ -365,7 +381,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(5);
     await tester.pumpAndSettle();
 
     final openButton = find.widgetWithText(FilledButton, 'Create user');
@@ -405,8 +421,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // With only 4 sections for non-owners, index 10 clamps to 3 (Personalization).
-    expect(find.text('Theme'), findsOneWidget);
+    // With 5 sections for non-owners, index 10 clamps to 4 (Git).
+    expect(find.text('Git'), findsOneWidget);
   });
 
   testWidgets('Personalization tab has theme selector', (tester) async {
@@ -459,5 +475,33 @@ void main() {
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
     expect(state.locale, const Locale('en'));
+  });
+
+  testWidgets('Git section lists GitLab and GitHub', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Git'), findsOneWidget);
+    expect(find.text('GitLab'), findsOneWidget);
+    expect(find.text('GitHub'), findsOneWidget);
+    expect(find.text('Coming soon'), findsNWidgets(2));
+    expect(find.text('Connect'), findsOneWidget);
   });
 }

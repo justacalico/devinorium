@@ -390,5 +390,59 @@
       }
     }
   },
-  "readFileNoContent": "No content"
+  "readFileNoContent": "No content",
+  "gitBranches": "Branches",
+  "pull": "Pull",
+  "push": "Push",
+  "notAGitRepo": "This project is not a Git repository.",
+  "searchBranches": "Search branches",
+  "createBranch": "Create branch",
+  "branchName": "Branch name",
+  "baseBranchOptional": "Base branch (optional)",
+  "switchAfterCreate": "Switch to new branch",
+  "createWorktree": "Create worktree",
+  "worktreeName": "Worktree name",
+  "baseBranch": "Base branch",
+  "newBranchInWorktree": "Create new branch in worktree",
+  "worktrees": "Worktrees",
+  "git": "Git",
+  "gitConnections": "Connections",
+  "gitlab": "GitLab",
+  "github": "GitHub",
+  "comingSoon": "Coming soon",
+  "connect": "Connect",
+  "disconnect": "Disconnect",
+  "notConnected": "Not connected",
+  "connectedAs": "Connected as {account}",
+  "@connectedAs": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "token": "Token",
+  "hostname": "Hostname",
+  "gitlabComHint": "gitlab.com",
+  "gitlabConnectFailed": "GitLab connect failed: {error}",
+  "@gitlabConnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gitlabDisconnectFailed": "GitLab disconnect failed: {error}",
+  "@gitlabDisconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "loading": "Loading…",
+  "gitlabNotInstalled": "GitLab CLI (glab) is not installed",
+  "none": "None",
+  "createAndSwitchBranch": "Create and switch",
+  "createAndNewBranch": "Create and new branch"
 }

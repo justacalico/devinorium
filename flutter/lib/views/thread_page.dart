@@ -23,6 +23,8 @@ class ThreadPage extends StatelessWidget {
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final thread = state.activeThreadDetail?.thread;
     final title = thread?.title ?? l10n(context).selectOrCreateThread;
+    final repo = state.activeProjectId != null ? state.gitRepoInfo(state.activeProjectId!) : null;
+    final isGit = repo?.isRepo ?? false;
     final tag = thread != null
         ? activeThreadTag(
             sending: state.sending,
@@ -51,6 +53,15 @@ class ThreadPage extends StatelessWidget {
           ],
         ),
         actions: [
+          if (isGit && state.activeProjectId != null)
+            TextButton.icon(
+              icon: const Icon(Icons.call_split, size: 18),
+              label: Text(
+                thread?.branch ?? repo!.branch,
+                style: const TextStyle(fontSize: 12),
+              ),
+              onPressed: () => state.openGitBranchDialog(state.activeProjectId!),
+            ),
           IconButton(
             tooltip: l10n(context).fileManager,
             icon: const Icon(Icons.folder_outlined),

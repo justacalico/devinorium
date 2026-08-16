@@ -4,13 +4,14 @@
 
 #![cfg(test)]
 
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
 use axum::Router;
-use futures::stream::StreamExt;
+
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -18,6 +19,7 @@ use devinorium::{
     auth,
     config::Config,
     db,
+    git::{GitRemoteService, GitService},
     providers::{
         ModelInfo, Provider, SendRequest, SendResponse, StartRequest, StartResponse, ToolCallEvent,
     },
@@ -119,10 +121,7 @@ impl Provider for StubProvider {
         if let Some(cb) = &req.options.text_callback {
             cb(reply.clone());
         }
-        Ok(SendResponse {
-            reply,
-            thinking,
-        })
+        Ok(SendResponse { reply, thinking })
     }
     async fn export(
         &self,
@@ -172,13 +171,15 @@ async fn app_state() -> (AppState, db::Db) {
     };
 
     let state = AppState {
-        config: Arc::new(cfg),
+        config: Arc::new(cfg.clone()),
         db: database.clone(),
         provider: Arc::new(StubProvider { delay_ms: 0 }) as Arc<dyn Provider>,
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        git: Arc::new(GitService::new()),
+        git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
     };
     (state, database)
 }
@@ -354,7 +355,10 @@ async fn thread_create_get_list_delete() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(!body.contains("\"tags\""), "list should not include tags: {body}");
+    assert!(
+        !body.contains("\"tags\""),
+        "list should not include tags: {body}"
+    );
 
     // Rename.
     let resp = app
@@ -529,7 +533,10 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
-    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "reasoning about the prompt"));
+    assert!(msgs[1]
+        .thinking
+        .as_ref()
+        .is_some_and(|s| s == "reasoning about the prompt"));
 
     // Thread now has a session id.
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
@@ -587,8 +594,14 @@ async fn thread_send_streams_reply_as_sse() {
     let tool_call_pos = body.find("event: tool_call").expect("tool_call event");
     let chunk_pos = body.find("event: chunk").expect("chunk event");
     let done_pos = body.find("event: done").expect("done event");
-    assert!(thinking_pos < tool_call_pos, "thinking should come before tool_call");
-    assert!(tool_call_pos < chunk_pos, "tool_call should come before chunk");
+    assert!(
+        thinking_pos < tool_call_pos,
+        "thinking should come before tool_call"
+    );
+    assert!(
+        tool_call_pos < chunk_pos,
+        "tool_call should come before chunk"
+    );
     assert!(chunk_pos < done_pos, "chunk should come before done");
 
     let tool_call_block = body
@@ -629,7 +642,10 @@ async fn thread_send_streams_reply_as_sse() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world");
-    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "reasoning about the prompt"));
+    assert!(msgs[1]
+        .thinking
+        .as_ref()
+        .is_some_and(|s| s == "reasoning about the prompt"));
 }
 
 #[tokio::test]
@@ -665,14 +681,23 @@ async fn thread_runs_in_backend_with_zero_frontends() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "send/stream should start a run");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "send/stream should start a run"
+    );
 
     // Poll the run status until it completes or times out.
     let mut status = String::new();
     for _ in 0..50 {
         let resp = app
             .clone()
-            .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/run"),
+                &cookie,
+                "",
+            ))
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -684,7 +709,10 @@ async fn thread_runs_in_backend_with_zero_frontends() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    assert_eq!(status, "completed", "run should complete without a frontend");
+    assert_eq!(
+        status, "completed",
+        "run should complete without a frontend"
+    );
 
     // Verify messages persisted in DB.
     let msgs = db.list_messages(&tid).await.unwrap();
@@ -732,7 +760,12 @@ async fn thread_events_can_be_resumed_by_reconnecting_client() {
     // Subscribe to the active run's events before it completes.
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/events"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/events"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -740,7 +773,10 @@ async fn thread_events_can_be_resumed_by_reconnecting_client() {
     // Collect the SSE events from the response stream.
     let events = to_bytes(resp.into_body(), 10_000).await.unwrap();
     let text = String::from_utf8_lossy(&events);
-    assert!(text.contains("event: done"), "reconnected client should receive the done event");
+    assert!(
+        text.contains("event: done"),
+        "reconnected client should receive the done event"
+    );
 }
 
 #[tokio::test]
@@ -772,7 +808,9 @@ async fn accounts_owner_create_and_list() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
     let users = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
-    assert!(users.iter().any(|u| u["username"] == "alice" && u["is_owner"] == false));
+    assert!(users
+        .iter()
+        .any(|u| u["username"] == "alice" && u["is_owner"] == false));
 }
 
 #[tokio::test]
@@ -872,7 +910,12 @@ async fn project_accepts_absolute_path_with_spaces() {
         .oneshot(authed("POST", "/api/projects", &cookie, &body))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED, "body: {}", body_str(resp.into_body()).await);
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
     let body = body_str(resp.into_body()).await;
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     assert!(v["path"].as_str().unwrap().contains("my drive"));
@@ -1144,7 +1187,12 @@ async fn file_manager_lists_absolute_path_with_spaces() {
     let encoded = target.to_string_lossy().replace(' ', "%20");
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/files?path={encoded}"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?path={encoded}"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1173,7 +1221,10 @@ async fn file_manager_uploads_to_absolute_dir_with_spaces() {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
-                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -1600,7 +1651,10 @@ async fn update_provider_persists_and_validates() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+    assert!(
+        body.contains(r#""provider_id":"devin-cli""#),
+        "body: {body}"
+    );
 
     // Confirm it actually persisted.
     let resp = app
@@ -1610,7 +1664,10 @@ async fn update_provider_persists_and_validates() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains(r#""provider_id":"devin-cli""#), "body: {body}");
+    assert!(
+        body.contains(r#""provider_id":"devin-cli""#),
+        "body: {body}"
+    );
 }
 
 #[tokio::test]
@@ -1701,4 +1758,402 @@ async fn custom_provider_command_is_used() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}
+
+fn init_git_repo(path: &std::path::Path) {
+    std::fs::create_dir_all(path).unwrap();
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("init").current_dir(path);
+    assert!(cmd.output().unwrap().status.success());
+    let mut cfg = std::process::Command::new("git");
+    cfg.args(["config", "user.email", "test@example.com"])
+        .current_dir(path);
+    assert!(cfg.output().unwrap().status.success());
+    let mut cfg = std::process::Command::new("git");
+    cfg.args(["config", "user.name", "Test"]).current_dir(path);
+    assert!(cfg.output().unwrap().status.success());
+    std::fs::write(path.join("file.txt"), "hello").unwrap();
+    let mut add = std::process::Command::new("git");
+    add.args(["add", "file.txt"]).current_dir(path);
+    assert!(add.output().unwrap().status.success());
+    let mut commit = std::process::Command::new("git");
+    commit
+        .args(["commit", "-m", "initial"])
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .current_dir(path);
+    assert!(commit.output().unwrap().status.success());
+}
+
+async fn create_git_project(app: &Router, cookie: &str, path: &std::path::Path) -> i64 {
+    let body = format!(
+        r#"{{"name":"git-{}","path":"{}"}}"#,
+        Uuid::new_v4(),
+        path.display()
+    );
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_i64()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn git_status_for_non_git_project() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/projects/{pid}/git"), &cookie, ""))
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body = body_str(resp.into_body()).await;
+    if status != StatusCode::OK {
+        eprintln!("status: {status}, body: {body}");
+    }
+    assert_eq!(status, StatusCode::OK);
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["is_repo"], false);
+}
+
+#[tokio::test]
+async fn git_branches_and_checkout() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/projects/{pid}/git/branches"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let branches = v["branches"].as_array().unwrap();
+    let default = v["default"].as_str().unwrap();
+    assert!(!default.is_empty());
+    assert!(branches.iter().any(|b| b["name"] == default));
+
+    let body = r#"{"name":"new-feature","switch":true}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/branches"), &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body = format!(r#"{{"ref_name":"{default}"}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/checkout"), &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn git_worktree_create_delete() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let body = r#"{"name":"wt1","base":"HEAD","new_branch":true}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/worktrees"), &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let wt_path = v["path"].as_str().unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/projects/{pid}/git/worktrees"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = format!(r#"{{"worktree_path":"{wt_path}"}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("DELETE", &format!("/api/projects/{pid}/git/worktrees"), &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn git_rejects_path_traversal_worktree() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let body = r#"{"name":"../escape","base":"HEAD","new_branch":true}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/projects/{pid}/git/worktrees"), &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_create_with_git_context() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let body = format!(r#"{{"project_id":{pid},"title":"git-thread","branch":"main","worktree_path":""}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/threads", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["branch"], "main");
+}
+
+fn write_fake_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "config" ] && [ "$2" = "set" ]; then
+  if [ "$3" = "token" ]; then
+    mkdir -p "$XDG_CONFIG_HOME"
+    printf '%s' "$4" > "$XDG_CONFIG_HOME/token"
+  fi
+  exit 0
+fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    echo "$host"
+    echo "  Logged in to $host as testuser"
+    exit 0
+  else
+    echo "$host"
+    echo "  ! No token found"
+    exit 1
+  fi
+fi
+if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
+  rm -f "$XDG_CONFIG_HOME/token"
+  echo "Successfully logged out"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_connections_list_login_logout() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/git-connections", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0]["id"], "gitlab");
+    assert!(!list[0]["authed"].as_bool().unwrap());
+    assert_eq!(list[1]["id"], "github");
+    assert!(list[1]["coming_soon"].as_bool().unwrap());
+
+    let body = r#"{"token":"glpat-test","hostname":"gitlab.example.com"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["account"], "testuser");
+    assert_eq!(v["host"], "gitlab.example.com");
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/git-connections", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    let gitlab = list.iter().find(|c| c["id"] == "gitlab").unwrap();
+    assert!(gitlab["authed"].as_bool().unwrap());
+    assert_eq!(gitlab["account"], "testuser");
+
+    let body = r#"{"hostname":"gitlab.example.com"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/git-connections/gitlab",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/git-connections", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let list = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    let gitlab = list.iter().find(|c| c["id"] == "gitlab").unwrap();
+    assert!(!gitlab["authed"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn git_connections_rejects_empty_token() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"token":"   "}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_connections_login_defaults_to_gitlab_com() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"token":"glpat-test"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["host"], "gitlab.com");
+    assert!(v["authed"].as_bool().unwrap());
+}
+
+fn git_cli(args: &[&str], cwd: &std::path::Path) {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()
+        .expect("git command failed");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[tokio::test]
+async fn project_list_includes_git_branch() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let repo_dir = home.join("repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    git_cli(&["init"], &repo_dir);
+    git_cli(&["checkout", "-b", "main"], &repo_dir);
+
+    let body = format!(r#"{{"name":"repo","path":"{}"}}"#, repo_dir.display());
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["is_repo"].as_bool().unwrap());
+    assert_eq!(v["branch"].as_str().unwrap(), "main");
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let projects = v.as_array().unwrap();
+    let project = projects
+        .iter()
+        .find(|p| p["name"].as_str() == Some("repo"))
+        .unwrap();
+    assert!(project["is_repo"].as_bool().unwrap());
+    assert_eq!(project["branch"].as_str().unwrap(), "main");
 }
