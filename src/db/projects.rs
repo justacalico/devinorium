@@ -87,6 +87,32 @@ impl Db {
             .map_err(Into::into)
     }
 
+    pub async fn get_project_by_path(
+        &self,
+        user_id: i64,
+        path: &str,
+    ) -> anyhow::Result<Option<ProjectRow>> {
+        sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE user_id = ? AND path = ?")
+            .bind(user_id)
+            .bind(path)
+            .fetch_optional(self.pool())
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn get_project_by_name(
+        &self,
+        user_id: i64,
+        name: &str,
+    ) -> anyhow::Result<Option<ProjectRow>> {
+        sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE user_id = ? AND name = ?")
+            .bind(user_id)
+            .bind(name)
+            .fetch_optional(self.pool())
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn delete_project(&self, id: i64, user_id: i64) -> anyhow::Result<()> {
         sqlx::query("DELETE FROM projects WHERE id = ? AND user_id = ?")
             .bind(id)
