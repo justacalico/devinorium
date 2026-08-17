@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,9 +40,6 @@ String _timeAgo(String iso, AppLocalizations l) {
   if (diff.inDays < 365) return l.timeAgoMonths((diff.inDays / 30).floor());
   return l.timeAgoYears((diff.inDays / 365).floor());
 }
-
-const double _kThreadTileHeight = 68;
-const double _kMaxThreadListHeight = 320;
 
 /// The sidebar: projects, threads, and user menu.
 /// When the user is on the Settings page, the sidebar shows settings topics
@@ -448,24 +444,17 @@ class _ProjectExpandableTile extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
                     child: threads.isEmpty
                         ? const _NoThreads()
-                        : SizedBox(
-                            height: math.min(
-                              _kMaxThreadListHeight,
-                              threads.length * _kThreadTileHeight,
-                            ),
-                            child: ListView.builder(
-                              primary: false,
-                              itemExtent: _kThreadTileHeight,
-                              itemCount: threads.length,
-                              itemBuilder: (context, index) {
-                                final t = threads[index];
-                                return _ThreadTile(
-                                  thread: t,
-                                  isActive: activeThreadId == t.id,
-                                  onTap: () => onThreadTap(t.id),
-                                );
-                              },
-                            ),
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: threads
+                                .map(
+                                  (t) => _ThreadTile(
+                                    thread: t,
+                                    isActive: activeThreadId == t.id,
+                                    onTap: () => onThreadTap(t.id),
+                                  ),
+                                )
+                                .toList(),
                           ),
                   )
                 : const SizedBox.shrink(),

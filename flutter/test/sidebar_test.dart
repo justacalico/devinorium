@@ -576,7 +576,7 @@ void main() {
     expect(deco!.borderRadius, BorderRadius.circular(16));
   });
 
-  testWidgets('Expanded project with threads uses a scrollable ListView', (
+  testWidgets('Expanded project threads are not in a nested scrollable', (
     tester,
   ) async {
     final state = AppState.test(
@@ -610,7 +610,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    expect(find.byType(ListView), findsOneWidget);
+    // The outer project list scrolls; threads render inline.
+    expect(find.byType(ListView), findsNothing);
     expect(find.text('My thread'), findsOneWidget);
   });
 }
