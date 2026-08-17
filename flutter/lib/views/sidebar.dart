@@ -546,8 +546,6 @@ class _ThreadTile extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: ListTile(
-          leading: Icon(Icons.chat_outlined,
-              size: 18, color: theme.colorScheme.onSurfaceVariant),
           title: Text(
             thread.title,
             maxLines: 1,
