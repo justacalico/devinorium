@@ -396,42 +396,53 @@ class _MessageItemState extends State<_MessageItem> {
   }
 
   List<_PartGroup> _buildGroups(List<MessagePart> parts) {
-    final thinkingItems = <_ThinkingItem>[];
     final groups = <_PartGroup>[];
 
     for (final part in parts) {
       if (part.type == 'thinking') {
         final text = part.content ?? '';
-        if (thinkingItems.isNotEmpty && thinkingItems.last.type == 'thinking') {
-          final merged = thinkingItems.last.content ?? '';
-          thinkingItems.last = _ThinkingItem(
-            type: 'thinking',
-            content: merged + text,
-          );
+        if (groups.isNotEmpty && groups.last.type == 'thinking') {
+          final items = groups.last.thinkingItems;
+          if (items.isNotEmpty && items.last.type == 'thinking') {
+            final merged = items.last.content ?? '';
+            items[items.length - 1] = _ThinkingItem(
+              type: 'thinking',
+              content: merged + text,
+            );
+          } else {
+            items.add(_ThinkingItem(type: 'thinking', content: text));
+          }
         } else {
-          thinkingItems.add(_ThinkingItem(type: 'thinking', content: text));
+          groups.add(_PartGroup(
+            type: 'thinking',
+            thinkingItems: [_ThinkingItem(type: 'thinking', content: text)],
+          ));
         }
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
-        if (tool != null) {
-          thinkingItems.add(_ThinkingItem(type: 'tool_call', tool: tool));
+        if (tool == null) continue;
+        if (groups.isNotEmpty && groups.last.type == 'thinking') {
+          groups.last.thinkingItems.add(
+            _ThinkingItem(type: 'tool_call', tool: tool),
+          );
+        } else {
+          groups.add(_PartGroup(
+            type: 'thinking',
+            thinkingItems: [_ThinkingItem(type: 'tool_call', tool: tool)],
+          ));
         }
       } else if (part.type == 'text') {
         final text = part.content ?? '';
         if (groups.isNotEmpty && groups.last.type == 'text') {
           final merged = groups.last.content ?? '';
-          groups.last = _PartGroup(type: 'text', content: merged + text);
+          groups[groups.length - 1] = _PartGroup(
+            type: 'text',
+            content: merged + text,
+          );
         } else {
           groups.add(_PartGroup(type: 'text', content: text));
         }
       }
-    }
-
-    if (thinkingItems.isNotEmpty) {
-      groups.insert(
-        0,
-        _PartGroup(type: 'thinking', thinkingItems: thinkingItems),
-      );
     }
 
     return groups;
