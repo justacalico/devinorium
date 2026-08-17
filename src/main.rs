@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use devinorium::{auth, config, db, git, providers, AppState};
+use devinorium::{auth, config, db, git, lock, providers, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -19,6 +19,11 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = config::Config::from_env()?;
+
+    let _guard = lock::lock_path_from_db_url(&cfg.db_url)
+        .map(|p| lock::SingleInstance::acquire(&p))
+        .transpose()?;
+
     let bind = cfg.bind_addr();
     let database = db::Db::connect(&cfg.db_url).await?;
 

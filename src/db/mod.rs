@@ -5,12 +5,13 @@
 //! directly.
 
 use std::str::FromStr;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-    SqlitePool,
+    Connection as _, SqliteConnection, SqlitePool,
 };
 
 pub mod audit;
@@ -40,6 +41,22 @@ impl Db {
             .create_if_missing(true)
             .foreign_keys(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+
+        // Open a one-off connection with a short busy timeout to verify no
+        // other process is actively holding a write lock before we start.
+        let probe_opts = opts
+            .clone()
+            .busy_timeout(Duration::from_millis(100))
+            .read_only(false);
+        let mut probe = SqliteConnection::connect_with(&probe_opts)
+            .await
+            .with_context(|| format!("connecting to sqlite at {url}"))?;
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut probe)
+            .await
+            .context("database is locked by another process; close any database viewers or other Devinorium instances before starting")?;
+        sqlx::query("ROLLBACK").execute(&mut probe).await?;
+        probe.close().await?;
 
         let pool = SqlitePoolOptions::new()
             .max_connections(8)
