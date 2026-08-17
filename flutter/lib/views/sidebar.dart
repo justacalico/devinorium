@@ -82,7 +82,8 @@ class Sidebar extends StatelessWidget {
                 Expanded(
                   child: Text(
                     isSettings ? l10n(context).settings : l10n(context).projects,
-                    style: theme.textTheme.titleMedium,
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
                 if (!isSettings)
@@ -101,56 +102,65 @@ class Sidebar extends StatelessWidget {
                 : const _ProjectThreadList(),
           ),
           // User chip + menu
-          const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  child: Text(avatar),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    username,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ),
-                MenuAnchor(
-                  menuChildren: [
-                    MenuItemButton(
-                      leadingIcon: const Icon(Icons.settings_outlined),
-                      child: Text(l10n(context).settings),
-                      onPressed: () {
-                        state.setPage(MainPage.settings);
-                        state.setUserMenuOpen(false);
-                      },
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                      child: Text(avatar),
                     ),
-                    MenuItemButton(
-                      leadingIcon: const Icon(Icons.logout),
-                      child: Text(l10n(context).signOut),
-                      onPressed: () => state.logout(),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        username,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    MenuAnchor(
+                      menuChildren: [
+                        MenuItemButton(
+                          leadingIcon: const Icon(Icons.settings_outlined),
+                          child: Text(l10n(context).settings),
+                          onPressed: () {
+                            state.setPage(MainPage.settings);
+                            state.setUserMenuOpen(false);
+                          },
+                        ),
+                        MenuItemButton(
+                          leadingIcon: const Icon(Icons.logout),
+                          child: Text(l10n(context).signOut),
+                          onPressed: () => state.logout(),
+                        ),
+                      ],
+                      builder: (context, controller, child) {
+                        return IconButton(
+                          tooltip: l10n(context).menu,
+                          icon: const Icon(Icons.more_vert),
+                          onPressed: () {
+                            if (controller.isOpen) {
+                              controller.close();
+                            } else {
+                              controller.open();
+                            }
+                          },
+                        );
+                      },
                     ),
                   ],
-                  builder: (context, controller, child) {
-                    return IconButton(
-                      tooltip: l10n(context).menu,
-                      icon: const Icon(Icons.more_vert),
-                      onPressed: () {
-                        if (controller.isOpen) {
-                          controller.close();
-                        } else {
-                          controller.open();
-                        }
-                      },
-                    );
-                  },
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -246,7 +256,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     }
 
     return ReorderableListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       buildDefaultDragHandles: false,
       onReorderItem: _onReorder,
       itemCount: projects.length,
@@ -337,18 +347,18 @@ class _ProjectExpandableTile extends StatelessWidget {
     final borderColor = isActive
         ? theme.colorScheme.primary
         : Colors.transparent;
-    final bgColor = isActive
-        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+    final Color? bgColor = isActive
+        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.18)
         : null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
-      margin: const EdgeInsets.symmetric(vertical: 2),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         color: bgColor,
         border: Border.all(color: borderColor, width: 1.5),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -357,16 +367,25 @@ class _ProjectExpandableTile extends StatelessWidget {
             color: Colors.transparent,
             elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(18),
             ),
             clipBehavior: Clip.antiAlias,
             child: ListTile(
-              leading: CircleAvatar(
-                radius: 14,
-                backgroundColor: color,
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
                 child: Text(
                   project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
-                  style: const TextStyle(fontSize: 12, color: Colors.white),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               title: Tooltip(
@@ -376,7 +395,7 @@ class _ProjectExpandableTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w500),
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               subtitle: project.isRepo && project.gitBranch.isNotEmpty
@@ -402,19 +421,22 @@ class _ProjectExpandableTile extends StatelessWidget {
                       tooltip: project.gitBranch.isNotEmpty
                           ? project.gitBranch
                           : l10n(context).gitBranches,
-                      icon: const Icon(Icons.call_split, size: 16),
+                      icon: Icon(Icons.call_split,
+                          size: 16, color: theme.colorScheme.onSurfaceVariant),
                       onPressed: () => state.openGitBranchDialog(project.id),
                     ),
                   if (onNewThread != null)
                     IconButton(
                       tooltip: l10n(context).newThreadIn(project.name),
-                      icon: const Icon(Icons.add, size: 18),
+                      icon: Icon(Icons.add,
+                          size: 18, color: theme.colorScheme.onSurfaceVariant),
                       onPressed: onNewThread,
                     ),
                   AnimatedRotation(
                     turns: isExpanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 150),
-                    child: const Icon(Icons.keyboard_arrow_down, size: 20),
+                    child: Icon(Icons.keyboard_arrow_down,
+                        size: 20, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -426,19 +448,22 @@ class _ProjectExpandableTile extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             curve: Curves.easeOut,
             child: isExpanded
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (threads.isEmpty)
-                        const _NoThreads()
-                      else
-                        for (final t in threads)
-                          _ThreadTile(
-                            thread: t,
-                            isActive: activeThreadId == t.id,
-                            onTap: () => onThreadTap(t.id),
-                          ),
-                    ],
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (threads.isEmpty)
+                          const _NoThreads()
+                        else
+                          for (final t in threads)
+                            _ThreadTile(
+                              thread: t,
+                              isActive: activeThreadId == t.id,
+                              onTap: () => onThreadTap(t.id),
+                            ),
+                      ],
+                    ),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -503,27 +528,32 @@ class _ThreadTile extends StatelessWidget {
     final l = l10n(context);
     final time = _timeAgo(thread.updatedAt, l);
     return Container(
-      margin: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+      margin: const EdgeInsets.symmetric(vertical: 2),
       decoration: BoxDecoration(
+        color: isActive
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+            : null,
         border: isActive
             ? Border.all(color: theme.colorScheme.primary, width: 1.5)
             : null,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Material(
         color: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
         clipBehavior: Clip.antiAlias,
         child: ListTile(
-          leading: const Icon(Icons.chat_outlined, size: 18),
+          leading: Icon(Icons.chat_outlined,
+              size: 18, color: theme.colorScheme.onSurfaceVariant),
           title: Text(
             thread.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: isActive ? FontWeight.w600 : null),
           ),
           subtitle: _threadSubtitle(thread, theme),
           trailing: Row(
@@ -550,7 +580,8 @@ class _ThreadTile extends StatelessWidget {
               const SizedBox(width: 4),
               IconButton(
                 tooltip: l.deleteThreadTooltip,
-                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                icon: Icon(Icons.delete_outline,
+                    color: theme.colorScheme.error, size: 18),
                 onPressed: () async {
                   if (HardwareKeyboard.instance.isShiftPressed ||
                       await _confirm(context, l.deleteThreadConfirm)) {
@@ -560,8 +591,6 @@ class _ThreadTile extends StatelessWidget {
               ),
             ],
           ),
-          selected: isActive,
-          selectedTileColor: theme.colorScheme.secondaryContainer,
           dense: true,
           onTap: () {
             // Close the drawer if open (mobile layout).

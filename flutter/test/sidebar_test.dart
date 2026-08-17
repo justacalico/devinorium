@@ -442,4 +442,72 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('Active project tile uses rounded primary highlight', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final textFinder = find.text('p');
+    final container = find.ancestor(
+      of: textFinder,
+      matching: find.byType(AnimatedContainer),
+    );
+    expect(container, findsOneWidget);
+
+    final deco = tester.widget<AnimatedContainer>(container).decoration
+        as BoxDecoration?;
+    expect(deco, isNotNull);
+
+    final border = deco!.border as Border?;
+    expect(border, isNotNull);
+
+    final context = tester.element(textFinder);
+    expect(border!.top.color, Theme.of(context).colorScheme.primary);
+    expect(deco.borderRadius, BorderRadius.circular(18));
+  });
+
+  testWidgets('User chip is a rounded pill', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final chip = find
+        .ancestor(
+          of: find.text('owner'),
+          matching: find.byType(Container),
+        )
+        .first;
+    final deco = tester.widget<Container>(chip).decoration as BoxDecoration?;
+    expect(deco, isNotNull);
+    expect(deco!.borderRadius, BorderRadius.circular(16));
+  });
 }
