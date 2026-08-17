@@ -1237,6 +1237,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> gitPullBranch(int projectId, String name) async {
+    try {
+      await api.gitPullBranch(projectId, name);
+      _globalError = '';
+      await loadGitRepoInfo(projectId);
+      await loadGitBranches(projectId);
+      await loadGitWorktrees(projectId);
+      await loadProjects();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
   Future<void> gitPush(int projectId) async {
     try {
       await api.gitPush(projectId);
