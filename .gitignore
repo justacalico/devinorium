@@ -63,6 +63,9 @@ data/
 # Runtime upload/attachment cache
 /.devinorium-attachments/
 
+# Local test / runtime workspace directories
+/workspaces/
+
 # Logs
 *.log
 logs/

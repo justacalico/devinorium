@@ -356,8 +356,6 @@ class _PartGroup {
 }
 
 class _MessageItemState extends State<_MessageItem> {
-  bool _expanded = false;
-
   bool get _working {
     if (widget.thinkingActive) return true;
     return widget.message.allParts.any(
@@ -373,65 +371,54 @@ class _MessageItemState extends State<_MessageItem> {
     (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
   );
 
-  @override
-  void initState() {
-    super.initState();
-    _expanded = _working && !_hasText;
-  }
-
-  @override
-  void didUpdateWidget(covariant _MessageItem old) {
-    super.didUpdateWidget(old);
-    final oldHasText = old.message.allParts.any(
-      (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
-    );
-    if ((oldHasText == false && _hasText) ||
-        (old.thinkingActive && !widget.thinkingActive && _hasText)) {
-      if (_expanded) setState(() => _expanded = false);
-      return;
-    }
-    if (_working && !_expanded) {
-      setState(() => _expanded = true);
-    }
-  }
-
   List<_PartGroup> _buildGroups(List<MessagePart> parts) {
-    final thinkingItems = <_ThinkingItem>[];
     final groups = <_PartGroup>[];
 
     for (final part in parts) {
       if (part.type == 'thinking') {
         final text = part.content ?? '';
-        if (thinkingItems.isNotEmpty && thinkingItems.last.type == 'thinking') {
-          final merged = thinkingItems.last.content ?? '';
-          thinkingItems.last = _ThinkingItem(
-            type: 'thinking',
-            content: merged + text,
-          );
+        if (groups.isNotEmpty && groups.last.type == 'thinking') {
+          final items = groups.last.thinkingItems;
+          if (items.isNotEmpty && items.last.type == 'thinking') {
+            final merged = items.last.content ?? '';
+            items[items.length - 1] = _ThinkingItem(
+              type: 'thinking',
+              content: merged + text,
+            );
+          } else {
+            items.add(_ThinkingItem(type: 'thinking', content: text));
+          }
         } else {
-          thinkingItems.add(_ThinkingItem(type: 'thinking', content: text));
+          groups.add(_PartGroup(
+            type: 'thinking',
+            thinkingItems: [_ThinkingItem(type: 'thinking', content: text)],
+          ));
         }
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
-        if (tool != null) {
-          thinkingItems.add(_ThinkingItem(type: 'tool_call', tool: tool));
+        if (tool == null) continue;
+        if (groups.isNotEmpty && groups.last.type == 'thinking') {
+          groups.last.thinkingItems.add(
+            _ThinkingItem(type: 'tool_call', tool: tool),
+          );
+        } else {
+          groups.add(_PartGroup(
+            type: 'thinking',
+            thinkingItems: [_ThinkingItem(type: 'tool_call', tool: tool)],
+          ));
         }
       } else if (part.type == 'text') {
         final text = part.content ?? '';
         if (groups.isNotEmpty && groups.last.type == 'text') {
           final merged = groups.last.content ?? '';
-          groups.last = _PartGroup(type: 'text', content: merged + text);
+          groups[groups.length - 1] = _PartGroup(
+            type: 'text',
+            content: merged + text,
+          );
         } else {
           groups.add(_PartGroup(type: 'text', content: text));
         }
       }
-    }
-
-    if (thinkingItems.isNotEmpty) {
-      groups.insert(
-        0,
-        _PartGroup(type: 'thinking', thinkingItems: thinkingItems),
-      );
     }
 
     return groups;
@@ -489,18 +476,21 @@ class _MessageItemState extends State<_MessageItem> {
 
   Widget _buildPartWidgets(BuildContext context, List<_PartGroup> groups) {
     final children = <Widget>[];
-    for (final group in groups) {
+    final hasText = _hasText;
+    for (var i = 0; i < groups.length; i++) {
+      final group = groups[i];
       if (group.type == 'text') {
         children.add(
           _buildTextContent(context, group.content ?? '', widget.message.role),
         );
       } else if (group.type == 'thinking') {
+        final isLast = i == groups.length - 1;
         children.add(
           _ThinkingBlock(
+            key: ValueKey('thinking-group-$i'),
             items: group.thinkingItems,
-            working: _working,
-            expanded: _expanded,
-            onToggle: () => setState(() => _expanded = !_expanded),
+            working: isLast && _working,
+            hasText: hasText,
           ),
         );
       }
@@ -608,29 +598,54 @@ class _MessageItemState extends State<_MessageItem> {
   }
 }
 
-class _ThinkingBlock extends StatelessWidget {
+class _ThinkingBlock extends StatefulWidget {
   final List<_ThinkingItem> items;
   final bool working;
-  final bool expanded;
-  final VoidCallback onToggle;
+  final bool hasText;
   const _ThinkingBlock({
+    super.key,
     required this.items,
     required this.working,
-    required this.expanded,
-    required this.onToggle,
+    required this.hasText,
   });
+
+  @override
+  State<_ThinkingBlock> createState() => _ThinkingBlockState();
+}
+
+class _ThinkingBlockState extends State<_ThinkingBlock> {
+  bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.working && !widget.hasText;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThinkingBlock old) {
+    super.didUpdateWidget(old);
+    if ((!old.hasText && widget.hasText) ||
+        (old.working && !widget.working && widget.hasText)) {
+      if (_expanded) setState(() => _expanded = false);
+      return;
+    }
+    if (widget.working && !_expanded) {
+      setState(() => _expanded = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = l10n(context);
-    final label = working
+    final label = widget.working
         ? l.thinking
-        : (expanded ? l.hideThinking : l.showThinking);
+        : (_expanded ? l.hideThinking : l.showThinking);
 
     Widget expandedContent() {
       final children = <Widget>[];
-      for (final item in items) {
+      for (final item in widget.items) {
         if (item.type == 'thinking' && (item.content?.isNotEmpty ?? false)) {
           children.add(
             Row(
@@ -673,7 +688,7 @@ class _ThinkingBlock extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         InkWell(
-          onTap: onToggle,
+          onTap: () => setState(() => _expanded = !_expanded),
           borderRadius: BorderRadius.circular(20),
           child: Container(
             decoration: BoxDecoration(
@@ -685,7 +700,7 @@ class _ThinkingBlock extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  expanded ? Icons.expand_less : Icons.expand_more,
+                  _expanded ? Icons.expand_less : Icons.expand_more,
                   size: 16,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -697,7 +712,7 @@ class _ThinkingBlock extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                if (working) _ThinkingDots(active: working),
+                if (widget.working) _ThinkingDots(active: widget.working),
               ],
             ),
           ),
@@ -715,7 +730,7 @@ class _ThinkingBlock extends StatelessWidget {
             ),
             child: expandedContent(),
           ),
-          crossFadeState: expanded
+          crossFadeState: _expanded
               ? CrossFadeState.showSecond
               : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 200),

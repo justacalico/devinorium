@@ -336,12 +336,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('hmm'), findsOneWidget);
-
-    final markdown = find.byType(MarkdownBody);
-    expect(markdown, findsOneWidget);
-    expect(tester.widget<MarkdownBody>(markdown).data, 'hello done');
-
     expect(find.text('Run cmd'), findsOneWidget);
+
+    final markdowns = find.byType(MarkdownBody);
+    expect(markdowns, findsNWidgets(2));
+    expect(tester.widget<MarkdownBody>(markdowns.at(0)).data, 'hello');
+    expect(tester.widget<MarkdownBody>(markdowns.at(1)).data, ' done');
   });
 
   testWidgets('tool calls render inside the expanded thinking block', (
@@ -521,6 +521,218 @@ void main() {
 
     expect(find.text('hmm1hmm2'), findsOneWidget);
     expect(find.text('search'), findsOneWidget);
+  });
+
+  testWidgets('interleaves multiple thinking and text blocks in order', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(
+                content: 'let me switch to branch this-thing',
+              ),
+              MessagePart.text(content: 'switched to branch this-thing'),
+              MessagePart.thinking(
+                content: 'ok done let me do the change now',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('let me switch to branch this-thing'), findsOneWidget);
+    expect(find.text('switched to branch this-thing'), findsOneWidget);
+    expect(find.text('ok done let me do the change now'), findsOneWidget);
+
+    expect(find.byType(MarkdownBody), findsOneWidget);
+    expect(find.byType(AnimatedCrossFade), findsNWidgets(2));
+
+    final firstThinking = tester.getCenter(
+      find.ancestor(
+        of: find.text('let me switch to branch this-thing'),
+        matching: find.byType(AnimatedCrossFade),
+      ),
+    );
+    final textCenter = tester.getCenter(find.byType(MarkdownBody));
+    final secondThinking = tester.getCenter(
+      find.ancestor(
+        of: find.text('ok done let me do the change now'),
+        matching: find.byType(AnimatedCrossFade),
+      ),
+    );
+
+    expect(firstThinking.dy, lessThan(textCenter.dy));
+    expect(textCenter.dy, lessThan(secondThinking.dy));
+  });
+
+  testWidgets('keeps tool calls with their preceding thinking group when interleaved', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'first think'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'Run a',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo a',
+                ),
+              ),
+              MessagePart.text(content: 'middle text'),
+              MessagePart.thinking(content: 'second think'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-2',
+                  title: 'Run b',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo b',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AnimatedCrossFade), findsNWidgets(2));
+    expect(find.byType(MarkdownBody), findsOneWidget);
+
+    final firstBlock = tester.getCenter(
+      find.ancestor(
+        of: find.text('Run a'),
+        matching: find.byType(AnimatedCrossFade),
+      ),
+    );
+    final textCenter = tester.getCenter(find.byType(MarkdownBody));
+    final secondBlock = tester.getCenter(
+      find.ancestor(
+        of: find.text('Run b'),
+        matching: find.byType(AnimatedCrossFade),
+      ),
+    );
+
+    expect(firstBlock.dy, lessThan(textCenter.dy));
+    expect(textCenter.dy, lessThan(secondBlock.dy));
+  });
+
+  testWidgets('each thinking block expands and collapses independently', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'first think'),
+              MessagePart.text(content: 'middle'),
+              MessagePart.thinking(content: 'second think'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final toggles = find.text('Show thinking');
+    expect(toggles, findsNWidgets(2));
+
+    await tester.tap(toggles.first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hide thinking'), findsOneWidget);
+    expect(find.text('Show thinking'), findsOneWidget);
+
+    await tester.tap(find.text('Show thinking'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hide thinking'), findsNWidgets(2));
+
+    await tester.tap(find.text('Hide thinking').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Show thinking'), findsOneWidget);
+    expect(find.text('Hide thinking'), findsOneWidget);
   });
 
   testWidgets('tapping assistant markdown link opens the url', (tester) async {
