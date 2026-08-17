@@ -1052,10 +1052,8 @@ class _ComposerState extends State<_Composer> {
                         IconButton.filled(
                           style: isSending
                               ? IconButton.styleFrom(
-                                  backgroundColor:
-                                      Theme.of(context).colorScheme.error,
-                                  foregroundColor:
-                                      Theme.of(context).colorScheme.onError,
+                                  backgroundColor: theme.colorScheme.error,
+                                  foregroundColor: theme.colorScheme.onError,
                                 )
                               : null,
                           tooltip: isSending
