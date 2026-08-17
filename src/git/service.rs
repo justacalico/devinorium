@@ -791,6 +791,26 @@ impl GitService {
             });
         }
 
+        // Drop remote refs that have a local branch with the same short name
+        // so `main` and `origin/main` do not show up as separate entries.
+        // Remote branches are stored as `<remote>/<branch>`; strip the remote
+        // prefix and keep the remote entry only when no local counterpart
+        // exists.
+        let local_names: std::collections::HashSet<String> = branches
+            .iter()
+            .filter(|b| !b.is_remote)
+            .map(|b| b.name.clone())
+            .collect();
+        branches.retain(|b| {
+            if !b.is_remote {
+                return true;
+            }
+            match b.name.split_once('/') {
+                Some((_, short)) => !local_names.contains(short),
+                None => true,
+            }
+        });
+
         branches.sort_by(|a, b| {
             let a_score = (a.is_current as i8) * 4 + (a.is_default as i8) * 2 - (a.is_remote as i8);
             let b_score = (b.is_current as i8) * 4 + (b.is_default as i8) * 2 - (b.is_remote as i8);
