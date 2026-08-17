@@ -722,6 +722,17 @@ void main() {
 
     expect(find.text('Hide thinking'), findsOneWidget);
     expect(find.text('Show thinking'), findsOneWidget);
+
+    await tester.tap(find.text('Show thinking'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hide thinking'), findsNWidgets(2));
+
+    await tester.tap(find.text('Hide thinking').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Show thinking'), findsOneWidget);
+    expect(find.text('Hide thinking'), findsOneWidget);
   });
 
   testWidgets('tapping assistant markdown link opens the url', (tester) async {
