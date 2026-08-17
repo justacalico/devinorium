@@ -289,19 +289,15 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
 
   void _onToggle(int id) {
     final state = context.read<AppState>();
-    if (state.activeProjectId != id) {
+    if (_expandedIds.contains(id)) {
+      setState(() {
+        _expandedIds.remove(id);
+      });
+    } else {
       setState(() {
         _expandedIds.add(id);
       });
       state.selectProject(id);
-    } else {
-      setState(() {
-        if (_expandedIds.contains(id)) {
-          _expandedIds.remove(id);
-        } else {
-          _expandedIds.add(id);
-        }
-      });
     }
   }
 
