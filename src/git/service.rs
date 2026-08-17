@@ -433,12 +433,12 @@ impl GitService {
             return self.pull(path).await;
         }
 
-        let upstream = self
+        let full_upstream = self
             .run_with(
                 path,
                 &[
                     "for-each-ref",
-                    "--format=%(upstream:short)",
+                    "--format=%(upstream)",
                     &format!("refs/heads/{}", name),
                 ],
                 Duration::from_secs(5),
@@ -447,18 +447,40 @@ impl GitService {
             .trim()
             .to_string();
 
-        if upstream.is_empty() {
+        if full_upstream.is_empty() {
             return Err(GitError::Other("branch has no upstream".to_string()));
         }
 
-        let Some((remote, remote_branch)) = upstream.split_once('/') else {
-            return Err(GitError::Other("invalid upstream".to_string()));
-        };
+        let remote = self
+            .run_with(
+                path,
+                &["config", "--get", &format!("branch.{}.remote", name)],
+                Duration::from_secs(5),
+            )
+            .await?
+            .trim()
+            .to_string();
+
+        if !self.is_safe_branch_name(&remote) {
+            return Err(GitError::Other("invalid remote name".to_string()));
+        }
+
+        let prefix = format!("refs/remotes/{}/", remote);
+        let remote_branch = full_upstream
+            .strip_prefix(&prefix)
+            .ok_or_else(|| GitError::Other("invalid upstream".to_string()))?;
+
+        if !self.is_safe_branch_name(remote_branch) {
+            return Err(GitError::Other("invalid remote branch".to_string()));
+        }
 
         let mut cmd = self.git_cmd(path);
         cmd.arg("fetch")
-            .arg(remote)
-            .arg(format!("{}:{}", remote_branch, name));
+            .arg(&remote)
+            .arg(format!(
+                "refs/heads/{}:refs/heads/{}",
+                remote_branch, name
+            ));
         self.run(&mut cmd, Duration::from_secs(60)).await?;
         self.invalidate(path);
         Ok(())

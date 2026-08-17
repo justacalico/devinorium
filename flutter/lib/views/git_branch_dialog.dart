@@ -449,10 +449,14 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
   }
 
   Future<void> _pullBranch(int projectId, GitBranch branch) async {
+    if (_pullingBranches.contains(branch.name)) return;
     setState(() => _pullingBranches.add(branch.name));
-    await context.read<AppState>().gitPullBranch(projectId, branch.name);
-    if (mounted) {
-      setState(() => _pullingBranches.remove(branch.name));
+    try {
+      await context.read<AppState>().gitPullBranch(projectId, branch.name);
+    } finally {
+      if (mounted) {
+        setState(() => _pullingBranches.remove(branch.name));
+      }
     }
   }
 
