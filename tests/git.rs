@@ -271,7 +271,10 @@ async fn pulls_non_current_branch_without_checking_out() {
         &["clone", remote.path().to_str().unwrap(), "."],
         other.path(),
     );
-    git_cli(&["checkout", "-b", "feature"], other.path());
+    git_cli(
+        &["checkout", "-b", "feature", "origin/main"],
+        other.path(),
+    );
     std::fs::write(other.path().join("file2.txt"), "from other").unwrap();
     git_cli(&["add", "file2.txt"], other.path());
     git_cli(&["commit", "-m", "feature commit"], other.path());
