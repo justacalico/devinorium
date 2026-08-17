@@ -9,6 +9,9 @@ import '../api/api_service.dart';
 import '../l10n/global_l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
+import 'async_value.dart';
+import 'streaming_state.dart';
+import 'thread_store.dart';
 
 enum AppView { loading, login, app }
 
@@ -35,7 +38,6 @@ class AppState extends ChangeNotifier {
     List<GitConnection> gitConnections = const [],
     bool loadingGitConnections = false,
     int? activeProjectId,
-    String? activeProjectPath,
     String? activeThreadId,
     ThreadDetail? activeThreadDetail,
     DialogKind? dialog,
@@ -50,12 +52,15 @@ class AppState extends ChangeNotifier {
     List<MessagePart> streamingParts = const [],
     bool streamingThinkingActive = false,
     ComposerMode composerMode = ComposerMode.code,
+    String? composerText,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+    String? selectedModel,
+    String? selectedPermission,
   }) : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
-    _sending = sending;
-    _lastRunStatus = lastRunStatus;
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;
     _user = user;
@@ -66,23 +71,54 @@ class AppState extends ChangeNotifier {
     _models = models;
     _providers = providers;
     _activeProjectId = activeProjectId;
-    _activeProjectPath = activeProjectPath;
-    _activeThreadId = activeThreadId;
-    _activeThreadDetail = activeThreadDetail;
     _dialog = dialog ?? DialogKind.none;
-    _pendingPermissionRequest = pendingPermissionRequest;
     _filesPath = filesPath;
     _globalError = globalError ?? '';
-    _streamingParts.clear();
-    _streamingParts.addAll(streamingParts);
-    _streamingThinkingActive = streamingThinkingActive;
     _composerMode = composerMode;
+
+    final threadId = activeThreadId ?? activeThreadDetail?.thread.id;
+    if (threadId != null) {
+      final detail = activeThreadDetail;
+      final projectId = activeProjectId ?? detail?.thread.projectId ?? 0;
+      final streaming = StreamingSnapshot(
+        phase: sending || streamingParts.isNotEmpty || streamingThinkingActive
+            ? StreamPhase.running
+            : StreamPhase.idle,
+        parts: streamingParts,
+        thinkingActive: streamingThinkingActive,
+        pendingPermission: pendingPermissionRequest,
+      );
+      final store = ThreadStore(
+        api: this.api,
+        threadId: threadId,
+        projectId: projectId,
+        detail: detail != null ? AsyncValue.ready(detail) : null,
+        streaming: streaming,
+        composerText: composerText ?? '',
+        attachments: attachments,
+        composerMode: composerMode,
+        selectedModel: selectedModel ?? '',
+        selectedPermission: selectedPermission ?? 'normal',
+        lastRunStatus: lastRunStatus,
+      );
+      _threadStores[threadId] = store;
+      _setActiveStore(store);
+    } else {
+      _activeThreadId = activeThreadId;
+      _composerText = composerText ?? '';
+      _attachments.addAll(attachments);
+      _selectedModel = selectedModel ?? '';
+      _selectedPermission = selectedPermission ?? 'normal';
+    }
   }
 
   @override
   void dispose() {
-    _sendSubscription?.cancel();
-    _sendSubscription = null;
+    for (final store in _threadStores.values) {
+      store.dispose();
+    }
+    _threadStores.clear();
+    _activeStore = null;
     super.dispose();
   }
 
@@ -96,13 +132,10 @@ class AppState extends ChangeNotifier {
   List<ModelInfo> _models = [];
   List<ProviderInfo> _providers = [];
   int? _activeProjectId;
-  String? _activeProjectPath;
   String? _activeThreadId;
-  ThreadDetail? _activeThreadDetail;
   List<User> _users = [];
   List<Device> _devices = [];
   String _loginError = '';
-  String _setupError = '';
   bool _showTotpField = false;
   bool _userMenuOpen = false;
   bool _filesPanelOpen = false;
@@ -111,21 +144,22 @@ class AppState extends ChangeNotifier {
   String _filesError = '';
   DialogKind _dialog = DialogKind.none;
   String _totpSecret = '';
+
+  // Default draft/selection state used when no thread is active.
   String _composerText = '';
   final List<({String filename, String mime, Uint8List bytes})> _attachments =
       [];
-  bool _sending = false;
   String _selectedModel = '';
   String _selectedPermission = 'normal';
   ComposerMode _composerMode = ComposerMode.code;
-  List<MessagePart> _streamingParts = [];
-  bool _streamingThinkingActive = false;
-  int _streamingLastSeq = 0;
+
+  // Thread stores: one per thread id. Active store is the currently focused
+  // thread; all others are kept warm so switching back preserves draft state.
+  final Map<String, ThreadStore> _threadStores = {};
+  ThreadStore? _activeStore;
+
   String _globalError = '';
-  StreamSubscription? _sendSubscription;
-  String? _resumingThreadId;
-  String? _lastRunStatus;
-  PermissionRequest? _pendingPermissionRequest;
+  String _lastThreadError = '';
   ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('en');
   int _settingsTopicIndex = 0;
@@ -151,21 +185,13 @@ class AppState extends ChangeNotifier {
   List<ModelInfo> get models => _models;
   List<ProviderInfo> get providers => _providers;
   int? get activeProjectId => _activeProjectId;
-  String? get activeProjectPath => _activeProjectPath;
-  Project? get activeProject {
-    for (final p in _projects) {
-      if (p.id == _activeProjectId) return p;
-    }
-    return null;
-  }
 
   String? get activeThreadId => _activeThreadId;
-  ThreadDetail? get activeThreadDetail => _activeThreadDetail;
+  ThreadDetail? get activeThreadDetail => _activeStore?.detail.valueOrNull;
   List<User> get users => _users;
   List<Device> get devices => _devices;
   bool get isOwner => _user?.isOwner ?? false;
   String get loginError => _loginError;
-  String get setupError => _setupError;
   bool get showTotpField => _showTotpField;
   bool get userMenuOpen => _userMenuOpen;
   bool get filesPanelOpen => _filesPanelOpen;
@@ -174,21 +200,96 @@ class AppState extends ChangeNotifier {
   String get filesError => _filesError;
   DialogKind get dialog => _dialog;
   String get totpSecret => _totpSecret;
-  String get composerText => _composerText;
-  bool get sending => _sending;
-  String? get lastRunStatus => _lastRunStatus;
+  String get composerText => _activeStore?.composerText ?? _composerText;
+  bool get sending => _activeStore?.sending ?? false;
+  String? get lastRunStatus => _activeStore?.lastRunStatus;
   List<({String filename, String mime, Uint8List bytes})> get attachments =>
-      _attachments;
-  String get selectedModel => _selectedModel;
-  String get selectedPermission => _selectedPermission;
-  ComposerMode get composerMode => _composerMode;
-  List<MessagePart> get streamingParts => _streamingParts;
-  bool get streamingThinkingActive => _streamingThinkingActive;
-  PermissionRequest? get pendingPermissionRequest => _pendingPermissionRequest;
+      _activeStore?.attachments ?? _attachments;
+  String get selectedModel => _activeStore?.selectedModel ?? _selectedModel;
+  String get selectedPermission =>
+      _activeStore?.selectedPermission ?? _selectedPermission;
+  ComposerMode get composerMode => _activeStore?.composerMode ?? _composerMode;
+  List<MessagePart> get streamingParts =>
+      _activeStore?.streamingParts ?? const [];
+  bool get streamingThinkingActive =>
+      _activeStore?.streamingThinkingActive ?? false;
+  PermissionRequest? get pendingPermissionRequest =>
+      _activeStore?.pendingPermissionRequest;
   String get globalError => _globalError;
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
+
+  void _setActiveStore(ThreadStore? store) {
+    if (_activeStore == store) return;
+    _activeStore?.onStateChanged = null;
+    _activeStore?.cancelStream();
+    _activeStore?.clearStreamingState();
+    _activeStore = store;
+    _activeThreadId = store?.threadId;
+    store?.onStateChanged = _onThreadStoreChanged;
+    _syncFromActiveStore();
+    notifyListeners();
+  }
+
+  void _onThreadStoreChanged() {
+    final store = _activeStore;
+    if (store == null) return;
+    _syncFromActiveStore();
+    notifyListeners();
+  }
+
+  void _syncFromActiveStore() {
+    final store = _activeStore;
+    if (store == null) return;
+    final previousThreadError = _lastThreadError;
+    var error = '';
+    if (store.globalError.isNotEmpty) {
+      error = store.globalError;
+    } else if (store.streaming.error != null &&
+        store.streaming.error!.isNotEmpty) {
+      error = store.streaming.error!;
+    }
+    if (error.isNotEmpty) {
+      _globalError = error;
+      _lastThreadError = error;
+    } else {
+      _lastThreadError = '';
+      if (_globalError == previousThreadError) {
+        _globalError = '';
+      }
+    }
+    if (store.pendingPermissionRequest != null) {
+      _dialog = DialogKind.permissionRequest;
+    } else if (_dialog == DialogKind.permissionRequest) {
+      _dialog = DialogKind.none;
+    }
+  }
+
+  ThreadStore _createStore(
+    String id, {
+    int? projectId,
+    ThreadDetail? detail,
+    StreamingSnapshot? streaming,
+    String? composerText,
+    List<({String filename, String mime, Uint8List bytes})>? attachments,
+    ComposerMode? composerMode,
+    String? selectedModel,
+    String? selectedPermission,
+  }) {
+    return ThreadStore(
+      api: api,
+      threadId: id,
+      projectId: projectId ?? _activeProjectId ?? 0,
+      detail: detail != null ? AsyncValue.ready(detail) : null,
+      streaming: streaming,
+      composerText: composerText,
+      attachments: attachments,
+      composerMode: composerMode,
+      selectedModel: selectedModel,
+      selectedPermission: selectedPermission,
+    );
+  }
 
   GitRepoInfo? gitRepoInfo(int projectId) => _gitRepoInfo[projectId];
   List<GitBranch> gitBranches(int projectId) => _gitBranches[projectId] ?? [];
@@ -227,39 +328,74 @@ class AppState extends ChangeNotifier {
   }
 
   void setComposerText(String t) {
-    _composerText = t;
+    final store = _activeStore;
+    if (store != null) {
+      store.composerText = t;
+    } else {
+      _composerText = t;
+    }
     notifyListeners();
   }
 
   void addAttachments(
     List<({String filename, String mime, Uint8List bytes})> files,
   ) {
-    _attachments.addAll(files);
+    final store = _activeStore;
+    if (store != null) {
+      store.attachments.addAll(files);
+    } else {
+      _attachments.addAll(files);
+    }
     notifyListeners();
   }
 
   void removeAttachment(int index) {
-    _attachments.removeAt(index);
+    final store = _activeStore;
+    if (store != null) {
+      store.attachments.removeAt(index);
+    } else {
+      _attachments.removeAt(index);
+    }
     notifyListeners();
   }
 
   void clearAttachments() {
-    _attachments.clear();
+    final store = _activeStore;
+    if (store != null) {
+      store.attachments.clear();
+    } else {
+      _attachments.clear();
+    }
     notifyListeners();
   }
 
   void setSelectedModel(String m) {
-    _selectedModel = m;
+    final store = _activeStore;
+    if (store != null) {
+      store.selectedModel = m;
+    } else {
+      _selectedModel = m;
+    }
     notifyListeners();
   }
 
   void setSelectedPermission(String p) {
-    _selectedPermission = p;
+    final store = _activeStore;
+    if (store != null) {
+      store.selectedPermission = p;
+    } else {
+      _selectedPermission = p;
+    }
     notifyListeners();
   }
 
   void setComposerMode(ComposerMode m) {
-    _composerMode = m;
+    final store = _activeStore;
+    if (store != null) {
+      store.composerMode = m;
+    } else {
+      _composerMode = m;
+    }
     notifyListeners();
     unawaited(_saveComposerMode(m));
   }
@@ -361,13 +497,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? _projectPathById(int id) {
-    for (final p in _projects) {
-      if (p.id == id) return p.path;
-    }
-    return null;
-  }
-
   Future<void> openFilesPanel() async {
     _filesPanelOpen = true;
     _filesPath = [];
@@ -463,7 +592,6 @@ class AppState extends ChangeNotifier {
       }
       _user = await api.me();
       _view = AppView.app;
-      _setupError = '';
       await _loadModelsAndProviders();
       await loadProjects();
       if (_projects.isNotEmpty) {
@@ -475,7 +603,6 @@ class AppState extends ChangeNotifier {
       if (e is ApiException && e.statusCode == 401) {
         await api.client.clearCredentials();
       }
-      _setupError = e is ApiException ? e.message : appL10n.connectionFailed;
       _view = AppView.login;
       notifyListeners();
     }
@@ -626,8 +753,12 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _sendSubscription?.cancel();
-    _sendSubscription = null;
+    for (final store in _threadStores.values) {
+      store.dispose();
+    }
+    _threadStores.clear();
+    _activeStore = null;
+    _activeThreadId = null;
     try {
       await api.logout();
     } catch (_) {}
@@ -640,19 +771,15 @@ class AppState extends ChangeNotifier {
     _view = AppView.login;
     _page = MainPage.threads;
     _userMenuOpen = false;
-    _activeThreadId = null;
-    _activeThreadDetail = null;
     _projects = [];
     _activeProjectId = null;
-    _activeProjectPath = null;
     _showTotpField = false;
     _loginError = '';
     _composerText = '';
     _composerMode = ComposerMode.code;
     _attachments.clear();
-    _streamingParts.clear();
-    _streamingThinkingActive = false;
-    _sending = false;
+    _selectedModel = '';
+    _selectedPermission = 'normal';
     _runningThreadIds.clear();
     notifyListeners();
   }
@@ -660,10 +787,8 @@ class AppState extends ChangeNotifier {
   // ---- Projects ----
 
   Future<void> selectProject(int id) async {
+    _setActiveStore(null);
     _activeProjectId = id;
-    _activeProjectPath = _projectPathById(id);
-    _activeThreadId = null;
-    _activeThreadDetail = null;
     _page = MainPage.threads;
     _globalError = '';
     _attachments.clear();
@@ -674,10 +799,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> selectAllProjects() async {
+    _setActiveStore(null);
     _activeProjectId = null;
-    _activeProjectPath = null;
-    _activeThreadId = null;
-    _activeThreadDetail = null;
     _page = MainPage.threads;
     _globalError = '';
     _attachments.clear();
@@ -696,9 +819,7 @@ class AppState extends ChangeNotifier {
       final p = await api.createProject(name: name, path: path);
       _projects = [..._projects, p];
       _activeProjectId = p.id;
-      _activeProjectPath = p.path;
-      _activeThreadId = null;
-      _activeThreadDetail = null;
+      _setActiveStore(null);
       _page = MainPage.threads;
       await refreshThreadsAndGroups();
     } catch (e) {
@@ -712,14 +833,11 @@ class AppState extends ChangeNotifier {
       await api.deleteProject(id);
       _projects = _projects.where((p) => p.id != id).toList();
       if (_activeProjectId == id) {
-        _activeThreadId = null;
-        _activeThreadDetail = null;
+        _setActiveStore(null);
         if (_projects.isNotEmpty) {
           _activeProjectId = _projects.first.id;
-          _activeProjectPath = _projects.first.path;
         } else {
           _activeProjectId = null;
-          _activeProjectPath = null;
         }
       }
       await refreshThreadsAndGroups();
@@ -763,14 +881,16 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (targetId != _activeProjectId) {
+      _setActiveStore(null);
       _activeProjectId = targetId;
-      _activeProjectPath = _projectPathById(targetId);
-      _activeThreadId = null;
-      _activeThreadDetail = null;
       _page = MainPage.threads;
       notifyListeners();
+    } else {
+      _setActiveStore(null);
     }
     _page = MainPage.threads;
+    _composerText = '';
+    _attachments.clear();
     notifyListeners();
     try {
       final t = await api.createThread(
@@ -779,10 +899,16 @@ class AppState extends ChangeNotifier {
         model: _selectedModel.isEmpty ? null : _selectedModel,
         permissionMode: _selectedPermission,
       );
-      _activeThreadId = t.id;
-      try {
-        _activeThreadDetail = await api.getThread(t.id);
-      } catch (_) {}
+      final store = _createStore(
+        t.id,
+        projectId: targetId,
+        composerMode: _composerMode,
+        selectedModel: _selectedModel,
+        selectedPermission: _selectedPermission,
+      );
+      _threadStores[t.id] = store;
+      _setActiveStore(store);
+      await store.load();
       await refreshThreadsAndGroups();
     } catch (e) {
       _globalError = '$e';
@@ -791,50 +917,48 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openThread(String id) async {
-    // Cancel any in-flight send and clear transient state before switching.
-    await _sendSubscription?.cancel();
-    _sendSubscription = null;
-    _clearPermissionRequest();
-    _sending = false;
-    _streamingParts.clear();
-    _streamingThinkingActive = false;
-    _attachments.clear();
-    _composerText = '';
-    _resumingThreadId = null;
-    _lastRunStatus = null;
-
+    final previous = _threadStores[id];
+    _setActiveStore(null);
     _activeThreadId = id;
     notifyListeners();
     try {
-      _activeThreadDetail = await api.getThread(id);
-      if (_activeThreadDetail != null) {
-        _selectedModel = _activeThreadDetail!.thread.model;
-        _selectedPermission = _activeThreadDetail!.thread.permissionMode;
-      }
+      final detail = await api.getThread(id);
       notifyListeners();
 
       // Discover the thread's project and switch the active project.
+      var projectId = detail.thread.projectId;
       try {
         final info = await api.getThreadProject(id);
-        final projectId = (info['project_id'] as num).toInt();
-        _activeProjectId = projectId;
-        _activeProjectPath =
-            info['path'] as String? ?? _projectPathById(projectId);
-      } catch (_) {
-        final projectId = _activeThreadDetail?.thread.projectId;
-        if (projectId != null &&
-            projectId != 0 &&
-            projectId != _activeProjectId) {
-          _activeProjectId = projectId;
-          _activeProjectPath = _projectPathById(projectId);
+        final apiProjectId = (info['project_id'] as num).toInt();
+        if (apiProjectId != 0) {
+          projectId = apiProjectId;
         }
-      }
+      } catch (_) {}
+      _activeProjectId = projectId;
 
       // Load the threads list for the active project.
+      _globalError = '';
       await refreshThreadsAndGroups();
 
+      // Create or replace the thread store with the latest detail.
+      // Preserve the user's draft from a previous visit so switching
+      // threads does not lose in-progress input.
+      final store = _createStore(
+        id,
+        detail: detail,
+        projectId: projectId,
+        composerText: previous?.composerText ?? '',
+        attachments: previous?.attachments,
+        composerMode: previous?.composerMode ?? _composerMode,
+        selectedModel: detail.thread.model,
+        selectedPermission: detail.thread.permissionMode,
+      );
+      _threadStores[id] = store;
+      _setActiveStore(store);
+      previous?.dispose();
+
       // If the backend is already running this thread, reconnect to it.
-      await resumeThread(id);
+      await store.resume();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -875,16 +999,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> saveThreadSettings() async {
-    final tid = _activeThreadId;
-    if (tid == null) return;
+    final store = _activeStore;
+    if (store == null) return;
     try {
-      await api.updateThreadSettings(
-        tid,
-        model: _selectedModel,
-        permissionMode: _selectedPermission,
-      );
-      _activeThreadDetail = await api.getThread(tid);
-      notifyListeners();
+      await store.saveSettings();
       await refreshThreadsAndGroups();
     } catch (e) {
       _globalError = '$e';
@@ -895,9 +1013,10 @@ class AppState extends ChangeNotifier {
   Future<void> deleteThread(String id) async {
     try {
       await api.deleteThread(id);
-      if (_activeThreadId == id) {
-        _activeThreadId = null;
-        _activeThreadDetail = null;
+      final store = _threadStores.remove(id);
+      if (store != null) store.markDeleted();
+      if (_activeStore?.threadId == id) {
+        _setActiveStore(null);
       }
       await refreshThreadsAndGroups();
     } catch (e) {
@@ -916,367 +1035,43 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ---- Streaming send ----
-
-  void _finishRun(String tid, {String? error}) {
-    _clearPermissionRequest();
-    _streamingParts.clear();
-    _streamingThinkingActive = false;
-    _streamingLastSeq = 0;
-    _sending = false;
-    unawaited(_sendSubscription?.cancel());
-    _sendSubscription = null;
-    _runningThreadIds.remove(tid);
-    _globalError = error ?? '';
-    notifyListeners();
-    refreshThreadsAndGroups();
-    _refreshTail(tid);
-  }
-
-  int? _eventSeq(SseEvent ev) => int.tryParse(ev.id ?? '');
-
-  void _handleRunEvent(String tid, SseEvent ev) {
-    final seq = _eventSeq(ev);
-    if (seq != null && ev.event != 'state' && seq <= _streamingLastSeq) {
-      return;
-    }
-    switch (ev.event) {
-      case 'state':
-        final decoded = tryDecodeJson(ev.data);
-        if (decoded != null) {
-          final status = decoded['status'] as String? ?? 'running';
-          _lastRunStatus = status;
-          if (status == 'completed' || status == 'failed' || status == 'stopped') {
-            _finishRun(
-              tid,
-              error: status == 'failed' ? decoded['error'] as String? : null,
-            );
-          } else {
-            _setStreamingFromSnapshot(decoded);
-          }
-        }
-        break;
-      case 'user_message':
-        _lastRunStatus = 'running';
-        clearAttachments();
-        _composerText = '';
-        final msg = parseSseMessage(ev.data);
-        if (msg != null && _activeThreadDetail != null) {
-          _activeThreadDetail!.messages.add(msg);
-          _activeThreadDetail!.totalMessages++;
-          if (seq != null) _streamingLastSeq = seq;
-          notifyListeners();
-        }
-        break;
-      case 'permission_request':
-        final decoded = tryDecodeJson(ev.data);
-        if (decoded != null) {
-          try {
-            _pendingPermissionRequest = PermissionRequest.fromJson(decoded);
-            _dialog = DialogKind.permissionRequest;
-            if (seq != null) _streamingLastSeq = seq;
-            notifyListeners();
-          } catch (e) {
-            _globalError = appL10n.invalidPermissionRequest('$e');
-            notifyListeners();
-          }
-        } else {
-          _globalError = appL10n.failedToDecodePermissionRequest;
-          notifyListeners();
-        }
-        break;
-      case 'part':
-        _lastRunStatus = 'running';
-        final decoded = tryDecodeJson(ev.data);
-        if (decoded != null) {
-          try {
-            _streamingParts.add(MessagePart.fromJson(decoded));
-            _updateStreamingThinkingActive();
-            if (seq != null) _streamingLastSeq = seq;
-            notifyListeners();
-          } catch (e) {
-            // ignore malformed part
-          }
-        }
-        break;
-      case 'part_update':
-        _lastRunStatus = 'running';
-        final decoded = tryDecodeJson(ev.data);
-        if (decoded != null) {
-          try {
-            final part = MessagePart.fromJson(decoded);
-            if (part.id == null) {
-              _streamingParts.add(part);
-            } else {
-              final idx = _streamingParts.indexWhere((p) => p.id == part.id);
-              if (idx >= 0) {
-                _streamingParts[idx] = part;
-              } else {
-                _streamingParts.add(part);
-              }
-            }
-            _updateStreamingThinkingActive();
-            if (seq != null) _streamingLastSeq = seq;
-            notifyListeners();
-          } catch (e) {
-            // ignore malformed part update
-          }
-        }
-        break;
-      case 'done':
-        _lastRunStatus = 'completed';
-        final msg = parseSseMessage(ev.data);
-        if (msg != null && _activeThreadDetail != null) {
-          _activeThreadDetail!.messages.add(msg);
-          _activeThreadDetail!.totalMessages++;
-        }
-        _finishRun(tid);
-        break;
-      case 'stopped':
-        _lastRunStatus = 'stopped';
-        _clearPermissionRequest();
-        _streamingParts.clear();
-        _streamingThinkingActive = false;
-        _sending = false;
-        _sendSubscription = null;
-        notifyListeners();
-        refreshThreadsAndGroups();
-        _refreshTail(tid);
-        break;
-      case 'error':
-        _lastRunStatus = 'failed';
-        _finishRun(tid, error: ev.data);
-        break;
-    }
-  }
-
-  void _updateStreamingThinkingActive() {
-    _streamingThinkingActive =
-        _streamingParts.isNotEmpty && _streamingParts.last.type == 'thinking';
-  }
-
-  void _setStreamingFromSnapshot(Map<String, dynamic> j) {
-    final status = j['status'] as String?;
-    if (status != null) _sending = status == 'running';
-
-    final parts = (j['parts'] as List<dynamic>?) ?? [];
-    _streamingParts = [];
-    for (final p in parts) {
-      if (p is! Map<String, dynamic>) continue;
-      try {
-        _streamingParts.add(MessagePart.fromJson(p));
-      } catch (_) {
-        // ignore malformed part
-      }
-    }
-    _streamingThinkingActive = j['thinking_active'] as bool? ?? false;
-    _streamingLastSeq = (j['last_seq'] as num?)?.toInt() ?? 0;
-
-    final permission = j['permission_request'];
-    if (permission is Map<String, dynamic>) {
-      try {
-        _pendingPermissionRequest = PermissionRequest.fromJson(permission);
-        _dialog = DialogKind.permissionRequest;
-      } catch (_) {
-        // ignore malformed permission request
-      }
-    }
-
-    notifyListeners();
-  }
-
-  /// Refresh the tail of the active thread without discarding already loaded
-  /// older messages. Used after streaming ends or errors.
-  Future<void> _refreshTail(String tid) async {
-    if (_activeThreadId != tid) return;
-    try {
-      if (_activeThreadDetail == null || _activeThreadDetail!.messages.isEmpty) {
-        _activeThreadDetail = await api.getThread(tid);
-      } else {
-        final newestId = _activeThreadDetail!.messages.last.id;
-        if (newestId == null) {
-          _activeThreadDetail = await api.getThread(tid);
-        } else {
-          final tail = await api.getThreadMessages(tid, afterId: newestId);
-          if (tail.isNotEmpty) {
-            _activeThreadDetail!.messages.addAll(tail);
-            _activeThreadDetail!.totalMessages += tail.length;
-          }
-        }
-      }
-      notifyListeners();
-    } catch (_) {
-      // ignore refresh errors; the user can still retry
-    }
-  }
-
   Future<void> loadMoreMessages() async {
-    final tid = _activeThreadId;
-    final detail = _activeThreadDetail;
-    if (tid == null || detail == null) return;
-    if (detail.messages.isEmpty) return;
-    if (detail.messages.length >= detail.totalMessages) return;
+    final store = _activeStore;
+    if (store == null) return;
     try {
-      final oldestId = detail.messages.first.id;
-      if (oldestId == null) return;
-      final older = await api.getThreadMessages(tid, beforeId: oldestId);
-      if (older.isNotEmpty) {
-        detail.messages.insertAll(0, older);
-        notifyListeners();
-      }
+      await store.loadMoreMessages();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
     }
   }
 
-  void _handleRunError(String tid, Object e) {
-    _sendSubscription = null;
-    _clearPermissionRequest();
-    if (e is ApiException && e.statusCode == 409 && _resumingThreadId != tid) {
-      _resumingThreadId = tid;
-      resumeThread(tid).whenComplete(() {
-        if (_resumingThreadId == tid) _resumingThreadId = null;
-      });
-      return;
-    }
-    _lastRunStatus = 'failed';
-    _finishRun(tid, error: '$e');
-  }
-
-  void _handleRunOnDone(String tid) {
-    _sendSubscription = null;
-    _clearPermissionRequest();
-    if (_sending) {
-      _finishRun(tid);
-    }
-  }
-
   Future<void> resumeThread(String id) async {
-    await _sendSubscription?.cancel();
-    _sendSubscription = null;
-    _clearPermissionRequest();
-
+    ThreadStore? store = _threadStores[id];
+    if (store == null) {
+      store = _createStore(id);
+      _threadStores[id] = store;
+    }
+    _setActiveStore(store);
     try {
-      final run = await api.getThreadRun(id);
-      final status = run['status'] as String? ?? 'idle';
-      _lastRunStatus = status;
-      if (status == 'running') {
-        _runningThreadIds.add(id);
-        _setStreamingFromSnapshot(run);
-        _sending = true;
-        clearAttachments();
-        if (_resumingThreadId != id) _composerText = '';
-        notifyListeners();
-
-        late StreamSubscription? sub;
-        sub = api
-            .watchThreadEvents(id)
-            .listen(
-              (ev) {
-                if (_sendSubscription != sub) return;
-                _handleRunEvent(id, ev);
-              },
-              onError: (e) {
-                if (_sendSubscription != sub) return;
-                _handleRunError(id, e);
-              },
-              onDone: () {
-                if (_sendSubscription != sub) return;
-                _handleRunOnDone(id);
-              },
-            );
-        _sendSubscription = sub;
-      } else {
-        _runningThreadIds.remove(id);
-        _sending = false;
-        _streamingParts.clear();
-        _streamingThinkingActive = false;
-        _streamingLastSeq = 0;
-        if (status == 'failed' && run['error'] is String) {
-          _globalError = run['error'] as String;
-        } else if (status == 'stopped') {
-          _globalError = '';
-        } else {
-          _globalError = '';
-        }
-        _activeThreadDetail = await api.getThread(id);
-        notifyListeners();
-      }
+      await store.resume();
     } catch (e) {
-      _runningThreadIds.remove(id);
-      _sending = false;
-      _streamingParts.clear();
-      _streamingThinkingActive = false;
-      _streamingLastSeq = 0;
-      _lastRunStatus = null;
       _globalError = '$e';
       notifyListeners();
     }
   }
 
   Future<void> sendMessage() async {
-    final text = _composerText.trim();
-    final tid = _activeThreadId;
-    if (text.isEmpty || tid == null) return;
-
-    await saveThreadSettings();
-
-    await _sendSubscription?.cancel();
-    _sendSubscription = null;
-    _clearPermissionRequest();
-
-    _sending = true;
-    _lastRunStatus = 'running';
-    _runningThreadIds.add(tid);
-    _streamingParts.clear();
-    _streamingThinkingActive = false;
-    final attachments =
-        List<({String filename, String mime, Uint8List bytes})>.from(
-          _attachments,
-        );
-    notifyListeners();
-
-    try {
-      late StreamSubscription? sub;
-      sub = api
-          .sendMessageStream(
-            threadId: tid,
-            prompt: text,
-            mode: _composerMode.name,
-            attachments: attachments,
-          )
-          .listen(
-            (ev) {
-              if (_sendSubscription != sub) return;
-              _handleRunEvent(tid, ev);
-            },
-            onError: (e) {
-              if (_sendSubscription != sub) return;
-              _handleRunError(tid, e);
-            },
-            onDone: () {
-              if (_sendSubscription != sub) return;
-              _handleRunOnDone(tid);
-            },
-          );
-      _sendSubscription = sub;
-    } catch (e) {
-      _lastRunStatus = 'failed';
-      _finishRun(tid, error: '$e');
-    }
+    final store = _activeStore;
+    if (store == null) return;
+    if (store.composerText.trim().isEmpty) return;
+    await store.sendMessage();
   }
 
   Future<void> stopThread() async {
-    final tid = _activeThreadId;
-    if (tid == null || !_sending) return;
-
-    try {
-      await api.stopThread(tid);
-    } catch (e) {
-      _globalError = '$e';
-      notifyListeners();
-    }
+    final store = _activeStore;
+    if (store == null || !store.sending) return;
+    await store.stop();
   }
 
   // ---- TOTP ----
@@ -1320,26 +1115,12 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> respondToPermissionRequest(String? optionId) async {
-    final tid = _activeThreadId;
-    final req = _pendingPermissionRequest;
-    if (tid == null || req == null) return;
+    final store = _activeStore;
+    if (store == null) return;
     try {
-      await api.respondPermission(tid, req.requestId, optionId);
-      _pendingPermissionRequest = null;
-      _dialog = DialogKind.none;
-      notifyListeners();
+      await store.respondToPermissionRequest(optionId);
     } catch (e) {
       _globalError = '$e';
-      notifyListeners();
-    }
-  }
-
-  void _clearPermissionRequest() {
-    if (_pendingPermissionRequest != null) {
-      _pendingPermissionRequest = null;
-      if (_dialog == DialogKind.permissionRequest) {
-        _dialog = DialogKind.none;
-      }
       notifyListeners();
     }
   }
@@ -1514,10 +1295,8 @@ class AppState extends ChangeNotifier {
       );
       _globalError = '';
       await refreshThreadsAndGroups();
-      if (_activeThreadDetail != null &&
-          _activeThreadDetail!.thread.id == threadId) {
-        _activeThreadDetail = await api.getThread(threadId);
-        notifyListeners();
+      if (_activeStore?.threadId == threadId) {
+        await _activeStore?.reloadDetail();
       }
     } catch (e) {
       _globalError = '$e';

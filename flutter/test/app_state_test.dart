@@ -380,7 +380,6 @@ void main() {
           Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
         ],
         activeProjectId: 1,
-        activeProjectPath: '/x',
       );
       base.setView(AppView.app);
       await base.deleteProject(1);
@@ -438,6 +437,67 @@ void main() {
       expect(base.activeThreadDetail, isNotNull);
       expect(base.selectedModel, 'glm-5-2');
       expect(base.activeProjectId, 1);
+    });
+
+    test('openThread preserves composer draft and attachments', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'b',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {'project_id': 1, 'path': '/x'}),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {'project_id': 1, 'path': '/x'}),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client)
+        ..runResponse = {'status': 'running'}
+        ..eventsBuilder = () => Stream<SseEvent>.empty();
+      final base = AppState.test(
+        api: api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeThreadId: 'a',
+      );
+      base.setView(AppView.app);
+      base.setComposerMode(ComposerMode.ask);
+      base.setComposerText('draft text');
+      base.addAttachments([
+        (filename: 'f.txt', mime: 'text/plain', bytes: Uint8List.fromList([1])),
+      ]);
+
+      await base.openThread('b');
+      expect(base.activeThreadId, 'b');
+
+      await base.openThread('a');
+      expect(base.activeThreadId, 'a');
+      expect(base.composerText, 'draft text');
+      expect(base.composerMode, ComposerMode.ask);
+      expect(base.attachments, hasLength(1));
+      expect(base.attachments.first.filename, 'f.txt');
     });
 
     test('createNewThread requires a project', () async {
@@ -635,7 +695,26 @@ void main() {
           },
           'messages': [],
         }),
-        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [
+            {
+              'role': 'assistant',
+              'content': 'hello world',
+              'thinking': null,
+              'attachments': [],
+            },
+          ],
+          'total_messages': 1,
+        }),
         _json(200, []),
         _json(200, []),
         _json(200, []),
@@ -1219,6 +1298,59 @@ void main() {
       expect(state.sending, isFalse);
       expect(state.runningThreadIds, isNot(contains('a')));
       expect(state.streamingParts, isEmpty);
+    });
+
+    test('state event with completed status clears stale error and permission', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {'project_id': 1, 'path': '/'}),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final eventsController = StreamController<SseEvent>();
+      api.eventsBuilder = () => eventsController.stream;
+      api.runResponse = {
+        'status': 'running',
+        'error': 'stale error',
+        'permission_request': {
+          'request_id': 'r1',
+          'scope': 'Exec(curl)',
+          'title': 'Run?',
+          'options': [],
+        },
+      };
+
+      final state = AppState.test(api: api, activeProjectId: 1);
+      await state.openThread('a');
+
+      expect(state.sending, isTrue);
+      expect(state.globalError, 'stale error');
+      expect(state.pendingPermissionRequest, isNotNull);
+      expect(state.dialog, DialogKind.permissionRequest);
+
+      eventsController.add(SseEvent(
+        'state',
+        '{"status":"completed","parts":[]}',
+      ));
+      await pumpEventQueue();
+      await eventsController.close();
+
+      expect(state.sending, isFalse);
+      expect(state.globalError, isEmpty);
+      expect(state.pendingPermissionRequest, isNull);
+      expect(state.dialog, DialogKind.none);
     });
 
     test('resumeThread seeds streaming parts from run snapshot', () async {
