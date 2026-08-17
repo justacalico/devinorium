@@ -22,6 +22,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
   bool _creatingWorktreeNewBranch = false;
   bool _pulling = false;
   bool _pushing = false;
+  final _pullingBranches = <String>{};
   String _query = '';
 
   @override
@@ -84,6 +85,8 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                                 currentBranch: currentBranch,
                                 onCheckout: (b) => _checkout(projectId, b),
                                 onUseForThread: (b) => _useBranch(projectId, b),
+                                onPull: (b) => _pullBranch(projectId, b),
+                                pulling: _pullingBranches,
                               ),
                               const Divider(height: 32),
                               _buildCreateBranch(context, projectId, branches),
@@ -149,6 +152,7 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
             Tooltip(
               message: l10n(context).pull,
               child: TextButton(
+                key: const Key('gitBranchPullHeader'),
                 onPressed: _pulling ? null : () => _pull(projectId),
                 child: _pulling
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
@@ -444,6 +448,14 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     }
   }
 
+  Future<void> _pullBranch(int projectId, GitBranch branch) async {
+    setState(() => _pullingBranches.add(branch.name));
+    await context.read<AppState>().gitPullBranch(projectId, branch.name);
+    if (mounted) {
+      setState(() => _pullingBranches.remove(branch.name));
+    }
+  }
+
   Future<void> _push(int projectId) async {
     setState(() => _pushing = true);
     await context.read<AppState>().gitPush(projectId);
@@ -458,12 +470,16 @@ class _BranchList extends StatelessWidget {
   final String currentBranch;
   final ValueChanged<GitBranch> onCheckout;
   final ValueChanged<GitBranch> onUseForThread;
+  final ValueChanged<GitBranch> onPull;
+  final Set<String> pulling;
 
   const _BranchList({
     required this.branches,
     required this.currentBranch,
     required this.onCheckout,
     required this.onUseForThread,
+    required this.onPull,
+    required this.pulling,
   });
 
   @override
@@ -495,6 +511,15 @@ class _BranchList extends StatelessWidget {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (!b.isRemote && b.behind > 0) ...[
+                TextButton(
+                  onPressed: pulling.contains(b.name) ? null : () => onPull(b),
+                  child: pulling.contains(b.name)
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(l10n(context).pull),
+                ),
+                const SizedBox(width: 4),
+              ],
               TextButton(
                 onPressed: isCurrent ? null : () => onCheckout(b),
                 child: const Text('Checkout'),
