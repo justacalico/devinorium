@@ -69,6 +69,30 @@ async fn lists_branches_sorted_by_current_first() {
 }
 
 #[tokio::test]
+async fn lists_branches_marks_default_from_origin_head() {
+    let tmp = make_repo();
+    git_cli(&["branch", "-M", "main"], tmp.path());
+    git_cli(&["checkout", "-b", "feature"], tmp.path());
+
+    let origin = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], origin.path());
+    let origin_url = origin.path().to_str().unwrap();
+    git_cli(&["remote", "add", "origin", origin_url], tmp.path());
+    git_cli(&["push", "origin", "main"], tmp.path());
+    git_cli(&["symbolic-ref", "HEAD", "refs/heads/main"], origin.path());
+    git_cli(&["remote", "set-head", "origin", "-a"], tmp.path());
+
+    let svc = GitService::new();
+    let branches = svc.branches(tmp.path(), None, None).await.unwrap();
+
+    let current = branches.iter().find(|b| b.is_current).unwrap();
+    assert_eq!(current.name, "feature");
+
+    let default = branches.iter().find(|b| b.is_default).unwrap();
+    assert_eq!(default.name, "main");
+}
+
+#[tokio::test]
 async fn filters_branches_by_query() {
     let tmp = make_repo();
     git_cli(&["checkout", "-b", "feature-a"], tmp.path());
