@@ -200,7 +200,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('↓1 ↑2'), findsAtLeastNWidgets(1));
-      expect(find.widgetWithText(TextButton, 'Pull'), findsOneWidget);
+      expect(find.byKey(const Key('gitBranchPullHeader')), findsOneWidget);
       expect(find.widgetWithText(TextButton, 'Push'), findsOneWidget);
 
       final featureTile = find.ancestor(
@@ -209,13 +209,112 @@ void main() {
       );
       expect(find.descendant(of: featureTile, matching: find.text('↑5')), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(TextButton, 'Pull'));
+      await tester.tap(find.byKey(const Key('gitBranchPullHeader')));
       await tester.pumpAndSettle();
       expect(requests, contains('/api/projects/1/git/pull'));
 
       await tester.tap(find.widgetWithText(TextButton, 'Push'));
       await tester.pumpAndSettle();
       expect(requests, contains('/api/projects/1/git/push'));
+    });
+
+    testWidgets('shows pull button for behind non-current branch and calls branch pull endpoint', (tester) async {
+      final requests = <Map<String, dynamic>>[];
+      final client = ApiClient.withClient(MockClient((req) async {
+        final path = req.url.path;
+        if (path == '/api/projects/1/git') {
+          return _json(200, {
+            'is_repo': true,
+            'branch': 'main',
+            'worktree_path': '/x',
+            'toplevel': '/x',
+            'common_dir': '/x/.git',
+            'ahead': 0,
+            'behind': 0,
+          });
+        }
+        if (path == '/api/projects/1/git/branches') {
+          return _json(200, {
+            'branches': [
+              {
+                'name': 'main',
+                'refname': 'refs/heads/main',
+                'is_current': true,
+                'is_default': true,
+                'is_remote': false,
+                'committer_date': 0,
+                'ahead': 0,
+                'behind': 0,
+              },
+              {
+                'name': 'feature',
+                'refname': 'refs/heads/feature',
+                'is_current': false,
+                'is_default': false,
+                'is_remote': false,
+                'committer_date': 0,
+                'ahead': 0,
+                'behind': 3,
+              },
+              {
+                'name': 'origin/feature',
+                'refname': 'refs/remotes/origin/feature',
+                'is_current': false,
+                'is_default': false,
+                'is_remote': true,
+                'committer_date': 0,
+                'ahead': 0,
+                'behind': 0,
+              },
+            ],
+          });
+        }
+        if (path == '/api/projects/1/git/worktrees') {
+          return _json(200, []);
+        }
+        if (path == '/api/projects/1/git/branches/pull') {
+          requests.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return _json(204, {});
+        }
+        return _json(404, {'error': 'unexpected request'});
+      }));
+
+      final state = AppState.test(api: ApiService(client: client));
+      await state.openGitBranchDialog(1);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: state,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: GitBranchDialog()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final featureTile = find.ancestor(
+        of: find.text('feature'),
+        matching: find.byType(ListTile),
+      );
+      final remoteTile = find.ancestor(
+        of: find.text('origin/feature'),
+        matching: find.byType(ListTile),
+      );
+      expect(
+        find.descendant(of: featureTile, matching: find.widgetWithText(TextButton, 'Pull')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: remoteTile, matching: find.widgetWithText(TextButton, 'Pull')),
+        findsNothing,
+      );
+
+      await tester.tap(find.descendant(of: featureTile, matching: find.widgetWithText(TextButton, 'Pull')));
+      await tester.pumpAndSettle();
+      expect(requests, hasLength(1));
+      expect(requests.first['name'], 'feature');
     });
   });
 }
