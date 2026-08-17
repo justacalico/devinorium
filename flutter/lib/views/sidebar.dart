@@ -532,7 +532,7 @@ class _ThreadTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: isActive
             ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
-            : null,
+            : theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
         border: isActive
             ? Border.all(color: theme.colorScheme.primary, width: 1.5)
             : null,
