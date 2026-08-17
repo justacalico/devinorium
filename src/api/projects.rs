@@ -114,6 +114,36 @@ async fn create(
         }
     };
 
+    if state
+        .db
+        .get_project_by_path(user.id, &path_str)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(crate::api::ApiError::new("project path already exists")),
+        )
+            .into_response();
+    }
+
+    if state
+        .db
+        .get_project_by_name(user.id, name)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(crate::api::ApiError::new("project name already exists")),
+        )
+            .into_response();
+    }
+
     let position = match state.db.next_project_position(user.id).await {
         Ok(p) => p,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
@@ -131,7 +161,21 @@ async fn create(
             let out = ProjectOut::from_row(&state, p).await;
             (StatusCode::CREATED, Json(out)).into_response()
         }
-        Err(e) => crate::api::map_err_internal(e).into_response(),
+        Err(e) => {
+            // A duplicate name or path can race the pre-checks above.
+            if let Some(sqlx::Error::Database(db_err)) = e.downcast_ref::<sqlx::Error>() {
+                if db_err.is_unique_violation() {
+                    return (
+                        StatusCode::CONFLICT,
+                        Json(crate::api::ApiError::new(
+                            "project with this name or path already exists",
+                        )),
+                    )
+                        .into_response();
+                }
+            }
+            crate::api::map_err_internal(e).into_response()
+        }
     }
 }
 
