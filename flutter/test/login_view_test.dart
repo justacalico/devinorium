@@ -128,6 +128,22 @@ Widget _buildLogin({required _FakeClient client}) => MaterialApp(
     );
 
 void main() {
+  testWidgets('LoginView restores saved server URL on native', (tester) async {
+    final client = _FakeClient(isNative: true);
+    client._savedServerUrl = 'http://saved.example.com:7878';
+    await tester.pumpWidget(_buildLogin(client: client));
+    await tester.pumpAndSettle();
+
+    final dropdown =
+        tester.widget<DropdownButton<String>>(find.byType(DropdownButton<String>));
+    expect(dropdown.value, 'http://');
+    expect(find.widgetWithText(TextFormField, 'Server URL'), findsOneWidget);
+
+    final hostField = tester.widget<TextFormField>(
+        find.widgetWithText(TextFormField, 'Server URL'));
+    expect(hostField.controller!.text, 'saved.example.com:7878');
+  });
+
   testWidgets('LoginView shows server URL field on native', (tester) async {
     final client = _FakeClient(isNative: true);
     await tester.pumpWidget(_buildLogin(client: client));

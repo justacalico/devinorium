@@ -48,15 +48,17 @@ class _LoginViewState extends State<LoginView> {
       if (state.api.client.isNative) {
         final url = await state.api.client.serverUrl;
         if (url != null && url.isNotEmpty) {
-          if (url.startsWith('https://')) {
-            _scheme = 'https://';
-            _serverHost.text = url.substring(8);
-          } else if (url.startsWith('http://')) {
-            _scheme = 'http://';
-            _serverHost.text = url.substring(7);
-          } else {
-            _serverHost.text = url;
-          }
+          setState(() {
+            if (url.startsWith('https://')) {
+              _scheme = 'https://';
+              _serverHost.text = url.substring(8);
+            } else if (url.startsWith('http://')) {
+              _scheme = 'http://';
+              _serverHost.text = url.substring(7);
+            } else {
+              _serverHost.text = url;
+            }
+          });
         }
       }
     });
