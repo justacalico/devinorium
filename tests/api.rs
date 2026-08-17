@@ -199,6 +199,37 @@ async fn make_app() -> (Router, db::Db) {
     (devinorium::build_app(state), database)
 }
 
+/// Seed a batch of messages for a thread in a single transaction so the tests
+/// do not pay the cost of a separate SQLite fsync for every insert.
+async fn seed_messages(db: &db::Db, thread_id: &str, count: usize, content_prefix: &str) {
+    let mut conn = db.pool().acquire().await.expect("acquire db connection");
+    sqlx::query("BEGIN")
+        .execute(&mut *conn)
+        .await
+        .expect("begin transaction");
+
+    for i in 0..count {
+        sqlx::query(
+            "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(thread_id)
+        .bind(if i % 2 == 0 { "user" } else { "assistant" })
+        .bind(format!("{content_prefix}{i}"))
+        .bind::<Option<String>>(None)
+        .bind("[]")
+        .bind("[]")
+        .execute(&mut *conn)
+        .await
+        .expect("insert message");
+    }
+
+    sqlx::query("COMMIT")
+        .execute(&mut *conn)
+        .await
+        .expect("commit transaction");
+}
+
 async fn make_app_with_delay(delay_ms: u64) -> (Router, db::Db) {
     let (mut state, database) = app_state().await;
     state.provider = Arc::new(StubProvider { delay_ms }) as Arc<dyn Provider>;
@@ -2664,18 +2695,7 @@ async fn thread_messages_pagination() {
     let tid = make_thread(&app, &cookie, pid, "T").await;
 
     // Seed 120 messages directly to bypass provider streaming.
-    for i in 0..120 {
-        db.add_message(db::NewMessage {
-            thread_id: tid.clone(),
-            role: if i % 2 == 0 { "user".to_string() } else { "assistant".to_string() },
-            content: format!("msg {i}"),
-            thinking: None,
-            parts: "[]".to_string(),
-            attachments: "[]".to_string(),
-        })
-        .await
-        .unwrap();
-    }
+    seed_messages(&db, &tid, 120, "msg ").await;
 
     // Default page is the most recent 50.
     let resp = app
@@ -2791,18 +2811,7 @@ async fn huge_thread_messages_pagination_is_fast() {
     let tid = make_thread(&app, &cookie, pid, "Huge").await;
 
     // Seed 5,000 messages directly; this should complete quickly.
-    for i in 0..5000 {
-        db.add_message(db::NewMessage {
-            thread_id: tid.clone(),
-            role: if i % 2 == 0 { "user".to_string() } else { "assistant".to_string() },
-            content: format!("message {i}"),
-            thinking: None,
-            parts: "[]".to_string(),
-            attachments: "[]".to_string(),
-        })
-        .await
-        .unwrap();
-    }
+    seed_messages(&db, &tid, 5000, "message ").await;
 
     let start = std::time::Instant::now();
     let resp = app
