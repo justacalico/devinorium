@@ -265,21 +265,19 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       itemCount: projects.length,
       itemBuilder: (context, index) {
         final p = projects[index];
-        return ReorderableDragStartListener(
+        return _ProjectExpandableTile(
           key: ValueKey(p.id),
           index: index,
-          child: _ProjectExpandableTile(
-            project: p,
-            threads: threadsByProject[p.id] ?? [],
-            isExpanded: _expandedIds.contains(p.id),
-            activeThreadId: activeThreadId,
-            onToggle: () => _onToggle(p.id),
-            onNewThread: () {
-              Scaffold.of(context).closeDrawer();
-              state.createNewThread(projectId: p.id);
-            },
-            onThreadTap: (id) => state.openThread(id),
-          ),
+          project: p,
+          threads: threadsByProject[p.id] ?? [],
+          isExpanded: _expandedIds.contains(p.id),
+          activeThreadId: activeThreadId,
+          onToggle: () => _onToggle(p.id),
+          onNewThread: () {
+            Scaffold.of(context).closeDrawer();
+            state.createNewThread(projectId: p.id);
+          },
+          onThreadTap: (id) => state.openThread(id),
         );
       },
     );
@@ -320,6 +318,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
 }
 
 class _ProjectExpandableTile extends StatelessWidget {
+  final int index;
   final Project project;
   final List<Thread> threads;
   final bool isExpanded;
@@ -329,6 +328,8 @@ class _ProjectExpandableTile extends StatelessWidget {
   final ValueChanged<String> onThreadTap;
 
   const _ProjectExpandableTile({
+    super.key,
+    required this.index,
     required this.project,
     required this.threads,
     required this.isExpanded,
@@ -355,14 +356,16 @@ class _ProjectExpandableTile extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Material(
-            color: Colors.transparent,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
+          ReorderableDragStartListener(
+            index: index,
+            child: Material(
+              color: Colors.transparent,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
               leading: Container(
                 width: 36,
                 height: 36,
@@ -434,6 +437,7 @@ class _ProjectExpandableTile extends StatelessWidget {
               ),
               dense: true,
               onTap: onToggle,
+            ),
             ),
           ),
           AnimatedSize(

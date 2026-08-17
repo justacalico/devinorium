@@ -296,6 +296,55 @@ void main() {
     expect(threadDeco.border!.top.color, Theme.of(context).colorScheme.primary);
   });
 
+  testWidgets('Project drag handle is only on the header', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final projectHeader = find.ancestor(
+      of: find.text('p'),
+      matching: find.byType(ListTile),
+    );
+    final projectDragHandle = find.ancestor(
+      of: projectHeader,
+      matching: find.byType(ReorderableDragStartListener),
+    );
+    expect(projectDragHandle, findsOneWidget);
+
+    final threadDragHandle = find.ancestor(
+      of: find.text('My thread'),
+      matching: find.byType(ReorderableDragStartListener),
+    );
+    expect(threadDragHandle, findsNothing);
+  });
+
   testWidgets('Projects start collapsed when no thread is active', (
     tester,
   ) async {
