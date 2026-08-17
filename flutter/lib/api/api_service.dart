@@ -119,6 +119,12 @@ class ApiService {
     await _client.post('/api/projects/$projectId/git/pull', {});
   }
 
+  Future<void> gitPullBranch(int projectId, String name) async {
+    await _client.post('/api/projects/$projectId/git/branches/pull', {
+      'name': name,
+    });
+  }
+
   Future<void> gitPush(int projectId) async {
     await _client.post('/api/projects/$projectId/git/push', {});
   }
