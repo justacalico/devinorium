@@ -253,6 +253,69 @@ async fn pull_fast_forwards_behind_commits() {
     assert!(local.path().join("file2.txt").exists());
 }
 
+#[tokio::test]
+async fn pulls_non_current_branch_without_checking_out() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    git_cli(
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        local.path(),
+    );
+    git_cli(&["push", "-u", "origin", "main"], local.path());
+
+    let other = TempDir::new().unwrap();
+    git_cli(
+        &["clone", remote.path().to_str().unwrap(), "."],
+        other.path(),
+    );
+    git_cli(
+        &["checkout", "-b", "feature", "origin/main"],
+        other.path(),
+    );
+    std::fs::write(other.path().join("file2.txt"), "from other").unwrap();
+    git_cli(&["add", "file2.txt"], other.path());
+    git_cli(&["commit", "-m", "feature commit"], other.path());
+    git_cli(&["push", "-u", "origin", "feature"], other.path());
+
+    git_cli(&["fetch", "origin", "feature"], local.path());
+    git_cli(&["branch", "feature", "main"], local.path());
+    git_cli(
+        &["branch", "--set-upstream-to=origin/feature", "feature"],
+        local.path(),
+    );
+
+    let svc = GitService::new();
+
+    let branches = svc.branches(local.path(), None, None).await.unwrap();
+    let feature = branches.iter().find(|b| b.name == "feature").unwrap();
+    assert_eq!(feature.behind, 1);
+
+    svc.pull_branch(local.path(), "feature").await.unwrap();
+
+    let origin_feature = Command::new("git")
+        .args(["rev-parse", "origin/feature"])
+        .current_dir(local.path())
+        .output()
+        .unwrap();
+    let local_feature = Command::new("git")
+        .args(["rev-parse", "feature"])
+        .current_dir(local.path())
+        .output()
+        .unwrap();
+    assert_eq!(origin_feature.stdout, local_feature.stdout);
+
+    let head = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(local.path())
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+    assert!(!local.path().join("file2.txt").exists());
+}
+
 fn write_fake_glab(dir: &Path) -> std::path::PathBuf {
     let bin_dir = dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();

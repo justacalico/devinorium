@@ -407,6 +407,85 @@ impl GitService {
         Ok(())
     }
 
+    /// Pull a specific branch's tracked remote, fast-forwarding the local ref.
+    /// If `name` is the current branch, this uses `git pull --ff-only`.
+    /// Otherwise it fetches the remote ref into the local branch without
+    /// touching the working directory.
+    pub async fn pull_branch(&self, path: &Path, name: &str) -> Result<(), GitError> {
+        self.repo_status(path).await?;
+
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(GitError::Other("branch name is required".to_string()));
+        }
+        if !self.is_safe_branch_name(name) {
+            return Err(GitError::Other("invalid branch name".to_string()));
+        }
+
+        let current = self
+            .run_with(path, &["rev-parse", "--abbrev-ref", "HEAD"], Duration::from_secs(5))
+            .await
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
+        if name == current {
+            return self.pull(path).await;
+        }
+
+        let full_upstream = self
+            .run_with(
+                path,
+                &[
+                    "for-each-ref",
+                    "--format=%(upstream)",
+                    &format!("refs/heads/{}", name),
+                ],
+                Duration::from_secs(5),
+            )
+            .await?
+            .trim()
+            .to_string();
+
+        if full_upstream.is_empty() {
+            return Err(GitError::Other("branch has no upstream".to_string()));
+        }
+
+        let remote = self
+            .run_with(
+                path,
+                &["config", "--get", &format!("branch.{}.remote", name)],
+                Duration::from_secs(5),
+            )
+            .await?
+            .trim()
+            .to_string();
+
+        if !self.is_safe_branch_name(&remote) {
+            return Err(GitError::Other("invalid remote name".to_string()));
+        }
+
+        let prefix = format!("refs/remotes/{}/", remote);
+        let remote_branch = full_upstream
+            .strip_prefix(&prefix)
+            .ok_or_else(|| GitError::Other("invalid upstream".to_string()))?;
+
+        if !self.is_safe_branch_name(remote_branch) {
+            return Err(GitError::Other("invalid remote branch".to_string()));
+        }
+
+        let mut cmd = self.git_cmd(path);
+        cmd.arg("fetch")
+            .arg(&remote)
+            .arg(format!(
+                "refs/heads/{}:refs/heads/{}",
+                remote_branch, name
+            ));
+        self.run(&mut cmd, Duration::from_secs(60)).await?;
+        self.invalidate(path);
+        Ok(())
+    }
+
     /// Push the current branch to its remote, setting upstream if needed.
     pub async fn push(&self, path: &Path) -> Result<(), GitError> {
         let status = self.repo_status(path).await?;
