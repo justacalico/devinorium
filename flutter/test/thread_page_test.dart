@@ -926,4 +926,84 @@ void main() {
     final stop = find.widgetWithIcon(IconButton, Icons.stop);
     expect(stop, findsOneWidget);
   });
+
+  testWidgets('stop button uses error color while sending', (tester) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+      sending: true,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final stop = find.widgetWithIcon(IconButton, Icons.stop);
+    expect(stop, findsOneWidget);
+
+    final button = tester.widget<IconButton>(stop);
+    final theme = Theme.of(tester.element(stop));
+    expect(button.style?.backgroundColor?.resolve({}), theme.colorScheme.error);
+    expect(
+      button.style?.foregroundColor?.resolve({}),
+      theme.colorScheme.onError,
+    );
+  });
+
+  testWidgets('send button keeps default style when not sending', (tester) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final send = find.widgetWithIcon(IconButton, Icons.send);
+    expect(send, findsOneWidget);
+
+    final button = tester.widget<IconButton>(send);
+    expect(button.style, isNull);
+  });
 }
