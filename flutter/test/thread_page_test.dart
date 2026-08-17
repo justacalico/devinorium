@@ -336,12 +336,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('hmm'), findsOneWidget);
-
-    final markdown = find.byType(MarkdownBody);
-    expect(markdown, findsOneWidget);
-    expect(tester.widget<MarkdownBody>(markdown).data, 'hello done');
-
     expect(find.text('Run cmd'), findsOneWidget);
+
+    final markdowns = find.byType(MarkdownBody);
+    expect(markdowns, findsNWidgets(2));
+    expect(tester.widget<MarkdownBody>(markdowns.at(0)).data, 'hello');
+    expect(tester.widget<MarkdownBody>(markdowns.at(1)).data, ' done');
   });
 
   testWidgets('tool calls render inside the expanded thinking block', (
