@@ -491,51 +491,74 @@ class _BranchList extends StatelessWidget {
     if (branches.isEmpty) {
       return const Center(child: Text('No branches'));
     }
+
+    final defaultIndex = branches.indexWhere((b) => b.isDefault);
+    final defaultBranch = defaultIndex >= 0 ? branches[defaultIndex] : null;
+    final others = branches.where((b) => !b.isDefault).toList();
+
+    final itemCount = (defaultBranch != null ? 1 : 0) +
+        (defaultBranch != null && others.isNotEmpty ? 1 : 0) +
+        others.length;
+
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: branches.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
-        final b = branches[index];
-        final isCurrent = b.name == currentBranch;
-        return ListTile(
-          dense: true,
-          leading: Icon(
-            isCurrent
-                ? Icons.check_circle
-                : (b.isRemote ? Icons.cloud : Icons.call_split),
-            color: isCurrent ? Theme.of(context).colorScheme.primary : null,
-          ),
-          title: Text(b.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: b.isRemote
-              ? const Text('remote')
-              : (b.ahead > 0 || b.behind > 0)
-                  ? _TrackingCounts(ahead: b.ahead, behind: b.behind, style: Theme.of(context).textTheme.bodySmall)
-                  : null,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!b.isRemote && b.behind > 0) ...[
-                TextButton(
-                  onPressed: pulling.contains(b.name) ? null : () => onPull(b),
-                  child: pulling.contains(b.name)
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(l10n(context).pull),
-                ),
-                const SizedBox(width: 4),
-              ],
-              TextButton(
-                onPressed: isCurrent ? null : () => onCheckout(b),
-                child: const Text('Checkout'),
-              ),
-              TextButton(
-                onPressed: isCurrent ? null : () => onUseForThread(b),
-                child: const Text('Use'),
-              ),
-            ],
-          ),
-        );
+        if (defaultBranch != null) {
+          if (index == 0) {
+            return _buildTile(context, defaultBranch);
+          }
+          if (others.isNotEmpty && index == 1) {
+            return const SizedBox(height: 8);
+          }
+        }
+        final adjusted = defaultBranch != null
+            ? index - (others.isNotEmpty ? 2 : 1)
+            : index;
+        return _buildTile(context, others[adjusted]);
       },
+    );
+  }
+
+  Widget _buildTile(BuildContext context, GitBranch b) {
+    final isCurrent = b.name == currentBranch;
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        isCurrent
+            ? Icons.check_circle
+            : (b.isRemote ? Icons.cloud : Icons.call_split),
+        color: isCurrent ? Theme.of(context).colorScheme.primary : null,
+      ),
+      title: Text(b.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: b.isRemote
+          ? const Text('remote')
+          : (b.ahead > 0 || b.behind > 0)
+              ? _TrackingCounts(ahead: b.ahead, behind: b.behind, style: Theme.of(context).textTheme.bodySmall)
+              : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!b.isRemote && b.behind > 0) ...[
+            TextButton(
+              onPressed: pulling.contains(b.name) ? null : () => onPull(b),
+              child: pulling.contains(b.name)
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(l10n(context).pull),
+            ),
+            const SizedBox(width: 4),
+          ],
+          TextButton(
+            onPressed: isCurrent ? null : () => onCheckout(b),
+            child: const Text('Checkout'),
+          ),
+          TextButton(
+            onPressed: isCurrent ? null : () => onUseForThread(b),
+            child: const Text('Use'),
+          ),
+        ],
+      ),
     );
   }
 }

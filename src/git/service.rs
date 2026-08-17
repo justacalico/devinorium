@@ -721,7 +721,10 @@ impl GitService {
             )
             .await
             .ok()
-            .and_then(|s| s.strip_prefix("refs/remotes/origin/").map(str::to_string))
+            .and_then(|s| {
+                s.strip_prefix("refs/remotes/origin/")
+                    .map(|s| s.trim().to_string())
+            })
             .unwrap_or_else(|| current.clone());
 
         let out = self

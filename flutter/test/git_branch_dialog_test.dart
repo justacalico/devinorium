@@ -122,6 +122,186 @@ void main() {
       expect(tester.widget<TextButton>(mainCheckout).onPressed, isNotNull);
     });
 
+    testWidgets('default branch is shown first, followed by other branches', (tester) async {
+      final client = ApiClient.withClient(MockClient((req) async {
+        final path = req.url.path;
+        if (path == '/api/projects/1/git') {
+          return _json(200, {
+            'is_repo': true,
+            'branch': 'feature',
+            'worktree_path': '/x',
+            'toplevel': '/x',
+            'common_dir': '/x/.git',
+          });
+        }
+        if (path == '/api/projects/1/git/branches') {
+          return _json(200, {
+            'branches': [
+              {
+                'name': 'main',
+                'refname': 'refs/heads/main',
+                'is_current': false,
+                'is_default': true,
+                'is_remote': false,
+                'committer_date': 0,
+              },
+              {
+                'name': 'feature',
+                'refname': 'refs/heads/feature',
+                'is_current': true,
+                'is_default': false,
+                'is_remote': false,
+                'committer_date': 0,
+              },
+            ],
+          });
+        }
+        if (path == '/api/projects/1/git/worktrees') {
+          return _json(200, []);
+        }
+        return _json(404, {'error': 'unexpected request'});
+      }));
+
+      final state = AppState.test(api: ApiService(client: client));
+      await state.openGitBranchDialog(1);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: state,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: GitBranchDialog()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tiles = find.byType(ListTile);
+      expect(tiles, findsNWidgets(2));
+      final first = tester.widget<ListTile>(tiles.at(0));
+      final second = tester.widget<ListTile>(tiles.at(1));
+      expect((first.title as Text).data, 'main');
+      expect((second.title as Text).data, 'feature');
+    });
+
+    testWidgets('shows all branches in order when no default branch is set', (tester) async {
+      final client = ApiClient.withClient(MockClient((req) async {
+        final path = req.url.path;
+        if (path == '/api/projects/1/git') {
+          return _json(200, {
+            'is_repo': true,
+            'branch': 'main',
+            'worktree_path': '/x',
+            'toplevel': '/x',
+            'common_dir': '/x/.git',
+          });
+        }
+        if (path == '/api/projects/1/git/branches') {
+          return _json(200, {
+            'branches': [
+              {
+                'name': 'feature',
+                'refname': 'refs/heads/feature',
+                'is_current': true,
+                'is_default': false,
+                'is_remote': false,
+                'committer_date': 0,
+              },
+              {
+                'name': 'fix',
+                'refname': 'refs/heads/fix',
+                'is_current': false,
+                'is_default': false,
+                'is_remote': false,
+                'committer_date': 0,
+              },
+            ],
+          });
+        }
+        if (path == '/api/projects/1/git/worktrees') {
+          return _json(200, []);
+        }
+        return _json(404, {'error': 'unexpected request'});
+      }));
+
+      final state = AppState.test(api: ApiService(client: client));
+      await state.openGitBranchDialog(1);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: state,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: GitBranchDialog()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tiles = find.byType(ListTile);
+      expect(tiles, findsNWidgets(2));
+      final first = tester.widget<ListTile>(tiles.at(0));
+      final second = tester.widget<ListTile>(tiles.at(1));
+      expect((first.title as Text).data, 'feature');
+      expect((second.title as Text).data, 'fix');
+    });
+
+    testWidgets('shows only the default branch when it is the only branch', (tester) async {
+      final client = ApiClient.withClient(MockClient((req) async {
+        final path = req.url.path;
+        if (path == '/api/projects/1/git') {
+          return _json(200, {
+            'is_repo': true,
+            'branch': 'main',
+            'worktree_path': '/x',
+            'toplevel': '/x',
+            'common_dir': '/x/.git',
+          });
+        }
+        if (path == '/api/projects/1/git/branches') {
+          return _json(200, {
+            'branches': [
+              {
+                'name': 'main',
+                'refname': 'refs/heads/main',
+                'is_current': true,
+                'is_default': true,
+                'is_remote': false,
+                'committer_date': 0,
+              },
+            ],
+          });
+        }
+        if (path == '/api/projects/1/git/worktrees') {
+          return _json(200, []);
+        }
+        return _json(404, {'error': 'unexpected request'});
+      }));
+
+      final state = AppState.test(api: ApiService(client: client));
+      await state.openGitBranchDialog(1);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: state,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: GitBranchDialog()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tiles = find.byType(ListTile);
+      expect(tiles, findsNWidgets(1));
+      final only = tester.widget<ListTile>(tiles.at(0));
+      expect((only.title as Text).data, 'main');
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    });
+
     testWidgets('shows tracking counts and pull/push buttons for out-of-sync branch', (tester) async {
       final requests = <String>[];
       final client = ApiClient.withClient(MockClient((req) async {
