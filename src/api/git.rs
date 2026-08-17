@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/:id/git/branches", post(create_branch))
         .route("/api/projects/:id/git/checkout", post(checkout))
         .route("/api/projects/:id/git/pull", post(pull))
+        .route("/api/projects/:id/git/branches/pull", post(pull_branch))
         .route("/api/projects/:id/git/push", post(push))
         .route("/api/projects/:id/git/worktrees", get(list_worktrees))
         .route("/api/projects/:id/git/worktrees", post(create_worktree))
@@ -65,6 +66,11 @@ pub struct CreateWorktreeRequest {
 #[derive(Debug, Deserialize)]
 pub struct DeleteWorktreeRequest {
     pub worktree_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullBranchRequest {
+    pub name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -300,6 +306,44 @@ async fn pull(
     match state
         .git
         .pull(PathBuf::from(&project.path).as_path())
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(GitError::NotEnabled) => not_enabled(),
+        Err(GitError::NotRepo) => not_repo(),
+        Err(e) => error_response(e),
+    }
+}
+
+async fn pull_branch(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Json(req): Json<PullBranchRequest>,
+) -> Response {
+    let project = match state.db.get_project(id, user.id).await {
+        Ok(Some(p)) => p,
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("project not found")),
+            )
+                .into_response()
+        }
+    };
+
+    let name = req.name.trim();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("branch name is required")),
+        )
+            .into_response();
+    }
+
+    match state
+        .git
+        .pull_branch(PathBuf::from(&project.path).as_path(), name)
         .await
     {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
