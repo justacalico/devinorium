@@ -791,11 +791,15 @@ impl GitService {
             });
         }
 
+        // Drop remote symbolic refs such as `origin/HEAD`; they are pointers,
+        // not real branches, and would otherwise clutter the list.
+        branches.retain(|b| !(b.is_remote && b.symref.is_some()));
+
         // Drop remote refs that have a local branch with the same short name
         // so `main` and `origin/main` do not show up as separate entries.
-        // Remote branches are stored as `<remote>/<branch>`; strip the remote
-        // prefix and keep the remote entry only when no local counterpart
-        // exists.
+        // Remote branches are stored as `<remote>/<branch>`; strip the first
+        // path component (the remote name) and keep the remote entry only when
+        // no local counterpart exists.
         let local_names: std::collections::HashSet<String> = branches
             .iter()
             .filter(|b| !b.is_remote)
