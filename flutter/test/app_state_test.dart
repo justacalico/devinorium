@@ -253,7 +253,7 @@ void main() {
         ),
       );
 
-      await state.doLogin(username: 'owner', password: 'pw');
+      await state.doLogin(serverUrl: 'http://localhost', username: 'owner', password: 'pw');
       expect(state.view, AppView.app);
       expect(state.user?.username, 'owner');
       expect(state.loginError, isEmpty);
@@ -271,7 +271,7 @@ void main() {
           ]),
         ),
       );
-      await state.doLogin(username: 'owner', password: 'pw');
+      await state.doLogin(serverUrl: 'http://localhost', username: 'owner', password: 'pw');
       expect(state.showTotpField, isTrue);
       expect(state.view, AppView.login);
       expect(state.loginError, contains('TOTP'));
@@ -285,7 +285,7 @@ void main() {
           ]),
         ),
       );
-      await state.doLogin(username: 'owner', password: 'pw');
+      await state.doLogin(serverUrl: 'http://localhost', username: 'owner', password: 'pw');
       expect(state.view, AppView.login);
       expect(state.loginError, contains('bad password'));
     });

@@ -53,18 +53,7 @@ class ApiService {
     await _client.post('/api/auth/totp/disable', {});
   }
 
-  // ---- Pairing and devices ----
-
-  Future<PairingResponse> createPairing({
-    required String serverUrl,
-    String? name,
-  }) async {
-    final j = await _client.post('/api/auth/pairing', {
-      'server_url': serverUrl,
-      if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
-    });
-    return PairingResponse.fromJson(j);
-  }
+  // ---- Devices ----
 
   Future<List<Device>> listDevices() async {
     final list = await _client.getList('/api/auth/devices');

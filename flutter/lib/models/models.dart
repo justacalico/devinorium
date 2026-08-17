@@ -70,50 +70,21 @@ class LoginResponse {
   final bool ok;
   final bool totpRequired;
   final String username;
+  final String token;
 
   LoginResponse({
     required this.ok,
     required this.totpRequired,
     required this.username,
+    this.token = '',
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> j) => LoginResponse(
         ok: (j['ok'] as bool?) ?? false,
         totpRequired: (j['totp_required'] as bool?) ?? false,
         username: j['username'] as String? ?? '',
-      );
-}
-
-class PairingResponse {
-  final bool ok;
-  final String token;
-  final String deviceId;
-  final String username;
-  final String serverUrl;
-
-  PairingResponse({
-    required this.ok,
-    required this.token,
-    this.deviceId = '',
-    required this.username,
-    required this.serverUrl,
-  });
-
-  factory PairingResponse.fromJson(Map<String, dynamic> j) => PairingResponse(
-        ok: (j['ok'] as bool?) ?? false,
         token: j['token'] as String? ?? '',
-        deviceId: j['device_id'] as String? ?? '',
-        username: j['username'] as String? ?? '',
-        serverUrl: j['server_url'] as String? ?? '',
       );
-
-  String toJsonString() => jsonEncode({
-        'ok': ok,
-        'token': token,
-        'device_id': deviceId,
-        'username': username,
-        'server_url': serverUrl,
-      });
 }
 
 class Device {

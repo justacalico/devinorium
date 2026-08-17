@@ -13,7 +13,6 @@ class _FakeApiService extends ApiService {
   int updateMeCalls = 0;
   int testProviderCalls = 0;
   int createUserCalls = 0;
-  int createPairingCalls = 0;
   int revokeDeviceCalls = 0;
   String? savedProviderCommand;
   String? testedCommand;
@@ -115,21 +114,6 @@ class _FakeApiService extends ApiService {
   Future<void> revokeDevice(String deviceId) async {
     revokeDeviceCalls++;
     _devices.removeWhere((d) => d.deviceId == deviceId);
-  }
-
-  @override
-  Future<PairingResponse> createPairing({
-    required String serverUrl,
-    String? name,
-  }) async {
-    createPairingCalls++;
-    return PairingResponse(
-      ok: true,
-      token: 'tok',
-      deviceId: 'dev-new',
-      username: 'owner',
-      serverUrl: serverUrl,
-    );
   }
 }
 

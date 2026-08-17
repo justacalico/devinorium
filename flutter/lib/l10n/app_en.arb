@@ -180,29 +180,11 @@
     }
   },
   "otherFamily": "Other",
-  "pairingSetupSubtitle": "Import a pairing file to connect to the server.",
-  "selectPairingFile": "Select pairing file",
-  "enterPairingFilePath": "Enter pairing file path",
-  "pairingFilePathHint": "/path/to/devinorium-pairing.json",
-  "couldNotParseFile": "Could not parse file",
-  "couldNotOpenFilePicker": "Could not open file picker",
-  "noFileSelected": "No file selected",
-  "couldNotReadFileContent": "Could not read file content",
-  "pairingFileTooLarge": "Pairing file is too large",
-  "invalidFileFormat": "Invalid file format",
-  "pairingFileMissingFields": "Pairing file is missing required fields",
-  "couldNotGetServerAddress": "Could not get server address",
-  "createPairingFailed": "Failed to create pairing: {error}",
-  "@createPairingFailed": {
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
-  "pairingFileDescription": "Download a pairing file to set up the mobile or desktop app.",
-  "pair": "Pair",
-  "noPairedDevices": "No paired devices.",
+  "serverUrl": "Server URL",
+  "serverUrlHint": "example.com",
+  "serverUrlInvalid": "Do not include http:// or https:// in the server address",
+  "devicesDescription": "Active sessions for your account.",
+  "noPairedDevices": "No devices.",
   "deviceToken": "Device {tokenPrefix}",
   "@deviceToken": {
     "placeholders": {

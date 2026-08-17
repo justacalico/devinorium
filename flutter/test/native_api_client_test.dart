@@ -31,6 +31,18 @@ void main() {
       expect(await client.isConfigured, true);
     });
 
+    test('sends origin header for server url', () async {
+      String? capturedOrigin;
+      final mock = MockClient((req) async {
+        capturedOrigin = req.headers['origin'];
+        return _json(200, {'ok': true});
+      });
+      final client = NativeApiClient(client: mock);
+      await client.setServerUrl('http://server.example:7878/');
+      await client.post('/api/auth/login', {'username': 'a', 'password': 'b'});
+      expect(capturedOrigin, 'http://server.example:7878');
+    });
+
     test('sends bearer token header', () async {
       String? capturedAuth;
       final mock = MockClient((req) async {

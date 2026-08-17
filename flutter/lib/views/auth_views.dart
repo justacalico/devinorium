@@ -13,13 +13,16 @@ class LoginView extends StatefulWidget {
 
 class _LoginViewState extends State<LoginView> {
   final _formKey = GlobalKey<FormState>();
+  final _serverHost = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _totp = TextEditingController();
   bool _obscure = true;
+  String _scheme = 'https://';
 
   @override
   void dispose() {
+    _serverHost.dispose();
     _username.dispose();
     _password.dispose();
     _totp.dispose();
@@ -30,10 +33,35 @@ class _LoginViewState extends State<LoginView> {
     if (!_formKey.currentState!.validate()) return;
     final state = context.read<AppState>();
     state.doLogin(
+      serverUrl: '$_scheme${_serverHost.text.trim()}',
       username: _username.text,
       password: _password.text,
       totp: _totp.text,
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final state = context.read<AppState>();
+      if (state.api.client.isNative) {
+        final url = await state.api.client.serverUrl;
+        if (url != null && url.isNotEmpty) {
+          setState(() {
+            if (url.startsWith('https://')) {
+              _scheme = 'https://';
+              _serverHost.text = url.substring(8);
+            } else if (url.startsWith('http://')) {
+              _scheme = 'http://';
+              _serverHost.text = url.substring(7);
+            } else {
+              _serverHost.text = url;
+            }
+          });
+        }
+      }
+    });
   }
 
   @override
@@ -67,6 +95,64 @@ class _LoginViewState extends State<LoginView> {
                         style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 24),
+                    if (state.api.client.isNative) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 110,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _scheme,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding:
+                                    EdgeInsets.symmetric(horizontal: 12),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 'https://', child: Text('https://')),
+                                DropdownMenuItem(
+                                    value: 'http://', child: Text('http://')),
+                              ],
+                              onChanged: (v) {
+                                if (v != null) {
+                                  setState(() => _scheme = v);
+                                }
+                              },
+                              validator: (v) =>
+                                  v == null || v.isEmpty
+                                      ? l10n(context).required
+                                      : null,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _serverHost,
+                              decoration: InputDecoration(
+                                labelText: l10n(context).serverUrl,
+                                hintText: l10n(context).serverUrlHint,
+                                border: const OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.url,
+                              textInputAction: TextInputAction.next,
+                              validator: (v) {
+                                if (v == null || v.trim().isEmpty) {
+                                  return l10n(context).required;
+                                }
+                                final trimmed = v.trim();
+                                if (trimmed.contains('://')) {
+                                  return l10n(context).serverUrlInvalid;
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     TextFormField(
                       controller: _username,
                       decoration: InputDecoration(

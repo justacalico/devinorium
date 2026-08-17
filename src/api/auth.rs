@@ -33,6 +33,7 @@ pub struct LoginResponse {
     #[serde(default)]
     pub totp_required: bool,
     pub username: String,
+    pub token: String,
 }
 
 async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> Response {
@@ -89,6 +90,7 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
                 ok: false,
                 totp_required: true,
                 username: user.username,
+                token: String::new(),
             })
             .into_response();
         };
@@ -120,6 +122,7 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
             ok: true,
             totp_required: false,
             username: user.username,
+            token: sess.token,
         }),
     )
         .into_response()
