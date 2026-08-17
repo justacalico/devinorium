@@ -1,5 +1,4 @@
 import 'package:devinorium_frontend/api/api_types.dart';
-import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/streaming_reducer.dart';
 import 'package:devinorium_frontend/state/streaming_state.dart';
 import 'package:flutter_test/flutter_test.dart';
