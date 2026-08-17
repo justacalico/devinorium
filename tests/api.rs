@@ -2293,6 +2293,38 @@ async fn git_branches_and_checkout() {
 }
 
 #[tokio::test]
+async fn git_pull_branch_rejects_untracked_branch() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+
+    let mut branch_cmd = std::process::Command::new("git");
+    branch_cmd
+        .args(["branch", "untracked"])
+        .current_dir(&repo);
+    assert!(branch_cmd.output().unwrap().status.success());
+
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let body = r#"{"name":"untracked"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/branches/pull"),
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let text = body_str(resp.into_body()).await;
+    assert!(text.to_lowercase().contains("no upstream"));
+}
+
+#[tokio::test]
 async fn git_worktree_create_delete() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
