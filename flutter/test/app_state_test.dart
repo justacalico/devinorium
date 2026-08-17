@@ -339,6 +339,117 @@ void main() {
       expect(base.page, MainPage.threads);
     });
 
+    test('selectProject preserves active thread and project', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, [
+            {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': '',
+              'permission_mode': 'normal',
+              'created_at': '',
+              'updated_at': '',
+            },
+          ]),
+          _json(200, []),
+        ])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+          Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ),
+      );
+      base.setView(AppView.app);
+      base.setComposerMode(ComposerMode.ask);
+      base.setComposerText('draft text');
+      base.addAttachments([
+        (filename: 'f.txt', mime: 'text/plain', bytes: Uint8List.fromList([1])),
+      ]);
+
+      await base.selectProject(2);
+      expect(base.activeThreadId, 'a');
+      expect(base.activeProjectId, 1);
+      expect(base.composerText, 'draft text');
+      expect(base.attachments, hasLength(1));
+      expect(base.threads, hasLength(1));
+    });
+
+    test('selectProject preserves default draft when no thread is active', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, []),
+          _json(200, []),
+        ])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      base.setView(AppView.app);
+      base.setComposerText('draft text');
+      base.addAttachments([
+        (filename: 'f.txt', mime: 'text/plain', bytes: Uint8List.fromList([1])),
+      ]);
+
+      await base.selectProject(1);
+      expect(base.activeProjectId, 1);
+      expect(base.composerText, 'draft text');
+      expect(base.attachments, hasLength(1));
+      expect(base.activeThreadId, isNull);
+    });
+
+    test('selectAllProjects preserves active thread and project', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, []),
+          _json(200, []),
+        ])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ),
+      );
+      base.setView(AppView.app);
+      await base.selectAllProjects();
+      expect(base.activeThreadId, 'a');
+      expect(base.activeProjectId, 1);
+      expect(base.page, MainPage.threads);
+    });
+
     test('createProject adds to list and selects it', () async {
       final state = AppState(
         api: ApiService(
@@ -385,6 +496,41 @@ void main() {
       await base.deleteProject(1);
       expect(base.projects, hasLength(1));
       expect(base.activeProjectId, 2);
+    });
+
+    test('deleteProject does not clear active thread from a different project', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, {}),
+          _json(200, []),
+          _json(200, []),
+        ])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+          Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ),
+      );
+      base.setView(AppView.app);
+      await base.deleteProject(2);
+      expect(base.projects, hasLength(1));
+      expect(base.activeThreadId, 'a');
+      expect(base.activeProjectId, 1);
     });
 
     test('reorderProjects reorders list and calls API', () async {

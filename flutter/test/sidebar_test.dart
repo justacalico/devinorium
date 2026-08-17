@@ -77,6 +77,14 @@ class _FakeApiService extends ApiService {
 
   @override
   Future<List<ThreadGroup>> listThreadGroups() => Future.value([]);
+
+  @override
+  Future<GitRepoInfo> gitRepoStatus(int projectId) =>
+      Future.value(GitRepoInfo());
+
+  @override
+  Future<Map<String, dynamic>> getThreadRun(String id) =>
+      Future.value({'status': 'idle'});
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
@@ -613,5 +621,51 @@ void main() {
     // The outer project list scrolls; threads render inline.
     expect(find.byType(ListView), findsNothing);
     expect(find.text('My thread'), findsOneWidget);
+  });
+
+  testWidgets('Tapping a project does not clear the active thread', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(state.activeThreadId, 'a');
+    expect(find.text('p2'), findsOneWidget);
+
+    await tester.tap(find.text('p2'));
+    await tester.pumpAndSettle();
+
+    expect(state.activeThreadId, 'a');
+    expect(state.activeProjectId, 1);
   });
 }
