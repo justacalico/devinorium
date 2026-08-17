@@ -239,6 +239,112 @@ void main() {
     expect(find.text('My thread'), findsOneWidget);
   });
 
+  testWidgets('Active thread is highlighted instead of project card', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final projectContainer = find.ancestor(
+      of: find.text('p'),
+      matching: find.byType(AnimatedContainer),
+    );
+    final projectDeco = tester.widget<AnimatedContainer>(projectContainer).decoration
+        as BoxDecoration?;
+    expect(projectDeco, isNotNull);
+    expect(projectDeco!.border, isNull);
+    expect(projectDeco.color, isNull);
+
+    final threadContainer = find.ancestor(
+      of: find.text('My thread'),
+      matching: find.byType(Container),
+    ).first;
+    final threadDeco = tester.widget<Container>(threadContainer).decoration
+        as BoxDecoration?;
+    expect(threadDeco, isNotNull);
+    expect(threadDeco!.border, isNotNull);
+
+    final context = tester.element(find.text('My thread'));
+    expect(threadDeco.border!.top.color, Theme.of(context).colorScheme.primary);
+  });
+
+  testWidgets('Project drag handle is only on the header', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final projectHeader = find.ancestor(
+      of: find.text('p'),
+      matching: find.byType(ListTile),
+    );
+    final projectDragHandle = find.ancestor(
+      of: projectHeader,
+      matching: find.byType(ReorderableDragStartListener),
+    );
+    expect(projectDragHandle, findsOneWidget);
+
+    final threadDragHandle = find.ancestor(
+      of: find.text('My thread'),
+      matching: find.byType(ReorderableDragStartListener),
+    );
+    expect(threadDragHandle, findsNothing);
+  });
+
   testWidgets('Projects start collapsed when no thread is active', (
     tester,
   ) async {
@@ -441,5 +547,71 @@ void main() {
       find.text('Delete this thread? This cannot be undone.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('User chip is a rounded pill', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final chip = find
+        .ancestor(
+          of: find.text('owner'),
+          matching: find.byType(Container),
+        )
+        .first;
+    final deco = tester.widget<Container>(chip).decoration as BoxDecoration?;
+    expect(deco, isNotNull);
+    expect(deco!.borderRadius, BorderRadius.circular(16));
+  });
+
+  testWidgets('Expanded project threads are not in a nested scrollable', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    // The outer project list scrolls; threads render inline.
+    expect(find.byType(ListView), findsNothing);
+    expect(find.text('My thread'), findsOneWidget);
   });
 }
