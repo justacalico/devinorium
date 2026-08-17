@@ -1576,6 +1576,55 @@ async fn project_rejects_duplicate_name() {
 }
 
 #[tokio::test]
+async fn project_rejects_duplicate_path_with_tilde() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"tilde","path":"~/dup2"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED, "first project");
+
+    let body = format!(r#"{{"name":"abs","path":"{}"}}"#, home.join("dup2").display());
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("path"), "body: {body}");
+}
+
+#[tokio::test]
+async fn project_delete_cascades_threads() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("DELETE", &format!("/api/projects/{pid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/project"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn project_reorder_updates_list() {
     let (state, _db) = app_state().await;
     let app = devinorium::build_app(state);

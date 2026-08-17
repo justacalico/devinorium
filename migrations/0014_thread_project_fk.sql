@@ -4,9 +4,10 @@
 -- This could leave orphaned project references and allowed project rows to
 -- be deleted while threads still pointed at them. Add the missing FK with
 -- CASCADE so deleting a project removes its threads.
+--
+-- Any threads whose project_id does not refer to an existing project are
+-- removed; they were already inaccessible because the project was gone.
 
--- Remove any threads whose project_id no longer points to a project.
--- This must happen before the new foreign key is enforced.
 DELETE FROM threads WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects);
 
 -- Drop the existing index on the column while we re-create it.
