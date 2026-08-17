@@ -9,6 +9,10 @@ FLUTTER_DIR="$PROJECT_DIR/flutter"
 
 cd "$FLUTTER_DIR"
 
+echo "Cleaning previous Flutter build artifacts..."
+flutter clean
+flutter pub get
+
 echo "Building Flutter web frontend (release, wasm)..."
 flutter build web --release --wasm
 
