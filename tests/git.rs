@@ -253,6 +253,37 @@ async fn list_branches_dedupes_local_and_remote_with_same_name() {
     let feature = branches.iter().find(|b| b.name == "origin/feature");
     assert!(feature.is_some(), "remote-only branch should be listed");
     assert!(feature.unwrap().is_remote);
+
+    // `origin/HEAD` is a symbolic ref, not a real branch, and must not appear.
+    assert!(branches.iter().all(|b| b.name != "origin/HEAD"));
+}
+
+#[tokio::test]
+async fn list_branches_dedupes_slashed_branch_name() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    git_cli(
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        local.path(),
+    );
+    git_cli(&["push", "-u", "origin", "main"], local.path());
+
+    // Create a slashed branch both locally and on the remote.
+    git_cli(&["checkout", "-b", "feature/foo", "main"], local.path());
+    git_cli(&["push", "-u", "origin", "feature/foo"], local.path());
+    git_cli(&["checkout", "main"], local.path());
+    git_cli(&["fetch", "origin"], local.path());
+
+    let svc = GitService::new();
+    let branches = svc.branches(local.path(), None, None).await.unwrap();
+
+    // Only one entry for `feature/foo`; no `origin/feature/foo` duplicate.
+    let foo_entries = branches.iter().filter(|b| b.name == "feature/foo").count();
+    assert_eq!(foo_entries, 1);
+    assert!(branches.iter().all(|b| b.name != "origin/feature/foo"));
 }
 
 #[tokio::test]
