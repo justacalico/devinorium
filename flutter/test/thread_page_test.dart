@@ -673,6 +673,57 @@ void main() {
     expect(textCenter.dy, lessThan(secondBlock.dy));
   });
 
+  testWidgets('each thinking block expands and collapses independently', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'first think'),
+              MessagePart.text(content: 'middle'),
+              MessagePart.thinking(content: 'second think'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final toggles = find.text('Show thinking');
+    expect(toggles, findsNWidgets(2));
+
+    await tester.tap(toggles.first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hide thinking'), findsOneWidget);
+    expect(find.text('Show thinking'), findsOneWidget);
+  });
+
   testWidgets('tapping assistant markdown link opens the url', (tester) async {
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     final launched = <String>[];
