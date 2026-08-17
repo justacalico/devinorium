@@ -214,6 +214,48 @@ async fn repo_status_includes_ahead_and_behind() {
 }
 
 #[tokio::test]
+async fn list_branches_dedupes_local_and_remote_with_same_name() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    git_cli(
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        local.path(),
+    );
+    git_cli(&["push", "-u", "origin", "main"], local.path());
+
+    // Create a remote-only branch with no local counterpart so it should
+    // still appear in the list.
+    let other = TempDir::new().unwrap();
+    git_cli(
+        &["clone", remote.path().to_str().unwrap(), "."],
+        other.path(),
+    );
+    git_cli(&["checkout", "-b", "feature", "origin/main"], other.path());
+    std::fs::write(other.path().join("f.txt"), "x").unwrap();
+    git_cli(&["add", "f.txt"], other.path());
+    git_cli(&["commit", "-m", "feature"], other.path());
+    git_cli(&["push", "-u", "origin", "feature"], other.path());
+    git_cli(&["fetch", "origin"], local.path());
+
+    let svc = GitService::new();
+    let branches = svc.branches(local.path(), None, None).await.unwrap();
+
+    // `main` exists both locally and as `origin/main`; only one entry.
+    let main_entries = branches.iter().filter(|b| b.name == "main").count();
+    assert_eq!(main_entries, 1);
+    // No `origin/main` entry should leak through.
+    assert!(branches.iter().all(|b| b.name != "origin/main"));
+
+    // `feature` has no local branch, so the remote ref is kept.
+    let feature = branches.iter().find(|b| b.name == "origin/feature");
+    assert!(feature.is_some(), "remote-only branch should be listed");
+    assert!(feature.unwrap().is_remote);
+}
+
+#[tokio::test]
 async fn pull_fast_forwards_behind_commits() {
     let local = make_repo();
     git_cli(&["checkout", "-b", "main"], local.path());
