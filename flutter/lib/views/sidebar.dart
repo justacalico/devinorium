@@ -244,7 +244,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final projects = state.projects;
-    final activeProjectId = state.activeProjectId;
     final threads = state.threads;
     final activeThreadId = state.activeThreadId;
 
@@ -272,7 +271,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
           child: _ProjectExpandableTile(
             project: p,
             threads: threadsByProject[p.id] ?? [],
-            isActive: activeProjectId == p.id,
             isExpanded: _expandedIds.contains(p.id),
             activeThreadId: activeThreadId,
             onToggle: () => _onToggle(p.id),
@@ -324,7 +322,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
 class _ProjectExpandableTile extends StatelessWidget {
   final Project project;
   final List<Thread> threads;
-  final bool isActive;
   final bool isExpanded;
   final String? activeThreadId;
   final VoidCallback onToggle;
@@ -334,7 +331,6 @@ class _ProjectExpandableTile extends StatelessWidget {
   const _ProjectExpandableTile({
     required this.project,
     required this.threads,
-    required this.isActive,
     required this.isExpanded,
     this.activeThreadId,
     required this.onToggle,
@@ -348,20 +344,12 @@ class _ProjectExpandableTile extends StatelessWidget {
     final isRepo = project.isRepo;
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
-    final borderColor = isActive
-        ? theme.colorScheme.primary
-        : Colors.transparent;
-    final Color? bgColor = isActive
-        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.18)
-        : null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: bgColor,
-        border: Border.all(color: borderColor, width: 1.5),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
