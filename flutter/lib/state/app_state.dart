@@ -787,24 +787,22 @@ class AppState extends ChangeNotifier {
   // ---- Projects ----
 
   Future<void> selectProject(int id) async {
-    _setActiveStore(null);
-    _activeProjectId = id;
+    if (_activeThreadId == null) {
+      _activeProjectId = id;
+    }
     _page = MainPage.threads;
     _globalError = '';
-    _attachments.clear();
-    _composerText = '';
     notifyListeners();
     await refreshThreadsAndGroups();
     unawaited(loadGitRepoInfo(id));
   }
 
   Future<void> selectAllProjects() async {
-    _setActiveStore(null);
-    _activeProjectId = null;
+    if (_activeThreadId == null) {
+      _activeProjectId = null;
+    }
     _page = MainPage.threads;
     _globalError = '';
-    _attachments.clear();
-    _composerText = '';
     notifyListeners();
     await refreshThreadsAndGroups();
   }
