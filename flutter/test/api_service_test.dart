@@ -374,6 +374,33 @@ void main() {
       expect(d.messages.first.id, 1);
     });
 
+    test('getThread includeMessages adds query parameter', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/threads/a');
+        expect(req.url.queryParameters['include_messages'], '1');
+        return _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': '',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'total_messages': 1,
+          'messages': [
+            {'id': 1, 'role': 'user', 'content': 'hello'}
+          ],
+        });
+      });
+      final service = _serviceFor(mock);
+      final d = await service.getThread('a', includeMessages: true);
+      expect(d.messages.length, 1);
+      expect(d.messages.first.id, 1);
+    });
+
     test('getThreadRun fetches run status', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/threads/a/run'));
