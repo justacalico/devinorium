@@ -46,7 +46,10 @@ class Preloader {
     final stopwatch = Stopwatch()..start();
     final future = fetch().then((value) {
       _inFlight.remove(key);
-      _cache[key] = _CacheEntry(value as Object, DateTime.now().add(ttl ?? _defaultTtl));
+      final effectiveTtl = ttl ?? _defaultTtl;
+      if (effectiveTtl > Duration.zero) {
+        _cache[key] = _CacheEntry(value as Object, DateTime.now().add(effectiveTtl));
+      }
       _maybeReport(key, stopwatch.elapsed);
       return value;
     }).onError((error, stackTrace) {
