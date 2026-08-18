@@ -94,7 +94,11 @@ class ThreadStore {
     _status = ThreadStoreStatus.loading;
     _emit();
     try {
-      final d = await api.getThread(threadId);
+      final [detail, run] = await Future.wait([
+        api.getThread(threadId, includeMessages: true),
+        api.getThreadRun(threadId),
+      ]);
+      final d = detail as ThreadDetail;
       _detail = AsyncValue.ready(d);
       selectedModel = d.thread.model;
       selectedPermission = d.thread.permissionMode;
@@ -102,8 +106,7 @@ class ThreadStore {
       _globalError = '';
       _emit();
 
-      final run = await api.getThreadRun(threadId);
-      _applyRunSnapshot(run);
+      _applyRunSnapshot(run as Map<String, dynamic>);
     } catch (e) {
       _status = ThreadStoreStatus.error;
       _globalError = '$e';
