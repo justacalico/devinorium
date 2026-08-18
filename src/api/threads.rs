@@ -216,18 +216,49 @@ async fn create(
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct GetThread {
+    pub include_messages: Option<String>,
+    pub limit: Option<i64>,
+}
+
+impl Default for GetThread {
+    fn default() -> Self {
+        Self {
+            include_messages: None,
+            limit: Some(50),
+        }
+    }
+}
+
+fn truthy(value: &str) -> bool {
+    matches!(value, "true" | "1" | "yes" | "on")
+}
+
 async fn get_one(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
+    Query(query): Query<GetThread>,
 ) -> Response {
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => {
             let total = state.db.count_messages(&id).await.unwrap_or(0);
+            let mut messages = Vec::new();
+            if query.include_messages.as_deref().map_or(false, truthy) {
+                let limit = query.limit.unwrap_or(50).clamp(1, 200);
+                match state.db.list_messages_paginated(&id, None, None, limit).await {
+                    Ok(rows) => {
+                        messages = rows.into_iter().map(MessageOut::from).collect::<Vec<_>>();
+                    }
+                    Err(e) => return crate::api::map_err_internal(e).into_response(),
+                }
+            }
             Json(serde_json::json!({
                 "thread": ThreadOut::from(t),
                 "total_messages": total,
-                "messages": [],
+                "messages": messages,
             }))
             .into_response()
         }

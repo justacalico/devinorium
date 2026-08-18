@@ -2796,6 +2796,35 @@ async fn thread_get_one_returns_total_messages() {
 }
 
 #[tokio::test]
+async fn thread_get_one_includes_messages() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    seed_messages(&db, &tid, 5, "msg ").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}?include_messages=1"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["total_messages"], 5);
+    let messages = v["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 5);
+    assert_eq!(messages[0]["role"], "user");
+}
+
+#[tokio::test]
 async fn thread_messages_pagination() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
