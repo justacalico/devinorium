@@ -567,15 +567,21 @@ class AppState extends ChangeNotifier {
   // ---- Auth ----
 
   Future<void> _loadModelsAndProviders() async {
-    try {
-      _models = await api.listModels();
-      if (_models.isNotEmpty && _selectedModel.isEmpty) {
-        _selectedModel = _models.first.id;
-      }
-    } catch (_) {}
-    try {
-      _providers = await api.listProviders();
-    } catch (_) {}
+    await Future.wait([
+      (() async {
+        try {
+          _models = await api.listModels();
+          if (_models.isNotEmpty && _selectedModel.isEmpty) {
+            _selectedModel = _models.first.id;
+          }
+        } catch (_) {}
+      })(),
+      (() async {
+        try {
+          _providers = await api.listProviders();
+        } catch (_) {}
+      })(),
+    ]);
   }
 
   Future<void> bootstrap() async {
@@ -592,8 +598,7 @@ class AppState extends ChangeNotifier {
       }
       _user = await api.me();
       _view = AppView.app;
-      await _loadModelsAndProviders();
-      await loadProjects();
+      await Future.wait([_loadModelsAndProviders(), loadProjects()]);
       if (_projects.isNotEmpty) {
         await selectProject(_projects.first.id);
       } else {
@@ -618,12 +623,18 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshThreadsAndGroups() async {
-    try {
-      _threads = await api.listThreads();
-    } catch (_) {}
-    try {
-      _groups = await api.listThreadGroups();
-    } catch (_) {}
+    await Future.wait([
+      (() async {
+        try {
+          _threads = await api.listThreads();
+        } catch (_) {}
+      })(),
+      (() async {
+        try {
+          _groups = await api.listThreadGroups();
+        } catch (_) {}
+      })(),
+    ]);
     notifyListeners();
     unawaited(refreshRunningThreads());
   }
@@ -682,8 +693,7 @@ class AppState extends ChangeNotifier {
       _view = AppView.app;
       _showTotpField = false;
       _loginError = '';
-      await _loadModelsAndProviders();
-      await loadProjects();
+      await Future.wait([_loadModelsAndProviders(), loadProjects()]);
       if (_projects.isNotEmpty) {
         await selectProject(_projects.first.id);
       } else {
@@ -920,13 +930,17 @@ class AppState extends ChangeNotifier {
     _activeThreadId = id;
     notifyListeners();
     try {
-      final detail = await api.getThread(id);
+      final results = await Future.wait([
+        api.getThread(id, includeMessages: true),
+        api.getThreadProject(id),
+      ]);
+      final detail = results[0] as ThreadDetail;
       notifyListeners();
 
       // Discover the thread's project and switch the active project.
       var projectId = detail.thread.projectId;
       try {
-        final info = await api.getThreadProject(id);
+        final info = results[1] as Map<String, dynamic>;
         final apiProjectId = (info['project_id'] as num).toInt();
         if (apiProjectId != 0) {
           projectId = apiProjectId;
