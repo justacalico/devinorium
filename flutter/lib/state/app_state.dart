@@ -726,6 +726,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Load all settings data in parallel so the settings tabs appear at once
+  /// instead of making the user wait for three sequential round trips.
+  Future<void> loadSettingsData() async {
+    final futures = <Future<void>>[
+      loadDevices(),
+      loadGitConnections(),
+    ];
+    if (isOwner) {
+      futures.add(loadUsers());
+    }
+    await Future.wait(futures);
+  }
+
   Future<void> revokeDevice(String token) async {
     try {
       await api.revokeDevice(token);
