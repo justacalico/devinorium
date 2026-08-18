@@ -244,8 +244,9 @@ class ApiService {
     return Thread.fromJson(j);
   }
 
-  Future<ThreadDetail> getThread(String id) async {
-    final meta = await _client.get('/api/threads/$id');
+  Future<ThreadDetail> getThread(String id, {bool includeMessages = false}) async {
+    final path = includeMessages ? '/api/threads/$id?include_messages=1' : '/api/threads/$id';
+    final meta = await _client.get(path);
     final detail = ThreadDetail.fromJson(meta);
     if (detail.messages.isEmpty && detail.totalMessages > 0) {
       final messages = await getThreadMessages(id);
