@@ -31,6 +31,12 @@
 
   <title>devinorium_frontend</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Preload the Flutter bootstrap and main script so the browser can start
+       fetching them before the inline script in the body runs. -->
+  <link rel="preload" href="flutter_bootstrap.js" as="script">
+  <link rel="preload" href="flutter.js" as="script">
+  <link rel="preload" href="main.dart.js" as="script">
 </head>
 <body>
   <!--
