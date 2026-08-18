@@ -58,7 +58,7 @@ class Preloader {
     });
 
     _inFlight[key] = future;
-    return future as Future<T>;
+    return future;
   }
 
   /// Start [fetch] for [key] without awaiting the result. Errors are ignored.

@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import '../utils/preloader.dart';
 import 'api_client.dart';
-import 'api_types.dart';
 
 /// Caches safe GET list responses and coalesces in-flight detail GETs so the
 /// app does not pay the 100ms+ network round trip more than necessary.
