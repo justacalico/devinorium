@@ -1692,6 +1692,56 @@ void main() {
       expect(state.users.first.isOwner, isTrue);
     });
 
+    test('loadSettingsData fetches devices, git connections and users in parallel', () async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, [
+              {
+                'device_id': 'd1',
+                'token_prefix': 'ab',
+                'name': 'current',
+                'created_at': '',
+                'last_seen_at': '',
+                'expires_at': '',
+                'is_current': true,
+              },
+            ]),
+            _json(200, [
+              {'id': 'gitlab', 'name': 'GitLab', 'enabled': true},
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'disabled': false,
+                'totp_enabled': false,
+                'created_at': '',
+              },
+            ]),
+          ]),
+        ),
+      );
+      await state.loadSettingsData();
+      expect(state.devices, hasLength(1));
+      expect(state.devices.first.deviceId, 'd1');
+      expect(state.gitConnections, hasLength(1));
+      expect(state.gitConnections.first.id, 'gitlab');
+      expect(state.users, hasLength(1));
+      expect(state.users.first.username, 'owner');
+    });
+
     test('createUser reloads users', () async {
       final state = AppState(
         api: ApiService(

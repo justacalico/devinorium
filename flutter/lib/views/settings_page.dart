@@ -7,8 +7,21 @@ import '../state/app_state.dart';
 import '../widgets/owner_badge.dart';
 import 'create_user_dialog.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppState>().loadSettingsData();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -128,12 +141,6 @@ class _DevicesSection extends StatefulWidget {
 }
 
 class _DevicesSectionState extends State<_DevicesSection> {
-  @override
-  void initState() {
-    super.initState();
-    widget.state.loadDevices();
-  }
-
   Future<void> _revoke(String token) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -493,12 +500,6 @@ class _AccountsSection extends StatefulWidget {
 }
 
 class _AccountsSectionState extends State<_AccountsSection> {
-  @override
-  void initState() {
-    super.initState();
-    widget.state.loadUsers();
-  }
-
   void _showCreateDialog() {
     showDialog(
       context: context,
@@ -665,14 +666,6 @@ class _GitSectionState extends State<_GitSection> {
   final _tokenController = TextEditingController();
   final _hostnameController = TextEditingController();
   bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.state.loadGitConnections();
-    });
-  }
 
   @override
   void dispose() {
