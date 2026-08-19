@@ -22,6 +22,7 @@ enum DialogKind {
   totpSetup,
   newProject,
   permissionRequest,
+  askRequest,
   gitBranches,
   renameProject,
   renameThread,
@@ -50,6 +51,7 @@ class AppState extends ChangeNotifier {
     ThreadDetail? activeThreadDetail,
     DialogKind? dialog,
     PermissionRequest? pendingPermissionRequest,
+    AskRequest? pendingAskRequest,
     List<String> filesPath = const [],
     String? globalError,
     ThemeMode? themeMode,
@@ -95,6 +97,7 @@ class AppState extends ChangeNotifier {
         parts: streamingParts,
         thinkingActive: streamingThinkingActive,
         pendingPermission: pendingPermissionRequest,
+        pendingAsk: pendingAskRequest,
       );
       final store = ThreadStore(
         api: this.api,
@@ -228,6 +231,7 @@ class AppState extends ChangeNotifier {
       _activeStore?.streamingThinkingActive ?? false;
   PermissionRequest? get pendingPermissionRequest =>
       _activeStore?.pendingPermissionRequest;
+  AskRequest? get pendingAskRequest => _activeStore?.pendingAskRequest;
   String get globalError => _globalError;
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
@@ -276,7 +280,11 @@ class AppState extends ChangeNotifier {
         _globalError = '';
       }
     }
-    if (store.pendingPermissionRequest != null) {
+    if (store.pendingAskRequest != null) {
+      _dialog = DialogKind.askRequest;
+    } else if (_dialog == DialogKind.askRequest) {
+      _dialog = DialogKind.none;
+    } else if (store.pendingPermissionRequest != null) {
       _dialog = DialogKind.permissionRequest;
     } else if (_dialog == DialogKind.permissionRequest) {
       _dialog = DialogKind.none;
@@ -1228,6 +1236,17 @@ class AppState extends ChangeNotifier {
     if (store == null) return;
     try {
       await store.respondToPermissionRequest(optionId);
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> respondToAskRequest(Map<String, dynamic>? answers) async {
+    final store = _activeStore;
+    if (store == null) return;
+    try {
+      await store.respondToAskRequest(answers);
     } catch (e) {
       _globalError = '$e';
       notifyListeners();

@@ -14,6 +14,7 @@ class StreamingSnapshot {
   final bool thinkingActive;
   final int lastSeq;
   final PermissionRequest? pendingPermission;
+  final AskRequest? pendingAsk;
   final String? error;
 
   const StreamingSnapshot({
@@ -22,6 +23,7 @@ class StreamingSnapshot {
     this.thinkingActive = false,
     this.lastSeq = 0,
     this.pendingPermission,
+    this.pendingAsk,
     this.error,
   });
 
@@ -38,6 +40,8 @@ class StreamingSnapshot {
     int? lastSeq,
     PermissionRequest? pendingPermission,
     bool clearPendingPermission = false,
+    AskRequest? pendingAsk,
+    bool clearPendingAsk = false,
     String? error,
     bool clearError = false,
   }) {
@@ -49,6 +53,7 @@ class StreamingSnapshot {
       pendingPermission: clearPendingPermission
           ? null
           : (pendingPermission ?? this.pendingPermission),
+      pendingAsk: clearPendingAsk ? null : (pendingAsk ?? this.pendingAsk),
       error: clearError ? null : (error ?? this.error),
     );
   }

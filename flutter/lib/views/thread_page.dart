@@ -37,6 +37,7 @@ class ThreadPage extends StatelessWidget {
             sending: state.sending,
             messages: state.activeThreadDetail?.messages ?? const [],
             pendingPermissionRequest: state.pendingPermissionRequest,
+            pendingAskRequest: state.pendingAskRequest,
             runStatus: state.lastRunStatus,
           )
         : null;

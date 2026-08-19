@@ -568,6 +568,12 @@ abstract class AppLocalizations {
   /// **'Permission request'**
   String get permissionRequest;
 
+  /// No description provided for @askRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent question'**
+  String get askRequest;
+
   /// No description provided for @allowThisAction.
   ///
   /// In en, this message translates to:

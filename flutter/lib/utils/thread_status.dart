@@ -4,9 +4,11 @@ String? activeThreadTag({
   required bool sending,
   required List<Message> messages,
   required PermissionRequest? pendingPermissionRequest,
+  AskRequest? pendingAskRequest,
   String? runStatus,
 }) {
   if (pendingPermissionRequest != null) return 'needs approval';
+  if (pendingAskRequest != null) return 'needs answer';
   if (sending) return 'running';
   if (runStatus == 'stopped') return 'stopped';
   if (runStatus == 'failed') return 'failed';

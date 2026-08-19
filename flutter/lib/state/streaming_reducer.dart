@@ -67,6 +67,7 @@ StreamingReduceResult reduceStreamingEvent({
             .copyWith(
               phase: StreamPhase.running,
               clearPendingPermission: true,
+              clearPendingAsk: true,
               clearError: true,
               lastSeq: seq ?? snapshot.lastSeq,
             )
@@ -94,6 +95,32 @@ StreamingReduceResult reduceStreamingEvent({
           detail: detail,
           snapshot: snapshot.copyWith(
             error: appL10nInvalidPermission ?? 'Invalid permission request',
+            lastSeq: seq ?? snapshot.lastSeq,
+          ),
+        );
+      }
+
+    case 'ask_request':
+      final decoded = tryDecodeJson(event.data);
+      if (decoded == null) {
+        return StreamingReduceResult(detail: detail, snapshot: snapshot);
+      }
+      try {
+        final req = AskRequest.fromJson(decoded);
+        return StreamingReduceResult(
+          detail: detail,
+          snapshot: snapshot.copyWith(
+            phase: StreamPhase.running,
+            pendingAsk: req,
+            lastSeq: seq ?? snapshot.lastSeq,
+            clearError: true,
+          ),
+        );
+      } catch (_) {
+        return StreamingReduceResult(
+          detail: detail,
+          snapshot: snapshot.copyWith(
+            error: appL10nFailedPermission ?? 'Invalid ask request',
             lastSeq: seq ?? snapshot.lastSeq,
           ),
         );
@@ -158,6 +185,7 @@ StreamingReduceResult reduceStreamingEvent({
           snapshot.copyWith(
             phase: StreamPhase.completed,
             clearPendingPermission: true,
+            clearPendingAsk: true,
             clearError: true,
           ),
         ),
@@ -170,6 +198,7 @@ StreamingReduceResult reduceStreamingEvent({
           snapshot.copyWith(
             phase: StreamPhase.stopped,
             clearPendingPermission: true,
+            clearPendingAsk: true,
             clearError: true,
           ),
         ),
@@ -209,10 +238,18 @@ StreamingSnapshot _applyRunSnapshot({
   }
 
   final permission = json['permission_request'];
-  PermissionRequest? pending;
+  PermissionRequest? pendingPermission;
   if (permission is Map<String, dynamic>) {
     try {
-      pending = PermissionRequest.fromJson(permission);
+      pendingPermission = PermissionRequest.fromJson(permission);
+    } catch (_) {}
+  }
+
+  final ask = json['ask_request'];
+  AskRequest? pendingAsk;
+  if (ask is Map<String, dynamic>) {
+    try {
+      pendingAsk = AskRequest.fromJson(ask);
     } catch (_) {}
   }
 
@@ -222,8 +259,10 @@ StreamingSnapshot _applyRunSnapshot({
     parts: parts,
     thinkingActive: json['thinking_active'] as bool? ?? false,
     lastSeq: (json['last_seq'] as num?)?.toInt() ?? snapshot.lastSeq,
-    pendingPermission: pending,
-    clearPendingPermission: pending == null,
+    pendingPermission: pendingPermission,
+    clearPendingPermission: pendingPermission == null,
+    pendingAsk: pendingAsk,
+    clearPendingAsk: pendingAsk == null,
     error: error,
     clearError: error == null,
   );
@@ -251,6 +290,8 @@ StreamingSnapshot _finishSnapshot(StreamingSnapshot snapshot) {
     parts: [],
     thinkingActive: false,
     lastSeq: 0,
+    clearPendingPermission: true,
+    clearPendingAsk: true,
   );
 }
 

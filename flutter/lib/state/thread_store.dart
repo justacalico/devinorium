@@ -86,6 +86,7 @@ class ThreadStore {
   List<MessagePart> get streamingParts => _streaming.parts;
   bool get streamingThinkingActive => _streaming.thinkingActive;
   PermissionRequest? get pendingPermissionRequest => _streaming.pendingPermission;
+  AskRequest? get pendingAskRequest => _streaming.pendingAsk;
 
   /// Load the persisted detail and, if the server says the thread is still
   /// running, resume the live stream. This is t3code's "snapshot then
@@ -234,6 +235,22 @@ class ThreadStore {
       try {
         await api.respondPermission(threadId, req.requestId, optionId);
         _streaming = _streaming.copyWith(clearPendingPermission: true);
+        _emit();
+      } catch (e) {
+        _globalError = '$e';
+        _emit();
+      }
+    });
+  }
+
+  /// Respond to an ask request with the user's answers.
+  Future<void> respondToAskRequest(Map<String, dynamic>? answers) async {
+    final req = _streaming.pendingAsk;
+    if (req == null) return;
+    await _scheduler.run('stream', () async {
+      try {
+        await api.respondAsk(threadId, req.requestId, answers);
+        _streaming = _streaming.copyWith(clearPendingAsk: true);
         _emit();
       } catch (e) {
         _globalError = '$e';

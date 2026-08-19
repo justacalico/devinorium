@@ -257,6 +257,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get permissionRequest => 'Permission request';
 
   @override
+  String get askRequest => 'Agent question';
+
+  @override
   String get allowThisAction => 'Allow this action?';
 
   @override

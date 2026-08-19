@@ -310,6 +310,16 @@ class ApiService {
     });
   }
 
+  Future<void> respondAsk(
+    String threadId,
+    String requestId,
+    Map<String, dynamic>? answers,
+  ) async {
+    await _client.post('/api/threads/$threadId/ask/$requestId', {
+      'answers': answers,
+    });
+  }
+
   Future<void> updateThreadGit(
     String id, {
     String? branch,

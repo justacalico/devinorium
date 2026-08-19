@@ -113,6 +113,7 @@
   "nameAndPathRequired": "Name and path are required",
   "noSubfoldersHere": "No subfolders here",
   "permissionRequest": "Permission request",
+  "askRequest": "Agent question",
   "allowThisAction": "Allow this action?",
   "allowOnce": "Allow once",
   "allowAlways": "Allow always",
