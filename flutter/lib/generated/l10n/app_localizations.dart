@@ -142,6 +142,18 @@ abstract class AppLocalizations {
   /// **'Failed to decode permission request'**
   String get failedToDecodePermissionRequest;
 
+  /// No description provided for @invalidAskRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid ask request'**
+  String get invalidAskRequest;
+
+  /// No description provided for @failedToDecodeAskRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to decode ask request'**
+  String get failedToDecodeAskRequest;
+
   /// No description provided for @serverUrlNotConfigured.
   ///
   /// In en, this message translates to:

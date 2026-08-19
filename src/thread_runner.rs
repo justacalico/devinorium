@@ -374,7 +374,7 @@ impl ThreadRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::{MessagePart, ToolCallEvent};
+    use crate::providers::{AskQuestion, AskRequest, MessagePart, ToolCallEvent};
 
     #[tokio::test]
     async fn run_state_accumulates_text_and_thinking_for_snapshot() {
@@ -529,5 +529,47 @@ mod tests {
 
         let snapshot = state.snapshot().await;
         assert_eq!(snapshot.last_seq, 2);
+    }
+
+    #[tokio::test]
+    async fn run_state_set_ask_request_updates_snapshot() {
+        let state = RunState {
+            run_id: "r1".into(),
+            thread_id: "t1".into(),
+            events: std::sync::Mutex::new(None),
+            initial_receiver: std::sync::Mutex::new(None),
+            next_seq: std::sync::atomic::AtomicU64::new(0),
+            status: RwLock::new(RunStatus::Running),
+            error: RwLock::new(None),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
+            abort: std::sync::Mutex::new(None),
+            cancelled: std::sync::atomic::AtomicBool::new(false),
+            parts: std::sync::Mutex::new(vec![]),
+            permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
+        };
+
+        let ask = AskRequest {
+            request_id: "a1".into(),
+            message: "Need input".into(),
+            questions: vec![AskQuestion {
+                id: "q1".into(),
+                prompt: "Value".into(),
+                description: None,
+                field_type: "text".into(),
+                options: vec![],
+                required: true,
+            }],
+        };
+
+        state.set_ask_request(Some(ask.clone()));
+        let snapshot = state.snapshot().await;
+        assert!(snapshot.ask_request.is_some());
+        assert_eq!(snapshot.ask_request.as_ref().unwrap().request_id, "a1");
+
+        state.set_ask_request(None);
+        let snapshot = state.snapshot().await;
+        assert!(snapshot.ask_request.is_none());
     }
 }

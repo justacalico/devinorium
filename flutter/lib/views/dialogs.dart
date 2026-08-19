@@ -721,10 +721,7 @@ class _AskRequestDialogState extends State<_AskRequestDialog> {
                   if (_formKey.currentState?.validate() ?? false) {
                     _formKey.currentState?.save();
                     final answers = Map<String, dynamic>.from(_answers)
-                      ..removeWhere((k, v) =>
-                          v == null ||
-                          (v is String && v.isEmpty) ||
-                          (v is List && v.isEmpty));
+                      ..removeWhere((k, v) => v == null || (v is List && v.isEmpty));
                     state.respondToAskRequest(answers);
                   }
                 },

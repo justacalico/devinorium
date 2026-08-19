@@ -36,6 +36,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed to decode permission request';
 
   @override
+  String get invalidAskRequest => 'Invalid ask request';
+
+  @override
+  String get failedToDecodeAskRequest => 'Failed to decode ask request';
+
+  @override
   String get serverUrlNotConfigured => 'server URL not configured';
 
   @override

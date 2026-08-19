@@ -27,6 +27,8 @@ StreamingReduceResult reduceStreamingEvent({
   required SseEvent event,
   String? appL10nInvalidPermission,
   String? appL10nFailedPermission,
+  String? appL10nInvalidAsk,
+  String? appL10nFailedAsk,
 }) {
   final seq = _parseSeq(event.id);
   if (seq != null && event.event != 'state' && seq <= snapshot.lastSeq) {
@@ -120,7 +122,7 @@ StreamingReduceResult reduceStreamingEvent({
         return StreamingReduceResult(
           detail: detail,
           snapshot: snapshot.copyWith(
-            error: appL10nFailedPermission ?? 'Invalid ask request',
+            error: appL10nFailedAsk ?? 'Invalid ask request',
             lastSeq: seq ?? snapshot.lastSeq,
           ),
         );

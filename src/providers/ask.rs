@@ -212,7 +212,7 @@ fn value_to_acp(value: &serde_json::Value, field_type: &str) -> Option<Elicitati
                 Some(ElicitationContentValue::Integer(n.as_i64().unwrap()))
             }
             serde_json::Value::Number(n) => {
-                Some(ElicitationContentValue::Number(n.as_f64().unwrap_or(0.0)))
+                n.as_f64().map(ElicitationContentValue::Number)
             }
             serde_json::Value::String(s) => s
                 .parse::<i64>()
@@ -421,6 +421,53 @@ mod tests {
             content.get("tags"),
             Some(&ElicitationContentValue::StringArray(vec!["x".to_string(), "y".to_string()]))
         );
+    }
+
+    #[test]
+    fn to_acp_content_converts_multi_select() {
+        let q = AskQuestion {
+            id: "tags".to_string(),
+            prompt: "Tags".to_string(),
+            description: None,
+            field_type: "multi_select".to_string(),
+            options: vec![],
+            required: false,
+        };
+
+        let mut answers = HashMap::new();
+        answers.insert("tags".to_string(), serde_json::json!(["x", "y"]));
+        let content = to_acp_content(&[q.clone()], &answers);
+        assert_eq!(
+            content.get("tags"),
+            Some(&ElicitationContentValue::StringArray(vec![
+                "x".to_string(),
+                "y".to_string(),
+            ]))
+        );
+
+        let mut answers = HashMap::new();
+        answers.insert("tags".to_string(), serde_json::json!("z"));
+        let content = to_acp_content(&[q], &answers);
+        assert_eq!(
+            content.get("tags"),
+            Some(&ElicitationContentValue::StringArray(vec!["z".to_string()]))
+        );
+    }
+
+    #[test]
+    fn to_acp_content_skips_empty_multi_select_array() {
+        let q = AskQuestion {
+            id: "tags".to_string(),
+            prompt: "Tags".to_string(),
+            description: None,
+            field_type: "multi_select".to_string(),
+            options: vec![],
+            required: false,
+        };
+        let mut answers = HashMap::new();
+        answers.insert("tags".to_string(), serde_json::json!([]));
+        let content = to_acp_content(&[q], &answers);
+        assert!(content.is_empty());
     }
 
     #[test]

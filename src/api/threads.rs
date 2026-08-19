@@ -674,6 +674,7 @@ async fn send(
     };
     let mut stopped = false;
     let mut permission_request = None;
+    let mut ask_request = None;
     loop {
         match tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await {
             Ok(Ok(crate::thread_runner::RunEvent { event, .. })) if event == "done" => break,
@@ -692,6 +693,12 @@ async fn send(
                 if event == "permission_request" =>
             {
                 permission_request = Some(data);
+                break;
+            }
+            Ok(Ok(crate::thread_runner::RunEvent { event, data, .. }))
+                if event == "ask_request" =>
+            {
+                ask_request = Some(data);
                 break;
             }
             Ok(Ok(_)) => continue,
@@ -719,6 +726,14 @@ async fn send(
         return (
             StatusCode::ACCEPTED,
             Json(serde_json::json!({ "permission_request": data })),
+        )
+            .into_response();
+    }
+
+    if let Some(data) = ask_request {
+        return (
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({ "ask_request": data })),
         )
             .into_response();
     }

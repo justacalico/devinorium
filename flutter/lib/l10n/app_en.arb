@@ -18,6 +18,8 @@
     }
   },
   "failedToDecodePermissionRequest": "Failed to decode permission request",
+  "invalidAskRequest": "Invalid ask request",
+  "failedToDecodeAskRequest": "Failed to decode ask request",
   "serverUrlNotConfigured": "server URL not configured",
   "authenticationTokenNotSet": "authentication token not set",
   "httpErrorStatus": "HTTP {statusCode}",
