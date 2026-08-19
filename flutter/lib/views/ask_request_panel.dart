@@ -25,11 +25,53 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
   final _formKey = GlobalKey<FormState>();
   final _answers = <String, dynamic>{};
   final _otherControllers = <String, TextEditingController>{};
+  final _focusNodes = <String, FocusNode>{};
+  final _otherFocusNodes = <String, FocusNode>{};
+  bool _didAutoFocus = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final req = context.read<AppState>().pendingAskRequest;
+    if (req == null) return;
+
+    for (final q in req.questions) {
+      if (!q.isBoolean && !q.isSingleSelect && !q.isMultiSelect) {
+        _focusNodes.putIfAbsent(q.id, () => FocusNode());
+      }
+      if (q.isSingleSelect) {
+        _otherFocusNodes.putIfAbsent(q.id, () => FocusNode());
+      }
+    }
+
+    if (_didAutoFocus) return;
+    _didAutoFocus = true;
+
+    AskQuestion? firstTextLike;
+    for (final q in req.questions) {
+      if (!q.isBoolean && !q.isSingleSelect && !q.isMultiSelect) {
+        firstTextLike = q;
+        break;
+      }
+    }
+    if (firstTextLike == null) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusNodes[firstTextLike!.id]?.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     for (final c in _otherControllers.values) {
       c.dispose();
+    }
+    for (final f in _focusNodes.values) {
+      f.dispose();
+    }
+    for (final f in _otherFocusNodes.values) {
+      f.dispose();
     }
     super.dispose();
   }
@@ -91,11 +133,7 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             for (var i = 0; i < req.questions.length; i++) ...[
-                              _buildField(
-                                context,
-                                req.questions[i],
-                                isFirst: i == 0,
-                              ),
+                              _buildField(context, req.questions[i]),
                               if (i < req.questions.length - 1)
                                 const SizedBox(height: 16),
                             ],
@@ -153,14 +191,14 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
     );
   }
 
-  Widget _buildField(BuildContext context, AskQuestion q, {bool isFirst = false}) {
+  Widget _buildField(BuildContext context, AskQuestion q) {
     final theme = Theme.of(context);
     final label = q.prompt;
     final hint = q.description;
 
     if (q.isText) {
       return TextFormField(
-        autofocus: isFirst,
+        focusNode: _focusNodes[q.id],
         textInputAction: TextInputAction.done,
         onFieldSubmitted: (_) => _submit(),
         decoration: InputDecoration(
@@ -180,7 +218,7 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
 
     if (q.isNumber) {
       return TextFormField(
-        autofocus: isFirst,
+        focusNode: _focusNodes[q.id],
         textInputAction: TextInputAction.done,
         onFieldSubmitted: (_) => _submit(),
         keyboardType:
@@ -261,9 +299,13 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
                     final value = options[i].value;
                     field.didChange(value);
                     if (_isOtherValue(value)) {
-                      final c = _otherControllers[q.id] ??=
-                          TextEditingController();
-                      _answers[q.id] = c.text;
+                      _otherControllers[q.id] ??= TextEditingController();
+                      _otherFocusNodes[q.id] ??= FocusNode();
+                      _answers[q.id] = _otherControllers[q.id]?.text;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        _otherFocusNodes[q.id]?.requestFocus();
+                      });
                     } else {
                       _answers[q.id] = value;
                     }
@@ -273,7 +315,7 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: otherController,
-                  autofocus: isFirst,
+                  focusNode: _otherFocusNodes[q.id],
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _submit(),
                   onChanged: (v) => _answers[q.id] = v,
@@ -370,7 +412,7 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
     }
 
     return TextFormField(
-      autofocus: isFirst,
+      focusNode: _focusNodes[q.id],
       textInputAction: TextInputAction.done,
       onFieldSubmitted: (_) => _submit(),
       decoration: InputDecoration(
