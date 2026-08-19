@@ -213,6 +213,158 @@ void main() {
       expect(find.byIcon(Icons.send), findsOneWidget);
     });
 
+    testWidgets('selects Other and sends the custom text', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a1',
+          message: 'What would you like to work on today?',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Next task',
+              fieldType: 'single_select',
+              required: true,
+              options: [
+                AskOption(value: 'code', label: 'Code changes'),
+                AskOption(value: 'new', label: 'New project'),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Other (type your own)'));
+      await tester.pumpAndSettle();
+
+      final otherField = find.widgetWithText(TextFormField, 'Other (type your own)');
+      expect(otherField, findsOneWidget);
+
+      await tester.enterText(otherField, '  Custom task  ');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskAnswers, {'q1': 'Custom task'});
+      expect(state.pendingAskRequest, isNull);
+    });
+
+    testWidgets('Other option is required when selected', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a1',
+          message: 'Pick one',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Choice',
+              fieldType: 'single_select',
+              required: true,
+              options: [
+                AskOption(value: 'a', label: 'A'),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Other (type your own)'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskThreadId, isNull);
+      expect(find.text('Required'), findsWidgets);
+    });
+
+    testWidgets('optional Other can be left empty', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a1',
+          message: 'Pick one',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Choice',
+              fieldType: 'single_select',
+              required: false,
+              options: [
+                AskOption(value: 'a', label: 'A'),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Other (type your own)'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskThreadId, 't1');
+      expect(api.lastAskAnswers, isEmpty);
+      expect(state.pendingAskRequest, isNull);
+    });
+
+    testWidgets('switching from Other to a normal option clears it', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a1',
+          message: 'Pick one',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Choice',
+              fieldType: 'single_select',
+              required: true,
+              options: [
+                AskOption(value: 'a', label: 'A'),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Other (type your own)'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Other (type your own)'),
+        'discarded',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('A'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskAnswers, {'q1': 'a'});
+    });
+
     testWidgets('cancel sends null and restores the composer', (tester) async {
       final api = _FakeApiService();
       final state = _stateWithAsk(

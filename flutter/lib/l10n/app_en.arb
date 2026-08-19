@@ -67,6 +67,8 @@
   "close": "Close",
   "required": "Required",
   "invalidNumber": "Must be a valid number",
+  "otherOption": "Other (type your own)",
+  "otherHint": "Type your answer",
   "username": "Username",
   "password": "Password",
   "test": "Test",

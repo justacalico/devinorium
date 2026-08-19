@@ -17,9 +17,22 @@ class AskRequestPanel extends StatefulWidget {
   State<AskRequestPanel> createState() => _AskRequestPanelState();
 }
 
+const _otherValue = '__other__';
+
+bool _isOtherValue(String value) => value == _otherValue || value == 'other';
+
 class _AskRequestPanelState extends State<AskRequestPanel> {
   final _formKey = GlobalKey<FormState>();
   final _answers = <String, dynamic>{};
+  final _otherControllers = <String, TextEditingController>{};
+
+  @override
+  void dispose() {
+    for (final c in _otherControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
 
   void _submit() {
     if (_formKey.currentState?.validate() ?? false) {
@@ -215,38 +228,96 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
     }
 
     if (q.isSingleSelect) {
+      final options = q.options.toList();
+      if (!options.any((o) => _isOtherValue(o.value))) {
+        options.add(
+          AskOption(value: _otherValue, label: l10n(context).otherOption),
+        );
+      }
+
       return FormField<String>(
-        builder: (field) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: theme.textTheme.titleSmall),
-            if (hint != null) ...[
-              const SizedBox(height: 4),
-              Text(hint, style: theme.textTheme.bodySmall),
+        builder: (field) {
+          final selectedIsOther =
+              field.value != null && _isOtherValue(field.value!);
+          final otherController = selectedIsOther
+              ? (_otherControllers[q.id] ??= TextEditingController())
+              : null;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: theme.textTheme.titleSmall),
+              if (hint != null) ...[
+                const SizedBox(height: 4),
+                Text(hint, style: theme.textTheme.bodySmall),
+              ],
+              const SizedBox(height: 8),
+              for (var i = 0; i < options.length; i++)
+                _OptionTile(
+                  index: i + 1,
+                  label: options[i].label,
+                  selected: field.value == options[i].value,
+                  onTap: () {
+                    final value = options[i].value;
+                    field.didChange(value);
+                    if (_isOtherValue(value)) {
+                      final c = _otherControllers[q.id] ??=
+                          TextEditingController();
+                      _answers[q.id] = c.text;
+                    } else {
+                      _answers[q.id] = value;
+                    }
+                  },
+                ),
+              if (selectedIsOther) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: otherController,
+                  autofocus: isFirst,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _submit(),
+                  onChanged: (v) => _answers[q.id] = v,
+                  decoration: InputDecoration(
+                    labelText: l10n(context).otherOption,
+                    hintText: l10n(context).otherHint,
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return q.required ? l10n(context).required : null;
+                    }
+                    return null;
+                  },
+                ),
+              ],
+              if (field.hasError)
+                Text(
+                  field.errorText!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
             ],
-            const SizedBox(height: 8),
-            for (var i = 0; i < q.options.length; i++)
-              _OptionTile(
-                index: i + 1,
-                label: q.options[i].label,
-                selected: field.value == q.options[i].value,
-                onTap: () {
-                  final value = q.options[i].value;
-                  field.didChange(value);
-                  _answers[q.id] = value;
-                },
-              ),
-            if (field.hasError)
-              Text(
-                field.errorText!,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-          ],
-        ),
-        validator: q.required
-            ? (v) => v == null ? l10n(context).required : null
-            : null,
-        onSaved: (v) => _answers[q.id] = v,
+          );
+        },
+        validator: (v) {
+          if (v == null) {
+            return q.required ? l10n(context).required : null;
+          }
+          if (q.required && _isOtherValue(v)) {
+            final text = _otherControllers[q.id]?.text.trim() ?? '';
+            if (text.isEmpty) {
+              return l10n(context).required;
+            }
+          }
+          return null;
+        },
+        onSaved: (v) {
+          if (v != null && _isOtherValue(v)) {
+            final text = _otherControllers[q.id]?.text.trim() ?? '';
+            _answers[q.id] = text.isNotEmpty ? text : null;
+          } else {
+            _answers[q.id] = v;
+          }
+        },
       );
     }
 

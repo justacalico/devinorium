@@ -292,6 +292,18 @@ abstract class AppLocalizations {
   /// **'Must be a valid number'**
   String get invalidNumber;
 
+  /// No description provided for @otherOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Other (type your own)'**
+  String get otherOption;
+
+  /// No description provided for @otherHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type your answer'**
+  String get otherHint;
+
   /// No description provided for @username.
   ///
   /// In en, this message translates to:

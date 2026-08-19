@@ -118,6 +118,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get invalidNumber => 'Must be a valid number';
 
   @override
+  String get otherOption => 'Other (type your own)';
+
+  @override
+  String get otherHint => 'Type your answer';
+
+  @override
   String get username => 'Username';
 
   @override
