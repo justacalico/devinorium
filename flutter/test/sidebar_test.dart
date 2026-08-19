@@ -668,4 +668,99 @@ void main() {
     expect(state.activeThreadId, 'a');
     expect(state.activeProjectId, 1);
   });
+
+  testWidgets('Project three-dot menu opens rename dialog', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final projectTile = find.ancestor(
+      of: find.text('p'),
+      matching: find.byType(ListTile),
+    ).first;
+    final more = find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    expect(more, findsOneWidget);
+
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename'), findsOneWidget);
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+
+    expect(state.dialog, DialogKind.renameProject);
+    expect(state.renameProjectId, 1);
+    expect(state.renameInitialName, 'p');
+  });
+
+  testWidgets('Thread three-dot menu opens rename dialog', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final threadTile = find.ancestor(
+      of: find.text('My thread'),
+      matching: find.byType(ListTile),
+    ).first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    expect(more, findsOneWidget);
+
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename'), findsOneWidget);
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+
+    expect(state.dialog, DialogKind.renameThread);
+    expect(state.renameThreadId, 'a');
+    expect(state.renameInitialName, 'My thread');
+  });
 }

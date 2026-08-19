@@ -1700,6 +1700,85 @@ async fn project_reorder_updates_list() {
 }
 
 #[tokio::test]
+async fn project_rename_updates_name() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/projects/{pid}"),
+            &cookie,
+            r#"{"name":"Renamed"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["name"].as_str().unwrap(), "Renamed");
+    assert_eq!(v["id"].as_i64().unwrap(), pid);
+
+    // The list reflects the new name.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert!(list[0]["name"].as_str().unwrap().contains("Renamed"));
+}
+
+#[tokio::test]
+async fn project_rename_rejects_empty_name() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/projects/{pid}"),
+            &cookie,
+            r#"{"name":"   "}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn project_rename_is_isolated_between_users() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let owner_pid = create_project(&app, &owner_cookie).await;
+
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/projects/{owner_pid}"),
+            &alice_cookie,
+            r#"{"name":"Stolen"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn project_accepts_tilde_with_trailing_slash() {
     let (state, _db) = app_state().await;
     let home = state.config.home_dir.clone();

@@ -448,6 +448,36 @@ abstract class AppLocalizations {
   /// **'New folder'**
   String get newFolder;
 
+  /// No description provided for @rename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get rename;
+
+  /// No description provided for @renameProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename project'**
+  String get renameProject;
+
+  /// No description provided for @renameThread.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename thread'**
+  String get renameThread;
+
+  /// No description provided for @newName.
+  ///
+  /// In en, this message translates to:
+  /// **'New name'**
+  String get newName;
+
+  /// No description provided for @options.
+  ///
+  /// In en, this message translates to:
+  /// **'Options'**
+  String get options;
+
   /// No description provided for @ownerBadge.
   ///
   /// In en, this message translates to:

@@ -196,6 +196,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newFolder => 'New folder';
 
   @override
+  String get rename => 'Rename';
+
+  @override
+  String get renameProject => 'Rename project';
+
+  @override
+  String get renameThread => 'Rename thread';
+
+  @override
+  String get newName => 'New name';
+
+  @override
+  String get options => 'Options';
+
+  @override
   String get ownerBadge => 'Owner';
 
   @override

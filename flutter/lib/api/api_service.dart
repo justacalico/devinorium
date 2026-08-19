@@ -206,6 +206,11 @@ class ApiService {
     await _client.patch('/api/projects/reorder', {'project_ids': projectIds});
   }
 
+  Future<Project> renameProject(int id, String name) async {
+    final j = await _client.patch('/api/projects/$id', {'name': name.trim()});
+    return Project.fromJson(j);
+  }
+
   Future<List<Thread>> listThreadsForProject(int id) async {
     final list = await _client.getList('/api/projects/$id/threads');
     return list.map(Thread.fromJson).toList();
@@ -274,7 +279,7 @@ class ApiService {
   }
 
   Future<void> renameThread(String id, String title) async {
-    await _client.patch('/api/threads/$id', {'title': title});
+    await _client.patch('/api/threads/$id', {'title': title.trim()});
   }
 
   Future<void> updateThreadSettings(

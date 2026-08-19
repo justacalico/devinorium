@@ -18,7 +18,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/projects", get(list).post(create))
         .route("/api/projects/reorder", patch(reorder))
-        .route("/api/projects/:id", delete(delete_one))
+        .route("/api/projects/:id", delete(delete_one).patch(rename))
         .route("/api/projects/:id/threads", get(list_threads))
 }
 
@@ -182,6 +182,86 @@ async fn create(
 #[derive(Debug, Deserialize)]
 pub struct ReorderProjects {
     pub project_ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RenameProject {
+    pub name: String,
+}
+
+async fn rename(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Json(req): Json<RenameProject>,
+) -> Response {
+    let name = req.name.trim();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("project name is required")),
+        )
+            .into_response();
+    }
+
+    // Verify ownership and fetch the current row.
+    let project = match state.db.get_project(id, user.id).await {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response()
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
+    if name == project.name {
+        let out = ProjectOut::from_row(&state, project).await;
+        return Json(out).into_response();
+    }
+
+    // Prevent duplicate names for the same user.
+    if state
+        .db
+        .get_project_by_name(user.id, name)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(crate::api::ApiError::new("project name already exists")),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = state.db.rename_project(id, user.id, name).await {
+        if let Some(sqlx::Error::Database(db_err)) = e.downcast_ref::<sqlx::Error>() {
+            if db_err.is_unique_violation() {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(crate::api::ApiError::new(
+                        "project with this name already exists",
+                    )),
+                )
+                    .into_response();
+            }
+        }
+        return crate::api::map_err_internal(e).into_response();
+    }
+
+    match state.db.get_project(id, user.id).await {
+        Ok(Some(p)) => Json(ProjectOut::from_row(&state, p).await).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
+        Err(e) => crate::api::map_err_internal(e).into_response(),
+    }
 }
 
 async fn reorder(

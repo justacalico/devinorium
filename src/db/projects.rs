@@ -122,6 +122,18 @@ impl Db {
         Ok(())
     }
 
+    pub async fn rename_project(&self, id: i64, user_id: i64, name: &str) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE projects SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?",
+        )
+        .bind(name)
+        .bind(id)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
     pub async fn list_threads_for_project(
         &self,
         project_id: i64,

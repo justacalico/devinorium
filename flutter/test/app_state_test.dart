@@ -550,6 +550,91 @@ void main() {
       expect(base.projects.map((p) => p.id).toList(), [3, 1, 2]);
     });
 
+    test('openRenameProjectDialog sets dialog and initial name', () {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      state.openRenameProjectDialog(1, 'p');
+      expect(state.dialog, DialogKind.renameProject);
+      expect(state.renameProjectId, 1);
+      expect(state.renameInitialName, 'p');
+    });
+
+    test('renameProject updates project list and closes dialog', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'name': 'renamed',
+              'path': '/x',
+              'created_at': '',
+              'updated_at': '',
+            }),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      base.setView(AppView.app);
+      base.openRenameProjectDialog(1, 'p');
+      await base.renameProject(1, 'renamed');
+      expect(base.projects.first.name, 'renamed');
+      expect(base.dialog, DialogKind.none);
+      expect(base.renameProjectId, isNull);
+    });
+
+    test('openRenameThreadDialog sets dialog and initial name', () {
+      final state = AppState.test(
+        threads: [
+          Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+      );
+      state.openRenameThreadDialog('a', 't');
+      expect(state.dialog, DialogKind.renameThread);
+      expect(state.renameThreadId, 'a');
+      expect(state.renameInitialName, 't');
+    });
+
+    test('renameThread updates thread title and closes dialog', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([_json(200, {})])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        threads: [
+          Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+      );
+      base.openRenameThreadDialog('a', 't');
+      await base.renameThread('a', 'renamed');
+      expect(base.threads.first.title, 'renamed');
+      expect(base.dialog, DialogKind.none);
+      expect(base.renameThreadId, isNull);
+    });
+
     test('openThread loads detail and updates active project', () async {
       final state = AppState(
         api: ApiService(
