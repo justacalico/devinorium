@@ -444,12 +444,6 @@ class _ProjectExpandableTile extends StatelessWidget {
                       );
                     },
                   ),
-                  AnimatedRotation(
-                    turns: isExpanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Icon(Icons.keyboard_arrow_down,
-                        size: 20, color: theme.colorScheme.onSurfaceVariant),
-                  ),
                 ],
               ),
               dense: true,
