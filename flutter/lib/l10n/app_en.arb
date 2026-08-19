@@ -97,6 +97,7 @@
   "renameProject": "Rename project",
   "renameThread": "Rename thread",
   "newName": "New name",
+  "options": "Options",
   "ownerBadge": "Owner",
   "revoke": "Revoke",
   "enable2fa": "Enable 2FA",

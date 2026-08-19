@@ -208,6 +208,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newName => 'New name';
 
   @override
+  String get options => 'Options';
+
+  @override
   String get ownerBadge => 'Owner';
 
   @override

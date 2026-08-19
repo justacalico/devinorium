@@ -472,6 +472,12 @@ abstract class AppLocalizations {
   /// **'New name'**
   String get newName;
 
+  /// No description provided for @options.
+  ///
+  /// In en, this message translates to:
+  /// **'Options'**
+  String get options;
+
   /// No description provided for @ownerBadge.
   ///
   /// In en, this message translates to:

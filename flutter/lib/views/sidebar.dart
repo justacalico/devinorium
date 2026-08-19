@@ -431,7 +431,7 @@ class _ProjectExpandableTile extends StatelessWidget {
                     ],
                     builder: (context, controller, child) {
                       return IconButton(
-                        tooltip: l10n(context).rename,
+                        tooltip: l10n(context).options,
                         icon: Icon(Icons.more_vert,
                             size: 18, color: theme.colorScheme.onSurfaceVariant),
                         onPressed: () {
@@ -601,7 +601,7 @@ class _ThreadTile extends StatelessWidget {
                 ],
                 builder: (context, controller, child) {
                   return IconButton(
-                    tooltip: l.rename,
+                    tooltip: l.options,
                     icon: Icon(Icons.more_vert,
                         size: 18, color: theme.colorScheme.onSurfaceVariant),
                     onPressed: () {
