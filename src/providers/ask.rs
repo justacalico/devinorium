@@ -254,3 +254,205 @@ fn value_to_acp(value: &serde_json::Value, field_type: &str) -> Option<Elicitati
         _ => Some(ElicitationContentValue::String(value.to_string())),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use agent_client_protocol::schema::v1::{
+        CreateElicitationRequest, ElicitationContentValue, ElicitationFormMode, ElicitationId,
+        ElicitationMode, ElicitationSchema, ElicitationScope, ElicitationSessionScope,
+        ElicitationUrlMode, EnumOption, MultiSelectPropertySchema, SessionId, StringPropertySchema,
+    };
+
+    fn form_request(schema: ElicitationSchema) -> CreateElicitationRequest {
+        CreateElicitationRequest::new(
+            ElicitationMode::Form(ElicitationFormMode::new(
+                ElicitationScope::Session(ElicitationSessionScope::new(SessionId::new("sess"))),
+                schema,
+            )),
+            "Please fill this out",
+        )
+    }
+
+    #[test]
+    fn from_acp_maps_all_question_types() {
+        let schema = ElicitationSchema::new()
+            .title("survey")
+            .description("a survey")
+            .string("name", true)
+            .number("age", 0.0, 150.0, false)
+            .boolean("subscribe", false)
+            .property(
+                "color",
+                StringPropertySchema::new()
+                    .title("Pick a color")
+                    .one_of(vec![
+                        EnumOption::new("red", "Red"),
+                        EnumOption::new("blue", "Blue"),
+                    ]),
+                false,
+            )
+            .property(
+                "tags",
+                MultiSelectPropertySchema::titled(vec![
+                    EnumOption::new("x", "X"),
+                    EnumOption::new("y", "Y"),
+                ]),
+                true,
+            );
+
+        let req = form_request(schema);
+        let ask = from_acp(&req).expect("form should parse");
+
+        assert_eq!(ask.message, "Please fill this out");
+        assert_eq!(ask.questions.len(), 5);
+
+        let by_id: HashMap<_, _> = ask.questions.iter().map(|q| (q.id.clone(), q)).collect();
+
+        assert_eq!(by_id["name"].field_type, "text");
+        assert!(by_id["name"].required);
+        assert_eq!(by_id["name"].prompt, "name");
+
+        assert_eq!(by_id["age"].field_type, "number");
+        assert!(!by_id["age"].required);
+
+        assert_eq!(by_id["subscribe"].field_type, "boolean");
+
+        assert_eq!(by_id["color"].field_type, "single_select");
+        assert_eq!(by_id["color"].options.len(), 2);
+        assert_eq!(by_id["color"].options[0].label, "Red");
+
+        assert_eq!(by_id["tags"].field_type, "multi_select");
+        assert!(by_id["tags"].required);
+    }
+
+    #[test]
+    fn from_acp_skips_unsupported_modes() {
+        let url = CreateElicitationRequest::new(
+            ElicitationMode::Url(ElicitationUrlMode::new(
+                ElicitationScope::Session(ElicitationSessionScope::new(SessionId::new("sess"))),
+                ElicitationId::new("url"),
+                "https://example.com".to_string(),
+            )),
+            "Visit this URL",
+        );
+        assert!(from_acp(&url).is_none());
+    }
+
+    #[test]
+    fn from_acp_returns_none_for_empty_schema() {
+        let req = form_request(ElicitationSchema::new());
+        assert!(from_acp(&req).is_none());
+    }
+
+    #[test]
+    fn to_acp_content_converts_text_number_boolean_and_selects() {
+        let questions = vec![
+            AskQuestion {
+                id: "name".to_string(),
+                prompt: "Name".to_string(),
+                description: None,
+                field_type: "text".to_string(),
+                options: vec![],
+                required: true,
+            },
+            AskQuestion {
+                id: "age".to_string(),
+                prompt: "Age".to_string(),
+                description: None,
+                field_type: "number".to_string(),
+                options: vec![],
+                required: false,
+            },
+            AskQuestion {
+                id: "active".to_string(),
+                prompt: "Active".to_string(),
+                description: None,
+                field_type: "boolean".to_string(),
+                options: vec![],
+                required: false,
+            },
+            AskQuestion {
+                id: "color".to_string(),
+                prompt: "Color".to_string(),
+                description: None,
+                field_type: "single_select".to_string(),
+                options: vec![],
+                required: false,
+            },
+            AskQuestion {
+                id: "tags".to_string(),
+                prompt: "Tags".to_string(),
+                description: None,
+                field_type: "multi_select".to_string(),
+                options: vec![],
+                required: false,
+            },
+        ];
+
+        let mut answers = HashMap::new();
+        answers.insert("name".to_string(), serde_json::json!("Alice"));
+        answers.insert("age".to_string(), serde_json::json!(42));
+        answers.insert("active".to_string(), serde_json::json!(true));
+        answers.insert("color".to_string(), serde_json::json!("blue"));
+        answers.insert("tags".to_string(), serde_json::json!(["x", "y"]));
+
+        let content = to_acp_content(&questions, &answers);
+
+        assert_eq!(
+            content.get("name"),
+            Some(&ElicitationContentValue::String("Alice".to_string()))
+        );
+        assert_eq!(
+            content.get("age"),
+            Some(&ElicitationContentValue::Integer(42))
+        );
+        assert_eq!(
+            content.get("active"),
+            Some(&ElicitationContentValue::Boolean(true))
+        );
+        assert_eq!(
+            content.get("color"),
+            Some(&ElicitationContentValue::String("blue".to_string()))
+        );
+        assert_eq!(
+            content.get("tags"),
+            Some(&ElicitationContentValue::StringArray(vec!["x".to_string(), "y".to_string()]))
+        );
+    }
+
+    #[test]
+    fn to_acp_content_skips_missing_answers() {
+        let q = AskQuestion {
+            id: "name".to_string(),
+            prompt: "Name".to_string(),
+            description: None,
+            field_type: "text".to_string(),
+            options: vec![],
+            required: true,
+        };
+        let content = to_acp_content(&[q], &HashMap::new());
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn to_acp_content_parses_number_from_string() {
+        let q = AskQuestion {
+            id: "n".to_string(),
+            prompt: "N".to_string(),
+            description: None,
+            field_type: "number".to_string(),
+            options: vec![],
+            required: false,
+        };
+        let mut answers = HashMap::new();
+        answers.insert("n".to_string(), serde_json::json!("3.14"));
+        let content = to_acp_content(&[q], &answers);
+        assert_eq!(
+            content.get("n"),
+            Some(&ElicitationContentValue::Number(3.14))
+        );
+    }
+}
