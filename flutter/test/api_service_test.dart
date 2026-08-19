@@ -188,6 +188,25 @@ void main() {
       await service.reorderProjects([3, 1, 2]);
     });
 
+    test('renameProject patches name and returns project', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('PATCH', '/api/projects/1'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['name'], 'new');
+        return _json(200, {
+          'id': 1,
+          'name': 'new',
+          'path': '/x',
+          'created_at': '',
+          'updated_at': '',
+        });
+      });
+      final service = _serviceFor(mock);
+      final p = await service.renameProject(1, 'new');
+      expect(p.name, 'new');
+      expect(p.id, 1);
+    });
+
     test('listThreadsForProject uses project id', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/projects/1/threads'));

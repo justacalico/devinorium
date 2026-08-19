@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/dialogs.dart';
 import 'package:flutter/material.dart';
@@ -162,6 +163,138 @@ void main() {
       await tester.tap(find.text('Create'));
       await tester.pump();
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('RenameDialog', () {
+    testWidgets('pre-fills project name and disables save when unchanged',
+        (tester) async {
+      final client = _clientFor([
+        _json(200, {
+          'id': 1,
+          'name': 'new',
+          'path': '/x',
+          'created_at': '',
+          'updated_at': '',
+        }),
+      ]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.renameProject,
+        activeProjectId: 1,
+        projects: [
+          Project(id: 1, name: 'old', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      state.openRenameProjectDialog(1, 'old');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rename project'), findsOneWidget);
+
+      final nameField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'New name',
+      );
+      expect(nameField, findsOneWidget);
+      expect(
+        tester.widget<TextField>(nameField).controller?.text,
+        'old',
+      );
+
+      final save = find.widgetWithText(FilledButton, 'Save');
+      expect(save, findsOneWidget);
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+
+      await tester.enterText(nameField, 'new');
+      await tester.pump();
+
+      expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.none);
+      expect(state.projects.first.name, 'new');
+    });
+
+    testWidgets('pre-fills thread title and renames thread', (tester) async {
+      final client = _clientFor([_json(200, {})]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.renameThread,
+        threads: [
+          Thread(
+            id: 'a',
+            title: 'old',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+      );
+      state.openRenameThreadDialog('a', 'old');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rename thread'), findsOneWidget);
+
+      final nameField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'New name',
+      );
+      await tester.enterText(nameField, 'new');
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.none);
+      expect(state.threads.first.title, 'new');
+    });
+
+    testWidgets('save is disabled when name is empty', (tester) async {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'old', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      state.openRenameProjectDialog(1, 'old');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final nameField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'New name',
+      );
+      await tester.enterText(nameField, '');
+      await tester.pump();
+
+      final save = find.widgetWithText(FilledButton, 'Save');
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
     });
   });
 }
