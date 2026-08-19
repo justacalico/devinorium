@@ -115,6 +115,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get required => 'Required';
 
   @override
+  String get invalidNumber => 'Must be a valid number';
+
+  @override
   String get username => 'Username';
 
   @override

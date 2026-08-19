@@ -286,6 +286,12 @@ abstract class AppLocalizations {
   /// **'Required'**
   String get required;
 
+  /// No description provided for @invalidNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Must be a valid number'**
+  String get invalidNumber;
+
   /// No description provided for @username.
   ///
   /// In en, this message translates to:

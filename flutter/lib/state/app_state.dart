@@ -22,7 +22,6 @@ enum DialogKind {
   totpSetup,
   newProject,
   permissionRequest,
-  askRequest,
   gitBranches,
   renameProject,
   renameThread,
@@ -280,11 +279,7 @@ class AppState extends ChangeNotifier {
         _globalError = '';
       }
     }
-    if (store.pendingAskRequest != null) {
-      _dialog = DialogKind.askRequest;
-    } else if (_dialog == DialogKind.askRequest) {
-      _dialog = DialogKind.none;
-    } else if (store.pendingPermissionRequest != null) {
+    if (store.pendingPermissionRequest != null) {
       _dialog = DialogKind.permissionRequest;
     } else if (_dialog == DialogKind.permissionRequest) {
       _dialog = DialogKind.none;

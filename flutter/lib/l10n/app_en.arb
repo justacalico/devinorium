@@ -66,6 +66,7 @@
   "back": "Back",
   "close": "Close",
   "required": "Required",
+  "invalidNumber": "Must be a valid number",
   "username": "Username",
   "password": "Password",
   "test": "Test",
