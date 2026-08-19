@@ -1058,6 +1058,7 @@ async fn call_provider(
         permissions: thread.permissions.clone(),
         attachments: input.attachments.clone(),
         permission_callback,
+        ask_callback: None,
         part_callback,
         interaction_mode: input.mode.clone(),
     };

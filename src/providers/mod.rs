@@ -12,9 +12,11 @@
 //!
 //! See [`docs/providers.md`] for a walkthrough.
 
+pub mod ask;
 pub mod devin_acp;
 pub mod parts;
 
+pub use ask::{AskCallback, AskOption, AskOutcome, AskQuestion, AskRequest, AskResponse};
 pub use parts::{collect_text, collect_thinking, MessagePart, PartCallback, PartEvent};
 
 use std::future::Future;
@@ -101,6 +103,8 @@ pub struct SendOptions {
     pub attachments: Vec<Attachment>,
     /// Optional callback that handles interactive permission requests.
     pub permission_callback: Option<PermissionCallback>,
+    /// Optional callback that handles form-based ask requests.
+    pub ask_callback: Option<AskCallback>,
     /// Optional callback for each ordered message part.
     pub part_callback: Option<PartCallback>,
     /// Provider interaction mode: "code", "plan", "ask".
@@ -116,6 +120,7 @@ impl std::fmt::Debug for SendOptions {
             .field("permissions", &self.permissions)
             .field("attachments", &self.attachments.len())
             .field("permission_callback", &self.permission_callback.is_some())
+            .field("ask_callback", &self.ask_callback.is_some())
             .field("part_callback", &self.part_callback.is_some())
             .field("interaction_mode", &self.interaction_mode)
             .finish()
