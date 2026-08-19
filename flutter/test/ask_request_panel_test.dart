@@ -402,6 +402,15 @@ void main() {
       expect(api.lastAskThreadId, isNull);
       expect(find.text('Must be a valid number'), findsOneWidget);
 
+      await tester.enterText(field, '   ');
+      await tester.pumpAndSettle();
+
+      await tester.tap(send);
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskThreadId, isNull);
+      expect(find.text('Required'), findsOneWidget);
+
       await tester.enterText(field, '42');
       await tester.pumpAndSettle();
 
