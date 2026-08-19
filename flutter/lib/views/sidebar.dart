@@ -419,6 +419,31 @@ class _ProjectExpandableTile extends StatelessWidget {
                           size: 18, color: theme.colorScheme.onSurfaceVariant),
                       onPressed: onNewThread,
                     ),
+                  MenuAnchor(
+                    menuChildren: [
+                      MenuItemButton(
+                        leadingIcon: Icon(Icons.edit_outlined,
+                            size: 18, color: theme.colorScheme.onSurface),
+                        child: Text(l10n(context).rename),
+                        onPressed: () =>
+                            state.openRenameProjectDialog(project.id, project.name),
+                      ),
+                    ],
+                    builder: (context, controller, child) {
+                      return IconButton(
+                        tooltip: l10n(context).rename,
+                        icon: Icon(Icons.more_vert,
+                            size: 18, color: theme.colorScheme.onSurfaceVariant),
+                        onPressed: () {
+                          if (controller.isOpen) {
+                            controller.close();
+                          } else {
+                            controller.open();
+                          }
+                        },
+                      );
+                    },
+                  ),
                   AnimatedRotation(
                     turns: isExpanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 150),
@@ -564,6 +589,31 @@ class _ThreadTile extends StatelessWidget {
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               const SizedBox(width: 4),
+              MenuAnchor(
+                menuChildren: [
+                  MenuItemButton(
+                    leadingIcon: Icon(Icons.edit_outlined,
+                        size: 18, color: theme.colorScheme.onSurface),
+                    child: Text(l.rename),
+                    onPressed: () =>
+                        state.openRenameThreadDialog(thread.id, thread.title),
+                  ),
+                ],
+                builder: (context, controller, child) {
+                  return IconButton(
+                    tooltip: l.rename,
+                    icon: Icon(Icons.more_vert,
+                        size: 18, color: theme.colorScheme.onSurfaceVariant),
+                    onPressed: () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    },
+                  );
+                },
+              ),
               IconButton(
                 tooltip: l.deleteThreadTooltip,
                 icon: Icon(Icons.delete_outline,

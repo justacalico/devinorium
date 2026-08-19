@@ -23,6 +23,9 @@ class DialogLayer extends StatelessWidget {
         return const _PermissionRequestDialog();
       case DialogKind.gitBranches:
         return const GitBranchDialog();
+      case DialogKind.renameProject:
+      case DialogKind.renameThread:
+        return const _RenameDialog();
     }
   }
 }
@@ -645,5 +648,130 @@ class _PermissionRequestDialog extends StatelessWidget {
       'RejectAlways' => l10n(context).rejectAlways,
       _ => kind,
     };
+  }
+}
+
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog();
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  final _controller = TextEditingController();
+  var _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = context.read<AppState>();
+    _controller.text = state.renameInitialName;
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _controller.text.length,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit(AppState state) async {
+    final value = _controller.text.trim();
+    if (value.isEmpty || value == state.renameInitialName) return;
+
+    setState(() => _submitting = true);
+    if (state.dialog == DialogKind.renameProject && state.renameProjectId != null) {
+      await state.renameProject(state.renameProjectId!, value);
+    } else if (state.dialog == DialogKind.renameThread && state.renameThreadId != null) {
+      await state.renameThread(state.renameThreadId!, value);
+    }
+    if (mounted) setState(() => _submitting = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final isProject = state.dialog == DialogKind.renameProject;
+    final title = isProject ? l.renameProject : l.renameThread;
+    final value = _controller.text.trim();
+    final canSubmit = value.isNotEmpty &&
+        value != state.renameInitialName &&
+        !_submitting;
+
+    return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(title, style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      enabled: !_submitting,
+                      decoration: InputDecoration(
+                        labelText: l.newName,
+                        hintText: state.renameInitialName,
+                        border: const OutlineInputBorder(),
+                      ),
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(state),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    if (state.globalError.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        state.globalError,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: _submitting ? null : state.closeDialog,
+                          child: Text(l.cancel),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: canSubmit ? () => _submit(state) : null,
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Text(l.save),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

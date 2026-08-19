@@ -448,6 +448,25 @@ class Thread {
         updatedAt: j['updated_at'] as String? ?? '',
       );
 
+  Thread copyWith({
+    String? title,
+    String? updatedAt,
+  }) =>
+      Thread(
+        id: id,
+        title: title ?? this.title,
+        threadGroupId: threadGroupId,
+        projectId: projectId,
+        devinSessionId: devinSessionId,
+        model: model,
+        permissionMode: permissionMode,
+        permissions: permissions,
+        branch: branch,
+        worktreePath: worktreePath,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;

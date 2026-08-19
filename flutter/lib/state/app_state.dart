@@ -17,7 +17,15 @@ enum AppView { loading, login, app }
 
 enum MainPage { threads, settings }
 
-enum DialogKind { none, totpSetup, newProject, permissionRequest, gitBranches }
+enum DialogKind {
+  none,
+  totpSetup,
+  newProject,
+  permissionRequest,
+  gitBranches,
+  renameProject,
+  renameThread,
+}
 
 /// Central app state.
 class AppState extends ChangeNotifier {
@@ -170,6 +178,11 @@ class AppState extends ChangeNotifier {
   final Map<int, List<GitWorktree>> _gitWorktrees = {};
   int? _gitDialogProjectId;
 
+  // Rename dialog state.
+  int? _renameProjectId;
+  String? _renameThreadId;
+  String _renameInitialName = '';
+
   // Git host connections.
   List<GitConnection> _gitConnections = [];
   bool _loadingGitConnections = false;
@@ -219,6 +232,10 @@ class AppState extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
+
+  int? get renameProjectId => _renameProjectId;
+  String? get renameThreadId => _renameThreadId;
+  String get renameInitialName => _renameInitialName;
 
   void _setActiveStore(ThreadStore? store) {
     if (_activeStore == store) return;
@@ -892,6 +909,73 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> openRenameProjectDialog(int id, String name) async {
+    _renameProjectId = id;
+    _renameThreadId = null;
+    _renameInitialName = name;
+    _dialog = DialogKind.renameProject;
+    _userMenuOpen = false;
+    notifyListeners();
+  }
+
+  Future<void> openRenameThreadDialog(String id, String title) async {
+    _renameProjectId = null;
+    _renameThreadId = id;
+    _renameInitialName = title;
+    _dialog = DialogKind.renameThread;
+    _userMenuOpen = false;
+    notifyListeners();
+  }
+
+  Future<void> renameProject(int id, String name) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final updated = await api.renameProject(id, name);
+      final index = _projects.indexWhere((p) => p.id == id);
+      if (index >= 0) {
+        _projects = [
+          ..._projects.sublist(0, index),
+          updated,
+          ..._projects.sublist(index + 1),
+        ];
+      }
+      _dialog = DialogKind.none;
+      _renameProjectId = null;
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> renameThread(String id, String title) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      await api.renameThread(id, title);
+      final index = _threads.indexWhere((t) => t.id == id);
+      if (index >= 0) {
+        _threads = [
+          ..._threads.sublist(0, index),
+          _threads[index].copyWith(title: title),
+          ..._threads.sublist(index + 1),
+        ];
+      }
+      if (_activeThreadId == id) {
+        await _activeStore?.reloadDetail();
+      }
+      _dialog = DialogKind.none;
+      _renameThreadId = null;
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
   // ---- Threads ----
 
   Future<void> createNewThread({int? projectId}) async {
@@ -1389,6 +1473,9 @@ class AppState extends ChangeNotifier {
   void closeDialog() {
     _dialog = DialogKind.none;
     _gitDialogProjectId = null;
+    _renameProjectId = null;
+    _renameThreadId = null;
+    _renameInitialName = '';
     notifyListeners();
   }
 }
