@@ -86,6 +86,7 @@ class ThreadStore {
   List<MessagePart> get streamingParts => _streaming.parts;
   bool get streamingThinkingActive => _streaming.thinkingActive;
   PermissionRequest? get pendingPermissionRequest => _streaming.pendingPermission;
+  AskRequest? get pendingAskRequest => _streaming.pendingAsk;
 
   /// Load the persisted detail and, if the server says the thread is still
   /// running, resume the live stream. This is t3code's "snapshot then
@@ -242,6 +243,22 @@ class ThreadStore {
     });
   }
 
+  /// Respond to an ask request with the user's answers.
+  Future<void> respondToAskRequest(Map<String, dynamic>? answers) async {
+    final req = _streaming.pendingAsk;
+    if (req == null) return;
+    await _scheduler.run('stream', () async {
+      try {
+        await api.respondAsk(threadId, req.requestId, answers);
+        _streaming = _streaming.copyWith(clearPendingAsk: true);
+        _emit();
+      } catch (e) {
+        _globalError = '$e';
+        _emit();
+      }
+    });
+  }
+
   /// Load the next page of older messages.
   Future<void> loadMoreMessages() async {
     final d = _detail.valueOrNull;
@@ -365,6 +382,8 @@ class ThreadStore {
       event: ev,
       appL10nInvalidPermission: appL10n.invalidPermissionRequest(''),
       appL10nFailedPermission: appL10n.failedToDecodePermissionRequest,
+      appL10nInvalidAsk: appL10n.invalidAskRequest,
+      appL10nFailedAsk: appL10n.failedToDecodeAskRequest,
     );
     _streaming = result.snapshot;
     _lastRunStatus = _statusFromPhase(result.snapshot.phase);

@@ -14,6 +14,7 @@ import '../utils/link_opener.dart';
 import '../utils/path_attachment.dart';
 import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
+import 'ask_request_panel.dart';
 import 'drop_zone.dart';
 import 'model_picker.dart';
 import 'read_file_tool.dart';
@@ -37,6 +38,7 @@ class ThreadPage extends StatelessWidget {
             sending: state.sending,
             messages: state.activeThreadDetail?.messages ?? const [],
             pendingPermissionRequest: state.pendingPermissionRequest,
+            pendingAskRequest: state.pendingAskRequest,
             runStatus: state.lastRunStatus,
           )
         : null;
@@ -99,6 +101,7 @@ class _ChatModel {
   final int messageCount;
   final int streamingDigest;
   final bool streamingThinkingActive;
+  final String? pendingAskRequestId;
 
   const _ChatModel({
     required this.activeThreadId,
@@ -106,6 +109,7 @@ class _ChatModel {
     required this.messageCount,
     required this.streamingDigest,
     required this.streamingThinkingActive,
+    required this.pendingAskRequestId,
   });
 
   @override
@@ -116,7 +120,8 @@ class _ChatModel {
         detail == other.detail &&
         messageCount == other.messageCount &&
         streamingDigest == other.streamingDigest &&
-        streamingThinkingActive == other.streamingThinkingActive;
+        streamingThinkingActive == other.streamingThinkingActive &&
+        pendingAskRequestId == other.pendingAskRequestId;
   }
 
   @override
@@ -126,6 +131,7 @@ class _ChatModel {
         messageCount,
         streamingDigest,
         streamingThinkingActive,
+        pendingAskRequestId,
       );
 }
 
@@ -212,6 +218,7 @@ class _ChatViewState extends State<ChatView> {
         messageCount: state.activeThreadDetail?.messages.length ?? 0,
         streamingDigest: _streamingDigest(state.streamingParts),
         streamingThinkingActive: state.streamingThinkingActive,
+        pendingAskRequestId: state.pendingAskRequest?.requestId,
       ),
       shouldRebuild: (prev, next) => prev != next,
       builder: (context, model, child) {
@@ -243,7 +250,12 @@ class _ChatViewState extends State<ChatView> {
                 controller: _scrollController,
               ),
             ),
-            _Composer(controller: _composerController),
+            if (model.pendingAskRequestId != null)
+              AskRequestPanel(
+                key: ValueKey(model.pendingAskRequestId),
+              )
+            else
+              _Composer(controller: _composerController),
           ],
         );
       },

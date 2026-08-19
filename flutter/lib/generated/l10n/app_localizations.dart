@@ -142,6 +142,18 @@ abstract class AppLocalizations {
   /// **'Failed to decode permission request'**
   String get failedToDecodePermissionRequest;
 
+  /// No description provided for @invalidAskRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid ask request'**
+  String get invalidAskRequest;
+
+  /// No description provided for @failedToDecodeAskRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to decode ask request'**
+  String get failedToDecodeAskRequest;
+
   /// No description provided for @serverUrlNotConfigured.
   ///
   /// In en, this message translates to:
@@ -273,6 +285,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Required'**
   String get required;
+
+  /// No description provided for @invalidNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Must be a valid number'**
+  String get invalidNumber;
+
+  /// No description provided for @otherOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Other (type your own)'**
+  String get otherOption;
+
+  /// No description provided for @otherHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type your answer'**
+  String get otherHint;
 
   /// No description provided for @username.
   ///
@@ -567,6 +597,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Permission request'**
   String get permissionRequest;
+
+  /// No description provided for @askRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent question'**
+  String get askRequest;
 
   /// No description provided for @allowThisAction.
   ///

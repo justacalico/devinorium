@@ -36,6 +36,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed to decode permission request';
 
   @override
+  String get invalidAskRequest => 'Invalid ask request';
+
+  @override
+  String get failedToDecodeAskRequest => 'Failed to decode ask request';
+
+  @override
   String get serverUrlNotConfigured => 'server URL not configured';
 
   @override
@@ -107,6 +113,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get required => 'Required';
+
+  @override
+  String get invalidNumber => 'Must be a valid number';
+
+  @override
+  String get otherOption => 'Other (type your own)';
+
+  @override
+  String get otherHint => 'Type your answer';
 
   @override
   String get username => 'Username';
@@ -255,6 +270,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get permissionRequest => 'Permission request';
+
+  @override
+  String get askRequest => 'Agent question';
 
   @override
   String get allowThisAction => 'Allow this action?';

@@ -45,6 +45,9 @@ async fn main() -> Result<()> {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(git::GitService::new()),
         git_remote: Arc::new(git::GitRemoteService::new(cfg.home_dir.clone())),

@@ -820,4 +820,62 @@ void main() {
       expect(parseSseBlock('data: hello\n\n'), isNull);
     });
   });
+
+  group('AskRequest', () {
+    test('parses request with questions and options', () {
+      final req = AskRequest.fromJson({
+        'request_id': 'a1',
+        'message': 'Need input',
+        'questions': [
+          {
+            'id': 'q1',
+            'prompt': 'Pick one',
+            'description': 'desc',
+            'field_type': 'single_select',
+            'options': [
+              {'value': 'x', 'label': 'X'},
+              {'value': 'y', 'label': 'Y'},
+            ],
+            'required': true,
+          },
+          {
+            'id': 'q2',
+            'prompt': 'Notes',
+            'field_type': 'text',
+          },
+        ],
+      });
+      expect(req.requestId, 'a1');
+      expect(req.message, 'Need input');
+      expect(req.questions, hasLength(2));
+      final first = req.questions[0];
+      expect(first.id, 'q1');
+      expect(first.prompt, 'Pick one');
+      expect(first.description, 'desc');
+      expect(first.fieldType, 'single_select');
+      expect(first.options, hasLength(2));
+      expect(first.options[0].value, 'x');
+      expect(first.options[0].label, 'X');
+      expect(first.required, isTrue);
+      final second = req.questions[1];
+      expect(second.id, 'q2');
+      expect(second.fieldType, 'text');
+      expect(second.required, isFalse);
+      expect(second.options, isEmpty);
+    });
+
+    test('defaults missing fields', () {
+      final req = AskRequest.fromJson({
+        'request_id': 'a1',
+        'message': '',
+        'questions': [
+          {'id': 'q1', 'prompt': 'Pick', 'field_type': 'single_select'},
+        ],
+      });
+      expect(req.message, isEmpty);
+      expect(req.questions[0].description, isNull);
+      expect(req.questions[0].required, isFalse);
+      expect(req.questions[0].options, isEmpty);
+    });
+  });
 }

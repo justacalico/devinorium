@@ -15,7 +15,7 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::task::AbortHandle;
 use uuid::Uuid;
 
-use crate::providers::{collect_text, collect_thinking, MessagePart, PermissionRequest};
+use crate::providers::{collect_text, collect_thinking, AskRequest, MessagePart, PermissionRequest};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunEvent {
@@ -60,6 +60,7 @@ pub struct RunSnapshot {
     pub parts: Vec<MessagePart>,
     pub tool_calls: Vec<MessagePart>,
     pub permission_request: Option<PermissionRequest>,
+    pub ask_request: Option<AskRequest>,
     pub last_seq: u64,
 }
 
@@ -78,6 +79,7 @@ pub struct RunState {
     pub cancelled: AtomicBool,
     pub parts: std::sync::Mutex<Vec<MessagePart>>,
     pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
+    pub ask_request: std::sync::Mutex<Option<AskRequest>>,
 }
 
 impl RunState {
@@ -104,6 +106,12 @@ impl RunState {
 
     pub fn set_permission_request(&self, req: Option<PermissionRequest>) {
         if let Ok(mut guard) = self.permission_request.lock() {
+            *guard = req;
+        }
+    }
+
+    pub fn set_ask_request(&self, req: Option<AskRequest>) {
+        if let Ok(mut guard) = self.ask_request.lock() {
             *guard = req;
         }
     }
@@ -178,6 +186,11 @@ impl RunState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let ask_request = self
+            .ask_request
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let text = collect_text(&parts);
         let thinking = collect_thinking(&parts);
         let thinking_active = matches!(parts.last(), Some(MessagePart::Thinking { .. }));
@@ -202,6 +215,7 @@ impl RunState {
             parts,
             tool_calls,
             permission_request,
+            ask_request,
             last_seq,
         }
     }
@@ -279,6 +293,7 @@ impl ThreadRunner {
             cancelled: AtomicBool::new(false),
             parts: std::sync::Mutex::new(Vec::new()),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         });
 
         let state_for_task = state.clone();
@@ -359,7 +374,7 @@ impl ThreadRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::{MessagePart, ToolCallEvent};
+    use crate::providers::{AskQuestion, AskRequest, MessagePart, ToolCallEvent};
 
     #[tokio::test]
     async fn run_state_accumulates_text_and_thinking_for_snapshot() {
@@ -381,6 +396,7 @@ mod tests {
                 MessagePart::text("world"),
             ]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         state.apply_part(
@@ -421,6 +437,7 @@ mod tests {
             cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         state.apply_part(
@@ -473,6 +490,7 @@ mod tests {
                 MessagePart::text("first "),
             ]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         state.apply_part(MessagePart::text("second "), true);
@@ -499,6 +517,7 @@ mod tests {
             cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         let mut rx = state.subscribe().unwrap();
@@ -510,5 +529,47 @@ mod tests {
 
         let snapshot = state.snapshot().await;
         assert_eq!(snapshot.last_seq, 2);
+    }
+
+    #[tokio::test]
+    async fn run_state_set_ask_request_updates_snapshot() {
+        let state = RunState {
+            run_id: "r1".into(),
+            thread_id: "t1".into(),
+            events: std::sync::Mutex::new(None),
+            initial_receiver: std::sync::Mutex::new(None),
+            next_seq: std::sync::atomic::AtomicU64::new(0),
+            status: RwLock::new(RunStatus::Running),
+            error: RwLock::new(None),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
+            abort: std::sync::Mutex::new(None),
+            cancelled: std::sync::atomic::AtomicBool::new(false),
+            parts: std::sync::Mutex::new(vec![]),
+            permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
+        };
+
+        let ask = AskRequest {
+            request_id: "a1".into(),
+            message: "Need input".into(),
+            questions: vec![AskQuestion {
+                id: "q1".into(),
+                prompt: "Value".into(),
+                description: None,
+                field_type: "text".into(),
+                options: vec![],
+                required: true,
+            }],
+        };
+
+        state.set_ask_request(Some(ask.clone()));
+        let snapshot = state.snapshot().await;
+        assert!(snapshot.ask_request.is_some());
+        assert_eq!(snapshot.ask_request.as_ref().unwrap().request_id, "a1");
+
+        state.set_ask_request(None);
+        let snapshot = state.snapshot().await;
+        assert!(snapshot.ask_request.is_none());
     }
 }

@@ -4,6 +4,7 @@
 //! (`provider.start`); subsequent sends continue it (`provider.send`). Every
 //! user message and assistant reply is persisted in the `messages` table.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -25,11 +26,12 @@ use uuid::Uuid;
 use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, NewMessage, NewThread, ThreadRow};
 use crate::providers::{
-    collect_text, collect_thinking, Attachment, MessagePart, PartCallback, PartEvent,
-    PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions, StartRequest,
+    collect_text, collect_thinking, AskCallback, AskOutcome, AskRequest, Attachment, MessagePart,
+    PartCallback, PartEvent, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions,
+    StartRequest,
 };
 use crate::thread_runner::{RunState, RunStatus};
-use crate::{AppState, PendingPermissionRequest};
+use crate::{AppState, PendingAskRequest, PendingPermissionRequest};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -48,6 +50,7 @@ pub fn router() -> Router<AppState> {
             "/api/threads/:id/permission/:request_id",
             post(respond_permission),
         )
+        .route("/api/threads/:id/ask/:request_id", post(respond_ask))
         .route("/api/threads/:id/project", get(get_project_path))
 }
 
@@ -515,6 +518,7 @@ async fn get_run(
             "parts": [],
             "tool_calls": [],
             "permission_request": null,
+            "ask_request": null,
             "last_seq": 0,
         }))
         .into_response(),
@@ -670,6 +674,7 @@ async fn send(
     };
     let mut stopped = false;
     let mut permission_request = None;
+    let mut ask_request = None;
     loop {
         match tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await {
             Ok(Ok(crate::thread_runner::RunEvent { event, .. })) if event == "done" => break,
@@ -688,6 +693,12 @@ async fn send(
                 if event == "permission_request" =>
             {
                 permission_request = Some(data);
+                break;
+            }
+            Ok(Ok(crate::thread_runner::RunEvent { event, data, .. }))
+                if event == "ask_request" =>
+            {
+                ask_request = Some(data);
                 break;
             }
             Ok(Ok(_)) => continue,
@@ -715,6 +726,14 @@ async fn send(
         return (
             StatusCode::ACCEPTED,
             Json(serde_json::json!({ "permission_request": data })),
+        )
+            .into_response();
+    }
+
+    if let Some(data) = ask_request {
+        return (
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({ "ask_request": data })),
         )
             .into_response();
     }
@@ -891,6 +910,8 @@ async fn run_thread(
     });
     let permission_callback =
         build_permission_callback(state.clone(), user.id, thread.id.clone(), run.clone());
+    let ask_callback =
+        build_ask_callback(state.clone(), user.id, thread.id.clone(), run.clone());
 
     let provider_result = call_provider(
         &state,
@@ -898,6 +919,7 @@ async fn run_thread(
         &thread,
         &input,
         Some(permission_callback),
+        Some(ask_callback),
         Some(part_callback),
     )
     .await;
@@ -1046,6 +1068,7 @@ async fn call_provider(
     thread: &ThreadRow,
     input: &SendInput,
     permission_callback: Option<PermissionCallback>,
+    ask_callback: Option<AskCallback>,
     part_callback: Option<PartCallback>,
 ) -> anyhow::Result<(Option<String>, Option<String>, Vec<MessagePart>)> {
     let provider = state.provider_for_user(user);
@@ -1058,6 +1081,7 @@ async fn call_provider(
         permissions: thread.permissions.clone(),
         attachments: input.attachments.clone(),
         permission_callback,
+        ask_callback,
         part_callback,
         interaction_mode: input.mode.clone(),
     };
@@ -1214,6 +1238,124 @@ async fn respond_permission(
                 // Drop the sender without responding, which signals cancellation
                 // to the waiting provider.
                 StatusCode::OK
+            }
+        }
+        _ => StatusCode::NOT_FOUND,
+    }
+}
+
+fn build_ask_callback(
+    state: AppState,
+    user_id: i64,
+    thread_id: String,
+    run: Arc<RunState>,
+) -> AskCallback {
+    Arc::new(
+        move |req: AskRequest| -> Pin<Box<dyn Future<Output = AskOutcome> + Send>> {
+            let state = state.clone();
+            let run = run.clone();
+            let thread_id = thread_id.clone();
+            Box::pin(async move {
+                let (response_tx, response_rx) =
+                    tokio::sync::oneshot::channel::<Option<HashMap<String, serde_json::Value>>>();
+                let _cleanup =
+                    AskRemoveOnDrop::new(state.clone(), run.clone(), req.request_id.clone());
+
+                {
+                    let mut map = state.pending_ask_requests.lock().await;
+                    map.insert(
+                        req.request_id.clone(),
+                        PendingAskRequest {
+                            user_id,
+                            thread_id,
+                            sender: response_tx,
+                        },
+                    );
+                }
+
+                let payload = match serde_json::to_string(&req) {
+                    Ok(json) => json,
+                    Err(_) => {
+                        return AskOutcome::Cancel;
+                    }
+                };
+                run.set_ask_request(Some(req));
+                run.emit("ask_request", &payload);
+
+                let result =
+                    tokio::time::timeout(Duration::from_secs(7 * 24 * 60 * 60), response_rx).await;
+
+                run.set_ask_request(None);
+
+                match result {
+                    Ok(Ok(Some(answers))) => AskOutcome::Answers(answers),
+                    _ => AskOutcome::Cancel,
+                }
+            })
+        },
+    ) as AskCallback
+}
+
+struct AskRemoveOnDrop {
+    state: Option<AppState>,
+    run: Option<Arc<RunState>>,
+    request_id: String,
+}
+
+impl AskRemoveOnDrop {
+    fn new(state: AppState, run: Arc<RunState>, request_id: String) -> Self {
+        Self {
+            state: Some(state),
+            run: Some(run),
+            request_id,
+        }
+    }
+}
+
+impl Drop for AskRemoveOnDrop {
+    fn drop(&mut self) {
+        if let Some(state) = self.state.take() {
+            let request_id = self.request_id.clone();
+            tokio::spawn(async move {
+                let _ = state.pending_ask_requests.lock().await.remove(&request_id);
+            });
+        }
+        if let Some(run) = self.run.take() {
+            if let Ok(guard) = run.ask_request.lock() {
+                if guard.as_ref().is_some_and(|r| r.request_id == self.request_id) {
+                    drop(guard);
+                    run.set_ask_request(None);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AskResponseBody {
+    answers: Option<HashMap<String, serde_json::Value>>,
+}
+
+async fn respond_ask(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path((thread_id, request_id)): Path<(String, String)>,
+    Json(body): Json<AskResponseBody>,
+) -> impl IntoResponse {
+    if !matches!(state.db.get_thread(&thread_id, user.id).await, Ok(Some(_))) {
+        return StatusCode::NOT_FOUND;
+    }
+
+    let sender = {
+        let mut map = state.pending_ask_requests.lock().await;
+        map.remove(&request_id)
+    };
+
+    match sender {
+        Some(pending) if pending.user_id == user.id && pending.thread_id == thread_id => {
+            match pending.sender.send(body.answers) {
+                Ok(()) => StatusCode::OK,
+                Err(_) => StatusCode::GONE,
             }
         }
         _ => StatusCode::NOT_FOUND,

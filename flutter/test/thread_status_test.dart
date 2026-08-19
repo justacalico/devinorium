@@ -57,6 +57,51 @@ void main() {
       expect(tag, 'needs approval');
     });
 
+    test('returns needs answer for pending ask', () {
+      final tag = activeThreadTag(
+        sending: false,
+        messages: [Message(role: 'user', content: 'hi')],
+        pendingPermissionRequest: null,
+        pendingAskRequest: AskRequest(
+          requestId: 'a1',
+          message: 'Need input',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Value',
+              fieldType: 'text',
+            ),
+          ],
+        ),
+      );
+      expect(tag, 'needs answer');
+    });
+
+    test('returns needs approval over needs answer', () {
+      final tag = activeThreadTag(
+        sending: false,
+        messages: [Message(role: 'user', content: 'hi')],
+        pendingPermissionRequest: PermissionRequest(
+          requestId: 'r1',
+          scope: 'exec',
+          title: 'Run',
+          options: [PermissionOption(id: 'once', kind: 'once')],
+        ),
+        pendingAskRequest: AskRequest(
+          requestId: 'a1',
+          message: 'Need input',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Value',
+              fieldType: 'text',
+            ),
+          ],
+        ),
+      );
+      expect(tag, 'needs approval');
+    });
+
     test('returns needs approval even when not sending', () {
       final tag = activeThreadTag(
         sending: false,
