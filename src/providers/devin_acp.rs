@@ -16,14 +16,16 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use super::{
-    collect_text, collect_thinking, title_from_prompt, Attachment, MessagePart, ModelInfo,
-    PartCallback, PartEvent, PermissionCallback, PermissionOption, PermissionOutcome,
-    PermissionRequest, Provider, SendOptions, SendRequest, SendResponse, StartRequest,
-    StartResponse, ToolCallEvent,
+    ask, collect_text, collect_thinking, title_from_prompt, AskCallback, AskOutcome,
+    Attachment, MessagePart, ModelInfo, PartCallback, PartEvent, PermissionCallback,
+    PermissionOption, PermissionOutcome, PermissionRequest, Provider, SendOptions, SendRequest,
+    SendResponse, StartRequest, StartResponse, ToolCallEvent,
 };
 use agent_client_protocol::{
     schema::v1::{
-        ContentBlock, EmbeddedResourceResource, ImageContent, InitializeRequest,
+        ClientCapabilities, ContentBlock, CreateElicitationRequest, CreateElicitationResponse,
+        ElicitationAcceptAction, ElicitationAction, ElicitationCapabilities,
+        ElicitationFormCapabilities, EmbeddedResourceResource, ImageContent, InitializeRequest,
         LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
         PermissionOption as AcpPermissionOption, PermissionOptionKind as AcpPermissionOptionKind,
         PromptRequest, RequestPermissionOutcome,
@@ -104,7 +106,10 @@ not use tools, edit files, or execute commands.\n\n{prompt}"
             AcpAgent::from_args([&self.bin, "acp"])?,
             async move |connection: ConnectionTo<Agent>| {
                 let _ = connection
-                    .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                    .send_request(
+                        InitializeRequest::new(ProtocolVersion::V1)
+                            .client_capabilities(client_capabilities()),
+                    )
                     .block_task()
                     .await?;
                 Ok::<_, agent_client_protocol::Error>(())
@@ -139,6 +144,7 @@ impl DevinAcpProvider {
         let cwd = options.working_dir.clone();
         let maybe_session = maybe_session.map(|s| s.to_string());
         let permission_callback = options.permission_callback.clone();
+        let ask_callback = options.ask_callback.clone();
         let replaying = Arc::new(AtomicBool::new(maybe_session.is_some()));
 
         let result = Client
@@ -187,11 +193,29 @@ impl DevinAcpProvider {
                 },
                 agent_client_protocol::on_receive_request!(),
             )
+            .on_receive_request(
+                {
+                    let ask_callback = ask_callback.clone();
+                    let replaying = replaying.clone();
+                    async move |request: CreateElicitationRequest, responder, _cx| {
+                        let response = if replaying.load(Ordering::SeqCst) {
+                            CreateElicitationResponse::new(ElicitationAction::Cancel)
+                        } else {
+                            handle_ask_request(request, ask_callback.as_ref()).await
+                        };
+                        responder.respond(response)
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
             .connect_with(
                 AcpAgent::from_args([&self.bin, "acp"])?,
                 async move |connection: ConnectionTo<Agent>| {
                     let _init_response = connection
-                        .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                        .send_request(
+                            InitializeRequest::new(ProtocolVersion::V1)
+                                .client_capabilities(client_capabilities()),
+                        )
                         .block_task()
                         .await?;
 
@@ -693,6 +717,44 @@ fn map_permission_option(option: &AcpPermissionOption) -> PermissionOption {
         id: option.option_id.to_string(),
         kind: format!("{:?}", option.kind),
         label,
+    }
+}
+
+fn client_capabilities() -> ClientCapabilities {
+    ClientCapabilities::new().elicitation(
+        ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()),
+    )
+}
+
+async fn handle_ask_request(
+    request: CreateElicitationRequest,
+    ask_callback: Option<&AskCallback>,
+) -> CreateElicitationResponse {
+    let ask_request = match ask::from_acp(&request) {
+        Some(req) => req,
+        None => {
+            tracing::warn!("unsupported elicitation mode; declining");
+            return CreateElicitationResponse::new(ElicitationAction::Decline);
+        }
+    };
+
+    let Some(callback) = ask_callback else {
+        tracing::warn!("no ask callback configured; cancelling elicitation request");
+        return CreateElicitationResponse::new(ElicitationAction::Cancel);
+    };
+
+    tracing::info!(
+        request_id = %ask_request.request_id,
+        questions = ask_request.questions.len(),
+        "forwarding acp elicitation request"
+    );
+
+    match callback(ask_request.clone()).await {
+        AskOutcome::Answers(answers) => {
+            let content = ask::to_acp_content(&ask_request.questions, &answers);
+            CreateElicitationResponse::new(ElicitationAcceptAction::new().content(content))
+        }
+        AskOutcome::Cancel => CreateElicitationResponse::new(ElicitationAction::Cancel),
     }
 }
 
