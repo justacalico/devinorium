@@ -15,7 +15,7 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::task::AbortHandle;
 use uuid::Uuid;
 
-use crate::providers::{collect_text, collect_thinking, MessagePart, PermissionRequest};
+use crate::providers::{collect_text, collect_thinking, AskRequest, MessagePart, PermissionRequest};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunEvent {
@@ -60,6 +60,7 @@ pub struct RunSnapshot {
     pub parts: Vec<MessagePart>,
     pub tool_calls: Vec<MessagePart>,
     pub permission_request: Option<PermissionRequest>,
+    pub ask_request: Option<AskRequest>,
     pub last_seq: u64,
 }
 
@@ -78,6 +79,7 @@ pub struct RunState {
     pub cancelled: AtomicBool,
     pub parts: std::sync::Mutex<Vec<MessagePart>>,
     pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
+    pub ask_request: std::sync::Mutex<Option<AskRequest>>,
 }
 
 impl RunState {
@@ -104,6 +106,12 @@ impl RunState {
 
     pub fn set_permission_request(&self, req: Option<PermissionRequest>) {
         if let Ok(mut guard) = self.permission_request.lock() {
+            *guard = req;
+        }
+    }
+
+    pub fn set_ask_request(&self, req: Option<AskRequest>) {
+        if let Ok(mut guard) = self.ask_request.lock() {
             *guard = req;
         }
     }
@@ -178,6 +186,11 @@ impl RunState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let ask_request = self
+            .ask_request
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let text = collect_text(&parts);
         let thinking = collect_thinking(&parts);
         let thinking_active = matches!(parts.last(), Some(MessagePart::Thinking { .. }));
@@ -202,6 +215,7 @@ impl RunState {
             parts,
             tool_calls,
             permission_request,
+            ask_request,
             last_seq,
         }
     }
@@ -279,6 +293,7 @@ impl ThreadRunner {
             cancelled: AtomicBool::new(false),
             parts: std::sync::Mutex::new(Vec::new()),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         });
 
         let state_for_task = state.clone();
@@ -381,6 +396,7 @@ mod tests {
                 MessagePart::text("world"),
             ]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         state.apply_part(
@@ -421,6 +437,7 @@ mod tests {
             cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         state.apply_part(
@@ -473,6 +490,7 @@ mod tests {
                 MessagePart::text("first "),
             ]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         state.apply_part(MessagePart::text("second "), true);
@@ -499,6 +517,7 @@ mod tests {
             cancelled: std::sync::atomic::AtomicBool::new(false),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
         };
 
         let mut rx = state.subscribe().unwrap();

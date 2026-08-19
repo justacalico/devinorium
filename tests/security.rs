@@ -59,6 +59,9 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
@@ -269,6 +272,9 @@ async fn body_size_limit_rejects_oversized() {
         db: database,
         provider: Arc::from(provider),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
+        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),

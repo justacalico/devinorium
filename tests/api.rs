@@ -187,6 +187,9 @@ async fn app_state() -> (AppState, db::Db) {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),

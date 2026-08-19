@@ -30,6 +30,13 @@ pub struct PendingPermissionRequest {
     pub sender: oneshot::Sender<String>,
 }
 
+/// An ask request that is awaiting a user response.
+pub struct PendingAskRequest {
+    pub user_id: i64,
+    pub thread_id: String,
+    pub sender: oneshot::Sender<Option<HashMap<String, serde_json::Value>>>,
+}
+
 /// Shared application state passed to all axum handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -37,6 +44,7 @@ pub struct AppState {
     pub db: db::Db,
     pub provider: Arc<dyn providers::Provider>,
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
+    pub pending_ask_requests: Arc<Mutex<HashMap<String, PendingAskRequest>>>,
     pub thread_runner: crate::thread_runner::ThreadRunner,
     pub git: Arc<crate::git::GitService>,
     pub git_remote: Arc<crate::git::GitRemoteService>,
