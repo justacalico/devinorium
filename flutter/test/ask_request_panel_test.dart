@@ -310,8 +310,12 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('X'));
-      await tester.tap(find.text('Y'));
+      await tester.tap(
+        find.ancestor(of: find.text('X'), matching: find.byType(FilterChip)),
+      );
+      await tester.tap(
+        find.ancestor(of: find.text('Y'), matching: find.byType(FilterChip)),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(FilledButton, 'Send'));
@@ -408,6 +412,39 @@ void main() {
       expect(api.lastAskAnswers, {'q1': 42});
     });
 
+    testWidgets('parses negative and decimal numbers', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a2',
+          message: 'Need input',
+          questions: [
+            AskQuestion(id: 'neg', prompt: 'Neg', fieldType: 'number'),
+            AskQuestion(id: 'dec', prompt: 'Dec', fieldType: 'number'),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      final fields = find.byType(TextField);
+      final send = find.widgetWithText(FilledButton, 'Send');
+
+      await tester.enterText(fields.at(0), '-7');
+      await tester.enterText(fields.at(1), '3.14');
+      await tester.pumpAndSettle();
+
+      await tester.tap(send);
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskAnswers, {
+        'neg': -7,
+        'dec': 3.14,
+      });
+    });
+
     testWidgets('sends boolean answers', (tester) async {
       final api = _FakeApiService();
       final state = _stateWithAsk(
@@ -435,6 +472,71 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.lastAskAnswers, {'q1': true});
+    });
+
+    testWidgets('sends the default boolean value', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a1',
+          message: 'Need input',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Subscribe',
+              fieldType: 'boolean',
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskAnswers, {'q1': false});
+    });
+
+    testWidgets('multi select omits deselected options', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a1',
+          message: 'Pick tags',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'Tags',
+              fieldType: 'multi_select',
+              options: [
+                AskOption(value: 'x', label: 'X'),
+                AskOption(value: 'y', label: 'Y'),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      final xChip = find.ancestor(
+        of: find.text('X'),
+        matching: find.byType(FilterChip),
+      );
+      await tester.tap(xChip);
+      await tester.pumpAndSettle();
+      await tester.tap(xChip);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskAnswers, isEmpty);
     });
 
     testWidgets('validates required single select', (tester) async {

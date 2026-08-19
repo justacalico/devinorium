@@ -173,7 +173,7 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
         keyboardType:
             const TextInputType.numberWithOptions(decimal: true, signed: true),
         inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*')),
+          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$')),
         ],
         decoration: InputDecoration(
           labelText: label,
