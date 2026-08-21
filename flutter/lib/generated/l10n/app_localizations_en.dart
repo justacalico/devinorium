@@ -474,6 +474,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Delete thread (Shift+click to skip confirmation)';
 
   @override
+  String deleteProjectConfirm(String name) {
+    return 'Remove \"$name\" from Devinorium? This deletes the project and all its threads from the database. The folder on disk is not touched.';
+  }
+
+  @override
+  String get deleteProject => 'Delete project';
+
+  @override
   String get topics => 'Topics';
 
   @override

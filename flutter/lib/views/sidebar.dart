@@ -428,6 +428,20 @@ class _ProjectExpandableTile extends StatelessWidget {
                         onPressed: () =>
                             state.openRenameProjectDialog(project.id, project.name),
                       ),
+                      MenuItemButton(
+                        leadingIcon: Icon(Icons.delete_outline,
+                            size: 18, color: theme.colorScheme.error),
+                        child: Text(l10n(context).deleteProject),
+                        onPressed: () async {
+                          if (HardwareKeyboard.instance.isShiftPressed ||
+                              await _confirm(
+                                  context,
+                                  l10n(context)
+                                      .deleteProjectConfirm(project.name))) {
+                            state.deleteProject(project.id);
+                          }
+                        },
+                      ),
                     ],
                     builder: (context, controller, child) {
                       return IconButton(
