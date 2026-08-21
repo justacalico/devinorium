@@ -1285,6 +1285,100 @@ void main() {
     expect(focusNodeAfter?.hasFocus, isTrue);
   });
 
+  testWidgets('enter sends message and clears composer', (tester) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final textField = find.byType(TextField);
+    await tester.tap(textField);
+    await tester.pump();
+    await tester.enterText(textField, 'hello');
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    // Message was sent and composer is cleared.
+    final controller = tester.widget<TextField>(textField).controller;
+    expect(controller?.text, '');
+  });
+
+  testWidgets('shift+enter does not send message', (tester) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final textField = find.byType(TextField);
+    await tester.tap(textField);
+    await tester.pump();
+    await tester.enterText(textField, 'hello');
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+
+    // Message was not sent: composer text is preserved.
+    final controller = tester.widget<TextField>(textField).controller;
+    expect(controller?.text, 'hello');
+  });
+
   testWidgets('messages use full width on wide screens', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);

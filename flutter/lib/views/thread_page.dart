@@ -862,25 +862,28 @@ class _Composer extends StatefulWidget {
 
 class _ComposerState extends State<_Composer> {
   final _focusNode = FocusNode();
+  final _keyFocusNode = FocusNode();
   bool _wasSending = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNode.onKeyEvent = _handleKeyEvent;
-  }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (event.logicalKey != LogicalKeyboardKey.keyV) {
-      return KeyEventResult.ignored;
+    final state = context.read<AppState>();
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    if (event.logicalKey == LogicalKeyboardKey.enter && !shift) {
+      _submit(state);
+      return KeyEventResult.handled;
     }
-    if (!HardwareKeyboard.instance.isControlPressed &&
-        !HardwareKeyboard.instance.isMetaPressed) {
-      return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.tab && shift) {
+      _cycleComposerMode(state);
+      return KeyEventResult.handled;
     }
-    _handlePaste();
-    return KeyEventResult.handled;
+    if (event.logicalKey == LogicalKeyboardKey.keyV &&
+        (HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed)) {
+      _handlePaste();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   Future<void> _handlePaste() async {
@@ -936,6 +939,7 @@ class _ComposerState extends State<_Composer> {
   @override
   void dispose() {
     _focusNode.dispose();
+    _keyFocusNode.dispose();
     super.dispose();
   }
 
@@ -1033,15 +1037,9 @@ class _ComposerState extends State<_Composer> {
                           ],
                         ),
                       ),
-                    CallbackShortcuts(
-                      bindings: <ShortcutActivator, VoidCallback>{
-                        const SingleActivator(LogicalKeyboardKey.enter): () =>
-                            _submit(state),
-                        const SingleActivator(
-                          LogicalKeyboardKey.tab,
-                          shift: true,
-                        ): () => _cycleComposerMode(state),
-                      },
+                    Focus(
+                      focusNode: _keyFocusNode,
+                      onKeyEvent: _handleKeyEvent,
                       child: TextField(
                         controller: widget.controller,
                         focusNode: _focusNode,
