@@ -403,8 +403,16 @@ class ThreadStore {
 
     _emit();
 
-    if (ev.event == 'done' || ev.event == 'error') {
+    if (ev.event == 'done') {
       _cancelStream();
+      _finishStream(phase: StreamPhase.completed);
+      refreshTail();
+    } else if (ev.event == 'error') {
+      _cancelStream();
+      _finishStream(
+        phase: StreamPhase.failed,
+        error: ev.data.isNotEmpty ? ev.data : null,
+      );
       refreshTail();
     } else if (ev.event == 'stopped') {
       _cancelStream();
@@ -457,6 +465,8 @@ class ThreadStore {
 
   void _handleStreamDone(int token) {
     if (token != _streamToken) return;
+    // Stream closed without an explicit done/error event. Finish the stream
+    // so the UI and notification callback are updated.
     if (_streaming.isActive) {
       _finishStream(phase: StreamPhase.completed);
     }
@@ -466,6 +476,7 @@ class ThreadStore {
     StreamPhase phase = StreamPhase.completed,
     String? error,
   }) {
+    final wasActive = _streaming.isActive;
     _streaming = _streaming.copyWith(
       phase: phase,
       parts: [],
@@ -479,7 +490,8 @@ class ThreadStore {
     );
     _lastRunStatus = _statusFromPhase(phase);
     _emit();
-    if (phase == StreamPhase.completed || phase == StreamPhase.failed) {
+    if (wasActive &&
+        (phase == StreamPhase.completed || phase == StreamPhase.failed)) {
       onRunFinished?.call(phase == StreamPhase.failed);
     }
   }
