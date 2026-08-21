@@ -406,6 +406,188 @@ void main() {
     expect(find.text('Run another'), findsOneWidget);
   });
 
+  testWidgets('edit tool calls render outside the thinking block', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'let me edit the file'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-edit-1',
+                  title: 'Edit main.rs',
+                  kind: 'edit',
+                  status: 'completed',
+                  diffs: [
+                    FileDiff(
+                      path: '/tmp/src/main.rs',
+                      oldText: 'fn main() {}',
+                      newText: 'fn main() { println!("hi"); }',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // The edit tool card is rendered (EditFileTool shows the filename).
+    expect(find.textContaining('main.rs'), findsOneWidget);
+
+    // The thinking block is collapsed (not working, no text) so it shows
+    // the "Show thinking" label instead of "Hide thinking".
+    expect(find.text('Show thinking'), findsOneWidget);
+  });
+
+  testWidgets('edit tool calls render outside thinking even when collapsed', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: 'Done editing',
+            parts: [
+              MessagePart.thinking(content: 'thinking about it'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-edit-1',
+                  title: 'Edit lib.rs',
+                  kind: 'edit',
+                  status: 'completed',
+                  diffs: [
+                    FileDiff(
+                      path: '/tmp/src/lib.rs',
+                      oldText: 'old',
+                      newText: 'new',
+                    ),
+                  ],
+                ),
+              ),
+              MessagePart.text(content: 'Done editing'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Edit tool card is visible without expanding thinking.
+    expect(find.textContaining('lib.rs'), findsOneWidget);
+    // Thinking is collapsed (hasText=true so it auto-collapses).
+    expect(find.text('Show thinking'), findsOneWidget);
+    // Reply text is visible.
+    expect(find.text('Done editing'), findsOneWidget);
+  });
+
+  testWidgets('edit tool call between two thinking blocks renders outside both', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'first think'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-edit-1',
+                  title: 'Edit a.rs',
+                  kind: 'edit',
+                  status: 'completed',
+                  diffs: [
+                    FileDiff(path: '/tmp/a.rs', oldText: 'a', newText: 'b'),
+                  ],
+                ),
+              ),
+              MessagePart.thinking(content: 'second think'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Edit tool card visible without expanding either thinking block.
+    expect(find.textContaining('a.rs'), findsOneWidget);
+    // Both thinking blocks are collapsed (no text, not working).
+    expect(find.text('Show thinking'), findsNWidgets(2));
+  });
+
   testWidgets('interleaves thinking text and tool calls in order', (
     tester,
   ) async {
