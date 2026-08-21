@@ -476,5 +476,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "copy": "Copy",
+  "copiedToClipboard": "Copied to clipboard"
 }

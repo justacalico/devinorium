@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart' hide SyntaxHighlighter;
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
@@ -16,11 +16,13 @@ import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'ask_request_panel.dart';
 import 'drop_zone.dart';
+import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
 import 'model_picker.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
+import 'syntax_highlighter.dart';
 
 class ThreadPage extends StatelessWidget {
   const ThreadPage({super.key});
@@ -481,6 +483,7 @@ class _MessageItemState extends State<_MessageItem> {
   Widget _buildTextContent(BuildContext context, String text, String role) {
     final theme = Theme.of(context);
     if (role == 'assistant') {
+      final highlighter = SyntaxHighlighter(theme);
       return MarkdownBody(
         data: text,
         selectable: false,
@@ -488,6 +491,9 @@ class _MessageItemState extends State<_MessageItem> {
           if (href != null) openLink(href);
         },
         extensionSet: markdown.ExtensionSet.gitHubFlavored,
+        builders: {
+          'pre': _PreBuilder(highlighter: highlighter),
+        },
         styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
           p: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
           code: theme.textTheme.bodySmall?.copyWith(
@@ -1422,6 +1428,54 @@ class _ToolDetailRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Custom builder for `pre` elements that renders a [CodeBlock] with
+/// syntax highlighting, language label, and copy button.
+class _PreBuilder extends MarkdownElementBuilder {
+  final SyntaxHighlighter highlighter;
+
+  _PreBuilder({required this.highlighter});
+
+  @override
+  bool isBlockElement() => true;
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    markdown.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    String code = '';
+    String language = '';
+    if (element.children != null && element.children!.isNotEmpty) {
+      final child = element.children!.first;
+      if (child is markdown.Element && child.tag == 'code') {
+        final cls = child.attributes['class'] ?? '';
+        if (cls.startsWith('language-')) {
+          language = cls.substring('language-'.length);
+        }
+        for (final node in child.children ?? <markdown.Node>[]) {
+          if (node is markdown.Text) {
+            code += node.text;
+          }
+        }
+      }
+    }
+    if (code.isEmpty) {
+      for (final node in element.children ?? <markdown.Node>[]) {
+        if (node is markdown.Text) {
+          code += node.text;
+        }
+      }
+    }
+    return CodeBlock(
+      code: code,
+      language: language,
+      highlighter: highlighter,
     );
   }
 }

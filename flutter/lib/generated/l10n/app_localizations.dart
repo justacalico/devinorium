@@ -1515,6 +1515,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{title} encountered an error.'**
   String threadFailedBody(String title);
+
+  /// No description provided for @copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get copy;
+
+  /// No description provided for @copiedToClipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get copiedToClipboard;
 }
 
 class _AppLocalizationsDelegate
