@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
-/// A styled tool-call card for the `edit` kind that renders an inline diff
-/// (or a side-by-side before/after) for each file changed by the call.
+/// Renders file edits as inline diff cards (like t3code) — not collapsed
+/// into a tool call. Shows the file path header with a status indicator
+/// and the unified diff below it, directly in the chat stream.
 class EditFileTool extends StatefulWidget {
   final ToolCallData tool;
   final VoidCallback? onOpenInFiles;
@@ -23,10 +24,8 @@ class EditFileTool extends StatefulWidget {
 }
 
 class _EditFileToolState extends State<EditFileTool> {
-  bool _expanded = false;
   int _selectedDiffIndex = 0;
-  _DiffView _view = _DiffView.inline;
-  bool _copied = false;
+  bool _collapsed = false;
 
   @override
   void didUpdateWidget(covariant EditFileTool oldWidget) {
@@ -41,153 +40,33 @@ class _EditFileToolState extends State<EditFileTool> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final l = l10n(context);
-    final tool = widget.tool;
-    final diffs = tool.diffs;
+    final diffs = widget.tool.diffs;
+    if (diffs.isEmpty) return const SizedBox.shrink();
 
-    final statusColor = switch (tool.status) {
-      'completed' => theme.colorScheme.primary,
-      'failed' => theme.colorScheme.error,
-      _ => theme.colorScheme.onSurfaceVariant,
-    };
-    final statusIcon = switch (tool.status) {
-      'completed' => Icons.check,
-      'failed' => Icons.error_outline,
-      _ => Icons.play_circle_outline,
-    };
-
-    final titleText = diffs.isEmpty
-        ? tool.title
-        : l.editFileTitle(_basename(diffs.first.path));
-
-    return Semantics(
-      button: true,
-      expanded: _expanded,
-      label: titleText,
-      child: InkWell(
-        onTap: () => setState(() => _expanded = !_expanded),
-        borderRadius: BorderRadius.circular(6),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            color: _expanded
-                ? theme.colorScheme.surfaceContainer
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          margin: const EdgeInsets.only(bottom: 2),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.edit_outlined,
-                      size: 16, color: theme.colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      titleText,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (diffs.length == 1)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: _Badge(
-                        label: diffs.first.oldText == null
-                            ? l.editFileNewFile
-                            : l.editFileModified,
-                        color: diffs.first.oldText == null
-                            ? theme.colorScheme.tertiary
-                            : theme.colorScheme.primary,
-                      ),
-                    ),
-                  if (diffs.length > 1)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Text(
-                        '${diffs.length}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  Icon(statusIcon, size: 14, color: statusColor),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-              if (_expanded) _buildExpanded(context, l, diffs),
-            ],
-          ),
-        ),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (diffs.length > 1) _buildDiffTabs(context, diffs),
+        _buildDiffCard(context, _selectedDiff(diffs)),
+      ],
     );
   }
 
-  Widget _buildExpanded(
-    BuildContext context,
-    AppLocalizations l,
-    List<FileDiff> diffs,
-  ) {
-    final theme = Theme.of(context);
-
-    if (diffs.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8, left: 24),
-        child: Text(
-          l.editFileNoDiff,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontFamily: 'monospace',
-          ),
-        ),
-      );
-    }
-
-    final diff = diffs[_selectedDiffIndex];
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, left: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (diffs.length > 1) _buildDiffTabs(context, l, diffs),
-          _buildPathHeader(context, l, diff),
-          const SizedBox(height: 8),
-          _buildViewToggle(context, l),
-          const SizedBox(height: 8),
-          _buildDiffBody(context, l, diff),
-        ],
-      ),
-    );
+  FileDiff _selectedDiff(List<FileDiff> diffs) {
+    final idx = _selectedDiffIndex.clamp(0, diffs.length - 1);
+    return diffs[idx];
   }
 
-  Widget _buildDiffTabs(
-    BuildContext context,
-    AppLocalizations l,
-    List<FileDiff> diffs,
-  ) {
+  Widget _buildDiffTabs(BuildContext context, List<FileDiff> diffs) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 4),
       child: SizedBox(
-        height: 28,
+        height: 26,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: diffs.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 6),
+          separatorBuilder: (_, __) => const SizedBox(width: 4),
           itemBuilder: (context, i) {
             final selected = i == _selectedDiffIndex;
             return InkWell(
@@ -195,7 +74,7 @@ class _EditFileToolState extends State<EditFileTool> {
               borderRadius: BorderRadius.circular(4),
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: selected
                       ? theme.colorScheme.primaryContainer
@@ -219,51 +98,81 @@ class _EditFileToolState extends State<EditFileTool> {
     );
   }
 
-  Widget _buildPathHeader(
+  Widget _buildDiffCard(BuildContext context, FileDiff diff) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final isNewFile = diff.oldText == null;
+    final statusColor = isNewFile
+        ? theme.colorScheme.tertiary
+        : theme.colorScheme.primary;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.3),
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFileHeader(context, l, diff, isNewFile, statusColor),
+          if (!_collapsed) _buildDiffBody(context, diff, isNewFile),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFileHeader(
     BuildContext context,
     AppLocalizations l,
     FileDiff diff,
+    bool isNewFile,
+    Color statusColor,
   ) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(5),
+          topRight: Radius.circular(5),
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.folder_outlined,
-              size: 14, color: theme.colorScheme.onSurfaceVariant),
+          // Status indicator bar
+          Container(
+            width: 3,
+            height: 16,
+            decoration: BoxDecoration(
+              color: statusColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            isNewFile ? Icons.add_circle_outline : Icons.edit_outlined,
+            size: 14,
+            color: statusColor,
+          ),
           const SizedBox(width: 6),
-          Flexible(
+          Expanded(
             child: Text(
               diff.path,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface,
+                fontFamily: 'monospace',
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(width: 8),
-          _Badge(
-            label: diff.oldText == null ? l.editFileNewFile : l.editFileModified,
-            color: diff.oldText == null
-                ? theme.colorScheme.tertiary
-                : theme.colorScheme.primary,
-          ),
-          const SizedBox(width: 8),
           _CopyButton(
-            label: l.editFileCopy,
-            copiedLabel: l.editFileCopied,
             text: diff.newText,
-            onCopied: () => setState(() {
-              _copied = true;
-              Future.delayed(const Duration(seconds: 2),
-                  () => mounted ? setState(() => _copied = false) : null);
-            }),
           ),
           if (widget.onOpenInFiles != null) ...[
             const SizedBox(width: 4),
@@ -277,38 +186,25 @@ class _EditFileToolState extends State<EditFileTool> {
               onPressed: widget.onOpenInFiles,
             ),
           ],
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => setState(() => _collapsed = !_collapsed),
+            borderRadius: BorderRadius.circular(3),
+            child: Icon(
+              _collapsed ? Icons.expand_more : Icons.expand_less,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildViewToggle(BuildContext context, AppLocalizations l) {
-    final theme = Theme.of(context);
-    return Wrap(
-      spacing: 4,
-      children: [
-        for (final v in _DiffView.values)
-          ChoiceChip(
-            label: Text(_viewLabel(v, l)),
-            selected: _view == v,
-            onSelected: (_) => setState(() => _view = v),
-            visualDensity: VisualDensity.compact,
-            labelStyle: theme.textTheme.labelSmall,
-          ),
-      ],
-    );
-  }
-
-  String _viewLabel(_DiffView v, AppLocalizations l) => switch (v) {
-        _DiffView.inline => l.editFileDiff,
-        _DiffView.before => l.editFileBefore,
-        _DiffView.after => l.editFileAfter,
-      };
-
   Widget _buildDiffBody(
     BuildContext context,
-    AppLocalizations l,
     FileDiff diff,
+    bool isNewFile,
   ) {
     final theme = Theme.of(context);
     final splitter = const LineSplitter();
@@ -317,26 +213,42 @@ class _EditFileToolState extends State<EditFileTool> {
         : splitter.convert(diff.oldText!);
     final newLines = splitter.convert(diff.newText);
 
-    if (diff.oldText == null) {
-      return _DiffScrollArea(
-        child: _LineGrid(lines: newLines, kind: _LineKind.added),
+    final hunks = isNewFile
+        ? [_DiffHunk(lines: [
+            for (final line in newLines) _DiffLine(_LineKind.added, line),
+          ])]
+        : _computeUnifiedDiff(oldLines, newLines);
+
+    if (hunks.isEmpty || hunks.every((h) => h.lines.isEmpty)) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          l10n(context).editFileNoDiff,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontFamily: 'monospace',
+          ),
+        ),
       );
     }
 
-    final view = _view;
-    if (view == _DiffView.before) {
-      return _DiffScrollArea(
-        child: _LineGrid(lines: oldLines, kind: _LineKind.context),
-      );
-    }
-    if (view == _DiffView.after) {
-      return _DiffScrollArea(
-        child: _LineGrid(lines: newLines, kind: _LineKind.context),
-      );
-    }
-
-    final hunks = _computeUnifiedDiff(oldLines, newLines);
-    return _DiffScrollArea(child: _UnifiedDiffView(hunks: hunks));
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 400),
+      child: SingleChildScrollView(
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(5),
+              bottomRight: Radius.circular(5),
+            ),
+          ),
+          child: _UnifiedDiffView(hunks: hunks),
+        ),
+      ),
+    );
   }
 
   String _basename(String path) {
@@ -348,72 +260,7 @@ class _EditFileToolState extends State<EditFileTool> {
   }
 }
 
-enum _DiffView { inline, before, after }
-
 enum _LineKind { context, added, removed }
-
-class _DiffScrollArea extends StatelessWidget {
-  final Widget child;
-  const _DiffScrollArea({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 360),
-      child: SingleChildScrollView(
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-class _LineGrid extends StatelessWidget {
-  final List<String> lines;
-  final _LineKind kind;
-  const _LineGrid({required this.lines, required this.kind});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final (marker, color) = switch (kind) {
-      _LineKind.added => ('+', theme.colorScheme.primary),
-      _LineKind.removed => ('-', theme.colorScheme.error),
-      _LineKind.context => (' ', theme.colorScheme.onSurface),
-    };
-    return DefaultTextStyle(
-      style: theme.textTheme.bodySmall!.copyWith(
-        color: theme.colorScheme.onSurface,
-        fontFamily: 'monospace',
-        height: 1.4,
-      ),
-      child: lines.isEmpty
-          ? Text(
-              ' ',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontFamily: 'monospace',
-              ),
-            )
-          : SelectableText(
-              lines.map((l) => '$marker $l').join('\n'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: color,
-                fontFamily: 'monospace',
-                height: 1.4,
-              ),
-            ),
-    );
-  }
-}
 
 class _UnifiedDiffView extends StatelessWidget {
   final List<_DiffHunk> hunks;
@@ -429,22 +276,22 @@ class _UnifiedDiffView extends StatelessWidget {
           _LineKind.added => (
               '+',
               theme.colorScheme.primary,
-              theme.colorScheme.primaryContainer.withValues(alpha: 0.25),
+              theme.colorScheme.primaryContainer.withValues(alpha: 0.20),
             ),
           _LineKind.removed => (
               '-',
               theme.colorScheme.error,
-              theme.colorScheme.errorContainer.withValues(alpha: 0.25),
+              theme.colorScheme.errorContainer.withValues(alpha: 0.20),
             ),
           _LineKind.context => (
               ' ',
-              theme.colorScheme.onSurface,
+              theme.colorScheme.onSurfaceVariant,
               Colors.transparent,
             ),
         };
         rows.add(Container(
           color: bg,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           child: SelectableText(
             '$marker ${line.text}',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -456,15 +303,7 @@ class _UnifiedDiffView extends StatelessWidget {
         ));
       }
     }
-    if (rows.isEmpty) {
-      return Text(
-        ' ',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontFamily: 'monospace',
-        ),
-      );
-    }
+    if (rows.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: rows,
@@ -491,7 +330,6 @@ List<_DiffHunk> _computeUnifiedDiff(List<String> a, List<String> b) {
   final m = b.length;
   if (n == 0 && m == 0) return const [];
 
-  // dp[i][j] = length of LCS of a[i..] and b[j..]
   final dp = List<List<int>>.generate(
     n + 1,
     (_) => List<int>.filled(m + 1, 0),
@@ -534,40 +372,9 @@ List<_DiffHunk> _computeUnifiedDiff(List<String> a, List<String> b) {
   return [_DiffHunk(lines: lines)];
 }
 
-class _Badge extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _Badge({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(color: color),
-      ),
-    );
-  }
-}
-
 class _CopyButton extends StatelessWidget {
-  final String label;
-  final String copiedLabel;
   final String text;
-  final VoidCallback onCopied;
-  const _CopyButton({
-    required this.label,
-    required this.copiedLabel,
-    required this.text,
-    required this.onCopied,
-  });
+  const _CopyButton({required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -575,25 +382,12 @@ class _CopyButton extends StatelessWidget {
     return InkWell(
       onTap: () async {
         await Clipboard.setData(ClipboardData(text: text));
-        onCopied();
       },
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.copy_outlined,
-                size: 12, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+        child: Icon(Icons.copy_outlined,
+            size: 14, color: theme.colorScheme.onSurfaceVariant),
       ),
     );
   }

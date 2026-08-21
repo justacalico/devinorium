@@ -5,8 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('EditFileTool widget', () {
-    testWidgets('renders collapsed title with filename for a single diff',
-        (tester) async {
+    testWidgets('renders file path header and inline diff directly', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Edit file',
@@ -25,58 +24,15 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      expect(find.textContaining('main.rs'), findsOneWidget);
-      expect(find.text('Modified'), findsOneWidget);
-    });
-
-    testWidgets('shows New file badge when old_text is null', (tester) async {
-      final tool = ToolCallData(
-        id: '1',
-        title: 'Edit file',
-        kind: 'edit',
-        status: 'completed',
-        diffs: [
-          FileDiff(path: '/tmp/new.rs', newText: 'pub fn x() {}\n'),
-        ],
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
-      );
-
-      expect(find.text('New file'), findsOneWidget);
-    });
-
-    testWidgets('expands to show inline diff with added and removed lines',
-        (tester) async {
-      final tool = ToolCallData(
-        id: '1',
-        title: 'Edit file',
-        kind: 'edit',
-        status: 'completed',
-        diffs: [
-          FileDiff(
-            path: '/tmp/main.rs',
-            oldText: 'fn main() {\n    todo!()\n}\n',
-            newText: 'fn main() {}\n',
-          ),
-        ],
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
-      );
-
-      await tester.tap(find.byType(EditFileTool));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('/tmp/main.rs'), findsWidgets);
+      // File path is visible in the header (no need to expand).
+      expect(find.textContaining('/home/user/devinorium/src/main.rs'), findsOneWidget);
+      // Diff lines are visible directly.
       expect(find.textContaining('- fn main() {'), findsOneWidget);
       expect(find.textContaining('-     todo!()'), findsOneWidget);
       expect(find.textContaining('+ fn main() {}'), findsOneWidget);
     });
 
-    testWidgets('shows only new content for a new file', (tester) async {
+    testWidgets('shows added lines for new files', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Edit file',
@@ -91,14 +47,11 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
-      await tester.pumpAndSettle();
-
+      expect(find.textContaining('/tmp/new.rs'), findsOneWidget);
       expect(find.textContaining('+ pub fn x() {}'), findsOneWidget);
     });
 
-    testWidgets('shows no diff placeholder when diffs are empty',
-        (tester) async {
+    testWidgets('shows nothing when diffs are empty', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Edit file',
@@ -110,30 +63,8 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
-      await tester.pumpAndSettle();
-
-      expect(find.text('No diff content yet'), findsOneWidget);
-    });
-
-    testWidgets('shows count badge when multiple diffs present',
-        (tester) async {
-      final tool = ToolCallData(
-        id: '1',
-        title: 'Edit files',
-        kind: 'edit',
-        status: 'completed',
-        diffs: [
-          FileDiff(path: '/tmp/a.rs', oldText: 'a', newText: 'b'),
-          FileDiff(path: '/tmp/b.rs', oldText: 'c', newText: 'd'),
-        ],
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
-      );
-
-      expect(find.text('2'), findsOneWidget);
+      expect(find.byType(EditFileTool), findsOneWidget);
+      expect(find.byType(SizedBox), findsWidgets);
     });
 
     testWidgets('renders tabs for multiple diffs and switches between them',
@@ -153,19 +84,24 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
-      await tester.pumpAndSettle();
+      // First diff is shown by default.
+      expect(find.textContaining('/tmp/alpha.rs'), findsOneWidget);
+      expect(find.textContaining('- a'), findsOneWidget);
+      expect(find.textContaining('+ b'), findsOneWidget);
 
-      expect(find.text('alpha.rs'), findsWidgets);
-      expect(find.text('beta.rs'), findsWidgets);
+      // Tab for second file exists.
+      expect(find.text('beta.rs'), findsOneWidget);
 
       await tester.tap(find.text('beta.rs'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('/tmp/beta.rs'), findsWidgets);
+      // Now second diff is shown.
+      expect(find.textContaining('/tmp/beta.rs'), findsOneWidget);
+      expect(find.textContaining('- c'), findsOneWidget);
+      expect(find.textContaining('+ d'), findsOneWidget);
     });
 
-    testWidgets('toggle to After view shows only new text', (tester) async {
+    testWidgets('collapse button hides diff body', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Edit file',
@@ -184,17 +120,25 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
+      // Diff is visible initially.
+      expect(find.textContaining('- fn main() {'), findsOneWidget);
+
+      // Tap the collapse chevron (the expand_less icon in the header).
+      await tester.tap(find.byIcon(Icons.expand_less));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('After'));
+      // Diff body is hidden, but header still visible.
+      expect(find.textContaining('/tmp/main.rs'), findsOneWidget);
+      expect(find.textContaining('- fn main() {'), findsNothing);
+
+      // Tap expand_more to show again.
+      await tester.tap(find.byIcon(Icons.expand_more));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('fn main() {}'), findsOneWidget);
-      expect(find.textContaining('todo!()'), findsNothing);
+      expect(find.textContaining('- fn main() {'), findsOneWidget);
     });
 
-    testWidgets('toggle to Before view shows only old text', (tester) async {
+    testWidgets('handles Windows-style paths', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Edit file',
@@ -202,9 +146,9 @@ void main() {
         status: 'completed',
         diffs: [
           FileDiff(
-            path: '/tmp/main.rs',
-            oldText: 'fn main() {\n    todo!()\n}\n',
-            newText: 'fn main() {}\n',
+            path: r'C:\Users\dev\src\main.rs',
+            oldText: 'old',
+            newText: 'new',
           ),
         ],
       );
@@ -213,18 +157,37 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Before'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('todo!()'), findsOneWidget);
-      expect(find.textContaining('+ fn main() {}'), findsNothing);
+      expect(find.textContaining(r'C:\Users\dev\src\main.rs'), findsOneWidget);
     });
 
-    testWidgets('copy button is present and tappable when expanded',
+    testWidgets('multi-line diff shows correct added and removed lines',
         (tester) async {
+      final tool = ToolCallData(
+        id: '1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'completed',
+        diffs: [
+          FileDiff(
+            path: '/tmp/lib.rs',
+            oldText: 'line 1\nline 2\nline 3\n',
+            newText: 'line 1\nline 2 modified\nline 3\nline 4\n',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
+      );
+
+      expect(find.textContaining('  line 1'), findsOneWidget);
+      expect(find.textContaining('- line 2'), findsOneWidget);
+      expect(find.textContaining('+ line 2 modified'), findsOneWidget);
+      expect(find.textContaining('  line 3'), findsOneWidget);
+      expect(find.textContaining('+ line 4'), findsOneWidget);
+    });
+
+    testWidgets('copy button is present in header', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Edit file',
@@ -239,27 +202,7 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Copy'), findsOneWidget);
       expect(find.byIcon(Icons.copy_outlined), findsOneWidget);
-    });
-
-    testWidgets('shows failed status icon', (tester) async {
-      final tool = ToolCallData(
-        id: '1',
-        title: 'Edit file',
-        kind: 'edit',
-        status: 'failed',
-        diffs: [FileDiff(path: '/tmp/x.rs', oldText: 'a', newText: 'b')],
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
-      );
-
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
     });
 
     testWidgets('clamps selected diff index when diffs shrink', (tester) async {
@@ -287,33 +230,29 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: first))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
-      await tester.pumpAndSettle();
-
+      // Switch to second diff tab.
       await tester.tap(find.text('beta.rs'));
       await tester.pumpAndSettle();
 
+      // Replace with single diff.
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: EditFileTool(tool: second))),
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('/tmp/alpha.rs'), findsWidgets);
+      // Alpha is shown, beta tab is gone.
+      expect(find.textContaining('/tmp/alpha.rs'), findsOneWidget);
       expect(find.text('beta.rs'), findsNothing);
     });
 
-    testWidgets('handles Windows-style paths in title', (tester) async {
+    testWidgets('shows new file icon for new files', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Edit file',
         kind: 'edit',
         status: 'completed',
         diffs: [
-          FileDiff(
-            path: r'C:\Users\dev\src\main.rs',
-            oldText: 'old',
-            newText: 'new',
-          ),
+          FileDiff(path: '/tmp/new.rs', newText: 'pub fn x() {}\n'),
         ],
       );
 
@@ -321,10 +260,28 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      expect(find.textContaining('main.rs'), findsOneWidget);
+      expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
     });
 
-    testWidgets('inline diff shows correct added and removed lines for multi-line edit',
+    testWidgets('shows edit icon for modified files', (tester) async {
+      final tool = ToolCallData(
+        id: '1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'completed',
+        diffs: [
+          FileDiff(path: '/tmp/main.rs', oldText: 'old', newText: 'new'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
+      );
+
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+    });
+
+    testWidgets('shows no diff message when old and new text are identical',
         (tester) async {
       final tool = ToolCallData(
         id: '1',
@@ -332,11 +289,7 @@ void main() {
         kind: 'edit',
         status: 'completed',
         diffs: [
-          FileDiff(
-            path: '/tmp/lib.rs',
-            oldText: 'line 1\nline 2\nline 3\n',
-            newText: 'line 1\nline 2 modified\nline 3\nline 4\n',
-          ),
+          FileDiff(path: '/tmp/main.rs', oldText: 'same', newText: 'same'),
         ],
       );
 
@@ -344,14 +297,61 @@ void main() {
         MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
       );
 
-      await tester.tap(find.byType(EditFileTool));
+      expect(find.textContaining('/tmp/main.rs'), findsOneWidget);
+      // Context line is shown (no +/- changes).
+      expect(find.textContaining('  same'), findsOneWidget);
+    });
+
+    testWidgets('handles empty new text', (tester) async {
+      final tool = ToolCallData(
+        id: '1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'completed',
+        diffs: [
+          FileDiff(path: '/tmp/main.rs', oldText: 'old content', newText: ''),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
+      );
+
+      expect(find.textContaining('/tmp/main.rs'), findsOneWidget);
+      // Old line is shown as removed.
+      expect(find.textContaining('- old content'), findsOneWidget);
+    });
+
+    testWidgets('onOpenInFiles callback shows button and fires when tapped',
+        (tester) async {
+      var opened = false;
+      final tool = ToolCallData(
+        id: '1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'completed',
+        diffs: [
+          FileDiff(path: '/tmp/main.rs', oldText: 'old', newText: 'new'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: EditFileTool(
+              tool: tool,
+              onOpenInFiles: () => opened = true,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.open_in_new), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.open_in_new));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('  line 1'), findsOneWidget);
-      expect(find.textContaining('- line 2'), findsOneWidget);
-      expect(find.textContaining('+ line 2 modified'), findsOneWidget);
-      expect(find.textContaining('  line 3'), findsOneWidget);
-      expect(find.textContaining('+ line 4'), findsOneWidget);
+      expect(opened, isTrue);
     });
   });
 }
