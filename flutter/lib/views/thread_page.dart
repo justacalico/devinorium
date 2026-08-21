@@ -261,7 +261,8 @@ class _ChatViewState extends State<ChatView> {
               if (state.sending)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Center(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
                     child: ElapsedTimeIndicator(
                       key: ValueKey(state.startedAt),
                       startedAt: state.startedAt,
