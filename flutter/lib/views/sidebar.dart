@@ -8,6 +8,7 @@ import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../widgets/owner_badge.dart';
+import 'project_icon.dart';
 
 Color _projectColor(String name) {
   final colors = [
@@ -310,6 +311,30 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   }
 }
 
+class _ProjectIcon extends StatelessWidget {
+  final Project project;
+  final Color color;
+
+  const _ProjectIcon({required this.project, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = projectIconForType(project.projectType);
+    // For generic projects, fall back to the first-letter avatar.
+    if (project.projectType == 'generic') {
+      return Text(
+        project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
+        style: const TextStyle(
+          fontSize: 14,
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+    return Icon(icon.icon, size: 20, color: Colors.white);
+  }
+}
+
 class _ProjectExpandableTile extends StatelessWidget {
   final int index;
   final Project project;
@@ -367,14 +392,7 @@ class _ProjectExpandableTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  project.name.isNotEmpty ? project.name[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: _ProjectIcon(project: project, color: color),
               ),
               title: Tooltip(
                 message: project.path,

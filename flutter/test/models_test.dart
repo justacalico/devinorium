@@ -394,6 +394,7 @@ void main() {
         'position': 5,
         'is_repo': true,
         'branch': 'main',
+        'project_type': 'flutter',
         'created_at': '2026-01-01',
         'updated_at': '2026-01-02',
       });
@@ -403,8 +404,20 @@ void main() {
       expect(p.position, 5);
       expect(p.isRepo, true);
       expect(p.gitBranch, 'main');
+      expect(p.projectType, 'flutter');
       expect(p.createdAt, '2026-01-01');
       expect(p.updatedAt, '2026-01-02');
+    });
+
+    test('fromJson defaults project_type to generic when missing', () {
+      final p = Project.fromJson({
+        'id': 1,
+        'name': 'x',
+        'path': '/tmp',
+        'created_at': '',
+        'updated_at': '',
+      });
+      expect(p.projectType, 'generic');
     });
 
     test('copyWith updates git fields', () {

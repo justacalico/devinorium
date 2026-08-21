@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, patch, Router};
+use axum::routing::{delete, get, patch, post, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/reorder", patch(reorder))
         .route("/api/projects/:id", delete(delete_one).patch(rename))
         .route("/api/projects/:id/threads", get(list_threads))
+        .route("/api/projects/:id/detect-type", post(detect_type))
 }
 
 #[derive(Debug, Serialize)]
@@ -30,6 +31,7 @@ pub struct ProjectOut {
     pub position: i64,
     pub is_repo: bool,
     pub branch: String,
+    pub project_type: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -47,6 +49,7 @@ impl ProjectOut {
             position: p.position,
             is_repo,
             branch,
+            project_type: p.project_type,
             created_at: p.created_at,
             updated_at: p.updated_at,
         }
@@ -149,11 +152,14 @@ async fn create(
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
 
+    let project_type = crate::projects::detect::detect_project_type(&abs);
+
     let new = NewProject {
         user_id: user.id,
         name: name.to_string(),
         path: path_str,
         position,
+        project_type: project_type.to_string(),
     };
 
     match state.db.create_project(new).await {
@@ -382,4 +388,24 @@ fn normalize_path(path: &str, home: &std::path::Path) -> String {
     }
 
     s
+}
+
+async fn detect_type(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+) -> Response {
+    let project = match state.db.get_project(id, user.id).await {
+        Ok(Some(p)) => p,
+        Ok(None) => return (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("project not found"))).into_response(),
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
+    let ty = crate::projects::detect::detect_project_type(std::path::Path::new(&project.path));
+
+    if let Err(e) = state.db.set_project_type(id, user.id, ty).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+
+    Json(serde_json::json!({ "project_type": ty })).into_response()
 }
