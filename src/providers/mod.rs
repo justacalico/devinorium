@@ -123,6 +123,10 @@ pub struct SendOptions {
     pub part_callback: Option<PartCallback>,
     /// Provider interaction mode: "code", "plan", "ask".
     pub interaction_mode: String,
+    /// Cancellation flag. When set to true the provider should cancel the
+    /// in-flight prompt gracefully (e.g. via ACP `$/cancelRequest`) so the
+    /// agent session preserves its context for subsequent messages.
+    pub cancel_signal: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl std::fmt::Debug for SendOptions {

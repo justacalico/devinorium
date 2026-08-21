@@ -76,7 +76,7 @@ pub struct RunState {
     pub started_at: String,
     pub updated_at: RwLock<String>,
     pub abort: std::sync::Mutex<Option<AbortHandle>>,
-    pub cancelled: AtomicBool,
+    pub cancelled: Arc<AtomicBool>,
     pub parts: std::sync::Mutex<Vec<MessagePart>>,
     pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
     pub ask_request: std::sync::Mutex<Option<AskRequest>>,
@@ -290,7 +290,7 @@ impl ThreadRunner {
             started_at: now.clone(),
             updated_at: RwLock::new(now),
             abort: std::sync::Mutex::new(None),
-            cancelled: AtomicBool::new(false),
+            cancelled: Arc::new(AtomicBool::new(false)),
             parts: std::sync::Mutex::new(Vec::new()),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
@@ -344,20 +344,27 @@ impl ThreadRunner {
             return Some(run.snapshot().await);
         }
 
+        // Set the cancelled flag so the provider can cancel the in-flight
+        // prompt gracefully via ACP $/cancelRequest. This lets the agent
+        // session preserve its context for subsequent messages.
         run.cancelled.store(true, Ordering::SeqCst);
         let _ = run.set_status(RunStatus::Stopped).await;
         run.emit("stopped", r#"{"status":"stopped"}"#);
         run.close();
 
-        if let Some(handle) = run.abort.lock().unwrap().take() {
-            handle.abort();
-        }
-
+        // Hard-abort the task after a grace period in case the agent
+        // doesn't respond to cancellation.
+        let abort_handle = run.abort.lock().unwrap().take();
         let state = run.clone();
         let runs_for_cleanup = self.runs.clone();
         let id = thread_id.to_string();
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+            // Give the provider 10s to finish graceful cancellation.
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            if let Some(handle) = abort_handle {
+                handle.abort();
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(110)).await;
             let mut map = runs_for_cleanup.lock().await;
             if let Some(r) = map.get(&id) {
                 if Arc::ptr_eq(r, &state) {
@@ -389,7 +396,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
-            cancelled: std::sync::atomic::AtomicBool::new(false),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![
                 MessagePart::text("Hello "),
                 MessagePart::thinking("hmm"),
@@ -435,7 +442,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
-            cancelled: std::sync::atomic::AtomicBool::new(false),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
@@ -488,7 +495,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
-            cancelled: std::sync::atomic::AtomicBool::new(false),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![
                 MessagePart::text("first "),
             ]),
@@ -517,7 +524,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
-            cancelled: std::sync::atomic::AtomicBool::new(false),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
@@ -547,7 +554,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
-            cancelled: std::sync::atomic::AtomicBool::new(false),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),

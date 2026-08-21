@@ -212,6 +212,45 @@ void main() {
       expect(res.snapshot.startedAt, isNull);
     });
 
+    test('stopped event clears parts', () {
+      final parts = <MessagePart>[
+        MessagePart.thinking(content: 'Let me think...'),
+        MessagePart.text(content: 'Here is my answer'),
+      ];
+      final snapshot = StreamingSnapshot(
+        phase: StreamPhase.running,
+        parts: parts,
+        thinkingActive: true,
+      );
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('stopped', '{}', id: '2'),
+      );
+      expect(res.snapshot.phase, StreamPhase.stopped);
+      expect(res.snapshot.parts, isEmpty);
+      expect(res.snapshot.thinkingActive, isFalse);
+    });
+
+    test('done event clears parts', () {
+      final parts = <MessagePart>[
+        MessagePart.thinking(content: 'Let me think...'),
+        MessagePart.text(content: 'Here is my answer'),
+      ];
+      final snapshot = StreamingSnapshot(
+        phase: StreamPhase.running,
+        parts: parts,
+        thinkingActive: true,
+      );
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('done', '{"role":"assistant","content":"ok"}', id: '2'),
+      );
+      expect(res.snapshot.parts, isEmpty);
+      expect(res.snapshot.thinkingActive, isFalse);
+    });
+
     test('error event clears startedAt', () {
       final snapshot = StreamingSnapshot(
         phase: StreamPhase.running,

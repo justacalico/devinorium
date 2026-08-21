@@ -33,6 +33,13 @@ struct StubProvider {
     delay_ms: u64,
 }
 
+/// Resolves when the cancellation flag is set.
+async fn wait_cancelled(flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    while !flag.load(std::sync::atomic::Ordering::SeqCst) {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
 #[async_trait]
 impl Provider for StubProvider {
     fn id(&self) -> &str {
@@ -69,7 +76,18 @@ impl Provider for StubProvider {
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
         if self.delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+            let dur = std::time::Duration::from_millis(self.delay_ms);
+            if let Some(ref cancel) = req.options.cancel_signal {
+                let cancelled = tokio::select! {
+                    _ = tokio::time::sleep(dur) => false,
+                    _ = wait_cancelled(cancel.clone()) => true,
+                };
+                if cancelled {
+                    anyhow::bail!("stopped by user");
+                }
+            } else {
+                tokio::time::sleep(dur).await;
+            }
         }
         let mode = req.options.interaction_mode.clone();
         let reply = format!("echo: {} ({})", req.prompt, mode);
@@ -104,7 +122,18 @@ impl Provider for StubProvider {
     }
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
         if self.delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+            let dur = std::time::Duration::from_millis(self.delay_ms);
+            if let Some(ref cancel) = req.options.cancel_signal {
+                let cancelled = tokio::select! {
+                    _ = tokio::time::sleep(dur) => false,
+                    _ = wait_cancelled(cancel.clone()) => true,
+                };
+                if cancelled {
+                    anyhow::bail!("stopped by user");
+                }
+            } else {
+                tokio::time::sleep(dur).await;
+            }
         }
         let mode = req.options.interaction_mode.clone();
         let reply = format!("echo: {} ({})", req.prompt, mode);
@@ -143,6 +172,94 @@ impl Provider for StubProvider {
         Ok(serde_json::json!({}))
     }
 
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+/// A provider that emits parts incrementally with delays so a stop
+/// mid-generation leaves partial output in the run state.
+struct StreamingStubProvider;
+
+#[async_trait]
+impl Provider for StreamingStubProvider {
+    fn id(&self) -> &str {
+        "streaming-stub"
+    }
+    fn name(&self) -> &str {
+        "Streaming Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "streaming-1".into(),
+            label: "Streaming One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        let parts = vec![
+            MessagePart::thinking("thinking about it"),
+            MessagePart::text("partial reply"),
+        ];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+        // Wait until cancelled, then return the partial parts.
+        if let Some(ref cancel) = req.options.cancel_signal {
+            while !cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        } else {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+        Ok(StartResponse {
+            session_id: "streaming-session".into(),
+            reply: "partial reply".into(),
+            thinking: "thinking about it".into(),
+            parts,
+            title: "Streaming Thread".into(),
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        let parts = vec![
+            MessagePart::thinking("thinking about it"),
+            MessagePart::text("partial reply"),
+        ];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+        if let Some(ref cancel) = req.options.cancel_signal {
+            while !cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        } else {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+        Ok(SendResponse {
+            reply: "partial reply".into(),
+            thinking: "thinking about it".into(),
+            parts,
+        })
+    }
+    async fn export(
+        &self,
+        _session_id: &str,
+        _working_dir: &std::path::Path,
+    ) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::json!({}))
+    }
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -797,6 +914,94 @@ async fn thread_stop_ends_active_run() {
     let body = body_str(resp.into_body()).await;
     assert!(body.contains(r#""role":"user""#), "body: {body}");
     assert!(!body.contains(r#""role":"assistant""#), "body: {body}");
+}
+
+#[tokio::test]
+async fn thread_stop_persists_partial_output() {
+    let (mut state, database) = app_state().await;
+    state.provider = Arc::new(StreamingStubProvider) as Arc<dyn Provider>;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----stopboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+
+    let send_app = app.clone();
+    let send_cookie = cookie.clone();
+    let send_tid = tid.clone();
+    let send_body = body.clone();
+    let send_boundary = boundary.to_string();
+    let _send_task = tokio::spawn(async move {
+        send_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/threads/{send_tid}/send"))
+                    .header(header::HOST, "localhost")
+                    .header(header::ORIGIN, "http://localhost")
+                    .header("cookie", &send_cookie)
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={send_boundary}"),
+                    )
+                    .body(Body::from(send_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+
+    // Wait for parts to appear in the run state.
+    for _ in 0..50 {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        let resp = app
+            .clone()
+            .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+            .await
+            .unwrap();
+        if resp.status() == StatusCode::OK {
+            let body = body_str(resp.into_body()).await;
+            if body.contains("partial reply") {
+                break;
+            }
+        }
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", &format!("/api/threads/{tid}/stop"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The partial assistant message is persisted asynchronously after
+    // the provider returns from graceful cancellation. Poll for it.
+    let mut found = false;
+    for _ in 0..200 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let resp = app
+            .clone()
+            .oneshot(authed("GET", &format!("/api/threads/{tid}/messages"), &cookie, ""))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_str(resp.into_body()).await;
+        if body.contains(r#""role":"assistant""#) && body.contains("partial reply") {
+            assert!(body.contains(r#""role":"user""#), "body: {body}");
+            assert!(body.contains("thinking about it"), "body: {body}");
+            found = true;
+            break;
+        }
+    }
+    assert!(found, "partial assistant message was not persisted after stop");
+
+    drop(database);
 }
 
 #[tokio::test]

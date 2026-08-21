@@ -195,6 +195,9 @@ StreamingReduceResult reduceStreamingEvent({
       );
 
     case 'stopped':
+      // The backend persists partial output before aborting, so
+      // refreshTail() will load it as a regular message. Clear streaming
+      // state the same way as 'done'.
       return StreamingReduceResult(
         detail: detail,
         snapshot: _finishSnapshot(
