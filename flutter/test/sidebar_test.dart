@@ -64,6 +64,7 @@ class _ThrowingClient extends BaseApiClient {
 class _FakeApiService extends ApiService {
   final deletedThreadIds = <String>[];
   final deletedProjectIds = <int>[];
+  bool healthOk = true;
 
   _FakeApiService() : super(client: _ThrowingClient());
 
@@ -78,6 +79,9 @@ class _FakeApiService extends ApiService {
     deletedProjectIds.add(id);
     return Future.value();
   }
+
+  @override
+  Future<bool> checkHealth() => Future.value(healthOk);
 
   @override
   Future<List<Thread>> listThreads() => Future.value([]);
@@ -1021,5 +1025,88 @@ void main() {
     expect(find.text('My thread'), findsNothing);
     expect(state.projects, hasLength(1));
     expect(state.activeProjectId, 2);
+  });
+
+  testWidgets('Connection indicator shows connected', (tester) async {
+    final api = _FakeApiService()..healthOk = true;
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
+    await state.checkConnection();
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Connected'), findsOneWidget);
+  });
+
+  testWidgets('Connection indicator shows disconnected', (tester) async {
+    final api = _FakeApiService()..healthOk = false;
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
+    await state.checkConnection();
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Disconnected'), findsOneWidget);
+  });
+
+  testWidgets('Connection indicator shows checking initially', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+      connectionStatus: ConnectionStatus.checking,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    // Use pump instead of pumpAndSettle to avoid timing out on the
+    // CircularProgressIndicator in the checking state.
+    final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold));
+    scaffold.openDrawer();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Checking connection\u2026'), findsOneWidget);
   });
 }

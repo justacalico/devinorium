@@ -482,6 +482,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deleteProject => 'Delete project';
 
   @override
+  String get connected => 'Connected';
+
+  @override
+  String get disconnected => 'Disconnected';
+
+  @override
+  String get checkingConnection => 'Checking connection…';
+
+  @override
   String get topics => 'Topics';
 
   @override

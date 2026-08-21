@@ -17,6 +17,8 @@ enum AppView { loading, login, app }
 
 enum MainPage { threads, settings }
 
+enum ConnectionStatus { connected, disconnected, checking }
+
 enum DialogKind {
   none,
   totpSetup,
@@ -68,6 +70,7 @@ class AppState extends ChangeNotifier {
     String? selectedPermission,
     String? startedAt,
     bool threadLoading = false,
+    ConnectionStatus connectionStatus = ConnectionStatus.connected,
   }) : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
@@ -86,6 +89,7 @@ class AppState extends ChangeNotifier {
     _filesPath = filesPath;
     _globalError = globalError ?? '';
     _composerMode = composerMode;
+    _connectionStatus = connectionStatus;
 
     final threadId = activeThreadId ?? activeThreadDetail?.thread.id;
     if (threadId != null) {
@@ -128,6 +132,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _healthTimer?.cancel();
     for (final store in _threadStores.values) {
       store.dispose();
     }
@@ -194,6 +199,10 @@ class AppState extends ChangeNotifier {
   List<GitConnection> _gitConnections = [];
   bool _loadingGitConnections = false;
 
+  // Connection health.
+  ConnectionStatus _connectionStatus = ConnectionStatus.checking;
+  Timer? _healthTimer;
+
   // Getters
   AppView get view => _view;
   MainPage get page => _page;
@@ -241,6 +250,7 @@ class AppState extends ChangeNotifier {
   AskRequest? get pendingAskRequest => _activeStore?.pendingAskRequest;
   String? get startedAt => _activeStore?.startedAt;
   String get globalError => _globalError;
+  ConnectionStatus get connectionStatus => _connectionStatus;
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
@@ -633,11 +643,34 @@ class AppState extends ChangeNotifier {
       } else {
         await selectAllProjects();
       }
+      startHealthChecks();
     } catch (e) {
       if (e is ApiException && e.statusCode == 401) {
         await api.client.clearCredentials();
       }
       _view = AppView.login;
+      notifyListeners();
+    }
+  }
+
+  void startHealthChecks() {
+    _healthTimer?.cancel();
+    checkConnection();
+    _healthTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      checkConnection();
+    });
+  }
+
+  void stopHealthChecks() {
+    _healthTimer?.cancel();
+    _healthTimer = null;
+  }
+
+  Future<void> checkConnection() async {
+    final ok = await api.checkHealth();
+    final next = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;
+    if (_connectionStatus != next) {
+      _connectionStatus = next;
       notifyListeners();
     }
   }
@@ -805,6 +838,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    stopHealthChecks();
     for (final store in _threadStores.values) {
       store.dispose();
     }
@@ -833,6 +867,7 @@ class AppState extends ChangeNotifier {
     _selectedModel = '';
     _selectedPermission = 'normal';
     _runningThreadIds.clear();
+    _connectionStatus = ConnectionStatus.checking;
     notifyListeners();
   }
 

@@ -506,6 +506,17 @@ class ApiService {
     }
     return buffer.toString();
   }
+
+  /// Check if the backend is reachable. Returns true on a successful
+  /// `/healthz` response, false on any error.
+  Future<bool> checkHealth() async {
+    try {
+      await _client.get('/healthz');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 /// Decode a JSON-serialized SSE `data` payload into a [Message].

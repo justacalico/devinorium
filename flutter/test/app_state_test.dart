@@ -533,6 +533,26 @@ void main() {
       expect(base.activeProjectId, 1);
     });
 
+    test('checkConnection sets connected on success', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([_json(200, {'status': 'ok'})])),
+      );
+      final base = AppState.test(api: state.api);
+      base.setView(AppView.app);
+      await base.checkConnection();
+      expect(base.connectionStatus, ConnectionStatus.connected);
+    });
+
+    test('checkConnection sets disconnected on failure', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([http.Response('', 500)])),
+      );
+      final base = AppState.test(api: state.api);
+      base.setView(AppView.app);
+      await base.checkConnection();
+      expect(base.connectionStatus, ConnectionStatus.disconnected);
+    });
+
     test('reorderProjects reorders list and calls API', () async {
       final state = AppState(
         api: ApiService(client: _clientFor([_json(200, {})])),
