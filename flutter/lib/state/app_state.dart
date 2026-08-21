@@ -185,7 +185,6 @@ class AppState extends ChangeNotifier {
   Locale _locale = const Locale('en');
   int _settingsTopicIndex = 0;
   final _notifications = NotificationService();
-  StreamPhase _prevPhase = StreamPhase.idle;
 
   // Git state (per project).
   final Map<int, GitRepoInfo> _gitRepoInfo = {};
@@ -219,14 +218,6 @@ class AppState extends ChangeNotifier {
   int? get activeProjectId => _activeProjectId;
 
   String? get activeThreadId => _activeThreadId;
-  String? get _activeThreadTitle {
-    final id = _activeThreadId;
-    if (id == null) return null;
-    for (final t in _threads) {
-      if (t.id == id) return t.title;
-    }
-    return null;
-  }
   ThreadDetail? get activeThreadDetail => _activeStore?.detail.valueOrNull;
   bool get activeThreadLoading =>
       _threadOpening ||
@@ -287,17 +278,6 @@ class AppState extends ChangeNotifier {
   void _onThreadStoreChanged() {
     final store = _activeStore;
     if (store == null) return;
-    final phase = store.streaming.phase;
-    if ((phase == StreamPhase.completed || phase == StreamPhase.failed) &&
-        _prevPhase != phase &&
-        _prevPhase != StreamPhase.completed &&
-        _prevPhase != StreamPhase.failed) {
-      _notifications.notifyThreadCompleted(
-        title: _activeThreadTitle ?? 'Thread',
-        failed: phase == StreamPhase.failed,
-      );
-    }
-    _prevPhase = phase;
     _syncFromActiveStore();
     notifyListeners();
   }
@@ -340,7 +320,7 @@ class AppState extends ChangeNotifier {
     String? selectedModel,
     String? selectedPermission,
   }) {
-    return ThreadStore(
+    final store = ThreadStore(
       api: api,
       threadId: id,
       projectId: projectId ?? _activeProjectId ?? 0,
@@ -352,6 +332,18 @@ class AppState extends ChangeNotifier {
       selectedModel: selectedModel,
       selectedPermission: selectedPermission,
     );
+    store.onRunFinished = (failed) {
+      final title = _threadTitle(id) ?? 'Thread';
+      _notifications.notifyThreadCompleted(title: title, failed: failed);
+    };
+    return store;
+  }
+
+  String? _threadTitle(String id) {
+    for (final t in _threads) {
+      if (t.id == id) return t.title;
+    }
+    return null;
   }
 
   GitRepoInfo? gitRepoInfo(int projectId) => _gitRepoInfo[projectId];

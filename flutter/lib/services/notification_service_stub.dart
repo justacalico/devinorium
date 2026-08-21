@@ -1,7 +1,9 @@
-import '../l10n/global_l10n.dart';
-
-/// Stub implementation of NotificationService for non-web platforms
-/// and the VM test runner.
+/// Handles notifications and completion sound when a thread run finishes.
+///
+/// Platform-specific implementations:
+/// - Web: browser Notifications API + Web Audio API
+/// - Desktop (Linux/macOS/Windows): native OS commands (notify-send, osascript, PowerShell)
+/// - Mobile/stub: no-op
 class NotificationService {
   bool _notificationsEnabled = false;
   bool _soundEnabled = false;
@@ -18,6 +20,6 @@ class NotificationService {
   }
 
   void notifyThreadCompleted({required String title, required bool failed}) {
-    // No-op on non-web platforms.
+    // No-op on unsupported platforms.
   }
 }

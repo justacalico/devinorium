@@ -4,8 +4,6 @@ import 'package:web/web.dart' as web;
 
 import '../l10n/global_l10n.dart';
 
-/// Handles browser notifications and completion sound when a thread run
-/// finishes while the tab is not active.
 class NotificationService {
   bool _notificationsEnabled = false;
   bool _soundEnabled = false;
@@ -57,6 +55,9 @@ class NotificationService {
   void _playSound() {
     try {
       final ctx = web.AudioContext();
+      if (ctx.state == 'suspended') {
+        ctx.resume().toDart.then((_) {});
+      }
       final osc = ctx.createOscillator();
       final gain = ctx.createGain();
       osc.frequency.value = 880;

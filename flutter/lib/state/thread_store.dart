@@ -74,6 +74,10 @@ class ThreadStore {
   /// Called whenever any piece of thread state changes.
   VoidCallback? onStateChanged;
 
+  /// Called when a run finishes (completed or failed). The [failed] flag
+  /// indicates whether the run ended with an error.
+  void Function(bool failed)? onRunFinished;
+
   // ---- getters ----
 
   ThreadStoreStatus get status => _status;
@@ -475,6 +479,9 @@ class ThreadStore {
     );
     _lastRunStatus = _statusFromPhase(phase);
     _emit();
+    if (phase == StreamPhase.completed || phase == StreamPhase.failed) {
+      onRunFinished?.call(phase == StreamPhase.failed);
+    }
   }
 
   void _finishResume(Map<String, dynamic> run) {

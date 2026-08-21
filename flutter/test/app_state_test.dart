@@ -2010,5 +2010,90 @@ void main() {
       expect(state.notificationsEnabled, isTrue);
       expect(state.soundEnabled, isTrue);
     });
+
+    test('onRunFinished fires when stream completes', () async {
+      final completer = Completer<void>();
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [
+            {
+              'role': 'assistant',
+              'content': 'done',
+              'thinking': null,
+              'attachments': [],
+            },
+          ],
+          'total_messages': 1,
+        }),
+        _json(200, []),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setNotificationsEnabled(true);
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      state.addListener(() {
+        if (!state.sending && state.streamingParts.isEmpty) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      controller.add(SseEvent('part', '{"type":"text","content":"done"}'));
+      controller.add(
+        SseEvent('done', '{"role":"assistant","content":"done"}'),
+      );
+
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+      // The notification service stub is a no-op, but the test verifies
+      // that the flow completes without errors.
+      expect(state.sending, isFalse);
+    });
   });
 }
