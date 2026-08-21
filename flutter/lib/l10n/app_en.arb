@@ -386,6 +386,23 @@
     }
   },
   "readFileNoContent": "No content",
+  "editFileTitle": "Edit {fileName}",
+  "@editFileTitle": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "editFileNewFile": "New file",
+  "editFileModified": "Modified",
+  "editFileBefore": "Before",
+  "editFileAfter": "After",
+  "editFileDiff": "Diff",
+  "editFileNoDiff": "No diff content yet",
+  "editFileCopy": "Copy",
+  "editFileCopied": "Copied",
+  "editFileOpenInFiles": "Open in files",
   "gitBranches": "Branches",
   "pull": "Pull",
   "push": "Push",

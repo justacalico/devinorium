@@ -16,6 +16,7 @@ import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'ask_request_panel.dart';
 import 'drop_zone.dart';
+import 'edit_file_tool.dart';
 import 'model_picker.dart';
 import 'read_file_tool.dart';
 
@@ -1262,6 +1263,10 @@ class _ToolCallItemState extends State<_ToolCallItem> {
 
     if (tool.kind == 'read') {
       return ReadFileTool(key: ValueKey(tool.id), tool: tool);
+    }
+
+    if (tool.kind == 'edit') {
+      return EditFileTool(key: ValueKey(tool.id), tool: tool);
     }
 
     final (icon, iconColor) = _toolIconAndColor(tool.kind, theme);
