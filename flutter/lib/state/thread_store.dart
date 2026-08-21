@@ -179,7 +179,6 @@ class ThreadStore {
       _streaming = _streaming.copyWith(phase: StreamPhase.sending);
       _lastRunStatus = 'running';
       _runFinishedFired = false;
-      debugPrint('[notify] sendMessage: thread=$threadId token=$token phase=sending');
       _emit();
 
       final messageAttachments = List<({String filename, String mime, Uint8List bytes})>.of(
@@ -407,12 +406,10 @@ class ThreadStore {
     _emit();
 
     if (ev.event == 'done') {
-      debugPrint('[notify] SSE done event: thread=$threadId token=$token');
       _cancelStream();
       _finishStream(phase: StreamPhase.completed);
       refreshTail();
     } else if (ev.event == 'error') {
-      debugPrint('[notify] SSE error event: thread=$threadId token=$token data=${ev.data}');
       _cancelStream();
       _finishStream(
         phase: StreamPhase.failed,
@@ -420,7 +417,6 @@ class ThreadStore {
       );
       refreshTail();
     } else if (ev.event == 'stopped') {
-      debugPrint('[notify] SSE stopped event: thread=$threadId token=$token');
       _cancelStream();
       _refreshThreadsList();
       _refreshTailAfterStop();
@@ -460,7 +456,6 @@ class ThreadStore {
   }
 
   void _handleStreamError(Object e, int token) {
-    debugPrint('[notify] stream error: thread=$threadId token=$token streamToken=$_streamToken error=$e');
     if (token != _streamToken) return;
     if (e is ApiException && e.statusCode == 409) {
       // Another client is running this thread; try to resume the existing run.
@@ -471,7 +466,6 @@ class ThreadStore {
   }
 
   void _handleStreamDone(int token) {
-    debugPrint('[notify] stream done: thread=$threadId token=$token streamToken=$_streamToken isActive=${_streaming.isActive}');
     if (token != _streamToken) return;
     // Stream closed without an explicit done/error event. Finish the stream
     // so the UI and notification callback are updated.
@@ -502,10 +496,7 @@ class ThreadStore {
     if (!_runFinishedFired &&
         (phase == StreamPhase.completed || phase == StreamPhase.failed)) {
       _runFinishedFired = true;
-      debugPrint('[notify] onRunFinished: thread=$threadId phase=$phase failed=${phase == StreamPhase.failed}');
       onRunFinished?.call(phase == StreamPhase.failed);
-    } else {
-      debugPrint('[notify] _finishStream skipped onRunFinished: thread=$threadId alreadyFired=$_runFinishedFired phase=$phase');
     }
   }
 

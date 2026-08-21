@@ -497,14 +497,6 @@ class _PersonalizationSection extends StatelessWidget {
           value: state.notificationsEnabled,
           onChanged: (v) => state.setNotificationsEnabled(v),
         ),
-        SwitchListTile(
-          title: Text(l.completionSound),
-          subtitle: Text(l.completionSoundDescription),
-          value: state.soundEnabled,
-          onChanged: state.notificationsEnabled
-              ? (v) => state.setSoundEnabled(v)
-              : null,
-        ),
       ],
     );
   }

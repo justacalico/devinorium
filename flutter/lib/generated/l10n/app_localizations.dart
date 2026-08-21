@@ -1492,18 +1492,6 @@ abstract class AppLocalizations {
   /// **'Show a browser notification when a thread run finishes while this tab is in the background.'**
   String get completionNotificationsDescription;
 
-  /// No description provided for @completionSound.
-  ///
-  /// In en, this message translates to:
-  /// **'Play sound on completion'**
-  String get completionSound;
-
-  /// No description provided for @completionSoundDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Play a short tone when a thread run finishes while this tab is in the background.'**
-  String get completionSoundDescription;
-
   /// No description provided for @threadCompletedTitle.
   ///
   /// In en, this message translates to:

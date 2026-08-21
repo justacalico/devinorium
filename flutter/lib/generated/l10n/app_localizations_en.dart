@@ -786,13 +786,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Show a browser notification when a thread run finishes while this tab is in the background.';
 
   @override
-  String get completionSound => 'Play sound on completion';
-
-  @override
-  String get completionSoundDescription =>
-      'Play a short tone when a thread run finishes while this tab is in the background.';
-
-  @override
   String get threadCompletedTitle => 'Thread completed';
 
   @override

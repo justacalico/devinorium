@@ -6,18 +6,12 @@ import '../l10n/global_l10n.dart';
 
 class NotificationService {
   bool _notificationsEnabled = false;
-  bool _soundEnabled = false;
 
   bool get notificationsEnabled => _notificationsEnabled;
-  bool get soundEnabled => _soundEnabled;
 
   void setNotificationsEnabled(bool enabled) {
     _notificationsEnabled = enabled;
     if (enabled) _ensurePermission();
-  }
-
-  void setSoundEnabled(bool enabled) {
-    _soundEnabled = enabled;
   }
 
   void _ensurePermission() {
@@ -48,24 +42,6 @@ class NotificationService {
         failed ? l.threadFailedTitle : l.threadCompletedTitle,
         web.NotificationOptions(body: body),
       );
-    } catch (_) {}
-    if (_soundEnabled) _playSound();
-  }
-
-  void _playSound() {
-    try {
-      final ctx = web.AudioContext();
-      if (ctx.state == 'suspended') {
-        ctx.resume().toDart.then((_) {});
-      }
-      final osc = ctx.createOscillator();
-      final gain = ctx.createGain();
-      osc.frequency.value = 880;
-      gain.gain.value = 0.1;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
     } catch (_) {}
   }
 }

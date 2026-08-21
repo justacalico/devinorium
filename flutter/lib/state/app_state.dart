@@ -257,7 +257,6 @@ class AppState extends ChangeNotifier {
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
   bool get notificationsEnabled => _notifications.notificationsEnabled;
-  bool get soundEnabled => _notifications.soundEnabled;
 
   int? get renameProjectId => _renameProjectId;
   String? get renameThreadId => _renameThreadId;
@@ -334,7 +333,6 @@ class AppState extends ChangeNotifier {
     );
     store.onRunFinished = (failed) {
       final title = _threadTitle(id) ?? 'Thread';
-      debugPrint('[notify] AppState onRunFinished callback: thread=$id title=$title failed=$failed notificationsEnabled=${_notifications.notificationsEnabled}');
       _notifications.notifyThreadCompleted(title: title, failed: failed);
     };
     return store;
@@ -562,23 +560,11 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> setSoundEnabled(bool enabled) async {
-    _notifications.setSoundEnabled(enabled);
-    notifyListeners();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('devinorium_sound', enabled);
-    } catch (_) {}
-  }
-
   Future<void> _loadNotificationPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _notifications.setNotificationsEnabled(
         prefs.getBool('devinorium_notifications') ?? false,
-      );
-      _notifications.setSoundEnabled(
-        prefs.getBool('devinorium_sound') ?? false,
       );
     } catch (_) {}
     notifyListeners();

@@ -1977,7 +1977,6 @@ void main() {
     test('defaults to disabled', () {
       final state = AppState.test();
       expect(state.notificationsEnabled, isFalse);
-      expect(state.soundEnabled, isFalse);
     });
 
     test('setNotificationsEnabled persists the value', () async {
@@ -1990,25 +1989,13 @@ void main() {
       );
     });
 
-    test('setSoundEnabled persists the value', () async {
-      final state = AppState.test();
-      await state.setSoundEnabled(true);
-      expect(state.soundEnabled, isTrue);
-      expect(
-        (await SharedPreferences.getInstance()).getBool('devinorium_sound'),
-        isTrue,
-      );
-    });
-
     test('bootstrap loads saved notification prefs', () async {
       SharedPreferences.setMockInitialValues({
         'devinorium_notifications': true,
-        'devinorium_sound': true,
       });
       final state = AppState.test();
       await state.bootstrap();
       expect(state.notificationsEnabled, isTrue);
-      expect(state.soundEnabled, isTrue);
     });
 
     test('onRunFinished fires when stream completes', () async {

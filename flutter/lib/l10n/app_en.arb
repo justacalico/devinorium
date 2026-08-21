@@ -459,8 +459,6 @@
   "notifications": "Notifications",
   "completionNotifications": "Notify when a thread completes",
   "completionNotificationsDescription": "Show a browser notification when a thread run finishes while this tab is in the background.",
-  "completionSound": "Play sound on completion",
-  "completionSoundDescription": "Play a short tone when a thread run finishes while this tab is in the background.",
   "threadCompletedTitle": "Thread completed",
   "threadCompletedBody": "{title} has finished running.",
   "@threadCompletedBody": {
