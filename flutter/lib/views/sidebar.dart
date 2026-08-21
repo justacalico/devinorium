@@ -102,6 +102,7 @@ class Sidebar extends StatelessWidget {
                 : const _ProjectThreadList(),
           ),
           // User chip + menu
+          const _ConnectionIndicator(),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Container(
@@ -487,6 +488,60 @@ class _ProjectExpandableTile extends StatelessWidget {
                           ),
                   )
                 : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConnectionIndicator extends StatelessWidget {
+  const _ConnectionIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final status = state.connectionStatus;
+
+    final Color color;
+    final IconData icon;
+    final String label;
+    switch (status) {
+      case ConnectionStatus.connected:
+        color = Colors.green;
+        icon = Icons.cloud_done;
+        label = l.connected;
+      case ConnectionStatus.disconnected:
+        color = theme.colorScheme.error;
+        icon = Icons.cloud_off;
+        label = l.disconnected;
+      case ConnectionStatus.checking:
+        color = theme.colorScheme.onSurfaceVariant;
+        icon = Icons.sync;
+        label = l.checkingConnection;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      child: Row(
+        children: [
+          if (status == ConnectionStatus.checking)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(color),
+              ),
+            )
+          else
+            Icon(icon, size: 14, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(color: color),
           ),
         ],
       ),

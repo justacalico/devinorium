@@ -177,6 +177,23 @@ void main() {
       await service.deleteProject(1);
     });
 
+    test('checkHealth returns true on 200', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/healthz'));
+        return _json(200, {'status': 'ok'});
+      });
+      final service = _serviceFor(mock);
+      expect(await service.checkHealth(), isTrue);
+    });
+
+    test('checkHealth returns false on error', () async {
+      final mock = MockClient((req) async {
+        return http.Response('', 500);
+      });
+      final service = _serviceFor(mock);
+      expect(await service.checkHealth(), isFalse);
+    });
+
     test('reorderProjects patches project_ids', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('PATCH', '/api/projects/reorder'));

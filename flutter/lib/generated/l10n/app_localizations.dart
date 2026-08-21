@@ -970,6 +970,24 @@ abstract class AppLocalizations {
   /// **'Delete project'**
   String get deleteProject;
 
+  /// No description provided for @connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get connected;
+
+  /// No description provided for @disconnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnected'**
+  String get disconnected;
+
+  /// No description provided for @checkingConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking connection…'**
+  String get checkingConnection;
+
   /// No description provided for @topics.
   ///
   /// In en, this message translates to:
