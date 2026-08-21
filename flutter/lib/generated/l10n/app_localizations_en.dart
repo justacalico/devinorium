@@ -800,4 +800,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String threadFailedBody(String title) {
     return '$title encountered an error.';
   }
+
+  @override
+  String get copy => 'Copy';
+
+  @override
+  String get copied => 'Copied';
+
+  @override
+  String get copiedToClipboard => 'Copied to clipboard';
 }
