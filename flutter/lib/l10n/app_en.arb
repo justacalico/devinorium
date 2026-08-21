@@ -241,6 +241,15 @@
   "noThreadsYet": "No threads yet",
   "deleteThreadConfirm": "Delete this thread? This cannot be undone.",
   "deleteThreadTooltip": "Delete thread (Shift+click to skip confirmation)",
+  "deleteProjectConfirm": "Remove \"{name}\" from Devinorium? This deletes the project and all its threads from the database. The folder on disk is not touched.",
+  "@deleteProjectConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteProject": "Delete project",
   "topics": "Topics",
   "timeAgoJustNow": "just now",
   "timeAgoMinutes": "{count}m ago",

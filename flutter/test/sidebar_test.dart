@@ -63,12 +63,19 @@ class _ThrowingClient extends BaseApiClient {
 
 class _FakeApiService extends ApiService {
   final deletedThreadIds = <String>[];
+  final deletedProjectIds = <int>[];
 
   _FakeApiService() : super(client: _ThrowingClient());
 
   @override
   Future<void> deleteThread(String id) {
     deletedThreadIds.add(id);
+    return Future.value();
+  }
+
+  @override
+  Future<void> deleteProject(int id) {
+    deletedProjectIds.add(id);
     return Future.value();
   }
 
@@ -762,5 +769,257 @@ void main() {
     expect(state.dialog, DialogKind.renameThread);
     expect(state.renameThreadId, 'a');
     expect(state.renameInitialName, 'My thread');
+  });
+
+  testWidgets('Project delete menu item shows confirmation', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [],
+      activeProjectId: 1,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    // Open the project's more-vert menu.
+    final projectTile = find.ancestor(
+      of: find.text('MyProject'),
+      matching: find.byType(ListTile),
+    ).first;
+    final more = find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    expect(more, findsOneWidget);
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    // Tap "Delete project".
+    expect(find.text('Delete project'), findsOneWidget);
+    await tester.tap(find.text('Delete project'));
+    await tester.pumpAndSettle();
+
+    // Confirmation dialog should be visible.
+    expect(find.textContaining('Remove "MyProject"'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+  });
+
+  testWidgets('Confirm project delete removes it', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'Other', path: '/y', createdAt: '', updatedAt: ''),
+      ],
+      threads: [],
+      activeProjectId: 1,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    // Open the project's more-vert menu and tap delete.
+    final projectTile = find.ancestor(
+      of: find.text('MyProject'),
+      matching: find.byType(ListTile),
+    ).first;
+    await tester.tap(find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete project'));
+    await tester.pumpAndSettle();
+
+    // Confirm.
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(api.deletedProjectIds, contains(1));
+    expect(find.text('MyProject'), findsNothing);
+    expect(state.projects, hasLength(1));
+  });
+
+  testWidgets('Shift+click project delete skips confirmation', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [],
+      activeProjectId: 1,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    // Open the project's more-vert menu and tap delete.
+    final projectTile = find.ancestor(
+      of: find.text('MyProject'),
+      matching: find.byType(ListTile),
+    ).first;
+    await tester.tap(find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete project'));
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    // No confirmation dialog should have appeared.
+    expect(find.textContaining('Remove "MyProject"'), findsNothing);
+    expect(api.deletedProjectIds, contains(1));
+    expect(state.projects, isEmpty);
+  });
+
+  testWidgets('Cancel project delete does not remove it', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [],
+      activeProjectId: 1,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final projectTile = find.ancestor(
+      of: find.text('MyProject'),
+      matching: find.byType(ListTile),
+    ).first;
+    await tester.tap(find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete project'));
+    await tester.pumpAndSettle();
+
+    // Tap Cancel.
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Remove "MyProject"'), findsNothing);
+    expect(api.deletedProjectIds, isEmpty);
+    expect(find.text('MyProject'), findsOneWidget);
+    expect(state.projects, hasLength(1));
+  });
+
+  testWidgets('Delete project with active thread clears selection',
+      (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'Other', path: '/y', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    // Expand the project to see the thread.
+    await tester.tap(find.text('MyProject'));
+    await tester.pumpAndSettle();
+
+    final projectTile = find.ancestor(
+      of: find.text('MyProject'),
+      matching: find.byType(ListTile),
+    ).first;
+    await tester.tap(find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete project'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(api.deletedProjectIds, contains(1));
+    expect(find.text('MyProject'), findsNothing);
+    expect(find.text('My thread'), findsNothing);
+    expect(state.projects, hasLength(1));
+    expect(state.activeProjectId, 2);
   });
 }

@@ -958,6 +958,18 @@ abstract class AppLocalizations {
   /// **'Delete thread (Shift+click to skip confirmation)'**
   String get deleteThreadTooltip;
 
+  /// No description provided for @deleteProjectConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove \"{name}\" from Devinorium? This deletes the project and all its threads from the database. The folder on disk is not touched.'**
+  String deleteProjectConfirm(String name);
+
+  /// No description provided for @deleteProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete project'**
+  String get deleteProject;
+
   /// No description provided for @topics.
   ///
   /// In en, this message translates to:
