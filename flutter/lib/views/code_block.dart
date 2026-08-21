@@ -111,17 +111,19 @@ class _CodeBlockState extends State<CodeBlock> {
           // Code content.
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Scrollbar(
-              controller: _scrollController,
-              child: SingleChildScrollView(
+            child: SelectionContainer.disabled(
+              child: Scrollbar(
                 controller: _scrollController,
-                scrollDirection: Axis.horizontal,
-                child: Text.rich(
-                  hl.highlight(widget.code, lang),
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                    height: 1.4,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: Text.rich(
+                    hl.highlight(widget.code, lang),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ),
