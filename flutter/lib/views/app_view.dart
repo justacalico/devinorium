@@ -11,8 +11,16 @@ import 'thread_page.dart';
 /// The main authenticated layout: sidebar + main content area.
 /// Uses a Row with a fixed-width sidebar (300px) and a flexible main area.
 /// On narrow screens, the sidebar becomes a drawer.
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _wasFilesPanelOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -22,14 +30,29 @@ class AppShell extends StatelessWidget {
     final main = DropZone(child: _MainArea());
 
     if (isNarrow) {
+      if (state.filesPanelOpen && !_wasFilesPanelOpen) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scaffoldKey.currentState?.openEndDrawer();
+        });
+      }
+      _wasFilesPanelOpen = state.filesPanelOpen;
+
       return Scaffold(
+        key: _scaffoldKey,
         drawer: const Drawer(width: 300, child: Sidebar()),
         body: main,
         endDrawer: state.filesPanelOpen
             ? const Drawer(width: 360, child: FilesPanel())
             : null,
+        onEndDrawerChanged: (opened) {
+          if (!opened && state.filesPanelOpen) {
+            state.closeFilesPanel();
+          }
+        },
       );
     }
+
+    _wasFilesPanelOpen = state.filesPanelOpen;
 
     return Scaffold(
       body: Row(
