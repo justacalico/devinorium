@@ -365,7 +365,13 @@ class _PartGroup {
   final String type;
   final String? content;
   final List<_ThinkingItem> thinkingItems;
-  _PartGroup({required this.type, this.content, this.thinkingItems = const []});
+  final ToolCallData? tool;
+  _PartGroup({
+    required this.type,
+    this.content,
+    this.thinkingItems = const [],
+    this.tool,
+  });
 }
 
 class _MessageItemState extends State<_MessageItem> {
@@ -410,7 +416,11 @@ class _MessageItemState extends State<_MessageItem> {
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
         if (tool == null) continue;
-        if (groups.isNotEmpty && groups.last.type == 'thinking') {
+        // File edits are rendered as standalone cards outside the thinking
+        // block so the user can see what changed without expanding thinking.
+        if (tool.kind == 'edit') {
+          groups.add(_PartGroup(type: 'tool_call', tool: tool));
+        } else if (groups.isNotEmpty && groups.last.type == 'thinking') {
           groups.last.thinkingItems.add(
             _ThinkingItem(type: 'tool_call', tool: tool),
           );
@@ -496,6 +506,11 @@ class _MessageItemState extends State<_MessageItem> {
         children.add(
           _buildTextContent(context, group.content ?? '', widget.message.role),
         );
+      } else if (group.type == 'tool_call') {
+        final tool = group.tool;
+        if (tool != null) {
+          children.add(_ToolCallItem(key: ValueKey('tool-group-$i'), tool: tool));
+        }
       } else if (group.type == 'thinking') {
         final isLast = i == groups.length - 1;
         children.add(
@@ -1245,7 +1260,7 @@ class _ModeDropdown extends StatelessWidget {
 
 class _ToolCallItem extends StatefulWidget {
   final ToolCallData tool;
-  const _ToolCallItem({required this.tool});
+  const _ToolCallItem({super.key, required this.tool});
 
   @override
   State<_ToolCallItem> createState() => _ToolCallItemState();
