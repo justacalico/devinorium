@@ -46,10 +46,18 @@ StreamingReduceResult reduceStreamingEvent({
         snapshot: snapshot,
         json: decoded,
       ).copyWith(phase: phaseForStatus(status));
+      if (status == 'stopped') {
+        // Keep parts visible; refreshTail will swap them for the persisted
+        // message once the backend finishes saving.
+        return StreamingReduceResult(
+          detail: detail,
+          snapshot: next.copyWith(thinkingActive: false),
+        );
+      }
       final finished = _finishSnapshot(next);
       return StreamingReduceResult(
         detail: detail,
-        snapshot: status == 'completed' || status == 'failed' || status == 'stopped'
+        snapshot: status == 'completed' || status == 'failed'
             ? finished
             : next,
       );
@@ -195,15 +203,17 @@ StreamingReduceResult reduceStreamingEvent({
       );
 
     case 'stopped':
+      // Keep streaming parts visible so the user doesn't see the partial
+      // output vanish while the backend persists it. refreshTail() will
+      // poll until the persisted message appears, then clear the snapshot.
       return StreamingReduceResult(
         detail: detail,
-        snapshot: _finishSnapshot(
-          snapshot.copyWith(
-            phase: StreamPhase.stopped,
-            clearPendingPermission: true,
-            clearPendingAsk: true,
-            clearError: true,
-          ),
+        snapshot: snapshot.copyWith(
+          phase: StreamPhase.stopped,
+          thinkingActive: false,
+          clearPendingPermission: true,
+          clearPendingAsk: true,
+          clearError: true,
         ),
       );
 

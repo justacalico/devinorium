@@ -131,6 +131,14 @@ struct PromptResult {
     parts: Vec<MessagePart>,
 }
 
+/// Resolves when the cancellation flag is set. Polls every 50ms since
+/// AtomicBool has no native async wait.
+async fn cancel_wait(flag: Arc<AtomicBool>) {
+    while !flag.load(Ordering::SeqCst) {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
 impl DevinAcpProvider {
     async fn run_prompt(
         &self,
@@ -145,6 +153,7 @@ impl DevinAcpProvider {
         let maybe_session = maybe_session.map(|s| s.to_string());
         let permission_callback = options.permission_callback.clone();
         let ask_callback = options.ask_callback.clone();
+        let cancel_signal = options.cancel_signal.clone();
         let replaying = Arc::new(AtomicBool::new(maybe_session.is_some()));
 
         let result = Client
@@ -272,10 +281,40 @@ impl DevinAcpProvider {
                     );
 
                     replaying.store(false, Ordering::SeqCst);
-                    let _prompt_response = connection
-                        .send_request(PromptRequest::new(session_id.clone(), prompt_blocks))
-                        .block_task()
-                        .await?;
+                    let sent = connection.send_request(PromptRequest::new(
+                        session_id.clone(),
+                        prompt_blocks,
+                    ));
+                    let prompt_result = if let Some(ref cancel) = cancel_signal {
+                        // Race the prompt response against the cancel signal.
+                        // Only one branch runs — select! drops the other.
+                        let cancel_clone = cancel.clone();
+                        tokio::select! {
+                            r = sent.block_task() => r,
+                            _ = cancel_wait(cancel_clone) => {
+                                // Dropping `sent` here sends $/cancelRequest
+                                // automatically per ACP SDK semantics.
+                                // We can't call block_task after drop, so just
+                                // return a cancelled error; the partial parts
+                                // collected so far are still available.
+                                Err(agent_client_protocol::Error::request_cancelled())
+                            }
+                        }
+                    } else {
+                        sent.block_task().await
+                    };
+                    // A cancellation error is expected when the user stops.
+                    // Collect whatever parts were produced so far.
+                    if let Err(e) = &prompt_result {
+                        if !cancel_signal
+                            .as_ref()
+                            .map(|c| c.load(Ordering::SeqCst))
+                            .unwrap_or(false)
+                        {
+                            return Err(e.clone());
+                        }
+                        tracing::debug!(error = %e, "prompt cancelled by user");
+                    }
 
                     let parts = parts.lock().await.clone();
                     let reply = collect_text(&parts);

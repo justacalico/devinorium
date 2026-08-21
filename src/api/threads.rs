@@ -921,10 +921,51 @@ async fn run_thread(
         Some(permission_callback),
         Some(ask_callback),
         Some(part_callback),
+        run.cancelled.clone(),
     )
     .await;
 
+    // If the run was cancelled, persist whatever partial parts the provider
+    // produced so the user and the agent retain context of the stopped turn.
+    // We also save the session ID so the next message resumes the same ACP
+    // session (which preserved its context via $/cancelRequest).
     if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        let (parts, new_session_id, new_title) = match &provider_result {
+            Ok(t) => (t.2.clone(), t.0.clone(), t.1.clone()),
+            Err(_) => (
+                run.parts
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+                None,
+                None,
+            ),
+        };
+        if let Some(ref sid) = new_session_id {
+            let _ = state
+                .db
+                .update_thread_session(&thread.id, sid, new_title.as_deref())
+                .await;
+        }
+        if !parts.is_empty() {
+            let reply = collect_text(&parts);
+            let thinking = collect_thinking(&parts);
+            let thinking = (!thinking.is_empty()).then_some(thinking);
+            let parts_json =
+                serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into());
+            let _ = state
+                .db
+                .add_message(NewMessage {
+                    thread_id: thread.id.clone(),
+                    role: "assistant".into(),
+                    content: reply,
+                    thinking,
+                    parts: parts_json,
+                    attachments: "[]".into(),
+                })
+                .await;
+            let _ = state.db.touch_thread(&thread.id).await;
+        }
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
@@ -1070,6 +1111,7 @@ async fn call_provider(
     permission_callback: Option<PermissionCallback>,
     ask_callback: Option<AskCallback>,
     part_callback: Option<PartCallback>,
+    cancel_signal: Arc<std::sync::atomic::AtomicBool>,
 ) -> anyhow::Result<(Option<String>, Option<String>, Vec<MessagePart>)> {
     let provider = state.provider_for_user(user);
     let working_dir = project_working_dir_for_thread(state, thread).await?;
@@ -1084,6 +1126,7 @@ async fn call_provider(
         ask_callback,
         part_callback,
         interaction_mode: input.mode.clone(),
+        cancel_signal: Some(cancel_signal),
     };
 
     if let Some(sid) = thread.devin_session_id.as_ref() {
