@@ -405,8 +405,40 @@ class ThreadStore {
     } else if (ev.event == 'stopped') {
       _cancelStream();
       _refreshThreadsList();
-      refreshTail();
+      _refreshTailAfterStop();
     }
+  }
+
+  /// Poll refreshTail until the persisted partial message appears, then
+  /// clear the streaming snapshot. The backend persists the partial output
+  /// asynchronously after graceful ACP cancellation, so the message may not
+  /// be in the database yet when the stopped event fires.
+  Future<void> _refreshTailAfterStop() async {
+    for (var i = 0; i < 20; i++) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (_status == ThreadStoreStatus.deleted) return;
+      final d = _detail.valueOrNull;
+      if (d == null || d.messages.isEmpty) continue;
+      final newestId = d.messages.last.id;
+      if (newestId == null) continue;
+      try {
+        final tail = await api.getThreadMessages(threadId, afterId: newestId);
+        if (tail.isNotEmpty) {
+          _detail = AsyncValue.ready(d.copyWith(
+            messages: [...d.messages, ...tail],
+            totalMessages: d.totalMessages + tail.length,
+          ));
+          _clearStreamingState();
+          _emit();
+          return;
+        }
+      } catch (_) {
+        // keep polling
+      }
+    }
+    // Timed out — clear streaming state anyway so the UI doesn't freeze.
+    _clearStreamingState();
+    _emit();
   }
 
   void _handleStreamError(Object e, int token) {

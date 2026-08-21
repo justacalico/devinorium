@@ -199,7 +199,7 @@ void main() {
       expect(res.snapshot.startedAt, isNull);
     });
 
-    test('stopped event clears startedAt', () {
+    test('stopped event sets stopped phase', () {
       final snapshot = StreamingSnapshot(
         phase: StreamPhase.running,
         startedAt: '2025-01-01T00:00:00Z',
@@ -209,10 +209,11 @@ void main() {
         snapshot: snapshot,
         event: SseEvent('stopped', '{}', id: '2'),
       );
-      expect(res.snapshot.startedAt, isNull);
+      expect(res.snapshot.phase, StreamPhase.stopped);
+      expect(res.snapshot.thinkingActive, isFalse);
     });
 
-    test('stopped event clears parts', () {
+    test('stopped event keeps parts visible', () {
       final parts = <MessagePart>[
         MessagePart.thinking(content: 'Let me think...'),
         MessagePart.text(content: 'Here is my answer'),
@@ -228,7 +229,7 @@ void main() {
         event: SseEvent('stopped', '{}', id: '2'),
       );
       expect(res.snapshot.phase, StreamPhase.stopped);
-      expect(res.snapshot.parts, isEmpty);
+      expect(res.snapshot.parts, equals(parts));
       expect(res.snapshot.thinkingActive, isFalse);
     });
 
