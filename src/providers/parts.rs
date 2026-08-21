@@ -111,6 +111,7 @@ mod tests {
             output: Some("hello".into()),
             output_preview: Some("hello".into()),
             changed_files: vec!["file.txt".into()],
+            diffs: vec![],
         });
         let json = serde_json::to_string(&part).unwrap();
         assert!(json.contains("\"type\":\"tool_call\""));

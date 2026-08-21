@@ -232,6 +232,119 @@ void main() {
       });
       expect(tc.outputPreview, preview);
     });
+
+    test('parses diffs with old and new text', () {
+      final tc = ToolCallData.fromJson({
+        'id': '1',
+        'title': 'Edit file',
+        'kind': 'edit',
+        'status': 'completed',
+        'diffs': [
+          {
+            'path': '/tmp/src/main.rs',
+            'old_text': 'fn main() {\n    todo!()\n}\n',
+            'new_text': 'fn main() {}\n',
+          },
+          {
+            'path': '/tmp/src/new.rs',
+            'new_text': 'pub fn x() {}\n',
+          },
+        ],
+      });
+      expect(tc.diffs, hasLength(2));
+      expect(tc.diffs[0].path, '/tmp/src/main.rs');
+      expect(tc.diffs[0].oldText, 'fn main() {\n    todo!()\n}\n');
+      expect(tc.diffs[0].newText, 'fn main() {}\n');
+      expect(tc.diffs[1].path, '/tmp/src/new.rs');
+      expect(tc.diffs[1].oldText, isNull);
+      expect(tc.diffs[1].newText, 'pub fn x() {}\n');
+    });
+
+    test('diffs default to empty when absent', () {
+      final tc = ToolCallData.fromJson({
+        'id': '1',
+        'title': 'Edit file',
+        'kind': 'edit',
+        'status': 'completed',
+      });
+      expect(tc.diffs, isEmpty);
+    });
+
+    test('copyWith updates diffs', () {
+      final tc = ToolCallData(id: '1', title: 'x', kind: 'edit', status: 'x');
+      final updated = tc.copyWith(
+        diffs: [FileDiff(path: '/a.rs', newText: 'a')],
+      );
+      expect(updated.diffs, hasLength(1));
+      expect(updated.diffs[0].path, '/a.rs');
+    });
+
+    test('equality considers diffs', () {
+      final a = ToolCallData(
+        id: '1',
+        title: 'x',
+        kind: 'edit',
+        status: 'x',
+        diffs: [FileDiff(path: '/a.rs', oldText: 'old', newText: 'new')],
+      );
+      final b = ToolCallData(
+        id: '1',
+        title: 'x',
+        kind: 'edit',
+        status: 'x',
+        diffs: [FileDiff(path: '/a.rs', oldText: 'old', newText: 'new')],
+      );
+      final c = ToolCallData(
+        id: '1',
+        title: 'x',
+        kind: 'edit',
+        status: 'x',
+        diffs: [FileDiff(path: '/a.rs', oldText: 'old', newText: 'different')],
+      );
+      expect(a, b);
+      expect(a == c, isFalse);
+    });
+  });
+
+  group('FileDiff', () {
+    test('parses required and optional fields', () {
+      final d = FileDiff.fromJson({
+        'path': '/x.rs',
+        'old_text': 'old',
+        'new_text': 'new',
+      });
+      expect(d.path, '/x.rs');
+      expect(d.oldText, 'old');
+      expect(d.newText, 'new');
+    });
+
+    test('old_text defaults to null', () {
+      final d = FileDiff.fromJson({'path': '/x.rs', 'new_text': 'new'});
+      expect(d.oldText, isNull);
+    });
+
+    test('round-trips through toJson', () {
+      final d = FileDiff(path: '/x.rs', oldText: 'old', newText: 'new');
+      final json = d.toJson();
+      expect(json['path'], '/x.rs');
+      expect(json['old_text'], 'old');
+      expect(json['new_text'], 'new');
+      expect(FileDiff.fromJson(json), d);
+    });
+
+    test('toJson omits null old_text', () {
+      final d = FileDiff(path: '/x.rs', newText: 'new');
+      expect(d.toJson().containsKey('old_text'), isFalse);
+    });
+
+    test('equality and hashCode', () {
+      final a = FileDiff(path: '/x', oldText: 'o', newText: 'n');
+      final b = FileDiff(path: '/x', oldText: 'o', newText: 'n');
+      final c = FileDiff(path: '/x', oldText: 'o', newText: 'other');
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a == c, isFalse);
+    });
   });
 
   group('MessagePart', () {

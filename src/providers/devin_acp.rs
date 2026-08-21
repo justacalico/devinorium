@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 
 use super::{
     ask, collect_text, collect_thinking, title_from_prompt, AskCallback, AskOutcome,
-    Attachment, MessagePart, ModelInfo, PartCallback, PartEvent, PermissionCallback,
+    Attachment, FileDiff, MessagePart, ModelInfo, PartCallback, PartEvent, PermissionCallback,
     PermissionOption, PermissionOutcome, PermissionRequest, Provider, SendOptions, SendRequest,
     SendResponse, StartRequest, StartResponse, ToolCallEvent,
 };
@@ -843,6 +843,7 @@ fn merge_tool_call_with_existing(
     if ev.changed_files.is_empty() && !existing.changed_files.is_empty() {
         ev.changed_files = existing.changed_files.clone();
     }
+    ev.diffs = merge_diffs(existing.diffs.clone(), ev.diffs.clone());
     ev
 }
 
@@ -903,11 +904,13 @@ fn merge_tool_call_update(
     let mut changed_files = existing
         .map(|e| e.changed_files.clone())
         .unwrap_or_default();
+    let mut diffs = existing.map(|e| e.diffs.clone()).unwrap_or_default();
 
     if let Some(content) = update.fields.content.as_deref() {
-        let (text, changed) = tool_call_output_from_content(content);
+        let (text, changed, new_diffs) = tool_call_output_from_content(content);
         output = text;
         changed_files = changed;
+        diffs = merge_diffs(diffs, new_diffs);
     }
 
     if let Some(raw_output) = update.fields.raw_output.as_ref() {
@@ -941,6 +944,7 @@ fn merge_tool_call_update(
         output,
         output_preview,
         changed_files,
+        diffs,
     }
 }
 
@@ -958,9 +962,9 @@ fn build_tool_call_event_core(
     let status = status_to_string(status);
     let command = raw_input.map(json_to_compact_string);
 
-    let (mut output, mut changed_files) = content
+    let (mut output, mut changed_files, diffs) = content
         .map(tool_call_output_from_content)
-        .unwrap_or((None, Vec::new()));
+        .unwrap_or((None, Vec::new(), Vec::new()));
 
     if let Some(raw_output) = raw_output {
         let text = json_to_compact_string(raw_output);
@@ -986,12 +990,31 @@ fn build_tool_call_event_core(
         output,
         output_preview,
         changed_files,
+        diffs,
     }
 }
 
-fn tool_call_output_from_content(content: &[ToolCallContent]) -> (Option<String>, Vec<String>) {
+/// Merge a stream of file diffs into a single list. Later entries for the
+/// same path replace earlier ones, preserving the original insertion order
+/// of the first occurrence of each path.
+fn merge_diffs(existing: Vec<FileDiff>, new: Vec<FileDiff>) -> Vec<FileDiff> {
+    let mut merged: Vec<FileDiff> = existing;
+    for diff in new {
+        if let Some(slot) = merged.iter_mut().find(|d| d.path == diff.path) {
+            *slot = diff;
+        } else {
+            merged.push(diff);
+        }
+    }
+    merged
+}
+
+fn tool_call_output_from_content(
+    content: &[ToolCallContent],
+) -> (Option<String>, Vec<String>, Vec<FileDiff>) {
     let mut output_parts = Vec::new();
     let mut changed = Vec::new();
+    let mut diffs = Vec::new();
     for c in content {
         match c {
             ToolCallContent::Content(content) => {
@@ -1000,7 +1023,13 @@ fn tool_call_output_from_content(content: &[ToolCallContent]) -> (Option<String>
                 }
             }
             ToolCallContent::Diff(diff) => {
-                changed.push(diff.path.to_string_lossy().into_owned());
+                let path = diff.path.to_string_lossy().into_owned();
+                changed.push(path.clone());
+                diffs.push(FileDiff {
+                    path,
+                    old_text: diff.old_text.clone(),
+                    new_text: diff.new_text.clone(),
+                });
             }
             _ => {}
         }
@@ -1010,7 +1039,7 @@ fn tool_call_output_from_content(content: &[ToolCallContent]) -> (Option<String>
     } else {
         Some(output_parts.join(""))
     };
-    (output, changed)
+    (output, changed, diffs)
 }
 
 fn tool_kind_from_string(s: &str) -> ToolKind {
@@ -1480,9 +1509,103 @@ mod tests {
     fn tool_call_output_from_content_handles_chinese() {
         let text = "中文工具输出";
         let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(text)))];
-        let (output, changed) = tool_call_output_from_content(&content);
+        let (output, changed, diffs) = tool_call_output_from_content(&content);
         assert_eq!(output.as_deref(), Some(text));
         assert!(changed.is_empty());
+        assert!(diffs.is_empty());
+    }
+
+    #[test]
+    fn tool_call_output_from_content_extracts_diffs() {
+        use agent_client_protocol::schema::v1::Diff;
+        let content = vec![
+            ToolCallContent::from(ContentBlock::Text(TextContent::new("editing"))),
+            ToolCallContent::Diff(
+                Diff::new("/tmp/src/main.rs", "fn main() {}\n")
+                    .old_text("fn main() {\n    todo!()\n}\n"),
+            ),
+            ToolCallContent::Diff(Diff::new("/tmp/src/new.rs", "pub fn x() {}\n")),
+        ];
+        let (output, changed, diffs) = tool_call_output_from_content(&content);
+        assert_eq!(output.as_deref(), Some("editing"));
+        assert_eq!(changed, vec!["/tmp/src/main.rs", "/tmp/src/new.rs"]);
+        assert_eq!(diffs.len(), 2);
+        assert_eq!(diffs[0].path, "/tmp/src/main.rs");
+        assert_eq!(diffs[0].old_text.as_deref(), Some("fn main() {\n    todo!()\n}\n"));
+        assert_eq!(diffs[0].new_text, "fn main() {}\n");
+        assert_eq!(diffs[1].path, "/tmp/src/new.rs");
+        assert!(diffs[1].old_text.is_none());
+        assert_eq!(diffs[1].new_text, "pub fn x() {}\n");
+    }
+
+    #[test]
+    fn merge_diffs_replaces_existing_path_in_place() {
+        let existing = vec![
+            FileDiff {
+                path: "/a.rs".into(),
+                old_text: Some("old a".into()),
+                new_text: "new a v1".into(),
+            },
+            FileDiff {
+                path: "/b.rs".into(),
+                old_text: None,
+                new_text: "new b".into(),
+            },
+        ];
+        let new = vec![FileDiff {
+            path: "/a.rs".into(),
+            old_text: Some("old a".into()),
+            new_text: "new a v2".into(),
+        }];
+        let merged = merge_diffs(existing, new);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].path, "/a.rs");
+        assert_eq!(merged[0].new_text, "new a v2");
+        assert_eq!(merged[1].path, "/b.rs");
+    }
+
+    #[test]
+    fn merge_diffs_appends_new_paths() {
+        let existing = vec![FileDiff {
+            path: "/a.rs".into(),
+            old_text: None,
+            new_text: "a".into(),
+        }];
+        let new = vec![FileDiff {
+            path: "/b.rs".into(),
+            old_text: None,
+            new_text: "b".into(),
+        }];
+        let merged = merge_diffs(existing, new);
+        assert_eq!(
+            merged.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(),
+            vec!["/a.rs", "/b.rs"],
+        );
+    }
+
+    #[test]
+    fn merge_tool_call_update_preserves_and_replaces_diffs() {
+        use agent_client_protocol::schema::v1::{Diff, ToolCallUpdateFields};
+
+        let first = ToolCallUpdate::new(
+            "tc-1",
+            ToolCallUpdateFields::new().content(vec![ToolCallContent::Diff(
+                Diff::new("/a.rs", "v1").old_text("old"),
+            )]),
+        );
+        let event = merge_tool_call_update(None, &first);
+        assert_eq!(event.diffs.len(), 1);
+        assert_eq!(event.diffs[0].new_text, "v1");
+
+        let second = ToolCallUpdate::new(
+            "tc-1",
+            ToolCallUpdateFields::new().content(vec![ToolCallContent::Diff(
+                Diff::new("/a.rs", "v2").old_text("old"),
+            )]),
+        );
+        let event = merge_tool_call_update(Some(&event), &second);
+        assert_eq!(event.diffs.len(), 1);
+        assert_eq!(event.diffs[0].new_text, "v2");
     }
 
     #[test]

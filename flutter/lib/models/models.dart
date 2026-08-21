@@ -217,6 +217,49 @@ class Message {
   }
 }
 
+class FileDiff {
+  final String path;
+  final String? oldText;
+  final String newText;
+
+  const FileDiff({
+    required this.path,
+    this.oldText,
+    required this.newText,
+  });
+
+  factory FileDiff.fromJson(Map<String, dynamic> j) => FileDiff(
+        path: j['path'] as String? ?? '',
+        oldText: j['old_text'] as String?,
+        newText: j['new_text'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'path': path,
+        if (oldText != null) 'old_text': oldText,
+        'new_text': newText,
+      };
+
+  FileDiff copyWith({String? path, String? oldText, String? newText}) =>
+      FileDiff(
+        path: path ?? this.path,
+        oldText: oldText ?? this.oldText,
+        newText: newText ?? this.newText,
+      );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! FileDiff) return false;
+    return path == other.path &&
+        oldText == other.oldText &&
+        newText == other.newText;
+  }
+
+  @override
+  int get hashCode => Object.hash(path, oldText, newText);
+}
+
 class ToolCallData {
   final String id;
   final String title;
@@ -226,6 +269,7 @@ class ToolCallData {
   final String? output;
   final String? outputPreview;
   final List<String> changedFiles;
+  final List<FileDiff> diffs;
 
   ToolCallData({
     required this.id,
@@ -236,6 +280,7 @@ class ToolCallData {
     this.output,
     this.outputPreview,
     this.changedFiles = const [],
+    this.diffs = const [],
   });
 
   factory ToolCallData.fromJson(Map<String, dynamic> j) => ToolCallData(
@@ -250,6 +295,10 @@ class ToolCallData {
                 ?.map((e) => e as String)
                 .toList() ??
             const [],
+        diffs: (j['diffs'] as List<dynamic>?)
+                ?.map((e) => FileDiff.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
       );
 
   ToolCallData copyWith({
@@ -260,6 +309,7 @@ class ToolCallData {
     String? output,
     String? outputPreview,
     List<String>? changedFiles,
+    List<FileDiff>? diffs,
   }) =>
       ToolCallData(
         id: id,
@@ -270,6 +320,7 @@ class ToolCallData {
         output: output ?? this.output,
         outputPreview: outputPreview ?? this.outputPreview,
         changedFiles: changedFiles ?? this.changedFiles,
+        diffs: diffs ?? this.diffs,
       );
 
   @override
@@ -283,7 +334,8 @@ class ToolCallData {
         command == other.command &&
         output == other.output &&
         outputPreview == other.outputPreview &&
-        _listEquals(changedFiles, other.changedFiles);
+        _listEquals(changedFiles, other.changedFiles) &&
+        _listEquals(diffs, other.diffs);
   }
 
   @override
@@ -291,6 +343,9 @@ class ToolCallData {
     var h = Object.hash(id, title, kind, status, command, output, outputPreview);
     for (final f in changedFiles) {
       h = Object.hash(h, f);
+    }
+    for (final d in diffs) {
+      h = Object.hash(h, d);
     }
     return h;
   }
