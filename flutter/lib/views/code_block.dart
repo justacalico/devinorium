@@ -6,7 +6,7 @@ import 'syntax_highlighter.dart';
 
 /// Renders a fenced code block with syntax highlighting, a language label,
 /// and a copy button.
-class CodeBlock extends StatelessWidget {
+class CodeBlock extends StatefulWidget {
   final String code;
   final String language;
   final SyntaxHighlighter? highlighter;
@@ -19,11 +19,18 @@ class CodeBlock extends StatelessWidget {
   });
 
   @override
+  State<CodeBlock> createState() => _CodeBlockState();
+}
+
+class _CodeBlockState extends State<CodeBlock> {
+  bool _copied = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = l10n(context);
-    final hl = highlighter ?? SyntaxHighlighter(theme);
-    final lang = language.isNotEmpty ? language : 'text';
+    final hl = widget.highlighter ?? SyntaxHighlighter(theme);
+    final lang = widget.language.isNotEmpty ? widget.language : 'text';
 
     return Container(
       decoration: BoxDecoration(
@@ -57,15 +64,15 @@ class CodeBlock extends StatelessWidget {
                 ),
                 const Spacer(),
                 InkWell(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: code));
-                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                      SnackBar(
-                        content: Text(l.copiedToClipboard),
-                        duration: const Duration(seconds: 1),
-                      ),
-                    );
-                  },
+                  onTap: _copied
+                      ? null
+                      : () {
+                          Clipboard.setData(ClipboardData(text: widget.code));
+                          setState(() => _copied = true);
+                          Future.delayed(const Duration(seconds: 1), () {
+                            if (mounted) setState(() => _copied = false);
+                          });
+                        },
                   borderRadius: BorderRadius.circular(4),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -76,13 +83,13 @@ class CodeBlock extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.copy,
+                          _copied ? Icons.check : Icons.copy,
                           size: 14,
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          l.copy,
+                          _copied ? l.copied : l.copy,
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -101,8 +108,8 @@ class CodeBlock extends StatelessWidget {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: SelectableText.rich(
-                  hl.highlight(code, lang),
-                  style: TextStyle(
+                  hl.highlight(widget.code, lang),
+                  style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 13,
                     height: 1.4,

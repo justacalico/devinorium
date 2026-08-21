@@ -63,7 +63,7 @@ void main() {
       expect(find.byIcon(Icons.copy), findsOneWidget);
     });
 
-    testWidgets('copy button copies to clipboard', (tester) async {
+    testWidgets('copy button swaps label to Copied then reverts', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -75,11 +75,24 @@ void main() {
         ),
       );
 
+      // Initially shows "Copy" with copy icon.
+      expect(find.text('Copy'), findsOneWidget);
+      expect(find.byIcon(Icons.copy), findsOneWidget);
+
       await tester.tap(find.byIcon(Icons.copy));
       await tester.pumpAndSettle();
 
-      // Verify snackbar appears.
-      expect(find.text('Copied to clipboard'), findsOneWidget);
+      // After tap: label is "Copied" and icon is a check.
+      expect(find.text('Copied'), findsOneWidget);
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(find.byIcon(Icons.copy), findsNothing);
+
+      // Wait 1 second for revert.
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.text('Copy'), findsOneWidget);
+      expect(find.byIcon(Icons.copy), findsOneWidget);
+      expect(find.byIcon(Icons.check), findsNothing);
     });
   });
 }
