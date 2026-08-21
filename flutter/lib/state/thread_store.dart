@@ -87,6 +87,7 @@ class ThreadStore {
   bool get streamingThinkingActive => _streaming.thinkingActive;
   PermissionRequest? get pendingPermissionRequest => _streaming.pendingPermission;
   AskRequest? get pendingAskRequest => _streaming.pendingAsk;
+  String? get startedAt => _streaming.startedAt;
 
   /// Load the persisted detail and, if the server says the thread is still
   /// running, resume the live stream. This is t3code's "snapshot then
@@ -435,6 +436,8 @@ class ThreadStore {
       thinkingActive: false,
       lastSeq: 0,
       clearPendingPermission: true,
+      clearPendingAsk: true,
+      clearStartedAt: true,
       error: error,
       clearError: error == null,
     );
@@ -448,6 +451,7 @@ class ThreadStore {
     _streaming = StreamingSnapshot.empty.copyWith(
       phase: phaseForStatus(status),
       error: status == 'failed' ? run['error'] as String? : null,
+      startedAt: run['started_at'] as String?,
     );
     _emit();
   }

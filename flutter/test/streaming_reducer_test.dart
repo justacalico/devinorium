@@ -157,5 +157,102 @@ void main() {
       expect(snapshot.pendingAsk!.requestId, 'a1');
       expect(snapshot.phase, StreamPhase.running);
     });
+
+    test('extracts started_at from run snapshot', () {
+      final snapshot = runSnapshotFromJson({
+        'status': 'running',
+        'started_at': '2025-01-01T00:00:00Z',
+      });
+      expect(snapshot.startedAt, '2025-01-01T00:00:00Z');
+    });
+
+    test('started_at is null when not present', () {
+      final snapshot = runSnapshotFromJson({'status': 'running'});
+      expect(snapshot.startedAt, isNull);
+    });
+  });
+
+  group('startedAt lifecycle', () {
+    test('state event sets startedAt', () {
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'state',
+          '{"status":"running","started_at":"2025-01-01T00:00:00Z"}',
+          id: '1',
+        ),
+      );
+      expect(res.snapshot.startedAt, '2025-01-01T00:00:00Z');
+    });
+
+    test('done event clears startedAt', () {
+      final snapshot = StreamingSnapshot(
+        phase: StreamPhase.running,
+        startedAt: '2025-01-01T00:00:00Z',
+      );
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('done', '{"role":"assistant","content":"ok"}', id: '2'),
+      );
+      expect(res.snapshot.startedAt, isNull);
+    });
+
+    test('stopped event clears startedAt', () {
+      final snapshot = StreamingSnapshot(
+        phase: StreamPhase.running,
+        startedAt: '2025-01-01T00:00:00Z',
+      );
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('stopped', '{}', id: '2'),
+      );
+      expect(res.snapshot.startedAt, isNull);
+    });
+
+    test('error event clears startedAt', () {
+      final snapshot = StreamingSnapshot(
+        phase: StreamPhase.running,
+        startedAt: '2025-01-01T00:00:00Z',
+      );
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('error', 'something broke', id: '2'),
+      );
+      expect(res.snapshot.startedAt, isNull);
+    });
+
+    test('user_message event sets startedAt to now', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+        totalMessages: 0,
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'user_message',
+          '{"role":"user","content":"hello"}',
+          id: '1',
+        ),
+      );
+      expect(res.snapshot.startedAt, isNotNull);
+      final parsed = DateTime.tryParse(res.snapshot.startedAt!);
+      expect(parsed, isNotNull);
+      final diff = DateTime.now().toUtc().difference(parsed!).inSeconds.abs();
+      expect(diff, lessThan(5));
+    });
   });
 }

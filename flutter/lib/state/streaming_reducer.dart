@@ -72,6 +72,7 @@ StreamingReduceResult reduceStreamingEvent({
               clearPendingAsk: true,
               clearError: true,
               lastSeq: seq ?? snapshot.lastSeq,
+              startedAt: DateTime.now().toUtc().toIso8601String(),
             )
             .copyWith(error: null), // clear any prior error
       );
@@ -267,6 +268,7 @@ StreamingSnapshot _applyRunSnapshot({
     clearPendingAsk: pendingAsk == null,
     error: error,
     clearError: error == null,
+    startedAt: json['started_at'] as String?,
   );
 }
 
@@ -294,6 +296,7 @@ StreamingSnapshot _finishSnapshot(StreamingSnapshot snapshot) {
     lastSeq: 0,
     clearPendingPermission: true,
     clearPendingAsk: true,
+    clearStartedAt: true,
   );
 }
 

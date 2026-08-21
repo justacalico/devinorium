@@ -3,6 +3,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/views/elapsed_time_indicator.dart';
 import 'package:devinorium_frontend/views/model_picker.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
 import 'package:flutter/gestures.dart';
@@ -1565,5 +1566,79 @@ void main() {
 
     final button = tester.widget<IconButton>(send);
     expect(button.style, isNull);
+  });
+
+  testWidgets('elapsed time indicator shows when sending', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+      sending: true,
+      startedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pump();
+
+    expect(find.byType(ElapsedTimeIndicator), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // The indicator shows a duration like "0s".
+    final indicator = tester.widget<ElapsedTimeIndicator>(
+      find.byType(ElapsedTimeIndicator),
+    );
+    expect(indicator.active, isTrue);
+    expect(indicator.startedAt, isNotNull);
+  });
+
+  testWidgets('elapsed time indicator hidden when not sending', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+      sending: false,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ElapsedTimeIndicator), findsNothing);
   });
 }

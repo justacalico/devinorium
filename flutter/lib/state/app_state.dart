@@ -66,6 +66,7 @@ class AppState extends ChangeNotifier {
         const [],
     String? selectedModel,
     String? selectedPermission,
+    String? startedAt,
   }) : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
@@ -97,6 +98,7 @@ class AppState extends ChangeNotifier {
         thinkingActive: streamingThinkingActive,
         pendingPermission: pendingPermissionRequest,
         pendingAsk: pendingAskRequest,
+        startedAt: startedAt,
       );
       final store = ThreadStore(
         api: this.api,
@@ -231,6 +233,7 @@ class AppState extends ChangeNotifier {
   PermissionRequest? get pendingPermissionRequest =>
       _activeStore?.pendingPermissionRequest;
   AskRequest? get pendingAskRequest => _activeStore?.pendingAskRequest;
+  String? get startedAt => _activeStore?.startedAt;
   String get globalError => _globalError;
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
