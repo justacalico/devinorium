@@ -147,6 +147,7 @@ class ThreadStore {
         _applyRunSnapshot(run);
         _lastRunStatus = run['status'] as String?;
         if (_lastRunStatus == 'running') {
+          _runFinishedFired = false;
           _startStream(_nextStreamToken());
         } else {
           _finishResume(run);
@@ -177,6 +178,7 @@ class ThreadStore {
       _clearStreamingState();
       _streaming = _streaming.copyWith(phase: StreamPhase.sending);
       _lastRunStatus = 'running';
+      _runFinishedFired = false;
       debugPrint('[notify] sendMessage: thread=$threadId token=$token phase=sending');
       _emit();
 
@@ -478,11 +480,12 @@ class ThreadStore {
     }
   }
 
+  bool _runFinishedFired = false;
+
   void _finishStream({
     StreamPhase phase = StreamPhase.completed,
     String? error,
   }) {
-    final wasActive = _streaming.isActive;
     _streaming = _streaming.copyWith(
       phase: phase,
       parts: [],
@@ -496,12 +499,13 @@ class ThreadStore {
     );
     _lastRunStatus = _statusFromPhase(phase);
     _emit();
-    if (wasActive &&
+    if (!_runFinishedFired &&
         (phase == StreamPhase.completed || phase == StreamPhase.failed)) {
+      _runFinishedFired = true;
       debugPrint('[notify] onRunFinished: thread=$threadId phase=$phase failed=${phase == StreamPhase.failed}');
       onRunFinished?.call(phase == StreamPhase.failed);
     } else {
-      debugPrint('[notify] _finishStream skipped onRunFinished: thread=$threadId wasActive=$wasActive phase=$phase');
+      debugPrint('[notify] _finishStream skipped onRunFinished: thread=$threadId alreadyFired=$_runFinishedFired phase=$phase');
     }
   }
 
