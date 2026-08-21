@@ -334,6 +334,7 @@ class AppState extends ChangeNotifier {
     );
     store.onRunFinished = (failed) {
       final title = _threadTitle(id) ?? 'Thread';
+      debugPrint('[notify] AppState onRunFinished callback: thread=$id title=$title failed=$failed notificationsEnabled=${_notifications.notificationsEnabled}');
       _notifications.notifyThreadCompleted(title: title, failed: failed);
     };
     return store;

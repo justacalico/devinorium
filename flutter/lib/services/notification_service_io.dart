@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../l10n/global_l10n.dart';
 
 class NotificationService {
@@ -18,6 +20,7 @@ class NotificationService {
   }
 
   void notifyThreadCompleted({required String title, required bool failed}) {
+    debugPrint('[notify] notifyThreadCompleted: title=$title failed=$failed notificationsEnabled=$_notificationsEnabled soundEnabled=$_soundEnabled');
     if (!_notificationsEnabled) return;
     final l = appL10n;
     final headline = failed ? l.threadFailedTitle : l.threadCompletedTitle;
@@ -31,6 +34,7 @@ class NotificationService {
   void _showNotification(String title, String body) {
     try {
       if (Platform.isLinux) {
+        debugPrint('[notify] running notify-send: title=$title body=$body');
         Process.run('notify-send', ['--app-name=Devinorium', title, body]);
       } else if (Platform.isMacOS) {
         final script =
@@ -48,12 +52,15 @@ class NotificationService {
             '\$n.Dispose()';
         Process.run('powershell', ['-NoProfile', '-Command', psScript]);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[notify] _showNotification error: $e');
+    }
   }
 
   void _playSound() {
     try {
       if (Platform.isLinux) {
+        debugPrint('[notify] playing sound via paplay');
         Process.run('paplay', [
           '/usr/share/sounds/freedesktop/stereo/complete.oga',
         ]);
@@ -66,6 +73,8 @@ class NotificationService {
           '[System.Media.SystemSounds]::Asterisk.Play()',
         ]);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[notify] _playSound error: $e');
+    }
   }
 }
