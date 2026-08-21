@@ -20,7 +20,9 @@ class _RunCommandToolState extends State<RunCommandTool> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tool = widget.tool;
-    final command = tool.command ?? '';
+    final command = (tool.command?.isNotEmpty ?? false)
+        ? tool.command!
+        : tool.title;
     final output = tool.output ?? '';
 
     final (statusIcon, statusColor) = switch (tool.status) {

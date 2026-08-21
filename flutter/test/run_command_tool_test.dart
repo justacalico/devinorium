@@ -121,7 +121,7 @@ void main() {
       expect(find.byIcon(Icons.expand_more), findsNothing);
     });
 
-    testWidgets('handles empty command', (tester) async {
+    testWidgets('falls back to title when command is empty', (tester) async {
       final tool = ToolCallData(
         id: '1',
         title: 'Run cmd',
@@ -135,6 +135,7 @@ void main() {
       );
 
       expect(find.byIcon(Icons.check_circle), findsOneWidget);
+      expect(find.text('Run cmd'), findsOneWidget);
       expect(find.textContaining('some output'), findsOneWidget);
     });
 
