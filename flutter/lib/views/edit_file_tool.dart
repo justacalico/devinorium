@@ -300,7 +300,7 @@ class _CachedDiff {
   });
 }
 
-enum _LineKind { context, added, removed }
+enum _LineKind { context, added, removed, skip }
 
 class _DiffLine {
   final _LineKind kind;
@@ -333,10 +333,21 @@ class _DiffTextView extends StatelessWidget {
 
     final spans = <TextSpan>[];
     for (final line in cached.lines) {
+      if (line.kind == _LineKind.skip) {
+        spans.add(TextSpan(
+          text: '${line.text}\n',
+          style: baseStyle?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontStyle: FontStyle.italic,
+          ),
+        ));
+        continue;
+      }
       final (marker, color, bg) = switch (line.kind) {
         _LineKind.added => ('+', addedColor, addedBg),
         _LineKind.removed => ('-', removedColor, removedBg),
         _LineKind.context => (' ', contextColor, Colors.transparent),
+        _LineKind.skip => ('', contextColor, Colors.transparent),
       };
       spans.add(TextSpan(
         text: '$marker ${line.text}\n',
@@ -364,9 +375,13 @@ class _DiffTextView extends StatelessWidget {
   }
 }
 
+/// Number of context lines to keep around each changed region.
+const _contextLines = 3;
+
 /// Compute a simple unified diff using the classic LCS dynamic-programming
-/// approach. Result is cached by the caller so this only runs once per
-/// unique (oldText, newText) pair.
+/// approach, then trim to only the changed hunks with a small context
+/// window (like `git diff`). Result is cached by the caller so this only
+/// runs once per unique (oldText, newText) pair.
 List<_DiffLine> _computeUnifiedDiff(List<String> a, List<String> b) {
   final n = a.length;
   final m = b.length;
@@ -392,32 +407,72 @@ List<_DiffLine> _computeUnifiedDiff(List<String> a, List<String> b) {
     }
   }
 
-  final lines = <_DiffLine>[];
+  final raw = <_DiffLine>[];
   var i = 0;
   var j = 0;
   while (i < n && j < m) {
     if (a[i] == b[j]) {
-      lines.add(_DiffLine(_LineKind.context, a[i]));
+      raw.add(_DiffLine(_LineKind.context, a[i]));
       i++;
       j++;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      lines.add(_DiffLine(_LineKind.removed, a[i]));
+      raw.add(_DiffLine(_LineKind.removed, a[i]));
       i++;
     } else {
-      lines.add(_DiffLine(_LineKind.added, b[j]));
+      raw.add(_DiffLine(_LineKind.added, b[j]));
       j++;
     }
   }
   while (i < n) {
-    lines.add(_DiffLine(_LineKind.removed, a[i]));
+    raw.add(_DiffLine(_LineKind.removed, a[i]));
     i++;
   }
   while (j < m) {
-    lines.add(_DiffLine(_LineKind.added, b[j]));
+    raw.add(_DiffLine(_LineKind.added, b[j]));
     j++;
   }
 
-  return lines;
+  return _extractHunks(raw);
+}
+
+/// Keep only changed lines plus [_contextLines] of surrounding context.
+/// Consecutive changed regions separated by fewer than 2*_contextLines
+/// context lines are merged into a single hunk.
+List<_DiffLine> _extractHunks(List<_DiffLine> raw) {
+  if (raw.isEmpty) return const [];
+
+  final changed = <int>[];
+  for (var idx = 0; idx < raw.length; idx++) {
+    if (raw[idx].kind != _LineKind.context) {
+      changed.add(idx);
+    }
+  }
+  if (changed.isEmpty) return const [];
+
+  final keep = List<bool>.filled(raw.length, false);
+  for (final c in changed) {
+    final start = (c - _contextLines).clamp(0, raw.length - 1);
+    final end = (c + _contextLines).clamp(0, raw.length - 1);
+    for (var k = start; k <= end; k++) {
+      keep[k] = true;
+    }
+  }
+
+  final result = <_DiffLine>[];
+  var prevKept = false;
+  for (var idx = 0; idx < raw.length; idx++) {
+    if (keep[idx]) {
+      if (!prevKept && result.isNotEmpty) {
+        result.add(const _DiffLine(_LineKind.skip, '…'));
+      }
+      result.add(raw[idx]);
+      prevKept = true;
+    } else {
+      prevKept = false;
+    }
+  }
+
+  return result;
 }
 
 class _CopyButton extends StatelessWidget {

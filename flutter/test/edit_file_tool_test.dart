@@ -298,8 +298,8 @@ void main() {
       );
 
       expect(find.textContaining('/tmp/main.rs'), findsOneWidget);
-      // Context line is shown (no +/- changes).
-      expect(find.textContaining('  same'), findsOneWidget);
+      // No changes -> no diff content shown.
+      expect(find.textContaining('No diff content yet'), findsOneWidget);
     });
 
     testWidgets('handles empty new text', (tester) async {
@@ -404,6 +404,65 @@ void main() {
       // Diff content is still correct after rebuild (cache hit).
       expect(find.textContaining('- fn main() {'), findsOneWidget);
       expect(find.textContaining('+ fn main() {}'), findsOneWidget);
+    });
+
+    testWidgets('only shows changed lines with context, not the whole file',
+        (tester) async {
+      final oldText = [
+        'line 1',
+        'line 2',
+        'line 3',
+        'line 4',
+        'line 5',
+        'line 6',
+        'line 7',
+        'line 8',
+        'line 9',
+        'line 10',
+        'line 11',
+        'line 12',
+      ].join('\n');
+      final newText = [
+        'line 1',
+        'line 2',
+        'line 3',
+        'line 4',
+        'line 5 CHANGED',
+        'line 6',
+        'line 7',
+        'line 8',
+        'line 9',
+        'line 10',
+        'line 11',
+        'line 12',
+      ].join('\n');
+
+      final tool = ToolCallData(
+        id: '1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'completed',
+        diffs: [
+          FileDiff(path: '/tmp/main.rs', oldText: oldText, newText: newText),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
+      );
+
+      // Changed line is shown.
+      expect(find.textContaining('- line 5'), findsOneWidget);
+      expect(find.textContaining('+ line 5 CHANGED'), findsOneWidget);
+
+      // Context lines near the change (within 3 lines) are shown.
+      expect(find.textContaining('  line 2'), findsOneWidget);
+      expect(find.textContaining('  line 8'), findsOneWidget);
+
+      // Distant context lines are NOT shown — a skip marker appears.
+      expect(find.textContaining('  line 1'), findsNothing);
+      expect(find.textContaining('  line 11'), findsNothing);
+      expect(find.textContaining('  line 12'), findsNothing);
     });
   });
 }
