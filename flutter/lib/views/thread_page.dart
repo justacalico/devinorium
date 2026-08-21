@@ -260,7 +260,7 @@ class _ChatViewState extends State<ChatView> {
             else ...[
               if (state.sending)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+                  padding: const EdgeInsets.fromLTRB(32, 0, 24, 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: ElapsedTimeIndicator(
