@@ -455,5 +455,26 @@
   "createAndSwitchBranch": "Create and switch",
   "createAndNewBranch": "Create and new branch",
   "send": "Send",
-  "stopGenerating": "Stop generating"
+  "stopGenerating": "Stop generating",
+  "notifications": "Notifications",
+  "completionNotifications": "Notify when a thread completes",
+  "completionNotificationsDescription": "Show a browser notification when a thread run finishes while this tab is in the background.",
+  "threadCompletedTitle": "Thread completed",
+  "threadCompletedBody": "{title} has finished running.",
+  "@threadCompletedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadFailedTitle": "Thread failed",
+  "threadFailedBody": "{title} encountered an error.",
+  "@threadFailedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  }
 }

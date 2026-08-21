@@ -74,6 +74,10 @@ class ThreadStore {
   /// Called whenever any piece of thread state changes.
   VoidCallback? onStateChanged;
 
+  /// Called when a run finishes (completed or failed). The [failed] flag
+  /// indicates whether the run ended with an error.
+  void Function(bool failed)? onRunFinished;
+
   // ---- getters ----
 
   ThreadStoreStatus get status => _status;
@@ -143,6 +147,7 @@ class ThreadStore {
         _applyRunSnapshot(run);
         _lastRunStatus = run['status'] as String?;
         if (_lastRunStatus == 'running') {
+          _runFinishedFired = false;
           _startStream(_nextStreamToken());
         } else {
           _finishResume(run);
@@ -173,6 +178,7 @@ class ThreadStore {
       _clearStreamingState();
       _streaming = _streaming.copyWith(phase: StreamPhase.sending);
       _lastRunStatus = 'running';
+      _runFinishedFired = false;
       _emit();
 
       final messageAttachments = List<({String filename, String mime, Uint8List bytes})>.of(
@@ -399,8 +405,16 @@ class ThreadStore {
 
     _emit();
 
-    if (ev.event == 'done' || ev.event == 'error') {
+    if (ev.event == 'done') {
       _cancelStream();
+      _finishStream(phase: StreamPhase.completed);
+      refreshTail();
+    } else if (ev.event == 'error') {
+      _cancelStream();
+      _finishStream(
+        phase: StreamPhase.failed,
+        error: ev.data.isNotEmpty ? ev.data : null,
+      );
       refreshTail();
     } else if (ev.event == 'stopped') {
       _cancelStream();
@@ -453,10 +467,14 @@ class ThreadStore {
 
   void _handleStreamDone(int token) {
     if (token != _streamToken) return;
+    // Stream closed without an explicit done/error event. Finish the stream
+    // so the UI and notification callback are updated.
     if (_streaming.isActive) {
       _finishStream(phase: StreamPhase.completed);
     }
   }
+
+  bool _runFinishedFired = false;
 
   void _finishStream({
     StreamPhase phase = StreamPhase.completed,
@@ -475,6 +493,11 @@ class ThreadStore {
     );
     _lastRunStatus = _statusFromPhase(phase);
     _emit();
+    if (!_runFinishedFired &&
+        (phase == StreamPhase.completed || phase == StreamPhase.failed)) {
+      _runFinishedFired = true;
+      onRunFinished?.call(phase == StreamPhase.failed);
+    }
   }
 
   void _finishResume(Map<String, dynamic> run) {

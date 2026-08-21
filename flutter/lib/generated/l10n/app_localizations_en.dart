@@ -774,4 +774,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get stopGenerating => 'Stop generating';
+
+  @override
+  String get notifications => 'Notifications';
+
+  @override
+  String get completionNotifications => 'Notify when a thread completes';
+
+  @override
+  String get completionNotificationsDescription =>
+      'Show a browser notification when a thread run finishes while this tab is in the background.';
+
+  @override
+  String get threadCompletedTitle => 'Thread completed';
+
+  @override
+  String threadCompletedBody(String title) {
+    return '$title has finished running.';
+  }
+
+  @override
+  String get threadFailedTitle => 'Thread failed';
+
+  @override
+  String threadFailedBody(String title) {
+    return '$title encountered an error.';
+  }
 }

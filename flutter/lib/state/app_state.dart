@@ -9,6 +9,7 @@ import '../api/api_service.dart';
 import '../l10n/global_l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
+import '../services/notification_service.dart';
 import 'async_value.dart';
 import 'streaming_state.dart';
 import 'thread_store.dart';
@@ -183,6 +184,7 @@ class AppState extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('en');
   int _settingsTopicIndex = 0;
+  final _notifications = NotificationService();
 
   // Git state (per project).
   final Map<int, GitRepoInfo> _gitRepoInfo = {};
@@ -254,6 +256,7 @@ class AppState extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
+  bool get notificationsEnabled => _notifications.notificationsEnabled;
 
   int? get renameProjectId => _renameProjectId;
   String? get renameThreadId => _renameThreadId;
@@ -316,7 +319,7 @@ class AppState extends ChangeNotifier {
     String? selectedModel,
     String? selectedPermission,
   }) {
-    return ThreadStore(
+    final store = ThreadStore(
       api: api,
       threadId: id,
       projectId: projectId ?? _activeProjectId ?? 0,
@@ -328,6 +331,18 @@ class AppState extends ChangeNotifier {
       selectedModel: selectedModel,
       selectedPermission: selectedPermission,
     );
+    store.onRunFinished = (failed) {
+      final title = _threadTitle(id) ?? 'Thread';
+      _notifications.notifyThreadCompleted(title: title, failed: failed);
+    };
+    return store;
+  }
+
+  String? _threadTitle(String id) {
+    for (final t in _threads) {
+      if (t.id == id) return t.title;
+    }
+    return null;
   }
 
   GitRepoInfo? gitRepoInfo(int projectId) => _gitRepoInfo[projectId];
@@ -536,6 +551,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    _notifications.setNotificationsEnabled(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('devinorium_notifications', enabled);
+    } catch (_) {}
+  }
+
+  Future<void> _loadNotificationPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _notifications.setNotificationsEnabled(
+        prefs.getBool('devinorium_notifications') ?? false,
+      );
+    } catch (_) {}
+    notifyListeners();
+  }
+
   Future<void> openFilesPanel() async {
     _filesPanelOpen = true;
     _filesPath = [];
@@ -634,6 +668,7 @@ class AppState extends ChangeNotifier {
     await _loadThemeMode();
     await _loadLanguage();
     await _loadComposerMode();
+    await _loadNotificationPrefs();
     setAppL10n(_locale);
     try {
       final configured = await api.client.isConfigured;
