@@ -575,6 +575,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  @visibleForTesting
+  void setFilesEntries(List<DirEntry> entries) {
+    _filesEntries = entries;
+    _filesError = '';
+    notifyListeners();
+  }
+
   Future<void> mkdir(String name) async {
     final p = _filesPath.join('/');
     final full = p.isEmpty ? name.trim() : '$p/${name.trim()}';

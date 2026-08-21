@@ -15,7 +15,7 @@ class FilesPanel extends StatelessWidget {
     final path = state.filesPath;
     final error = state.filesError;
 
-    return ColoredBox(
+    return Material(
       color: theme.colorScheme.surfaceContainerLow,
       child: Column(
         children: [
@@ -86,6 +86,9 @@ class FilesPanel extends StatelessWidget {
                                     ? Icons.folder_outlined
                                     : _fileIcon(e.name),
                                 size: 22,
+                                color: e.isDir
+                                    ? theme.colorScheme.primary
+                                    : _fileIconColor(e.name, theme),
                               ),
                               title: Text(e.name,
                                   maxLines: 1,
@@ -122,18 +125,176 @@ class FilesPanel extends StatelessWidget {
   }
 
   IconData _fileIcon(String name) {
-    final ext = name.split('.').last.toLowerCase();
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].contains(ext)) {
+    final lower = name.toLowerCase();
+    final ext = lower.contains('.') ? lower.split('.').last : '';
+
+    // Special filenames.
+    if (lower == 'pubspec.yaml' || lower == 'pubspec.lock') {
+      return Icons.inventory_2_outlined;
+    }
+    if (lower == '.gitignore' || lower == '.gitattributes') {
+      return Icons.merge_type_outlined;
+    }
+    if (lower == 'dockerfile' || lower.startsWith('dockerfile.')) {
+      return Icons.dns_outlined;
+    }
+    if (lower == 'makefile' || lower == 'cmakelists.txt') {
+      return Icons.build_outlined;
+    }
+    if (lower == 'license' || lower.startsWith('license.')) {
+      return Icons.gavel_outlined;
+    }
+    if (lower == 'readme.md' || lower == 'readme') {
+      return Icons.menu_book_outlined;
+    }
+
+    // Image files.
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].contains(ext)) {
       return Icons.image_outlined;
     }
-    if (['md', 'txt', 'log'].contains(ext)) return Icons.description_outlined;
-    if (['rs', 'js', 'ts', 'py', 'go', 'java', 'c', 'cpp', 'rb'].contains(ext)) {
-      return Icons.code;
+
+    // Video files.
+    if (['mp4', 'avi', 'mov', 'mkv', 'webm'].contains(ext)) {
+      return Icons.movie_outlined;
     }
-    if (['json', 'yaml', 'yml', 'toml'].contains(ext)) {
+
+    // Audio files.
+    if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].contains(ext)) {
+      return Icons.audio_file_outlined;
+    }
+
+    // Archive files.
+    if (['zip', 'tar', 'gz', 'bz2', '7z', 'rar', 'xz'].contains(ext)) {
+      return Icons.folder_zip_outlined;
+    }
+
+    // Web files.
+    if (['html', 'htm'].contains(ext)) return Icons.html_outlined;
+    if (['css', 'scss', 'sass', 'less'].contains(ext)) {
+      return Icons.format_paint_outlined;
+    }
+
+    // Markup / docs.
+    if (['md', 'rst', 'txt', 'log'].contains(ext)) {
+      return Icons.description_outlined;
+    }
+    if (['pdf'].contains(ext)) return Icons.picture_as_pdf_outlined;
+    if (['doc', 'docx'].contains(ext)) return Icons.article_outlined;
+    if (['xls', 'xlsx', 'csv'].contains(ext)) return Icons.table_chart_outlined;
+    if (['ppt', 'pptx'].contains(ext)) return Icons.slideshow_outlined;
+
+    // Programming languages.
+    if (ext == 'dart') return Icons.code;
+    if (['rs', 'c', 'cpp', 'cc', 'h', 'hpp'].contains(ext)) {
+      return Icons.memory;
+    }
+    if (['js', 'jsx', 'mjs'].contains(ext)) return Icons.javascript;
+    if (['ts', 'tsx'].contains(ext)) return Icons.data_object;
+    if (['py'].contains(ext)) return Icons.terminal;
+    if (['go'].contains(ext)) return Icons.speed;
+    if (['java', 'kt', 'kts'].contains(ext)) return Icons.coffee;
+    if (['rb'].contains(ext)) return Icons.diamond_outlined;
+    if (['swift'].contains(ext)) return Icons.flutter_dash;
+    if (['sh', 'bash', 'zsh', 'fish'].contains(ext)) {
+      return Icons.terminal;
+    }
+    if (['lua'].contains(ext)) return Icons.code;
+    if (['php'].contains(ext)) return Icons.code;
+    if (['vue'].contains(ext)) return Icons.dynamic_form_outlined;
+    if (['svelte'].contains(ext)) return Icons.layers_outlined;
+
+    // Config / data.
+    if (['json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env'].contains(ext)) {
       return Icons.settings_outlined;
     }
+    if (['xml'].contains(ext)) return Icons.code;
+    if (['lock'].contains(ext)) return Icons.lock_outline;
+
+    // Database.
+    if (['db', 'sqlite', 'sql'].contains(ext)) return Icons.storage_outlined;
+
+    // Executables / binaries.
+    if (['exe', 'bin', 'dll', 'so', 'dylib'].contains(ext)) {
+      return Icons.apps_outlined;
+    }
+
+    // Font files.
+    if (['ttf', 'otf', 'woff', 'woff2'].contains(ext)) {
+      return Icons.text_fields_outlined;
+    }
+
     return Icons.insert_drive_file_outlined;
+  }
+
+  Color _fileIconColor(String name, ThemeData theme) {
+    final lower = name.toLowerCase();
+    final ext = lower.contains('.') ? lower.split('.').last : '';
+
+    if (lower == 'pubspec.yaml' || lower == 'pubspec.lock') {
+      return Colors.blue;
+    }
+    if (lower == '.gitignore' || lower == '.gitattributes') {
+      return Colors.orange;
+    }
+    if (lower == 'dockerfile' || lower.startsWith('dockerfile.')) {
+      return Colors.blue.shade700;
+    }
+    if (lower == 'readme.md' || lower == 'readme') {
+      return Colors.teal;
+    }
+    if (lower == 'license' || lower.startsWith('license.')) {
+      return Colors.purple;
+    }
+
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].contains(ext)) {
+      return Colors.pink;
+    }
+    if (['mp4', 'avi', 'mov', 'mkv', 'webm'].contains(ext)) {
+      return Colors.red;
+    }
+    if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].contains(ext)) {
+      return Colors.orange;
+    }
+    if (['zip', 'tar', 'gz', 'bz2', '7z', 'rar', 'xz'].contains(ext)) {
+      return Colors.brown;
+    }
+    if (['html', 'htm'].contains(ext)) return Colors.orange;
+    if (['css', 'scss', 'sass', 'less'].contains(ext)) return Colors.blue.shade400;
+    if (['md', 'rst', 'txt', 'log'].contains(ext)) {
+      return theme.colorScheme.onSurfaceVariant;
+    }
+    if (['pdf'].contains(ext)) return Colors.red;
+    if (['doc', 'docx'].contains(ext)) return Colors.blue;
+    if (['xls', 'xlsx', 'csv'].contains(ext)) return Colors.green;
+    if (['ppt', 'pptx'].contains(ext)) return Colors.deepOrange;
+
+    if (ext == 'dart') return Colors.cyan;
+    if (['rs', 'c', 'cpp', 'cc', 'h', 'hpp'].contains(ext)) {
+      return Colors.deepOrange;
+    }
+    if (['js', 'jsx', 'mjs'].contains(ext)) return Colors.amber;
+    if (['ts', 'tsx'].contains(ext)) return Colors.blue;
+    if (['py'].contains(ext)) return Colors.blue.shade700;
+    if (['go'].contains(ext)) return Colors.cyan.shade700;
+    if (['java', 'kt', 'kts'].contains(ext)) return Colors.orange;
+    if (['rb'].contains(ext)) return Colors.red;
+    if (['swift'].contains(ext)) return Colors.orange;
+    if (['sh', 'bash', 'zsh', 'fish'].contains(ext)) {
+      return Colors.green.shade700;
+    }
+    if (['json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env'].contains(ext)) {
+      return Colors.grey;
+    }
+    if (['lock'].contains(ext)) return Colors.amber;
+    if (['db', 'sqlite', 'sql'].contains(ext)) return Colors.indigo;
+    if (['exe', 'bin', 'dll', 'so', 'dylib'].contains(ext)) {
+      return Colors.grey.shade600;
+    }
+    if (['ttf', 'otf', 'woff', 'woff2'].contains(ext)) {
+      return Colors.purple.shade300;
+    }
+
+    return theme.colorScheme.onSurfaceVariant;
   }
 
   String _formatSize(int n, AppLocalizations l) {
