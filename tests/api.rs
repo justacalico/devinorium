@@ -85,6 +85,7 @@ impl Provider for StubProvider {
                 output: Some("stub output".into()),
                 output_preview: Some("stub output".into()),
                 changed_files: vec![],
+                diffs: vec![],
             }),
             MessagePart::text(reply.clone()),
         ];
@@ -119,6 +120,7 @@ impl Provider for StubProvider {
                 output: Some("stub output".into()),
                 output_preview: Some("stub output".into()),
                 changed_files: vec![],
+                diffs: vec![],
             }),
             MessagePart::text(reply.clone()),
         ];

@@ -73,6 +73,15 @@ pub type PermissionCallback = Arc<
         + Sync,
 >;
 
+/// A single file diff streamed from the agent via `ToolCallContent::Diff`.
+/// `old_text` is `None` for newly created files.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileDiff {
+    pub path: String,
+    pub old_text: Option<String>,
+    pub new_text: String,
+}
+
 /// A tool call streamed from the agent, rendered separately from the reply.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolCallEvent {
@@ -84,6 +93,11 @@ pub struct ToolCallEvent {
     pub output: Option<String>,
     pub output_preview: Option<String>,
     pub changed_files: Vec<String>,
+    /// Per-file diffs extracted from `ToolCallContent::Diff` updates. Later
+    /// updates for the same path replace earlier ones so the UI always shows
+    /// the most recent version of the file content.
+    #[serde(default)]
+    pub diffs: Vec<FileDiff>,
 }
 
 /// Options shared by [`Provider::start`] and [`Provider::send`].

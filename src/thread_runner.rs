@@ -409,6 +409,7 @@ mod tests {
                 output: None,
                 output_preview: None,
                 changed_files: vec![],
+                diffs: vec![],
             }),
             false,
         );
@@ -450,6 +451,7 @@ mod tests {
                 output: None,
                 output_preview: None,
                 changed_files: vec![],
+                diffs: vec![],
             }),
             false,
         );
@@ -463,6 +465,7 @@ mod tests {
                 output: Some("hello".into()),
                 output_preview: None,
                 changed_files: vec![],
+                diffs: vec![],
             }),
             true,
         );
