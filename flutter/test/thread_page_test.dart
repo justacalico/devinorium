@@ -320,7 +320,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-1',
                   title: 'Run cmd',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo hello',
                 ),
@@ -378,7 +378,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-1',
                   title: 'Run cmd',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo hello',
                 ),
@@ -387,7 +387,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-2',
                   title: 'Run another',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo world',
                 ),
@@ -588,6 +588,172 @@ void main() {
     expect(find.text('Show thinking'), findsNWidgets(2));
   });
 
+  testWidgets('execute tool calls render outside the thinking block', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'let me run a command'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-exec-1',
+                  title: 'Run cmd',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo hello',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Execute tool card is visible without expanding thinking.
+    expect(find.text('Run cmd'), findsOneWidget);
+    // Thinking is collapsed.
+    expect(find.text('Show thinking'), findsOneWidget);
+  });
+
+  testWidgets('execute tool calls render outside thinking even with text', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: 'Finished',
+            parts: [
+              MessagePart.thinking(content: 'thinking about it'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-exec-1',
+                  title: 'Run cmd',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo hello',
+                ),
+              ),
+              MessagePart.text(content: 'Finished'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Execute tool card visible without expanding thinking.
+    expect(find.text('Run cmd'), findsOneWidget);
+    // Thinking is collapsed (hasText=true).
+    expect(find.text('Show thinking'), findsOneWidget);
+    // Reply text is visible.
+    expect(find.text('Finished'), findsOneWidget);
+  });
+
+  testWidgets('execute tool call between two thinking blocks renders outside both', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'first think'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-exec-1',
+                  title: 'Run cmd',
+                  kind: 'execute',
+                  status: 'completed',
+                  command: 'echo hello',
+                ),
+              ),
+              MessagePart.thinking(content: 'second think'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Execute tool card visible without expanding either thinking block.
+    expect(find.text('Run cmd'), findsOneWidget);
+    // Both thinking blocks are collapsed.
+    expect(find.text('Show thinking'), findsNWidgets(2));
+  });
+
   testWidgets('interleaves thinking text and tool calls in order', (
     tester,
   ) async {
@@ -622,7 +788,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-1',
                   title: 'search',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo search',
                 ),
@@ -632,7 +798,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-2',
                   title: 'read file',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo read',
                 ),
@@ -687,7 +853,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-1',
                   title: 'search',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo search',
                 ),
@@ -809,7 +975,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-1',
                   title: 'Run a',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo a',
                 ),
@@ -820,7 +986,7 @@ void main() {
                 toolCall: ToolCallData(
                   id: 'tc-2',
                   title: 'Run b',
-                  kind: 'execute',
+                  kind: 'search',
                   status: 'completed',
                   command: 'echo b',
                 ),
