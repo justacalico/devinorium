@@ -416,9 +416,9 @@ class _MessageItemState extends State<_MessageItem> {
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
         if (tool == null) continue;
-        // File edits are rendered as standalone cards outside the thinking
-        // block so the user can see what changed without expanding thinking.
-        if (tool.kind == 'edit') {
+        // File edits and command executions are rendered as standalone cards
+        // outside the thinking block so the user can see them without expanding.
+        if (tool.kind == 'edit' || tool.kind == 'execute') {
           groups.add(_PartGroup(type: 'tool_call', tool: tool));
         } else if (groups.isNotEmpty && groups.last.type == 'thinking') {
           groups.last.thinkingItems.add(
