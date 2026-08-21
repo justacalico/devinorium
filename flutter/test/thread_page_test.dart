@@ -636,8 +636,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // Execute tool card is visible without expanding thinking.
-    expect(find.text('Run cmd'), findsOneWidget);
+    // Execute tool card shows the command, visible without expanding thinking.
+    expect(find.textContaining('echo hello'), findsOneWidget);
     // Thinking is collapsed.
     expect(find.text('Show thinking'), findsOneWidget);
   });
@@ -691,8 +691,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // Execute tool card visible without expanding thinking.
-    expect(find.text('Run cmd'), findsOneWidget);
+    // Execute tool card shows the command, visible without expanding thinking.
+    expect(find.textContaining('echo hello'), findsOneWidget);
     // Thinking is collapsed (hasText=true).
     expect(find.text('Show thinking'), findsOneWidget);
     // Reply text is visible.
@@ -748,8 +748,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // Execute tool card visible without expanding either thinking block.
-    expect(find.text('Run cmd'), findsOneWidget);
+    // Execute tool card shows the command, visible without expanding either thinking block.
+    expect(find.textContaining('echo hello'), findsOneWidget);
     // Both thinking blocks are collapsed.
     expect(find.text('Show thinking'), findsNWidgets(2));
   });

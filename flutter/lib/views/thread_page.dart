@@ -19,6 +19,7 @@ import 'drop_zone.dart';
 import 'edit_file_tool.dart';
 import 'model_picker.dart';
 import 'read_file_tool.dart';
+import 'run_command_tool.dart';
 
 class ThreadPage extends StatelessWidget {
   const ThreadPage({super.key});
@@ -1282,6 +1283,10 @@ class _ToolCallItemState extends State<_ToolCallItem> {
 
     if (tool.kind == 'edit') {
       return EditFileTool(key: ValueKey(tool.id), tool: tool);
+    }
+
+    if (tool.kind == 'execute') {
+      return RunCommandTool(key: ValueKey(tool.id), tool: tool);
     }
 
     final (icon, iconColor) = _toolIconAndColor(tool.kind, theme);
