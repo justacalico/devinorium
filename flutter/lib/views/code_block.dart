@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
-import 'horizontal_code_view.dart';
 import 'syntax_highlighter.dart';
 
-/// Renders a fenced code block with syntax highlighting, a language label,
-/// and a copy button.
+/// Renders code with syntax highlighting, wrapping long lines to avoid
+/// scroll gesture conflicts with ancestor ListViews.
 class CodeBlock extends StatefulWidget {
   final String code;
   final String language;
@@ -84,10 +83,10 @@ class _CodeBlockState extends State<CodeBlock> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                        _copied ? Icons.check : Icons.copy,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                          _copied ? Icons.check : Icons.copy,
+                          size: 14,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           _copied ? l.copied : l.copy,
@@ -106,9 +105,9 @@ class _CodeBlockState extends State<CodeBlock> {
           Padding(
             padding: const EdgeInsets.all(12),
             child: SelectionContainer.disabled(
-              child: HorizontalCodeView(
-                textSpan: hl.highlight(widget.code, lang),
-                textStyle: const TextStyle(
+              child: Text.rich(
+                hl.highlight(widget.code, lang),
+                style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,
                   height: 1.4,
