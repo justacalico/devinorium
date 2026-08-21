@@ -16,6 +16,7 @@ class StreamingSnapshot {
   final PermissionRequest? pendingPermission;
   final AskRequest? pendingAsk;
   final String? error;
+  final String? startedAt;
 
   const StreamingSnapshot({
     this.phase = StreamPhase.idle,
@@ -25,6 +26,7 @@ class StreamingSnapshot {
     this.pendingPermission,
     this.pendingAsk,
     this.error,
+    this.startedAt,
   });
 
   static const empty = StreamingSnapshot();
@@ -44,6 +46,8 @@ class StreamingSnapshot {
     bool clearPendingAsk = false,
     String? error,
     bool clearError = false,
+    String? startedAt,
+    bool clearStartedAt = false,
   }) {
     return StreamingSnapshot(
       phase: phase ?? this.phase,
@@ -55,6 +59,7 @@ class StreamingSnapshot {
           : (pendingPermission ?? this.pendingPermission),
       pendingAsk: clearPendingAsk ? null : (pendingAsk ?? this.pendingAsk),
       error: clearError ? null : (error ?? this.error),
+      startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
     );
   }
 }

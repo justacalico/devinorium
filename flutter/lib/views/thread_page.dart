@@ -17,6 +17,7 @@ import '../widgets/thread_tag.dart';
 import 'ask_request_panel.dart';
 import 'drop_zone.dart';
 import 'edit_file_tool.dart';
+import 'elapsed_time_indicator.dart';
 import 'model_picker.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
@@ -256,8 +257,21 @@ class _ChatViewState extends State<ChatView> {
               AskRequestPanel(
                 key: ValueKey(model.pendingAskRequestId),
               )
-            else
+            else ...[
+              if (state.sending)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(32, 0, 24, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ElapsedTimeIndicator(
+                      key: ValueKey(state.startedAt),
+                      startedAt: state.startedAt,
+                      active: state.sending,
+                    ),
+                  ),
+                ),
               _Composer(controller: _composerController),
+            ],
           ],
         );
       },
