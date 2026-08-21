@@ -927,15 +927,26 @@ async fn run_thread(
 
     // If the run was cancelled, persist whatever partial parts the provider
     // produced so the user and the agent retain context of the stopped turn.
+    // We also save the session ID so the next message resumes the same ACP
+    // session (which preserved its context via $/cancelRequest).
     if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-        let parts = match &provider_result {
-            Ok(t) => t.2.clone(),
-            Err(_) => run
-                .parts
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone(),
+        let (parts, new_session_id, new_title) = match &provider_result {
+            Ok(t) => (t.2.clone(), t.0.clone(), t.1.clone()),
+            Err(_) => (
+                run.parts
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone(),
+                None,
+                None,
+            ),
         };
+        if let Some(ref sid) = new_session_id {
+            let _ = state
+                .db
+                .update_thread_session(&thread.id, sid, new_title.as_deref())
+                .await;
+        }
         if !parts.is_empty() {
             let reply = collect_text(&parts);
             let thinking = collect_thinking(&parts);
