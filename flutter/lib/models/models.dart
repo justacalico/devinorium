@@ -412,6 +412,7 @@ class Project {
   final int position;
   final bool isRepo;
   final String gitBranch;
+  final String projectType;
   final String createdAt;
   final String updatedAt;
 
@@ -422,6 +423,7 @@ class Project {
     this.position = 0,
     this.isRepo = false,
     this.gitBranch = '',
+    this.projectType = 'generic',
     required this.createdAt,
     required this.updatedAt,
   });
@@ -433,6 +435,7 @@ class Project {
         position: (j['position'] as num?)?.toInt() ?? 0,
         isRepo: j['is_repo'] as bool? ?? false,
         gitBranch: j['branch'] as String? ?? '',
+        projectType: j['project_type'] as String? ?? 'generic',
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
       );
@@ -444,6 +447,7 @@ class Project {
     int? position,
     bool? isRepo,
     String? gitBranch,
+    String? projectType,
     String? createdAt,
     String? updatedAt,
   }) =>
@@ -454,6 +458,7 @@ class Project {
         position: position ?? this.position,
         isRepo: isRepo ?? this.isRepo,
         gitBranch: gitBranch ?? this.gitBranch,
+        projectType: projectType ?? this.projectType,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );

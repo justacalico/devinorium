@@ -132,6 +132,7 @@ pub struct ProjectRow {
     pub name: String,
     pub path: String,
     pub position: i64,
+    pub project_type: String,
     pub created_at: String,
     pub updated_at: String,
 }

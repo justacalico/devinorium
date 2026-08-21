@@ -7,19 +7,21 @@ pub struct NewProject {
     pub name: String,
     pub path: String,
     pub position: i64,
+    pub project_type: String,
 }
 
 impl Db {
     pub async fn create_project(&self, new: NewProject) -> anyhow::Result<ProjectRow> {
         sqlx::query_as::<_, ProjectRow>(
-            "INSERT INTO projects (user_id, name, path, position)
-             VALUES (?, ?, ?, ?)
+            "INSERT INTO projects (user_id, name, path, position, project_type)
+             VALUES (?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(new.user_id)
         .bind(&new.name)
         .bind(&new.path)
         .bind(new.position)
+        .bind(&new.project_type)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
@@ -127,6 +129,23 @@ impl Db {
             "UPDATE projects SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?",
         )
         .bind(name)
+        .bind(id)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_project_type(
+        &self,
+        id: i64,
+        user_id: i64,
+        project_type: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE projects SET project_type = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?",
+        )
+        .bind(project_type)
         .bind(id)
         .bind(user_id)
         .execute(self.pool())
