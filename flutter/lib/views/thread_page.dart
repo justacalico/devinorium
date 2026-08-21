@@ -101,6 +101,7 @@ class ChatView extends StatefulWidget {
 class _ChatModel {
   final String? activeThreadId;
   final ThreadDetail? detail;
+  final bool loading;
   final int messageCount;
   final int streamingDigest;
   final bool streamingThinkingActive;
@@ -109,6 +110,7 @@ class _ChatModel {
   const _ChatModel({
     required this.activeThreadId,
     required this.detail,
+    required this.loading,
     required this.messageCount,
     required this.streamingDigest,
     required this.streamingThinkingActive,
@@ -121,6 +123,7 @@ class _ChatModel {
     if (other is! _ChatModel) return false;
     return activeThreadId == other.activeThreadId &&
         detail == other.detail &&
+        loading == other.loading &&
         messageCount == other.messageCount &&
         streamingDigest == other.streamingDigest &&
         streamingThinkingActive == other.streamingThinkingActive &&
@@ -131,6 +134,7 @@ class _ChatModel {
   int get hashCode => Object.hash(
         activeThreadId,
         detail,
+        loading,
         messageCount,
         streamingDigest,
         streamingThinkingActive,
@@ -218,6 +222,7 @@ class _ChatViewState extends State<ChatView> {
       selector: (_, state) => _ChatModel(
         activeThreadId: state.activeThreadId,
         detail: state.activeThreadDetail,
+        loading: state.activeThreadLoading,
         messageCount: state.activeThreadDetail?.messages.length ?? 0,
         streamingDigest: _streamingDigest(state.streamingParts),
         streamingThinkingActive: state.streamingThinkingActive,
@@ -248,6 +253,7 @@ class _ChatViewState extends State<ChatView> {
             Expanded(
               child: _MessagesPanel(
                 detail: model.detail,
+                loading: model.loading,
                 streamingParts: state.streamingParts,
                 streamingThinkingActive: model.streamingThinkingActive,
                 controller: _scrollController,
@@ -257,7 +263,7 @@ class _ChatViewState extends State<ChatView> {
               AskRequestPanel(
                 key: ValueKey(model.pendingAskRequestId),
               )
-            else ...[
+            else if (!model.loading) ...[
               if (state.sending)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(32, 0, 24, 4),
@@ -281,11 +287,13 @@ class _ChatViewState extends State<ChatView> {
 
 class _MessagesPanel extends StatelessWidget {
   final ThreadDetail? detail;
+  final bool loading;
   final List<MessagePart> streamingParts;
   final bool streamingThinkingActive;
   final ScrollController controller;
   const _MessagesPanel({
     required this.detail,
+    required this.loading,
     required this.streamingParts,
     required this.streamingThinkingActive,
     required this.controller,
@@ -296,6 +304,14 @@ class _MessagesPanel extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (detail == null) {
+      if (loading) {
+        return Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: theme.colorScheme.primary,
+          ),
+        );
+      }
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(48),

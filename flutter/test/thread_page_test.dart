@@ -1641,4 +1641,72 @@ void main() {
 
     expect(find.byType(ElapsedTimeIndicator), findsNothing);
   });
+
+  testWidgets('shows loading spinner when thread is loading', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      threadLoading: true,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // The "select or create" hint should NOT show while loading.
+    expect(find.textContaining('select'), findsNothing);
+  });
+
+  testWidgets('shows hint text when no thread selected and not loading', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('hides composer while thread is loading', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      threadLoading: true,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pump();
+
+    // Loading spinner is shown.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // Composer is not rendered during loading.
+    expect(find.byType(TextField), findsNothing);
+  });
 }
