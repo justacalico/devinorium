@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n/l10n.dart';
+import 'services/window_service.dart';
 import 'state/app_state.dart';
 import 'views/app_view.dart';
 import 'views/auth_views.dart';
 import 'views/dialogs.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeWindow();
   runApp(const DevinoriumApp());
 }
 

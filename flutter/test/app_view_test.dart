@@ -6,8 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-Widget _buildWithState(AppState state, {Size size = const Size(1200, 800)}) {
+Widget _buildWithState(
+  AppState state, {
+  Size size = const Size(1200, 800),
+  TargetPlatform platform = TargetPlatform.iOS,
+}) {
   return MaterialApp(
+    theme: ThemeData(platform: platform, useMaterial3: true),
     home: ChangeNotifierProvider<AppState>.value(
       value: state,
       child: MediaQuery(
