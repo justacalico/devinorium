@@ -67,6 +67,7 @@ class AppState extends ChangeNotifier {
     String? selectedModel,
     String? selectedPermission,
     String? startedAt,
+    bool threadLoading = false,
   }) : api = api ?? ApiService() {
     _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
@@ -105,6 +106,7 @@ class AppState extends ChangeNotifier {
         threadId: threadId,
         projectId: projectId,
         detail: detail != null ? AsyncValue.ready(detail) : null,
+        status: threadLoading ? ThreadStoreStatus.loading : null,
         streaming: streaming,
         composerText: composerText ?? '',
         attachments: attachments,
@@ -156,6 +158,7 @@ class AppState extends ChangeNotifier {
   String _filesError = '';
   DialogKind _dialog = DialogKind.none;
   String _totpSecret = '';
+  bool _threadOpening = false;
 
   // Default draft/selection state used when no thread is active.
   String _composerText = '';
@@ -205,6 +208,9 @@ class AppState extends ChangeNotifier {
 
   String? get activeThreadId => _activeThreadId;
   ThreadDetail? get activeThreadDetail => _activeStore?.detail.valueOrNull;
+  bool get activeThreadLoading =>
+      _threadOpening ||
+      _activeStore?.status == ThreadStoreStatus.loading;
   List<User> get users => _users;
   List<Device> get devices => _devices;
   bool get isOwner => _user?.isOwner ?? false;
@@ -1031,6 +1037,7 @@ class AppState extends ChangeNotifier {
     final previous = _threadStores[id];
     _setActiveStore(null);
     _activeThreadId = id;
+    _threadOpening = true;
     notifyListeners();
     try {
       final results = await Future.wait([
@@ -1070,11 +1077,13 @@ class AppState extends ChangeNotifier {
       );
       _threadStores[id] = store;
       _setActiveStore(store);
+      _threadOpening = false;
       previous?.dispose();
 
       // If the backend is already running this thread, reconnect to it.
       await store.resume();
     } catch (e) {
+      _threadOpening = false;
       _globalError = '$e';
       notifyListeners();
     }
