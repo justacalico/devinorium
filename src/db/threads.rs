@@ -162,4 +162,23 @@ impl super::Db {
             .await?;
         Ok(())
     }
+
+    /// Delete all threads for a user+project that have zero messages.
+    /// Returns the number of threads deleted.
+    pub async fn delete_empty_threads(
+        &self,
+        user_id: i64,
+        project_id: i64,
+    ) -> anyhow::Result<u64> {
+        let result = sqlx::query(
+            "DELETE FROM threads
+             WHERE user_id = ? AND project_id = ?
+               AND id NOT IN (SELECT DISTINCT thread_id FROM messages)",
+        )
+        .bind(user_id)
+        .bind(project_id)
+        .execute(self.pool())
+        .await?;
+        Ok(result.rows_affected())
+    }
 }
