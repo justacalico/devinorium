@@ -166,6 +166,9 @@ async fn create(
         }
     }
 
+    // Remove empty threads for this user+project before creating a new one.
+    let _ = state.db.delete_empty_threads(user.id, req.project_id).await;
+
     // Validate group ownership if provided.
     if let Some(gid) = req.thread_group_id {
         match state.db.get_thread_group(gid, user.id).await {

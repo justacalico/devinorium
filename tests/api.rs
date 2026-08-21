@@ -2148,14 +2148,17 @@ async fn thread_group_create_list_rename_delete() {
 
 #[tokio::test]
 async fn thread_group_with_threads() {
-    let (app, _db) = make_app().await;
+    let (app, db) = make_app().await;
     let cookie = login(&app).await;
 
     let pid = create_project(&app, &cookie).await;
 
-    // Create two threads.
+    // Create two threads. Both need messages so they aren't treated as
+    // empty drafts and deleted when the next thread is created.
     let tid_a = make_thread(&app, &cookie, pid, "Thread A").await;
+    seed_messages(&db, &tid_a, 1, "msg-a").await;
     let tid_b = make_thread(&app, &cookie, pid, "Thread B").await;
+    seed_messages(&db, &tid_b, 1, "msg-b").await;
 
     // Create a group and move both threads into it.
     let resp = app
@@ -3258,4 +3261,78 @@ async fn huge_thread_messages_pagination_is_fast() {
     let msgs = v["messages"].as_array().unwrap();
     assert_eq!(msgs.len(), 50);
     assert!(elapsed.as_millis() < 500, "pagination took {} ms", elapsed.as_millis());
+}
+
+#[tokio::test]
+async fn create_thread_deletes_empty_threads() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    // Create one empty thread.
+    let t1 = make_thread(&app, &cookie, pid, "empty1").await;
+
+    // Verify it exists.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let arr = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let arr = arr.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+
+    // Create a new thread — should delete the empty one.
+    let _t2 = make_thread(&app, &cookie, pid, "new thread").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let arr = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let arr = arr.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "empty thread should have been deleted");
+    assert_eq!(arr[0]["title"].as_str().unwrap(), "new thread");
+
+    // The old empty thread ID should no longer be accessible.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{t1}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn create_thread_preserves_threads_with_messages() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    // Create a thread and add a message to it.
+    let t1 = make_thread(&app, &cookie, pid, "has messages").await;
+    seed_messages(&db, &t1, 1, "msg").await;
+
+    // Create an empty thread too.
+    let _t2 = make_thread(&app, &cookie, pid, "empty").await;
+
+    // Create a new thread — should only delete the empty one.
+    let _t3 = make_thread(&app, &cookie, pid, "new thread").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let threads = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let arr = threads.as_array().unwrap();
+    assert_eq!(arr.len(), 2, "thread with messages should be preserved");
+    let titles: Vec<&str> = arr.iter().map(|t| t["title"].as_str().unwrap()).collect();
+    assert!(titles.contains(&"has messages"));
+    assert!(titles.contains(&"new thread"));
+    assert!(!titles.contains(&"empty"));
 }
