@@ -110,4 +110,37 @@ void main() {
       expect(find.byType(Drawer), findsNothing);
     });
   });
+
+  group('AppShell resize preserves state', () {
+    testWidgets('composer text survives narrow <-> wide layout switch',
+        (tester) async {
+      final state = _baseState();
+      await tester.pumpWidget(
+        _buildWithState(state, size: const Size(1200, 800)),
+      );
+      await tester.pumpAndSettle();
+
+      // Type into the composer.
+      await tester.enterText(find.byType(TextField), 'hello world');
+      await tester.pumpAndSettle();
+      expect(find.text('hello world'), findsOneWidget);
+
+      // Shrink to phone width — the layout swaps from Row to drawer mode.
+      await tester.pumpWidget(
+        _buildWithState(state, size: const Size(400, 800)),
+      );
+      await tester.pumpAndSettle();
+
+      // The composer text must still be there.
+      expect(find.text('hello world'), findsOneWidget);
+
+      // Grow back to wide and confirm it is still intact.
+      await tester.pumpWidget(
+        _buildWithState(state, size: const Size(1200, 800)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('hello world'), findsOneWidget);
+    });
+  });
 }
