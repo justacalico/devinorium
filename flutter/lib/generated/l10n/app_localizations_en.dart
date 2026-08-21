@@ -642,33 +642,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get readFileNoContent => 'No content';
 
   @override
-  String editFileTitle(String fileName) {
-    return 'Edit $fileName';
-  }
-
-  @override
-  String get editFileNewFile => 'New file';
-
-  @override
-  String get editFileModified => 'Modified';
-
-  @override
-  String get editFileBefore => 'Before';
-
-  @override
-  String get editFileAfter => 'After';
-
-  @override
-  String get editFileDiff => 'Diff';
-
-  @override
   String get editFileNoDiff => 'No diff content yet';
-
-  @override
-  String get editFileCopy => 'Copy';
-
-  @override
-  String get editFileCopied => 'Copied';
 
   @override
   String get editFileOpenInFiles => 'Open in files';

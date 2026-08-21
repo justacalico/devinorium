@@ -1222,59 +1222,11 @@ abstract class AppLocalizations {
   /// **'No content'**
   String get readFileNoContent;
 
-  /// No description provided for @editFileTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit {fileName}'**
-  String editFileTitle(String fileName);
-
-  /// No description provided for @editFileNewFile.
-  ///
-  /// In en, this message translates to:
-  /// **'New file'**
-  String get editFileNewFile;
-
-  /// No description provided for @editFileModified.
-  ///
-  /// In en, this message translates to:
-  /// **'Modified'**
-  String get editFileModified;
-
-  /// No description provided for @editFileBefore.
-  ///
-  /// In en, this message translates to:
-  /// **'Before'**
-  String get editFileBefore;
-
-  /// No description provided for @editFileAfter.
-  ///
-  /// In en, this message translates to:
-  /// **'After'**
-  String get editFileAfter;
-
-  /// No description provided for @editFileDiff.
-  ///
-  /// In en, this message translates to:
-  /// **'Diff'**
-  String get editFileDiff;
-
   /// No description provided for @editFileNoDiff.
   ///
   /// In en, this message translates to:
   /// **'No diff content yet'**
   String get editFileNoDiff;
-
-  /// No description provided for @editFileCopy.
-  ///
-  /// In en, this message translates to:
-  /// **'Copy'**
-  String get editFileCopy;
-
-  /// No description provided for @editFileCopied.
-  ///
-  /// In en, this message translates to:
-  /// **'Copied'**
-  String get editFileCopied;
 
   /// No description provided for @editFileOpenInFiles.
   ///
