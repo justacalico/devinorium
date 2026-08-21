@@ -353,5 +353,57 @@ void main() {
 
       expect(opened, isTrue);
     });
+
+    testWidgets('truncates very large diffs with a note', (tester) async {
+      final oldText = List.generate(600, (i) => 'old line $i').join('\n');
+      final newText = List.generate(600, (i) => 'new line $i').join('\n');
+
+      final tool = ToolCallData(
+        id: '1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'completed',
+        diffs: [
+          FileDiff(path: '/tmp/big.rs', oldText: oldText, newText: newText),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
+      );
+
+      expect(find.textContaining('/tmp/big.rs'), findsOneWidget);
+      // Truncation note is shown.
+      expect(find.textContaining('more lines not shown'), findsOneWidget);
+    });
+
+    testWidgets('caches diff computation across rebuilds', (tester) async {
+      final diff = FileDiff(
+        path: '/tmp/main.rs',
+        oldText: 'fn main() {\n    todo!()\n}\n',
+        newText: 'fn main() {}\n',
+      );
+      final tool = ToolCallData(
+        id: '1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'completed',
+        diffs: [diff],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: EditFileTool(tool: tool))),
+      );
+
+      // Trigger a rebuild by toggling collapse.
+      await tester.tap(find.byIcon(Icons.expand_less));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.expand_more));
+      await tester.pumpAndSettle();
+
+      // Diff content is still correct after rebuild (cache hit).
+      expect(find.textContaining('- fn main() {'), findsOneWidget);
+      expect(find.textContaining('+ fn main() {}'), findsOneWidget);
+    });
   });
 }

@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
+/// Maximum number of diff lines to render. Files larger than this show
+/// a truncated view with a note.
+const _maxRenderLines = 500;
+
 /// Renders file edits as inline diff cards (like t3code) — not collapsed
 /// into a tool call. Shows the file path header with a status indicator
 /// and the unified diff below it, directly in the chat stream.
@@ -27,6 +31,10 @@ class _EditFileToolState extends State<EditFileTool> {
   int _selectedDiffIndex = 0;
   bool _collapsed = false;
 
+  /// Cache key -> computed diff lines. Avoids recomputing the O(n*m) LCS
+  /// on every rebuild when the diff content hasn't changed.
+  _CachedDiff? _cachedDiff;
+
   @override
   void didUpdateWidget(covariant EditFileTool oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -36,6 +44,40 @@ class _EditFileToolState extends State<EditFileTool> {
         widget.tool.diffs.isNotEmpty) {
       _selectedDiffIndex = widget.tool.diffs.length - 1;
     }
+  }
+
+  _CachedDiff _getDiffLines(FileDiff diff) {
+    final key = '${diff.oldText ?? ''}\x00${diff.newText}';
+    if (_cachedDiff != null && _cachedDiff!.key == key) {
+      return _cachedDiff!;
+    }
+
+    final splitter = const LineSplitter();
+    final oldLines = diff.oldText == null
+        ? const <String>[]
+        : splitter.convert(diff.oldText!);
+    final newLines = splitter.convert(diff.newText);
+
+    final List<_DiffLine> lines;
+    if (diff.oldText == null) {
+      lines = [
+        for (final line in newLines) _DiffLine(_LineKind.added, line),
+      ];
+    } else {
+      lines = _computeUnifiedDiff(oldLines, newLines);
+    }
+
+    final truncated = lines.length > _maxRenderLines;
+    final visibleLines =
+        truncated ? lines.sublist(0, _maxRenderLines) : lines;
+
+    _cachedDiff = _CachedDiff(
+      key: key,
+      lines: visibleLines,
+      totalLines: lines.length,
+      truncated: truncated,
+    );
+    return _cachedDiff!;
   }
 
   @override
@@ -118,7 +160,7 @@ class _EditFileToolState extends State<EditFileTool> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildFileHeader(context, l, diff, isNewFile, statusColor),
-          if (!_collapsed) _buildDiffBody(context, diff, isNewFile),
+          if (!_collapsed) _buildDiffBody(context, diff),
         ],
       ),
     );
@@ -143,7 +185,6 @@ class _EditFileToolState extends State<EditFileTool> {
       ),
       child: Row(
         children: [
-          // Status indicator bar
           Container(
             width: 3,
             height: 16,
@@ -171,9 +212,7 @@ class _EditFileToolState extends State<EditFileTool> {
             ),
           ),
           const SizedBox(width: 8),
-          _CopyButton(
-            text: diff.newText,
-          ),
+          _CopyButton(text: diff.newText),
           if (widget.onOpenInFiles != null) ...[
             const SizedBox(width: 4),
             IconButton(
@@ -201,25 +240,11 @@ class _EditFileToolState extends State<EditFileTool> {
     );
   }
 
-  Widget _buildDiffBody(
-    BuildContext context,
-    FileDiff diff,
-    bool isNewFile,
-  ) {
+  Widget _buildDiffBody(BuildContext context, FileDiff diff) {
     final theme = Theme.of(context);
-    final splitter = const LineSplitter();
-    final oldLines = diff.oldText == null
-        ? const <String>[]
-        : splitter.convert(diff.oldText!);
-    final newLines = splitter.convert(diff.newText);
+    final cached = _getDiffLines(diff);
 
-    final hunks = isNewFile
-        ? [_DiffHunk(lines: [
-            for (final line in newLines) _DiffLine(_LineKind.added, line),
-          ])]
-        : _computeUnifiedDiff(oldLines, newLines);
-
-    if (hunks.isEmpty || hunks.every((h) => h.lines.isEmpty)) {
+    if (cached.lines.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
@@ -245,7 +270,7 @@ class _EditFileToolState extends State<EditFileTool> {
               bottomRight: Radius.circular(5),
             ),
           ),
-          child: _UnifiedDiffView(hunks: hunks),
+          child: _DiffTextView(cached: cached),
         ),
       ),
     );
@@ -260,61 +285,22 @@ class _EditFileToolState extends State<EditFileTool> {
   }
 }
 
-enum _LineKind { context, added, removed }
-
-class _UnifiedDiffView extends StatelessWidget {
-  final List<_DiffHunk> hunks;
-  const _UnifiedDiffView({required this.hunks});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final rows = <Widget>[];
-    for (final hunk in hunks) {
-      for (final line in hunk.lines) {
-        final (marker, color, bg) = switch (line.kind) {
-          _LineKind.added => (
-              '+',
-              theme.colorScheme.primary,
-              theme.colorScheme.primaryContainer.withValues(alpha: 0.20),
-            ),
-          _LineKind.removed => (
-              '-',
-              theme.colorScheme.error,
-              theme.colorScheme.errorContainer.withValues(alpha: 0.20),
-            ),
-          _LineKind.context => (
-              ' ',
-              theme.colorScheme.onSurfaceVariant,
-              Colors.transparent,
-            ),
-        };
-        rows.add(Container(
-          color: bg,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: SelectableText(
-            '$marker ${line.text}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: color,
-              fontFamily: 'monospace',
-              height: 1.4,
-            ),
-          ),
-        ));
-      }
-    }
-    if (rows.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: rows,
-    );
-  }
-}
-
-class _DiffHunk {
+/// Holds a cached diff computation so it's not recomputed on every rebuild.
+class _CachedDiff {
+  final String key;
   final List<_DiffLine> lines;
-  const _DiffHunk({required this.lines});
+  final int totalLines;
+  final bool truncated;
+
+  const _CachedDiff({
+    required this.key,
+    required this.lines,
+    required this.totalLines,
+    required this.truncated,
+  });
 }
+
+enum _LineKind { context, added, removed }
 
 class _DiffLine {
   final _LineKind kind;
@@ -322,13 +308,75 @@ class _DiffLine {
   const _DiffLine(this.kind, this.text);
 }
 
+/// Renders the entire diff as a single [SelectableText.rich] widget with
+/// per-line [TextSpan]s. This is dramatically cheaper than creating one
+/// [SelectableText] per line (one render object vs hundreds).
+class _DiffTextView extends StatelessWidget {
+  final _CachedDiff cached;
+  const _DiffTextView({required this.cached});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final addedColor = theme.colorScheme.primary;
+    final removedColor = theme.colorScheme.error;
+    final contextColor = theme.colorScheme.onSurfaceVariant;
+    final addedBg = theme.colorScheme.primaryContainer.withValues(alpha: 0.20);
+    final removedBg =
+        theme.colorScheme.errorContainer.withValues(alpha: 0.20);
+
+    final baseStyle = theme.textTheme.bodySmall?.copyWith(
+      fontFamily: 'monospace',
+      height: 1.4,
+    );
+
+    final spans = <TextSpan>[];
+    for (final line in cached.lines) {
+      final (marker, color, bg) = switch (line.kind) {
+        _LineKind.added => ('+', addedColor, addedBg),
+        _LineKind.removed => ('-', removedColor, removedBg),
+        _LineKind.context => (' ', contextColor, Colors.transparent),
+      };
+      spans.add(TextSpan(
+        text: '$marker ${line.text}\n',
+        style: baseStyle?.copyWith(color: color, backgroundColor: bg),
+      ));
+    }
+
+    if (cached.truncated) {
+      spans.add(TextSpan(
+        text: '\n… ${cached.totalLines - cached.lines.length} more lines not shown',
+        style: baseStyle?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontStyle: FontStyle.italic,
+        ),
+      ));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: SelectableText.rich(
+        TextSpan(children: spans),
+        style: baseStyle,
+      ),
+    );
+  }
+}
+
 /// Compute a simple unified diff using the classic LCS dynamic-programming
-/// approach. Inputs are kept small (file previews), so the O(n*m) cost is
-/// acceptable and avoids pulling in an extra dependency.
-List<_DiffHunk> _computeUnifiedDiff(List<String> a, List<String> b) {
+/// approach. Result is cached by the caller so this only runs once per
+/// unique (oldText, newText) pair.
+List<_DiffLine> _computeUnifiedDiff(List<String> a, List<String> b) {
   final n = a.length;
   final m = b.length;
   if (n == 0 && m == 0) return const [];
+  if (n == 0) {
+    return [for (final line in b) _DiffLine(_LineKind.added, line)];
+  }
+  if (m == 0) {
+    return [for (final line in a) _DiffLine(_LineKind.removed, line)];
+  }
 
   final dp = List<List<int>>.generate(
     n + 1,
@@ -369,7 +417,7 @@ List<_DiffHunk> _computeUnifiedDiff(List<String> a, List<String> b) {
     j++;
   }
 
-  return [_DiffHunk(lines: lines)];
+  return lines;
 }
 
 class _CopyButton extends StatelessWidget {
