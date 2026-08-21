@@ -24,6 +24,13 @@ class CodeBlock extends StatefulWidget {
 
 class _CodeBlockState extends State<CodeBlock> {
   bool _copied = false;
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,9 +112,11 @@ class _CodeBlockState extends State<CodeBlock> {
           Padding(
             padding: const EdgeInsets.all(12),
             child: Scrollbar(
+              controller: _scrollController,
               child: SingleChildScrollView(
+                controller: _scrollController,
                 scrollDirection: Axis.horizontal,
-                child: SelectableText.rich(
+                child: Text.rich(
                   hl.highlight(widget.code, lang),
                   style: const TextStyle(
                     fontFamily: 'monospace',
