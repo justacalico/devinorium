@@ -485,6 +485,26 @@ class _PersonalizationSection extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 24),
+        Text(
+          l.notifications,
+          style: theme.textTheme.titleSmall,
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          title: Text(l.completionNotifications),
+          subtitle: Text(l.completionNotificationsDescription),
+          value: state.notificationsEnabled,
+          onChanged: (v) => state.setNotificationsEnabled(v),
+        ),
+        SwitchListTile(
+          title: Text(l.completionSound),
+          subtitle: Text(l.completionSoundDescription),
+          value: state.soundEnabled,
+          onChanged: state.notificationsEnabled
+              ? (v) => state.setSoundEnabled(v)
+              : null,
+        ),
       ],
     );
   }

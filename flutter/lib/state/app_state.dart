@@ -9,6 +9,7 @@ import '../api/api_service.dart';
 import '../l10n/global_l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
+import '../services/notification_service.dart';
 import 'async_value.dart';
 import 'streaming_state.dart';
 import 'thread_store.dart';
@@ -183,6 +184,8 @@ class AppState extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('en');
   int _settingsTopicIndex = 0;
+  final _notifications = NotificationService();
+  StreamPhase _prevPhase = StreamPhase.idle;
 
   // Git state (per project).
   final Map<int, GitRepoInfo> _gitRepoInfo = {};
@@ -216,6 +219,14 @@ class AppState extends ChangeNotifier {
   int? get activeProjectId => _activeProjectId;
 
   String? get activeThreadId => _activeThreadId;
+  String? get _activeThreadTitle {
+    final id = _activeThreadId;
+    if (id == null) return null;
+    for (final t in _threads) {
+      if (t.id == id) return t.title;
+    }
+    return null;
+  }
   ThreadDetail? get activeThreadDetail => _activeStore?.detail.valueOrNull;
   bool get activeThreadLoading =>
       _threadOpening ||
@@ -254,6 +265,8 @@ class AppState extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
+  bool get notificationsEnabled => _notifications.notificationsEnabled;
+  bool get soundEnabled => _notifications.soundEnabled;
 
   int? get renameProjectId => _renameProjectId;
   String? get renameThreadId => _renameThreadId;
@@ -274,6 +287,17 @@ class AppState extends ChangeNotifier {
   void _onThreadStoreChanged() {
     final store = _activeStore;
     if (store == null) return;
+    final phase = store.streaming.phase;
+    if ((phase == StreamPhase.completed || phase == StreamPhase.failed) &&
+        _prevPhase != phase &&
+        _prevPhase != StreamPhase.completed &&
+        _prevPhase != StreamPhase.failed) {
+      _notifications.notifyThreadCompleted(
+        title: _activeThreadTitle ?? 'Thread',
+        failed: phase == StreamPhase.failed,
+      );
+    }
+    _prevPhase = phase;
     _syncFromActiveStore();
     notifyListeners();
   }
@@ -536,6 +560,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    _notifications.setNotificationsEnabled(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('devinorium_notifications', enabled);
+    } catch (_) {}
+  }
+
+  Future<void> setSoundEnabled(bool enabled) async {
+    _notifications.setSoundEnabled(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('devinorium_sound', enabled);
+    } catch (_) {}
+  }
+
+  Future<void> _loadNotificationPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _notifications.setNotificationsEnabled(
+        prefs.getBool('devinorium_notifications') ?? false,
+      );
+      _notifications.setSoundEnabled(
+        prefs.getBool('devinorium_sound') ?? false,
+      );
+    } catch (_) {}
+    notifyListeners();
+  }
+
   Future<void> openFilesPanel() async {
     _filesPanelOpen = true;
     _filesPath = [];
@@ -634,6 +689,7 @@ class AppState extends ChangeNotifier {
     await _loadThemeMode();
     await _loadLanguage();
     await _loadComposerMode();
+    await _loadNotificationPrefs();
     setAppL10n(_locale);
     try {
       final configured = await api.client.isConfigured;

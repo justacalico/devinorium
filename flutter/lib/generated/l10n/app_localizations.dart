@@ -1473,6 +1473,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stop generating'**
   String get stopGenerating;
+
+  /// No description provided for @notifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notifications;
+
+  /// No description provided for @completionNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify when a thread completes'**
+  String get completionNotifications;
+
+  /// No description provided for @completionNotificationsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Show a browser notification when a thread run finishes while this tab is in the background.'**
+  String get completionNotificationsDescription;
+
+  /// No description provided for @completionSound.
+  ///
+  /// In en, this message translates to:
+  /// **'Play sound on completion'**
+  String get completionSound;
+
+  /// No description provided for @completionSoundDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Play a short tone when a thread run finishes while this tab is in the background.'**
+  String get completionSoundDescription;
+
+  /// No description provided for @threadCompletedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Thread completed'**
+  String get threadCompletedTitle;
+
+  /// No description provided for @threadCompletedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} has finished running.'**
+  String threadCompletedBody(String title);
+
+  /// No description provided for @threadFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Thread failed'**
+  String get threadFailedTitle;
+
+  /// No description provided for @threadFailedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} encountered an error.'**
+  String threadFailedBody(String title);
 }
 
 class _AppLocalizationsDelegate

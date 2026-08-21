@@ -1968,4 +1968,47 @@ void main() {
       expect(state.projects[0].gitBranch, 'develop');
     });
   });
+
+  group('Notification preferences', () {
+    setUpAll(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('defaults to disabled', () {
+      final state = AppState.test();
+      expect(state.notificationsEnabled, isFalse);
+      expect(state.soundEnabled, isFalse);
+    });
+
+    test('setNotificationsEnabled persists the value', () async {
+      final state = AppState.test();
+      await state.setNotificationsEnabled(true);
+      expect(state.notificationsEnabled, isTrue);
+      expect(
+        (await SharedPreferences.getInstance()).getBool('devinorium_notifications'),
+        isTrue,
+      );
+    });
+
+    test('setSoundEnabled persists the value', () async {
+      final state = AppState.test();
+      await state.setSoundEnabled(true);
+      expect(state.soundEnabled, isTrue);
+      expect(
+        (await SharedPreferences.getInstance()).getBool('devinorium_sound'),
+        isTrue,
+      );
+    });
+
+    test('bootstrap loads saved notification prefs', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_notifications': true,
+        'devinorium_sound': true,
+      });
+      final state = AppState.test();
+      await state.bootstrap();
+      expect(state.notificationsEnabled, isTrue);
+      expect(state.soundEnabled, isTrue);
+    });
+  });
 }
