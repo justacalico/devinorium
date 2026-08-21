@@ -22,6 +22,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _mainKey = GlobalKey();
   bool _wasFilesPanelOpen = false;
 
   @override
@@ -29,7 +30,10 @@ class _AppShellState extends State<AppShell> {
     final state = context.watch<AppState>();
     final isNarrow = MediaQuery.of(context).size.width < 768;
 
-    final main = DropZone(child: _MainArea());
+    // A stable key lets Flutter reparent this subtree (and preserve all
+    // stateful descendants such as text controllers) when the layout
+    // switches between narrow and wide, instead of rebuilding it.
+    final main = DropZone(key: _mainKey, child: _MainArea());
 
     if (isNarrow) {
       if (state.filesPanelOpen && !_wasFilesPanelOpen) {
