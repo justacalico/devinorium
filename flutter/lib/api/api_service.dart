@@ -175,14 +175,11 @@ class ApiService {
     return list.map(GitConnection.fromJson).toList();
   }
 
-  Future<GitConnection> connectGitLab({
-    required String token,
-    String? hostname,
-  }) async {
-    final j = await _client.post('/api/git-connections/gitlab', {
-      'token': token,
+  Future<GitConnection> connectGitLab({String? hostname}) async {
+    final body = <String, dynamic>{
       if (hostname != null && hostname.isNotEmpty) 'hostname': hostname,
-    });
+    };
+    final j = await _client.post('/api/git-connections/gitlab', body);
     return GitConnection.fromJson(j);
   }
 

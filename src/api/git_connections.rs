@@ -22,7 +22,6 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 pub struct GitLabLoginRequest {
-    pub token: String,
     pub hostname: Option<String>,
 }
 
@@ -41,15 +40,6 @@ async fn login_gitlab(
     CurrentUser(user): CurrentUser,
     Json(req): Json<GitLabLoginRequest>,
 ) -> Response {
-    let token = req.token.trim();
-    if token.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("token is required")),
-        )
-            .into_response();
-    }
-
     let hostname = req
         .hostname
         .as_deref()
@@ -58,7 +48,7 @@ async fn login_gitlab(
 
     match state
         .git_remote
-        .login_gitlab(user.id, token, hostname.as_deref())
+        .login_gitlab(user.id, hostname.as_deref())
         .await
     {
         Ok(status) => Json(GitConnection {

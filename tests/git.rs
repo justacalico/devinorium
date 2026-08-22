@@ -527,9 +527,14 @@ async fn git_remote_gitlab_login_and_logout() {
     let glab = write_fake_glab(tmp.path());
     let config_root = tmp.path().join("config");
     std::fs::create_dir_all(&config_root).unwrap();
-    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+    let svc = GitRemoteService::with_glab_bin(config_root.clone(), Some(glab));
 
-    let status = svc.login_gitlab(1, "glpat-test-token", None).await.unwrap();
+    // Simulate a pre-authenticated glab CLI by writing the token it expects.
+    let token_file = config_root.join("glab").join("1").join(".config").join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "glpat-test-token").unwrap();
+
+    let status = svc.login_gitlab(1, None).await.unwrap();
     assert!(status.authed);
     assert_eq!(status.account.as_deref(), Some("testuser"));
     assert_eq!(status.host, "gitlab.com");
@@ -549,10 +554,14 @@ async fn git_remote_gitlab_login_uses_custom_host() {
     let glab = write_fake_glab(tmp.path());
     let config_root = tmp.path().join("config");
     std::fs::create_dir_all(&config_root).unwrap();
-    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+    let svc = GitRemoteService::with_glab_bin(config_root.clone(), Some(glab));
+
+    let token_file = config_root.join("glab").join("1").join(".config").join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "glpat-test-token").unwrap();
 
     let status = svc
-        .login_gitlab(1, "glpat-test-token", Some("gitlab.example.com"))
+        .login_gitlab(1, Some("gitlab.example.com"))
         .await
         .unwrap();
     assert_eq!(status.host, "gitlab.example.com");

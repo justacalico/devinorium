@@ -454,6 +454,7 @@
   },
   "loading": "Loading…",
   "gitlabNotInstalled": "GitLab CLI (glab) is not installed",
+  "gitlabConnectHint": "Run glab auth login in your terminal, then tap Connect.",
   "none": "None",
   "createAndSwitchBranch": "Create and switch",
   "createAndNewBranch": "Create and new branch",

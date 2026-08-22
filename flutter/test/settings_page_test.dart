@@ -101,10 +101,7 @@ class _FakeApiService extends ApiService {
       ];
 
   @override
-  Future<GitConnection> connectGitLab({
-    required String token,
-    String? hostname,
-  }) async =>
+  Future<GitConnection> connectGitLab({String? hostname}) async =>
       const GitConnection(id: 'gitlab', name: 'GitLab', enabled: true, authed: true, account: 'owner');
 
   @override

@@ -1876,9 +1876,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> connectGitLab({required String token, String? hostname}) async {
+  Future<void> connectGitLab({String? hostname}) async {
     try {
-      final updated = await api.connectGitLab(token: token, hostname: hostname);
+      final updated = await api.connectGitLab(hostname: hostname);
       final index = _gitConnections.indexWhere((c) => c.id == updated.id);
       if (index >= 0) {
         _gitConnections[index] = updated;

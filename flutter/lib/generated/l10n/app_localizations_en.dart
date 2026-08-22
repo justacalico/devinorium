@@ -770,6 +770,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gitlabNotInstalled => 'GitLab CLI (glab) is not installed';
 
   @override
+  String get gitlabConnectHint =>
+      'Run glab auth login in your terminal, then tap Connect.';
+
+  @override
   String get none => 'None';
 
   @override

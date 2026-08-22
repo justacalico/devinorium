@@ -1462,6 +1462,12 @@ abstract class AppLocalizations {
   /// **'GitLab CLI (glab) is not installed'**
   String get gitlabNotInstalled;
 
+  /// No description provided for @gitlabConnectHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Run glab auth login in your terminal, then tap Connect.'**
+  String get gitlabConnectHint;
+
   /// No description provided for @none.
   ///
   /// In en, this message translates to:

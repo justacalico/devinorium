@@ -3319,12 +3319,22 @@ exit 1
     bin
 }
 
+fn write_glab_token_file(config_root: &std::path::Path, user_id: i64) {
+    let token_file = config_root
+        .join("glab")
+        .join(user_id.to_string())
+        .join(".config")
+        .join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "glpat-test").unwrap();
+}
+
 #[tokio::test]
 async fn git_connections_list_login_logout() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab(&home);
-    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home.clone(), Some(glab)));
 
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
@@ -3343,7 +3353,10 @@ async fn git_connections_list_login_logout() {
     assert_eq!(list[1]["id"], "github");
     assert!(list[1]["coming_soon"].as_bool().unwrap());
 
-    let body = r#"{"token":"glpat-test","hostname":"gitlab.example.com"}"#;
+    // Simulate glab already being authenticated on the host.
+    write_glab_token_file(&home, 1);
+
+    let body = r#"{"hostname":"gitlab.example.com"}"#;
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
@@ -3391,7 +3404,7 @@ async fn git_connections_list_login_logout() {
 }
 
 #[tokio::test]
-async fn git_connections_rejects_empty_token() {
+async fn git_connections_login_fails_when_glab_not_authed() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab(&home);
@@ -3400,7 +3413,7 @@ async fn git_connections_rejects_empty_token() {
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
 
-    let body = r#"{"token":"   "}"#;
+    let body = r#"{}"#;
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
@@ -3414,12 +3427,13 @@ async fn git_connections_login_defaults_to_gitlab_com() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab(&home);
+    write_glab_token_file(&home, 1);
     state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
 
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
 
-    let body = r#"{"token":"glpat-test"}"#;
+    let body = r#"{}"#;
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
