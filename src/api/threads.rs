@@ -36,6 +36,7 @@ use crate::{AppState, PendingAskRequest, PendingPermissionRequest};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/threads", get(list).post(create))
+        .route("/api/threads/runs", get(list_runs))
         .route(
             "/api/threads/:id",
             get(get_one).patch(rename).delete(delete),
@@ -133,8 +134,13 @@ impl From<MessageRow> for MessageOut {
     }
 }
 
-async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
-    match state.db.list_threads(user.id).await {
+async fn list(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(pagination): Query<crate::api::pagination::Pagination>,
+) -> Response {
+    let (limit, offset) = pagination.bounds();
+    match state.db.list_threads(user.id, limit, offset).await {
         Ok(rows) => Json(rows.into_iter().map(ThreadOut::from).collect::<Vec<_>>()).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
@@ -580,6 +586,19 @@ async fn get_run(
             "last_seq": 0,
         }))
         .into_response(),
+    }
+}
+
+/// Return the ids of all currently running threads for the caller.
+/// This avoids the N+1 cost of polling `/api/threads/:id/run` for every thread.
+async fn list_runs(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> Response {
+    let running = state.thread_runner.running_ids().await;
+    match state.db.filter_user_thread_ids(user.id, &running).await {
+        Ok(ids) => Json(serde_json::json!({"running_ids": ids })).into_response(),
+        Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
 

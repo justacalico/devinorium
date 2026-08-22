@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, Router};
@@ -65,13 +65,22 @@ pub struct CreateProject {
     pub path: String,
 }
 
-async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
-    match state.db.list_projects(user.id).await {
+async fn list(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(pagination): Query<crate::api::pagination::Pagination>,
+) -> Response {
+    let (limit, offset) = pagination.bounds();
+    match state.db.list_projects(user.id, limit, offset).await {
         Ok(rows) => {
-            let mut out = Vec::with_capacity(rows.len());
-            for p in rows {
-                out.push(ProjectOut::from_row(&state, p).await);
-            }
+            let out = futures::future::join_all(
+                rows.into_iter()
+                    .map(|p| {
+                        let state = state.clone();
+                        async move { ProjectOut::from_row(&state, p).await }
+                    }),
+            )
+            .await;
             Json(out).into_response()
         }
         Err(e) => crate::api::map_err_internal(e).into_response(),
@@ -352,8 +361,10 @@ async fn list_threads(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
+    Query(pagination): Query<crate::api::pagination::Pagination>,
 ) -> Response {
-    match state.db.list_threads_for_project(id, user.id).await {
+    let (limit, offset) = pagination.bounds();
+    match state.db.list_threads_for_project(id, user.id, limit, offset).await {
         Ok(rows) => {
             Json(rows
                 .into_iter()

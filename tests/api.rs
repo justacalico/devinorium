@@ -1710,6 +1710,59 @@ async fn file_manager_rejects_traversal() {
 }
 
 #[tokio::test]
+async fn file_manager_list_paginates() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let body = r#"{"name":"files","path":"files-dir"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap();
+
+    std::fs::create_dir_all(&path).unwrap();
+    for i in 0..3 {
+        std::fs::write(format!("{path}/file{i}.txt"), "x").unwrap();
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={pid}&path=.&limit=2&offset=0"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 2);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={pid}&path=.&limit=2&offset=2"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn project_accepts_absolute_path_with_spaces() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
@@ -3426,6 +3479,130 @@ async fn project_list_includes_git_branch() {
         .unwrap();
     assert!(project["is_repo"].as_bool().unwrap());
     assert_eq!(project["branch"].as_str().unwrap(), "main");
+}
+
+#[tokio::test]
+async fn project_list_paginates() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let mut ids = Vec::new();
+    for _ in 0..3 {
+        ids.push(create_project(&app, &cookie).await);
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects?limit=2&offset=0", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 2);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects?limit=2&offset=2", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn thread_list_paginates() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let mut ids = Vec::new();
+    for i in 0..3 {
+        let tid = make_thread(&app, &cookie, pid, &format!("T{i}")).await;
+        seed_messages(&db, &tid, 1, "msg ").await;
+        ids.push(tid);
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads?limit=2&offset=0", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 2);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads?limit=2&offset=2", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn project_threads_paginate() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    for i in 0..3 {
+        let tid = make_thread(&app, &cookie, pid, &format!("T{i}")).await;
+        seed_messages(&db, &tid, 1, "msg ").await;
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/threads?limit=2&offset=0"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 2);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/threads?limit=2&offset=2"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn thread_list_runs_returns_empty_when_idle() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads/runs", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let arr = v["running_ids"].as_array().unwrap();
+    assert!(arr.is_empty());
 }
 
 #[tokio::test]

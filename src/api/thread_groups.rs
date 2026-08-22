@@ -5,7 +5,7 @@
 //! explicitly via the API. Deleting a group ungroups its threads (sets
 //! thread_group_id to NULL).
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, Router};
@@ -44,8 +44,13 @@ impl From<ThreadGroupRow> for ThreadGroupOut {
     }
 }
 
-async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
-    match state.db.list_thread_groups(user.id).await {
+async fn list(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(pagination): Query<crate::api::pagination::Pagination>,
+) -> Response {
+    let (limit, offset) = pagination.bounds();
+    match state.db.list_thread_groups(user.id, limit, offset).await {
         Ok(rows) => Json(
             rows.into_iter()
                 .map(ThreadGroupOut::from)
