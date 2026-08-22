@@ -14,8 +14,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
 
   AsyncValue<MergeRequestDetail> _value = const AsyncValue.empty();
 
-  GitLabMergeRequestProvider({BaseApiClient? client})
-      : _client = client ?? ApiClient();
+  GitLabMergeRequestProvider(this._client);
 
   @override
   AsyncValue<MergeRequestDetail> get value => _value;

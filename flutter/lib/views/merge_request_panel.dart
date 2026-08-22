@@ -27,7 +27,8 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
   @override
   void initState() {
     super.initState();
-    _provider = widget.provider ?? GitLabMergeRequestProvider();
+    _provider = widget.provider ??
+        GitLabMergeRequestProvider(context.read<AppState>().api.client);
     _provider.load(widget.url);
   }
 

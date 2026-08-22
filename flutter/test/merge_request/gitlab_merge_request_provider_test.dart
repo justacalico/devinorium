@@ -85,7 +85,7 @@ void main() {
       });
 
       final client = ApiClient.withClient(mock);
-      final provider = GitLabMergeRequestProvider(client: client);
+      final provider = GitLabMergeRequestProvider(client);
       await provider.load('https://gitlab.com/group/project/-/merge_requests/1');
 
       expect(provider.value.isReady, isTrue);
@@ -102,7 +102,9 @@ void main() {
     });
 
     test('rejects unsupported URLs', () async {
-      final provider = GitLabMergeRequestProvider();
+      final provider = GitLabMergeRequestProvider(
+        ApiClient.withClient(MockClient((_) async => _json(404, {}))),
+      );
       await provider.load('https://example.com');
 
       expect(provider.value.isError, isTrue);
