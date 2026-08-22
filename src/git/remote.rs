@@ -282,6 +282,39 @@ impl GitRemoteService {
         ))
     }
 
+    /// Call the GitLab API through `glab api` for the configured host.
+    ///
+    /// [path] is a GitLab v4 API path such as
+    /// `projects/group%2Fproject/merge_requests/1`. Only `projects/` paths are
+    /// allowed to keep the proxy scoped to project data.
+    pub async fn gitlab_api(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        path: &str,
+    ) -> Result<String, RemoteError> {
+        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let host = if hostname.is_empty() { "gitlab.com" } else { hostname };
+
+        if path.starts_with('/') {
+            return Err(RemoteError::StatusFailed(
+                "api path must not start with /".into(),
+            ));
+        }
+        if !path.starts_with("projects/") {
+            return Err(RemoteError::StatusFailed(
+                "only project api paths are supported".into(),
+            ));
+        }
+        if path.contains("..") || path.contains('\n') || path.contains('\r') {
+            return Err(RemoteError::StatusFailed(
+                "invalid characters in api path".into(),
+            ));
+        }
+
+        self.run(user_id, bin, &["api", path, "--hostname", host]).await
+    }
+
     /// Run a glab/gh command and treat non-zero exit as an error.
     async fn run(
         &self,

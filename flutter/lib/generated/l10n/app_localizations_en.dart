@@ -818,4 +818,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get copiedToClipboard => 'Copied to clipboard';
+
+  @override
+  String get mergeRequest => 'Merge request';
+
+  @override
+  String get overview => 'Overview';
+
+  @override
+  String get changes => 'Changes';
+
+  @override
+  String get comments => 'Comments';
+
+  @override
+  String get noDescription => 'No description provided.';
+
+  @override
+  String get noChanges => 'No changed files.';
+
+  @override
+  String get noComments => 'No comments yet.';
+
+  @override
+  String get openInBrowser => 'Open in browser';
+
+  @override
+  String get draft => 'Draft';
+
+  @override
+  String get retry => 'Retry';
 }
