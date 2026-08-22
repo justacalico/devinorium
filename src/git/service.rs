@@ -16,6 +16,28 @@ const REPO_CACHE_TTL: Duration = Duration::from_secs(300);
 /// Cache capacity to avoid memory bloat.
 const CACHE_CAPACITY: u64 = 256;
 
+/// Parse an upstream tracking string such as `[ahead 1, behind 2]` into
+/// ahead/behind counts. Empty or missing tracking info becomes `(0, 0)`.
+fn parse_track(track: &str) -> (i64, i64) {
+    let track = track.trim();
+    if track.is_empty() {
+        return (0, 0);
+    }
+    let ahead_re = Regex::new(r"ahead\s+(\d+)").expect("valid regex");
+    let behind_re = Regex::new(r"behind\s+(\d+)").expect("valid regex");
+    let ahead = ahead_re
+        .captures(track)
+        .and_then(|c| c.get(1))
+        .and_then(|m| m.as_str().parse::<i64>().ok())
+        .unwrap_or(0);
+    let behind = behind_re
+        .captures(track)
+        .and_then(|c| c.get(1))
+        .and_then(|m| m.as_str().parse::<i64>().ok())
+        .unwrap_or(0);
+    (ahead, behind)
+}
+
 /// Possible errors from Git operations.
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
@@ -143,36 +165,44 @@ impl GitService {
         true
     }
 
-    /// Return repository status for a project path.
-    pub async fn repo_status(&self, path: &Path) -> Result<RepoStatus, GitError> {
+    /// Return repository status for a project path. When `force` is true, skip
+    /// the cache and re-detect the repository from the filesystem.
+    pub async fn repo_status(&self, path: &Path, force: bool) -> Result<RepoStatus, GitError> {
         if self.git.is_none() {
             return Err(GitError::NotEnabled);
         }
         let key = path.to_string_lossy().to_string();
-        if let Some(status) = self.repo_cache.get(&key) {
-            return Ok(status);
+        if !force {
+            if let Some(status) = self.repo_cache.get(&key) {
+                return Ok(status);
+            }
         }
 
         let status = self.detect_repo(path).await?;
         self.repo_cache.insert(key.clone(), status.clone());
-        // Tracking fetches remote refs, so clear the branch cache for this path.
+        // Branch and worktree caches may be stale after a branch switch.
         self.branch_cache.invalidate(&key);
+        self.worktree_cache.invalidate(&key);
         Ok(status)
     }
 
     /// Return branches sorted by recency and name, with current and default
-    /// branches promoted.
+    /// branches promoted. When `force` is true, re-list branches from git.
     pub async fn branches(
         &self,
         path: &Path,
         query: Option<&str>,
         limit: Option<usize>,
+        force: bool,
     ) -> Result<Vec<Branch>, GitError> {
-        let status = self.repo_status(path).await?;
+        let status = self.repo_status(path, force).await?;
         if !status.is_repo {
             return Err(GitError::NotRepo);
         }
         let key = path.to_string_lossy().to_string();
+        if force {
+            self.branch_cache.invalidate(&key);
+        }
         let mut branches = if let Some(b) = self.branch_cache.get(&key) {
             b
         } else {
@@ -194,13 +224,16 @@ impl GitService {
         Ok(branches)
     }
 
-    /// Return worktrees.
-    pub async fn worktrees(&self, path: &Path) -> Result<Vec<Worktree>, GitError> {
-        let status = self.repo_status(path).await?;
+    /// Return worktrees. When `force` is true, re-list worktrees from git.
+    pub async fn worktrees(&self, path: &Path, force: bool) -> Result<Vec<Worktree>, GitError> {
+        let status = self.repo_status(path, force).await?;
         if !status.is_repo {
             return Err(GitError::NotRepo);
         }
         let key = path.to_string_lossy().to_string();
+        if force {
+            self.worktree_cache.invalidate(&key);
+        }
         if let Some(worktrees) = self.worktree_cache.get(&key) {
             return Ok(worktrees);
         }
@@ -217,7 +250,7 @@ impl GitService {
         base: Option<&str>,
         switch: bool,
     ) -> Result<String, GitError> {
-        self.repo_status(path).await?;
+        self.repo_status(path, false).await?;
 
         if !self.is_safe_branch_name(name) {
             return Err(GitError::Other("invalid branch name".to_string()));
@@ -256,7 +289,7 @@ impl GitService {
         ref_name: &str,
         track: bool,
     ) -> Result<String, GitError> {
-        self.repo_status(path).await?;
+        self.repo_status(path, false).await?;
 
         if ref_name.trim().is_empty() {
             return Err(GitError::Other("ref name is required".to_string()));
@@ -282,7 +315,7 @@ impl GitService {
         base: &str,
         new_branch: bool,
     ) -> Result<Worktree, GitError> {
-        self.repo_status(path).await?;
+        self.repo_status(path, false).await?;
 
         if !self.is_safe_worktree_name(name) {
             return Err(GitError::Other("invalid worktree name".to_string()));
@@ -318,7 +351,7 @@ impl GitService {
 
     /// Remove a worktree at `worktree_path`.
     pub async fn remove_worktree(&self, path: &Path, worktree_path: &Path) -> Result<(), GitError> {
-        self.repo_status(path).await?;
+        self.repo_status(path, false).await?;
 
         let worktrees = self.list_worktrees(path).await?;
         let target = worktrees
@@ -343,9 +376,10 @@ impl GitService {
     }
 
     /// Run `git status --porcelain=2 --branch` and `git diff HEAD --numstat`
-    /// to produce a compact status summary.
-    pub async fn status(&self, path: &Path) -> Result<serde_json::Value, GitError> {
-        self.repo_status(path).await?;
+    /// to produce a compact status summary. When `force` is true, re-detect
+    /// the repository state before summarising.
+    pub async fn status(&self, path: &Path, force: bool) -> Result<serde_json::Value, GitError> {
+        self.repo_status(path, force).await?;
 
         let status_out = self
             .run_with(
@@ -399,7 +433,7 @@ impl GitService {
 
     /// Pull the current branch's upstream using fast-forward only.
     pub async fn pull(&self, path: &Path) -> Result<(), GitError> {
-        self.repo_status(path).await?;
+        self.repo_status(path, false).await?;
         let mut cmd = self.git_cmd(path);
         cmd.arg("pull").arg("--ff-only");
         self.run(&mut cmd, Duration::from_secs(60)).await?;
@@ -412,7 +446,7 @@ impl GitService {
     /// Otherwise it fetches the remote ref into the local branch without
     /// touching the working directory.
     pub async fn pull_branch(&self, path: &Path, name: &str) -> Result<(), GitError> {
-        self.repo_status(path).await?;
+        self.repo_status(path, false).await?;
 
         let name = name.trim();
         if name.is_empty() {
@@ -488,7 +522,7 @@ impl GitService {
 
     /// Push the current branch to its remote, setting upstream if needed.
     pub async fn push(&self, path: &Path) -> Result<(), GitError> {
-        let status = self.repo_status(path).await?;
+        let status = self.repo_status(path, true).await?;
         if status.branch.is_empty() || !self.is_safe_branch_name(&status.branch) {
             return Err(GitError::Other(
                 "cannot push without a current branch".to_string(),
@@ -531,17 +565,6 @@ impl GitService {
         self.run(&mut cmd, Duration::from_secs(60)).await?;
         self.invalidate(path);
         Ok(())
-    }
-
-    /// Fetch refs from the configured remote. Errors are ignored so stale
-    /// tracking data does not block the UI.
-    async fn fetch(&self, path: &Path) {
-        if self.git.is_none() {
-            return;
-        }
-        let mut cmd = self.git_cmd(path);
-        cmd.arg("fetch");
-        let _ = self.run(&mut cmd, Duration::from_secs(30)).await;
     }
 
     fn invalidate(&self, path: &Path) {
@@ -591,53 +614,23 @@ impl GitService {
             return Ok((0, 0));
         }
 
-        self.fetch(path).await;
-
-        let upstream_arg = format!("{}@{{u}}", branch);
-        let upstream = self
+        // Read tracking state from the local upstream ref. This is fast and
+        // avoids blocking the UI on a network fetch; the user can pull/fetch
+        // explicitly to refresh remote state.
+        let track = self
             .run_with(
                 path,
-                &["rev-parse", "--symbolic-full-name", &upstream_arg],
+                &[
+                    "for-each-ref",
+                    "--format=%(upstream:track)",
+                    &format!("refs/heads/{}", branch),
+                ],
                 Duration::from_secs(5),
             )
             .await
-            .map(|s| s.trim().to_string())
-            .ok()
-            .filter(|s| !s.is_empty());
+            .unwrap_or_default();
 
-        let Some(upstream) = upstream else {
-            return Ok((0, 0));
-        };
-
-        let ahead = self
-            .run_with(
-                path,
-                &[
-                    "rev-list",
-                    "--count",
-                    &format!("{}..{}", upstream, branch),
-                ],
-                Duration::from_secs(10),
-            )
-            .await
-            .and_then(|s| s.trim().parse().map_err(|_| GitError::Other("invalid ahead count".to_string())))
-            .unwrap_or(0);
-
-        let behind = self
-            .run_with(
-                path,
-                &[
-                    "rev-list",
-                    "--count",
-                    &format!("{}..{}", branch, upstream),
-                ],
-                Duration::from_secs(10),
-            )
-            .await
-            .and_then(|s| s.trim().parse().map_err(|_| GitError::Other("invalid behind count".to_string())))
-            .unwrap_or(0);
-
-        Ok((ahead, behind))
+        Ok(parse_track(&track))
     }
 
     async fn detect_repo(&self, path: &Path) -> Result<RepoStatus, GitError> {
@@ -740,9 +733,6 @@ impl GitService {
             )
             .await?;
 
-        let ahead_re = Regex::new(r"ahead\s+(\d+)").expect("valid regex");
-        let behind_re = Regex::new(r"behind\s+(\d+)").expect("valid regex");
-
         let mut branches = Vec::new();
         for line in out.lines() {
             let parts: Vec<&str> = line.split('\t').collect();
@@ -760,17 +750,7 @@ impl GitService {
                 }
             });
             let track = parts.get(3).copied().unwrap_or("");
-
-            let ahead = ahead_re
-                .captures(track)
-                .and_then(|c| c.get(1))
-                .and_then(|m| m.as_str().parse::<i64>().ok())
-                .unwrap_or(0);
-            let behind = behind_re
-                .captures(track)
-                .and_then(|c| c.get(1))
-                .and_then(|m| m.as_str().parse::<i64>().ok())
-                .unwrap_or(0);
+            let (ahead, behind) = parse_track(track);
 
             let (name, is_remote, is_current, is_default) =
                 if let Some(name) = refname.strip_prefix("refs/heads/") {

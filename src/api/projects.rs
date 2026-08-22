@@ -41,7 +41,7 @@ pub struct ProjectOut {
 
 impl ProjectOut {
     pub async fn from_row(state: &AppState, p: ProjectRow) -> Self {
-        let (is_repo, branch) = match state.git.repo_status(std::path::Path::new(&p.path)).await {
+        let (is_repo, branch) = match state.git.repo_status(std::path::Path::new(&p.path), false).await {
             Ok(s) => (s.is_repo, s.branch),
             Err(_) => (false, String::new()),
         };

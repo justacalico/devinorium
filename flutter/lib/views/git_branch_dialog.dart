@@ -41,10 +41,10 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     final repo = state.gitRepoInfo(projectId);
     final branches = state.gitBranches(projectId);
     final worktrees = state.gitWorktrees(projectId);
-    final activeThread = state.activeThreadDetail?.thread;
-    final currentBranch = (activeThread != null && activeThread.projectId == projectId)
-        ? (activeThread.branch ?? repo?.branch ?? '')
-        : (repo?.branch ?? '');
+    // The repo's current branch is the source of truth. The thread's branch
+    // field is only metadata and can become stale if an AI agent switches
+    // branches outside the UI.
+    final currentBranch = repo?.branch ?? '';
 
     return Stack(
       children: [
@@ -70,30 +70,57 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if (repo == null)
+                            if (repo == null) ...[
+                              const LinearProgressIndicator(),
+                              const SizedBox(height: 24),
                               const SizedBox(
-                                height: 200,
-                                child: Center(child: CircularProgressIndicator()),
-                              )
-                            else if (!repo.isRepo)
+                                height: 160,
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              ),
+                            ] else if (!repo.isRepo)
                               _buildNotRepo(context)
                             else ...[
                               _buildSearchField(context),
                               const SizedBox(height: 12),
-                              _BranchList(
-                                branches: _filter(branches),
-                                currentBranch: currentBranch,
-                                onCheckout: (b) => _checkout(projectId, b),
-                                onUseForThread: (b) => _useBranch(projectId, b),
-                                onPull: (b) => _pullBranch(projectId, b),
-                                pulling: _pullingBranches,
-                              ),
+                              if (branches.isEmpty && _query.isEmpty)
+                                const SizedBox(
+                                  height: 160,
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                              else
+                                _BranchList(
+                                  branches: _filter(branches),
+                                  currentBranch: currentBranch,
+                                  onCheckout: (b) => _checkout(projectId, b),
+                                  onUseForThread: (b) =>
+                                      _useBranch(projectId, b),
+                                  onPull: (b) => _pullBranch(projectId, b),
+                                  pulling: _pullingBranches,
+                                ),
                               const Divider(height: 32),
-                              _buildCreateBranch(context, projectId, branches),
-                              const SizedBox(height: 16),
-                              _buildWorktreeSection(context, projectId, branches),
+                              if (branches.isNotEmpty) ...[
+                                _buildCreateBranch(
+                                  context,
+                                  projectId,
+                                  branches,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildWorktreeSection(
+                                  context,
+                                  projectId,
+                                  branches,
+                                ),
+                              ],
                               if (worktrees.isNotEmpty)
-                                _buildWorktreeList(context, projectId, worktrees),
+                                _buildWorktreeList(
+                                  context,
+                                  projectId,
+                                  worktrees,
+                                ),
                             ],
                           ],
                         ),
@@ -119,18 +146,22 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, GitRepoInfo? repo, String currentBranch) {
+  Widget _buildHeader(
+    BuildContext context,
+    GitRepoInfo? repo,
+    String currentBranch,
+  ) {
     final theme = Theme.of(context);
     final state = context.read<AppState>();
     final projectId = state.gitDialogProjectId ?? 0;
-    final title = repo != null && repo.isRepo ? repo.toplevel.split('/').last : l10n(context).gitBranches;
+    final title = repo != null && repo.isRepo
+        ? repo.toplevel.split('/').last
+        : l10n(context).gitBranches;
     final behind = repo?.behind ?? 0;
     final ahead = repo?.ahead ?? 0;
     return Row(
       children: [
-        Expanded(
-          child: Text(title, style: theme.textTheme.headlineSmall),
-        ),
+        Expanded(child: Text(title, style: theme.textTheme.headlineSmall)),
         if (repo != null && repo.isRepo) ...[
           const SizedBox(width: 8),
           ConstrainedBox(
@@ -145,7 +176,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
           if (behind > 0 || ahead > 0)
             Padding(
               padding: const EdgeInsets.only(left: 6),
-              child: _TrackingCounts(ahead: ahead, behind: behind, style: theme.textTheme.labelLarge),
+              child: _TrackingCounts(
+                ahead: ahead,
+                behind: behind,
+                style: theme.textTheme.labelLarge,
+              ),
             ),
           const SizedBox(width: 8),
           if (behind > 0)
@@ -155,7 +190,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                 key: const Key('gitBranchPullHeader'),
                 onPressed: _pulling ? null : () => _pull(projectId),
                 child: _pulling
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Text(l10n(context).pull),
               ),
             ),
@@ -165,7 +204,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
               child: TextButton(
                 onPressed: _pushing ? null : () => _push(projectId),
                 child: _pushing
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Text(l10n(context).push),
               ),
             ),
@@ -199,15 +242,24 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     );
   }
 
-  Widget _buildCreateBranch(BuildContext context, int projectId, List<GitBranch> branches) {
+  Widget _buildCreateBranch(
+    BuildContext context,
+    int projectId,
+    List<GitBranch> branches,
+  ) {
     final state = context.read<AppState>();
     final branchNames = branches.map((b) => b.name).toList();
-    final baseValue = branchNames.contains(_baseController.text) ? _baseController.text : null;
+    final baseValue = branchNames.contains(_baseController.text)
+        ? _baseController.text
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l10n(context).createBranch, style: Theme.of(context).textTheme.titleSmall),
+        Text(
+          l10n(context).createBranch,
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _branchController,
@@ -226,10 +278,17 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
             border: const OutlineInputBorder(),
           ),
           items: [
-            DropdownMenuItem<String?>(value: null, child: Text(l10n(context).none)),
-            ...branches.map((b) => DropdownMenuItem(value: b.name, child: Text(b.name))),
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text(l10n(context).none),
+            ),
+            ...branches.map(
+              (b) => DropdownMenuItem(value: b.name, child: Text(b.name)),
+            ),
           ],
-          onChanged: _creatingBranch ? null : (v) => setState(() => _baseController.text = v ?? ''),
+          onChanged: _creatingBranch
+              ? null
+              : (v) => setState(() => _baseController.text = v ?? ''),
         ),
         const SizedBox(height: 12),
         Row(
@@ -238,9 +297,14 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
               child: FilledButton(
                 onPressed: _creatingBranch
                     ? null
-                    : () => _createBranch(state, projectId, switchBranch: false),
+                    : () =>
+                          _createBranch(state, projectId, switchBranch: false),
                 child: _creatingBranch && !_creatingBranchSwitch
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Text(l10n(context).createBranch),
               ),
             ),
@@ -251,7 +315,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                     ? null
                     : () => _createBranch(state, projectId, switchBranch: true),
                 child: _creatingBranch && _creatingBranchSwitch
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Text(l10n(context).createAndSwitchBranch),
               ),
             ),
@@ -261,7 +329,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     );
   }
 
-  Widget _buildWorktreeSection(BuildContext context, int projectId, List<GitBranch> branches) {
+  Widget _buildWorktreeSection(
+    BuildContext context,
+    int projectId,
+    List<GitBranch> branches,
+  ) {
     final state = context.read<AppState>();
     final branchNames = branches.map((b) => b.name).toList();
     GitBranch? current;
@@ -284,7 +356,10 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l10n(context).createWorktree, style: Theme.of(context).textTheme.titleSmall),
+        Text(
+          l10n(context).createWorktree,
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _worktreeController,
@@ -303,8 +378,14 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
               labelText: l10n(context).baseBranch,
               border: const OutlineInputBorder(),
             ),
-            items: branches.map((b) => DropdownMenuItem(value: b.name, child: Text(b.name))).toList(),
-            onChanged: _creatingWorktree ? null : (v) => setState(() => _baseController.text = v ?? ''),
+            items: branches
+                .map(
+                  (b) => DropdownMenuItem(value: b.name, child: Text(b.name)),
+                )
+                .toList(),
+            onChanged: _creatingWorktree
+                ? null
+                : (v) => setState(() => _baseController.text = v ?? ''),
           ),
         const SizedBox(height: 12),
         Row(
@@ -315,7 +396,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                     ? null
                     : () => _createWorktree(state, projectId, newBranch: false),
                 child: _creatingWorktree && !_creatingWorktreeNewBranch
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Text(l10n(context).createWorktree),
               ),
             ),
@@ -326,7 +411,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                     ? null
                     : () => _createWorktree(state, projectId, newBranch: true),
                 child: _creatingWorktree && _creatingWorktreeNewBranch
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Text(l10n(context).createAndNewBranch),
               ),
             ),
@@ -336,7 +425,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     );
   }
 
-  Widget _buildWorktreeList(BuildContext context, int projectId, List<GitWorktree> worktrees) {
+  Widget _buildWorktreeList(
+    BuildContext context,
+    int projectId,
+    List<GitWorktree> worktrees,
+  ) {
     final state = context.read<AppState>();
     final theme = Theme.of(context);
     return Column(
@@ -344,18 +437,20 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
       children: [
         const SizedBox(height: 16),
         Text(l10n(context).worktrees, style: theme.textTheme.titleSmall),
-        ...worktrees.map((w) => ListTile(
-              dense: true,
-              title: Text(w.branch ?? w.head),
-              subtitle: Text(w.path, style: theme.textTheme.bodySmall),
-              trailing: w.isMain
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => state.gitDeleteWorktree(projectId, w.path),
-                    ),
-              onTap: () => _useWorktree(projectId, w),
-            )),
+        ...worktrees.map(
+          (w) => ListTile(
+            dense: true,
+            title: Text(w.branch ?? w.head),
+            subtitle: Text(w.path, style: theme.textTheme.bodySmall),
+            trailing: w.isMain
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => state.gitDeleteWorktree(projectId, w.path),
+                  ),
+            onTap: () => _useWorktree(projectId, w),
+          ),
+        ),
       ],
     );
   }
@@ -366,7 +461,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     return branches.where((b) => b.name.toLowerCase().contains(q)).toList();
   }
 
-  Future<void> _createBranch(AppState state, int projectId, {required bool switchBranch}) async {
+  Future<void> _createBranch(
+    AppState state,
+    int projectId, {
+    required bool switchBranch,
+  }) async {
     final name = _branchController.text.trim();
     if (name.isEmpty) return;
     setState(() {
@@ -376,7 +475,9 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     await state.gitCreateBranch(
       projectId,
       name,
-      base: _baseController.text.trim().isEmpty ? null : _baseController.text.trim(),
+      base: _baseController.text.trim().isEmpty
+          ? null
+          : _baseController.text.trim(),
       switchBranch: switchBranch,
     );
     if (mounted) {
@@ -389,7 +490,11 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
     }
   }
 
-  Future<void> _createWorktree(AppState state, int projectId, {required bool newBranch}) async {
+  Future<void> _createWorktree(
+    AppState state,
+    int projectId, {
+    required bool newBranch,
+  }) async {
     final name = _worktreeController.text.trim();
     final base = _baseController.text.trim();
     if (name.isEmpty || base.isEmpty) return;
@@ -496,7 +601,8 @@ class _BranchList extends StatelessWidget {
     final defaultBranch = defaultIndex >= 0 ? branches[defaultIndex] : null;
     final others = branches.where((b) => !b.isDefault).toList();
 
-    final itemCount = (defaultBranch != null ? 1 : 0) +
+    final itemCount =
+        (defaultBranch != null ? 1 : 0) +
         (defaultBranch != null && others.isNotEmpty ? 1 : 0) +
         others.length;
 
@@ -535,8 +641,12 @@ class _BranchList extends StatelessWidget {
       subtitle: b.isRemote
           ? const Text('remote')
           : (b.ahead > 0 || b.behind > 0)
-              ? _TrackingCounts(ahead: b.ahead, behind: b.behind, style: Theme.of(context).textTheme.bodySmall)
-              : null,
+          ? _TrackingCounts(
+              ahead: b.ahead,
+              behind: b.behind,
+              style: Theme.of(context).textTheme.bodySmall,
+            )
+          : null,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -544,7 +654,11 @@ class _BranchList extends StatelessWidget {
             TextButton(
               onPressed: pulling.contains(b.name) ? null : () => onPull(b),
               child: pulling.contains(b.name)
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : Text(l10n(context).pull),
             ),
             const SizedBox(width: 4),

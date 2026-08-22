@@ -256,7 +256,11 @@ void main() {
         ),
       );
 
-      await state.doLogin(serverUrl: 'http://localhost', username: 'owner', password: 'pw');
+      await state.doLogin(
+        serverUrl: 'http://localhost',
+        username: 'owner',
+        password: 'pw',
+      );
       expect(state.view, AppView.app);
       expect(state.user?.username, 'owner');
       expect(state.loginError, isEmpty);
@@ -274,7 +278,11 @@ void main() {
           ]),
         ),
       );
-      await state.doLogin(serverUrl: 'http://localhost', username: 'owner', password: 'pw');
+      await state.doLogin(
+        serverUrl: 'http://localhost',
+        username: 'owner',
+        password: 'pw',
+      );
       expect(state.showTotpField, isTrue);
       expect(state.view, AppView.login);
       expect(state.loginError, contains('TOTP'));
@@ -288,7 +296,11 @@ void main() {
           ]),
         ),
       );
-      await state.doLogin(serverUrl: 'http://localhost', username: 'owner', password: 'pw');
+      await state.doLogin(
+        serverUrl: 'http://localhost',
+        username: 'owner',
+        password: 'pw',
+      );
       expect(state.view, AppView.login);
       expect(state.loginError, contains('bad password'));
     });
@@ -344,20 +356,22 @@ void main() {
 
     test('selectProject preserves active thread and project', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, [
-            {
-              'id': 'a',
-              'title': 't',
-              'project_id': 1,
-              'model': '',
-              'permission_mode': 'normal',
-              'created_at': '',
-              'updated_at': '',
-            },
+        api: ApiService(
+          client: _clientFor([
+            _json(200, [
+              {
+                'id': 'a',
+                'title': 't',
+                'project_id': 1,
+                'model': '',
+                'permission_mode': 'normal',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
           ]),
-          _json(200, []),
-        ])),
+        ),
       );
       final base = AppState.test(
         api: state.api,
@@ -394,38 +408,39 @@ void main() {
       expect(base.threads, hasLength(1));
     });
 
-    test('selectProject preserves default draft when no thread is active', () async {
-      final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, []),
-          _json(200, []),
-        ])),
-      );
-      final base = AppState.test(
-        api: state.api,
-        projects: [
-          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
-        ],
-      );
-      base.setView(AppView.app);
-      base.setComposerText('draft text');
-      base.addAttachments([
-        (filename: 'f.txt', mime: 'text/plain', bytes: Uint8List.fromList([1])),
-      ]);
+    test(
+      'selectProject preserves default draft when no thread is active',
+      () async {
+        final state = AppState(
+          api: ApiService(client: _clientFor([_json(200, []), _json(200, [])])),
+        );
+        final base = AppState.test(
+          api: state.api,
+          projects: [
+            Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+          ],
+        );
+        base.setView(AppView.app);
+        base.setComposerText('draft text');
+        base.addAttachments([
+          (
+            filename: 'f.txt',
+            mime: 'text/plain',
+            bytes: Uint8List.fromList([1]),
+          ),
+        ]);
 
-      await base.selectProject(1);
-      expect(base.activeProjectId, 1);
-      expect(base.composerText, 'draft text');
-      expect(base.attachments, hasLength(1));
-      expect(base.activeThreadId, isNull);
-    });
+        await base.selectProject(1);
+        expect(base.activeProjectId, 1);
+        expect(base.composerText, 'draft text');
+        expect(base.attachments, hasLength(1));
+        expect(base.activeThreadId, isNull);
+      },
+    );
 
     test('selectAllProjects preserves active thread and project', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, []),
-          _json(200, []),
-        ])),
+        api: ApiService(client: _clientFor([_json(200, []), _json(200, [])])),
       );
       final base = AppState.test(
         api: state.api,
@@ -455,11 +470,21 @@ void main() {
 
     test('loadMoreProjectThreads appends chunk', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, [
-            {'id': 'a', 'title': 't', 'project_id': 1, 'model': '', 'permission_mode': 'normal', 'created_at': '', 'updated_at': ''},
+        api: ApiService(
+          client: _clientFor([
+            _json(200, [
+              {
+                'id': 'a',
+                'title': 't',
+                'project_id': 1,
+                'model': '',
+                'permission_mode': 'normal',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
           ]),
-        ])),
+        ),
       );
       final base = AppState.test(
         api: state.api,
@@ -519,7 +544,13 @@ void main() {
           client: _clientFor([
             _json(200, chunk),
             _json(200, [
-              {'id': 51, 'name': 'p51', 'path': '/y', 'created_at': '', 'updated_at': ''},
+              {
+                'id': 51,
+                'name': 'p51',
+                'path': '/y',
+                'created_at': '',
+                'updated_at': '',
+              },
             ]),
           ]),
         ),
@@ -554,44 +585,65 @@ void main() {
       expect(base.activeProjectId, 2);
     });
 
-    test('deleteProject does not clear active thread from a different project', () async {
-      final state = AppState(
-        api: ApiService(client: _clientFor([
-          _json(200, {}),
-          _json(200, []),
-          _json(200, []),
-        ])),
-      );
-      final base = AppState.test(
-        api: state.api,
-        projects: [
-          Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
-          Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
-        ],
-        activeProjectId: 1,
-        activeThreadId: 'a',
-        activeThreadDetail: ThreadDetail(
-          thread: Thread(
-            id: 'a',
-            title: 't',
-            projectId: 1,
-            model: '',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+    test(
+      'deleteProject does not clear active thread from a different project',
+      () async {
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {}),
+              _json(200, []),
+              _json(200, []),
+            ]),
           ),
-        ),
-      );
-      base.setView(AppView.app);
-      await base.deleteProject(2);
-      expect(base.projects, hasLength(1));
-      expect(base.activeThreadId, 'a');
-      expect(base.activeProjectId, 1);
-    });
+        );
+        final base = AppState.test(
+          api: state.api,
+          projects: [
+            Project(
+              id: 1,
+              name: 'p1',
+              path: '/x',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            Project(
+              id: 2,
+              name: 'p2',
+              path: '/y',
+              createdAt: '',
+              updatedAt: '',
+            ),
+          ],
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 't',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+          ),
+        );
+        base.setView(AppView.app);
+        await base.deleteProject(2);
+        expect(base.projects, hasLength(1));
+        expect(base.activeThreadId, 'a');
+        expect(base.activeProjectId, 1);
+      },
+    );
 
     test('checkConnection sets connected on success', () async {
       final state = AppState(
-        api: ApiService(client: _clientFor([_json(200, {'status': 'ok'})])),
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'status': 'ok'}),
+          ]),
+        ),
       );
       final base = AppState.test(api: state.api);
       base.setView(AppView.app);
@@ -753,8 +805,22 @@ void main() {
       final base = AppState.test(
         api: state.api,
         projects: [
-          Project(id: 1, name: 'p1', path: '/x', position: 0, createdAt: '', updatedAt: ''),
-          Project(id: 2, name: 'p2', path: '/y', position: 1, createdAt: '', updatedAt: ''),
+          Project(
+            id: 1,
+            name: 'p1',
+            path: '/x',
+            position: 0,
+            createdAt: '',
+            updatedAt: '',
+          ),
+          Project(
+            id: 2,
+            name: 'p2',
+            path: '/y',
+            position: 1,
+            createdAt: '',
+            updatedAt: '',
+          ),
         ],
       );
       base.setView(AppView.app);
@@ -1418,7 +1484,9 @@ void main() {
     });
 
     test('stopThread calls the stop endpoint', () async {
-      final client = _clientFor([_json(200, {'status': 'stopped'})]);
+      final client = _clientFor([
+        _json(200, {'status': 'stopped'}),
+      ]);
       final api = _StreamableApiService(client);
       final state = AppState.test(
         api: api,
@@ -1685,105 +1753,112 @@ void main() {
       expect(state.activeThreadDetail!.messages.last.content, 'persisted');
     });
 
-    test('state event with completed status finishes run and stops sending', () async {
-      final client = _clientFor([
-        _json(200, {
-          'thread': {
-            'id': 'a',
-            'title': 't',
-            'project_id': 1,
-            'model': 'glm-5-2',
-            'permission_mode': 'normal',
-            'created_at': '',
-            'updated_at': '',
+    test(
+      'state event with completed status finishes run and stops sending',
+      () async {
+        final client = _clientFor([
+          _json(200, {
+            'thread': {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': 'glm-5-2',
+              'permission_mode': 'normal',
+              'created_at': '',
+              'updated_at': '',
+            },
+            'messages': [],
+          }),
+          _json(200, {'project_id': 1, 'path': '/'}),
+          _json(200, []),
+          _json(200, []),
+        ]);
+        final api = _StreamableApiService(client);
+        final eventsController = StreamController<SseEvent>();
+        api.eventsBuilder = () => eventsController.stream;
+        api.runResponse = {
+          'status': 'running',
+          'parts': [
+            {'type': 'text', 'content': 'seeded'},
+          ],
+          'thinking_active': false,
+        };
+
+        final state = AppState.test(api: api, activeProjectId: 1);
+        await state.openThread('a');
+
+        expect(state.sending, isTrue);
+        expect(state.streamingParts, hasLength(1));
+
+        eventsController.add(
+          SseEvent(
+            'state',
+            '{"status":"completed","parts":[{"type":"text","content":"done"}]}',
+          ),
+        );
+        await eventsController.close();
+        await pumpEventQueue();
+
+        expect(state.sending, isFalse);
+        expect(state.runningThreadIds, isNot(contains('a')));
+        expect(state.streamingParts, isEmpty);
+      },
+    );
+
+    test(
+      'state event with completed status clears stale error and permission',
+      () async {
+        final client = _clientFor([
+          _json(200, {
+            'thread': {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': 'glm-5-2',
+              'permission_mode': 'normal',
+              'created_at': '',
+              'updated_at': '',
+            },
+            'messages': [],
+          }),
+          _json(200, {'project_id': 1, 'path': '/'}),
+          _json(200, []),
+          _json(200, []),
+        ]);
+        final api = _StreamableApiService(client);
+        final eventsController = StreamController<SseEvent>();
+        api.eventsBuilder = () => eventsController.stream;
+        api.runResponse = {
+          'status': 'running',
+          'error': 'stale error',
+          'permission_request': {
+            'request_id': 'r1',
+            'scope': 'Exec(curl)',
+            'title': 'Run?',
+            'options': [],
           },
-          'messages': [],
-        }),
-        _json(200, {'project_id': 1, 'path': '/'}),
-        _json(200, []),
-        _json(200, []),
-      ]);
-      final api = _StreamableApiService(client);
-      final eventsController = StreamController<SseEvent>();
-      api.eventsBuilder = () => eventsController.stream;
-      api.runResponse = {
-        'status': 'running',
-        'parts': [
-          {'type': 'text', 'content': 'seeded'},
-        ],
-        'thinking_active': false,
-      };
+        };
 
-      final state = AppState.test(api: api, activeProjectId: 1);
-      await state.openThread('a');
+        final state = AppState.test(api: api, activeProjectId: 1);
+        await state.openThread('a');
 
-      expect(state.sending, isTrue);
-      expect(state.streamingParts, hasLength(1));
+        expect(state.sending, isTrue);
+        expect(state.globalError, 'stale error');
+        expect(state.pendingPermissionRequest, isNotNull);
+        expect(state.dialog, DialogKind.permissionRequest);
 
-      eventsController.add(SseEvent(
-        'state',
-        '{"status":"completed","parts":[{"type":"text","content":"done"}]}',
-      ));
-      await eventsController.close();
-      await pumpEventQueue();
+        eventsController.add(
+          SseEvent('state', '{"status":"completed","parts":[]}'),
+        );
+        await pumpEventQueue();
+        await eventsController.close();
 
-      expect(state.sending, isFalse);
-      expect(state.runningThreadIds, isNot(contains('a')));
-      expect(state.streamingParts, isEmpty);
-    });
-
-    test('state event with completed status clears stale error and permission', () async {
-      final client = _clientFor([
-        _json(200, {
-          'thread': {
-            'id': 'a',
-            'title': 't',
-            'project_id': 1,
-            'model': 'glm-5-2',
-            'permission_mode': 'normal',
-            'created_at': '',
-            'updated_at': '',
-          },
-          'messages': [],
-        }),
-        _json(200, {'project_id': 1, 'path': '/'}),
-        _json(200, []),
-        _json(200, []),
-      ]);
-      final api = _StreamableApiService(client);
-      final eventsController = StreamController<SseEvent>();
-      api.eventsBuilder = () => eventsController.stream;
-      api.runResponse = {
-        'status': 'running',
-        'error': 'stale error',
-        'permission_request': {
-          'request_id': 'r1',
-          'scope': 'Exec(curl)',
-          'title': 'Run?',
-          'options': [],
-        },
-      };
-
-      final state = AppState.test(api: api, activeProjectId: 1);
-      await state.openThread('a');
-
-      expect(state.sending, isTrue);
-      expect(state.globalError, 'stale error');
-      expect(state.pendingPermissionRequest, isNotNull);
-      expect(state.dialog, DialogKind.permissionRequest);
-
-      eventsController.add(SseEvent(
-        'state',
-        '{"status":"completed","parts":[]}',
-      ));
-      await pumpEventQueue();
-      await eventsController.close();
-
-      expect(state.sending, isFalse);
-      expect(state.globalError, isEmpty);
-      expect(state.pendingPermissionRequest, isNull);
-      expect(state.dialog, DialogKind.none);
-    });
+        expect(state.sending, isFalse);
+        expect(state.globalError, isEmpty);
+        expect(state.pendingPermissionRequest, isNull);
+        expect(state.dialog, DialogKind.none);
+      },
+    );
 
     test('resumeThread seeds streaming parts from run snapshot', () async {
       final client = _clientFor([
@@ -1978,55 +2053,58 @@ void main() {
       expect(state.users.first.isOwner, isTrue);
     });
 
-    test('loadSettingsData fetches devices, git connections and users in parallel', () async {
-      final state = AppState.test(
-        user: User(
-          id: 1,
-          username: 'owner',
-          role: 'user',
-          totpEnabled: false,
-          isOwner: true,
-          providerId: 'devin-cli',
-          providerCommand: 'devin',
-        ),
-        api: ApiService(
-          client: _clientFor([
-            _json(200, [
-              {
-                'device_id': 'd1',
-                'token_prefix': 'ab',
-                'name': 'current',
-                'created_at': '',
-                'last_seen_at': '',
-                'expires_at': '',
-                'is_current': true,
-              },
+    test(
+      'loadSettingsData fetches devices, git connections and users in parallel',
+      () async {
+        final state = AppState.test(
+          user: User(
+            id: 1,
+            username: 'owner',
+            role: 'user',
+            totpEnabled: false,
+            isOwner: true,
+            providerId: 'devin-cli',
+            providerCommand: 'devin',
+          ),
+          api: ApiService(
+            client: _clientFor([
+              _json(200, [
+                {
+                  'device_id': 'd1',
+                  'token_prefix': 'ab',
+                  'name': 'current',
+                  'created_at': '',
+                  'last_seen_at': '',
+                  'expires_at': '',
+                  'is_current': true,
+                },
+              ]),
+              _json(200, [
+                {'id': 'gitlab', 'name': 'GitLab', 'enabled': true},
+              ]),
+              _json(200, [
+                {
+                  'id': 1,
+                  'username': 'owner',
+                  'role': 'user',
+                  'is_owner': true,
+                  'disabled': false,
+                  'totp_enabled': false,
+                  'created_at': '',
+                },
+              ]),
             ]),
-            _json(200, [
-              {'id': 'gitlab', 'name': 'GitLab', 'enabled': true},
-            ]),
-            _json(200, [
-              {
-                'id': 1,
-                'username': 'owner',
-                'role': 'user',
-                'is_owner': true,
-                'disabled': false,
-                'totp_enabled': false,
-                'created_at': '',
-              },
-            ]),
-          ]),
-        ),
-      );
-      await state.loadSettingsData();
-      expect(state.devices, hasLength(1));
-      expect(state.devices.first.deviceId, 'd1');
-      expect(state.gitConnections, hasLength(1));
-      expect(state.gitConnections.first.id, 'gitlab');
-      expect(state.users, hasLength(1));
-      expect(state.users.first.username, 'owner');
-    });
+          ),
+        );
+        await state.loadSettingsData();
+        expect(state.devices, hasLength(1));
+        expect(state.devices.first.deviceId, 'd1');
+        expect(state.gitConnections, hasLength(1));
+        expect(state.gitConnections.first.id, 'gitlab');
+        expect(state.users, hasLength(1));
+        expect(state.users.first.username, 'owner');
+      },
+    );
 
     test('createUser reloads users', () async {
       final state = AppState(
@@ -2148,6 +2226,152 @@ void main() {
       expect(state.projects[0].isRepo, true);
       expect(state.projects[0].gitBranch, 'develop');
     });
+
+    test(
+      'openGitBranchDialog fetches repo, branches and worktrees in parallel',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            final path = req.url.path;
+            if (path == '/api/projects/1/git') {
+              return _json(200, {
+                'is_repo': true,
+                'branch': 'main',
+                'worktree_path': '/x',
+                'toplevel': '/x',
+                'common_dir': '/x/.git',
+              });
+            }
+            if (path == '/api/projects/1/git/branches') {
+              return _json(200, {
+                'branches': [
+                  {
+                    'name': 'main',
+                    'refname': 'refs/heads/main',
+                    'is_current': true,
+                    'is_default': true,
+                    'is_remote': false,
+                    'committer_date': 0,
+                  },
+                ],
+              });
+            }
+            if (path == '/api/projects/1/git/worktrees') {
+              return _json(200, []);
+            }
+            return _json(404, {'error': 'unexpected request'});
+          }),
+        );
+
+        final state = AppState.test(api: ApiService(client: client));
+        await state.openGitBranchDialog(1);
+        expect(state.gitDialogProjectId, 1);
+        expect(state.gitRepoInfo(1)?.branch, 'main');
+        expect(state.gitBranches(1), hasLength(1));
+        expect(state.gitWorktrees(1), isEmpty);
+      },
+    );
+
+    test('gitCheckout refreshes project branch and project list', () async {
+      final requests = <String>[];
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          final path = req.url.path;
+          requests.add(path);
+          if (path == '/api/projects/1/git/checkout') {
+            return _json(200, {});
+          }
+          if (path == '/api/projects/1/git') {
+            return _json(200, {
+              'is_repo': true,
+              'branch': 'feature',
+              'worktree_path': '/x',
+              'toplevel': '/x',
+              'common_dir': '/x/.git',
+            });
+          }
+          if (path == '/api/projects/1/git/branches') {
+            return _json(200, {
+              'branches': [
+                {
+                  'name': 'feature',
+                  'refname': 'refs/heads/feature',
+                  'is_current': true,
+                  'is_default': true,
+                  'is_remote': false,
+                  'committer_date': 0,
+                },
+              ],
+            });
+          }
+          if (path == '/api/projects/1/git/worktrees') {
+            return _json(200, []);
+          }
+          if (path == '/api/projects') {
+            return _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'position': 0,
+                'pinned': false,
+                'is_repo': true,
+                'branch': 'feature',
+                'project_type': 'generic',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]);
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(
+        api: ApiService(client: client),
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      await state.gitCheckout(1, 'feature');
+      expect(requests, contains('/api/projects'));
+      expect(state.projects[0].gitBranch, 'feature');
+    });
+
+    test('git refresh timer loads project branch periodically', () async {
+      var calls = 0;
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          final path = req.url.path;
+          if (path == '/api/projects/1/git' &&
+              req.url.queryParameters['force'] == 'true') {
+            calls++;
+            return _json(200, {
+              'is_repo': true,
+              'branch': 'main',
+              'worktree_path': '/x',
+              'toplevel': '/x',
+              'common_dir': '/x/.git',
+            });
+          }
+          if (path == '/api/projects') {
+            return _json(200, []);
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeProjectId: 1,
+      );
+      state.startGitRefresh();
+      // The timer fires immediately at t=0 in fake-async tests, or we can
+      // pump one interval.
+      await Future.delayed(const Duration(seconds: 6));
+      expect(calls, greaterThan(0));
+      state.stopGitRefresh();
+    });
   });
 
   group('Notification preferences', () {
@@ -2165,7 +2389,9 @@ void main() {
       await state.setNotificationsEnabled(true);
       expect(state.notificationsEnabled, isTrue);
       expect(
-        (await SharedPreferences.getInstance()).getBool('devinorium_notifications'),
+        (await SharedPreferences.getInstance()).getBool(
+          'devinorium_notifications',
+        ),
         isTrue,
       );
     });
@@ -2253,9 +2479,7 @@ void main() {
 
       await state.sendMessage();
       controller.add(SseEvent('part', '{"type":"text","content":"done"}'));
-      controller.add(
-        SseEvent('done', '{"role":"assistant","content":"done"}'),
-      );
+      controller.add(SseEvent('done', '{"role":"assistant","content":"done"}'));
 
       await completer.future.timeout(Duration(seconds: 2));
       await controller.close();
