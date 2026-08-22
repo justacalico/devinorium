@@ -654,6 +654,170 @@ async fn thread_model_update() {
 }
 
 #[tokio::test]
+async fn thread_pin_success_and_sorts_first() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let tid_a = make_thread(&app, &cookie, pid, "Thread A").await;
+    // Give the first thread a message so creating the second one does not
+    // delete the empty draft.
+    seed_messages(&db, &tid_a, 1, "msg-a").await;
+    let _tid_b = make_thread(&app, &cookie, pid, "Thread B").await;
+
+    // Pin the first thread.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_a}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The thread detail reflects the pin.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid_a}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""pinned":true"#), "body: {body}");
+
+    // Listing all threads puts the pinned one first.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    assert_eq!(list.len(), 2);
+    assert!(list[0]["pinned"].as_bool().unwrap());
+    assert_eq!(list[0]["id"].as_str().unwrap(), tid_a);
+
+    // Listing the project's threads also puts the pinned one first.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/projects/{pid}/threads"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    assert!(list[0]["pinned"].as_bool().unwrap());
+    assert_eq!(list[0]["id"].as_str().unwrap(), tid_a);
+}
+
+#[tokio::test]
+async fn thread_unpin_success() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/pin"),
+            &cookie,
+            r#"{"pinned":false}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""pinned":false"#), "body: {body}");
+}
+
+#[tokio::test]
+async fn thread_no_op_pin_does_not_update_updated_at() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let first = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let body = body_str(first.into_body()).await;
+    let first_v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let first_updated = first_v["updated_at"].as_str().unwrap();
+
+    let second = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let body = body_str(second.into_body()).await;
+    let second_v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let second_updated = second_v["updated_at"].as_str().unwrap();
+
+    assert_eq!(first_updated, second_updated);
+}
+
+#[tokio::test]
+async fn thread_pin_is_isolated_between_users() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let pid = create_project(&app, &owner_cookie).await;
+    let tid = make_thread(&app, &owner_cookie, pid, "T").await;
+
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/pin"),
+            &alice_cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn thread_send_uses_stub_provider_and_persists_messages() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
@@ -1907,6 +2071,63 @@ async fn project_reorder_updates_list() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Duplicate project ids are rejected.
+    let body = format!(r#"{{"project_ids":[{id3},{id3},{id1}]}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("PATCH", "/api/projects/reorder", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn project_reorder_keeps_pinned_projects_first() {
+    let (state, _db) = app_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let id1 = create_project(&app, &cookie).await;
+    let id2 = create_project(&app, &cookie).await;
+
+    // Pin the second project.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{id2}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Reorder with the unpinned project first; pinned should still float to top.
+    let body = format!(r#"{{"project_ids":[{id1},{id2}]}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("PATCH", "/api/projects/reorder", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let ids: Vec<i64> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, vec![id2, id1]);
 }
 
 #[tokio::test]
@@ -1982,6 +2203,146 @@ async fn project_rename_is_isolated_between_users() {
             &format!("/api/projects/{owner_pid}"),
             &alice_cookie,
             r#"{"name":"Stolen"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn project_pin_success_and_sorts_first() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let _pid_a = create_project(&app, &cookie).await;
+    let pid_b = create_project(&app, &cookie).await;
+
+    // Pin the second project.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid_b}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["pinned"].as_bool().unwrap());
+    assert_eq!(v["id"].as_i64().unwrap(), pid_b);
+
+    // Listing projects puts the pinned one first.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    assert_eq!(list.len(), 2);
+    assert!(list[0]["pinned"].as_bool().unwrap());
+    assert_eq!(list[0]["id"].as_i64().unwrap(), pid_b);
+}
+
+#[tokio::test]
+async fn project_unpin_success() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/pin"),
+            &cookie,
+            r#"{"pinned":false}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    assert!(!list[0]["pinned"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn project_no_op_pin_does_not_update_updated_at() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let first = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let body = body_str(first.into_body()).await;
+    let first_v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let first_updated = first_v["updated_at"].as_str().unwrap();
+
+    let second = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/pin"),
+            &cookie,
+            r#"{"pinned":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let body = body_str(second.into_body()).await;
+    let second_v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let second_updated = second_v["updated_at"].as_str().unwrap();
+
+    assert_eq!(first_updated, second_updated);
+}
+
+#[tokio::test]
+async fn project_pin_is_isolated_between_users() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let owner_pid = create_project(&app, &owner_cookie).await;
+
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{owner_pid}/pin"),
+            &alice_cookie,
+            r#"{"pinned":true}"#,
         ))
         .await
         .unwrap();

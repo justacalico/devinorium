@@ -211,6 +211,11 @@ class ApiService {
     return Project.fromJson(j);
   }
 
+  Future<Project> pinProject(int id, bool pinned) async {
+    final j = await _client.post('/api/projects/$id/pin', {'pinned': pinned});
+    return Project.fromJson(j);
+  }
+
   Future<List<Thread>> listThreadsForProject(int id) async {
     final list = await _client.getList('/api/projects/$id/threads');
     return list.map(Thread.fromJson).toList();
@@ -280,6 +285,11 @@ class ApiService {
 
   Future<void> renameThread(String id, String title) async {
     await _client.patch('/api/threads/$id', {'title': title.trim()});
+  }
+
+  Future<Thread> pinThread(String id, bool pinned) async {
+    final j = await _client.post('/api/threads/$id/pin', {'pinned': pinned});
+    return Thread.fromJson(j);
   }
 
   Future<void> updateThreadSettings(

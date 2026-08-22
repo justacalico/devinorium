@@ -220,6 +220,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get renameThread => 'Rename thread';
 
   @override
+  String get pin => 'Pin';
+
+  @override
+  String get unpin => 'Unpin';
+
+  @override
+  String get pinned => 'Pinned';
+
+  @override
   String get newName => 'New name';
 
   @override

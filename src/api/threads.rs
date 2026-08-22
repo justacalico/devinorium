@@ -40,6 +40,7 @@ pub fn router() -> Router<AppState> {
             "/api/threads/:id",
             get(get_one).patch(rename).delete(delete),
         )
+        .route("/api/threads/:id/pin", post(pin))
         .route("/api/threads/:id/messages", get(list_messages))
         .route("/api/threads/:id/send", post(send))
         .route("/api/threads/:id/send/stream", post(send_stream))
@@ -66,6 +67,7 @@ pub struct ThreadOut {
     pub permissions: Option<String>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
+    pub pinned: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -83,6 +85,7 @@ impl From<ThreadRow> for ThreadOut {
             permissions: t.permissions,
             branch: t.branch,
             worktree_path: t.worktree_path,
+            pinned: t.pinned,
             created_at: t.created_at,
             updated_at: t.updated_at,
         }
@@ -278,6 +281,11 @@ async fn get_one(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PinThread {
+    pub pinned: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct UpdateThread {
     pub title: Option<String>,
     /// Distinguish between:
@@ -325,6 +333,20 @@ async fn rename(
     Path(id): Path<String>,
     Json(req): Json<UpdateThread>,
 ) -> Response {
+    // Verify ownership up front so every field update is gated on the
+    // thread actually belonging to the caller.
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    }
+
     // Validate all inputs before touching the database.
     if let Some(title) = &req.title {
         if title.trim().is_empty() || title.len() > 200 {
@@ -414,6 +436,39 @@ async fn rename(
     }
 
     Json(serde_json::json!({"ok": true})).into_response()
+}
+
+async fn pin(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+    Json(req): Json<PinThread>,
+) -> Response {
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    }
+
+    if let Err(e) = state.db.set_thread_pinned(&id, user.id, req.pinned).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(t)) => Json(ThreadOut::from(t)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
+        Err(e) => crate::api::map_err_internal(e).into_response(),
+    }
 }
 
 async fn delete(

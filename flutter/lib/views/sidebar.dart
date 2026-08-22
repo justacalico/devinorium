@@ -438,8 +438,34 @@ class _ProjectExpandableTile extends StatelessWidget {
                           size: 18, color: theme.colorScheme.onSurfaceVariant),
                       onPressed: onNewThread,
                     ),
+                  IconButton(
+                    tooltip: project.pinned
+                        ? l10n(context).unpin
+                        : l10n(context).pin,
+                    icon: Icon(
+                      project.pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                      size: 18,
+                      color: project.pinned
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: () => state.pinProject(project.id, !project.pinned),
+                  ),
                   MenuAnchor(
                     menuChildren: [
+                      MenuItemButton(
+                        leadingIcon: Icon(
+                          project.pinned
+                              ? Icons.push_pin_outlined
+                              : Icons.push_pin,
+                          size: 18,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                        child: Text(
+                            project.pinned ? l10n(context).unpin : l10n(context).pin),
+                        onPressed: () =>
+                            state.pinProject(project.id, !project.pinned),
+                      ),
                       MenuItemButton(
                         leadingIcon: Icon(Icons.edit_outlined,
                             size: 18, color: theme.colorScheme.onSurface),
@@ -670,8 +696,30 @@ class _ThreadTile extends StatelessWidget {
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               const SizedBox(width: 4),
+              IconButton(
+                tooltip: thread.pinned ? l.unpin : l.pin,
+                icon: Icon(
+                  thread.pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                  size: 18,
+                  color: thread.pinned
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                onPressed: () => state.pinThread(thread.id, !thread.pinned),
+              ),
               MenuAnchor(
                 menuChildren: [
+                  MenuItemButton(
+                    leadingIcon: Icon(
+                      thread.pinned
+                          ? Icons.push_pin_outlined
+                          : Icons.push_pin,
+                      size: 18,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                    child: Text(thread.pinned ? l.unpin : l.pin),
+                    onPressed: () => state.pinThread(thread.id, !thread.pinned),
+                  ),
                   MenuItemButton(
                     leadingIcon: Icon(Icons.edit_outlined,
                         size: 18, color: theme.colorScheme.onSurface),

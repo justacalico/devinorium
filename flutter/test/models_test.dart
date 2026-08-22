@@ -392,6 +392,7 @@ void main() {
         'name': 'My Project',
         'path': '/tmp/my-project',
         'position': 5,
+        'pinned': true,
         'is_repo': true,
         'branch': 'main',
         'project_type': 'flutter',
@@ -402,11 +403,36 @@ void main() {
       expect(p.name, 'My Project');
       expect(p.path, '/tmp/my-project');
       expect(p.position, 5);
+      expect(p.pinned, isTrue);
       expect(p.isRepo, true);
       expect(p.gitBranch, 'main');
       expect(p.projectType, 'flutter');
       expect(p.createdAt, '2026-01-01');
       expect(p.updatedAt, '2026-01-02');
+    });
+
+    test('defaults pinned to false when missing', () {
+      final p = Project.fromJson({
+        'id': 1,
+        'name': 'x',
+        'path': '/tmp',
+        'created_at': '',
+        'updated_at': '',
+      });
+      expect(p.pinned, isFalse);
+    });
+
+    test('copyWith updates pinned', () {
+      final p = Project(
+        id: 1,
+        name: 'x',
+        path: '/tmp/x',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final updated = p.copyWith(pinned: true);
+      expect(updated.pinned, isTrue);
+      expect(updated.name, 'x');
     });
 
     test('fromJson defaults project_type to generic when missing', () {
@@ -470,6 +496,7 @@ void main() {
         'project_id': 1,
         'model': 'glm-5-2',
         'permission_mode': 'normal',
+        'pinned': true,
         'created_at': '2026-01-01',
         'updated_at': '2026-01-02',
       });
@@ -478,8 +505,33 @@ void main() {
       expect(t.projectId, 1);
       expect(t.model, 'glm-5-2');
       expect(t.permissionMode, 'normal');
+      expect(t.pinned, isTrue);
       expect(t.threadGroupId, isNull);
       expect(t.devinSessionId, isNull);
+    });
+
+    test('defaults pinned to false when missing', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+      });
+      expect(t.pinned, isFalse);
+    });
+
+    test('copyWith updates pinned', () {
+      final t = Thread(
+        id: 'abc',
+        title: 'Thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final updated = t.copyWith(pinned: true);
+      expect(updated.pinned, isTrue);
+      expect(updated.title, 'Thread');
     });
 
     test('defaults permission_mode and model', () {
