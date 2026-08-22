@@ -103,7 +103,6 @@ class Sidebar extends StatelessWidget {
                 : const _ProjectThreadList(),
           ),
           // User chip + menu
-          const _ConnectionIndicator(),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Container(
@@ -130,6 +129,7 @@ class Sidebar extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w500),
                       ),
                     ),
+                    const _ConnectionStatusIcon(),
                     MenuAnchor(
                       menuChildren: [
                         MenuItemButton(
@@ -592,55 +592,45 @@ class _ProjectExpandableTile extends StatelessWidget {
   }
 }
 
-class _ConnectionIndicator extends StatelessWidget {
-  const _ConnectionIndicator();
+class _ConnectionStatusIcon extends StatelessWidget {
+  const _ConnectionStatusIcon();
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final status = context.select<AppState, ConnectionStatus>(
+      (s) => s.connectionStatus,
+    );
     final theme = Theme.of(context);
     final l = l10n(context);
-    final status = state.connectionStatus;
 
-    final Color color;
-    final IconData icon;
-    final String label;
-    switch (status) {
-      case ConnectionStatus.connected:
-        color = Colors.green;
-        icon = Icons.cloud_done;
-        label = l.connected;
-      case ConnectionStatus.disconnected:
-        color = theme.colorScheme.error;
-        icon = Icons.cloud_off;
-        label = l.disconnected;
-      case ConnectionStatus.checking:
-        color = theme.colorScheme.onSurfaceVariant;
-        icon = Icons.sync;
-        label = l.checkingConnection;
+    final (Color color, IconData icon, String label) = switch (status) {
+      ConnectionStatus.connected =>
+        (Colors.green, Icons.cloud_done, l.connected),
+      ConnectionStatus.disconnected =>
+        (theme.colorScheme.error, Icons.cloud_off, l.disconnected),
+      ConnectionStatus.checking =>
+        (theme.colorScheme.onSurfaceVariant, Icons.sync, l.checkingConnection),
+    };
+
+    final Widget indicator;
+    if (status == ConnectionStatus.checking) {
+      indicator = SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation(color),
+        ),
+      );
+    } else {
+      indicator = Icon(icon, size: 16, color: color);
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-      child: Row(
-        children: [
-          if (status == ConnectionStatus.checking)
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(color),
-              ),
-            )
-          else
-            Icon(icon, size: 14, color: color),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(color: color),
-          ),
-        ],
+    return Tooltip(
+      message: label,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: indicator,
       ),
     );
   }

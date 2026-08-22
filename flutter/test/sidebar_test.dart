@@ -1267,7 +1267,7 @@ void main() {
     expect(state.activeProjectId, 2);
   });
 
-  testWidgets('Connection indicator shows connected', (tester) async {
+  testWidgets('Connection status icon shows connected', (tester) async {
     final api = _FakeApiService()..healthOk = true;
     final state = AppState.test(
       api: api,
@@ -1290,10 +1290,22 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    expect(find.text('Connected'), findsOneWidget);
+    final chipRow = find.ancestor(
+      of: find.text('owner'),
+      matching: find.byType(Row),
+    );
+    expect(
+      find.descendant(of: chipRow, matching: find.byIcon(Icons.cloud_done)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: chipRow, matching: find.byIcon(Icons.more_vert)),
+      findsOneWidget,
+    );
+    expect(find.text('Connected'), findsNothing);
   });
 
-  testWidgets('Connection indicator shows disconnected', (tester) async {
+  testWidgets('Connection status icon shows disconnected', (tester) async {
     final api = _FakeApiService()..healthOk = false;
     final state = AppState.test(
       api: api,
@@ -1316,10 +1328,22 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    expect(find.text('Disconnected'), findsOneWidget);
+    final chipRow = find.ancestor(
+      of: find.text('owner'),
+      matching: find.byType(Row),
+    );
+    expect(
+      find.descendant(of: chipRow, matching: find.byIcon(Icons.cloud_off)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: chipRow, matching: find.byIcon(Icons.more_vert)),
+      findsOneWidget,
+    );
+    expect(find.text('Disconnected'), findsNothing);
   });
 
-  testWidgets('Connection indicator shows checking initially', (tester) async {
+  testWidgets('Connection status icon shows checking', (tester) async {
     final api = _FakeApiService();
     final state = AppState.test(
       api: api,
@@ -1347,7 +1371,22 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Checking connection\u2026'), findsOneWidget);
+    final chipRow = find.ancestor(
+      of: find.text('owner'),
+      matching: find.byType(Row),
+    );
+    expect(
+      find.descendant(
+        of: chipRow,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: chipRow, matching: find.byIcon(Icons.more_vert)),
+      findsOneWidget,
+    );
+    expect(find.text('Checking connection\u2026'), findsNothing);
   });
 
   testWidgets('Pinned project shows a leading border', (tester) async {
