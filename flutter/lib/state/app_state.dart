@@ -1696,15 +1696,22 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> openGitBranchDialog(int projectId) async {
+  Future<void> openGitBranchDialog(int projectId) {
     _gitDialogProjectId = projectId;
     _dialog = DialogKind.gitBranches;
     _userMenuOpen = false;
     notifyListeners();
-    await loadGitRepoInfo(projectId, force: true);
-    if (gitRepoInfo(projectId)?.isRepo ?? false) {
-      await _loadGitBranchesAndWorktrees(projectId);
-    }
+    // Load repo, branches and worktrees in the background so the panel opens
+    // instantly and content streams in as it becomes ready.
+    return _loadGitData(projectId);
+  }
+
+  Future<void> _loadGitData(int projectId) async {
+    await Future.wait([
+      loadGitRepoInfo(projectId, force: true),
+      loadGitBranches(projectId, force: true),
+      loadGitWorktrees(projectId, force: true),
+    ]);
   }
 
   Future<void> _loadGitBranchesAndWorktrees(int projectId) async {

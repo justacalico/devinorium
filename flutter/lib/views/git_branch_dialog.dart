@@ -70,34 +70,51 @@ class _GitBranchDialogState extends State<GitBranchDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if (repo == null)
+                            if (repo == null) ...[
+                              const LinearProgressIndicator(),
+                              const SizedBox(height: 24),
                               const SizedBox(
-                                height: 200,
+                                height: 160,
                                 child: Center(
                                   child: CircularProgressIndicator(),
                                 ),
-                              )
-                            else if (!repo.isRepo)
+                              ),
+                            ] else if (!repo.isRepo)
                               _buildNotRepo(context)
                             else ...[
                               _buildSearchField(context),
                               const SizedBox(height: 12),
-                              _BranchList(
-                                branches: _filter(branches),
-                                currentBranch: currentBranch,
-                                onCheckout: (b) => _checkout(projectId, b),
-                                onUseForThread: (b) => _useBranch(projectId, b),
-                                onPull: (b) => _pullBranch(projectId, b),
-                                pulling: _pullingBranches,
-                              ),
+                              if (branches.isEmpty && _query.isEmpty)
+                                const SizedBox(
+                                  height: 160,
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                              else
+                                _BranchList(
+                                  branches: _filter(branches),
+                                  currentBranch: currentBranch,
+                                  onCheckout: (b) => _checkout(projectId, b),
+                                  onUseForThread: (b) =>
+                                      _useBranch(projectId, b),
+                                  onPull: (b) => _pullBranch(projectId, b),
+                                  pulling: _pullingBranches,
+                                ),
                               const Divider(height: 32),
-                              _buildCreateBranch(context, projectId, branches),
-                              const SizedBox(height: 16),
-                              _buildWorktreeSection(
-                                context,
-                                projectId,
-                                branches,
-                              ),
+                              if (branches.isNotEmpty) ...[
+                                _buildCreateBranch(
+                                  context,
+                                  projectId,
+                                  branches,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildWorktreeSection(
+                                  context,
+                                  projectId,
+                                  branches,
+                                ),
+                              ],
                               if (worktrees.isNotEmpty)
                                 _buildWorktreeList(
                                   context,
