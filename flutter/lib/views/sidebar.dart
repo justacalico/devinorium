@@ -370,6 +370,11 @@ class _ProjectExpandableTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
+        border: project.pinned
+            ? Border(
+                left: BorderSide(
+                    color: theme.colorScheme.primary, width: 3))
+            : null,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -642,7 +647,11 @@ class _ThreadTile extends StatelessWidget {
             : theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
         border: isActive
             ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-            : null,
+            : (thread.pinned
+                ? Border(
+                    left: BorderSide(
+                        color: theme.colorScheme.primary, width: 3))
+                : null),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Material(
@@ -657,8 +666,11 @@ class _ThreadTile extends StatelessWidget {
             thread.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(fontWeight: isActive ? FontWeight.w600 : null),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: (isActive || thread.pinned)
+                  ? FontWeight.w600
+                  : null,
+            ),
           ),
           subtitle: _threadSubtitle(thread, theme),
           trailing: Row(

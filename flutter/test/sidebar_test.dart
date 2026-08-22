@@ -1329,4 +1329,98 @@ void main() {
 
     expect(find.text('Checking connection\u2026'), findsOneWidget);
   });
+
+  testWidgets('Pinned project shows a leading border', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(
+          id: 1,
+          name: 'Pinned project',
+          path: '/x',
+          pinned: true,
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final container = tester.widget<AnimatedContainer>(
+      find.ancestor(
+        of: find.text('Pinned project'),
+        matching: find.byType(AnimatedContainer),
+      ).first,
+    );
+    final decoration = container.decoration as BoxDecoration;
+    final border = decoration.border as Border?;
+    expect(border, isNotNull);
+    expect(border!.left, isNot(BorderSide.none));
+    expect(border.left.width, 3);
+  });
+
+  testWidgets('Pinned thread shows a leading border', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'Pinned thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          pinned: true,
+          createdAt: '',
+          updatedAt: '',
+        ),
+        Thread(
+          id: 'b',
+          title: 'Active thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'b',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final container = tester.widget<Container>(
+      find.ancestor(
+        of: find.text('Pinned thread'),
+        matching: find.byType(Container),
+      ).first,
+    );
+    final decoration = container.decoration as BoxDecoration;
+    final border = decoration.border as Border?;
+    expect(border, isNotNull);
+    expect(border!.left, isNot(BorderSide.none));
+    expect(border.left.width, 3);
+  });
 }
