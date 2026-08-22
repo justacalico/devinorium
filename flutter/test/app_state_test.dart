@@ -62,6 +62,9 @@ class _StreamableApiService extends ApiService {
   }
 
   @override
+  Future<List<String>> getThreadRuns() async => [];
+
+  @override
   Stream<SseEvent> watchThreadEvents(String id) {
     return eventsBuilder?.call() ?? Stream.empty();
   }
@@ -450,6 +453,28 @@ void main() {
       expect(base.page, MainPage.threads);
     });
 
+    test('loadMoreProjectThreads appends chunk', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([
+          _json(200, [
+            {'id': 'a', 'title': 't', 'project_id': 1, 'model': '', 'permission_mode': 'normal', 'created_at': '', 'updated_at': ''},
+          ]),
+        ])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+      );
+      base.setView(AppView.app);
+      expect(base.hasMoreProjectThreads(1), isTrue);
+      await base.loadMoreProjectThreads(1);
+      expect(base.threads, hasLength(1));
+      expect(base.hasMoreProjectThreads(1), isFalse);
+    });
+
     test('createProject adds to list and selects it', () async {
       final state = AppState(
         api: ApiService(
@@ -476,6 +501,37 @@ void main() {
       await base.createProject(name: 'p2', path: '/y');
       expect(base.projects, hasLength(2));
       expect(base.activeProjectId, 2);
+    });
+
+    test('loadMoreProjects appends chunk', () async {
+      final chunk = List.generate(
+        50,
+        (i) => {
+          'id': i + 1,
+          'name': 'p${i + 1}',
+          'path': '/x',
+          'created_at': '',
+          'updated_at': '',
+        },
+      );
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, chunk),
+            _json(200, [
+              {'id': 51, 'name': 'p51', 'path': '/y', 'created_at': '', 'updated_at': ''},
+            ]),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api);
+      base.setView(AppView.app);
+      await base.loadProjects();
+      expect(base.projects, hasLength(50));
+      expect(base.hasMoreProjects, isTrue);
+      await base.loadMoreProjects();
+      expect(base.projects, hasLength(51));
+      expect(base.hasMoreProjects, isFalse);
     });
 
     test('deleteProject removes project and selects another', () async {
@@ -1005,6 +1061,30 @@ void main() {
       final base = AppState.test(api: state.api, activeProjectId: 1);
       await base.mkdir('newdir');
       expect(base.filesError, isEmpty);
+    });
+
+    test('loadMoreFiles appends chunk', () async {
+      final chunk = List.generate(
+        100,
+        (i) => {'name': 'f$i.txt', 'is_dir': false, 'size': i},
+      );
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, chunk),
+            _json(200, [
+              {'name': 'f100.txt', 'is_dir': false, 'size': 100},
+            ]),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api, activeProjectId: 1);
+      await base.openFilesPanel();
+      expect(base.filesEntries, hasLength(100));
+      expect(base.hasMoreFiles, isTrue);
+      await base.loadMoreFiles();
+      expect(base.filesEntries, hasLength(101));
+      expect(base.hasMoreFiles, isFalse);
     });
 
     test('deleteFile removes and reloads', () async {
