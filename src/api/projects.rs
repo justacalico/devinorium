@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use axum::extract::{Path, Query, State};
+use futures::StreamExt;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, Router};
@@ -73,13 +74,14 @@ async fn list(
     let (limit, offset) = pagination.bounds();
     match state.db.list_projects(user.id, limit, offset).await {
         Ok(rows) => {
-            let out = futures::future::join_all(
-                rows.into_iter()
-                    .map(|p| {
-                        let state = state.clone();
-                        async move { ProjectOut::from_row(&state, p).await }
-                    }),
+            let out: Vec<ProjectOut> = futures::stream::iter(
+                rows.into_iter().map(|p| {
+                    let state = state.clone();
+                    async move { ProjectOut::from_row(&state, p).await }
+                }),
             )
+            .buffer_unordered(8)
+            .collect()
             .await;
             Json(out).into_response()
         }
