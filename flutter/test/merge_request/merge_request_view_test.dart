@@ -28,6 +28,11 @@ void main() {
           author: MergeRequestAuthor(name: 'Reviewer', username: 'reviewer'),
           body: 'Looks good',
         ),
+        MergeRequestComment(
+          author: MergeRequestAuthor(name: 'GitLab', username: 'GitLab'),
+          body: 'added 1 commit\n\n<ul><li><a href="/diffs">126cdcc5 - refactor: remove token</a></li></ul>\n\n[Compare with previous version](/compare)',
+          system: true,
+        ),
       ],
     );
 
@@ -73,11 +78,24 @@ void main() {
       await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Comments (1)'));
+      await tester.tap(find.text('Comments (2)'));
       await tester.pumpAndSettle();
 
       expect(find.text('Looks good'), findsOneWidget);
       expect(find.text('@reviewer'), findsOneWidget);
+    });
+
+    testWidgets('renders system comment HTML as markdown', (tester) async {
+      await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Comments (2)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('added 1 commit'), findsOneWidget);
+      expect(find.text('126cdcc5 - refactor: remove token'), findsOneWidget);
+      expect(find.text('Compare with previous version'), findsOneWidget);
+      expect(find.text('<ul>'), findsNothing);
     });
   });
 }

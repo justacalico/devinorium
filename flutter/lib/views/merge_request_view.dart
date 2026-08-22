@@ -394,25 +394,28 @@ class _CommentsTab extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 8),
-                if (comment.system)
-                  Text(
-                    comment.body,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontStyle: FontStyle.italic,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  )
-                else
-                  MarkdownBody(
-                    data: comment.body,
-                    selectable: false,
-                    onTapLink: (txt, href, title) {
-                      if (href != null) onLinkTap?.call(href);
-                    },
-                    styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                      p: theme.textTheme.bodyLarge?.copyWith(height: 1.4),
-                    ),
+                MarkdownBody(
+                  data: comment.system ? _htmlToMarkdown(comment.body) : comment.body,
+                  selectable: false,
+                  onTapLink: (txt, href, title) {
+                    if (href != null) onLinkTap?.call(href);
+                  },
+                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                    p: comment.system
+                        ? theme.textTheme.bodyMedium?.copyWith(
+                            fontStyle: FontStyle.italic,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            height: 1.4,
+                          )
+                        : theme.textTheme.bodyLarge?.copyWith(height: 1.4),
+                    a: comment.system
+                        ? theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontStyle: FontStyle.italic,
+                          )
+                        : null,
                   ),
+                ),
               ],
             ),
           ),
@@ -512,6 +515,69 @@ class _ErrorView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Convert the small subset of HTML used by GitLab system notes into Markdown
+/// so [MarkdownBody] can render them. Non-system notes are already Markdown.
+String _htmlToMarkdown(String html) {
+  var text = html;
+
+  text = _decodeHtmlEntities(text);
+
+  text = text.replaceAllMapped(RegExp(r'<br\s*/?>'), (_) => '\n');
+
+  text = text.replaceAllMapped(
+    RegExp(
+      r"""<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)</a>""",
+      caseSensitive: false,
+    ),
+    (m) => '[${_cleanWhitespace(m[2]!)}](${_decodeHtmlEntities(m[1]!)})',
+  );
+
+  text = text.replaceAllMapped(
+    RegExp(r'<li[^>]*>([\s\S]*?)</li>', caseSensitive: false),
+    (m) => '- ${_cleanWhitespace(m[1]!)}\n',
+  );
+
+  text = text
+      .replaceAll(RegExp(r'</?ul[^>]*>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'</?ol[^>]*>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'<p[^>]*>', caseSensitive: false), '\n\n')
+      .replaceAll(RegExp(r'</p>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'</?div[^>]*>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'</?span[^>]*>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'</?b[^>]*>', caseSensitive: false), '**')
+      .replaceAll(RegExp(r'</?strong[^>]*>', caseSensitive: false), '**')
+      .replaceAll(RegExp(r'</?i[^>]*>', caseSensitive: false), '*')
+      .replaceAll(RegExp(r'</?em[^>]*>', caseSensitive: false), '*');
+
+  text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  return text;
+}
+
+String _cleanWhitespace(String value) {
+  return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+String _decodeHtmlEntities(String text) {
+  var out = text;
+  out = out.replaceAll('&lt;', '<');
+  out = out.replaceAll('&gt;', '>');
+  out = out.replaceAll('&amp;', '&');
+  out = out.replaceAll('&quot;', '"');
+  out = out.replaceAll('&apos;', "'");
+  out = out.replaceAll('&nbsp;', ' ');
+
+  out = out.replaceAllMapped(
+    RegExp(r'&#x([0-9a-fA-F]+);'),
+    (m) => String.fromCharCode(int.parse(m[1]!, radix: 16)),
+  );
+  out = out.replaceAllMapped(
+    RegExp(r'&#(\d+);'),
+    (m) => String.fromCharCode(int.parse(m[1]!)),
+  );
+
+  return out;
 }
 
 class _PreBuilder extends MarkdownElementBuilder {
