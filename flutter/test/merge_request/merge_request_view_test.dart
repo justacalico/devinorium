@@ -1,0 +1,83 @@
+import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
+import 'package:devinorium_frontend/merge_request/merge_request_models.dart';
+import 'package:devinorium_frontend/state/async_value.dart';
+import 'package:devinorium_frontend/views/merge_request_view.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('MergeRequestView', () {
+    const detail = MergeRequestDetail(
+      title: 'Add feature',
+      description: '## Summary',
+      state: 'opened',
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      iid: 1,
+      webUrl: 'https://gitlab.com/group/project/-/merge_requests/1',
+      changes: [
+        MergeRequestChange(
+          oldPath: 'a.txt',
+          newPath: 'a.txt',
+          diff: '@@ -0,0 +1 @@\n+hello',
+          newFile: true,
+        ),
+      ],
+      comments: [
+        MergeRequestComment(
+          author: MergeRequestAuthor(name: 'Reviewer', username: 'reviewer'),
+          body: 'Looks good',
+        ),
+      ],
+    );
+
+    Widget wrap(AsyncValue<MergeRequestDetail> value) => MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(detail: value, url: detail.webUrl),
+          ),
+        );
+
+    testWidgets('shows loading state', (tester) async {
+      await tester.pumpWidget(wrap(const AsyncValue.loading()));
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('shows title and branches when ready', (tester) async {
+      await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add feature'), findsOneWidget);
+      expect(find.text('MR !1'), findsOneWidget);
+      expect(find.text('feature → main'), findsOneWidget);
+    });
+
+    testWidgets('switches to changes tab and expands a file', (tester) async {
+      await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Changes (1)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('a.txt'), findsOneWidget);
+      expect(find.text('@@ -0,0 +1 @@'), findsNothing);
+
+      await tester.tap(find.text('a.txt'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('+hello'), findsOneWidget);
+    });
+
+    testWidgets('switches to comments tab', (tester) async {
+      await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Comments (1)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Looks good'), findsOneWidget);
+      expect(find.text('@reviewer'), findsOneWidget);
+    });
+  });
+}

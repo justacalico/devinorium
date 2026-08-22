@@ -3300,6 +3300,15 @@ if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
   echo "Successfully logged out"
   exit 0
 fi
+if [ "$1" = "api" ]; then
+  path="$2"
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  printf '{"host":"%s","path":"%s"}\n' "$host" "$path"
+  exit 0
+fi
 echo "unknown glab command: $*" >&2
 exit 1
 "#;
@@ -3421,6 +3430,33 @@ async fn git_connections_login_defaults_to_gitlab_com() {
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     assert_eq!(v["host"], "gitlab.com");
     assert!(v["authed"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_proxy_forwards_api_requests() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/proxy?path=projects/group%252Fproject/merge_requests/1&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["host"], "gitlab.example.com");
+    assert_eq!(v["path"], "projects/group%2Fproject/merge_requests/1");
 }
 
 fn git_cli(args: &[&str], cwd: &std::path::Path) {

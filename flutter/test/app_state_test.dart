@@ -2488,4 +2488,26 @@ void main() {
       expect(state.sending, isFalse);
     });
   });
+
+  group('Merge request links', () {
+    test('openLink opens the merge request panel for GitLab MR URLs', () async {
+      final state = AppState.test();
+      final url = 'https://gitlab.com/group/project/-/merge_requests/1';
+      await state.openLink(url);
+
+      expect(state.dialog, DialogKind.mergeRequest);
+      expect(state.mergeRequestUrl, url);
+    });
+
+    test('closeDialog clears the merge request URL', () {
+      final state = AppState.test(
+        dialog: DialogKind.mergeRequest,
+        mergeRequestUrl: 'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+      state.closeDialog();
+
+      expect(state.dialog, DialogKind.none);
+      expect(state.mergeRequestUrl, isNull);
+    });
+  });
 }
