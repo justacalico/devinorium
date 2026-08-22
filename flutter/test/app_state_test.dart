@@ -570,6 +570,29 @@ void main() {
       expect(base.projects.map((p) => p.id).toList(), [3, 1, 2]);
     });
 
+    test('reorderProjects keeps pinned projects first', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([_json(200, {})])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+          Project(
+            id: 2,
+            name: 'p2',
+            path: '/y',
+            pinned: true,
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+      );
+      base.setView(AppView.app);
+      await base.reorderProjects([1, 2]);
+      expect(base.projects.map((p) => p.id).toList(), [2, 1]);
+    });
+
     test('openRenameProjectDialog sets dialog and initial name', () {
       final state = AppState.test(
         projects: [
@@ -653,6 +676,84 @@ void main() {
       expect(base.threads.first.title, 'renamed');
       expect(base.dialog, DialogKind.none);
       expect(base.renameThreadId, isNull);
+    });
+
+    test('pinProject toggles pinned and sorts projects', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 2,
+              'name': 'p2',
+              'path': '/y',
+              'pinned': true,
+              'position': 1,
+              'created_at': '',
+              'updated_at': '',
+            }),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        projects: [
+          Project(id: 1, name: 'p1', path: '/x', position: 0, createdAt: '', updatedAt: ''),
+          Project(id: 2, name: 'p2', path: '/y', position: 1, createdAt: '', updatedAt: ''),
+        ],
+      );
+      base.setView(AppView.app);
+      await base.pinProject(2, true);
+      expect(base.projects.first.id, 2);
+      expect(base.projects.first.pinned, isTrue);
+      expect(base.projects.last.id, 1);
+    });
+
+    test('pinThread toggles pinned and sorts threads', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': '',
+              'permission_mode': 'normal',
+              'pinned': true,
+              'created_at': '',
+              'updated_at': '2026-01-02T00:00:00Z',
+            }),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        threads: [
+          Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '2026-01-01T00:00:00Z',
+          ),
+          Thread(
+            id: 'b',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '2026-01-02T00:00:00Z',
+          ),
+        ],
+      );
+      base.setView(AppView.app);
+      await base.pinThread('a', true);
+      expect(base.threads.first.id, 'a');
+      expect(base.threads.first.pinned, isTrue);
+      expect(base.threads.first.updatedAt, '2026-01-02T00:00:00Z');
+      expect(base.threads.last.id, 'b');
     });
 
     test('openThread loads detail and updates active project', () async {

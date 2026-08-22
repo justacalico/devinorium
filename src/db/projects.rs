@@ -29,7 +29,7 @@ impl Db {
 
     pub async fn list_projects(&self, user_id: i64) -> anyhow::Result<Vec<ProjectRow>> {
         sqlx::query_as::<_, ProjectRow>(
-            "SELECT * FROM projects WHERE user_id = ? ORDER BY position ASC, id ASC",
+            "SELECT * FROM projects WHERE user_id = ? ORDER BY pinned DESC, position ASC, id ASC",
         )
         .bind(user_id)
         .fetch_all(self.pool())
@@ -58,6 +58,10 @@ impl Db {
                 .bind(user_id)
                 .fetch_all(&mut *tx)
                 .await?;
+
+        if ids.len() != current.len() {
+            anyhow::bail!("reorder request does not match user's projects");
+        }
 
         let current_set: std::collections::HashSet<_> = current.iter().copied().collect();
         let requested_set: std::collections::HashSet<_> = ids.iter().copied().collect();
@@ -136,6 +140,24 @@ impl Db {
         Ok(())
     }
 
+    pub async fn set_project_pinned(
+        &self,
+        id: i64,
+        user_id: i64,
+        pinned: bool,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE projects SET pinned = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND pinned != ?",
+        )
+        .bind(pinned)
+        .bind(id)
+        .bind(user_id)
+        .bind(pinned)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
     pub async fn set_project_type(
         &self,
         id: i64,
@@ -161,7 +183,7 @@ impl Db {
         sqlx::query_as::<_, super::ThreadRow>(
             "SELECT * FROM threads
              WHERE project_id = ? AND user_id = ?
-             ORDER BY updated_at DESC",
+             ORDER BY pinned DESC, updated_at DESC",
         )
         .bind(project_id)
         .bind(user_id)

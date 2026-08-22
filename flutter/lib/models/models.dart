@@ -410,6 +410,7 @@ class Project {
   final String name;
   final String path;
   final int position;
+  final bool pinned;
   final bool isRepo;
   final String gitBranch;
   final String projectType;
@@ -421,6 +422,7 @@ class Project {
     required this.name,
     required this.path,
     this.position = 0,
+    this.pinned = false,
     this.isRepo = false,
     this.gitBranch = '',
     this.projectType = 'generic',
@@ -433,6 +435,7 @@ class Project {
         name: j['name'] as String,
         path: j['path'] as String,
         position: (j['position'] as num?)?.toInt() ?? 0,
+        pinned: j['pinned'] as bool? ?? false,
         isRepo: j['is_repo'] as bool? ?? false,
         gitBranch: j['branch'] as String? ?? '',
         projectType: j['project_type'] as String? ?? 'generic',
@@ -445,6 +448,7 @@ class Project {
     String? name,
     String? path,
     int? position,
+    bool? pinned,
     bool? isRepo,
     String? gitBranch,
     String? projectType,
@@ -456,11 +460,42 @@ class Project {
         name: name ?? this.name,
         path: path ?? this.path,
         position: position ?? this.position,
+        pinned: pinned ?? this.pinned,
         isRepo: isRepo ?? this.isRepo,
         gitBranch: gitBranch ?? this.gitBranch,
         projectType: projectType ?? this.projectType,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+      );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Project) return false;
+    return id == other.id &&
+        name == other.name &&
+        path == other.path &&
+        position == other.position &&
+        pinned == other.pinned &&
+        isRepo == other.isRepo &&
+        gitBranch == other.gitBranch &&
+        projectType == other.projectType &&
+        createdAt == other.createdAt &&
+        updatedAt == other.updatedAt;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        name,
+        path,
+        position,
+        pinned,
+        isRepo,
+        gitBranch,
+        projectType,
+        createdAt,
+        updatedAt,
       );
 }
 
@@ -475,6 +510,7 @@ class Thread {
   final String? permissions;
   final String? branch;
   final String? worktreePath;
+  final bool pinned;
   final String createdAt;
   final String updatedAt;
 
@@ -489,6 +525,7 @@ class Thread {
     this.permissions,
     this.branch,
     this.worktreePath,
+    this.pinned = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -504,6 +541,7 @@ class Thread {
         permissions: j['permissions'] as String?,
         branch: j['branch'] as String?,
         worktreePath: j['worktree_path'] as String?,
+        pinned: j['pinned'] as bool? ?? false,
         createdAt: j['created_at'] as String? ?? '',
         updatedAt: j['updated_at'] as String? ?? '',
       );
@@ -511,6 +549,7 @@ class Thread {
   Thread copyWith({
     String? title,
     String? updatedAt,
+    bool? pinned,
   }) =>
       Thread(
         id: id,
@@ -523,6 +562,7 @@ class Thread {
         permissions: permissions,
         branch: branch,
         worktreePath: worktreePath,
+        pinned: pinned ?? this.pinned,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -541,6 +581,7 @@ class Thread {
         permissions == other.permissions &&
         branch == other.branch &&
         worktreePath == other.worktreePath &&
+        pinned == other.pinned &&
         createdAt == other.createdAt &&
         updatedAt == other.updatedAt;
   }
@@ -557,6 +598,7 @@ class Thread {
         permissions,
         branch,
         worktreePath,
+        pinned,
         createdAt,
         updatedAt,
       );

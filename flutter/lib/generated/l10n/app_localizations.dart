@@ -496,6 +496,24 @@ abstract class AppLocalizations {
   /// **'Rename thread'**
   String get renameThread;
 
+  /// No description provided for @pin.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get pin;
+
+  /// No description provided for @unpin.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get unpin;
+
+  /// No description provided for @pinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned'**
+  String get pinned;
+
   /// No description provided for @newName.
   ///
   /// In en, this message translates to:

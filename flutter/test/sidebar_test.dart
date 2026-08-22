@@ -64,6 +64,12 @@ class _ThrowingClient extends BaseApiClient {
 class _FakeApiService extends ApiService {
   final deletedThreadIds = <String>[];
   final deletedProjectIds = <int>[];
+  final pinnedProjectIds = <int>[];
+  final unpinnedProjectIds = <int>[];
+  final pinnedThreadIds = <String>[];
+  final unpinnedThreadIds = <String>[];
+  final pinProjectReturns = <int, Project>{};
+  final pinThreadReturns = <String, Thread>{};
   bool healthOk = true;
 
   _FakeApiService() : super(client: _ThrowingClient());
@@ -78,6 +84,48 @@ class _FakeApiService extends ApiService {
   Future<void> deleteProject(int id) {
     deletedProjectIds.add(id);
     return Future.value();
+  }
+
+  @override
+  Future<Project> pinProject(int id, bool pinned) {
+    if (pinned) {
+      pinnedProjectIds.add(id);
+    } else {
+      unpinnedProjectIds.add(id);
+    }
+    return Future.value(
+      pinProjectReturns[id] ??
+          Project(
+            id: id,
+            name: 'project $id',
+            path: '/x',
+            pinned: pinned,
+            createdAt: '',
+            updatedAt: '',
+          ),
+    );
+  }
+
+  @override
+  Future<Thread> pinThread(String id, bool pinned) {
+    if (pinned) {
+      pinnedThreadIds.add(id);
+    } else {
+      unpinnedThreadIds.add(id);
+    }
+    return Future.value(
+      pinThreadReturns[id] ??
+          Thread(
+            id: id,
+            title: 'thread $id',
+            projectId: 0,
+            model: '',
+            permissionMode: 'normal',
+            pinned: pinned,
+            createdAt: '',
+            updatedAt: '',
+          ),
+    );
   }
 
   @override
@@ -775,6 +823,193 @@ void main() {
     expect(state.renameInitialName, 'My thread');
   });
 
+  testWidgets('Project pin menu item is present and toggles pin', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+    api.pinProjectReturns[1] =
+        Project(id: 1, name: 'p', path: '/x', pinned: true, createdAt: '', updatedAt: '');
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final projectTile = find.ancestor(
+      of: find.text('p'),
+      matching: find.byType(ListTile),
+    ).first;
+    final more = find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pin'), findsOneWidget);
+    final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
+    final primary =
+        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    expect(pinIcon.color, primary);
+
+    await tester.tap(find.text('Pin'));
+    await tester.pumpAndSettle();
+
+    expect(api.pinnedProjectIds, contains(1));
+    expect(state.projects.first.pinned, isTrue);
+
+    // Reopen the menu and confirm it now reads "Unpin".
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+    expect(find.text('Unpin'), findsOneWidget);
+  });
+
+  testWidgets('Project pin menu item sorts pinned projects to top', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'First', path: '/x', position: 0, createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'Second', path: '/y', position: 1, createdAt: '', updatedAt: ''),
+      ],
+    );
+    api.pinProjectReturns[2] = Project(
+      id: 2,
+      name: 'Second',
+      path: '/y',
+      position: 1,
+      pinned: true,
+      createdAt: '',
+      updatedAt: '',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final secondProjectTile = find.ancestor(
+      of: find.text('Second'),
+      matching: find.byType(ListTile),
+    ).first;
+    final more = find.descendant(
+      of: secondProjectTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pin'), findsOneWidget);
+    final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
+    final primary =
+        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    expect(pinIcon.color, primary);
+
+    await tester.tap(find.text('Pin'));
+    await tester.pumpAndSettle();
+
+    expect(api.pinnedProjectIds, contains(2));
+    // The pinned project should now be first in the list.
+    final projectTiles = find.byType(ListTile);
+    final firstTile = projectTiles.at(0);
+    expect(
+      find.descendant(of: firstTile, matching: find.text('Second')),
+      findsOneWidget,
+    );
+    expect(state.projects.first.id, 2);
+  });
+
+  testWidgets('Thread pin menu item is present and toggles pin', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+    api.pinThreadReturns['a'] = Thread(
+      id: 'a',
+      title: 'My thread',
+      projectId: 1,
+      model: '',
+      permissionMode: 'normal',
+      pinned: true,
+      createdAt: '',
+      updatedAt: '',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final threadTile = find.ancestor(
+      of: find.text('My thread'),
+      matching: find.byType(ListTile),
+    ).first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pin'), findsOneWidget);
+    final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
+    final primary =
+        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    expect(pinIcon.color, primary);
+
+    await tester.tap(find.text('Pin'));
+    await tester.pumpAndSettle();
+
+    expect(api.pinnedThreadIds, contains('a'));
+    expect(state.threads.first.pinned, isTrue);
+
+    // Reopen the menu and confirm it now reads "Unpin".
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+    expect(find.text('Unpin'), findsOneWidget);
+  });
+
   testWidgets('Project delete menu item shows confirmation', (tester) async {
     final api = _FakeApiService();
     final state = AppState.test(
@@ -1108,5 +1343,99 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Checking connection\u2026'), findsOneWidget);
+  });
+
+  testWidgets('Pinned project shows a leading border', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(
+          id: 1,
+          name: 'Pinned project',
+          path: '/x',
+          pinned: true,
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final container = tester.widget<AnimatedContainer>(
+      find.ancestor(
+        of: find.text('Pinned project'),
+        matching: find.byType(AnimatedContainer),
+      ).first,
+    );
+    final decoration = container.decoration as BoxDecoration;
+    final border = decoration.border as Border?;
+    expect(border, isNotNull);
+    expect(border!.left, isNot(BorderSide.none));
+    expect(border.left.width, 3);
+  });
+
+  testWidgets('Pinned thread shows a leading border', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'Pinned thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          pinned: true,
+          createdAt: '',
+          updatedAt: '',
+        ),
+        Thread(
+          id: 'b',
+          title: 'Active thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'b',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final container = tester.widget<Container>(
+      find.ancestor(
+        of: find.text('Pinned thread'),
+        matching: find.byType(Container),
+      ).first,
+    );
+    final decoration = container.decoration as BoxDecoration;
+    final border = decoration.border as Border?;
+    expect(border, isNotNull);
+    expect(border!.left, isNot(BorderSide.none));
+    expect(border.left.width, 3);
   });
 }

@@ -39,7 +39,7 @@ impl super::Db {
 
     pub async fn list_threads(&self, user_id: i64) -> anyhow::Result<Vec<ThreadRow>> {
         sqlx::query_as::<_, ThreadRow>(
-            "SELECT * FROM threads WHERE user_id = ? ORDER BY updated_at DESC",
+            "SELECT * FROM threads WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC",
         )
         .bind(user_id)
         .fetch_all(self.pool())
@@ -91,6 +91,24 @@ impl super::Db {
             .bind(user_id)
             .execute(self.pool())
             .await?;
+        Ok(())
+    }
+
+    pub async fn set_thread_pinned(
+        &self,
+        id: &str,
+        user_id: i64,
+        pinned: bool,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE threads SET pinned = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND pinned != ?",
+        )
+        .bind(pinned)
+        .bind(id)
+        .bind(user_id)
+        .bind(pinned)
+        .execute(self.pool())
+        .await?;
         Ok(())
     }
 

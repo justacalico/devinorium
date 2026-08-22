@@ -980,7 +980,17 @@ class AppState extends ChangeNotifier {
     for (final p in oldProjects) {
       map[p.id] = p;
     }
-    _projects = ids.map((id) => map[id]!).toList();
+    _projects = ids
+        .asMap()
+        .entries
+        .map((e) => map[e.value]!.copyWith(position: e.key))
+        .toList();
+    _projects.sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      final byPosition = a.position.compareTo(b.position);
+      if (byPosition != 0) return byPosition;
+      return a.id.compareTo(b.id);
+    });
     notifyListeners();
 
     try {
@@ -1039,6 +1049,30 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> pinProject(int id, bool pinned) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final updated = await api.pinProject(id, pinned);
+      final index = _projects.indexWhere((p) => p.id == id);
+      if (index >= 0) {
+        _projects = [..._projects];
+        _projects[index] = updated;
+        _projects.sort((a, b) {
+          if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+          final byPosition = a.position.compareTo(b.position);
+          if (byPosition != 0) return byPosition;
+          return a.id.compareTo(b.id);
+        });
+      }
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
   Future<void> renameThread(String id, String title) async {
     _globalError = '';
     notifyListeners();
@@ -1057,6 +1091,33 @@ class AppState extends ChangeNotifier {
       }
       _dialog = DialogKind.none;
       _renameThreadId = null;
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> pinThread(String id, bool pinned) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final updated = await api.pinThread(id, pinned);
+      final index = _threads.indexWhere((t) => t.id == id);
+      if (index >= 0) {
+        _threads = [..._threads];
+        _threads[index] = updated;
+        _threads.sort((a, b) {
+          if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+          final byUpdated = b.updatedAt.compareTo(a.updatedAt);
+          if (byUpdated != 0) return byUpdated;
+          return a.id.compareTo(b.id);
+        });
+      }
+      if (_activeThreadId == id) {
+        await _activeStore?.reloadDetail();
+      }
       _globalError = '';
       notifyListeners();
     } catch (e) {

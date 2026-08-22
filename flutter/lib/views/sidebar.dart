@@ -370,6 +370,11 @@ class _ProjectExpandableTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
+        border: project.pinned
+            ? Border(
+                left: BorderSide(
+                    color: theme.colorScheme.primary, width: 3))
+            : null,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -440,6 +445,19 @@ class _ProjectExpandableTile extends StatelessWidget {
                     ),
                   MenuAnchor(
                     menuChildren: [
+                      MenuItemButton(
+                        leadingIcon: Icon(
+                          project.pinned
+                              ? Icons.push_pin_outlined
+                              : Icons.push_pin,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
+                        child: Text(
+                            project.pinned ? l10n(context).unpin : l10n(context).pin),
+                        onPressed: () =>
+                            state.pinProject(project.id, !project.pinned),
+                      ),
                       MenuItemButton(
                         leadingIcon: Icon(Icons.edit_outlined,
                             size: 18, color: theme.colorScheme.onSurface),
@@ -629,7 +647,11 @@ class _ThreadTile extends StatelessWidget {
             : theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
         border: isActive
             ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-            : null,
+            : (thread.pinned
+                ? Border(
+                    left: BorderSide(
+                        color: theme.colorScheme.primary, width: 3))
+                : null),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Material(
@@ -644,8 +666,11 @@ class _ThreadTile extends StatelessWidget {
             thread.title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(fontWeight: isActive ? FontWeight.w600 : null),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: (isActive || thread.pinned)
+                  ? FontWeight.w600
+                  : null,
+            ),
           ),
           subtitle: _threadSubtitle(thread, theme),
           trailing: Row(
@@ -672,6 +697,17 @@ class _ThreadTile extends StatelessWidget {
               const SizedBox(width: 4),
               MenuAnchor(
                 menuChildren: [
+                  MenuItemButton(
+                    leadingIcon: Icon(
+                      thread.pinned
+                          ? Icons.push_pin_outlined
+                          : Icons.push_pin,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    child: Text(thread.pinned ? l.unpin : l.pin),
+                    onPressed: () => state.pinThread(thread.id, !thread.pinned),
+                  ),
                   MenuItemButton(
                     leadingIcon: Icon(Icons.edit_outlined,
                         size: 18, color: theme.colorScheme.onSurface),

@@ -224,6 +224,26 @@ void main() {
       expect(p.id, 1);
     });
 
+    test('pinProject posts pinned and returns project', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('POST', '/api/projects/1/pin'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['pinned'], isTrue);
+        return _json(200, {
+          'id': 1,
+          'name': 'p',
+          'path': '/x',
+          'pinned': true,
+          'created_at': '',
+          'updated_at': '',
+        });
+      });
+      final service = _serviceFor(mock);
+      final p = await service.pinProject(1, true);
+      expect(p.pinned, isTrue);
+      expect(p.id, 1);
+    });
+
     test('listThreadsForProject uses project id', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/projects/1/threads'));
@@ -463,6 +483,28 @@ void main() {
       });
       final service = _serviceFor(mock);
       await service.renameThread('a', 'new');
+    });
+
+    test('pinThread posts pinned and returns thread', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('POST', '/api/threads/a/pin'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['pinned'], isTrue);
+        return _json(200, {
+          'id': 'a',
+          'title': 't',
+          'project_id': 1,
+          'model': '',
+          'permission_mode': 'normal',
+          'pinned': true,
+          'created_at': '',
+          'updated_at': '',
+        });
+      });
+      final service = _serviceFor(mock);
+      final t = await service.pinThread('a', true);
+      expect(t.pinned, isTrue);
+      expect(t.id, 'a');
     });
 
     test('updateThreadSettings sends non-empty model', () async {
