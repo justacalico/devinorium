@@ -21,7 +21,8 @@ class _FakeClient implements BaseApiClient {
   String? _savedServerUrl;
 
   @override
-  Future<bool> get isConfigured async => _savedServerUrl != null && lastToken != null;
+  Future<bool> get isConfigured async =>
+      _savedServerUrl != null && lastToken != null;
 
   @override
   Future<String?> get serverUrl async => _savedServerUrl;
@@ -77,7 +78,12 @@ class _FakeClient implements BaseApiClient {
         };
       }
       if (map['username'] == 'owner' && map['totp_required'] == true) {
-        return {'ok': false, 'totp_required': true, 'username': 'owner', 'token': ''};
+        return {
+          'ok': false,
+          'totp_required': true,
+          'username': 'owner',
+          'token': '',
+        };
       }
       throw Exception('bad password');
     }
@@ -89,7 +95,8 @@ class _FakeClient implements BaseApiClient {
       throw UnimplementedError();
 
   @override
-  Future<Map<String, dynamic>> delete(String path) => throw UnimplementedError();
+  Future<Map<String, dynamic>> delete(String path) =>
+      throw UnimplementedError();
 
   @override
   Future<Map<String, dynamic>> deleteWithBody(String path, Object body) =>
@@ -104,28 +111,27 @@ class _FakeClient implements BaseApiClient {
     String path,
     Map<String, String> fields,
     List<({String filename, String mime, Uint8List bytes})> files,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
 
   @override
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})> attachments = const [],
-  }) =>
-      Stream.empty();
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) => Stream.empty();
 
   @override
   Stream<SseEvent> getStream({required String path}) => Stream.empty();
 }
 
 Widget _buildLogin({required _FakeClient client}) => MaterialApp(
-      home: ChangeNotifierProvider<AppState>.value(
-        value: AppState(api: ApiService(client: client)),
-        child: const Scaffold(body: LoginView()),
-      ),
-    );
+  home: ChangeNotifierProvider<AppState>(
+    create: (_) => AppState(api: ApiService(client: client)),
+    child: const Scaffold(body: LoginView()),
+  ),
+);
 
 void main() {
   testWidgets('LoginView restores saved server URL on native', (tester) async {
@@ -134,13 +140,15 @@ void main() {
     await tester.pumpWidget(_buildLogin(client: client));
     await tester.pumpAndSettle();
 
-    final dropdown =
-        tester.widget<DropdownButton<String>>(find.byType(DropdownButton<String>));
+    final dropdown = tester.widget<DropdownButton<String>>(
+      find.byType(DropdownButton<String>),
+    );
     expect(dropdown.value, 'http://');
     expect(find.widgetWithText(TextFormField, 'Server URL'), findsOneWidget);
 
     final hostField = tester.widget<TextFormField>(
-        find.widgetWithText(TextFormField, 'Server URL'));
+      find.widgetWithText(TextFormField, 'Server URL'),
+    );
     expect(hostField.controller!.text, 'saved.example.com:7878');
   });
 
@@ -165,8 +173,9 @@ void main() {
     expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
   });
 
-  testWidgets('LoginView submits server URL, username and password on native',
-      (tester) async {
+  testWidgets('LoginView submits server URL, username and password on native', (
+    tester,
+  ) async {
     final client = _FakeClient(isNative: true);
     await tester.pumpWidget(_buildLogin(client: client));
     await tester.pumpAndSettle();
@@ -177,9 +186,17 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Server URL'), 'localhost:7878');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
+      find.widgetWithText(TextFormField, 'Server URL'),
+      'localhost:7878',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Username'),
+      'owner',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Password'),
+      'pw',
+    );
 
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
@@ -189,13 +206,21 @@ void main() {
     expect(client.lastUsername, 'owner');
   });
 
-  testWidgets('LoginView rejects an empty server URL on native', (tester) async {
+  testWidgets('LoginView rejects an empty server URL on native', (
+    tester,
+  ) async {
     final client = _FakeClient(isNative: true);
     await tester.pumpWidget(_buildLogin(client: client));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Username'),
+      'owner',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Password'),
+      'pw',
+    );
 
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
@@ -203,15 +228,25 @@ void main() {
     expect(client.lastServerUrl, isNull);
   });
 
-  testWidgets('LoginView rejects a host that includes a scheme', (tester) async {
+  testWidgets('LoginView rejects a host that includes a scheme', (
+    tester,
+  ) async {
     final client = _FakeClient(isNative: true);
     await tester.pumpWidget(_buildLogin(client: client));
     await tester.pumpAndSettle();
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Server URL'), 'http://localhost:7878');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
+      find.widgetWithText(TextFormField, 'Server URL'),
+      'http://localhost:7878',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Username'),
+      'owner',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Password'),
+      'pw',
+    );
 
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();

@@ -66,13 +66,19 @@ class ApiService {
 
   // ---- Git ----
 
-  Future<GitRepoInfo> gitRepoStatus(int projectId) async {
-    final j = await _client.get('/api/projects/$projectId/git');
+  Future<GitRepoInfo> gitRepoStatus(int projectId, {bool force = false}) async {
+    final params = <String, String>{};
+    if (force) params['force'] = 'true';
+    final uri = _buildPath('/api/projects/$projectId/git', params);
+    final j = await _client.get(uri);
     return GitRepoInfo.fromJson(j);
   }
 
-  Future<GitStatus> gitStatus(int projectId) async {
-    final j = await _client.get('/api/projects/$projectId/git/status');
+  Future<GitStatus> gitStatus(int projectId, {bool force = false}) async {
+    final params = <String, String>{};
+    if (force) params['force'] = 'true';
+    final uri = _buildPath('/api/projects/$projectId/git/status', params);
+    final j = await _client.get(uri);
     return GitStatus.fromJson(j);
   }
 
@@ -80,9 +86,11 @@ class ApiService {
     int projectId, {
     String? query,
     int limit = 100,
+    bool force = false,
   }) async {
     final params = <String, String>{'limit': limit.toString()};
     if (query != null && query.isNotEmpty) params['query'] = query;
+    if (force) params['force'] = 'true';
     final uri = _buildPath('/api/projects/$projectId/git/branches', params);
     final j = await _client.get(uri);
     final list = (j['branches'] as List<dynamic>? ?? [])
@@ -129,10 +137,14 @@ class ApiService {
     await _client.post('/api/projects/$projectId/git/push', {});
   }
 
-  Future<List<GitWorktree>> gitWorktrees(int projectId) async {
-    final list = await _client.getList(
-      '/api/projects/$projectId/git/worktrees',
-    );
+  Future<List<GitWorktree>> gitWorktrees(
+    int projectId, {
+    bool force = false,
+  }) async {
+    final params = <String, String>{};
+    if (force) params['force'] = 'true';
+    final uri = _buildPath('/api/projects/$projectId/git/worktrees', params);
+    final list = await _client.getList(uri);
     return list.map(GitWorktree.fromJson).toList();
   }
 
@@ -270,8 +282,13 @@ class ApiService {
     return Thread.fromJson(j);
   }
 
-  Future<ThreadDetail> getThread(String id, {bool includeMessages = false}) async {
-    final path = includeMessages ? '/api/threads/$id?include_messages=1' : '/api/threads/$id';
+  Future<ThreadDetail> getThread(
+    String id, {
+    bool includeMessages = false,
+  }) async {
+    final path = includeMessages
+        ? '/api/threads/$id?include_messages=1'
+        : '/api/threads/$id';
     final meta = await _client.get(path);
     return ThreadDetail.fromJson(meta);
   }
@@ -286,7 +303,10 @@ class ApiService {
     if (beforeId != null) q['before_id'] = beforeId.toString();
     if (afterId != null) q['after_id'] = afterId.toString();
     final query = q.entries
-        .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .map(
+          (e) =>
+              '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}',
+        )
         .join('&');
     final j = await _client.get('/api/threads/$id/messages?$query');
     return ((j['messages'] as List<dynamic>?) ?? [])

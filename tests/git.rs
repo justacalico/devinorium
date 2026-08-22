@@ -40,16 +40,55 @@ fn make_repo() -> TempDir {
 async fn detects_git_repository() {
     let tmp = make_repo();
     let svc = GitService::new();
-    let status = svc.repo_status(tmp.path()).await.unwrap();
+    let status = svc.repo_status(tmp.path(), false).await.unwrap();
     assert!(status.is_repo);
     assert!(!status.branch.is_empty());
+}
+
+#[tokio::test]
+async fn repo_status_force_refreshes_after_external_branch_switch() {
+    let tmp = make_repo();
+    git_cli(&["checkout", "-b", "main"], tmp.path());
+    let svc = GitService::new();
+
+    let status = svc.repo_status(tmp.path(), false).await.unwrap();
+    assert_eq!(status.branch, "main");
+
+    // Switch branch outside the service (e.g. an AI agent).
+    git_cli(&["checkout", "-b", "ai-switch"], tmp.path());
+
+    // Cached status still reports the old branch.
+    let cached = svc.repo_status(tmp.path(), false).await.unwrap();
+    assert_eq!(cached.branch, "main");
+
+    // Forced status picks up the new branch.
+    let forced = svc.repo_status(tmp.path(), true).await.unwrap();
+    assert_eq!(forced.branch, "ai-switch");
+}
+
+#[tokio::test]
+async fn branches_force_refreshes_after_external_branch_switch() {
+    let tmp = make_repo();
+    git_cli(&["checkout", "-b", "main"], tmp.path());
+    let svc = GitService::new();
+
+    let branches = svc.branches(tmp.path(), None, None, false).await.unwrap();
+    let current = branches.iter().find(|b| b.is_current).map(|b| &b.name);
+    assert_eq!(current, Some(&"main".to_string()));
+
+    git_cli(&["checkout", "-b", "ai-switch"], tmp.path());
+
+    // Forced branch list reflects the new current branch.
+    let forced = svc.branches(tmp.path(), None, None, true).await.unwrap();
+    let current = forced.iter().find(|b| b.is_current).map(|b| &b.name);
+    assert_eq!(current, Some(&"ai-switch".to_string()));
 }
 
 #[tokio::test]
 async fn non_repo_returns_not_repo() {
     let tmp = TempDir::new().unwrap();
     let svc = GitService::new();
-    let status = svc.repo_status(tmp.path()).await.unwrap();
+    let status = svc.repo_status(tmp.path(), false).await.unwrap();
     assert!(!status.is_repo);
 }
 
@@ -60,7 +99,7 @@ async fn lists_branches_sorted_by_current_first() {
     git_cli(&["checkout", "-b", "feature-2"], tmp.path());
 
     let svc = GitService::new();
-    let branches = svc.branches(tmp.path(), None, None).await.unwrap();
+    let branches = svc.branches(tmp.path(), None, None, false).await.unwrap();
 
     assert!(!branches.is_empty());
     let current = branches.iter().find(|b| b.is_current).map(|b| &b.name);
@@ -83,7 +122,7 @@ async fn lists_branches_marks_default_from_origin_head() {
     git_cli(&["remote", "set-head", "origin", "-a"], tmp.path());
 
     let svc = GitService::new();
-    let branches = svc.branches(tmp.path(), None, None).await.unwrap();
+    let branches = svc.branches(tmp.path(), None, None, false).await.unwrap();
 
     let current = branches.iter().find(|b| b.is_current).unwrap();
     assert_eq!(current.name, "feature");
@@ -100,7 +139,7 @@ async fn filters_branches_by_query() {
 
     let svc = GitService::new();
     let branches = svc
-        .branches(tmp.path(), Some("feature-a"), None)
+        .branches(tmp.path(), Some("feature-a"), None, false)
         .await
         .unwrap();
     assert_eq!(branches.len(), 1);
@@ -195,11 +234,11 @@ async fn worktree_create_and_remove() {
         .unwrap();
     assert!(wt.path.exists());
 
-    let worktrees = svc.worktrees(tmp.path()).await.unwrap();
+    let worktrees = svc.worktrees(tmp.path(), false).await.unwrap();
     assert!(worktrees.iter().any(|w| w.path == wt.path));
 
     svc.remove_worktree(tmp.path(), &wt.path).await.unwrap();
-    let worktrees = svc.worktrees(tmp.path()).await.unwrap();
+    let worktrees = svc.worktrees(tmp.path(), false).await.unwrap();
     assert!(!worktrees.iter().any(|w| w.path == wt.path));
 }
 
@@ -221,18 +260,18 @@ async fn repo_status_includes_ahead_and_behind() {
     git_cli(&["commit", "-m", "second"], local.path());
 
     let svc = GitService::new();
-    let status = svc.repo_status(local.path()).await.unwrap();
+    let status = svc.repo_status(local.path(), false).await.unwrap();
     assert_eq!(status.branch, "main");
     assert_eq!(status.ahead, 1);
     assert_eq!(status.behind, 0);
 
-    let branches = svc.branches(local.path(), None, None).await.unwrap();
+    let branches = svc.branches(local.path(), None, None, false).await.unwrap();
     let main = branches.iter().find(|b| b.name == "main").unwrap();
     assert_eq!(main.ahead, 1);
     assert_eq!(main.behind, 0);
 
     svc.push(local.path()).await.unwrap();
-    let status = svc.repo_status(local.path()).await.unwrap();
+    let status = svc.repo_status(local.path(), false).await.unwrap();
     assert_eq!(status.ahead, 0);
     assert_eq!(status.behind, 0);
 }
@@ -265,7 +304,7 @@ async fn list_branches_dedupes_local_and_remote_with_same_name() {
     git_cli(&["fetch", "origin"], local.path());
 
     let svc = GitService::new();
-    let branches = svc.branches(local.path(), None, None).await.unwrap();
+    let branches = svc.branches(local.path(), None, None, false).await.unwrap();
 
     // `main` exists both locally and as `origin/main`; only one entry.
     let main_entries = branches.iter().filter(|b| b.name == "main").count();
@@ -302,7 +341,7 @@ async fn list_branches_dedupes_slashed_branch_name() {
     git_cli(&["fetch", "origin"], local.path());
 
     let svc = GitService::new();
-    let branches = svc.branches(local.path(), None, None).await.unwrap();
+    let branches = svc.branches(local.path(), None, None, false).await.unwrap();
 
     // Only one entry for `feature/foo`; no `origin/feature/foo` duplicate.
     let foo_entries = branches.iter().filter(|b| b.name == "feature/foo").count();
@@ -336,15 +375,16 @@ async fn pull_fast_forwards_behind_commits() {
     git_cli(&["add", "file2.txt"], other.path());
     git_cli(&["commit", "-m", "remote commit"], other.path());
     git_cli(&["push", "-u", "origin", "main"], other.path());
+    git_cli(&["fetch", "origin"], local.path());
 
     let svc = GitService::new();
-    let status = svc.repo_status(local.path()).await.unwrap();
+    let status = svc.repo_status(local.path(), false).await.unwrap();
     assert_eq!(status.branch, "main");
     assert_eq!(status.behind, 1);
     assert_eq!(status.ahead, 0);
 
     svc.pull(local.path()).await.unwrap();
-    let status = svc.repo_status(local.path()).await.unwrap();
+    let status = svc.repo_status(local.path(), false).await.unwrap();
     assert_eq!(status.behind, 0);
     assert_eq!(status.ahead, 0);
     assert!(local.path().join("file2.txt").exists());
@@ -386,7 +426,7 @@ async fn pulls_non_current_branch_without_checking_out() {
 
     let svc = GitService::new();
 
-    let branches = svc.branches(local.path(), None, None).await.unwrap();
+    let branches = svc.branches(local.path(), None, None, false).await.unwrap();
     let feature = branches.iter().find(|b| b.name == "feature").unwrap();
     assert_eq!(feature.behind, 1);
 

@@ -140,7 +140,7 @@ class _FakeApiService extends ApiService {
       Future.value([]);
 
   @override
-  Future<GitRepoInfo> gitRepoStatus(int projectId) =>
+  Future<GitRepoInfo> gitRepoStatus(int projectId, {bool force = false}) =>
       Future.value(GitRepoInfo());
 
   @override
@@ -349,18 +349,18 @@ void main() {
       of: find.text('p'),
       matching: find.byType(AnimatedContainer),
     );
-    final projectDeco = tester.widget<AnimatedContainer>(projectContainer).decoration
-        as BoxDecoration?;
+    final projectDeco =
+        tester.widget<AnimatedContainer>(projectContainer).decoration
+            as BoxDecoration?;
     expect(projectDeco, isNotNull);
     expect(projectDeco!.border, isNull);
     expect(projectDeco.color, isNull);
 
-    final threadContainer = find.ancestor(
-      of: find.text('My thread'),
-      matching: find.byType(Container),
-    ).first;
-    final threadDeco = tester.widget<Container>(threadContainer).decoration
-        as BoxDecoration?;
+    final threadContainer = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(Container))
+        .first;
+    final threadDeco =
+        tester.widget<Container>(threadContainer).decoration as BoxDecoration?;
     expect(threadDeco, isNotNull);
     expect(threadDeco!.border, isNotNull);
 
@@ -638,10 +638,7 @@ void main() {
     await _openDrawer(tester);
 
     final chip = find
-        .ancestor(
-          of: find.text('owner'),
-          matching: find.byType(Container),
-        )
+        .ancestor(of: find.text('owner'), matching: find.byType(Container))
         .first;
     final deco = tester.widget<Container>(chip).decoration as BoxDecoration?;
     expect(deco, isNotNull);
@@ -752,10 +749,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    final projectTile = find.ancestor(
-      of: find.text('p'),
-      matching: find.byType(ListTile),
-    ).first;
+    final projectTile = find
+        .ancestor(of: find.text('p'), matching: find.byType(ListTile))
+        .first;
     final more = find.descendant(
       of: projectTile,
       matching: find.byIcon(Icons.more_vert),
@@ -806,10 +802,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    final threadTile = find.ancestor(
-      of: find.text('My thread'),
-      matching: find.byType(ListTile),
-    ).first;
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
     final more = find.descendant(
       of: threadTile,
       matching: find.byIcon(Icons.more_vert),
@@ -828,7 +823,9 @@ void main() {
     expect(state.renameInitialName, 'My thread');
   });
 
-  testWidgets('Project pin menu item is present and toggles pin', (tester) async {
+  testWidgets('Project pin menu item is present and toggles pin', (
+    tester,
+  ) async {
     final api = _FakeApiService();
     final state = AppState.test(
       api: api,
@@ -845,16 +842,21 @@ void main() {
         Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
       ],
     );
-    api.pinProjectReturns[1] =
-        Project(id: 1, name: 'p', path: '/x', pinned: true, createdAt: '', updatedAt: '');
+    api.pinProjectReturns[1] = Project(
+      id: 1,
+      name: 'p',
+      path: '/x',
+      pinned: true,
+      createdAt: '',
+      updatedAt: '',
+    );
 
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    final projectTile = find.ancestor(
-      of: find.text('p'),
-      matching: find.byType(ListTile),
-    ).first;
+    final projectTile = find
+        .ancestor(of: find.text('p'), matching: find.byType(ListTile))
+        .first;
     final more = find.descendant(
       of: projectTile,
       matching: find.byIcon(Icons.more_vert),
@@ -864,8 +866,9 @@ void main() {
 
     expect(find.text('Pin'), findsOneWidget);
     final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
-    final primary =
-        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    final primary = Theme.of(
+      tester.element(find.byType(Scaffold)),
+    ).colorScheme.primary;
     expect(pinIcon.color, primary);
 
     await tester.tap(find.text('Pin'));
@@ -880,7 +883,9 @@ void main() {
     expect(find.text('Unpin'), findsOneWidget);
   });
 
-  testWidgets('Project pin menu item sorts pinned projects to top', (tester) async {
+  testWidgets('Project pin menu item sorts pinned projects to top', (
+    tester,
+  ) async {
     final api = _FakeApiService();
     final state = AppState.test(
       api: api,
@@ -894,8 +899,22 @@ void main() {
         providerCommand: 'devin',
       ),
       projects: [
-        Project(id: 1, name: 'First', path: '/x', position: 0, createdAt: '', updatedAt: ''),
-        Project(id: 2, name: 'Second', path: '/y', position: 1, createdAt: '', updatedAt: ''),
+        Project(
+          id: 1,
+          name: 'First',
+          path: '/x',
+          position: 0,
+          createdAt: '',
+          updatedAt: '',
+        ),
+        Project(
+          id: 2,
+          name: 'Second',
+          path: '/y',
+          position: 1,
+          createdAt: '',
+          updatedAt: '',
+        ),
       ],
     );
     api.pinProjectReturns[2] = Project(
@@ -911,10 +930,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    final secondProjectTile = find.ancestor(
-      of: find.text('Second'),
-      matching: find.byType(ListTile),
-    ).first;
+    final secondProjectTile = find
+        .ancestor(of: find.text('Second'), matching: find.byType(ListTile))
+        .first;
     final more = find.descendant(
       of: secondProjectTile,
       matching: find.byIcon(Icons.more_vert),
@@ -924,8 +942,9 @@ void main() {
 
     expect(find.text('Pin'), findsOneWidget);
     final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
-    final primary =
-        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    final primary = Theme.of(
+      tester.element(find.byType(Scaffold)),
+    ).colorScheme.primary;
     expect(pinIcon.color, primary);
 
     await tester.tap(find.text('Pin'));
@@ -942,7 +961,9 @@ void main() {
     expect(state.projects.first.id, 2);
   });
 
-  testWidgets('Thread pin menu item is present and toggles pin', (tester) async {
+  testWidgets('Thread pin menu item is present and toggles pin', (
+    tester,
+  ) async {
     final api = _FakeApiService();
     final state = AppState.test(
       api: api,
@@ -986,10 +1007,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    final threadTile = find.ancestor(
-      of: find.text('My thread'),
-      matching: find.byType(ListTile),
-    ).first;
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
     final more = find.descendant(
       of: threadTile,
       matching: find.byIcon(Icons.more_vert),
@@ -999,8 +1019,9 @@ void main() {
 
     expect(find.text('Pin'), findsOneWidget);
     final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
-    final primary =
-        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    final primary = Theme.of(
+      tester.element(find.byType(Scaffold)),
+    ).colorScheme.primary;
     expect(pinIcon.color, primary);
 
     await tester.tap(find.text('Pin'));
@@ -1029,7 +1050,13 @@ void main() {
         providerCommand: 'devin',
       ),
       projects: [
-        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+        Project(
+          id: 1,
+          name: 'MyProject',
+          path: '/x',
+          createdAt: '',
+          updatedAt: '',
+        ),
       ],
       threads: [],
       activeProjectId: 1,
@@ -1039,10 +1066,9 @@ void main() {
     await _openDrawer(tester);
 
     // Open the project's more-vert menu.
-    final projectTile = find.ancestor(
-      of: find.text('MyProject'),
-      matching: find.byType(ListTile),
-    ).first;
+    final projectTile = find
+        .ancestor(of: find.text('MyProject'), matching: find.byType(ListTile))
+        .first;
     final more = find.descendant(
       of: projectTile,
       matching: find.byIcon(Icons.more_vert),
@@ -1076,7 +1102,13 @@ void main() {
         providerCommand: 'devin',
       ),
       projects: [
-        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+        Project(
+          id: 1,
+          name: 'MyProject',
+          path: '/x',
+          createdAt: '',
+          updatedAt: '',
+        ),
         Project(id: 2, name: 'Other', path: '/y', createdAt: '', updatedAt: ''),
       ],
       threads: [],
@@ -1087,14 +1119,12 @@ void main() {
     await _openDrawer(tester);
 
     // Open the project's more-vert menu and tap delete.
-    final projectTile = find.ancestor(
-      of: find.text('MyProject'),
-      matching: find.byType(ListTile),
-    ).first;
-    await tester.tap(find.descendant(
-      of: projectTile,
-      matching: find.byIcon(Icons.more_vert),
-    ));
+    final projectTile = find
+        .ancestor(of: find.text('MyProject'), matching: find.byType(ListTile))
+        .first;
+    await tester.tap(
+      find.descendant(of: projectTile, matching: find.byIcon(Icons.more_vert)),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Delete project'));
@@ -1123,7 +1153,13 @@ void main() {
         providerCommand: 'devin',
       ),
       projects: [
-        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+        Project(
+          id: 1,
+          name: 'MyProject',
+          path: '/x',
+          createdAt: '',
+          updatedAt: '',
+        ),
       ],
       threads: [],
       activeProjectId: 1,
@@ -1136,14 +1172,12 @@ void main() {
     await tester.pump();
 
     // Open the project's more-vert menu and tap delete.
-    final projectTile = find.ancestor(
-      of: find.text('MyProject'),
-      matching: find.byType(ListTile),
-    ).first;
-    await tester.tap(find.descendant(
-      of: projectTile,
-      matching: find.byIcon(Icons.more_vert),
-    ));
+    final projectTile = find
+        .ancestor(of: find.text('MyProject'), matching: find.byType(ListTile))
+        .first;
+    await tester.tap(
+      find.descendant(of: projectTile, matching: find.byIcon(Icons.more_vert)),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Delete project'));
@@ -1172,7 +1206,13 @@ void main() {
         providerCommand: 'devin',
       ),
       projects: [
-        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+        Project(
+          id: 1,
+          name: 'MyProject',
+          path: '/x',
+          createdAt: '',
+          updatedAt: '',
+        ),
       ],
       threads: [],
       activeProjectId: 1,
@@ -1181,14 +1221,12 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    final projectTile = find.ancestor(
-      of: find.text('MyProject'),
-      matching: find.byType(ListTile),
-    ).first;
-    await tester.tap(find.descendant(
-      of: projectTile,
-      matching: find.byIcon(Icons.more_vert),
-    ));
+    final projectTile = find
+        .ancestor(of: find.text('MyProject'), matching: find.byType(ListTile))
+        .first;
+    await tester.tap(
+      find.descendant(of: projectTile, matching: find.byIcon(Icons.more_vert)),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Delete project'));
@@ -1204,8 +1242,9 @@ void main() {
     expect(state.projects, hasLength(1));
   });
 
-  testWidgets('Delete project with active thread clears selection',
-      (tester) async {
+  testWidgets('Delete project with active thread clears selection', (
+    tester,
+  ) async {
     final api = _FakeApiService();
     final state = AppState.test(
       api: api,
@@ -1219,7 +1258,13 @@ void main() {
         providerCommand: 'devin',
       ),
       projects: [
-        Project(id: 1, name: 'MyProject', path: '/x', createdAt: '', updatedAt: ''),
+        Project(
+          id: 1,
+          name: 'MyProject',
+          path: '/x',
+          createdAt: '',
+          updatedAt: '',
+        ),
         Project(id: 2, name: 'Other', path: '/y', createdAt: '', updatedAt: ''),
       ],
       threads: [
@@ -1244,14 +1289,12 @@ void main() {
     await tester.tap(find.text('MyProject'));
     await tester.pumpAndSettle();
 
-    final projectTile = find.ancestor(
-      of: find.text('MyProject'),
-      matching: find.byType(ListTile),
-    ).first;
-    await tester.tap(find.descendant(
-      of: projectTile,
-      matching: find.byIcon(Icons.more_vert),
-    ));
+    final projectTile = find
+        .ancestor(of: find.text('MyProject'), matching: find.byType(ListTile))
+        .first;
+    await tester.tap(
+      find.descendant(of: projectTile, matching: find.byIcon(Icons.more_vert)),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Delete project'));
@@ -1416,10 +1459,12 @@ void main() {
     await _openDrawer(tester);
 
     final container = tester.widget<AnimatedContainer>(
-      find.ancestor(
-        of: find.text('Pinned project'),
-        matching: find.byType(AnimatedContainer),
-      ).first,
+      find
+          .ancestor(
+            of: find.text('Pinned project'),
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
     );
     final decoration = container.decoration as BoxDecoration;
     final border = decoration.border as Border?;
@@ -1471,10 +1516,12 @@ void main() {
     await _openDrawer(tester);
 
     final container = tester.widget<Container>(
-      find.ancestor(
-        of: find.text('Pinned thread'),
-        matching: find.byType(Container),
-      ).first,
+      find
+          .ancestor(
+            of: find.text('Pinned thread'),
+            matching: find.byType(Container),
+          )
+          .first,
     );
     final decoration = container.decoration as BoxDecoration;
     final border = decoration.border as Border?;

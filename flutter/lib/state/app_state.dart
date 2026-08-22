@@ -87,7 +87,9 @@ class AppState extends ChangeNotifier {
     _userThreadsOffset = threads.length;
     _userThreadsHasMore = false;
     if (activeProjectId != null) {
-      final projectThreadCount = threads.where((t) => t.projectId == activeProjectId).length;
+      final projectThreadCount = threads
+          .where((t) => t.projectId == activeProjectId)
+          .length;
       _projectThreadOffsets[activeProjectId] = projectThreadCount;
       _projectThreadsHasMore[activeProjectId] =
           projectThreadCount == 0 || projectThreadCount >= _threadChunkSize;
@@ -144,6 +146,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _healthTimer?.cancel();
+    _gitRefreshTimer?.cancel();
     for (final store in _threadStores.values) {
       store.dispose();
     }
@@ -234,6 +237,8 @@ class AppState extends ChangeNotifier {
   // Connection health.
   ConnectionStatus _connectionStatus = ConnectionStatus.checking;
   Timer? _healthTimer;
+  Timer? _gitRefreshTimer;
+  bool _refreshingGit = false;
 
   // Getters
   AppView get view => _view;
@@ -250,8 +255,7 @@ class AppState extends ChangeNotifier {
   String? get activeThreadId => _activeThreadId;
   ThreadDetail? get activeThreadDetail => _activeStore?.detail.valueOrNull;
   bool get activeThreadLoading =>
-      _threadOpening ||
-      _activeStore?.status == ThreadStoreStatus.loading;
+      _threadOpening || _activeStore?.status == ThreadStoreStatus.loading;
   List<User> get users => _users;
   List<Device> get devices => _devices;
   bool get isOwner => _user?.isOwner ?? false;
@@ -377,6 +381,11 @@ class AppState extends ChangeNotifier {
     store.onRunFinished = (failed) {
       final title = _threadTitle(id) ?? 'Thread';
       _notifications.notifyThreadCompleted(title: title, failed: failed);
+      final projectId = store.projectId;
+      if (projectId > 0) {
+        unawaited(_refreshGitForProject(projectId));
+      }
+      unawaited(loadProjects());
     };
     return store;
   }
@@ -768,6 +777,7 @@ class AppState extends ChangeNotifier {
         await selectAllProjects();
       }
       startHealthChecks();
+      startGitRefresh();
     } catch (e) {
       if (e is ApiException && e.statusCode == 401) {
         await api.client.clearCredentials();
@@ -790,15 +800,65 @@ class AppState extends ChangeNotifier {
     _healthTimer = null;
   }
 
+  void startGitRefresh() {
+    _gitRefreshTimer?.cancel();
+    _gitRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _refreshGitState();
+    });
+  }
+
+  void stopGitRefresh() {
+    _gitRefreshTimer?.cancel();
+    _gitRefreshTimer = null;
+  }
+
+  /// Refresh git state for the active project and, when the git dialog is open,
+  /// the dialog's project. This keeps the sidebar and dialog in sync when an
+  /// external process (e.g. an AI agent) changes the current branch.
+  Future<void> _refreshGitState() async {
+    if (_refreshingGit) return;
+    _refreshingGit = true;
+    try {
+      final projectId = _activeProjectId;
+      final dialogProjectId = _gitDialogProjectId;
+      if (projectId != null) {
+        await _refreshGitForProject(projectId);
+      }
+      if (dialogProjectId != null && dialogProjectId != projectId) {
+        await _refreshGitForProject(dialogProjectId);
+      }
+      await loadProjects();
+    } finally {
+      _refreshingGit = false;
+    }
+  }
+
+  Future<void> _refreshGitForProject(int projectId) async {
+    try {
+      final info = await api.gitRepoStatus(projectId, force: true);
+      _gitRepoInfo[projectId] = info;
+      _syncProjectBranch(projectId, info);
+      _globalError = '';
+      if (_dialog == DialogKind.gitBranches &&
+          _gitDialogProjectId == projectId) {
+        await _loadGitBranchesAndWorktrees(projectId);
+      }
+    } catch (e) {
+      _gitRepoInfo.remove(projectId);
+    }
+    notifyListeners();
+  }
+
   Future<void> checkConnection() async {
     final ok = await api.checkHealth();
-    final next = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;
+    final next = ok
+        ? ConnectionStatus.connected
+        : ConnectionStatus.disconnected;
     if (_connectionStatus != next) {
       _connectionStatus = next;
       notifyListeners();
     }
   }
-
 
   Future<void> loadProjects() async {
     _projectsOffset = 0;
@@ -861,7 +921,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// Load the next chunk of threads for a specific project.
-  Future<void> _loadProjectThreadsChunk(int projectId, {bool reset = false}) async {
+  Future<void> _loadProjectThreadsChunk(
+    int projectId, {
+    bool reset = false,
+  }) async {
     if (reset) {
       _projectThreadOffsets[projectId] = 0;
       _projectThreadsHasMore[projectId] = true;
@@ -969,6 +1032,8 @@ class AppState extends ChangeNotifier {
       } else {
         await selectAllProjects();
       }
+      startHealthChecks();
+      startGitRefresh();
     } catch (e) {
       _view = AppView.login;
       _loginError = '$e';
@@ -999,10 +1064,7 @@ class AppState extends ChangeNotifier {
   /// Load all settings data in parallel so the settings tabs appear at once
   /// instead of making the user wait for three sequential round trips.
   Future<void> loadSettingsData() async {
-    final futures = <Future<void>>[
-      loadDevices(),
-      loadGitConnections(),
-    ];
+    final futures = <Future<void>>[loadDevices(), loadGitConnections()];
     if (isOwner) {
       futures.add(loadUsers());
     }
@@ -1047,6 +1109,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> logout() async {
     stopHealthChecks();
+    stopGitRefresh();
     for (final store in _threadStores.values) {
       store.dispose();
     }
@@ -1580,9 +1643,9 @@ class AppState extends ChangeNotifier {
 
   // ---- Git ----
 
-  Future<void> loadGitRepoInfo(int projectId) async {
+  Future<void> loadGitRepoInfo(int projectId, {bool force = false}) async {
     try {
-      final info = await api.gitRepoStatus(projectId);
+      final info = await api.gitRepoStatus(projectId, force: force);
       _gitRepoInfo[projectId] = info;
       _globalError = '';
       _syncProjectBranch(projectId, info);
@@ -1603,9 +1666,17 @@ class AppState extends ChangeNotifier {
     ];
   }
 
-  Future<void> loadGitBranches(int projectId, {String? query}) async {
+  Future<void> loadGitBranches(
+    int projectId, {
+    String? query,
+    bool force = false,
+  }) async {
     try {
-      final branches = await api.gitBranches(projectId, query: query);
+      final branches = await api.gitBranches(
+        projectId,
+        query: query,
+        force: force,
+      );
       _gitBranches[projectId] = branches;
       _globalError = '';
     } catch (e) {
@@ -1614,9 +1685,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadGitWorktrees(int projectId) async {
+  Future<void> loadGitWorktrees(int projectId, {bool force = false}) async {
     try {
-      final worktrees = await api.gitWorktrees(projectId);
+      final worktrees = await api.gitWorktrees(projectId, force: force);
       _gitWorktrees[projectId] = worktrees;
       _globalError = '';
     } catch (e) {
@@ -1629,12 +1700,18 @@ class AppState extends ChangeNotifier {
     _gitDialogProjectId = projectId;
     _dialog = DialogKind.gitBranches;
     _userMenuOpen = false;
-    await loadGitRepoInfo(projectId);
-    if (gitRepoInfo(projectId)?.isRepo ?? false) {
-      await loadGitBranches(projectId);
-      await loadGitWorktrees(projectId);
-    }
     notifyListeners();
+    await loadGitRepoInfo(projectId, force: true);
+    if (gitRepoInfo(projectId)?.isRepo ?? false) {
+      await _loadGitBranchesAndWorktrees(projectId);
+    }
+  }
+
+  Future<void> _loadGitBranchesAndWorktrees(int projectId) async {
+    await Future.wait([
+      loadGitBranches(projectId, force: true),
+      loadGitWorktrees(projectId, force: true),
+    ]);
   }
 
   Future<void> gitCreateBranch(
@@ -1651,8 +1728,9 @@ class AppState extends ChangeNotifier {
         switchBranch: switchBranch,
       );
       _globalError = '';
-      await loadGitBranches(projectId);
-      await loadGitRepoInfo(projectId);
+      await loadGitRepoInfo(projectId, force: true);
+      await _loadGitBranchesAndWorktrees(projectId);
+      await loadProjects();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1667,9 +1745,9 @@ class AppState extends ChangeNotifier {
     try {
       await api.gitCheckout(projectId, refName, track: track);
       _globalError = '';
-      await loadGitRepoInfo(projectId);
-      await loadGitBranches(projectId);
-      await loadGitWorktrees(projectId);
+      await loadGitRepoInfo(projectId, force: true);
+      await _loadGitBranchesAndWorktrees(projectId);
+      await loadProjects();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1680,9 +1758,8 @@ class AppState extends ChangeNotifier {
     try {
       await api.gitPull(projectId);
       _globalError = '';
-      await loadGitRepoInfo(projectId);
-      await loadGitBranches(projectId);
-      await loadGitWorktrees(projectId);
+      await loadGitRepoInfo(projectId, force: true);
+      await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
     } catch (e) {
       _globalError = '$e';
@@ -1694,9 +1771,8 @@ class AppState extends ChangeNotifier {
     try {
       await api.gitPullBranch(projectId, name);
       _globalError = '';
-      await loadGitRepoInfo(projectId);
-      await loadGitBranches(projectId);
-      await loadGitWorktrees(projectId);
+      await loadGitRepoInfo(projectId, force: true);
+      await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
     } catch (e) {
       _globalError = '$e';
@@ -1708,9 +1784,8 @@ class AppState extends ChangeNotifier {
     try {
       await api.gitPush(projectId);
       _globalError = '';
-      await loadGitRepoInfo(projectId);
-      await loadGitBranches(projectId);
-      await loadGitWorktrees(projectId);
+      await loadGitRepoInfo(projectId, force: true);
+      await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
     } catch (e) {
       _globalError = '$e';
@@ -1727,11 +1802,9 @@ class AppState extends ChangeNotifier {
     try {
       await api.gitCreateWorktree(projectId, name, base, newBranch: newBranch);
       _globalError = '';
-      await loadGitWorktrees(projectId);
-      if (newBranch) {
-        await loadGitBranches(projectId);
-      }
-      await loadGitRepoInfo(projectId);
+      await loadGitRepoInfo(projectId, force: true);
+      await _loadGitBranchesAndWorktrees(projectId);
+      await loadProjects();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1742,7 +1815,9 @@ class AppState extends ChangeNotifier {
     try {
       await api.gitDeleteWorktree(projectId, worktreePath);
       _globalError = '';
-      await loadGitWorktrees(projectId);
+      await loadGitRepoInfo(projectId, force: true);
+      await _loadGitBranchesAndWorktrees(projectId);
+      await loadProjects();
     } catch (e) {
       _globalError = '$e';
       notifyListeners();

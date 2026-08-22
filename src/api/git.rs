@@ -34,6 +34,14 @@ pub struct BranchQuery {
     #[serde(default = "default_limit")]
     pub limit: usize,
     pub cursor: Option<String>,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RepoQuery {
+    #[serde(default)]
+    pub force: bool,
 }
 
 fn default_limit() -> usize {
@@ -95,6 +103,7 @@ async fn status(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
+    Query(q): Query<RepoQuery>,
 ) -> Response {
     let project = match state.db.get_project(id, user.id).await {
         Ok(Some(p)) => p,
@@ -109,7 +118,7 @@ async fn status(
 
     match state
         .git
-        .repo_status(PathBuf::from(&project.path).as_path())
+        .repo_status(PathBuf::from(&project.path).as_path(), q.force)
         .await
     {
         Ok(s) => Json(RepoStatusOut {
@@ -132,6 +141,7 @@ async fn status_summary(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
+    Query(q): Query<RepoQuery>,
 ) -> Response {
     let project = match state.db.get_project(id, user.id).await {
         Ok(Some(p)) => p,
@@ -146,7 +156,7 @@ async fn status_summary(
 
     match state
         .git
-        .status(PathBuf::from(&project.path).as_path())
+        .status(PathBuf::from(&project.path).as_path(), q.force)
         .await
     {
         Ok(v) => Json(v).into_response(),
@@ -179,6 +189,7 @@ async fn list_branches(
             PathBuf::from(&project.path).as_path(),
             q.query.as_deref(),
             Some(q.limit),
+            q.force,
         )
         .await
     {
@@ -385,6 +396,7 @@ async fn list_worktrees(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
+    Query(q): Query<RepoQuery>,
 ) -> Response {
     let project = match state.db.get_project(id, user.id).await {
         Ok(Some(p)) => p,
@@ -399,7 +411,7 @@ async fn list_worktrees(
 
     match state
         .git
-        .worktrees(PathBuf::from(&project.path).as_path())
+        .worktrees(PathBuf::from(&project.path).as_path(), q.force)
         .await
     {
         Ok(worktrees) => Json(worktrees).into_response(),
