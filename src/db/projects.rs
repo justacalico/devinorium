@@ -27,14 +27,23 @@ impl Db {
         .map_err(Into::into)
     }
 
-    pub async fn list_projects(&self, user_id: i64) -> anyhow::Result<Vec<ProjectRow>> {
-        sqlx::query_as::<_, ProjectRow>(
-            "SELECT * FROM projects WHERE user_id = ? ORDER BY pinned DESC, position ASC, id ASC",
-        )
-        .bind(user_id)
-        .fetch_all(self.pool())
-        .await
-        .map_err(Into::into)
+    pub async fn list_projects(
+        &self,
+        user_id: i64,
+        limit: Option<i64>,
+        offset: i64,
+    ) -> anyhow::Result<Vec<ProjectRow>> {
+        let mut sql =
+            "SELECT * FROM projects WHERE user_id = ? ORDER BY pinned DESC, position ASC, id ASC"
+                .to_string();
+        if let Some(l) = limit {
+            sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
+        }
+        sqlx::query_as::<_, ProjectRow>(&sql)
+            .bind(user_id)
+            .fetch_all(self.pool())
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn next_project_position(&self, user_id: i64) -> anyhow::Result<i64> {
@@ -179,16 +188,21 @@ impl Db {
         &self,
         project_id: i64,
         user_id: i64,
+        limit: Option<i64>,
+        offset: i64,
     ) -> anyhow::Result<Vec<super::ThreadRow>> {
-        sqlx::query_as::<_, super::ThreadRow>(
-            "SELECT * FROM threads
+        let mut sql = "SELECT * FROM threads
              WHERE project_id = ? AND user_id = ?
-             ORDER BY pinned DESC, updated_at DESC",
-        )
-        .bind(project_id)
-        .bind(user_id)
-        .fetch_all(self.pool())
-        .await
-        .map_err(Into::into)
+             ORDER BY pinned DESC, updated_at DESC, id DESC"
+            .to_string();
+        if let Some(l) = limit {
+            sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
+        }
+        sqlx::query_as::<_, super::ThreadRow>(&sql)
+            .bind(project_id)
+            .bind(user_id)
+            .fetch_all(self.pool())
+            .await
+            .map_err(Into::into)
     }
 }

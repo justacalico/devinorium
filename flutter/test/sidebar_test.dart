@@ -132,10 +132,12 @@ class _FakeApiService extends ApiService {
   Future<bool> checkHealth() => Future.value(healthOk);
 
   @override
-  Future<List<Thread>> listThreads() => Future.value([]);
+  Future<List<Thread>> listThreads({int? limit, int? offset}) =>
+      Future.value([]);
 
   @override
-  Future<List<ThreadGroup>> listThreadGroups() => Future.value([]);
+  Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
+      Future.value([]);
 
   @override
   Future<GitRepoInfo> gitRepoStatus(int projectId) =>
@@ -144,6 +146,9 @@ class _FakeApiService extends ApiService {
   @override
   Future<Map<String, dynamic>> getThreadRun(String id) =>
       Future.value({'status': 'idle'});
+
+  @override
+  Future<List<String>> getThreadRuns() => Future.value([]);
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(

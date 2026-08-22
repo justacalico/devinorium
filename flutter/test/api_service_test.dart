@@ -155,6 +155,20 @@ void main() {
       expect(projects.first.name, 'p');
     });
 
+    test('listProjects encodes pagination params', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/projects');
+        final q = req.url.queryParameters;
+        expect(q['limit'], '50');
+        expect(q['offset'], '10');
+        return _json(200, []);
+      });
+      final service = _serviceFor(mock);
+      final projects = await service.listProjects(limit: 50, offset: 10);
+      expect(projects, isEmpty);
+    });
+
     test('createProject sends name and path', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('POST', '/api/projects'));
@@ -328,41 +342,26 @@ void main() {
     });
 
     test('getThread returns ThreadDetail', () async {
-      var call = 0;
       final mock = MockClient((req) async {
-        if (call == 0) {
-          expect(req, _requestTo('GET', '/api/threads/a'));
-          call++;
-          return _json(200, {
-            'thread': {
-              'id': 'a',
-              'title': 't',
-              'project_id': 1,
-              'model': '',
-              'permission_mode': 'normal',
-              'created_at': '',
-              'updated_at': '',
-            },
-            'total_messages': 1,
-            'messages': [],
-          });
-        }
-        expect(req, _requestTo('GET', '/api/threads/a/messages'));
+        expect(req, _requestTo('GET', '/api/threads/a'));
         return _json(200, {
-          'messages': [
-            {
-              'id': 1,
-              'role': 'user',
-              'content': 'hello',
-            }
-          ],
-          'total': 1,
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': '',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'total_messages': 1,
+          'messages': [],
         });
       });
       final service = _serviceFor(mock);
       final d = await service.getThread('a');
       expect(d.thread.id, 'a');
-      expect(d.messages.length, 1);
+      expect(d.messages, isEmpty);
       expect(d.totalMessages, 1);
     });
 
@@ -472,6 +471,16 @@ void main() {
       final service = _serviceFor(mock);
       final run = await service.getThreadRun('a');
       expect(run['status'], 'running');
+    });
+
+    test('getThreadRuns returns running ids', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/threads/runs'));
+        return _json(200, {'running_ids': ['a', 'b']});
+      });
+      final service = _serviceFor(mock);
+      final ids = await service.getThreadRuns();
+      expect(ids, ['a', 'b']);
     });
 
     test('renameThread patches title', () async {

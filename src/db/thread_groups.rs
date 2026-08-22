@@ -23,14 +23,22 @@ impl super::Db {
         .map_err(Into::into)
     }
 
-    pub async fn list_thread_groups(&self, user_id: i64) -> anyhow::Result<Vec<ThreadGroupRow>> {
-        sqlx::query_as::<_, ThreadGroupRow>(
-            "SELECT * FROM thread_groups WHERE user_id = ? ORDER BY position ASC, id ASC",
-        )
-        .bind(user_id)
-        .fetch_all(self.pool())
-        .await
-        .map_err(Into::into)
+    pub async fn list_thread_groups(
+        &self,
+        user_id: i64,
+        limit: Option<i64>,
+        offset: i64,
+    ) -> anyhow::Result<Vec<ThreadGroupRow>> {
+        let mut sql =
+            "SELECT * FROM thread_groups WHERE user_id = ? ORDER BY position ASC, id ASC".to_string();
+        if let Some(l) = limit {
+            sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
+        }
+        sqlx::query_as::<_, ThreadGroupRow>(&sql)
+            .bind(user_id)
+            .fetch_all(self.pool())
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn get_thread_group(

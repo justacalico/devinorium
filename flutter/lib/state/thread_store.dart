@@ -96,12 +96,15 @@ class ThreadStore {
   /// Load the persisted detail and, if the server says the thread is still
   /// running, resume the live stream. This is t3code's "snapshot then
   /// subscribe" pattern.
+  ///
+  /// The thread metadata is fetched first so the UI can render instantly; the
+  /// initial message page is then loaded in the background.
   Future<void> load() async {
     _status = ThreadStoreStatus.loading;
     _emit();
     try {
       final [detail, run] = await Future.wait([
-        api.getThread(threadId, includeMessages: true),
+        api.getThread(threadId, includeMessages: false),
         api.getThreadRun(threadId),
       ]);
       final d = detail as ThreadDetail;
@@ -113,6 +116,7 @@ class ThreadStore {
       _emit();
 
       _applyRunSnapshot(run as Map<String, dynamic>);
+      unawaited(_loadInitialMessages());
     } catch (e) {
       _status = ThreadStoreStatus.error;
       _globalError = '$e';
@@ -123,10 +127,11 @@ class ThreadStore {
   /// Explicitly refresh the persisted detail without touching the stream.
   Future<void> reloadDetail() async {
     try {
-      final d = await api.getThread(threadId);
+      final d = await api.getThread(threadId, includeMessages: false);
       _detail = AsyncValue.ready(d);
       _globalError = '';
       _emit();
+      unawaited(_loadInitialMessages());
     } catch (e) {
       _globalError = '$e';
       _emit();
@@ -144,11 +149,30 @@ class ThreadStore {
         // If the store was deactivated or disposed while we were waiting,
         // do not apply a stale run snapshot or start a new stream.
         if (token != _streamToken || onStateChanged == null) return;
+
+        // Fetch metadata if we don't have it yet (e.g. resumeThread).
+        if (_detail.valueOrNull == null) {
+          try {
+            final d = await api.getThread(threadId, includeMessages: false);
+            _detail = AsyncValue.ready(d);
+            selectedModel = d.thread.model;
+            selectedPermission = d.thread.permissionMode;
+            _status = ThreadStoreStatus.ready;
+            _globalError = '';
+            _emit();
+          } catch (e) {
+            _globalError = '$e';
+            _emit();
+            return;
+          }
+        }
+
         _applyRunSnapshot(run);
         _lastRunStatus = run['status'] as String?;
         if (_lastRunStatus == 'running') {
           _runFinishedFired = false;
           _startStream(_nextStreamToken());
+          unawaited(_loadInitialMessages());
         } else {
           _finishResume(run);
           await reloadDetail();
@@ -212,10 +236,7 @@ class ThreadStore {
         model: selectedModel.isEmpty ? null : selectedModel,
         permissionMode: selectedPermission,
       );
-      final d = await api.getThread(threadId);
-      _detail = AsyncValue.ready(d);
-      _globalError = '';
-      _emit();
+      await reloadDetail();
     } catch (e) {
       _globalError = '$e';
       _emit();
@@ -270,7 +291,12 @@ class ThreadStore {
   Future<void> loadMoreMessages() async {
     final d = _detail.valueOrNull;
     if (d == null) return;
-    if (d.messages.isEmpty) return;
+    if (d.messages.isEmpty) {
+      if (d.totalMessages > 0) {
+        await _loadInitialMessages();
+      }
+      return;
+    }
     if (d.messages.length >= d.totalMessages) return;
     final oldestId = d.messages.first.id;
     if (oldestId == null) return;
@@ -503,12 +529,30 @@ class ThreadStore {
   void _finishResume(Map<String, dynamic> run) {
     final status = run['status'] as String? ?? 'idle';
     _lastRunStatus = status;
+    _status = ThreadStoreStatus.ready;
     _streaming = StreamingSnapshot.empty.copyWith(
       phase: phaseForStatus(status),
       error: status == 'failed' ? run['error'] as String? : null,
       startedAt: run['started_at'] as String?,
     );
     _emit();
+  }
+
+  /// Load the first page of messages when the detail is ready but empty.
+  Future<void> _loadInitialMessages() async {
+    final d = _detail.valueOrNull;
+    if (d == null || d.totalMessages == 0 || d.messages.isNotEmpty) return;
+    try {
+      final messages = await api.getThreadMessages(threadId);
+      if (messages.isNotEmpty) {
+        _detail = AsyncValue.ready(d.copyWith(messages: messages));
+        _globalError = '';
+        _emit();
+      }
+    } catch (e) {
+      _globalError = '$e';
+      _emit();
+    }
   }
 
   String? _statusFromPhase(StreamPhase phase) {

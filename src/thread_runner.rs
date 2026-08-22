@@ -261,6 +261,18 @@ impl ThreadRunner {
         self.runs.lock().await.get(thread_id)?.subscribe()
     }
 
+    /// Return the thread ids of every run whose status is currently `Running`.
+    pub async fn running_ids(&self) -> Vec<String> {
+        let runs = self.runs.lock().await;
+        let mut ids = Vec::new();
+        for (id, run) in runs.iter() {
+            if *run.status.read().await == RunStatus::Running {
+                ids.push(id.clone());
+            }
+        }
+        ids
+    }
+
     /// Start a new background run for `thread_id`. If a run is already active,
     /// returns `AlreadyRunning`.
     pub async fn start<F, Fut>(&self, thread_id: String, f: F) -> Result<Arc<RunState>, StartError>
@@ -581,5 +593,25 @@ mod tests {
         state.set_ask_request(None);
         let snapshot = state.snapshot().await;
         assert!(snapshot.ask_request.is_none());
+    }
+
+    #[tokio::test]
+    async fn running_ids_lists_only_active_runs() {
+        let runner = ThreadRunner::new();
+        let _ = runner
+            .start("t1".into(), |_state| async {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        let ids = runner.running_ids().await;
+        assert_eq!(ids, vec!["t1"]);
+
+        runner.stop("t1").await;
+
+        let ids = runner.running_ids().await;
+        assert!(ids.is_empty());
     }
 }

@@ -37,14 +37,23 @@ impl super::Db {
         .map_err(Into::into)
     }
 
-    pub async fn list_threads(&self, user_id: i64) -> anyhow::Result<Vec<ThreadRow>> {
-        sqlx::query_as::<_, ThreadRow>(
-            "SELECT * FROM threads WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC",
-        )
-        .bind(user_id)
-        .fetch_all(self.pool())
-        .await
-        .map_err(Into::into)
+    pub async fn list_threads(
+        &self,
+        user_id: i64,
+        limit: Option<i64>,
+        offset: i64,
+    ) -> anyhow::Result<Vec<ThreadRow>> {
+        let mut sql =
+            "SELECT * FROM threads WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC, id DESC"
+                .to_string();
+        if let Some(l) = limit {
+            sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
+        }
+        sqlx::query_as::<_, ThreadRow>(&sql)
+            .bind(user_id)
+            .fetch_all(self.pool())
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn get_thread(&self, id: &str, user_id: i64) -> anyhow::Result<Option<ThreadRow>> {
@@ -179,6 +188,27 @@ impl super::Db {
             .execute(self.pool())
             .await?;
         Ok(())
+    }
+
+    /// Return the subset of `thread_ids` that belong to the user.
+    pub async fn filter_user_thread_ids(
+        &self,
+        user_id: i64,
+        thread_ids: &[String],
+    ) -> anyhow::Result<Vec<String>> {
+        if thread_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = thread_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id FROM threads WHERE user_id = ? AND id IN ({placeholders})"
+        );
+        let mut query = sqlx::query_as::<_, (String,)>(&sql).bind(user_id);
+        for id in thread_ids {
+            query = query.bind(id);
+        }
+        let rows = query.fetch_all(self.pool()).await?;
+        Ok(rows.into_iter().map(|r| r.0).collect())
     }
 
     /// Delete all threads for a user+project that have zero messages.

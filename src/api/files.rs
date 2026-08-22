@@ -95,11 +95,23 @@ async fn resolve(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(default)]
 struct ListQuery {
-    #[serde(default)]
     path: Option<String>,
-    #[serde(default)]
     project_id: Option<i64>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+impl Default for ListQuery {
+    fn default() -> Self {
+        Self {
+            path: None,
+            project_id: None,
+            limit: None,
+            offset: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -138,6 +150,20 @@ async fn list_dir(
         });
     }
     out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+
+    let limit = q
+        .limit
+        .filter(|&l| l > 0)
+        .map(|l| (l as usize).min(crate::api::pagination::Pagination::MAX_LIMIT as usize));
+    let offset = q.offset.unwrap_or(0).max(0) as usize;
+    if offset > 0 || limit.is_some() {
+        out = out
+            .into_iter()
+            .skip(offset)
+            .take(limit.unwrap_or(usize::MAX))
+            .collect();
+    }
+
     Json(out).into_response()
 }
 
