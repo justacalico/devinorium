@@ -863,10 +863,14 @@ void main() {
 
     expect(api.pinnedProjectIds, contains(1));
     expect(state.projects.first.pinned, isTrue);
-    expect(find.byIcon(Icons.push_pin), findsOneWidget);
+
+    // Reopen the menu and confirm it now reads "Unpin".
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+    expect(find.text('Unpin'), findsOneWidget);
   });
 
-  testWidgets('Project pin button sorts pinned projects to top', (tester) async {
+  testWidgets('Project pin menu item sorts pinned projects to top', (tester) async {
     final api = _FakeApiService();
     final state = AppState.test(
       api: api,
@@ -901,26 +905,26 @@ void main() {
       of: find.text('Second'),
       matching: find.byType(ListTile),
     ).first;
-    final pinButton = find.descendant(
+    final more = find.descendant(
       of: secondProjectTile,
-      matching: find.byIcon(Icons.push_pin_outlined),
+      matching: find.byIcon(Icons.more_vert),
     );
-    expect(pinButton, findsOneWidget);
-    await tester.tap(pinButton);
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pin'), findsOneWidget);
+    await tester.tap(find.text('Pin'));
     await tester.pumpAndSettle();
 
     expect(api.pinnedProjectIds, contains(2));
-    final firstProject = find.ancestor(
-      of: find.text('Second'),
-      matching: find.byType(ListTile),
-    ).first;
+    // The pinned project should now be first in the list.
+    final projectTiles = find.byType(ListTile);
+    final firstTile = projectTiles.at(0);
     expect(
-      find.descendant(
-        of: firstProject,
-        matching: find.byIcon(Icons.push_pin),
-      ),
+      find.descendant(of: firstTile, matching: find.text('Second')),
       findsOneWidget,
     );
+    expect(state.projects.first.id, 2);
   });
 
   testWidgets('Thread pin menu item is present and toggles pin', (tester) async {
@@ -984,7 +988,11 @@ void main() {
 
     expect(api.pinnedThreadIds, contains('a'));
     expect(state.threads.first.pinned, isTrue);
-    expect(find.byIcon(Icons.push_pin), findsOneWidget);
+
+    // Reopen the menu and confirm it now reads "Unpin".
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+    expect(find.text('Unpin'), findsOneWidget);
   });
 
   testWidgets('Project delete menu item shows confirmation', (tester) async {
