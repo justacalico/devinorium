@@ -81,7 +81,17 @@ class AppState extends ChangeNotifier {
     _user = user;
     _users = users;
     _projects = projects;
+    _projectsOffset = projects.length;
+    _projectsHasMore = false;
     _threads = threads;
+    _userThreadsOffset = threads.length;
+    _userThreadsHasMore = false;
+    if (activeProjectId != null) {
+      final projectThreadCount = threads.where((t) => t.projectId == activeProjectId).length;
+      _projectThreadOffsets[activeProjectId] = projectThreadCount;
+      _projectThreadsHasMore[activeProjectId] =
+          projectThreadCount == 0 || projectThreadCount >= _threadChunkSize;
+    }
     _groups = groups;
     _models = models;
     _providers = providers;
@@ -148,6 +158,26 @@ class AppState extends ChangeNotifier {
   List<Project> _projects = [];
   List<Thread> _threads = [];
   final Set<String> _runningThreadIds = {};
+
+  // Pagination state for list endpoints.
+  static const int _projectChunkSize = 50;
+  int _projectsOffset = 0;
+  bool _projectsHasMore = true;
+  bool _loadingMoreProjects = false;
+
+  static const int _threadChunkSize = 50;
+  int _userThreadsOffset = 0;
+  bool _userThreadsHasMore = true;
+  bool _loadingMoreUserThreads = false;
+  final Map<int, int> _projectThreadOffsets = {};
+  final Map<int, bool> _projectThreadsHasMore = {};
+  final Map<int, bool> _loadingMoreProjectThreads = {};
+
+  static const int _fileChunkSize = 100;
+  int _filesOffset = 0;
+  bool _filesHasMore = true;
+  bool _loadingMoreFiles = false;
+
   List<ThreadGroup> _groups = [];
   List<ModelInfo> _models = [];
   List<ProviderInfo> _providers = [];
@@ -257,6 +287,19 @@ class AppState extends ChangeNotifier {
   Locale get locale => _locale;
   int get settingsTopicIndex => _settingsTopicIndex;
   bool get notificationsEnabled => _notifications.notificationsEnabled;
+
+  bool get hasMoreProjects => _projectsHasMore;
+  bool get isLoadingMoreProjects => _loadingMoreProjects;
+  bool get hasMoreThreads => _userThreadsHasMore;
+  bool get isLoadingMoreThreads => _loadingMoreUserThreads;
+
+  bool get hasMoreFiles => _filesHasMore;
+  bool get isLoadingMoreFiles => _loadingMoreFiles;
+
+  bool hasMoreProjectThreads(int projectId) =>
+      _projectThreadsHasMore[projectId] ?? false;
+  bool isLoadingMoreProjectThreads(int projectId) =>
+      _loadingMoreProjectThreads[projectId] ?? false;
 
   int? get renameProjectId => _renameProjectId;
   String? get renameThreadId => _renameThreadId;
@@ -573,6 +616,8 @@ class AppState extends ChangeNotifier {
   Future<void> openFilesPanel() async {
     _filesPanelOpen = true;
     _filesPath = [];
+    _filesOffset = 0;
+    _filesHasMore = true;
     _filesError = '';
     notifyListeners();
     await reloadFiles();
@@ -585,27 +630,64 @@ class AppState extends ChangeNotifier {
 
   Future<void> navigateFilesInto(String name) async {
     _filesPath = [..._filesPath, name];
+    _filesOffset = 0;
+    _filesHasMore = true;
     notifyListeners();
     await reloadFiles();
   }
 
   Future<void> navigateFilesTo(List<String> path) async {
     _filesPath = path;
+    _filesOffset = 0;
+    _filesHasMore = true;
     notifyListeners();
     await reloadFiles();
   }
 
   Future<void> reloadFiles() async {
+    _filesOffset = 0;
+    _filesHasMore = true;
     final path = _filesPath.join('/');
     try {
-      _filesEntries = await api.listFiles(
+      final chunk = await api.listFiles(
         path: path.isEmpty ? null : path,
         projectId: _activeProjectId,
+        limit: _fileChunkSize,
+        offset: _filesOffset,
       );
+      _filesEntries = chunk;
+      _filesOffset = chunk.length;
+      _filesHasMore = chunk.length == _fileChunkSize;
       _filesError = '';
     } catch (e) {
       _filesError = '$e';
+      _filesHasMore = false;
     }
+    notifyListeners();
+  }
+
+  Future<void> loadMoreFiles() async {
+    if (!_filesHasMore || _loadingMoreFiles) return;
+    _loadingMoreFiles = true;
+    notifyListeners();
+    try {
+      final path = _filesPath.join('/');
+      final chunk = await api.listFiles(
+        path: path.isEmpty ? null : path,
+        projectId: _activeProjectId,
+        limit: _fileChunkSize,
+        offset: _filesOffset,
+      );
+      final existing = <String>{for (final e in _filesEntries) e.name};
+      final fresh = chunk.where((e) => !existing.contains(e.name)).toList();
+      _filesEntries = [..._filesEntries, ...fresh];
+      _filesOffset += fresh.length;
+      _filesHasMore = chunk.length == _fileChunkSize;
+    } catch (e) {
+      _filesError = '$e';
+      _filesHasMore = false;
+    }
+    _loadingMoreFiles = false;
     notifyListeners();
   }
 
@@ -719,20 +801,99 @@ class AppState extends ChangeNotifier {
 
 
   Future<void> loadProjects() async {
+    _projectsOffset = 0;
+    _projectsHasMore = true;
     try {
-      _projects = await api.listProjects();
+      final chunk = await api.listProjects(limit: _projectChunkSize, offset: 0);
+      _projects = chunk;
+      _projectsOffset = chunk.length;
+      _projectsHasMore = chunk.length == _projectChunkSize;
     } catch (_) {
       _projects = [];
+      _projectsOffset = 0;
+      _projectsHasMore = false;
+    }
+  }
+
+  Future<void> loadMoreProjects() async {
+    if (!_projectsHasMore || _loadingMoreProjects) return;
+    _loadingMoreProjects = true;
+    notifyListeners();
+    try {
+      final chunk = await api.listProjects(
+        limit: _projectChunkSize,
+        offset: _projectsOffset,
+      );
+      final existing = <int>{for (final p in _projects) p.id};
+      final fresh = chunk.where((p) => !existing.contains(p.id)).toList();
+      _projects = [..._projects, ...fresh];
+      _projectsOffset += fresh.length;
+      _projectsHasMore = chunk.length == _projectChunkSize;
+    } finally {
+      _loadingMoreProjects = false;
+      notifyListeners();
+    }
+  }
+
+  /// Load the next chunk of user threads. When [reset] is true, replace
+  /// existing threads and reset the offset.
+  Future<void> _loadUserThreadsChunk({bool reset = false}) async {
+    if (reset) {
+      _userThreadsOffset = 0;
+      _userThreadsHasMore = true;
+    }
+    if (!_userThreadsHasMore || _loadingMoreUserThreads) return;
+    _loadingMoreUserThreads = true;
+    try {
+      final chunk = await api.listThreads(
+        limit: _threadChunkSize,
+        offset: _userThreadsOffset,
+      );
+      if (reset) {
+        _threads = chunk;
+      } else {
+        _mergeThreads(chunk);
+      }
+      _userThreadsOffset += chunk.length;
+      _userThreadsHasMore = chunk.length == _threadChunkSize;
+    } catch (_) {}
+    _loadingMoreUserThreads = false;
+  }
+
+  /// Load the next chunk of threads for a specific project.
+  Future<void> _loadProjectThreadsChunk(int projectId, {bool reset = false}) async {
+    if (reset) {
+      _projectThreadOffsets[projectId] = 0;
+      _projectThreadsHasMore[projectId] = true;
+    }
+    final offset = _projectThreadOffsets[projectId] ?? 0;
+    final hasMore = _projectThreadsHasMore[projectId] ?? true;
+    if (!hasMore || (_loadingMoreProjectThreads[projectId] ?? false)) return;
+    _loadingMoreProjectThreads[projectId] = true;
+    try {
+      final chunk = await api.listThreadsForProject(
+        projectId,
+        limit: _threadChunkSize,
+        offset: offset,
+      );
+      _mergeThreads(chunk);
+      _projectThreadOffsets[projectId] = offset + chunk.length;
+      _projectThreadsHasMore[projectId] = chunk.length == _threadChunkSize;
+    } catch (_) {}
+    _loadingMoreProjectThreads[projectId] = false;
+  }
+
+  void _mergeThreads(List<Thread> incoming) {
+    final existing = <String>{for (final t in _threads) t.id};
+    final fresh = incoming.where((t) => !existing.contains(t.id)).toList();
+    if (fresh.isNotEmpty) {
+      _threads = [..._threads, ...fresh];
     }
   }
 
   Future<void> refreshThreadsAndGroups() async {
     await Future.wait([
-      (() async {
-        try {
-          _threads = await api.listThreads();
-        } catch (_) {}
-      })(),
+      _loadUserThreadsChunk(reset: true),
       (() async {
         try {
           _groups = await api.listThreadGroups();
@@ -743,6 +904,16 @@ class AppState extends ChangeNotifier {
     unawaited(refreshRunningThreads());
   }
 
+  Future<void> loadMoreThreads() async {
+    await _loadUserThreadsChunk();
+    notifyListeners();
+  }
+
+  Future<void> loadMoreProjectThreads(int projectId) async {
+    await _loadProjectThreadsChunk(projectId);
+    notifyListeners();
+  }
+
   Future<void> refreshRunningThreads() async {
     if (_threads.isEmpty) {
       _runningThreadIds.clear();
@@ -750,20 +921,15 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    final results = await Future.wait(
-      _threads.map((t) async {
-        try {
-          final run = await api.getThreadRun(t.id);
-          return (t.id, run['status'] as String? ?? 'idle');
-        } catch (_) {
-          return (t.id, 'idle');
-        }
-      }),
-    );
-
-    _runningThreadIds
-      ..clear()
-      ..addAll(results.where((r) => r.$2 == 'running').map((r) => r.$1));
+    try {
+      final running = await api.getThreadRuns();
+      final loaded = <String>{for (final t in _threads) t.id};
+      _runningThreadIds
+        ..clear()
+        ..addAll(running.where((id) => loaded.contains(id)));
+    } catch (_) {
+      _runningThreadIds.clear();
+    }
     notifyListeners();
   }
 
@@ -900,6 +1066,17 @@ class AppState extends ChangeNotifier {
     _page = MainPage.threads;
     _userMenuOpen = false;
     _projects = [];
+    _projectsOffset = 0;
+    _projectsHasMore = true;
+    _threads = [];
+    _userThreadsOffset = 0;
+    _userThreadsHasMore = true;
+    _projectThreadOffsets.clear();
+    _projectThreadsHasMore.clear();
+    _loadingMoreProjectThreads.clear();
+    _filesEntries = [];
+    _filesOffset = 0;
+    _filesHasMore = true;
     _activeProjectId = null;
     _showTotpField = false;
     _loginError = '';
@@ -923,6 +1100,8 @@ class AppState extends ChangeNotifier {
     _globalError = '';
     notifyListeners();
     await refreshThreadsAndGroups();
+    await _loadProjectThreadsChunk(id, reset: true);
+    notifyListeners();
     unawaited(loadGitRepoInfo(id));
   }
 
@@ -1179,10 +1358,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final results = await Future.wait([
-        api.getThread(id, includeMessages: true),
+        api.getThread(id, includeMessages: false),
         api.getThreadProject(id),
       ]);
       final detail = results[0] as ThreadDetail;
+      _mergeThreads([detail.thread]);
       notifyListeners();
 
       // Discover the thread's project and switch the active project.

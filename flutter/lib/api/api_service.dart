@@ -182,8 +182,12 @@ class ApiService {
 
   // ---- Projects ----
 
-  Future<List<Project>> listProjects() async {
-    final list = await _client.getList('/api/projects');
+  Future<List<Project>> listProjects({int? limit, int? offset}) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    if (offset != null && offset > 0) params['offset'] = offset.toString();
+    final uri = _buildPath('/api/projects', params);
+    final list = await _client.getList(uri);
     return list.map(Project.fromJson).toList();
   }
 
@@ -216,8 +220,16 @@ class ApiService {
     return Project.fromJson(j);
   }
 
-  Future<List<Thread>> listThreadsForProject(int id) async {
-    final list = await _client.getList('/api/projects/$id/threads');
+  Future<List<Thread>> listThreadsForProject(
+    int id, {
+    int? limit,
+    int? offset,
+  }) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    if (offset != null && offset > 0) params['offset'] = offset.toString();
+    final uri = _buildPath('/api/projects/$id/threads', params);
+    final list = await _client.getList(uri);
     return list.map(Thread.fromJson).toList();
   }
 
@@ -227,8 +239,12 @@ class ApiService {
 
   // ---- Threads ----
 
-  Future<List<Thread>> listThreads() async {
-    final list = await _client.getList('/api/threads');
+  Future<List<Thread>> listThreads({int? limit, int? offset}) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    if (offset != null && offset > 0) params['offset'] = offset.toString();
+    final uri = _buildPath('/api/threads', params);
+    final list = await _client.getList(uri);
     return list.map(Thread.fromJson).toList();
   }
 
@@ -257,12 +273,7 @@ class ApiService {
   Future<ThreadDetail> getThread(String id, {bool includeMessages = false}) async {
     final path = includeMessages ? '/api/threads/$id?include_messages=1' : '/api/threads/$id';
     final meta = await _client.get(path);
-    final detail = ThreadDetail.fromJson(meta);
-    if (detail.messages.isEmpty && detail.totalMessages > 0) {
-      final messages = await getThreadMessages(id);
-      detail.messages = messages;
-    }
-    return detail;
+    return ThreadDetail.fromJson(meta);
   }
 
   Future<List<Message>> getThreadMessages(
@@ -354,8 +365,12 @@ class ApiService {
 
   // ---- Thread Groups ----
 
-  Future<List<ThreadGroup>> listThreadGroups() async {
-    final list = await _client.getList('/api/thread-groups');
+  Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    if (offset != null && offset > 0) params['offset'] = offset.toString();
+    final uri = _buildPath('/api/thread-groups', params);
+    final list = await _client.getList(uri);
     return list.map(ThreadGroup.fromJson).toList();
   }
 
@@ -415,10 +430,17 @@ class ApiService {
 
   // ---- Files ----
 
-  Future<List<DirEntry>> listFiles({String? path, int? projectId}) async {
+  Future<List<DirEntry>> listFiles({
+    String? path,
+    int? projectId,
+    int? limit,
+    int? offset,
+  }) async {
     final params = <String, String>{};
     if (path != null && path.isNotEmpty) params['path'] = path;
     if (projectId != null) params['project_id'] = projectId.toString();
+    if (limit != null) params['limit'] = limit.toString();
+    if (offset != null && offset > 0) params['offset'] = offset.toString();
     final uri = _buildPath('/api/files', params);
     final list = await _client.getList(uri);
     return list.map(DirEntry.fromJson).toList();
@@ -474,6 +496,12 @@ class ApiService {
   /// Get the current run status for a thread.
   Future<Map<String, dynamic>> getThreadRun(String id) async {
     return await _client.get('/api/threads/$id/run');
+  }
+
+  Future<List<String>> getThreadRuns() async {
+    final j = await _client.get('/api/threads/runs');
+    final list = (j['running_ids'] as List<dynamic>?) ?? [];
+    return list.cast<String>();
   }
 
   /// Watch an existing backend run as an SSE event stream.

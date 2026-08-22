@@ -77,46 +77,67 @@ class FilesPanel extends StatelessWidget {
                                 color:
                                     theme.colorScheme.onSurfaceVariant)),
                       )
-                    : ListView(
-                        children: [
-                          for (final e in entries)
-                            ListTile(
-                              leading: Icon(
-                                e.isDir
-                                    ? Icons.folder_outlined
-                                    : _fileIcon(e.name),
-                                size: 22,
-                                color: e.isDir
-                                    ? theme.colorScheme.primary
-                                    : _fileIconColor(e.name, theme),
-                              ),
-                              title: Text(e.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (!e.isDir)
-                                    Text(_formatSize(e.size, l10n(context)),
-                                        style: theme.textTheme.labelSmall),
-                                  IconButton(
-                                    tooltip: l10n(context).delete,
-                                    icon: const Icon(Icons.delete_outline,
-                                        color: Colors.red, size: 18),
-                                    onPressed: () async {
-                                      if (await _confirm(
-                                          context, l10n(context).deleteName(e.name))) {
-                                        state.deleteFile(e.name);
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                              onTap: e.isDir
-                                  ? () => state.navigateFilesInto(e.name)
-                                  : null,
+                    : ListView.builder(
+                        itemCount: entries.length +
+                            (state.hasMoreFiles || state.isLoadingMoreFiles
+                                ? 1
+                                : 0),
+                        itemBuilder: (context, index) {
+                          if (index == entries.length) {
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                              child: state.isLoadingMoreFiles
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : TextButton(
+                                      onPressed: () => state.loadMoreFiles(),
+                                      child: const Text('Load more'),
+                                    ),
+                            );
+                          }
+                          final e = entries[index];
+                          return ListTile(
+                            leading: Icon(
+                              e.isDir
+                                  ? Icons.folder_outlined
+                                  : _fileIcon(e.name),
+                              size: 22,
+                              color: e.isDir
+                                  ? theme.colorScheme.primary
+                                  : _fileIconColor(e.name, theme),
                             ),
-                        ],
+                            title: Text(e.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!e.isDir)
+                                  Text(_formatSize(e.size, l10n(context)),
+                                      style: theme.textTheme.labelSmall),
+                                IconButton(
+                                  tooltip: l10n(context).delete,
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.red, size: 18),
+                                  onPressed: () async {
+                                    if (await _confirm(
+                                        context, l10n(context).deleteName(e.name))) {
+                                      state.deleteFile(e.name);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                            onTap: e.isDir
+                                ? () => state.navigateFilesInto(e.name)
+                                : null,
+                          );
+                        },
                       ),
           ),
         ],
