@@ -451,7 +451,7 @@ class _ProjectExpandableTile extends StatelessWidget {
                               ? Icons.push_pin_outlined
                               : Icons.push_pin,
                           size: 18,
-                          color: theme.colorScheme.onSurface,
+                          color: theme.colorScheme.primary,
                         ),
                         child: Text(
                             project.pinned ? l10n(context).unpin : l10n(context).pin),
@@ -703,7 +703,7 @@ class _ThreadTile extends StatelessWidget {
                           ? Icons.push_pin_outlined
                           : Icons.push_pin,
                       size: 18,
-                      color: theme.colorScheme.onSurface,
+                      color: theme.colorScheme.primary,
                     ),
                     child: Text(thread.pinned ? l.unpin : l.pin),
                     onPressed: () => state.pinThread(thread.id, !thread.pinned),

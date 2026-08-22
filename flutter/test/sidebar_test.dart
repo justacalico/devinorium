@@ -858,6 +858,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pin'), findsOneWidget);
+    final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
+    final primary =
+        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    expect(pinIcon.color, primary);
+
     await tester.tap(find.text('Pin'));
     await tester.pumpAndSettle();
 
@@ -913,6 +918,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pin'), findsOneWidget);
+    final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
+    final primary =
+        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    expect(pinIcon.color, primary);
+
     await tester.tap(find.text('Pin'));
     await tester.pumpAndSettle();
 
@@ -983,6 +993,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pin'), findsOneWidget);
+    final pinIcon = tester.widget<Icon>(find.byIcon(Icons.push_pin).first);
+    final primary =
+        Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
+    expect(pinIcon.color, primary);
+
     await tester.tap(find.text('Pin'));
     await tester.pumpAndSettle();
 
