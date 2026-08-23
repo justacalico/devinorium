@@ -180,10 +180,15 @@ class _ChatViewState extends State<ChatView> {
       if (!_scrollController.hasClients) return;
       final max = _scrollController.position.maxScrollExtent;
       final pos = _scrollController.position.pixels;
-      _autoScroll = (max - pos) < _autoScrollThreshold;
+      _autoScroll = pos < _autoScrollThreshold;
 
-      // Near the top means older messages are just off-screen.
-      if (pos < _loadMoreThreshold && pos > 0 && !_loadingMore) {
+      // Near the top (trailing edge in the reversed list) means older
+      // messages are just off-screen.
+      final distFromTop = max - pos;
+      if (distFromTop < _loadMoreThreshold &&
+          pos > 0 &&
+          max > _loadMoreThreshold &&
+          !_loadingMore) {
         _loadingMore = true;
         final oldMax = _scrollController.position.maxScrollExtent;
         final state = context.read<AppState>();
@@ -191,10 +196,12 @@ class _ChatViewState extends State<ChatView> {
           _loadingMore = false;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!_scrollController.hasClients) return;
+            final newPos = _scrollController.position.pixels;
             final newMax = _scrollController.position.maxScrollExtent;
             final delta = newMax - oldMax;
-            if (delta > 0 && pos < _loadMoreThreshold) {
-              _scrollController.jumpTo((pos + delta).clamp(0, newMax));
+            // Only adjust if the user is still near the top from before load.
+            if (delta > 0 && newPos >= oldMax - _loadMoreThreshold) {
+              _scrollController.jumpTo((newPos + delta).clamp(0, newMax));
             }
           });
         });
@@ -213,7 +220,7 @@ class _ChatViewState extends State<ChatView> {
     if (!force && !_autoScroll) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      _scrollController.jumpTo(0);
     });
   }
 
@@ -237,6 +244,8 @@ class _ChatViewState extends State<ChatView> {
         final newMessage = msgCount != _lastMessageCount;
         final newParts = model.streamingDigest != _lastStreamingDigest;
         if (newMessage || newParts) {
+          // Keep the view at the bottom while the user is actively sending.
+          if (newMessage && state.sending) _autoScroll = true;
           _maybeScrollToBottom();
         }
         _lastMessageCount = msgCount;
@@ -348,13 +357,14 @@ class _MessagesPanel extends StatelessWidget {
     return SelectionArea(
       child: ListView.builder(
         controller: controller,
+        reverse: true,
         padding: const EdgeInsets.symmetric(vertical: 24),
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
         scrollCacheExtent: const ScrollCacheExtent.pixels(200),
         itemCount: messages.length + (hasStreaming ? 1 : 0),
         itemBuilder: (context, index) {
-          if (hasStreaming && index == messages.length) {
+          if (hasStreaming && index == 0) {
             return _MessageItem(
               key: const ValueKey('streaming'),
               message: Message(
@@ -366,7 +376,8 @@ class _MessagesPanel extends StatelessWidget {
               thinkingActive: streamingThinkingActive,
             );
           }
-          final message = messages[index];
+          final offset = hasStreaming ? 1 : 0;
+          final message = messages[messages.length - 1 - (index - offset)];
           return _MessageItem(
             key: ValueKey(message.id ?? message.content),
             message: message,
