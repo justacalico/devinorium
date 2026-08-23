@@ -10,7 +10,6 @@ import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
-import '../utils/link_opener.dart';
 import '../utils/path_attachment.dart';
 import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
@@ -488,7 +487,7 @@ class _MessageItemState extends State<_MessageItem> {
         data: text,
         selectable: false,
         onTapLink: (txt, href, title) {
-          if (href != null) openLink(href);
+          if (href != null) context.read<AppState>().openLink(href);
         },
         extensionSet: markdown.ExtensionSet.gitHubFlavored,
         builders: {
@@ -524,7 +523,7 @@ class _MessageItemState extends State<_MessageItem> {
     }
     return Linkify(
       text: text,
-      onOpen: (link) => openLink(link.url),
+      onOpen: (link) => context.read<AppState>().openLink(link.url),
       style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
       linkStyle: theme.textTheme.bodyLarge?.copyWith(
         height: 1.5,

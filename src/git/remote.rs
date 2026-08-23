@@ -68,22 +68,30 @@ pub struct GitLabStatus {
 pub struct GitRemoteService {
     config_root: PathBuf,
     glab_bin: Option<PathBuf>,
+    /// When true, `glab` uses an isolated per-user config directory under
+    /// `config_root`. When false, `glab` uses the user's global config (the
+    /// default for the production server process).
+    isolated: bool,
 }
 
 impl GitRemoteService {
-    /// Build a new service using the `glab` binary on PATH.
+    /// Build a new service using the `glab` binary on PATH and the user's
+    /// global glab configuration.
     pub fn new(config_root: impl Into<PathBuf>) -> Self {
         Self {
             config_root: config_root.into(),
             glab_bin: which::which("glab").ok(),
+            isolated: false,
         }
     }
 
     /// Build a service with an explicit `glab` path, useful in tests.
+    /// Tests use an isolated config directory.
     pub fn with_glab_bin(config_root: impl Into<PathBuf>, glab_bin: Option<PathBuf>) -> Self {
         Self {
             config_root: config_root.into(),
             glab_bin,
+            isolated: true,
         }
     }
 
@@ -136,47 +144,24 @@ impl GitRemoteService {
         vec![gitlab, github]
     }
 
-    /// Authenticate with GitLab using a personal access token.
+    /// Verify that `glab` is already authenticated for the given host.
+    ///
+    /// The user must authenticate via the glab CLI itself
+    /// (`glab auth login`); this method only reports the current status.
     pub async fn login_gitlab(
         &self,
         user_id: i64,
-        token: &str,
         hostname: Option<&str>,
     ) -> Result<GitLabStatus, RemoteError> {
-        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
         let host = hostname.unwrap_or("gitlab.com");
-
-        self.run(user_id, bin, &[
-            "config", "set", "api_protocol", "https", "--host", host, "--global",
-        ])
-        .await?;
-        self.run(user_id, bin, &[
-            "config", "set", "git_protocol", "https", "--host", host, "--global",
-        ])
-        .await?;
-        self.run(user_id, bin, &[
-            "config", "set", "api_host", host, "--host", host, "--global",
-        ])
-        .await?;
-        self.run(user_id, bin, &[
-            "config", "set", "token", token, "--host", host, "--global",
-        ])
-        .await?;
 
         let status = self.gitlab_status_for_host(user_id, host).await?;
         if status.authed {
             Ok(status)
         } else {
-            // Don't leave an invalid token lying around.
-            let _ = self
-                .run(
-                    user_id,
-                    bin,
-                    &["config", "set", "token", "", "--host", host, "--global"],
-                )
-                .await;
             Err(RemoteError::LoginFailed(
-                "token was not accepted by GitLab".into(),
+                "glab is not authenticated for this host; run `glab auth login`".into(),
             ))
         }
     }
@@ -282,6 +267,39 @@ impl GitRemoteService {
         ))
     }
 
+    /// Call the GitLab API through `glab api` for the configured host.
+    ///
+    /// [path] is a GitLab v4 API path such as
+    /// `projects/group%2Fproject/merge_requests/1`. Only `projects/` paths are
+    /// allowed to keep the proxy scoped to project data.
+    pub async fn gitlab_api(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        path: &str,
+    ) -> Result<String, RemoteError> {
+        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let host = if hostname.is_empty() { "gitlab.com" } else { hostname };
+
+        if path.starts_with('/') {
+            return Err(RemoteError::StatusFailed(
+                "api path must not start with /".into(),
+            ));
+        }
+        if !path.starts_with("projects/") {
+            return Err(RemoteError::StatusFailed(
+                "only project api paths are supported".into(),
+            ));
+        }
+        if path.contains("..") || path.contains('\n') || path.contains('\r') {
+            return Err(RemoteError::StatusFailed(
+                "invalid characters in api path".into(),
+            ));
+        }
+
+        self.run(user_id, bin, &["api", path, "--hostname", host]).await
+    }
+
     /// Run a glab/gh command and treat non-zero exit as an error.
     async fn run(
         &self,
@@ -320,16 +338,23 @@ impl GitRemoteService {
     }
 
     fn env_cmd(&self, user_id: i64, bin: &Path) -> Result<Command, RemoteError> {
-        let user_dir = self.config_root.join("glab").join(user_id.to_string());
-        let xdg_config = user_dir.join(".config");
-        std::fs::create_dir_all(&xdg_config)
-            .map_err(|e| RemoteError::StatusFailed(format!("config dir failed: {e}")))?;
-
         let mut cmd = Command::new(bin);
-        cmd.current_dir(&user_dir)
-            .env("HOME", &user_dir)
-            .env("XDG_CONFIG_HOME", &xdg_config)
-            .env("GLAB_CHECK_UPDATE", "false")
+
+        if self.isolated {
+            let user_dir = self.config_root.join("glab").join(user_id.to_string());
+            let xdg_config = user_dir.join(".config");
+            std::fs::create_dir_all(&xdg_config)
+                .map_err(|e| RemoteError::StatusFailed(format!("config dir failed: {e}")))?;
+
+            cmd.current_dir(&user_dir)
+                .env("HOME", &user_dir)
+                .env("XDG_CONFIG_HOME", &xdg_config);
+        } else {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+            cmd.current_dir(cwd);
+        }
+
+        cmd.env("GLAB_CHECK_UPDATE", "false")
             .env("GLAB_NO_PROMPT", "true")
             .env("NO_COLOR", "1")
             .env(

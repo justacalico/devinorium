@@ -486,6 +486,15 @@ if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
   echo "Successfully logged out"
   exit 0
 fi
+if [ "$1" = "api" ]; then
+  path="$2"
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  printf '{"host":"%s","path":"%s"}\n' "$host" "$path"
+  exit 0
+fi
 echo "unknown glab command: $*" >&2
 exit 1
 "#;
@@ -518,9 +527,14 @@ async fn git_remote_gitlab_login_and_logout() {
     let glab = write_fake_glab(tmp.path());
     let config_root = tmp.path().join("config");
     std::fs::create_dir_all(&config_root).unwrap();
-    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+    let svc = GitRemoteService::with_glab_bin(config_root.clone(), Some(glab));
 
-    let status = svc.login_gitlab(1, "glpat-test-token", None).await.unwrap();
+    // Simulate a pre-authenticated glab CLI by writing the token it expects.
+    let token_file = config_root.join("glab").join("1").join(".config").join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "glpat-test-token").unwrap();
+
+    let status = svc.login_gitlab(1, None).await.unwrap();
     assert!(status.authed);
     assert_eq!(status.account.as_deref(), Some("testuser"));
     assert_eq!(status.host, "gitlab.com");
@@ -540,10 +554,14 @@ async fn git_remote_gitlab_login_uses_custom_host() {
     let glab = write_fake_glab(tmp.path());
     let config_root = tmp.path().join("config");
     std::fs::create_dir_all(&config_root).unwrap();
-    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+    let svc = GitRemoteService::with_glab_bin(config_root.clone(), Some(glab));
+
+    let token_file = config_root.join("glab").join("1").join(".config").join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "glpat-test-token").unwrap();
 
     let status = svc
-        .login_gitlab(1, "glpat-test-token", Some("gitlab.example.com"))
+        .login_gitlab(1, Some("gitlab.example.com"))
         .await
         .unwrap();
     assert_eq!(status.host, "gitlab.example.com");
@@ -559,6 +577,38 @@ fn write_garbage_glab(dir: &std::path::Path) -> std::path::PathBuf {
     perms.set_mode(0o755);
     std::fs::set_permissions(&bin, perms).unwrap();
     bin
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_api_forwards_path_and_host() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let out = svc
+        .gitlab_api(1, "gitlab.example.com", "projects/group%2Fproject/merge_requests/1")
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["host"], "gitlab.example.com");
+    assert_eq!(v["path"], "projects/group%2Fproject/merge_requests/1");
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_api_rejects_non_project_paths() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let err = svc
+        .gitlab_api(1, "gitlab.com", "groups/some-group")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
 }
 
 #[tokio::test]

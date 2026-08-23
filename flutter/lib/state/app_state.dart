@@ -7,7 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import '../api/api_service.dart';
 import '../l10n/global_l10n.dart';
+import '../merge_request/gitlab_merge_request_provider.dart';
 import '../models/composer_mode.dart';
+import '../utils/link_opener.dart' as link_opener;
 import '../models/models.dart';
 import '../services/notification_service.dart';
 import 'async_value.dart';
@@ -28,6 +30,7 @@ enum DialogKind {
   gitBranches,
   renameProject,
   renameThread,
+  mergeRequest,
 }
 
 /// Central app state.
@@ -52,6 +55,7 @@ class AppState extends ChangeNotifier {
     String? activeThreadId,
     ThreadDetail? activeThreadDetail,
     DialogKind? dialog,
+    String? mergeRequestUrl,
     PermissionRequest? pendingPermissionRequest,
     AskRequest? pendingAskRequest,
     List<String> filesPath = const [],
@@ -99,6 +103,7 @@ class AppState extends ChangeNotifier {
     _providers = providers;
     _activeProjectId = activeProjectId;
     _dialog = dialog ?? DialogKind.none;
+    _mergeRequestUrl = mergeRequestUrl;
     _filesPath = filesPath;
     _globalError = globalError ?? '';
     _composerMode = composerMode;
@@ -196,6 +201,7 @@ class AppState extends ChangeNotifier {
   List<DirEntry> _filesEntries = [];
   String _filesError = '';
   DialogKind _dialog = DialogKind.none;
+  String? _mergeRequestUrl;
   String _totpSecret = '';
   bool _threadOpening = false;
 
@@ -267,6 +273,7 @@ class AppState extends ChangeNotifier {
   List<DirEntry> get filesEntries => _filesEntries;
   String get filesError => _filesError;
   DialogKind get dialog => _dialog;
+  String? get mergeRequestUrl => _mergeRequestUrl;
   String get totpSecret => _totpSecret;
   String get composerText => _activeStore?.composerText ?? _composerText;
   bool get sending => _activeStore?.sending ?? false;
@@ -1869,9 +1876,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> connectGitLab({required String token, String? hostname}) async {
+  Future<void> connectGitLab({String? hostname}) async {
     try {
-      final updated = await api.connectGitLab(token: token, hostname: hostname);
+      final updated = await api.connectGitLab(hostname: hostname);
       final index = _gitConnections.indexWhere((c) => c.id == updated.id);
       if (index >= 0) {
         _gitConnections[index] = updated;
@@ -1899,9 +1906,23 @@ class AppState extends ChangeNotifier {
   void closeDialog() {
     _dialog = DialogKind.none;
     _gitDialogProjectId = null;
+    _mergeRequestUrl = null;
     _renameProjectId = null;
     _renameThreadId = null;
     _renameInitialName = '';
     notifyListeners();
+  }
+
+  /// Open the merge request panel if [url] is a supported GitLab MR URL,
+  /// otherwise open it in the user's browser.
+  Future<void> openLink(String url) async {
+    if (GitLabMergeRequestProvider.canHandleUrl(url)) {
+      _mergeRequestUrl = url;
+      _dialog = DialogKind.mergeRequest;
+      _userMenuOpen = false;
+      notifyListeners();
+      return;
+    }
+    await link_opener.openLink(url);
   }
 }

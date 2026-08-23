@@ -3300,6 +3300,15 @@ if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
   echo "Successfully logged out"
   exit 0
 fi
+if [ "$1" = "api" ]; then
+  path="$2"
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  printf '{"host":"%s","path":"%s"}\n' "$host" "$path"
+  exit 0
+fi
 echo "unknown glab command: $*" >&2
 exit 1
 "#;
@@ -3310,12 +3319,22 @@ exit 1
     bin
 }
 
+fn write_glab_token_file(config_root: &std::path::Path, user_id: i64) {
+    let token_file = config_root
+        .join("glab")
+        .join(user_id.to_string())
+        .join(".config")
+        .join("token");
+    std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
+    std::fs::write(&token_file, "glpat-test").unwrap();
+}
+
 #[tokio::test]
 async fn git_connections_list_login_logout() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab(&home);
-    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home.clone(), Some(glab)));
 
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
@@ -3334,7 +3353,10 @@ async fn git_connections_list_login_logout() {
     assert_eq!(list[1]["id"], "github");
     assert!(list[1]["coming_soon"].as_bool().unwrap());
 
-    let body = r#"{"token":"glpat-test","hostname":"gitlab.example.com"}"#;
+    // Simulate glab already being authenticated on the host.
+    write_glab_token_file(&home, 1);
+
+    let body = r#"{"hostname":"gitlab.example.com"}"#;
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
@@ -3382,7 +3404,7 @@ async fn git_connections_list_login_logout() {
 }
 
 #[tokio::test]
-async fn git_connections_rejects_empty_token() {
+async fn git_connections_login_fails_when_glab_not_authed() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab(&home);
@@ -3391,7 +3413,7 @@ async fn git_connections_rejects_empty_token() {
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
 
-    let body = r#"{"token":"   "}"#;
+    let body = r#"{}"#;
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
@@ -3405,12 +3427,13 @@ async fn git_connections_login_defaults_to_gitlab_com() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab(&home);
+    write_glab_token_file(&home, 1);
     state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
 
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
 
-    let body = r#"{"token":"glpat-test"}"#;
+    let body = r#"{}"#;
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/git-connections/gitlab", &cookie, body))
@@ -3421,6 +3444,33 @@ async fn git_connections_login_defaults_to_gitlab_com() {
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     assert_eq!(v["host"], "gitlab.com");
     assert!(v["authed"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_proxy_forwards_api_requests() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/proxy?path=projects/group%252Fproject/merge_requests/1&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["host"], "gitlab.example.com");
+    assert_eq!(v["path"], "projects/group%2Fproject/merge_requests/1");
 }
 
 fn git_cli(args: &[&str], cwd: &std::path::Path) {

@@ -675,33 +675,14 @@ class _GitSection extends StatefulWidget {
 }
 
 class _GitSectionState extends State<_GitSection> {
-  final _tokenController = TextEditingController();
-  final _hostnameController = TextEditingController();
   bool _busy = false;
 
-  @override
-  void dispose() {
-    _tokenController.dispose();
-    _hostnameController.dispose();
-    super.dispose();
-  }
-
   Future<void> _connect() async {
-    final token = _tokenController.text.trim();
-    if (token.isEmpty) return;
-
     setState(() => _busy = true);
-    final host = _hostnameController.text.trim();
-    await widget.state.connectGitLab(
-      token: token,
-      hostname: host.isNotEmpty ? host : null,
-    );
+    await widget.state.connectGitLab();
     if (mounted) {
       setState(() => _busy = false);
-      _tokenController.clear();
-      if (widget.state.globalError.isEmpty) {
-        _hostnameController.clear();
-      } else {
+      if (widget.state.globalError.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n(context).gitlabConnectFailed(widget.state.globalError))),
         );
@@ -832,25 +813,13 @@ class _GitSectionState extends State<_GitSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(l.gitlab, style: theme.textTheme.bodyLarge),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _tokenController,
-          obscureText: true,
-          decoration: InputDecoration(
-            labelText: l.token,
-            isDense: true,
-          ),
+        const SizedBox(height: 4),
+        Text(
+          l.gitlabConnectHint,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _hostnameController,
-          decoration: InputDecoration(
-            labelText: l.hostname,
-            hintText: l.gitlabComHint,
-            isDense: true,
-          ),
-        ),
-        const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [

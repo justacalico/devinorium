@@ -5,6 +5,7 @@ import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import 'git_branch_dialog.dart';
+import 'merge_request_panel.dart';
 
 class DialogLayer extends StatelessWidget {
   const DialogLayer({super.key});
@@ -23,6 +24,10 @@ class DialogLayer extends StatelessWidget {
         return const _PermissionRequestDialog();
       case DialogKind.gitBranches:
         return const GitBranchDialog();
+      case DialogKind.mergeRequest:
+        final url = state.mergeRequestUrl;
+        if (url == null || url.isEmpty) return const SizedBox.shrink();
+        return MergeRequestPanel(url: url);
       case DialogKind.renameProject:
       case DialogKind.renameThread:
         return const _RenameDialog();

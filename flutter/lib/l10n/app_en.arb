@@ -454,6 +454,7 @@
   },
   "loading": "Loading…",
   "gitlabNotInstalled": "GitLab CLI (glab) is not installed",
+  "gitlabConnectHint": "Run glab auth login in your terminal, then tap Connect.",
   "none": "None",
   "createAndSwitchBranch": "Create and switch",
   "createAndNewBranch": "Create and new branch",
@@ -482,5 +483,15 @@
   },
   "copy": "Copy",
   "copied": "Copied",
-  "copiedToClipboard": "Copied to clipboard"
+  "copiedToClipboard": "Copied to clipboard",
+  "mergeRequest": "Merge request",
+  "overview": "Overview",
+  "changes": "Changes",
+  "comments": "Comments",
+  "noDescription": "No description provided.",
+  "noChanges": "No changed files.",
+  "noComments": "No comments yet.",
+  "openInBrowser": "Open in browser",
+  "draft": "Draft",
+  "retry": "Retry"
 }

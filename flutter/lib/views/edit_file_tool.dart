@@ -108,7 +108,7 @@ class _EditFileToolState extends State<EditFileTool> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: diffs.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 4),
+          separatorBuilder: (context, index) => const SizedBox(width: 4),
           itemBuilder: (context, i) {
             final selected = i == _selectedDiffIndex;
             return InkWell(

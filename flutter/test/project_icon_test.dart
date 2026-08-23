@@ -48,7 +48,7 @@ void main() {
       final types = ['flutter', 'rust', 'node', 'python', 'go', 'java', 'generic'];
       final colors = <int>{};
       for (final t in types) {
-        colors.add(projectIconForType(t).color.value);
+        colors.add(projectIconForType(t).color.toARGB32());
       }
       expect(colors.length, types.length);
     });
