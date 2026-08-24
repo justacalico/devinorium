@@ -1671,6 +1671,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This merge request will merge once the pipeline succeeds.'**
   String get mergeRequestAutoMergeSet;
+
+  /// No description provided for @mergeRequestWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working...'**
+  String get mergeRequestWorking;
 }
 
 class _AppLocalizationsDelegate

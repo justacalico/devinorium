@@ -109,6 +109,12 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
+                const SizedBox(width: 8),
+                Text(
+                  l10n(context).mergeRequestWorking,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
               ],
             ],
           ),

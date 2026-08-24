@@ -322,6 +322,7 @@ impl GitRemoteService {
         method: &str,
         path: &str,
         fields: &[(&str, &str)],
+        timeout: Duration,
     ) -> Result<String, RemoteError> {
         let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
         let host = Self::api_host(hostname);
@@ -347,10 +348,13 @@ impl GitRemoteService {
         }
 
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.run(user_id, bin, &args).await
+        self.run_with_timeout(user_id, bin, &args, timeout).await
     }
 
     /// Apply a state change to a merge request and return the updated JSON.
+    ///
+    /// Merge requests can take a while for GitLab to actually merge (large
+    /// repos, post-merge hooks, etc.), so the call gets a longer timeout.
     pub async fn gitlab_merge_request_action(
         &self,
         user_id: i64,
@@ -378,8 +382,13 @@ impl GitRemoteService {
             ),
         };
 
+        let timeout = match action {
+            MergeRequestAction::Merge => Duration::from_secs(120),
+            _ => Duration::from_secs(30),
+        };
+
         let output = self
-            .gitlab_api_write(user_id, hostname, "PUT", &path, &fields)
+            .gitlab_api_write(user_id, hostname, "PUT", &path, &fields, timeout)
             .await?;
         serde_json::from_str(&output).map_err(|e| {
             RemoteError::StatusFailed(format!("gitlab returned invalid merge request json: {e}"))
@@ -456,7 +465,20 @@ impl GitRemoteService {
         bin: &Path,
         args: &[&str],
     ) -> Result<String, RemoteError> {
-        let (stdout, stderr, success) = self.run_parts(user_id, bin, args).await?;
+        self.run_with_timeout(user_id, bin, args, Duration::from_secs(30)).await
+    }
+
+    /// Run a glab/gh command with an explicit timeout and return stdout,
+    /// treating a non-zero exit as an error.
+    async fn run_with_timeout(
+        &self,
+        user_id: i64,
+        bin: &Path,
+        args: &[&str],
+        timeout_duration: Duration,
+    ) -> Result<String, RemoteError> {
+        let (stdout, stderr, success) =
+            self.run_parts(user_id, bin, args, timeout_duration).await?;
         if !success {
             let combined = format!("{stdout}\n{stderr}");
             let msg = combined.trim();
@@ -473,7 +495,8 @@ impl GitRemoteService {
         bin: &Path,
         args: &[&str],
     ) -> Result<(String, bool), RemoteError> {
-        let (stdout, stderr, success) = self.run_parts(user_id, bin, args).await?;
+        let (stdout, stderr, success) =
+            self.run_parts(user_id, bin, args, Duration::from_secs(30)).await?;
         Ok((format!("{stdout}\n{stderr}"), success))
     }
 
@@ -483,11 +506,12 @@ impl GitRemoteService {
         user_id: i64,
         bin: &Path,
         args: &[&str],
+        timeout_duration: Duration,
     ) -> Result<(String, String, bool), RemoteError> {
         let mut cmd = self.env_cmd(user_id, bin)?;
         cmd.args(args);
 
-        let output = timeout(Duration::from_secs(30), cmd.output())
+        let output = timeout(timeout_duration, cmd.output())
             .await
             .map_err(|_| RemoteError::Timeout)?
             .map_err(|e| RemoteError::StatusFailed(e.to_string()))?;

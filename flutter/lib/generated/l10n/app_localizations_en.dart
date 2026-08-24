@@ -882,4 +882,7 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get mergeRequestAutoMergeSet =>
       'This merge request will merge once the pipeline succeeds.';
+
+  @override
+  String get mergeRequestWorking => 'Working...';
 }
