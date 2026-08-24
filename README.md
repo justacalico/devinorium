@@ -5,6 +5,8 @@ A self-hosted web UI for AI coding agents.
 - Backend: Rust (axum + tokio + SQLite)
 - Frontend: Flutter web, built with `./scripts/build-flutter.sh` and embedded from `frontend/dist/` at compile time
 
+![Devinorium running](docs/images/running.png)
+
 ## What it is
 
 Devinorium lets you use coding agents from a browser. The Rust backend handles authentication, sessions, files, and provider calls; the provider layer is pluggable, so new backends can be added without touching the rest of the app.
