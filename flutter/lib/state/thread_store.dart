@@ -229,6 +229,9 @@ class ThreadStore {
   }
 
   /// Persist the selected model and permission mode for this thread.
+  /// Only fetches the persisted detail when the local detail has never been
+  /// loaded, so sending a message does not flash an empty thread and race the
+  /// incoming stream events.
   Future<void> saveSettings() async {
     try {
       await api.updateThreadSettings(
@@ -236,7 +239,9 @@ class ThreadStore {
         model: selectedModel.isEmpty ? null : selectedModel,
         permissionMode: selectedPermission,
       );
-      await reloadDetail();
+      if (_detail.isEmpty) {
+        await reloadDetail();
+      }
     } catch (e) {
       _globalError = '$e';
       _emit();
