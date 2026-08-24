@@ -654,6 +654,56 @@ async fn thread_model_update() {
 }
 
 #[tokio::test]
+async fn assistant_message_inherits_updated_model() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"model":"swe-1-7"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let boundary = "----modelboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[1].role, "assistant");
+    assert_eq!(msgs[1].model, "swe-1-7");
+}
+
+#[tokio::test]
 async fn thread_pin_success_and_sorts_first() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
@@ -863,6 +913,7 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world (code)");
+    assert_eq!(msgs[1].model, "stub-1", "assistant message should store thread model");
     assert!(msgs[1]
         .thinking
         .as_ref()
@@ -971,6 +1022,7 @@ async fn thread_send_streams_reply_as_sse() {
         serde_json::from_str(&done_data[6..]).expect("valid done json");
     assert_eq!(done_json["role"], "assistant");
     assert_eq!(done_json["content"], "echo: Hello world (code)");
+    assert_eq!(done_json["model"], "stub-1");
     assert_eq!(
         done_json["thinking"].as_str(),
         Some("reasoning about the prompt in code mode")
@@ -983,6 +1035,7 @@ async fn thread_send_streams_reply_as_sse() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world (code)");
+    assert_eq!(msgs[1].model, "stub-1");
     assert!(msgs[1]
         .thinking
         .as_ref()

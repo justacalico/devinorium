@@ -101,6 +101,7 @@ pub struct MessageOut {
     pub thinking: Option<String>,
     pub parts: Vec<MessagePart>,
     pub attachments: serde_json::Value,
+    pub model: String,
     pub created_at: String,
 }
 
@@ -129,6 +130,7 @@ impl From<MessageRow> for MessageOut {
             thinking,
             parts,
             attachments,
+            model: m.model,
             created_at: m.created_at,
         }
     }
@@ -956,6 +958,7 @@ async fn persist_user_message(
             thinking: None,
             parts: user_parts,
             attachments: serde_json::to_string(&input.att_meta).unwrap_or_else(|_| "[]".into()),
+            model: String::new(),
         })
         .await
 }
@@ -1039,6 +1042,7 @@ async fn run_thread(
                     thinking,
                     parts: parts_json,
                     attachments: "[]".into(),
+                    model: thread.model.clone(),
                 })
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
@@ -1058,6 +1062,7 @@ async fn run_thread(
                     thinking: None,
                     parts: "[]".into(),
                     attachments: "[]".into(),
+                    model: String::new(),
                 })
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
@@ -1071,7 +1076,7 @@ async fn run_thread(
 
     let assistant_msg = persist_assistant_reply(
         &state,
-        &thread.id,
+        &thread,
         user.id,
         &parts,
         new_session_id,
@@ -1484,7 +1489,7 @@ async fn respond_ask(
 
 async fn persist_assistant_reply(
     state: &AppState,
-    thread_id: &str,
+    thread: &ThreadRow,
     user_id: i64,
     parts: &[MessagePart],
     new_session_id: Option<String>,
@@ -1502,14 +1507,14 @@ async fn persist_assistant_reply(
         }
         let _ = state
             .db
-            .update_thread_session(thread_id, &sid, new_title.as_deref())
+            .update_thread_session(&thread.id, &sid, new_title.as_deref())
             .await;
     }
 
     if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
         return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
     }
-    let _ = state.db.touch_thread(thread_id).await;
+    let _ = state.db.touch_thread(&thread.id).await;
 
     if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
         return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
@@ -1522,12 +1527,13 @@ async fn persist_assistant_reply(
     let assistant_msg = state
         .db
         .add_message(NewMessage {
-            thread_id: thread_id.into(),
+            thread_id: thread.id.clone(),
             role: "assistant".into(),
             content: reply,
             thinking,
             parts: parts_json,
             attachments: "[]".into(),
+            model: thread.model.clone(),
         })
         .await
         .map_err(|e| crate::api::map_err_internal(e).into_response())?;
@@ -1542,7 +1548,7 @@ async fn persist_assistant_reply(
         .audit(
             Some(user_id),
             "thread.send",
-            &serde_json::json!({"thread_id": thread_id, "session_id": session_id_for_audit}),
+            &serde_json::json!({"thread_id": thread.id, "session_id": session_id_for_audit}),
             None,
         )
         .await;

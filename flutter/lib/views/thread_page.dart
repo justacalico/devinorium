@@ -372,6 +372,7 @@ class _MessagesPanel extends StatelessWidget {
                 content: '',
                 attachments: null,
                 parts: streamingParts,
+                model: detail?.thread.model ?? '',
               ),
               thinkingActive: streamingThinkingActive,
             );
@@ -582,6 +583,8 @@ class _MessageItemState extends State<_MessageItem> {
     final theme = Theme.of(context);
     final message = widget.message;
     final l = l10n(context);
+    final assistantLabel =
+        message.model.isNotEmpty ? message.model : l.messageRoleAssistant;
     final (icon, label, avatarBg, avatarFg) = switch (message.role) {
       'user' => (
         Icons.person_outline,
@@ -591,7 +594,7 @@ class _MessageItemState extends State<_MessageItem> {
       ),
       'assistant' => (
         Icons.smart_toy_outlined,
-        l.messageRoleAssistant,
+        assistantLabel,
         theme.colorScheme.secondaryContainer,
         theme.colorScheme.onSecondaryContainer,
       ),

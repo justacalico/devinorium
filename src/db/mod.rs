@@ -149,6 +149,7 @@ pub struct MessageRow {
     pub thinking: Option<String>,
     pub parts: Option<String>,
     pub attachments: String,
+    pub model: String,
     pub created_at: String,
 }
 

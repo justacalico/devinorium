@@ -146,6 +146,7 @@ class Message {
   final String? thinking;
   final List<Attachment>? attachments;
   final List<MessagePart>? parts;
+  final String model;
 
   Message({
     this.id,
@@ -154,6 +155,7 @@ class Message {
     this.thinking,
     this.attachments,
     this.parts,
+    this.model = '',
   });
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
@@ -167,6 +169,7 @@ class Message {
         parts: (j['parts'] as List<dynamic>?)
             ?.map((p) => MessagePart.fromJson(p as Map<String, dynamic>))
             .toList(),
+        model: j['model'] as String? ?? '',
       );
 
   List<MessagePart> get allParts {
@@ -182,6 +185,7 @@ class Message {
     int? id,
     String? content,
     List<MessagePart>? parts,
+    String? model,
   }) =>
       Message(
         id: id ?? this.id,
@@ -190,6 +194,7 @@ class Message {
         thinking: thinking,
         attachments: attachments,
         parts: parts ?? this.parts,
+        model: model ?? this.model,
       );
 
   @override
@@ -200,13 +205,14 @@ class Message {
         role == other.role &&
         content == other.content &&
         thinking == other.thinking &&
+        model == other.model &&
         _listEquals(attachments, other.attachments) &&
         _listEquals(parts, other.parts);
   }
 
   @override
   int get hashCode {
-    var h = Object.hash(id, role, content, thinking);
+    var h = Object.hash(id, role, content, thinking, model);
     for (final a in attachments ?? const <Attachment>[]) {
       h = Object.hash(h, a);
     }
