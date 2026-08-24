@@ -3,7 +3,10 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/settings_page.dart';
+import 'package:devinorium_frontend/widgets/git_provider_icons.dart';
+import 'package:devinorium_frontend/widgets/git_provider_tile.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
@@ -20,9 +23,13 @@ class _FakeApiService extends ApiService {
 
   final List<User> _users;
   final List<Device> _devices;
+  final List<GitConnection> _gitConnections;
 
-  _FakeApiService({List<User>? users, List<Device>? devices})
-      : _users = users ??
+  _FakeApiService({
+    List<User>? users,
+    List<Device>? devices,
+    List<GitConnection>? gitConnections,
+  })  : _users = users ??
             [User(
               id: 1,
               username: 'owner',
@@ -42,6 +49,11 @@ class _FakeApiService extends ApiService {
               expiresAt: '',
               isCurrent: true,
             )],
+        _gitConnections = gitConnections ??
+            const [
+              GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
+              GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+            ],
         super(client: ApiClient.withClient(MockClient((_) async => http.Response('{}', 200))));
 
   @override
@@ -95,10 +107,8 @@ class _FakeApiService extends ApiService {
   Future<List<Device>> listDevices() async => List.unmodifiable(_devices);
 
   @override
-  Future<List<GitConnection>> listGitConnections() async => const [
-        GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
-        GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
-      ];
+  Future<List<GitConnection>> listGitConnections() async =>
+      List.unmodifiable(_gitConnections);
 
   @override
   Future<GitConnection> connectGitLab({String? hostname}) async =>
@@ -484,5 +494,152 @@ void main() {
     expect(find.text('GitHub'), findsOneWidget);
     expect(find.text('Coming soon'), findsNWidgets(2));
     expect(find.text('Connect'), findsOneWidget);
+  });
+
+  testWidgets('Git section shows provider icons', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GitLabIcon), findsOneWidget);
+    expect(find.byType(GitHubIcon), findsOneWidget);
+    expect(find.byType(SvgPicture), findsNWidgets(2));
+  });
+
+  testWidgets('Git section uses a tile per provider', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GitProviderTile), findsNWidgets(2));
+  });
+
+  testWidgets('Git section shows Disconnect when GitLab is connected', (tester) async {
+    final fake = _FakeApiService(
+      gitConnections: const [
+        GitConnection(
+          id: 'gitlab',
+          name: 'GitLab',
+          enabled: true,
+          authed: true,
+          account: 'owner',
+        ),
+        GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+      ],
+    );
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Disconnect'), findsOneWidget);
+    expect(find.text('Connect'), findsNothing);
+    expect(find.text('Connected as owner'), findsOneWidget);
+  });
+
+  testWidgets('Git section shows not installed hint when GitLab is unavailable', (tester) async {
+    final fake = _FakeApiService(
+      gitConnections: const [
+        GitConnection(id: 'gitlab', name: 'GitLab'),
+        GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+      ],
+    );
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.text('GitLab CLI (glab) is not installed'), findsOneWidget);
+    expect(find.text('Connect'), findsNothing);
+  });
+
+  testWidgets('Git section falls back to a generic row for unknown providers', (tester) async {
+    final fake = _FakeApiService(
+      gitConnections: const [
+        GitConnection(id: 'bitbucket', name: 'Bitbucket'),
+      ],
+    );
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bitbucket'), findsOneWidget);
+    expect(find.text('Not connected'), findsOneWidget);
+    expect(find.byType(GitProviderTile), findsOneWidget);
   });
 }
