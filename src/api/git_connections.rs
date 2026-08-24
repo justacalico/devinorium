@@ -18,6 +18,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/git-connections/gitlab", post(login_gitlab))
         .route("/api/git-connections/gitlab", delete(logout_gitlab))
         .route("/api/git-connections/gitlab/proxy", get(gitlab_proxy))
+        .route("/api/git-connections/gitlab/pipelines", get(gitlab_pipelines))
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,6 +115,41 @@ async fn gitlab_proxy(
                     .into_response()
             }
         },
+        Err(RemoteError::GitLabNotAvailable) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiError::new("gitlab cli is not installed")),
+        )
+            .into_response(),
+        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitLabPipelinesQuery {
+    pub project: String,
+    pub iid: i64,
+    pub hostname: Option<String>,
+}
+
+async fn gitlab_pipelines(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<GitLabPipelinesQuery>,
+) -> Response {
+    let hostname = q.hostname.as_deref().filter(|s| !s.is_empty()).unwrap_or("gitlab.com");
+
+    if q.iid <= 0 {
+        return (StatusCode::BAD_REQUEST, Json(ApiError::new("iid must be positive")))
+            .into_response();
+    }
+
+    match state
+        .git_remote
+        .gitlab_pipeline(user.id, hostname, &q.project, q.iid)
+        .await
+    {
+        Ok(Some(pipeline)) => Json(pipeline).into_response(),
+        Ok(None) => StatusCode::NO_CONTENT.into_response(),
         Err(RemoteError::GitLabNotAvailable) => (
             StatusCode::NOT_FOUND,
             Json(ApiError::new("gitlab cli is not installed")),

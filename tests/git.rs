@@ -568,6 +568,59 @@ async fn git_remote_gitlab_login_uses_custom_host() {
     assert!(status.authed);
 }
 
+fn write_fake_glab_with_pipelines(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "config" ] && [ "$2" = "set" ]; then
+  if [ "$3" = "token" ]; then
+    mkdir -p "$XDG_CONFIG_HOME"
+    printf '%s' "$4" > "$XDG_CONFIG_HOME/token"
+  fi
+  exit 0
+fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    echo "$host"
+    echo "  Logged in to $host as testuser"
+    exit 0
+  else
+    echo "$host"
+    echo "  ! No token found"
+    exit 1
+  fi
+fi
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"/pipelines"*)
+      if echo "$path" | grep -q "empty"; then
+        printf '[]\n'
+      else
+        printf '[{"id":42,"status":"success","name":"test-and-build","web_url":"https://gitlab.example.com/group/project/-/pipelines/42","ref":"feature"}]\n'
+      fi
+      exit 0
+      ;;
+  esac
+  printf '{"host":"%s","path":"%s"}\n' "$host" "$path"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
 fn write_garbage_glab(dir: &std::path::Path) -> std::path::PathBuf {
     let bin_dir = dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
@@ -606,6 +659,95 @@ async fn git_remote_gitlab_api_rejects_non_project_paths() {
 
     let err = svc
         .gitlab_api(1, "gitlab.com", "groups/some-group")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_pipeline_parses_latest_pipeline() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_pipelines(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let pipeline = svc
+        .gitlab_pipeline(1, "gitlab.example.com", "group/project", 1)
+        .await
+        .unwrap()
+        .expect("expected a pipeline");
+
+    assert_eq!(pipeline.status, "success");
+    assert_eq!(pipeline.name, "test-and-build");
+    assert_eq!(
+        pipeline.web_url,
+        "https://gitlab.example.com/group/project/-/pipelines/42"
+    );
+    assert_eq!(pipeline.ref_name, "feature");
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_pipeline_returns_none_when_empty() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_pipelines(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let pipeline = svc
+        .gitlab_pipeline(1, "gitlab.example.com", "empty/project", 1)
+        .await
+        .unwrap();
+
+    assert!(pipeline.is_none());
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_pipeline_falls_back_to_unknown_status() {
+    let tmp = TempDir::new().unwrap();
+    let bin_dir = tmp.path().join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+if [ "$1" = "api" ]; then
+  printf '[{"id":7,"web_url":"https://gitlab.example.com/-/pipelines/7","ref":"feature"}]\n'
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(bin));
+
+    let pipeline = svc
+        .gitlab_pipeline(1, "gitlab.example.com", "group/project", 1)
+        .await
+        .unwrap()
+        .expect("expected a pipeline");
+
+    assert_eq!(pipeline.status, "unknown");
+    assert_eq!(pipeline.name, "feature");
+    assert_eq!(pipeline.web_url, "https://gitlab.example.com/-/pipelines/7");
+    assert_eq!(pipeline.ref_name, "feature");
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_pipeline_rejects_invalid_json() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_garbage_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let err = svc
+        .gitlab_pipeline(1, "gitlab.com", "group/project", 1)
         .await
         .unwrap_err();
     assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));

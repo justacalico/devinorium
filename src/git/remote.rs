@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use regex::Regex;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -61,6 +62,15 @@ pub struct GitLabStatus {
     pub host: String,
     pub authed: bool,
     pub account: Option<String>,
+}
+
+/// A single CI/CD pipeline for a GitLab merge request.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitLabPipeline {
+    pub status: String,
+    pub name: String,
+    pub web_url: String,
+    pub ref_name: String,
 }
 
 /// Manages `glab` authentication state by shelling out to the CLI.
@@ -300,6 +310,30 @@ impl GitRemoteService {
         self.run(user_id, bin, &["api", path, "--hostname", host]).await
     }
 
+    /// Fetch the latest CI/CD pipeline for a GitLab merge request.
+    ///
+    /// [project_path] is the raw "group/project" style path and is encoded
+    /// before being passed to `glab api`.
+    pub async fn gitlab_pipeline(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        iid: i64,
+    ) -> Result<Option<GitLabPipeline>, RemoteError> {
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let path = format!(
+            "projects/{encoded_project}/merge_requests/{iid}/pipelines?per_page=1"
+        );
+
+        let output = self.gitlab_api(user_id, hostname, &path).await?;
+        let pipelines: Vec<serde_json::Value> = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid pipeline json: {e}"))
+        })?;
+
+        pipelines.into_iter().next().map(parse_pipeline).transpose()
+    }
+
     /// Run a glab/gh command and treat non-zero exit as an error.
     async fn run(
         &self,
@@ -378,4 +412,32 @@ impl GitRemoteService {
 
         Ok(cmd)
     }
+}
+
+fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteError> {
+    let status = value["status"]
+        .as_str()
+        .or_else(|| {
+            value
+                .get("detailed_status")
+                .and_then(|v| v.get("group"))
+                .and_then(|v| v.as_str())
+        })
+        .unwrap_or("unknown");
+
+    let name = value["name"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .or_else(|| value["ref"].as_str())
+        .unwrap_or(status);
+
+    let web_url = value["web_url"].as_str().unwrap_or("");
+    let ref_name = value["ref"].as_str().unwrap_or("");
+
+    Ok(GitLabPipeline {
+        status: status.to_string(),
+        name: name.to_string(),
+        web_url: web_url.to_string(),
+        ref_name: ref_name.to_string(),
+    })
 }

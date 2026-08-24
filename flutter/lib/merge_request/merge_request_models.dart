@@ -53,6 +53,30 @@ class MergeRequestChange {
       );
 }
 
+/// CI/CD pipeline attached to a merge request.
+class MergeRequestPipeline {
+  final String status;
+  final String name;
+  final String webUrl;
+  final String refName;
+
+  const MergeRequestPipeline({
+    required this.status,
+    this.name = '',
+    this.webUrl = '',
+    this.refName = '',
+  });
+
+  factory MergeRequestPipeline.fromJson(Map<String, dynamic> j) => MergeRequestPipeline(
+        status: j['status'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        webUrl: j['web_url'] as String? ?? '',
+        refName: j['ref_name'] as String? ?? '',
+      );
+
+  bool get isPresent => status.isNotEmpty;
+}
+
 /// A comment or note on a merge request.
 class MergeRequestComment {
   final MergeRequestAuthor? author;
@@ -99,6 +123,7 @@ class MergeRequestDetail {
   final String updatedAt;
   final List<MergeRequestChange> changes;
   final List<MergeRequestComment> comments;
+  final MergeRequestPipeline? pipeline;
 
   const MergeRequestDetail({
     required this.title,
@@ -115,6 +140,7 @@ class MergeRequestDetail {
     this.updatedAt = '',
     this.changes = const [],
     this.comments = const [],
+    this.pipeline,
   });
 
   bool get isOpen => state == 'opened' || state == 'open';

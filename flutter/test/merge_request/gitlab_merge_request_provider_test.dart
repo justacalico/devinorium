@@ -81,6 +81,15 @@ void main() {
           ]);
         }
 
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, {
+            'status': 'success',
+            'name': 'test-and-build',
+            'web_url': 'https://gitlab.com/group/project/-/pipelines/42',
+            'ref_name': 'feature',
+          });
+        }
+
         return _json(404, {'error': 'unexpected'});
       });
 
@@ -99,6 +108,51 @@ void main() {
       expect(detail.changes.first.newFile, isTrue);
       expect(detail.comments.length, 1);
       expect(detail.comments.first.body, 'Looks good');
+      expect(detail.pipeline, isNotNull);
+      expect(detail.pipeline!.status, 'success');
+      expect(detail.pipeline!.name, 'test-and-build');
+      expect(detail.pipeline!.webUrl,
+          'https://gitlab.com/group/project/-/pipelines/42');
+      expect(detail.pipeline!.refName, 'feature');
+    });
+
+    test('loads with no pipeline when endpoint returns 204', () async {
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return http.Response('', 204);
+        }
+
+        final query = req.url.queryParameters;
+        final path = query['path'] ?? '';
+
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+            'web_url': 'https://gitlab.com/group/project/-/merge_requests/1',
+          });
+        }
+
+        if (path.contains('/diffs')) {
+          return _json(200, {'_list': []});
+        }
+
+        if (path.contains('/notes')) {
+          return _json(200, {'_list': []});
+        }
+
+        return _json(404, {'error': 'unexpected'});
+      });
+
+      final client = ApiClient.withClient(mock);
+      final provider = GitLabMergeRequestProvider(client);
+      await provider.load('https://gitlab.com/group/project/-/merge_requests/1');
+
+      expect(provider.value.isReady, isTrue);
+      expect(provider.value.valueOrNull?.pipeline, isNull);
     });
 
     test('rejects unsupported URLs', () async {

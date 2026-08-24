@@ -85,6 +85,42 @@ void main() {
       expect(find.text('@reviewer'), findsOneWidget);
     });
 
+    testWidgets('renders pipeline card on overview tab', (tester) async {
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipeline: MergeRequestPipeline(
+          status: 'success',
+          name: 'test-and-build',
+          webUrl: 'https://gitlab.com/group/project/-/pipelines/42',
+          refName: 'feature',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(
+            body: MergeRequestView(
+              detail: AsyncValue.ready(detailWithPipeline),
+              url: '',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('test-and-build'), findsOneWidget);
+      expect(find.text('success'), findsOneWidget);
+      expect(find.byIcon(Icons.open_in_new), findsOneWidget);
+    });
+
     testWidgets('renders system comment HTML as markdown', (tester) async {
       await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
       await tester.pumpAndSettle();

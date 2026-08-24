@@ -3319,6 +3319,68 @@ exit 1
     bin
 }
 
+fn write_fake_glab_with_pipelines(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "config" ] && [ "$2" = "set" ]; then
+  if [ "$3" = "token" ]; then
+    mkdir -p "$XDG_CONFIG_HOME"
+    printf '%s' "$4" > "$XDG_CONFIG_HOME/token"
+  fi
+  exit 0
+fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  if [ -f "$XDG_CONFIG_HOME/token" ] && [ -s "$XDG_CONFIG_HOME/token" ]; then
+    echo "$host"
+    echo "  Logged in to $host as testuser"
+    exit 0
+  else
+    echo "$host"
+    echo "  ! No token found"
+    exit 1
+  fi
+fi
+if [ "$1" = "auth" ] && [ "$2" = "logout" ]; then
+  rm -f "$XDG_CONFIG_HOME/token"
+  echo "Successfully logged out"
+  exit 0
+fi
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"/pipelines"*)
+      if echo "$path" | grep -q "empty"; then
+        printf '[]\n'
+      else
+        printf '[{"id":42,"status":"success","name":"test-and-build","web_url":"https://gitlab.example.com/group/project/-/pipelines/42","ref":"feature"}]\n'
+      fi
+      exit 0
+      ;;
+  esac
+  host="gitlab.com"
+  if [ "$3" = "--hostname" ]; then
+    host="$4"
+  fi
+  printf '{"host":"%s","path":"%s"}\n' "$host" "$path"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
 fn write_glab_token_file(config_root: &std::path::Path, user_id: i64) {
     let token_file = config_root
         .join("glab")
@@ -3471,6 +3533,84 @@ async fn git_connections_gitlab_proxy_forwards_api_requests() {
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     assert_eq!(v["host"], "gitlab.example.com");
     assert_eq!(v["path"], "projects/group%2Fproject/merge_requests/1");
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_pipelines_returns_latest_pipeline() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_pipelines(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines?project=group%2Fproject&iid=1&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["status"], "success");
+    assert_eq!(v["name"], "test-and-build");
+    assert_eq!(
+        v["web_url"],
+        "https://gitlab.example.com/group/project/-/pipelines/42"
+    );
+    assert_eq!(v["ref_name"], "feature");
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_pipelines_returns_204_when_empty() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_pipelines(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines?project=empty%2Fproject&iid=1&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_pipelines_rejects_invalid_iid() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_pipelines(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines?project=group%2Fproject&iid=0",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 fn git_cli(args: &[&str], cwd: &std::path::Path) {
