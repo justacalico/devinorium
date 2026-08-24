@@ -573,6 +573,10 @@ impl GitRemoteService {
     }
 
     /// Run a glab/gh command and return stdout, stderr and success separately.
+    ///
+    /// Retries on `ETXTBSY` because freshly written shell scripts can briefly
+    /// appear busy if a sibling thread forked while the file was open for
+    /// writing.
     async fn run_parts(
         &self,
         user_id: i64,
@@ -580,19 +584,37 @@ impl GitRemoteService {
         args: &[&str],
         timeout_duration: Duration,
     ) -> Result<(String, String, bool), RemoteError> {
-        let mut cmd = self.env_cmd(user_id, bin)?;
-        cmd.args(args);
+        const MAX_ATTEMPTS: usize = 5;
+        const BACKOFF: Duration = Duration::from_millis(25);
 
-        let output = timeout(timeout_duration, cmd.output())
-            .await
-            .map_err(|_| RemoteError::Timeout)?
-            .map_err(|e| RemoteError::StatusFailed(e.to_string()))?;
+        for attempt in 0..MAX_ATTEMPTS {
+            let mut cmd = self.env_cmd(user_id, bin)?;
+            cmd.args(args);
 
-        Ok((
-            String::from_utf8_lossy(&output.stdout).into_owned(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-            output.status.success(),
-        ))
+            let output = match timeout(timeout_duration, cmd.output()).await {
+                Ok(output) => output,
+                Err(_) => return Err(RemoteError::Timeout),
+            };
+
+            match output {
+                Ok(output) => {
+                    return Ok((
+                        String::from_utf8_lossy(&output.stdout).into_owned(),
+                        String::from_utf8_lossy(&output.stderr).into_owned(),
+                        output.status.success(),
+                    ));
+                }
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                        && attempt + 1 < MAX_ATTEMPTS =>
+                {
+                    sleep(BACKOFF).await;
+                }
+                Err(e) => return Err(RemoteError::StatusFailed(e.to_string())),
+            }
+        }
+
+        unreachable!()
     }
 
     fn env_cmd(&self, user_id: i64, bin: &Path) -> Result<Command, RemoteError> {
