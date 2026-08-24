@@ -836,6 +836,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get comments => 'Comments';
 
   @override
+  String get pipelines => 'Pipelines';
+
+  @override
   String get noDescription => 'No description provided.';
 
   @override
@@ -843,6 +846,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noComments => 'No comments yet.';
+
+  @override
+  String get noPipelines => 'No pipelines yet.';
 
   @override
   String get openInBrowser => 'Open in browser';

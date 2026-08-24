@@ -61,7 +61,7 @@ class _MergeRequestBody extends StatefulWidget {
 
 class _MergeRequestBodyState extends State<_MergeRequestBody>
     with TickerProviderStateMixin {
-  late final _tabController = TabController(length: 3, vsync: this);
+  late final _tabController = TabController(length: 4, vsync: this);
 
   @override
   void dispose() {
@@ -90,6 +90,7 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
             Tab(text: l10n(context).overview),
             Tab(text: '${l10n(context).changes} (${detail.changes.length})'),
             Tab(text: '${l10n(context).comments} (${detail.comments.length})'),
+            Tab(text: '${l10n(context).pipelines} (${detail.pipelines.length})'),
           ],
         ),
         Expanded(
@@ -100,6 +101,10 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
               _ChangesTab(changes: detail.changes),
               _CommentsTab(
                 comments: detail.comments,
+                onLinkTap: widget.onLinkTap,
+              ),
+              _PipelinesTab(
+                pipelines: detail.pipelines,
                 onLinkTap: widget.onLinkTap,
               ),
             ],
@@ -220,8 +225,8 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final pipeline = detail.pipeline;
-    final hasPipeline = pipeline != null && pipeline.isPresent;
+    final latestPipeline =
+        detail.pipelines.isNotEmpty ? detail.pipelines.first : null;
 
     final highlighter = SyntaxHighlighter(theme);
     final description = detail.description.isEmpty
@@ -253,8 +258,8 @@ class _OverviewTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (hasPipeline) ...[
-            _PipelineCard(pipeline: pipeline!, onLinkTap: onLinkTap),
+          if (latestPipeline != null && latestPipeline.isPresent) ...[
+            _PipelineCard(pipeline: latestPipeline, onLinkTap: onLinkTap),
             const SizedBox(height: 16),
           ],
           description,
@@ -341,6 +346,68 @@ IconData _pipelineIcon(String status) {
   if (lower == 'pending' || lower == 'created') return Icons.pending;
   if (lower == 'canceled' || lower == 'skipped') return Icons.cancel;
   return Icons.play_circle_outline;
+}
+
+class _PipelinesTab extends StatelessWidget {
+  final List<MergeRequestPipeline> pipelines;
+  final ValueChanged<String>? onLinkTap;
+
+  const _PipelinesTab({required this.pipelines, this.onLinkTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (pipelines.isEmpty) {
+      return Center(
+        child: Text(
+          l10n(context).noPipelines,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      itemCount: pipelines.length,
+      itemBuilder: (context, index) {
+        final pipeline = pipelines[index];
+        final color = _pipelineColor(theme, pipeline.status);
+        final openable =
+            pipeline.webUrl.isNotEmpty && isOpenableLink(pipeline.webUrl);
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: Icon(_pipelineIcon(pipeline.status), color: color),
+            title: Text(
+              pipeline.name.isNotEmpty ? pipeline.name : pipeline.status,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              [
+                pipeline.status,
+                if (pipeline.createdAt.isNotEmpty) pipeline.createdAt,
+              ].join(' · '),
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
+            trailing: openable
+                ? IconButton(
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    tooltip: l10n(context).openInBrowser,
+                    onPressed: () => onLinkTap?.call(pipeline.webUrl),
+                  )
+                : null,
+            onTap: openable ? () => onLinkTap?.call(pipeline.webUrl) : null,
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ChangesTab extends StatefulWidget {

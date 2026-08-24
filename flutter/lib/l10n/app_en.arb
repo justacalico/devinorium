@@ -488,9 +488,11 @@
   "overview": "Overview",
   "changes": "Changes",
   "comments": "Comments",
+  "pipelines": "Pipelines",
   "noDescription": "No description provided.",
   "noChanges": "No changed files.",
   "noComments": "No comments yet.",
+  "noPipelines": "No pipelines yet.",
   "openInBrowser": "Open in browser",
   "draft": "Draft",
   "retry": "Retry"

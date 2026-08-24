@@ -145,11 +145,10 @@ async fn gitlab_pipelines(
 
     match state
         .git_remote
-        .gitlab_pipeline(user.id, hostname, &q.project, q.iid)
+        .gitlab_pipelines(user.id, hostname, &q.project, q.iid)
         .await
     {
-        Ok(Some(pipeline)) => Json(pipeline).into_response(),
-        Ok(None) => StatusCode::NO_CONTENT.into_response(),
+        Ok(pipelines) => Json(pipelines).into_response(),
         Err(RemoteError::GitLabNotAvailable) => (
             StatusCode::NOT_FOUND,
             Json(ApiError::new("gitlab cli is not installed")),

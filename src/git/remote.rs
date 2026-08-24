@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use regex::Regex;
 use tokio::process::Command;
@@ -71,6 +72,8 @@ pub struct GitLabPipeline {
     pub name: String,
     pub web_url: String,
     pub ref_name: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Manages `glab` authentication state by shelling out to the CLI.
@@ -310,20 +313,21 @@ impl GitRemoteService {
         self.run(user_id, bin, &["api", path, "--hostname", host]).await
     }
 
-    /// Fetch the latest CI/CD pipeline for a GitLab merge request.
+    /// Fetch the CI/CD pipelines for a GitLab merge request.
     ///
     /// [project_path] is the raw "group/project" style path and is encoded
-    /// before being passed to `glab api`.
-    pub async fn gitlab_pipeline(
+    /// before being passed to `glab api`. The list is sorted with the most
+    /// recently updated pipeline first.
+    pub async fn gitlab_pipelines(
         &self,
         user_id: i64,
         hostname: &str,
         project_path: &str,
         iid: i64,
-    ) -> Result<Option<GitLabPipeline>, RemoteError> {
+    ) -> Result<Vec<GitLabPipeline>, RemoteError> {
         let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
         let path = format!(
-            "projects/{encoded_project}/merge_requests/{iid}/pipelines?per_page=1"
+            "projects/{encoded_project}/merge_requests/{iid}/pipelines?per_page=100"
         );
 
         let output = self.gitlab_api(user_id, hostname, &path).await?;
@@ -331,7 +335,16 @@ impl GitRemoteService {
             RemoteError::StatusFailed(format!("gitlab returned invalid pipeline json: {e}"))
         })?;
 
-        pipelines.into_iter().next().map(parse_pipeline).transpose()
+        let mut pipelines: Vec<GitLabPipeline> = pipelines
+            .into_iter()
+            .map(parse_pipeline)
+            .collect::<Result<Vec<_>, _>>()?;
+        pipelines.sort_by(|a, b| {
+            let a_time = parse_timestamp(&a.updated_at);
+            let b_time = parse_timestamp(&b.updated_at);
+            b_time.cmp(&a_time)
+        });
+        Ok(pipelines)
     }
 
     /// Run a glab/gh command and treat non-zero exit as an error.
@@ -414,6 +427,12 @@ impl GitRemoteService {
     }
 }
 
+fn parse_timestamp(s: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(s)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(DateTime::UNIX_EPOCH)
+}
+
 fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteError> {
     let status = value["status"]
         .as_str()
@@ -433,11 +452,15 @@ fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteErro
 
     let web_url = value["web_url"].as_str().unwrap_or("");
     let ref_name = value["ref"].as_str().unwrap_or("");
+    let created_at = value["created_at"].as_str().unwrap_or("");
+    let updated_at = value["updated_at"].as_str().unwrap_or("");
 
     Ok(GitLabPipeline {
         status: status.to_string(),
         name: name.to_string(),
         web_url: web_url.to_string(),
         ref_name: ref_name.to_string(),
+        created_at: created_at.to_string(),
+        updated_at: updated_at.to_string(),
     })
 }

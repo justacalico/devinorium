@@ -1582,6 +1582,12 @@ abstract class AppLocalizations {
   /// **'Comments'**
   String get comments;
 
+  /// No description provided for @pipelines.
+  ///
+  /// In en, this message translates to:
+  /// **'Pipelines'**
+  String get pipelines;
+
   /// No description provided for @noDescription.
   ///
   /// In en, this message translates to:
@@ -1599,6 +1605,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No comments yet.'**
   String get noComments;
+
+  /// No description provided for @noPipelines.
+  ///
+  /// In en, this message translates to:
+  /// **'No pipelines yet.'**
+  String get noPipelines;
 
   /// No description provided for @openInBrowser.
   ///

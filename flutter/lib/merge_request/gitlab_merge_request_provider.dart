@@ -71,9 +71,11 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
         .map(MergeRequestComment.fromJson)
         .toList();
 
-    final pipeline = pipelineJson.isEmpty
-        ? null
-        : MergeRequestPipeline.fromJson(pipelineJson);
+    final pipelineList = pipelineJson['_list'] as List<dynamic>? ?? [];
+    final pipelines = pipelineList
+        .whereType<Map<String, dynamic>>()
+        .map(MergeRequestPipeline.fromJson)
+        .toList();
 
     return MergeRequestDetail(
       title: _string(mr, 'title') ?? 'Untitled merge request',
@@ -92,7 +94,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
       updatedAt: _string(mr, 'updated_at') ?? '',
       changes: changes,
       comments: comments,
-      pipeline: pipeline,
+      pipelines: pipelines,
     );
   }
 

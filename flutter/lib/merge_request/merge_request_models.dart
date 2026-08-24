@@ -59,12 +59,16 @@ class MergeRequestPipeline {
   final String name;
   final String webUrl;
   final String refName;
+  final String createdAt;
+  final String updatedAt;
 
   const MergeRequestPipeline({
     required this.status,
     this.name = '',
     this.webUrl = '',
     this.refName = '',
+    this.createdAt = '',
+    this.updatedAt = '',
   });
 
   factory MergeRequestPipeline.fromJson(Map<String, dynamic> j) => MergeRequestPipeline(
@@ -72,6 +76,8 @@ class MergeRequestPipeline {
         name: j['name'] as String? ?? '',
         webUrl: j['web_url'] as String? ?? '',
         refName: j['ref_name'] as String? ?? '',
+        createdAt: j['created_at'] as String? ?? '',
+        updatedAt: j['updated_at'] as String? ?? '',
       );
 
   bool get isPresent => status.isNotEmpty;
@@ -123,7 +129,7 @@ class MergeRequestDetail {
   final String updatedAt;
   final List<MergeRequestChange> changes;
   final List<MergeRequestComment> comments;
-  final MergeRequestPipeline? pipeline;
+  final List<MergeRequestPipeline> pipelines;
 
   const MergeRequestDetail({
     required this.title,
@@ -140,7 +146,7 @@ class MergeRequestDetail {
     this.updatedAt = '',
     this.changes = const [],
     this.comments = const [],
-    this.pipeline,
+    this.pipelines = const [],
   });
 
   bool get isOpen => state == 'opened' || state == 'open';

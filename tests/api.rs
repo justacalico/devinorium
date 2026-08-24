@@ -3536,7 +3536,7 @@ async fn git_connections_gitlab_proxy_forwards_api_requests() {
 }
 
 #[tokio::test]
-async fn git_connections_gitlab_pipelines_returns_latest_pipeline() {
+async fn git_connections_gitlab_pipelines_returns_pipelines_list() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab_with_pipelines(&home);
@@ -3558,17 +3558,19 @@ async fn git_connections_gitlab_pipelines_returns_latest_pipeline() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
-    assert_eq!(v["status"], "success");
-    assert_eq!(v["name"], "test-and-build");
+    assert!(v.is_array());
+    assert_eq!(v.as_array().unwrap().len(), 1);
+    assert_eq!(v[0]["status"], "success");
+    assert_eq!(v[0]["name"], "test-and-build");
     assert_eq!(
-        v["web_url"],
+        v[0]["web_url"],
         "https://gitlab.example.com/group/project/-/pipelines/42"
     );
-    assert_eq!(v["ref_name"], "feature");
+    assert_eq!(v[0]["ref_name"], "feature");
 }
 
 #[tokio::test]
-async fn git_connections_gitlab_pipelines_returns_204_when_empty() {
+async fn git_connections_gitlab_pipelines_returns_empty_list_when_none() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
     let glab = write_fake_glab_with_pipelines(&home);
@@ -3587,7 +3589,11 @@ async fn git_connections_gitlab_pipelines_returns_204_when_empty() {
         ))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v.is_array());
+    assert!(v.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
