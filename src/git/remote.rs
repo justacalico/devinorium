@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use regex::Regex;
 use tokio::process::Command;
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 
 /// Possible errors from Git host CLI operations.
 #[derive(Debug, thiserror::Error)]
@@ -98,6 +98,11 @@ pub struct GitRemoteService {
     /// `config_root`. When false, `glab` uses the user's global config (the
     /// default for the production server process).
     isolated: bool,
+    /// How long to wait for GitLab to finish a synchronous `merge` call before
+    /// falling back to polling the merge request state.
+    merge_timeout: Duration,
+    /// How long to wait between merge request state polls.
+    poll_interval: Duration,
 }
 
 impl GitRemoteService {
@@ -108,6 +113,8 @@ impl GitRemoteService {
             config_root: config_root.into(),
             glab_bin: which::which("glab").ok(),
             isolated: false,
+            merge_timeout: Duration::from_secs(120),
+            poll_interval: Duration::from_secs(3),
         }
     }
 
@@ -118,6 +125,25 @@ impl GitRemoteService {
             config_root: config_root.into(),
             glab_bin,
             isolated: true,
+            merge_timeout: Duration::from_secs(120),
+            poll_interval: Duration::from_secs(3),
+        }
+    }
+
+    /// Build a service with explicit `glab` path and timeouts. Useful in tests
+    /// to exercise the timeout and polling paths without real multi-minute waits.
+    pub fn with_glab_bin_and_timeouts(
+        config_root: impl Into<PathBuf>,
+        glab_bin: Option<PathBuf>,
+        merge_timeout: Duration,
+        poll_interval: Duration,
+    ) -> Self {
+        Self {
+            config_root: config_root.into(),
+            glab_bin,
+            isolated: true,
+            merge_timeout,
+            poll_interval,
         }
     }
 
@@ -353,8 +379,9 @@ impl GitRemoteService {
 
     /// Apply a state change to a merge request and return the updated JSON.
     ///
-    /// Merge requests can take a while for GitLab to actually merge (large
-    /// repos, post-merge hooks, etc.), so the call gets a longer timeout.
+    /// `Merge` can take a while for GitLab to actually complete (large repos,
+    /// post-merge hooks, etc.). If the first call times out we poll the MR
+    /// state so the user sees the final result instead of a raw timeout.
     pub async fn gitlab_merge_request_action(
         &self,
         user_id: i64,
@@ -373,8 +400,8 @@ impl GitRemoteService {
         let base = format!("projects/{encoded_project}/merge_requests/{iid}");
 
         let (path, fields): (String, Vec<(&str, &str)>) = match action {
-            MergeRequestAction::Close => (base, vec![("state_event", "close")]),
-            MergeRequestAction::Reopen => (base, vec![("state_event", "reopen")]),
+            MergeRequestAction::Close => (base.clone(), vec![("state_event", "close")]),
+            MergeRequestAction::Reopen => (base.clone(), vec![("state_event", "reopen")]),
             MergeRequestAction::Merge => (format!("{base}/merge"), Vec::new()),
             MergeRequestAction::MergeWhenPipelineSucceeds => (
                 format!("{base}/merge"),
@@ -383,14 +410,59 @@ impl GitRemoteService {
         };
 
         let timeout = match action {
-            MergeRequestAction::Merge => Duration::from_secs(120),
+            MergeRequestAction::Merge => self.merge_timeout,
             _ => Duration::from_secs(30),
         };
 
-        let output = self
+        match self
             .gitlab_api_write(user_id, hostname, "PUT", &path, &fields, timeout)
-            .await?;
-        serde_json::from_str(&output).map_err(|e| {
+            .await
+        {
+            Ok(output) => Self::parse_merge_request_json(&output),
+            Err(RemoteError::Timeout) if action == MergeRequestAction::Merge => {
+                self.poll_merge_request_state(user_id, hostname, &base).await
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn poll_merge_request_state(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        mr_path: &str,
+    ) -> Result<serde_json::Value, RemoteError> {
+        let max_attempts = 60; // up to 60 * 3s = 3 minutes with defaults
+
+        for attempt in 0..max_attempts {
+            sleep(self.poll_interval).await;
+            match self.gitlab_api(user_id, hostname, mr_path).await {
+                Ok(output) => {
+                    let value = Self::parse_merge_request_json(&output)?;
+                    if let Some(state) = value["state"].as_str() {
+                        if state == "merged" || state == "closed" {
+                            return Ok(value);
+                        }
+                    }
+                    // Still open or in an intermediate state; keep polling.
+                }
+                Err(RemoteError::Timeout) if attempt == max_attempts - 1 => {
+                    return Err(RemoteError::StatusFailed(
+                        "GitLab did not finish the merge in time".into(),
+                    ));
+                }
+                Err(RemoteError::Timeout) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(RemoteError::StatusFailed(
+            "GitLab did not finish the merge in time".into(),
+        ))
+    }
+
+    fn parse_merge_request_json(output: &str) -> Result<serde_json::Value, RemoteError> {
+        serde_json::from_str(output).map_err(|e| {
             RemoteError::StatusFailed(format!("gitlab returned invalid merge request json: {e}"))
         })
     }
