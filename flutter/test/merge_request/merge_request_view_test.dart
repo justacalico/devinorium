@@ -179,6 +179,14 @@ void main() {
       expect(find.text('No pipelines yet.'), findsOneWidget);
     });
 
+    testWidgets('hides action buttons when no callback is given', (tester) async {
+      await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Merge'), findsNothing);
+      expect(find.text('Close merge request'), findsNothing);
+    });
+
     testWidgets('renders system comment HTML as markdown', (tester) async {
       await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
       await tester.pumpAndSettle();

@@ -65,6 +65,19 @@ pub struct GitLabStatus {
     pub account: Option<String>,
 }
 
+/// A write action that can be applied to a GitLab merge request.
+///
+/// The set is deliberately closed so the frontend cannot ask the backend to
+/// perform arbitrary mutations through the `glab` proxy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeRequestAction {
+    Close,
+    Reopen,
+    Merge,
+    MergeWhenPipelineSucceeds,
+}
+
 /// A single CI/CD pipeline for a GitLab merge request.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GitLabPipeline {
@@ -292,8 +305,96 @@ impl GitRemoteService {
         path: &str,
     ) -> Result<String, RemoteError> {
         let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
-        let host = if hostname.is_empty() { "gitlab.com" } else { hostname };
+        let host = Self::api_host(hostname);
+        Self::check_api_path(path)?;
 
+        self.run(user_id, bin, &["api", path, "--hostname", host]).await
+    }
+
+    /// Call the GitLab API with an explicit HTTP method and body fields.
+    ///
+    /// Fields are passed as `--field key=value`, so `glab` encodes `true`,
+    /// `false` and integers as their JSON types.
+    async fn gitlab_api_write(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        method: &str,
+        path: &str,
+        fields: &[(&str, &str)],
+    ) -> Result<String, RemoteError> {
+        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let host = Self::api_host(hostname);
+        Self::check_api_path(path)?;
+
+        let mut args = vec![
+            "api".to_string(),
+            path.to_string(),
+            "--hostname".to_string(),
+            host.to_string(),
+            "--method".to_string(),
+            method.to_string(),
+        ];
+        for (key, value) in fields {
+            // `glab` reads `@file` values from disk; refuse them outright.
+            if value.starts_with('@') {
+                return Err(RemoteError::StatusFailed(
+                    "field values must not start with @".into(),
+                ));
+            }
+            args.push("--field".to_string());
+            args.push(format!("{key}={value}"));
+        }
+
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.run(user_id, bin, &args).await
+    }
+
+    /// Apply a state change to a merge request and return the updated JSON.
+    pub async fn gitlab_merge_request_action(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        iid: i64,
+        action: MergeRequestAction,
+    ) -> Result<serde_json::Value, RemoteError> {
+        if project_path.is_empty() || iid <= 0 {
+            return Err(RemoteError::StatusFailed(
+                "merge request reference is invalid".into(),
+            ));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let base = format!("projects/{encoded_project}/merge_requests/{iid}");
+
+        let (path, fields): (String, Vec<(&str, &str)>) = match action {
+            MergeRequestAction::Close => (base, vec![("state_event", "close")]),
+            MergeRequestAction::Reopen => (base, vec![("state_event", "reopen")]),
+            MergeRequestAction::Merge => (format!("{base}/merge"), Vec::new()),
+            MergeRequestAction::MergeWhenPipelineSucceeds => (
+                format!("{base}/merge"),
+                vec![("merge_when_pipeline_succeeds", "true")],
+            ),
+        };
+
+        let output = self
+            .gitlab_api_write(user_id, hostname, "PUT", &path, &fields)
+            .await?;
+        serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid merge request json: {e}"))
+        })
+    }
+
+    fn api_host(hostname: &str) -> &str {
+        if hostname.is_empty() {
+            "gitlab.com"
+        } else {
+            hostname
+        }
+    }
+
+    fn check_api_path(path: &str) -> Result<(), RemoteError> {
         if path.starts_with('/') {
             return Err(RemoteError::StatusFailed(
                 "api path must not start with /".into(),
@@ -309,8 +410,7 @@ impl GitRemoteService {
                 "invalid characters in api path".into(),
             ));
         }
-
-        self.run(user_id, bin, &["api", path, "--hostname", host]).await
+        Ok(())
     }
 
     /// Fetch the CI/CD pipelines for a GitLab merge request.
@@ -347,20 +447,23 @@ impl GitRemoteService {
         Ok(pipelines)
     }
 
-    /// Run a glab/gh command and treat non-zero exit as an error.
+    /// Run a glab/gh command and return stdout, treating a non-zero exit as an
+    /// error. Failures carry the combined output so the CLI's own message is
+    /// reported; successes exclude stderr so JSON payloads stay parseable.
     async fn run(
         &self,
         user_id: i64,
         bin: &Path,
         args: &[&str],
     ) -> Result<String, RemoteError> {
-        let (output, success) = self.run_raw(user_id, bin, args).await?;
+        let (stdout, stderr, success) = self.run_parts(user_id, bin, args).await?;
         if !success {
-            let msg = output.trim();
+            let combined = format!("{stdout}\n{stderr}");
+            let msg = combined.trim();
             let msg = if msg.is_empty() { "command failed" } else { msg };
             return Err(RemoteError::StatusFailed(msg.to_string()));
         }
-        Ok(output)
+        Ok(stdout)
     }
 
     /// Run a glab/gh command and return the combined output plus success.
@@ -370,6 +473,17 @@ impl GitRemoteService {
         bin: &Path,
         args: &[&str],
     ) -> Result<(String, bool), RemoteError> {
+        let (stdout, stderr, success) = self.run_parts(user_id, bin, args).await?;
+        Ok((format!("{stdout}\n{stderr}"), success))
+    }
+
+    /// Run a glab/gh command and return stdout, stderr and success separately.
+    async fn run_parts(
+        &self,
+        user_id: i64,
+        bin: &Path,
+        args: &[&str],
+    ) -> Result<(String, String, bool), RemoteError> {
         let mut cmd = self.env_cmd(user_id, bin)?;
         cmd.args(args);
 
@@ -378,10 +492,11 @@ impl GitRemoteService {
             .map_err(|_| RemoteError::Timeout)?
             .map_err(|e| RemoteError::StatusFailed(e.to_string()))?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let combined = format!("{stdout}\n{stderr}");
-        Ok((combined, output.status.success()))
+        Ok((
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+            output.status.success(),
+        ))
     }
 
     fn env_cmd(&self, user_id: i64, bin: &Path) -> Result<Command, RemoteError> {

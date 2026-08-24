@@ -3619,6 +3619,270 @@ async fn git_connections_gitlab_pipelines_rejects_invalid_iid() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Fake `glab` that echoes the `api` invocation back so tests can assert on
+/// the method and fields the backend used.
+fn write_echoing_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+if [ "$1" = "api" ]; then
+  printf '{"args":"%s"}\n' "$*"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_closes_merge_request() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"project":"group/project","iid":7,"action":"close","hostname":"gitlab.example.com"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let args = v["args"].as_str().unwrap();
+    assert!(args.contains("projects/group%2Fproject/merge_requests/7"));
+    assert!(args.contains("--method PUT"));
+    assert!(args.contains("--field state_event=close"));
+    assert!(args.contains("--hostname gitlab.example.com"));
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_merges_when_pipeline_succeeds() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body =
+        r#"{"project":"group/project","iid":7,"action":"merge_when_pipeline_succeeds"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let args = v["args"].as_str().unwrap();
+    assert!(args.contains("projects/group%2Fproject/merge_requests/7/merge"));
+    assert!(args.contains("--field merge_when_pipeline_succeeds=true"));
+    assert!(args.contains("--hostname gitlab.com"));
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_reopens_merge_request() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"project":"group/project","iid":7,"action":"reopen"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["args"]
+        .as_str()
+        .unwrap()
+        .contains("--field state_event=reopen"));
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_rejects_empty_project() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"project":"","iid":7,"action":"merge"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_reports_missing_glab() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, None));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"project":"group/project","iid":7,"action":"merge"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_rejects_cross_origin_post() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/git-connections/gitlab/merge-requests/actions")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://evil.example.com")
+                .header("cookie", cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"project":"group/project","iid":7,"action":"merge"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_rejects_unknown_action() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"project":"group/project","iid":7,"action":"delete"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_rejects_invalid_iid() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"project":"group/project","iid":0,"action":"merge"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_requires_auth() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_echoing_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+
+    let body = r#"{"project":"group/project","iid":7,"action":"merge"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            "",
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
 fn git_cli(args: &[&str], cwd: &std::path::Path) {
     let out = std::process::Command::new("git")
         .args(args)

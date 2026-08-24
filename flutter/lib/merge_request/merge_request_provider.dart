@@ -15,4 +15,9 @@ abstract class MergeRequestProvider extends ChangeNotifier {
 
   /// Load the merge request at [url] and update [value].
   Future<void> load(String url);
+
+  /// Apply [action] to the loaded merge request, then refresh [value].
+  ///
+  /// Throws if no merge request is loaded or the host rejects the action.
+  Future<void> perform(MergeRequestAction action);
 }

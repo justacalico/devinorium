@@ -1,3 +1,15 @@
+/// A state change that can be applied to a merge request.
+enum MergeRequestAction {
+  close('close'),
+  reopen('reopen'),
+  merge('merge'),
+  mergeWhenPipelineSucceeds('merge_when_pipeline_succeeds');
+
+  final String wire;
+
+  const MergeRequestAction(this.wire);
+}
+
 /// Author of a merge request or comment.
 class MergeRequestAuthor {
   final String name;
@@ -81,6 +93,17 @@ class MergeRequestPipeline {
       );
 
   bool get isPresent => status.isNotEmpty;
+
+  /// Whether the pipeline has not finished yet, so the merge request can be
+  /// set to merge once it succeeds.
+  bool get isActive => const {
+        'created',
+        'waiting_for_resource',
+        'preparing',
+        'pending',
+        'running',
+        'scheduled',
+      }.contains(status.toLowerCase());
 }
 
 /// A comment or note on a merge request.
@@ -124,6 +147,7 @@ class MergeRequestDetail {
   final String webUrl;
   final bool draft;
   final bool hasConflicts;
+  final bool mergeWhenPipelineSucceeds;
   final MergeRequestAuthor? author;
   final String createdAt;
   final String updatedAt;
@@ -141,6 +165,7 @@ class MergeRequestDetail {
     required this.webUrl,
     this.draft = false,
     this.hasConflicts = false,
+    this.mergeWhenPipelineSucceeds = false,
     this.author,
     this.createdAt = '',
     this.updatedAt = '',
@@ -150,6 +175,14 @@ class MergeRequestDetail {
   });
 
   bool get isOpen => state == 'opened' || state == 'open';
+
+  bool get isClosed => state == 'closed';
+
+  bool get isMerged => state == 'merged';
+
+  /// Whether merging is allowed right now. Drafts and conflicting merge
+  /// requests are rejected by GitLab, so the buttons stay disabled.
+  bool get canMerge => isOpen && !draft && !hasConflicts;
 
   String get branches => '$sourceBranch → $targetBranch';
 }

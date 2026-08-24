@@ -28,5 +28,59 @@ void main() {
       expect(pipeline.status, '');
       expect(pipeline.isPresent, isFalse);
     });
+
+    test('treats unfinished statuses as active', () {
+      for (final status in ['running', 'PENDING', 'created', 'scheduled']) {
+        expect(MergeRequestPipeline(status: status).isActive, isTrue,
+            reason: status);
+      }
+      for (final status in ['success', 'failed', 'canceled', '']) {
+        expect(MergeRequestPipeline(status: status).isActive, isFalse,
+            reason: status);
+      }
+    });
+  });
+
+  group('MergeRequestDetail', () {
+    MergeRequestDetail detail({
+      String state = 'opened',
+      bool draft = false,
+      bool hasConflicts = false,
+    }) =>
+        MergeRequestDetail(
+          title: 'MR',
+          state: state,
+          sourceBranch: 'feature',
+          targetBranch: 'main',
+          iid: 1,
+          webUrl: '',
+          draft: draft,
+          hasConflicts: hasConflicts,
+        );
+
+    test('maps state to flags', () {
+      expect(detail().isOpen, isTrue);
+      expect(detail(state: 'open').isOpen, isTrue);
+      expect(detail().isClosed, isFalse);
+      expect(detail(state: 'closed').isClosed, isTrue);
+      expect(detail(state: 'merged').isMerged, isTrue);
+    });
+
+    test('blocks merging for drafts, conflicts and non-open states', () {
+      expect(detail().canMerge, isTrue);
+      expect(detail(draft: true).canMerge, isFalse);
+      expect(detail(hasConflicts: true).canMerge, isFalse);
+      expect(detail(state: 'closed').canMerge, isFalse);
+    });
+  });
+
+  group('MergeRequestAction', () {
+    test('uses the wire names the backend expects', () {
+      expect(MergeRequestAction.close.wire, 'close');
+      expect(MergeRequestAction.reopen.wire, 'reopen');
+      expect(MergeRequestAction.merge.wire, 'merge');
+      expect(MergeRequestAction.mergeWhenPipelineSucceeds.wire,
+          'merge_when_pipeline_succeeds');
+    });
   });
 }

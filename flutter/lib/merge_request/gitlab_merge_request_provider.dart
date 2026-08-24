@@ -13,11 +13,23 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
   final BaseApiClient _client;
 
   AsyncValue<MergeRequestDetail> _value = const AsyncValue.empty();
+  _MergeRequestRef? _ref;
+  String? _url;
+
+  /// Incremented on every load so a slow fetch cannot overwrite newer data.
+  int _generation = 0;
+  bool _disposed = false;
 
   GitLabMergeRequestProvider(this._client);
 
   @override
   AsyncValue<MergeRequestDetail> get value => _value;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   @override
   bool canHandle(String url) => canHandleUrl(url);
@@ -27,23 +39,70 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
 
   @override
   Future<void> load(String url) async {
+    final generation = ++_generation;
     final ref = _parseRef(url);
     if (ref == null) {
-      _value = AsyncValue.error('Not a supported GitLab merge request URL');
-      notifyListeners();
+      _ref = null;
+      _url = null;
+      _emit(AsyncValue.error('Not a supported GitLab merge request URL'));
       return;
     }
 
-    _value = const AsyncValue.loading();
-    notifyListeners();
+    _ref = ref;
+    _url = url;
+    _emit(const AsyncValue.loading());
 
+    await _refresh(ref, url, generation);
+  }
+
+  @override
+  Future<void> perform(MergeRequestAction action) async {
+    final ref = _ref;
+    final url = _url;
+    if (ref == null || url == null) {
+      throw StateError('No merge request loaded');
+    }
+
+    await _client.post('/api/git-connections/gitlab/merge-requests/actions', {
+      'project': ref.projectPath,
+      'iid': ref.iid,
+      'hostname': ref.hostname,
+      'action': action.wire,
+    });
+
+    // Increment the generation after the action completes so this refresh wins
+    // over any in-flight loads started before the action.
+    final generation = ++_generation;
+
+    // Refresh in place so the view keeps its tab and scroll position. The
+    // action already succeeded, so a failed refresh keeps the stale detail
+    // instead of replacing the view with an error.
+    await _refresh(ref, url, generation, keepOnError: true);
+  }
+
+  Future<void> _refresh(
+    _MergeRequestRef ref,
+    String url,
+    int generation, {
+    bool keepOnError = false,
+  }) async {
     try {
       final detail = await _fetchDetail(ref, url);
-      _value = AsyncValue.ready(detail);
+      if (!_stale(generation, ref)) _emit(AsyncValue.ready(detail));
     } catch (e) {
-      _value = AsyncValue.error(e);
+      if (!_stale(generation, ref) && !(keepOnError && _value.isReady)) {
+        _emit(AsyncValue.error(e));
+      }
     }
-    notifyListeners();
+  }
+
+  bool _stale(int generation, _MergeRequestRef ref) {
+    return generation < _generation || !identical(ref, _ref);
+  }
+
+  void _emit(AsyncValue<MergeRequestDetail> value) {
+    _value = value;
+    if (!_disposed) notifyListeners();
   }
 
   Future<MergeRequestDetail> _fetchDetail(_MergeRequestRef ref, String webUrl) async {
@@ -87,6 +146,8 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
       webUrl: _string(mr, 'web_url') ?? webUrl,
       draft: _bool(mr, 'draft') ?? false,
       hasConflicts: _bool(mr, 'has_conflicts') ?? false,
+      mergeWhenPipelineSucceeds:
+          _bool(mr, 'merge_when_pipeline_succeeds') ?? false,
       author: mr['author'] is Map<String, dynamic>
           ? MergeRequestAuthor.fromJson(mr['author'] as Map<String, dynamic>)
           : null,
