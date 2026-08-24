@@ -1677,6 +1677,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Working...'**
   String get mergeRequestWorking;
+
+  /// No description provided for @issue.
+  ///
+  /// In en, this message translates to:
+  /// **'Issue'**
+  String get issue;
+
+  /// No description provided for @issueOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get issueOpen;
+
+  /// No description provided for @issueClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'Closed'**
+  String get issueClosed;
+
+  /// No description provided for @issueLabels.
+  ///
+  /// In en, this message translates to:
+  /// **'Labels'**
+  String get issueLabels;
+
+  /// No description provided for @issueNoDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'No description provided.'**
+  String get issueNoDescription;
+
+  /// No description provided for @issueComments.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments'**
+  String get issueComments;
+
+  /// No description provided for @issueLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load issue'**
+  String get issueLoadFailed;
+
+  /// No description provided for @issueOpenInBrowser.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in browser'**
+  String get issueOpenInBrowser;
 }
 
 class _AppLocalizationsDelegate

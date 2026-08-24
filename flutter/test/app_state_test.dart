@@ -2510,4 +2510,45 @@ void main() {
       expect(state.mergeRequestUrl, isNull);
     });
   });
+
+  group('Issue links', () {
+    test('openLink opens the issue panel for classic issue URLs', () async {
+      final state = AppState.test();
+      final url = 'https://gitlab.com/group/project/-/issues/1';
+      await state.openLink(url);
+
+      expect(state.dialog, DialogKind.issue);
+      expect(state.issueUrl, url);
+    });
+
+    test('openLink opens the issue panel for work item URLs', () async {
+      final state = AppState.test();
+      final url = 'https://gitlab.com/group/project/-/work_items/77';
+      await state.openLink(url);
+
+      expect(state.dialog, DialogKind.issue);
+      expect(state.issueUrl, url);
+    });
+
+    test('openLink still routes merge requests over issues', () async {
+      final state = AppState.test();
+      await state.openLink(
+        'https://gitlab.com/group/project/-/merge_requests/3',
+      );
+
+      expect(state.dialog, DialogKind.mergeRequest);
+      expect(state.issueUrl, isNull);
+    });
+
+    test('closeDialog clears the issue URL', () {
+      final state = AppState.test(
+        dialog: DialogKind.issue,
+        issueUrl: 'https://gitlab.com/group/project/-/issues/1',
+      );
+      state.closeDialog();
+
+      expect(state.dialog, DialogKind.none);
+      expect(state.issueUrl, isNull);
+    });
+  });
 }

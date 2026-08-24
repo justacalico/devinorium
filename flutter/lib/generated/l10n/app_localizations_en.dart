@@ -885,4 +885,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mergeRequestWorking => 'Working...';
+
+  @override
+  String get issue => 'Issue';
+
+  @override
+  String get issueOpen => 'Open';
+
+  @override
+  String get issueClosed => 'Closed';
+
+  @override
+  String get issueLabels => 'Labels';
+
+  @override
+  String get issueNoDescription => 'No description provided.';
+
+  @override
+  String get issueComments => 'Comments';
+
+  @override
+  String get issueLoadFailed => 'Failed to load issue';
+
+  @override
+  String get issueOpenInBrowser => 'Open in browser';
 }
