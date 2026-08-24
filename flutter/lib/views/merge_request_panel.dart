@@ -91,6 +91,7 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
                           url: widget.url,
                           onRetry: () => _provider.load(widget.url),
                           onLinkTap: (url) => context.read<AppState>().openLink(url),
+                          onAction: _provider.perform,
                         ),
                       ),
                     ),

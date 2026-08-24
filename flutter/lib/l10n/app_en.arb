@@ -495,5 +495,13 @@
   "noPipelines": "No pipelines yet.",
   "openInBrowser": "Open in browser",
   "draft": "Draft",
-  "retry": "Retry"
+  "retry": "Retry",
+  "merge": "Merge",
+  "mergeWhenPipelineSucceeds": "Merge when pipeline succeeds",
+  "closeMergeRequest": "Close merge request",
+  "reopenMergeRequest": "Reopen merge request",
+  "mergeRequestDraftBlocked": "Mark the merge request ready before merging.",
+  "mergeRequestConflictsBlocked": "Resolve the conflicts before merging.",
+  "mergeRequestAutoMergeSet": "This merge request will merge once the pipeline succeeds.",
+  "mergeRequestWorking": "Working..."
 }

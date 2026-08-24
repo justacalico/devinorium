@@ -1629,6 +1629,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Retry'**
   String get retry;
+
+  /// No description provided for @merge.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge'**
+  String get merge;
+
+  /// No description provided for @mergeWhenPipelineSucceeds.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge when pipeline succeeds'**
+  String get mergeWhenPipelineSucceeds;
+
+  /// No description provided for @closeMergeRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Close merge request'**
+  String get closeMergeRequest;
+
+  /// No description provided for @reopenMergeRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Reopen merge request'**
+  String get reopenMergeRequest;
+
+  /// No description provided for @mergeRequestDraftBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark the merge request ready before merging.'**
+  String get mergeRequestDraftBlocked;
+
+  /// No description provided for @mergeRequestConflictsBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Resolve the conflicts before merging.'**
+  String get mergeRequestConflictsBlocked;
+
+  /// No description provided for @mergeRequestAutoMergeSet.
+  ///
+  /// In en, this message translates to:
+  /// **'This merge request will merge once the pipeline succeeds.'**
+  String get mergeRequestAutoMergeSet;
+
+  /// No description provided for @mergeRequestWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working...'**
+  String get mergeRequestWorking;
 }
 
 class _AppLocalizationsDelegate

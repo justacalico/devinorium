@@ -7,6 +7,7 @@ import '../merge_request/merge_request_models.dart';
 import '../state/async_value.dart';
 import '../utils/link_opener.dart';
 import 'code_block.dart';
+import 'merge_request_action_bar.dart';
 import 'syntax_highlighter.dart';
 
 /// Native, tabbed view of a merge request.
@@ -19,12 +20,17 @@ class MergeRequestView extends StatelessWidget {
   final VoidCallback? onRetry;
   final ValueChanged<String>? onLinkTap;
 
+  /// Applies a state change to the merge request. When null, no action
+  /// buttons are shown.
+  final Future<void> Function(MergeRequestAction action)? onAction;
+
   const MergeRequestView({
     super.key,
     required this.detail,
     this.url,
     this.onRetry,
     this.onLinkTap,
+    this.onAction,
   });
 
   @override
@@ -34,6 +40,7 @@ class MergeRequestView extends StatelessWidget {
         detail: detail.valueOrNull!,
         url: url,
         onLinkTap: onLinkTap,
+        onAction: onAction,
       );
     }
     if (detail.isLoading) return const Center(child: CircularProgressIndicator());
@@ -48,11 +55,13 @@ class _MergeRequestBody extends StatefulWidget {
   final MergeRequestDetail detail;
   final String? url;
   final ValueChanged<String>? onLinkTap;
+  final Future<void> Function(MergeRequestAction action)? onAction;
 
   const _MergeRequestBody({
     required this.detail,
     this.url,
     this.onLinkTap,
+    this.onAction,
   });
 
   @override
@@ -83,6 +92,8 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
           stateChip: stateChip,
           onLinkTap: widget.onLinkTap,
         ),
+        if (widget.onAction != null)
+          MergeRequestActionBar(detail: detail, onAction: widget.onAction!),
         const SizedBox(height: 8),
         TabBar(
           controller: _tabController,

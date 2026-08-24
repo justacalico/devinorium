@@ -858,4 +858,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get retry => 'Retry';
+
+  @override
+  String get merge => 'Merge';
+
+  @override
+  String get mergeWhenPipelineSucceeds => 'Merge when pipeline succeeds';
+
+  @override
+  String get closeMergeRequest => 'Close merge request';
+
+  @override
+  String get reopenMergeRequest => 'Reopen merge request';
+
+  @override
+  String get mergeRequestDraftBlocked =>
+      'Mark the merge request ready before merging.';
+
+  @override
+  String get mergeRequestConflictsBlocked =>
+      'Resolve the conflicts before merging.';
+
+  @override
+  String get mergeRequestAutoMergeSet =>
+      'This merge request will merge once the pipeline succeeds.';
+
+  @override
+  String get mergeRequestWorking => 'Working...';
 }

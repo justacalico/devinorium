@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::api::ApiError;
 use crate::auth::session::CurrentUser;
-use crate::git::{GitConnection, RemoteError};
+use crate::git::{GitConnection, MergeRequestAction, RemoteError};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -19,6 +19,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/git-connections/gitlab", delete(logout_gitlab))
         .route("/api/git-connections/gitlab/proxy", get(gitlab_proxy))
         .route("/api/git-connections/gitlab/pipelines", get(gitlab_pipelines))
+        .route(
+            "/api/git-connections/gitlab/merge-requests/actions",
+            post(gitlab_merge_request_action),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +153,63 @@ async fn gitlab_pipelines(
         .await
     {
         Ok(pipelines) => Json(pipelines).into_response(),
+        Err(RemoteError::GitLabNotAvailable) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiError::new("gitlab cli is not installed")),
+        )
+            .into_response(),
+        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitLabMergeRequestActionRequest {
+    pub project: String,
+    pub iid: i64,
+    pub action: MergeRequestAction,
+    pub hostname: Option<String>,
+}
+
+async fn gitlab_merge_request_action(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<GitLabMergeRequestActionRequest>,
+) -> Response {
+    let hostname = req
+        .hostname
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("gitlab.com");
+
+    if req.project.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("project is required")),
+        )
+            .into_response();
+    }
+    if req.iid <= 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("iid must be positive")),
+        )
+            .into_response();
+    }
+
+    tracing::info!(
+        user_id = user.id,
+        project = %req.project,
+        iid = req.iid,
+        action = ?req.action,
+        "gitlab merge request action"
+    );
+
+    match state
+        .git_remote
+        .gitlab_merge_request_action(user.id, hostname, &req.project, req.iid, req.action)
+        .await
+    {
+        Ok(mr) => Json(mr).into_response(),
         Err(RemoteError::GitLabNotAvailable) => (
             StatusCode::NOT_FOUND,
             Json(ApiError::new("gitlab cli is not installed")),

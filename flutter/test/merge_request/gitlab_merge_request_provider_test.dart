@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/merge_request/gitlab_merge_request_provider.dart';
+import 'package:devinorium_frontend/merge_request/merge_request_models.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -221,6 +223,266 @@ void main() {
       expect(detail.pipelines[1].name, 'lint');
       expect(detail.pipelines[0].createdAt, '2026-01-02T00:00:00Z');
       expect(detail.pipelines[0].updatedAt, '2026-01-03T00:00:00Z');
+    });
+
+    test('performs an action and reloads the merge request', () async {
+      final actions = <Map<String, dynamic>>[];
+      var state = 'opened';
+
+      final mock = MockClient((req) async {
+        if (req.url.path ==
+            '/api/git-connections/gitlab/merge-requests/actions') {
+          actions.add(jsonDecode(req.body) as Map<String, dynamic>);
+          state = 'closed';
+          return _json(200, {'iid': 1, 'state': state});
+        }
+
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': state,
+            'source_branch': 'feature',
+            'target_branch': 'main',
+            'web_url': 'https://gitlab.com/group/project/-/merge_requests/1',
+            'merge_when_pipeline_succeeds': false,
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load('https://gitlab.com/group/project/-/merge_requests/1');
+      expect(provider.value.valueOrNull?.isOpen, isTrue);
+
+      await provider.perform(MergeRequestAction.close);
+
+      expect(actions, hasLength(1));
+      expect(actions.first['project'], 'group/project');
+      expect(actions.first['iid'], 1);
+      expect(actions.first['hostname'], 'gitlab.com');
+      expect(actions.first['action'], 'close');
+      expect(provider.value.valueOrNull?.isClosed, isTrue);
+    });
+
+    test('sends the host of self-managed instances', () async {
+      final actions = <Map<String, dynamic>>[];
+      final mock = MockClient((req) async {
+        if (req.url.path ==
+            '/api/git-connections/gitlab/merge-requests/actions') {
+          actions.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return _json(200, {'iid': 42});
+        }
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/42')) {
+          return _json(200, {
+            'iid': 42,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.example.com/group/sub/project/-/merge_requests/42',
+      );
+      await provider.perform(MergeRequestAction.mergeWhenPipelineSucceeds);
+
+      expect(actions.first['hostname'], 'gitlab.example.com');
+      expect(actions.first['project'], 'group/sub/project');
+      expect(actions.first['iid'], 42);
+      expect(actions.first['action'], 'merge_when_pipeline_succeeds');
+    });
+
+    test('parses merge_when_pipeline_succeeds', () async {
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+            'merge_when_pipeline_succeeds': true,
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load('https://gitlab.com/group/project/-/merge_requests/1');
+
+      expect(provider.value.valueOrNull?.mergeWhenPipelineSucceeds, isTrue);
+    });
+
+    test('surfaces action errors and keeps the loaded merge request', () async {
+      final mock = MockClient((req) async {
+        if (req.url.path ==
+            '/api/git-connections/gitlab/merge-requests/actions') {
+          return _json(400, {'error': 'Method Not Allowed'});
+        }
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load('https://gitlab.com/group/project/-/merge_requests/1');
+
+      await expectLater(
+        provider.perform(MergeRequestAction.merge),
+        throwsA(isA<ApiException>()),
+      );
+      expect(provider.value.isReady, isTrue);
+      expect(provider.value.valueOrNull?.isOpen, isTrue);
+    });
+
+    test('keeps the merge request when the refresh after an action fails',
+        () async {
+      var acted = false;
+      final mock = MockClient((req) async {
+        if (req.url.path ==
+            '/api/git-connections/gitlab/merge-requests/actions') {
+          acted = true;
+          return _json(200, {'iid': 1});
+        }
+        if (acted) return _json(500, {'error': 'gitlab is down'});
+
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load('https://gitlab.com/group/project/-/merge_requests/1');
+      await provider.perform(MergeRequestAction.merge);
+
+      expect(provider.value.isReady, isTrue);
+      expect(provider.value.valueOrNull?.title, 'Add feature');
+    });
+
+    test('does not notify after being disposed', () async {
+      final gate = Completer<void>();
+      final mock = MockClient((req) async {
+        if (req.url.path ==
+            '/api/git-connections/gitlab/merge-requests/actions') {
+          return _json(200, {'iid': 1});
+        }
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          await gate.future;
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      final loading =
+          provider.load('https://gitlab.com/group/project/-/merge_requests/1');
+      provider.dispose();
+      gate.complete();
+
+      await loading;
+      expect(provider.value.isReady, isTrue);
+    });
+
+    test('ignores a stale fetch after a newer load', () async {
+      final gates = <int, Completer<void>>{
+        1: Completer<void>(),
+        2: Completer<void>(),
+      };
+
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          final iid = int.parse(req.url.queryParameters['iid']!);
+          await gates[iid]!.future;
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        final iid = path.endsWith('/merge_requests/2') ? 2 : 1;
+        if (path.contains('/merge_requests/')) {
+          return _json(200, {
+            'iid': iid,
+            'title': 'MR $iid',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      final first =
+          provider.load('https://gitlab.com/group/project/-/merge_requests/1');
+      final second =
+          provider.load('https://gitlab.com/group/project/-/merge_requests/2');
+
+      // The newer request finishes first; the stale one must not overwrite it.
+      gates[2]!.complete();
+      await second;
+      gates[1]!.complete();
+      await first;
+
+      expect(provider.value.valueOrNull?.iid, 2);
+    });
+
+    test('refuses to act before a merge request is loaded', () async {
+      final provider = GitLabMergeRequestProvider(
+        ApiClient.withClient(MockClient((_) async => _json(200, {}))),
+      );
+
+      await expectLater(
+        provider.perform(MergeRequestAction.merge),
+        throwsA(isA<StateError>()),
+      );
     });
 
     test('rejects unsupported URLs', () async {

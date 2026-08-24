@@ -5,10 +5,11 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 
 use tempfile::TempDir;
 
-use devinorium::git::{GitRemoteService, GitService};
+use devinorium::git::{GitRemoteService, GitService, MergeRequestAction};
 
 fn git_cli(args: &[&str], cwd: &Path) {
     let out = Command::new("git")
@@ -820,6 +821,173 @@ async fn git_remote_gitlab_pipelines_rejects_invalid_json() {
         .await
         .unwrap_err();
     assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
+
+/// Fake `glab` for the merge action polling path. The first `PUT .../merge`
+/// call sleeps longer than the test timeout so the service falls back to
+/// polling; the next GET returns the MR state as `merged`.
+fn write_polling_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+path="$2"
+case "$path" in
+  */merge)
+    sleep 2
+    echo 'would have merged'
+    exit 0
+    ;;
+esac
+if [ ! -f "$XDG_CONFIG_HOME/mr_poll" ]; then
+  echo 0 > "$XDG_CONFIG_HOME/mr_poll"
+fi
+count=$(cat "$XDG_CONFIG_HOME/mr_poll")
+if [ "$count" -lt 2 ]; then
+  echo "$((count + 1))" > "$XDG_CONFIG_HOME/mr_poll"
+  printf '{"iid":7,"state":"opened","source_branch":"feature","target_branch":"main"}\n'
+else
+  printf '{"iid":7,"state":"merged","source_branch":"feature","target_branch":"main"}\n'
+fi
+exit 0
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_merge_polls_until_merged() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_polling_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin_and_timeouts(
+        config_root,
+        Some(glab),
+        Duration::from_millis(50),
+        Duration::from_millis(100),
+    );
+
+    let value = svc
+        .gitlab_merge_request_action(
+            1,
+            "gitlab.example.com",
+            "group/project",
+            7,
+            MergeRequestAction::Merge,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(value["state"], "merged");
+    assert_eq!(value["iid"], 7);
+}
+
+/// Fake `glab` that echoes the full `api` invocation back as JSON so tests can
+/// assert on the method, path and fields it was called with.
+fn write_echoing_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+if [ "$1" = "api" ]; then
+  printf '{"args":"%s"}\n' "$*"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+async fn merge_request_action_args(action: MergeRequestAction) -> String {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_echoing_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let value = svc
+        .gitlab_merge_request_action(1, "gitlab.example.com", "group/project", 7, action)
+        .await
+        .unwrap();
+    value["args"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_close_sends_state_event() {
+    let args = merge_request_action_args(MergeRequestAction::Close).await;
+    assert!(args.contains("projects/group%2Fproject/merge_requests/7"));
+    assert!(!args.contains("merge_requests/7/merge"));
+    assert!(args.contains("--method PUT"));
+    assert!(args.contains("--field state_event=close"));
+    assert!(args.contains("--hostname gitlab.example.com"));
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_reopen_sends_state_event() {
+    let args = merge_request_action_args(MergeRequestAction::Reopen).await;
+    assert!(args.contains("--field state_event=reopen"));
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_merge_calls_merge_endpoint() {
+    let args = merge_request_action_args(MergeRequestAction::Merge).await;
+    assert!(args.contains("projects/group%2Fproject/merge_requests/7/merge"));
+    assert!(args.contains("--method PUT"));
+    assert!(!args.contains("--field"));
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_merge_when_pipeline_succeeds_sets_field() {
+    let args =
+        merge_request_action_args(MergeRequestAction::MergeWhenPipelineSucceeds).await;
+    assert!(args.contains("projects/group%2Fproject/merge_requests/7/merge"));
+    assert!(args.contains("--field merge_when_pipeline_succeeds=true"));
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_action_rejects_invalid_json() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_garbage_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let err = svc
+        .gitlab_merge_request_action(1, "gitlab.com", "group/project", 1, MergeRequestAction::Merge)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_action_reports_glab_failure() {
+    let tmp = TempDir::new().unwrap();
+    let bin_dir = tmp.path().join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    std::fs::write(&bin, "#!/bin/sh\necho '405 Method Not Allowed' >&2\nexit 1\n").unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(bin));
+
+    let err = svc
+        .gitlab_merge_request_action(1, "gitlab.com", "group/project", 1, MergeRequestAction::Close)
+        .await
+        .unwrap_err();
+    assert!(format!("{err}").contains("405"));
 }
 
 #[tokio::test]

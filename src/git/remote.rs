@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use regex::Regex;
 use tokio::process::Command;
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 
 /// Possible errors from Git host CLI operations.
 #[derive(Debug, thiserror::Error)]
@@ -65,6 +65,19 @@ pub struct GitLabStatus {
     pub account: Option<String>,
 }
 
+/// A write action that can be applied to a GitLab merge request.
+///
+/// The set is deliberately closed so the frontend cannot ask the backend to
+/// perform arbitrary mutations through the `glab` proxy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeRequestAction {
+    Close,
+    Reopen,
+    Merge,
+    MergeWhenPipelineSucceeds,
+}
+
 /// A single CI/CD pipeline for a GitLab merge request.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GitLabPipeline {
@@ -85,6 +98,11 @@ pub struct GitRemoteService {
     /// `config_root`. When false, `glab` uses the user's global config (the
     /// default for the production server process).
     isolated: bool,
+    /// How long to wait for GitLab to finish a synchronous `merge` call before
+    /// falling back to polling the merge request state.
+    merge_timeout: Duration,
+    /// How long to wait between merge request state polls.
+    poll_interval: Duration,
 }
 
 impl GitRemoteService {
@@ -95,6 +113,8 @@ impl GitRemoteService {
             config_root: config_root.into(),
             glab_bin: which::which("glab").ok(),
             isolated: false,
+            merge_timeout: Duration::from_secs(120),
+            poll_interval: Duration::from_secs(3),
         }
     }
 
@@ -105,6 +125,25 @@ impl GitRemoteService {
             config_root: config_root.into(),
             glab_bin,
             isolated: true,
+            merge_timeout: Duration::from_secs(120),
+            poll_interval: Duration::from_secs(3),
+        }
+    }
+
+    /// Build a service with explicit `glab` path and timeouts. Useful in tests
+    /// to exercise the timeout and polling paths without real multi-minute waits.
+    pub fn with_glab_bin_and_timeouts(
+        config_root: impl Into<PathBuf>,
+        glab_bin: Option<PathBuf>,
+        merge_timeout: Duration,
+        poll_interval: Duration,
+    ) -> Self {
+        Self {
+            config_root: config_root.into(),
+            glab_bin,
+            isolated: true,
+            merge_timeout,
+            poll_interval,
         }
     }
 
@@ -292,8 +331,151 @@ impl GitRemoteService {
         path: &str,
     ) -> Result<String, RemoteError> {
         let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
-        let host = if hostname.is_empty() { "gitlab.com" } else { hostname };
+        let host = Self::api_host(hostname);
+        Self::check_api_path(path)?;
 
+        self.run(user_id, bin, &["api", path, "--hostname", host]).await
+    }
+
+    /// Call the GitLab API with an explicit HTTP method and body fields.
+    ///
+    /// Fields are passed as `--field key=value`, so `glab` encodes `true`,
+    /// `false` and integers as their JSON types.
+    async fn gitlab_api_write(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        method: &str,
+        path: &str,
+        fields: &[(&str, &str)],
+        timeout: Duration,
+    ) -> Result<String, RemoteError> {
+        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let host = Self::api_host(hostname);
+        Self::check_api_path(path)?;
+
+        let mut args = vec![
+            "api".to_string(),
+            path.to_string(),
+            "--hostname".to_string(),
+            host.to_string(),
+            "--method".to_string(),
+            method.to_string(),
+        ];
+        for (key, value) in fields {
+            // `glab` reads `@file` values from disk; refuse them outright.
+            if value.starts_with('@') {
+                return Err(RemoteError::StatusFailed(
+                    "field values must not start with @".into(),
+                ));
+            }
+            args.push("--field".to_string());
+            args.push(format!("{key}={value}"));
+        }
+
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.run_with_timeout(user_id, bin, &args, timeout).await
+    }
+
+    /// Apply a state change to a merge request and return the updated JSON.
+    ///
+    /// `Merge` can take a while for GitLab to actually complete (large repos,
+    /// post-merge hooks, etc.). If the first call times out we poll the MR
+    /// state so the user sees the final result instead of a raw timeout.
+    pub async fn gitlab_merge_request_action(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        iid: i64,
+        action: MergeRequestAction,
+    ) -> Result<serde_json::Value, RemoteError> {
+        if project_path.is_empty() || iid <= 0 {
+            return Err(RemoteError::StatusFailed(
+                "merge request reference is invalid".into(),
+            ));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let base = format!("projects/{encoded_project}/merge_requests/{iid}");
+
+        let (path, fields): (String, Vec<(&str, &str)>) = match action {
+            MergeRequestAction::Close => (base.clone(), vec![("state_event", "close")]),
+            MergeRequestAction::Reopen => (base.clone(), vec![("state_event", "reopen")]),
+            MergeRequestAction::Merge => (format!("{base}/merge"), Vec::new()),
+            MergeRequestAction::MergeWhenPipelineSucceeds => (
+                format!("{base}/merge"),
+                vec![("merge_when_pipeline_succeeds", "true")],
+            ),
+        };
+
+        let timeout = match action {
+            MergeRequestAction::Merge => self.merge_timeout,
+            _ => Duration::from_secs(30),
+        };
+
+        match self
+            .gitlab_api_write(user_id, hostname, "PUT", &path, &fields, timeout)
+            .await
+        {
+            Ok(output) => Self::parse_merge_request_json(&output),
+            Err(RemoteError::Timeout) if action == MergeRequestAction::Merge => {
+                self.poll_merge_request_state(user_id, hostname, &base).await
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn poll_merge_request_state(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        mr_path: &str,
+    ) -> Result<serde_json::Value, RemoteError> {
+        let max_attempts = 60; // up to 60 * 3s = 3 minutes with defaults
+
+        for attempt in 0..max_attempts {
+            sleep(self.poll_interval).await;
+            match self.gitlab_api(user_id, hostname, mr_path).await {
+                Ok(output) => {
+                    let value = Self::parse_merge_request_json(&output)?;
+                    if let Some(state) = value["state"].as_str() {
+                        if state == "merged" || state == "closed" {
+                            return Ok(value);
+                        }
+                    }
+                    // Still open or in an intermediate state; keep polling.
+                }
+                Err(RemoteError::Timeout) if attempt == max_attempts - 1 => {
+                    return Err(RemoteError::StatusFailed(
+                        "GitLab did not finish the merge in time".into(),
+                    ));
+                }
+                Err(RemoteError::Timeout) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(RemoteError::StatusFailed(
+            "GitLab did not finish the merge in time".into(),
+        ))
+    }
+
+    fn parse_merge_request_json(output: &str) -> Result<serde_json::Value, RemoteError> {
+        serde_json::from_str(output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid merge request json: {e}"))
+        })
+    }
+
+    fn api_host(hostname: &str) -> &str {
+        if hostname.is_empty() {
+            "gitlab.com"
+        } else {
+            hostname
+        }
+    }
+
+    fn check_api_path(path: &str) -> Result<(), RemoteError> {
         if path.starts_with('/') {
             return Err(RemoteError::StatusFailed(
                 "api path must not start with /".into(),
@@ -309,8 +491,7 @@ impl GitRemoteService {
                 "invalid characters in api path".into(),
             ));
         }
-
-        self.run(user_id, bin, &["api", path, "--hostname", host]).await
+        Ok(())
     }
 
     /// Fetch the CI/CD pipelines for a GitLab merge request.
@@ -347,20 +528,36 @@ impl GitRemoteService {
         Ok(pipelines)
     }
 
-    /// Run a glab/gh command and treat non-zero exit as an error.
+    /// Run a glab/gh command and return stdout, treating a non-zero exit as an
+    /// error. Failures carry the combined output so the CLI's own message is
+    /// reported; successes exclude stderr so JSON payloads stay parseable.
     async fn run(
         &self,
         user_id: i64,
         bin: &Path,
         args: &[&str],
     ) -> Result<String, RemoteError> {
-        let (output, success) = self.run_raw(user_id, bin, args).await?;
+        self.run_with_timeout(user_id, bin, args, Duration::from_secs(30)).await
+    }
+
+    /// Run a glab/gh command with an explicit timeout and return stdout,
+    /// treating a non-zero exit as an error.
+    async fn run_with_timeout(
+        &self,
+        user_id: i64,
+        bin: &Path,
+        args: &[&str],
+        timeout_duration: Duration,
+    ) -> Result<String, RemoteError> {
+        let (stdout, stderr, success) =
+            self.run_parts(user_id, bin, args, timeout_duration).await?;
         if !success {
-            let msg = output.trim();
+            let combined = format!("{stdout}\n{stderr}");
+            let msg = combined.trim();
             let msg = if msg.is_empty() { "command failed" } else { msg };
             return Err(RemoteError::StatusFailed(msg.to_string()));
         }
-        Ok(output)
+        Ok(stdout)
     }
 
     /// Run a glab/gh command and return the combined output plus success.
@@ -370,18 +567,32 @@ impl GitRemoteService {
         bin: &Path,
         args: &[&str],
     ) -> Result<(String, bool), RemoteError> {
+        let (stdout, stderr, success) =
+            self.run_parts(user_id, bin, args, Duration::from_secs(30)).await?;
+        Ok((format!("{stdout}\n{stderr}"), success))
+    }
+
+    /// Run a glab/gh command and return stdout, stderr and success separately.
+    async fn run_parts(
+        &self,
+        user_id: i64,
+        bin: &Path,
+        args: &[&str],
+        timeout_duration: Duration,
+    ) -> Result<(String, String, bool), RemoteError> {
         let mut cmd = self.env_cmd(user_id, bin)?;
         cmd.args(args);
 
-        let output = timeout(Duration::from_secs(30), cmd.output())
+        let output = timeout(timeout_duration, cmd.output())
             .await
             .map_err(|_| RemoteError::Timeout)?
             .map_err(|e| RemoteError::StatusFailed(e.to_string()))?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let combined = format!("{stdout}\n{stderr}");
-        Ok((combined, output.status.success()))
+        Ok((
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+            output.status.success(),
+        ))
     }
 
     fn env_cmd(&self, user_id: i64, bin: &Path) -> Result<Command, RemoteError> {
