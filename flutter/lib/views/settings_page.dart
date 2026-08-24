@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../widgets/git_provider_icons.dart';
+import '../widgets/git_provider_tile.dart';
 import '../widgets/owner_badge.dart';
 import 'create_user_dialog.dart';
 
@@ -677,6 +679,9 @@ class _GitSection extends StatefulWidget {
 class _GitSectionState extends State<_GitSection> {
   bool _busy = false;
 
+  static const _gitlabId = 'gitlab';
+  static const _githubId = 'github';
+
   Future<void> _connect() async {
     setState(() => _busy = true);
     await widget.state.connectGitLab();
@@ -730,10 +735,12 @@ class _GitSectionState extends State<_GitSection> {
       children.add(Text(l.gitConnections));
     } else {
       for (final conn in connections) {
-        if (conn.id == 'gitlab') {
+        if (conn.id == _gitlabId) {
           children.add(_buildGitLabRow(context, theme, l, conn));
-        } else if (conn.id == 'github') {
+        } else if (conn.id == _githubId) {
           children.add(_buildGitHubRow(context, theme, l, conn));
+        } else {
+          children.add(_buildGenericRow(context, theme, l, conn));
         }
         children.add(const SizedBox(height: 16));
       }
@@ -758,85 +765,46 @@ class _GitSectionState extends State<_GitSection> {
         : l.notConnected;
 
     if (!conn.enabled) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(l.gitlab, style: theme.textTheme.bodyLarge),
-              Text(
-                l.gitlabNotInstalled,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-          const SizedBox.shrink(),
-        ],
+      return GitProviderTile(
+        icon: GitLabIcon(color: theme.colorScheme.onSurfaceVariant),
+        title: l.gitlab,
+        subtitle: l.gitlabNotInstalled,
       );
     }
 
     if (conn.authed) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(l.gitlab, style: theme.textTheme.bodyLarge),
-              const SizedBox(height: 2),
-              Text(
-                status,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.primary),
-              ),
-            ],
-          ),
-          if (_busy)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            OutlinedButton(
-              onPressed: () => _disconnect(conn),
-              child: Text(l.disconnect),
-            ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(l.gitlab, style: theme.textTheme.bodyLarge),
-        const SizedBox(height: 4),
-        Text(
-          l.gitlabConnectHint,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (_busy)
-              const SizedBox(
+      return GitProviderTile(
+        icon: const GitLabIcon(),
+        title: l.gitlab,
+        subtitle: status,
+        subtitleColor: theme.colorScheme.primary,
+        trailing: _busy
+            ? const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            else
-              FilledButton(
-                onPressed: _connect,
-                child: Text(l.connect),
+            : OutlinedButton(
+                onPressed: () => _disconnect(conn),
+                child: Text(l.disconnect),
               ),
-          ],
-        ),
-      ],
+      );
+    }
+
+    return GitProviderTile(
+      icon: const GitLabIcon(),
+      title: l.gitlab,
+      subtitle: l.gitlabConnectHint,
+      trailing: _busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : FilledButton(
+              onPressed: _connect,
+              child: Text(l.connect),
+            ),
     );
   }
 
@@ -846,28 +814,32 @@ class _GitSectionState extends State<_GitSection> {
     AppLocalizations l,
     GitConnection conn,
   ) {
-    return Opacity(
+    return GitProviderTile(
       opacity: 0.55,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(l.github, style: theme.textTheme.bodyLarge),
-              Text(
-                l.comingSoon,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-          Chip(
-            label: Text(l.comingSoon),
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
+      icon: GitHubIcon(color: theme.colorScheme.onSurface),
+      title: l.github,
+      subtitle: l.comingSoon,
+      trailing: Chip(
+        label: Text(l.comingSoon),
+        visualDensity: VisualDensity.compact,
       ),
+    );
+  }
+
+  Widget _buildGenericRow(
+    BuildContext context,
+    ThemeData theme,
+    AppLocalizations l,
+    GitConnection conn,
+  ) {
+    return GitProviderTile(
+      icon: Icon(Icons.code, color: theme.colorScheme.onSurface),
+      title: conn.name,
+      subtitle: conn.comingSoon
+          ? l.comingSoon
+          : (conn.authed
+              ? l.connectedAs(conn.account ?? '')
+              : l.notConnected),
     );
   }
 }

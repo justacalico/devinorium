@@ -24,6 +24,7 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_linkify: ^6.0.0
   mime: ^2.0.0
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
