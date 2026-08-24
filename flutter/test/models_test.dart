@@ -126,6 +126,20 @@ void main() {
       expect(m.content, isEmpty);
     });
 
+    test('parses model for assistant messages', () {
+      final m = Message.fromJson({
+        'role': 'assistant',
+        'content': 'hello',
+        'model': 'swe-1-7',
+      });
+      expect(m.model, 'swe-1-7');
+    });
+
+    test('defaults missing model to empty', () {
+      final m = Message.fromJson({'role': 'assistant', 'content': 'hello'});
+      expect(m.model, isEmpty);
+    });
+
     test('copyWith updates content', () {
       final m = Message(role: 'user', content: 'hi');
       final updated = m.copyWith(content: 'hello');

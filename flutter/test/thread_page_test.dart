@@ -1803,4 +1803,55 @@ void main() {
     // Composer is not rendered during loading.
     expect(find.byType(TextField), findsNothing);
   });
+
+  testWidgets('assistant message label uses the message model', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'swe-1-7',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(role: 'assistant', content: 'hello', model: 'swe-1-7'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('swe-1-7'), findsOneWidget);
+    expect(find.text('Assistant'), findsNothing);
+  });
+
+  testWidgets('assistant message without model falls back to Assistant label', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'swe-1-7',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(role: 'assistant', content: 'hello'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Assistant'), findsOneWidget);
+  });
 }
