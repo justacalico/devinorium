@@ -53,11 +53,13 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
       _proxy(ref, mrPath),
       _proxy(ref, '$mrPath/diffs'),
       _proxy(ref, '$mrPath/notes?per_page=100'),
+      _pipeline(ref),
     ]);
 
     final mr = results[0];
     final diffs = results[1];
     final notes = results[2];
+    final pipelineJson = results[3];
 
     final changes = (diffs['_list'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>()
@@ -67,6 +69,12 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     final comments = (notes['_list'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>()
         .map(MergeRequestComment.fromJson)
+        .toList();
+
+    final pipelineList = pipelineJson['_list'] as List<dynamic>? ?? [];
+    final pipelines = pipelineList
+        .whereType<Map<String, dynamic>>()
+        .map(MergeRequestPipeline.fromJson)
         .toList();
 
     return MergeRequestDetail(
@@ -86,6 +94,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
       updatedAt: _string(mr, 'updated_at') ?? '',
       changes: changes,
       comments: comments,
+      pipelines: pipelines,
     );
   }
 
@@ -93,6 +102,13 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     final query = 'path=${Uri.encodeQueryComponent(gitlabPath)}'
         '&hostname=${Uri.encodeQueryComponent(ref.hostname)}';
     return _client.get('/api/git-connections/gitlab/proxy?$query');
+  }
+
+  Future<Map<String, dynamic>> _pipeline(_MergeRequestRef ref) async {
+    final query = 'project=${Uri.encodeQueryComponent(ref.projectPath)}'
+        '&iid=${ref.iid}'
+        '&hostname=${Uri.encodeQueryComponent(ref.hostname)}';
+    return _client.get('/api/git-connections/gitlab/pipelines?$query');
   }
 
   static _MergeRequestRef? _parseRef(String url) {

@@ -61,7 +61,7 @@ class _MergeRequestBody extends StatefulWidget {
 
 class _MergeRequestBodyState extends State<_MergeRequestBody>
     with TickerProviderStateMixin {
-  late final _tabController = TabController(length: 3, vsync: this);
+  late final _tabController = TabController(length: 4, vsync: this);
 
   @override
   void dispose() {
@@ -90,6 +90,7 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
             Tab(text: l10n(context).overview),
             Tab(text: '${l10n(context).changes} (${detail.changes.length})'),
             Tab(text: '${l10n(context).comments} (${detail.comments.length})'),
+            Tab(text: '${l10n(context).pipelines} (${detail.pipelines.length})'),
           ],
         ),
         Expanded(
@@ -100,6 +101,10 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
               _ChangesTab(changes: detail.changes),
               _CommentsTab(
                 comments: detail.comments,
+                onLinkTap: widget.onLinkTap,
+              ),
+              _PipelinesTab(
+                pipelines: detail.pipelines,
                 onLinkTap: widget.onLinkTap,
               ),
             ],
@@ -220,41 +225,187 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final latestPipeline =
+        detail.pipelines.isNotEmpty ? detail.pipelines.first : null;
 
-    if (detail.description.isEmpty) {
+    final highlighter = SyntaxHighlighter(theme);
+    final description = detail.description.isEmpty
+        ? _NoDescription()
+        : MarkdownBody(
+            data: detail.description,
+            selectable: false,
+            onTapLink: (txt, href, title) {
+              if (href != null) onLinkTap?.call(href);
+            },
+            extensionSet: markdown.ExtensionSet.gitHubFlavored,
+            builders: {'pre': _PreBuilder(highlighter: highlighter)},
+            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+              p: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+              code: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                backgroundColor: theme.colorScheme.surfaceContainerHigh,
+              ),
+              codeblockDecoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              codeblockPadding: const EdgeInsets.all(12),
+            ),
+          );
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(top: 16, bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (latestPipeline != null && latestPipeline.isPresent) ...[
+            _PipelineCard(pipeline: latestPipeline, onLinkTap: onLinkTap),
+            const SizedBox(height: 16),
+          ],
+          description,
+        ],
+      ),
+    );
+  }
+}
+
+class _NoDescription extends StatelessWidget {
+  const _NoDescription();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Text(
+        l10n(context).noDescription,
+        style: theme.textTheme.bodyMedium
+            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+class _PipelineCard extends StatelessWidget {
+  final MergeRequestPipeline pipeline;
+  final ValueChanged<String>? onLinkTap;
+
+  const _PipelineCard({required this.pipeline, this.onLinkTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = _pipelineColor(theme, pipeline.status);
+    final openable = pipeline.webUrl.isNotEmpty && isOpenableLink(pipeline.webUrl);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        leading: Icon(
+          _pipelineIcon(pipeline.status),
+          color: color,
+        ),
+        title: Text(
+          pipeline.name.isNotEmpty ? pipeline.name : pipeline.status,
+          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          pipeline.status,
+          style: theme.textTheme.bodySmall?.copyWith(color: color),
+        ),
+        trailing: openable
+            ? IconButton(
+                icon: const Icon(Icons.open_in_new, size: 18),
+                tooltip: l10n(context).openInBrowser,
+                onPressed: () => onLinkTap?.call(pipeline.webUrl),
+              )
+            : null,
+        onTap: openable ? () => onLinkTap?.call(pipeline.webUrl) : null,
+      ),
+    );
+  }
+}
+
+Color _pipelineColor(ThemeData theme, String status) {
+  final lower = status.toLowerCase();
+  if (lower == 'success') return Colors.green;
+  if (lower == 'failed' || lower == 'failure') return theme.colorScheme.error;
+  if (lower == 'running') return theme.colorScheme.primary;
+  if (lower == 'pending' || lower == 'created' || lower == 'waiting_for_resource') {
+    return Colors.orange;
+  }
+  return theme.colorScheme.onSurfaceVariant;
+}
+
+IconData _pipelineIcon(String status) {
+  final lower = status.toLowerCase();
+  if (lower == 'success') return Icons.check_circle;
+  if (lower == 'failed' || lower == 'failure') return Icons.error;
+  if (lower == 'running') return Icons.play_circle;
+  if (lower == 'pending' || lower == 'created') return Icons.pending;
+  if (lower == 'canceled' || lower == 'skipped') return Icons.cancel;
+  return Icons.play_circle_outline;
+}
+
+class _PipelinesTab extends StatelessWidget {
+  final List<MergeRequestPipeline> pipelines;
+  final ValueChanged<String>? onLinkTap;
+
+  const _PipelinesTab({required this.pipelines, this.onLinkTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (pipelines.isEmpty) {
       return Center(
         child: Text(
-          l10n(context).noDescription,
+          l10n(context).noPipelines,
           style: theme.textTheme.bodyMedium
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
       );
     }
 
-    final highlighter = SyntaxHighlighter(theme);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(top: 16, bottom: 24),
-      child: MarkdownBody(
-        data: detail.description,
-        selectable: false,
-        onTapLink: (txt, href, title) {
-          if (href != null) onLinkTap?.call(href);
-        },
-        extensionSet: markdown.ExtensionSet.gitHubFlavored,
-        builders: {'pre': _PreBuilder(highlighter: highlighter)},
-        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-          p: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
-          code: theme.textTheme.bodySmall?.copyWith(
-            fontFamily: 'monospace',
-            backgroundColor: theme.colorScheme.surfaceContainerHigh,
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      itemCount: pipelines.length,
+      itemBuilder: (context, index) {
+        final pipeline = pipelines[index];
+        final color = _pipelineColor(theme, pipeline.status);
+        final openable =
+            pipeline.webUrl.isNotEmpty && isOpenableLink(pipeline.webUrl);
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: Icon(_pipelineIcon(pipeline.status), color: color),
+            title: Text(
+              pipeline.name.isNotEmpty ? pipeline.name : pipeline.status,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              [
+                pipeline.status,
+                if (pipeline.createdAt.isNotEmpty) pipeline.createdAt,
+              ].join(' · '),
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
+            trailing: openable
+                ? IconButton(
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    tooltip: l10n(context).openInBrowser,
+                    onPressed: () => onLinkTap?.call(pipeline.webUrl),
+                  )
+                : null,
+            onTap: openable ? () => onLinkTap?.call(pipeline.webUrl) : null,
           ),
-          codeblockDecoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          codeblockPadding: const EdgeInsets.all(12),
-        ),
-      ),
+        );
+      },
     );
   }
 }

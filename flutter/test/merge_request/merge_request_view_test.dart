@@ -85,6 +85,100 @@ void main() {
       expect(find.text('@reviewer'), findsOneWidget);
     });
 
+    testWidgets('renders pipeline card on overview tab', (tester) async {
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            status: 'success',
+            name: 'test-and-build',
+            webUrl: 'https://gitlab.com/group/project/-/pipelines/42',
+            refName: 'feature',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(
+            body: MergeRequestView(
+              detail: AsyncValue.ready(detailWithPipeline),
+              url: '',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('test-and-build'), findsOneWidget);
+      expect(find.text('success'), findsOneWidget);
+      expect(find.byIcon(Icons.open_in_new), findsOneWidget);
+    });
+
+    testWidgets('switches to pipelines tab and lists pipelines', (tester) async {
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            status: 'failed',
+            name: 'lint',
+            webUrl: 'https://gitlab.com/group/project/-/pipelines/7',
+          ),
+          MergeRequestPipeline(
+            status: 'success',
+            name: 'test-and-build',
+            webUrl: 'https://gitlab.com/group/project/-/pipelines/42',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(
+            body: MergeRequestView(
+              detail: AsyncValue.ready(detailWithPipeline),
+              url: '',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (2)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('lint'), findsOneWidget);
+      expect(find.text('test-and-build'), findsOneWidget);
+      expect(find.text('failed'), findsOneWidget);
+      expect(find.text('success'), findsOneWidget);
+    });
+
+    testWidgets('switches to empty pipelines tab', (tester) async {
+      await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (0)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No pipelines yet.'), findsOneWidget);
+    });
+
     testWidgets('renders system comment HTML as markdown', (tester) async {
       await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
       await tester.pumpAndSettle();
