@@ -8,6 +8,7 @@ import '../widgets/git_provider_icons.dart';
 import '../widgets/git_provider_tile.dart';
 import '../widgets/owner_badge.dart';
 import 'create_user_dialog.dart';
+import 'folder_picker_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -892,6 +893,18 @@ class _CloneRootSectionState extends State<_CloneRootSection> {
     }
   }
 
+  Future<void> _browse() async {
+    final picked = await showFolderPickerDialog(
+      context,
+      api: widget.state.api,
+      initialPath: _controller.text,
+    );
+    if (picked != null && mounted) {
+      _controller.text = picked;
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -953,6 +966,12 @@ class _CloneRootSectionState extends State<_CloneRootSection> {
                   ),
                   onSubmitted: (_) => _save(),
                 ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.folder_open_outlined),
+                tooltip: l.cloneRootBrowse,
+                onPressed: loading ? null : _browse,
               ),
               const SizedBox(width: 8),
               FilledButton(

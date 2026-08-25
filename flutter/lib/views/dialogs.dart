@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import 'folder_picker.dart';
 import 'git_branch_dialog.dart';
 import 'issue_panel.dart';
 import 'merge_request_panel.dart';
@@ -141,18 +142,8 @@ class _NewProjectDialog extends StatefulWidget {
 class _NewProjectDialogState extends State<_NewProjectDialog> {
   final _nameController = TextEditingController();
   final _pathController = TextEditingController();
-  final _pathSegments = <String>[];
-  var _isAbsolute = false;
-  var _entries = <DirEntry>[];
-  var _loading = true;
   var _submitting = false;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
 
   @override
   void dispose() {
@@ -161,108 +152,14 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     super.dispose();
   }
 
-  String get _currentPath {
-    if (_isAbsolute) {
-      return _pathSegments.isEmpty ? '/' : '/${_pathSegments.join('/')}';
-    }
-    return _pathSegments.join('/');
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final state = context.read<AppState>();
-      final entries = await state.api.listFiles(
-        path: _currentPath.isEmpty ? null : _currentPath,
-        projectId: null,
-      );
-      if (!mounted) return;
-      setState(() {
-        _entries = entries
-            .where((e) => e.isDir && !e.name.startsWith('.'))
-            .toList();
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = '$e';
-        _loading = false;
-      });
-    }
-  }
-
-  void _enter(String name) {
-    if (_loading) return;
-    _pathSegments.add(name);
-    _load();
-  }
-
-  void _up() {
-    if (_loading || _pathSegments.isEmpty) return;
-    _pathSegments.removeLast();
-    _load();
-  }
-
-  void _goTo(int index) {
-    if (_loading) return;
-    if (index < 0) {
-      _pathSegments.clear();
-    } else if (index < _pathSegments.length) {
-      _pathSegments.removeRange(index + 1, _pathSegments.length);
-    } else {
-      return;
-    }
-    _load();
-  }
-
-  void _selectCurrent() {
-    _pathController.text = _currentPath.isEmpty ? '.' : _currentPath;
-    if (_nameController.text.trim().isEmpty && _pathSegments.isNotEmpty) {
-      _nameController.text = _pathSegments.last;
+  void _onPathSelected(String path, bool isHomeRoot) {
+    if (!isHomeRoot && _nameController.text.trim().isEmpty) {
+      final parts = path.split('/').where((s) => s.isNotEmpty).toList();
+      if (parts.isNotEmpty) {
+        _nameController.text = parts.last;
+      }
     }
     setState(() => _error = null);
-  }
-
-  void _jumpToTextPath() {
-    setState(() => _error = null);
-    final text = _pathController.text.trim();
-    if (text.isEmpty) {
-      _pathSegments.clear();
-      _isAbsolute = false;
-      _load();
-      return;
-    }
-    // `~` is expanded by the backend; treat it as the home directory here.
-    if (text == '~' || text.startsWith('~/')) {
-      final rest = text == '~' ? '' : text.substring(2);
-      _isAbsolute = false;
-      _pathSegments
-        ..clear()
-        ..addAll(rest
-            .split('/')
-            .where((s) => s.isNotEmpty && s != '.')
-            .toList());
-      _load();
-      return;
-    }
-    final normalized = text.replaceAll(RegExp(r'/+'), '/');
-    if (normalized.contains('..')) {
-      setState(() => _error = l10n(context).pathTraversalNotAllowed);
-      return;
-    }
-    _isAbsolute = normalized.startsWith('/');
-    final segs = normalized
-        .split('/')
-        .where((s) => s.isNotEmpty && s != '.')
-        .toList();
-    _pathSegments
-      ..clear()
-      ..addAll(segs);
-    _load();
   }
 
   Future<void> _submit() async {
@@ -301,10 +198,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     final media = MediaQuery.of(context);
     final name = _nameController.text.trim();
     final path = _pathController.text.trim();
-    final canSubmit = name.isNotEmpty &&
-        path.isNotEmpty &&
-        !_submitting &&
-        !_loading;
+    final canSubmit = name.isNotEmpty && path.isNotEmpty && !_submitting;
 
     return Stack(
       children: [
@@ -326,7 +220,8 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(l10n(context).newProject, style: theme.textTheme.headlineSmall),
+                    Text(l10n(context).newProject,
+                        style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _nameController,
@@ -341,53 +236,12 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                       onChanged: (_) => setState(() => _error = null),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _pathController,
-                      enabled: !_submitting,
-                      decoration: InputDecoration(
-                        labelText: l10n(context).path,
-                        hintText: l10n(context).projectPathHint,
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          tooltip: l10n(context).browseToThisPath,
-                          icon: const Icon(Icons.refresh, size: 18),
-                          onPressed: _submitting ? null : _jumpToTextPath,
-                        ),
-                      ),
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _submit(),
-                      onChanged: (_) => setState(() => _error = null),
-                    ),
-                    const SizedBox(height: 8),
-                    _BrowserHeader(
-                      path: _currentPath,
-                      isAbsolute: _isAbsolute,
-                      onUp: _up,
-                      onCrumb: _goTo,
-                      enabled: !_loading && !_submitting,
-                    ),
-                    const SizedBox(height: 4),
-                    Flexible(
-                      child: Container(
-                        constraints: const BoxConstraints(maxHeight: 320),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                              color: theme.colorScheme.outlineVariant),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: _buildBrowser(theme),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: (_loading || _submitting) ? null : _selectCurrent,
-                        icon: const Icon(Icons.check, size: 18),
-                        label: Text(l10n(context).selectCurrentFolder),
+                    Expanded(
+                      child: FolderPicker(
+                        api: context.read<AppState>().api,
+                        controller: _pathController,
+                        homePrefix: '.',
+                        onSelect: _onPathSelected,
                       ),
                     ),
                     if (globalError.isNotEmpty || _error != null) ...[
@@ -425,116 +279,6 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                   ],
                 ),
               ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBrowser(ThemeData theme) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: theme.colorScheme.error),
-          ),
-        ),
-      );
-    }
-    if (_entries.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            l10n(context).noSubfoldersHere,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ),
-      );
-    }
-    return ListView.builder(
-      shrinkWrap: true,
-      itemCount: _entries.length,
-      itemBuilder: (context, index) {
-        final e = _entries[index];
-        return ListTile(
-          leading: Icon(Icons.folder,
-              color: theme.colorScheme.primary, size: 20),
-          title: Text(e.name, style: theme.textTheme.bodyMedium),
-          dense: true,
-          onTap: (_loading || _submitting) ? null : () => _enter(e.name),
-        );
-      },
-    );
-  }
-}
-
-class _BrowserHeader extends StatelessWidget {
-  final String path;
-  final bool isAbsolute;
-  final VoidCallback onUp;
-  final ValueChanged<int> onCrumb;
-  final bool enabled;
-
-  const _BrowserHeader({
-    required this.path,
-    this.isAbsolute = false,
-    required this.onUp,
-    required this.onCrumb,
-    required this.enabled,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final segs = path
-        .split('/')
-        .where((s) => s.isNotEmpty)
-        .toList();
-    final rootLabel = isAbsolute ? l10n(context).root : l10n(context).home;
-    final crumbs = <String>[rootLabel, ...segs];
-
-    return Row(
-      children: [
-        TextButton.icon(
-          onPressed: enabled ? onUp : null,
-          icon: const Icon(Icons.arrow_upward, size: 18),
-          label: Text(l10n(context).up),
-        ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (var i = 0; i < crumbs.length; i++) ...[
-                  if (i > 0)
-                    Text(l10n(context).breadcrumbSeparator,
-                        style: theme.textTheme.labelMedium),
-                  InkWell(
-                    onTap: enabled ? () => onCrumb(i - 1) : null,
-                    child: Text(
-                      crumbs[i],
-                      style: theme.textTheme.labelMedium?.copyWith(
-                            color: enabled
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant,
-                            fontWeight: i == crumbs.length - 1
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          ),
-                    ),
-                  ),
-                ],
-              ],
             ),
           ),
         ),

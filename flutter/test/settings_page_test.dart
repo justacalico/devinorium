@@ -25,6 +25,7 @@ class _FakeApiService extends ApiService {
   String? cloneRootToReturn;
   bool throwOnTest = false;
   Exception? cloneRootError;
+  List<DirEntry> listFilesToReturn = const [];
 
   final List<User> _users;
   final List<Device> _devices;
@@ -141,6 +142,16 @@ class _FakeApiService extends ApiService {
     savedCloneRoot = path;
     if (cloneRootError != null) throw cloneRootError!;
     return path;
+  }
+
+  @override
+  Future<List<DirEntry>> listFiles({
+    String? path,
+    int? projectId,
+    int? limit,
+    int? offset,
+  }) async {
+    return List.unmodifiable(listFilesToReturn);
   }
 }
 
@@ -783,5 +794,34 @@ void main() {
 
     expect(state.globalError, contains('path must be absolute'));
     expect(find.textContaining('path must be absolute'), findsOneWidget);
+  });
+
+  testWidgets('Clone root browse opens folder picker', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+
+    final browse = find.byTooltip('Browse...');
+    expect(browse, findsOneWidget);
+    await tester.tap(browse);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Select current folder'), findsOneWidget);
   });
 }
