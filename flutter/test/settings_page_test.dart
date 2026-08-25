@@ -17,9 +17,14 @@ class _FakeApiService extends ApiService {
   int testProviderCalls = 0;
   int createUserCalls = 0;
   int revokeDeviceCalls = 0;
+  int getCloneRootCalls = 0;
+  int setCloneRootCalls = 0;
   String? savedProviderCommand;
   String? testedCommand;
+  String? savedCloneRoot;
+  String? cloneRootToReturn;
   bool throwOnTest = false;
+  Exception? cloneRootError;
 
   final List<User> _users;
   final List<Device> _devices;
@@ -121,6 +126,21 @@ class _FakeApiService extends ApiService {
   Future<void> revokeDevice(String deviceId) async {
     revokeDeviceCalls++;
     _devices.removeWhere((d) => d.deviceId == deviceId);
+  }
+
+  @override
+  Future<String?> getCloneRoot() async {
+    getCloneRootCalls++;
+    if (cloneRootError != null) throw cloneRootError!;
+    return cloneRootToReturn;
+  }
+
+  @override
+  Future<String?> setCloneRoot(String? path) async {
+    setCloneRootCalls++;
+    savedCloneRoot = path;
+    if (cloneRootError != null) throw cloneRootError!;
+    return path;
   }
 }
 
@@ -299,7 +319,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(6);
     await tester.pumpAndSettle();
 
     expect(find.text('Manage'), findsOneWidget);
@@ -372,7 +392,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(6);
     await tester.pumpAndSettle();
 
     final openButton = find.widgetWithText(FilledButton, 'Create user');
@@ -412,8 +432,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // With 5 sections for non-owners, index 10 clamps to 4 (Git).
-    expect(find.text('Git'), findsOneWidget);
+    // With 6 sections for non-owners, index 10 clamps to 5 (Clone root).
+    expect(find.text('Clone root'), findsOneWidget);
   });
 
   testWidgets('Personalization tab has theme selector', (tester) async {
@@ -641,5 +661,127 @@ void main() {
     expect(find.text('Bitbucket'), findsOneWidget);
     expect(find.text('Not connected'), findsOneWidget);
     expect(find.byType(GitProviderTile), findsOneWidget);
+  });
+
+  testWidgets('Clone root section loads current value for owners', (tester) async {
+    final fake = _FakeApiService()..cloneRootToReturn = '/srv/clones';
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      cloneRoot: '/srv/clones',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Clone root'), findsOneWidget);
+    expect(find.text('Directory where cloned repositories are placed.'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(state.cloneRoot, '/srv/clones');
+    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    expect(fake.getCloneRootCalls, greaterThan(0));
+  });
+
+  testWidgets('Clone root section is read-only for non-owners', (tester) async {
+    final fake = _FakeApiService()..cloneRootToReturn = '/srv/clones';
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 2,
+        username: 'alice',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Clone root'), findsOneWidget);
+    expect(find.text('/srv/clones'), findsOneWidget);
+    expect(find.text('Only the owner can change the clone root.'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
+  });
+
+  testWidgets('Clone root save propagates to the API and updates state', (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      cloneRoot: '/old',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+
+    final field = find.byType(TextField);
+    expect(field, findsOneWidget);
+
+    await tester.enterText(field, '/new/clones');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(fake.setCloneRootCalls, 1);
+    expect(fake.savedCloneRoot, '/new/clones');
+    expect(state.cloneRoot, '/new/clones');
+  });
+
+  testWidgets('Clone root save shows an error on failure', (tester) async {
+    final fake = _FakeApiService()..cloneRootError = Exception('path must be absolute');
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+
+    final field = find.byType(TextField);
+    await tester.enterText(field, 'relative');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(state.globalError, contains('path must be absolute'));
+    expect(find.textContaining('path must be absolute'), findsOneWidget);
   });
 }
