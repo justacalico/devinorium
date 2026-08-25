@@ -1001,3 +1001,182 @@ async fn git_remote_gitlab_status_fails_on_unparseable_output() {
     let err = svc.gitlab_status(1).await.unwrap_err();
     assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
 }
+
+#[test]
+fn parse_gitlab_remote_url_handles_scp_style() {
+    let r = devinorium::git::parse_gitlab_remote_url("git@gitlab.com:group/project.git").unwrap();
+    assert_eq!(r.hostname, "gitlab.com");
+    assert_eq!(r.project_path, "group/project");
+
+    let r = devinorium::git::parse_gitlab_remote_url(
+        "git@gitlab.example.com:group/subgroup/project.git",
+    )
+    .unwrap();
+    assert_eq!(r.hostname, "gitlab.example.com");
+    assert_eq!(r.project_path, "group/subgroup/project");
+}
+
+#[test]
+fn parse_gitlab_remote_url_handles_https() {
+    let r =
+        devinorium::git::parse_gitlab_remote_url("https://gitlab.com/group/project.git").unwrap();
+    assert_eq!(r.hostname, "gitlab.com");
+    assert_eq!(r.project_path, "group/project");
+
+    let r = devinorium::git::parse_gitlab_remote_url(
+        "https://user:token@gitlab.example.com/group/subgroup/project.git",
+    )
+    .unwrap();
+    assert_eq!(r.hostname, "gitlab.example.com");
+    assert_eq!(r.project_path, "group/subgroup/project");
+}
+
+#[test]
+fn parse_gitlab_remote_url_handles_ssh_scheme_with_port() {
+    let r = devinorium::git::parse_gitlab_remote_url("ssh://git@gitlab.com:22/group/project.git")
+        .unwrap();
+    assert_eq!(r.hostname, "gitlab.com");
+    assert_eq!(r.project_path, "group/project");
+}
+
+#[test]
+fn parse_gitlab_remote_url_strips_trailing_dot_git_and_slash() {
+    let r =
+        devinorium::git::parse_gitlab_remote_url("https://gitlab.com/group/project/").unwrap();
+    assert_eq!(r.project_path, "group/project");
+}
+
+#[test]
+fn parse_gitlab_remote_url_rejects_garbage() {
+    assert!(devinorium::git::parse_gitlab_remote_url("").is_none());
+    assert!(devinorium::git::parse_gitlab_remote_url("not a url").is_none());
+    assert!(devinorium::git::parse_gitlab_remote_url("https://gitlab.com/").is_none());
+    // Non-gitlab hostnames still parse; the caller decides whether the host
+    // is acceptable. But a path with traversal is rejected.
+    assert!(devinorium::git::parse_gitlab_remote_url("https://gitlab.com/../project").is_none());
+}
+
+#[tokio::test]
+async fn remote_url_returns_origin_fetch_url() {
+    let tmp = make_repo();
+    git_cli(
+        &[
+            "remote",
+            "add",
+            "origin",
+            "git@gitlab.com:group/project.git",
+        ],
+        tmp.path(),
+    );
+
+    let svc = GitService::new();
+    let url = svc.remote_url(tmp.path()).await.unwrap();
+    assert_eq!(url, "git@gitlab.com:group/project.git");
+}
+
+#[tokio::test]
+async fn remote_url_errors_when_no_remote_configured() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let err = svc.remote_url(tmp.path()).await.unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+}
+
+#[tokio::test]
+async fn remote_url_errors_when_not_a_repo() {
+    let tmp = TempDir::new().unwrap();
+    let svc = GitService::new();
+    let err = svc.remote_url(tmp.path()).await.unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::NotRepo));
+}
+
+fn write_fake_glab_with_merge_requests(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+set -e
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"merge_requests?source_branch=feature%2Fbranch"*"state=opened"*)
+      printf '[{"iid":12,"title":"Add feature","state":"opened","source_branch":"feature/branch","target_branch":"main","web_url":"https://gitlab.example.com/group/project/-/merge_requests/12","draft":false}]\n'
+      exit 0
+      ;;
+    *"merge_requests?source_branch=empty"*"state=opened"*)
+      printf '[]\n'
+      exit 0
+      ;;
+  esac
+  printf '{"host":"%s","path":"%s"}\n' "$3" "$path"
+  exit 0
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn gitlab_merge_request_for_branch_returns_match() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_merge_requests(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let mr = svc
+        .gitlab_merge_request_for_branch(1, "gitlab.example.com", "group/project", "feature/branch")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(mr.iid, 12);
+    assert_eq!(mr.title, "Add feature");
+    assert_eq!(mr.source_branch, "feature/branch");
+    assert_eq!(mr.target_branch, "main");
+    assert_eq!(
+        mr.web_url,
+        "https://gitlab.example.com/group/project/-/merge_requests/12"
+    );
+    assert!(!mr.draft);
+}
+
+#[tokio::test]
+async fn gitlab_merge_request_for_branch_returns_none_when_no_match() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_merge_requests(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let mr = svc
+        .gitlab_merge_request_for_branch(1, "gitlab.example.com", "group/project", "empty")
+        .await
+        .unwrap();
+    assert!(mr.is_none());
+}
+
+#[tokio::test]
+async fn gitlab_merge_request_for_branch_rejects_empty_inputs() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_merge_requests(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let err = svc
+        .gitlab_merge_request_for_branch(1, "gitlab.example.com", "", "feature")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+
+    let err = svc
+        .gitlab_merge_request_for_branch(1, "gitlab.example.com", "group/project", "")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}

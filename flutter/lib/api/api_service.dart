@@ -168,6 +168,31 @@ class ApiService {
     });
   }
 
+  /// Find the open merge request linked to [branch] in the project's GitLab
+  /// remote. Returns `null` when there is no open MR, the project has no
+  /// GitLab remote, or glab is unavailable — those are expected "no linked
+  /// MR" states rather than errors worth surfacing to the user.
+  Future<MergeRequestLink?> findMergeRequestForBranch(
+    int projectId,
+    String branch,
+  ) async {
+    if (branch.isEmpty) return null;
+    final uri = _buildPath(
+      '/api/projects/$projectId/git/merge-request',
+      {'branch': branch},
+    );
+    try {
+      final j = await _client.get(uri);
+      // 204 No Content comes back as an empty map.
+      if (j.isEmpty) return null;
+      return MergeRequestLink.fromJson(j);
+    } on ApiException catch (e) {
+      // 404 covers "not a GitLab remote" and "glab not installed".
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   // ---- Git connections ----
 
   Future<List<GitConnection>> listGitConnections() async {

@@ -764,4 +764,70 @@ void main() {
       expect(msg, isNull);
     });
   });
+
+  group('findMergeRequestForBranch', () {
+    test('returns MR on 200', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/projects/3/git/merge-request');
+        expect(req.url.queryParameters['branch'], 'feature/x');
+        return _json(200, {
+          'iid': 12,
+          'title': 'Add feature',
+          'state': 'opened',
+          'source_branch': 'feature/x',
+          'target_branch': 'main',
+          'web_url': 'https://gitlab.example.com/g/p/-/merge_requests/12',
+          'draft': false,
+        });
+      });
+      final service = _serviceFor(mock);
+      final mr = await service.findMergeRequestForBranch(3, 'feature/x');
+      expect(mr, isNotNull);
+      expect(mr!.iid, 12);
+      expect(mr.title, 'Add feature');
+      expect(mr.sourceBranch, 'feature/x');
+      expect(mr.webUrl, 'https://gitlab.example.com/g/p/-/merge_requests/12');
+      expect(mr.draft, isFalse);
+      expect(mr.isOpen, isTrue);
+    });
+
+    test('returns null on 204 no content', () async {
+      final mock = MockClient((req) async {
+        return http.Response('', 204);
+      });
+      final service = _serviceFor(mock);
+      final mr = await service.findMergeRequestForBranch(3, 'feature/x');
+      expect(mr, isNull);
+    });
+
+    test('returns null on 404 (no GitLab remote / glab missing)', () async {
+      final mock = MockClient((req) async {
+        return _json(404, {'error': 'not a gitlab repository'});
+      });
+      final service = _serviceFor(mock);
+      final mr = await service.findMergeRequestForBranch(3, 'feature/x');
+      expect(mr, isNull);
+    });
+
+    test('rethrows non-404 errors', () async {
+      final mock = MockClient((req) async {
+        return _json(500, {'error': 'boom'});
+      });
+      final service = _serviceFor(mock);
+      await expectLater(
+        service.findMergeRequestForBranch(3, 'feature/x'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('short-circuits when branch is empty', () async {
+      final mock = MockClient((req) async {
+        fail('should not make a request for an empty branch');
+      });
+      final service = _serviceFor(mock);
+      final mr = await service.findMergeRequestForBranch(3, '');
+      expect(mr, isNull);
+    });
+  });
 }

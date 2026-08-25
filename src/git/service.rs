@@ -567,6 +567,61 @@ impl GitService {
         Ok(())
     }
 
+    /// Return the fetch URL of the branch's tracked remote, falling back to
+    /// `origin` and then the first listed remote. Empty when no remote is
+    /// configured or the repo is not a git repository.
+    pub async fn remote_url(&self, path: &Path) -> Result<String, GitError> {
+        let status = self.repo_status(path, false).await?;
+        if !status.is_repo {
+            return Err(GitError::NotRepo);
+        }
+
+        let remote = if !status.branch.is_empty()
+            && self.is_safe_branch_name(&status.branch)
+        {
+            self.run_with(
+                path,
+                &["config", &format!("branch.{}.remote", status.branch)],
+                Duration::from_secs(5),
+            )
+            .await
+            .map(|s| s.trim().to_string())
+            .ok()
+            .filter(|s| !s.is_empty())
+        } else {
+            None
+        };
+
+        let remote = match remote {
+            Some(r) => r,
+            None => {
+                let remotes = self
+                    .run_with(path, &["remote"], Duration::from_secs(5))
+                    .await?;
+                let lines: Vec<&str> = remotes.lines().collect();
+                if lines.is_empty() {
+                    return Err(GitError::Other("no remote configured".to_string()));
+                }
+                lines
+                    .iter()
+                    .find(|&&r| r == "origin")
+                    .copied()
+                    .or(lines.first().copied())
+                    .map(str::to_string)
+                    .ok_or_else(|| GitError::Other("no remote configured".to_string()))?
+            }
+        };
+
+        let url = self
+            .run_with(
+                path,
+                &["remote", "get-url", &remote],
+                Duration::from_secs(5),
+            )
+            .await?;
+        Ok(url.trim().to_string())
+    }
+
     fn invalidate(&self, path: &Path) {
         let key = path.to_string_lossy().to_string();
         self.repo_cache.invalidate(&key);

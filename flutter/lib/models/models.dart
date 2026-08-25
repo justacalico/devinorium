@@ -1007,6 +1007,51 @@ class GitConnection {
       );
 }
 
+/// A lightweight merge request reference linked to a thread's branch.
+///
+/// This is the summary returned by the backend's
+/// `GET /api/projects/:id/git/merge-request` endpoint, used to surface the
+/// open MR for a thread's branch without loading the full diff payload.
+class MergeRequestLink {
+  final int iid;
+  final String title;
+  final String state;
+  final String sourceBranch;
+  final String targetBranch;
+  final String webUrl;
+  final bool draft;
+
+  const MergeRequestLink({
+    required this.iid,
+    required this.title,
+    required this.state,
+    required this.sourceBranch,
+    required this.targetBranch,
+    required this.webUrl,
+    this.draft = false,
+  });
+
+  bool get isOpen => state == 'opened' || state == 'open';
+
+  factory MergeRequestLink.fromJson(Map<String, dynamic> j) {
+    final raw = j['iid'];
+    final iid = raw is num
+        ? raw.toInt()
+        : raw is String
+            ? int.tryParse(raw) ?? 0
+            : 0;
+    return MergeRequestLink(
+      iid: iid,
+      title: j['title'] as String? ?? '',
+      state: j['state'] as String? ?? '',
+      sourceBranch: j['source_branch'] as String? ?? '',
+      targetBranch: j['target_branch'] as String? ?? '',
+      webUrl: j['web_url'] as String? ?? '',
+      draft: (j['draft'] as bool?) ?? false,
+    );
+  }
+}
+
 /// Decode a JSON body that may be either a raw string (error) or a JSON object.
 Map<String, dynamic>? tryDecodeJson(String body) {
   try {

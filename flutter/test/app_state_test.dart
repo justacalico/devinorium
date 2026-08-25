@@ -2674,4 +2674,118 @@ void main() {
       expect(state.issueUrl, isNull);
     });
   });
+
+  group('Linked merge request', () {
+    test('loadLinkedMergeRequest stores the MR summary', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/merge-request') {
+            return _json(200, {
+              'iid': 12,
+              'title': 'Add feature',
+              'state': 'opened',
+              'source_branch': 'feature/x',
+              'target_branch': 'main',
+              'web_url': 'https://gitlab.example.com/g/p/-/merge_requests/12',
+              'draft': false,
+            });
+          }
+          return _json(404, {'error': 'unexpected'});
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeProjectId: 1,
+      );
+      await state.loadLinkedMergeRequest(1, 'feature/x');
+      expect(state.loadingLinkedMergeRequest, isFalse);
+      final mr = state.linkedMergeRequest;
+      expect(mr, isNotNull);
+      expect(mr!.iid, 12);
+      expect(mr.title, 'Add feature');
+      expect(mr.sourceBranch, 'feature/x');
+    });
+
+    test('loadLinkedMergeRequest stores null when no MR exists (204)', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/merge-request') {
+            return http.Response('', 204);
+          }
+          return _json(404, {'error': 'unexpected'});
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeProjectId: 1,
+      );
+      await state.loadLinkedMergeRequest(1, 'feature/x');
+      expect(state.linkedMergeRequest, isNull);
+      expect(state.loadingLinkedMergeRequest, isFalse);
+    });
+
+    test('loadLinkedMergeRequest stores null on 404 (no GitLab remote)',
+        () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/merge-request') {
+            return _json(404, {'error': 'not a gitlab repository'});
+          }
+          return _json(404, {'error': 'unexpected'});
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeProjectId: 1,
+      );
+      await state.loadLinkedMergeRequest(1, 'feature/x');
+      expect(state.linkedMergeRequest, isNull);
+      expect(state.loadingLinkedMergeRequest, isFalse);
+    });
+
+    test('refreshLinkedMergeRequest clears state when no branch is active',
+        () async {
+      final state = AppState.test(activeProjectId: 1);
+      await state.refreshLinkedMergeRequest();
+      expect(state.linkedMergeRequest, isNull);
+      expect(state.loadingLinkedMergeRequest, isFalse);
+    });
+
+    test('refreshLinkedMergeRequest uses repo branch when thread has none',
+        () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/merge-request') {
+            expect(req.url.queryParameters['branch'], 'main');
+            return _json(200, {
+              'iid': 1,
+              'title': 'T',
+              'state': 'opened',
+              'source_branch': 'main',
+              'target_branch': 'main',
+              'web_url': 'https://x/-/merge_requests/1',
+              'draft': false,
+            });
+          }
+          return _json(404, {'error': 'unexpected'});
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeProjectId: 1,
+        gitRepoInfo: {
+          1: GitRepoInfo(
+            isRepo: true,
+            branch: 'main',
+            worktreePath: '/x',
+            toplevel: '/x',
+            commonDir: '/x/.git',
+          ),
+        },
+      );
+      await state.refreshLinkedMergeRequest();
+      expect(state.linkedMergeRequest, isNotNull);
+      expect(state.linkedMergeRequest!.iid, 1);
+    });
+  });
 }

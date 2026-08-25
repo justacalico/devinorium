@@ -26,6 +26,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/:id/git/worktrees", post(create_worktree))
         .route("/api/projects/:id/git/worktrees", delete(delete_worktree))
         .route("/api/projects/:id/git/status", get(status_summary))
+        .route("/api/projects/:id/git/merge-request", get(merge_request_for_branch))
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,6 +80,11 @@ pub struct DeleteWorktreeRequest {
 #[derive(Debug, Deserialize)]
 pub struct PullBranchRequest {
     pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MergeRequestQuery {
+    pub branch: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -501,6 +507,78 @@ async fn delete_worktree(
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
         Err(e) => error_response(e),
+    }
+}
+
+/// Find the open merge request linked to a thread's branch.
+///
+/// Resolves the project's git remote URL to a GitLab project, then queries
+/// GitLab for an open merge request with a matching source branch. Returns
+/// the MR summary, `204` when no MR exists, or an error when the project is
+/// not a GitLab repository or glab is unavailable.
+async fn merge_request_for_branch(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Query(q): Query<MergeRequestQuery>,
+) -> Response {
+    let branch = q.branch.trim();
+    if branch.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("branch is required")),
+        )
+            .into_response();
+    }
+
+    let project = match state.db.get_project(id, user.id).await {
+        Ok(Some(p)) => p,
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("project not found")),
+            )
+                .into_response()
+        }
+    };
+
+    let url = match state
+        .git
+        .remote_url(PathBuf::from(&project.path).as_path())
+        .await
+    {
+        Ok(url) => url,
+        Err(GitError::NotEnabled) => return not_enabled(),
+        Err(GitError::NotRepo) => return not_repo(),
+        Err(e) => return error_response(e),
+    };
+
+    let gitlab = match crate::git::parse_gitlab_remote_url(&url) {
+        Some(g) => g,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new(
+                    "project remote is not a GitLab repository",
+                )),
+            )
+                .into_response()
+        }
+    };
+
+    match state
+        .git_remote
+        .gitlab_merge_request_for_branch(user.id, &gitlab.hostname, &gitlab.project_path, branch)
+        .await
+    {
+        Ok(Some(mr)) => Json(mr).into_response(),
+        Ok(None) => StatusCode::NO_CONTENT.into_response(),
+        Err(crate::git::RemoteError::GitLabNotAvailable) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("gitlab cli is not installed")),
+        )
+            .into_response(),
+        Err(e) => (e.status_code(), Json(crate::api::ApiError::new(e.to_string()))).into_response(),
     }
 }
 

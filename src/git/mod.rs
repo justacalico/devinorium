@@ -5,6 +5,7 @@ pub mod remote;
 pub mod service;
 
 pub use remote::{
-    GitConnection, GitLabPipeline, GitLabStatus, GitRemoteService, MergeRequestAction, RemoteError,
+    parse_gitlab_remote_url, GitConnection, GitLabMergeRequestSummary, GitLabPipeline,
+    GitLabProjectRef, GitLabStatus, GitRemoteService, MergeRequestAction, RemoteError,
 };
 pub use service::{Branch, GitError, GitService, RepoStatus, Worktree};
