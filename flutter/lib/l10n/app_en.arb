@@ -485,6 +485,7 @@
   "copy": "Copy",
   "copied": "Copied",
   "copiedToClipboard": "Copied to clipboard",
+  "couldNotOpenLink": "Could not open link",
   "mergeRequest": "Merge request",
   "overview": "Overview",
   "changes": "Changes",

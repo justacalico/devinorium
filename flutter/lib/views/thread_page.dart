@@ -5,6 +5,7 @@ import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart' hide SyntaxHighlighter;
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
@@ -64,6 +65,8 @@ class ThreadPage extends StatelessWidget {
           ],
         ),
         actions: [
+          if (state.linkedMergeRequest != null)
+            LinkedMergeRequestChip(mr: state.linkedMergeRequest!),
           if (isGit && state.activeProjectId != null)
             TextButton.icon(
               icon: const Icon(Icons.call_split, size: 18),
@@ -1490,5 +1493,90 @@ class _PreBuilder extends MarkdownElementBuilder {
       language: language,
       highlighter: highlighter,
     );
+  }
+}
+
+/// A compact chip that links to the merge request associated with the active
+/// thread's branch. Tapping it opens the MR in a new tab; long-press copies
+/// the URL. Hidden when no MR is linked.
+class LinkedMergeRequestChip extends StatelessWidget {
+  final MergeRequestLink mr;
+  const LinkedMergeRequestChip({super.key, required this.mr});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final draft = mr.draft;
+    final label = draft
+        ? 'Draft !${mr.iid}'
+        : '!${mr.iid}';
+    final tooltip = mr.title.isEmpty
+        ? label
+        : '$label: ${mr.title}';
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onLongPress: mr.webUrl.isEmpty
+            ? null
+            : () async {
+                await Clipboard.setData(ClipboardData(text: mr.webUrl));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(l10n(context).copiedToClipboard),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                }
+              },
+        onTap: mr.webUrl.isEmpty
+            ? null
+            : () => _openUrl(mr.webUrl, context),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: (draft ? colorScheme.errorContainer : colorScheme.secondaryContainer)
+                .withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: (draft ? colorScheme.error : colorScheme.secondary)
+                  .withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                draft ? Icons.edit_note : Icons.merge,
+                size: 14,
+                color: draft ? colorScheme.onErrorContainer : colorScheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: draft ? colorScheme.onErrorContainer : colorScheme.onSecondaryContainer,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openUrl(String url, BuildContext context) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n(context).couldNotOpenLink)),
+      );
+    }
   }
 }

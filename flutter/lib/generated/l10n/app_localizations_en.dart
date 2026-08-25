@@ -827,6 +827,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get copiedToClipboard => 'Copied to clipboard';
 
   @override
+  String get couldNotOpenLink => 'Could not open link';
+
+  @override
   String get mergeRequest => 'Merge request';
 
   @override

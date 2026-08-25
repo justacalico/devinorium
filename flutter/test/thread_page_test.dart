@@ -1858,4 +1858,80 @@ void main() {
 
     expect(find.text('Assistant'), findsOneWidget);
   });
+
+  testWidgets('linked MR chip renders in app bar when MR is present',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      linkedMergeRequest: const MergeRequestLink(
+        iid: 42,
+        title: 'Refactor backend',
+        state: 'opened',
+        sourceBranch: 'feat/x',
+        targetBranch: 'main',
+        webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/42',
+        draft: false,
+      ),
+    );
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LinkedMergeRequestChip), findsOneWidget);
+    expect(find.text('!42'), findsOneWidget);
+  });
+
+  testWidgets('linked MR chip shows Draft prefix for draft MRs',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      linkedMergeRequest: const MergeRequestLink(
+        iid: 7,
+        title: 'WIP',
+        state: 'opened',
+        sourceBranch: 'feat/y',
+        targetBranch: 'main',
+        webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/7',
+        draft: true,
+      ),
+    );
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LinkedMergeRequestChip), findsOneWidget);
+    expect(find.text('Draft !7'), findsOneWidget);
+  });
+
+  testWidgets('no linked MR chip when no MR is linked', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LinkedMergeRequestChip), findsNothing);
+  });
 }
