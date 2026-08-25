@@ -151,6 +151,10 @@ class NativeApiClient implements BaseApiClient {
       _json('POST', path, body);
 
   @override
+  Future<Map<String, dynamic>> put(String path, [Object? body]) =>
+      _json('PUT', path, body);
+
+  @override
   Future<Map<String, dynamic>> patch(String path, [Object? body]) =>
       _json('PATCH', path, body);
 

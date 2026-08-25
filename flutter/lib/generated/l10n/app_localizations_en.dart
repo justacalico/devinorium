@@ -112,6 +112,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get close => 'Close';
 
   @override
+  String get clear => 'Clear';
+
+  @override
   String get required => 'Required';
 
   @override
@@ -909,4 +912,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get issueOpenInBrowser => 'Open in browser';
+
+  @override
+  String get cloneRoot => 'Clone root';
+
+  @override
+  String get cloneRootDescription =>
+      'Directory where cloned repositories are placed.';
+
+  @override
+  String get cloneRootNotSet => 'Not set yet';
+
+  @override
+  String get cloneRootSave => 'Save';
+
+  @override
+  String get cloneRootBrowse => 'Browse...';
+
+  @override
+  String get cloneRootOnlyOwner => 'Only the owner can change the clone root.';
 }

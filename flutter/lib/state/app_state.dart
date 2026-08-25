@@ -53,6 +53,7 @@ class AppState extends ChangeNotifier {
     List<ProviderInfo> providers = const [],
     List<GitConnection> gitConnections = const [],
     bool loadingGitConnections = false,
+    String? cloneRoot,
     int? activeProjectId,
     String? activeThreadId,
     ThreadDetail? activeThreadDetail,
@@ -85,6 +86,7 @@ class AppState extends ChangeNotifier {
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;
+    _cloneRoot = cloneRoot;
     _user = user;
     _users = users;
     _projects = projects;
@@ -245,6 +247,10 @@ class AppState extends ChangeNotifier {
   List<GitConnection> _gitConnections = [];
   bool _loadingGitConnections = false;
 
+  // Clone root.
+  String? _cloneRoot;
+  bool _loadingCloneRoot = false;
+
   // Connection health.
   ConnectionStatus _connectionStatus = ConnectionStatus.checking;
   Timer? _healthTimer;
@@ -312,6 +318,9 @@ class AppState extends ChangeNotifier {
 
   bool get hasMoreFiles => _filesHasMore;
   bool get isLoadingMoreFiles => _loadingMoreFiles;
+
+  String? get cloneRoot => _cloneRoot;
+  bool get loadingCloneRoot => _loadingCloneRoot;
 
   bool hasMoreProjectThreads(int projectId) =>
       _projectThreadsHasMore[projectId] ?? false;
@@ -1077,7 +1086,11 @@ class AppState extends ChangeNotifier {
   /// Load all settings data in parallel so the settings tabs appear at once
   /// instead of making the user wait for three sequential round trips.
   Future<void> loadSettingsData() async {
-    final futures = <Future<void>>[loadDevices(), loadGitConnections()];
+    final futures = <Future<void>>[
+      loadDevices(),
+      loadGitConnections(),
+      loadCloneRoot(),
+    ];
     if (isOwner) {
       futures.add(loadUsers());
     }
@@ -1862,6 +1875,36 @@ class AppState extends ChangeNotifier {
       }
     } catch (e) {
       _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  // ---- Clone root ----
+
+  Future<void> loadCloneRoot() async {
+    _loadingCloneRoot = true;
+    notifyListeners();
+    try {
+      _cloneRoot = await api.getCloneRoot();
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    } finally {
+      _loadingCloneRoot = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setCloneRoot(String? path) async {
+    _loadingCloneRoot = true;
+    notifyListeners();
+    try {
+      _cloneRoot = await api.setCloneRoot(path?.trim());
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    } finally {
+      _loadingCloneRoot = false;
       notifyListeners();
     }
   }

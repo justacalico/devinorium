@@ -572,6 +572,21 @@ class ApiService {
       return false;
     }
   }
+
+  // ---- Clone root ----
+
+  Future<String?> getCloneRoot() async {
+    final j = await _client.get('/api/settings/clone-root');
+    return j['path'] as String?;
+  }
+
+  Future<String?> setCloneRoot(String? path) async {
+    final j = await _client.put(
+      '/api/settings/clone-root',
+      {'path': path},
+    );
+    return j['path'] as String?;
+  }
 }
 
 /// Decode a JSON-serialized SSE `data` payload into a [Message].

@@ -280,6 +280,12 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get close;
 
+  /// No description provided for @clear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get clear;
+
   /// No description provided for @required.
   ///
   /// In en, this message translates to:
@@ -1725,6 +1731,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open in browser'**
   String get issueOpenInBrowser;
+
+  /// No description provided for @cloneRoot.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone root'**
+  String get cloneRoot;
+
+  /// No description provided for @cloneRootDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Directory where cloned repositories are placed.'**
+  String get cloneRootDescription;
+
+  /// No description provided for @cloneRootNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set yet'**
+  String get cloneRootNotSet;
+
+  /// No description provided for @cloneRootSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get cloneRootSave;
+
+  /// No description provided for @cloneRootBrowse.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse...'**
+  String get cloneRootBrowse;
+
+  /// No description provided for @cloneRootOnlyOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the owner can change the clone root.'**
+  String get cloneRootOnlyOwner;
 }
 
 class _AppLocalizationsDelegate
