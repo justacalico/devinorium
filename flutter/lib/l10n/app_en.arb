@@ -503,5 +503,13 @@
   "mergeRequestDraftBlocked": "Mark the merge request ready before merging.",
   "mergeRequestConflictsBlocked": "Resolve the conflicts before merging.",
   "mergeRequestAutoMergeSet": "This merge request will merge once the pipeline succeeds.",
-  "mergeRequestWorking": "Working..."
+  "mergeRequestWorking": "Working...",
+  "issue": "Issue",
+  "issueOpen": "Open",
+  "issueClosed": "Closed",
+  "issueLabels": "Labels",
+  "issueNoDescription": "No description provided.",
+  "issueComments": "Comments",
+  "issueLoadFailed": "Failed to load issue",
+  "issueOpenInBrowser": "Open in browser"
 }

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../api/api_service.dart';
+import '../issue/gitlab_issue_provider.dart';
 import '../l10n/global_l10n.dart';
 import '../merge_request/gitlab_merge_request_provider.dart';
 import '../models/composer_mode.dart';
@@ -31,6 +32,7 @@ enum DialogKind {
   renameProject,
   renameThread,
   mergeRequest,
+  issue,
 }
 
 /// Central app state.
@@ -56,6 +58,7 @@ class AppState extends ChangeNotifier {
     ThreadDetail? activeThreadDetail,
     DialogKind? dialog,
     String? mergeRequestUrl,
+    String? issueUrl,
     PermissionRequest? pendingPermissionRequest,
     AskRequest? pendingAskRequest,
     List<String> filesPath = const [],
@@ -104,6 +107,7 @@ class AppState extends ChangeNotifier {
     _activeProjectId = activeProjectId;
     _dialog = dialog ?? DialogKind.none;
     _mergeRequestUrl = mergeRequestUrl;
+    _issueUrl = issueUrl;
     _filesPath = filesPath;
     _globalError = globalError ?? '';
     _composerMode = composerMode;
@@ -202,6 +206,7 @@ class AppState extends ChangeNotifier {
   String _filesError = '';
   DialogKind _dialog = DialogKind.none;
   String? _mergeRequestUrl;
+  String? _issueUrl;
   String _totpSecret = '';
   bool _threadOpening = false;
 
@@ -274,6 +279,7 @@ class AppState extends ChangeNotifier {
   String get filesError => _filesError;
   DialogKind get dialog => _dialog;
   String? get mergeRequestUrl => _mergeRequestUrl;
+  String? get issueUrl => _issueUrl;
   String get totpSecret => _totpSecret;
   String get composerText => _activeStore?.composerText ?? _composerText;
   bool get sending => _activeStore?.sending ?? false;
@@ -1907,18 +1913,26 @@ class AppState extends ChangeNotifier {
     _dialog = DialogKind.none;
     _gitDialogProjectId = null;
     _mergeRequestUrl = null;
+    _issueUrl = null;
     _renameProjectId = null;
     _renameThreadId = null;
     _renameInitialName = '';
     notifyListeners();
   }
 
-  /// Open the merge request panel if [url] is a supported GitLab MR URL,
-  /// otherwise open it in the user's browser.
+  /// Open the merge request or issue panel if [url] is a supported GitLab
+  /// URL, otherwise open it in the user's browser.
   Future<void> openLink(String url) async {
     if (GitLabMergeRequestProvider.canHandleUrl(url)) {
       _mergeRequestUrl = url;
       _dialog = DialogKind.mergeRequest;
+      _userMenuOpen = false;
+      notifyListeners();
+      return;
+    }
+    if (GitLabIssueProvider.canHandleUrl(url)) {
+      _issueUrl = url;
+      _dialog = DialogKind.issue;
       _userMenuOpen = false;
       notifyListeners();
       return;

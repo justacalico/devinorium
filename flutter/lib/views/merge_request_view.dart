@@ -6,7 +6,7 @@ import '../l10n/l10n.dart';
 import '../merge_request/merge_request_models.dart';
 import '../state/async_value.dart';
 import '../utils/link_opener.dart';
-import 'code_block.dart';
+import 'markdown_rendering.dart';
 import 'merge_request_action_bar.dart';
 import 'syntax_highlighter.dart';
 
@@ -249,19 +249,8 @@ class _OverviewTab extends StatelessWidget {
               if (href != null) onLinkTap?.call(href);
             },
             extensionSet: markdown.ExtensionSet.gitHubFlavored,
-            builders: {'pre': _PreBuilder(highlighter: highlighter)},
-            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-              p: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
-              code: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                backgroundColor: theme.colorScheme.surfaceContainerHigh,
-              ),
-              codeblockDecoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              codeblockPadding: const EdgeInsets.all(12),
-            ),
+            builders: {'pre': PreBuilder(highlighter: highlighter)},
+            styleSheet: markdownStyleSheet(theme),
           );
 
     return SingleChildScrollView(
@@ -557,7 +546,7 @@ class _CommentsTab extends StatelessWidget {
                 ],
                 const SizedBox(height: 8),
                 MarkdownBody(
-                  data: comment.system ? _htmlToMarkdown(comment.body) : comment.body,
+                  data: comment.system ? htmlToMarkdown(comment.body) : comment.body,
                   selectable: false,
                   onTapLink: (txt, href, title) {
                     if (href != null) onLinkTap?.call(href);
@@ -676,110 +665,5 @@ class _ErrorView extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// Convert the small subset of HTML used by GitLab system notes into Markdown
-/// so [MarkdownBody] can render them. Non-system notes are already Markdown.
-String _htmlToMarkdown(String html) {
-  var text = html;
-
-  text = _decodeHtmlEntities(text);
-
-  text = text.replaceAllMapped(RegExp(r'<br\s*/?>'), (_) => '\n');
-
-  text = text.replaceAllMapped(
-    RegExp(
-      r"""<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)</a>""",
-      caseSensitive: false,
-    ),
-    (m) => '[${_cleanWhitespace(m[2]!)}](${_decodeHtmlEntities(m[1]!)})',
-  );
-
-  text = text.replaceAllMapped(
-    RegExp(r'<li[^>]*>([\s\S]*?)</li>', caseSensitive: false),
-    (m) => '- ${_cleanWhitespace(m[1]!)}\n',
-  );
-
-  text = text
-      .replaceAll(RegExp(r'</?ul[^>]*>', caseSensitive: false), '')
-      .replaceAll(RegExp(r'</?ol[^>]*>', caseSensitive: false), '')
-      .replaceAll(RegExp(r'<p[^>]*>', caseSensitive: false), '\n\n')
-      .replaceAll(RegExp(r'</p>', caseSensitive: false), '')
-      .replaceAll(RegExp(r'</?div[^>]*>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'</?span[^>]*>', caseSensitive: false), '')
-      .replaceAll(RegExp(r'</?b[^>]*>', caseSensitive: false), '**')
-      .replaceAll(RegExp(r'</?strong[^>]*>', caseSensitive: false), '**')
-      .replaceAll(RegExp(r'</?i[^>]*>', caseSensitive: false), '*')
-      .replaceAll(RegExp(r'</?em[^>]*>', caseSensitive: false), '*');
-
-  text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
-  return text;
-}
-
-String _cleanWhitespace(String value) {
-  return value.replaceAll(RegExp(r'\s+'), ' ').trim();
-}
-
-String _decodeHtmlEntities(String text) {
-  var out = text;
-  out = out.replaceAll('&lt;', '<');
-  out = out.replaceAll('&gt;', '>');
-  out = out.replaceAll('&amp;', '&');
-  out = out.replaceAll('&quot;', '"');
-  out = out.replaceAll('&apos;', "'");
-  out = out.replaceAll('&nbsp;', ' ');
-
-  out = out.replaceAllMapped(
-    RegExp(r'&#x([0-9a-fA-F]+);'),
-    (m) => String.fromCharCode(int.parse(m[1]!, radix: 16)),
-  );
-  out = out.replaceAllMapped(
-    RegExp(r'&#(\d+);'),
-    (m) => String.fromCharCode(int.parse(m[1]!)),
-  );
-
-  return out;
-}
-
-class _PreBuilder extends MarkdownElementBuilder {
-  final SyntaxHighlighter highlighter;
-
-  _PreBuilder({required this.highlighter});
-
-  @override
-  bool isBlockElement() => true;
-
-  @override
-  Widget? visitElementAfterWithContext(
-    BuildContext context,
-    markdown.Element element,
-    TextStyle? preferredStyle,
-    TextStyle? parentStyle,
-  ) {
-    String code = '';
-    String language = '';
-    if (element.children != null && element.children!.isNotEmpty) {
-      final child = element.children!.first;
-      if (child is markdown.Element && child.tag == 'code') {
-        final cls = child.attributes['class'] ?? '';
-        if (cls.startsWith('language-')) {
-          language = cls.substring('language-'.length);
-        }
-        for (final node in child.children ?? <markdown.Node>[]) {
-          if (node is markdown.Text) {
-            code += node.text;
-          }
-        }
-      }
-    }
-    if (code.isEmpty) {
-      for (final node in element.children ?? <markdown.Node>[]) {
-        if (node is markdown.Text) {
-          code += node.text;
-        }
-      }
-    }
-    return CodeBlock(code: code, language: language, highlighter: highlighter);
   }
 }
