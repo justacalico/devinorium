@@ -54,6 +54,8 @@ class AppState extends ChangeNotifier {
     List<GitConnection> gitConnections = const [],
     bool loadingGitConnections = false,
     String? cloneRoot,
+    Map<int, GitRepoInfo> gitRepoInfo = const {},
+    MergeRequestLink? linkedMergeRequest,
     int? activeProjectId,
     String? activeThreadId,
     ThreadDetail? activeThreadDetail,
@@ -87,6 +89,8 @@ class AppState extends ChangeNotifier {
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;
     _cloneRoot = cloneRoot;
+    _gitRepoInfo.addAll(gitRepoInfo);
+    _linkedMergeRequest = linkedMergeRequest;
     _user = user;
     _users = users;
     _projects = projects;
@@ -238,6 +242,14 @@ class AppState extends ChangeNotifier {
   final Map<int, List<GitWorktree>> _gitWorktrees = {};
   int? _gitDialogProjectId;
 
+  // Linked merge request for the active thread's branch.
+  MergeRequestLink? _linkedMergeRequest;
+  bool _loadingLinkedMergeRequest = false;
+  // The (project, branch) the in-flight lookup is for, so a slow response
+  // cannot overwrite the state for a newer thread/branch.
+  int? _linkedMrProjectId;
+  String? _linkedMrBranch;
+
   // Rename dialog state.
   int? _renameProjectId;
   String? _renameThreadId;
@@ -286,6 +298,8 @@ class AppState extends ChangeNotifier {
   DialogKind get dialog => _dialog;
   String? get mergeRequestUrl => _mergeRequestUrl;
   String? get issueUrl => _issueUrl;
+  MergeRequestLink? get linkedMergeRequest => _linkedMergeRequest;
+  bool get loadingLinkedMergeRequest => _loadingLinkedMergeRequest;
   String get totpSecret => _totpSecret;
   String get composerText => _activeStore?.composerText ?? _composerText;
   bool get sending => _activeStore?.sending ?? false;
@@ -340,7 +354,15 @@ class AppState extends ChangeNotifier {
     _activeThreadId = store?.threadId;
     store?.onStateChanged = _onThreadStoreChanged;
     _syncFromActiveStore();
+    _clearLinkedMergeRequest();
     notifyListeners();
+  }
+
+  void _clearLinkedMergeRequest() {
+    _linkedMergeRequest = null;
+    _loadingLinkedMergeRequest = false;
+    _linkedMrProjectId = null;
+    _linkedMrBranch = null;
   }
 
   void _onThreadStoreChanged() {
@@ -1489,6 +1511,7 @@ class AppState extends ChangeNotifier {
 
       // If the backend is already running this thread, reconnect to it.
       await store.resume();
+      unawaited(refreshLinkedMergeRequest());
     } catch (e) {
       _threadOpening = false;
       _globalError = '$e';
@@ -1764,6 +1787,7 @@ class AppState extends ChangeNotifier {
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
+      if (switchBranch) unawaited(refreshLinkedMergeRequest());
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1781,6 +1805,7 @@ class AppState extends ChangeNotifier {
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
+      unawaited(refreshLinkedMergeRequest());
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1794,6 +1819,7 @@ class AppState extends ChangeNotifier {
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
+      unawaited(refreshLinkedMergeRequest());
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1807,6 +1833,7 @@ class AppState extends ChangeNotifier {
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
+      unawaited(refreshLinkedMergeRequest());
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
@@ -1872,10 +1899,58 @@ class AppState extends ChangeNotifier {
       await refreshThreadsAndGroups();
       if (_activeStore?.threadId == threadId) {
         await _activeStore?.reloadDetail();
+        unawaited(refreshLinkedMergeRequest());
       }
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+    }
+  }
+
+  /// The branch used to look up a linked merge request for the active thread:
+  /// the thread's pinned branch when set, otherwise the repo's current branch.
+  String? get _linkedMrEffectiveBranch {
+    final thread = activeThreadDetail?.thread;
+    final branch = thread?.branch;
+    if (branch != null && branch.isNotEmpty) return branch;
+    final projectId = _activeProjectId;
+    if (projectId == null) return null;
+    final repo = _gitRepoInfo[projectId];
+    return repo?.branch.isNotEmpty == true ? repo!.branch : null;
+  }
+
+  /// Refresh the linked merge request for the active thread's branch. Safe to
+  /// call when no thread or branch is active; it clears the cached MR instead.
+  Future<void> refreshLinkedMergeRequest() async {
+    final projectId = _activeProjectId;
+    final branch = _linkedMrEffectiveBranch;
+    if (projectId == null || branch == null || branch.isEmpty) {
+      _clearLinkedMergeRequest();
+      notifyListeners();
+      return;
+    }
+    await loadLinkedMergeRequest(projectId, branch);
+  }
+
+  Future<void> loadLinkedMergeRequest(int projectId, String branch) async {
+    _loadingLinkedMergeRequest = true;
+    _linkedMrProjectId = projectId;
+    _linkedMrBranch = branch;
+    notifyListeners();
+    try {
+      final mr = await api.findMergeRequestForBranch(projectId, branch);
+      // Ignore the response if the active thread/branch changed while loading.
+      if (_linkedMrProjectId == projectId && _linkedMrBranch == branch) {
+        _linkedMergeRequest = mr;
+        _loadingLinkedMergeRequest = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      if (_linkedMrProjectId == projectId && _linkedMrBranch == branch) {
+        _linkedMergeRequest = null;
+        _loadingLinkedMergeRequest = false;
+        notifyListeners();
+      }
     }
   }
 

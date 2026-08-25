@@ -1070,4 +1070,47 @@ void main() {
       expect(req.questions[0].options, isEmpty);
     });
   });
+
+  group('MergeRequestLink', () {
+    test('parses full payload', () {
+      final mr = MergeRequestLink.fromJson({
+        'iid': 42,
+        'title': 'Refactor backend',
+        'state': 'opened',
+        'source_branch': 'feat/x',
+        'target_branch': 'main',
+        'web_url': 'https://gitlab.example.com/g/p/-/merge_requests/42',
+        'draft': true,
+      });
+      expect(mr.iid, 42);
+      expect(mr.title, 'Refactor backend');
+      expect(mr.state, 'opened');
+      expect(mr.sourceBranch, 'feat/x');
+      expect(mr.targetBranch, 'main');
+      expect(mr.webUrl, 'https://gitlab.example.com/g/p/-/merge_requests/42');
+      expect(mr.draft, isTrue);
+      expect(mr.isOpen, isTrue);
+    });
+
+    test('parses string iid as int', () {
+      final mr = MergeRequestLink.fromJson({'iid': '7'});
+      expect(mr.iid, 7);
+    });
+
+    test('defaults missing fields to safe values', () {
+      final mr = MergeRequestLink.fromJson({});
+      expect(mr.iid, 0);
+      expect(mr.title, isEmpty);
+      expect(mr.state, isEmpty);
+      expect(mr.sourceBranch, isEmpty);
+      expect(mr.webUrl, isEmpty);
+      expect(mr.draft, isFalse);
+      expect(mr.isOpen, isFalse);
+    });
+
+    test('treats "open" state as open', () {
+      final mr = MergeRequestLink.fromJson({'state': 'open'});
+      expect(mr.isOpen, isTrue);
+    });
+  });
 }
