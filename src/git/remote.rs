@@ -89,6 +89,100 @@ pub struct GitLabPipeline {
     pub updated_at: String,
 }
 
+/// A GitLab project resolved from a git remote URL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitLabProjectRef {
+    pub hostname: String,
+    pub project_path: String,
+}
+
+/// A lightweight merge request summary, used to surface the open MR linked
+/// to a thread's branch without loading the full diff/comment payload.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitLabMergeRequestSummary {
+    pub iid: i64,
+    pub title: String,
+    pub state: String,
+    pub source_branch: String,
+    pub target_branch: String,
+    pub web_url: String,
+    pub draft: bool,
+}
+
+/// Parse a git remote URL into a GitLab host and project path.
+///
+/// Handles the common forms:
+///   git@gitlab.com:group/project.git
+///   git@gitlab.example.com:group/subgroup/project.git
+///   ssh://git@gitlab.com:22/group/project.git
+///   https://gitlab.com/group/subgroup/project.git
+///   https://user:token@gitlab.com/group/project.git
+///
+/// Returns `None` for URLs that are not parseable as a GitLab remote.
+pub fn parse_gitlab_remote_url(url: &str) -> Option<GitLabProjectRef> {
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+
+    // ssh://[user@]host[:port]/path
+    if let Some(rest) = url.strip_prefix("ssh://") {
+        let after_user = match rest.split_once('@') {
+            Some((_, host_and_path)) => host_and_path,
+            None => rest,
+        };
+        let (host_and_port, path) = after_user.split_once('/')?;
+        let hostname = host_and_port.split_once(':').map(|(h, _)| h).unwrap_or(host_and_port);
+        return build_ref(hostname, path);
+    }
+
+    // git@host:path  (scp-style)
+    if let Some(rest) = url.strip_prefix("git@") {
+        let (host, path) = rest.split_once(':')?;
+        return build_ref(host, path);
+    }
+
+    // http(s)://[user:pass@]host/path
+    if let Some(rest) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) {
+        let after_auth = match rest.split_once('@') {
+            Some((_, host_and_path)) => host_and_path,
+            None => rest,
+        };
+        let (host, path) = after_auth.split_once('/')?;
+        // Strip a trailing query/fragment if present.
+        let path = path.split(['?', '#']).next().unwrap_or(path);
+        return build_ref(host, path);
+    }
+
+    None
+}
+
+fn build_ref(hostname: &str, path: &str) -> Option<GitLabProjectRef> {
+    let hostname = hostname.trim();
+    let mut project_path = path.trim().trim_end_matches(".git").to_string();
+    // A trailing slash is meaningless and breaks API paths.
+    while project_path.ends_with('/') {
+        project_path.pop();
+    }
+    if hostname.is_empty() || project_path.is_empty() {
+        return None;
+    }
+    // Reject paths that look like filesystem traversal or contain whitespace
+    // or control characters that could break the API path or shell handoff.
+    if project_path.contains(' ')
+        || project_path.contains("..")
+        || project_path.contains('\0')
+        || project_path.contains('\n')
+        || project_path.contains('\r')
+    {
+        return None;
+    }
+    Some(GitLabProjectRef {
+        hostname: hostname.to_string(),
+        project_path,
+    })
+}
+
 /// Manages `glab` authentication state by shelling out to the CLI.
 #[derive(Clone)]
 pub struct GitRemoteService {
@@ -528,6 +622,37 @@ impl GitRemoteService {
         Ok(pipelines)
     }
 
+    /// Find the open merge request whose source branch matches [branch] in the
+    /// given GitLab project. Returns the first match, or `None` if there is no
+    /// open merge request for that branch.
+    pub async fn gitlab_merge_request_for_branch(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        branch: &str,
+    ) -> Result<Option<GitLabMergeRequestSummary>, RemoteError> {
+        if project_path.is_empty() || branch.is_empty() {
+            return Err(RemoteError::StatusFailed(
+                "project and branch are required".into(),
+            ));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let encoded_branch = utf8_percent_encode(branch, NON_ALPHANUMERIC).to_string();
+        let path = format!(
+            "projects/{encoded_project}/merge_requests\
+             ?source_branch={encoded_branch}&state=opened&per_page=1"
+        );
+
+        let output = self.gitlab_api(user_id, hostname, &path).await?;
+        let list: Vec<serde_json::Value> = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid merge request json: {e}"))
+        })?;
+
+        Ok(list.into_iter().next().map(parse_merge_request_summary))
+    }
+
     /// Run a glab/gh command and return stdout, treating a non-zero exit as an
     /// error. Failures carry the combined output so the CLI's own message is
     /// reported; successes exclude stderr so JSON payloads stay parseable.
@@ -696,4 +821,20 @@ fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteErro
         created_at: created_at.to_string(),
         updated_at: updated_at.to_string(),
     })
+}
+
+fn parse_merge_request_summary(value: serde_json::Value) -> GitLabMergeRequestSummary {
+    let iid = value["iid"]
+        .as_i64()
+        .or_else(|| value["iid"].as_str().and_then(|s| s.parse().ok()))
+        .unwrap_or(0);
+    GitLabMergeRequestSummary {
+        iid,
+        title: value["title"].as_str().unwrap_or("").to_string(),
+        state: value["state"].as_str().unwrap_or("").to_string(),
+        source_branch: value["source_branch"].as_str().unwrap_or("").to_string(),
+        target_branch: value["target_branch"].as_str().unwrap_or("").to_string(),
+        web_url: value["web_url"].as_str().unwrap_or("").to_string(),
+        draft: value["draft"].as_bool().unwrap_or(false),
+    }
 }
