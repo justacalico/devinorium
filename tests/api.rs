@@ -4549,6 +4549,7 @@ async fn clone_root_rejects_relative_and_traversal_paths() {
         (r#"{"path":"relative/path"}"#, "relative"),
         (r#"{"path":"../escape"}"#, "relative with parent"),
         (r#"{"path":"/tmp/../etc"}"#, "traversal"),
+        (r#"{"path":"~/../../etc"}"#, "tilde traversal"),
     ];
 
     for (body, label) in cases {
@@ -4568,6 +4569,44 @@ async fn clone_root_rejects_relative_and_traversal_paths() {
             "{label} should be rejected"
         );
     }
+}
+
+#[tokio::test]
+async fn clone_root_expands_tilde_path() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            &cookie,
+            r#"{"path":"~/clones"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let resolved = v["path"].as_str().unwrap();
+    assert!(
+        resolved.contains("clones"),
+        "resolved path should contain 'clones': {resolved}"
+    );
+    assert!(tokio::fs::try_exists(resolved).await.unwrap());
+
+    // GET returns the expanded absolute path.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/settings/clone-root", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), resolved);
 }
 
 #[tokio::test]

@@ -13,6 +13,7 @@ use std::path::Path;
 
 use crate::api::{map_err_internal, ApiError};
 use crate::auth::session::CurrentUser;
+use crate::security::paths;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -61,7 +62,9 @@ async fn set_clone_root(
         Some(p) => p,
     };
 
-    let p = Path::new(path);
+    // Expand `~` to the home directory while still validating the final string.
+    let path = paths::normalize_path(path, &state.config.home_dir);
+    let p = Path::new(&path);
     if !p.is_absolute() {
         return (
             StatusCode::BAD_REQUEST,
@@ -81,9 +84,23 @@ async fn set_clone_root(
         }
     }
 
+    // Resolve to a canonical absolute path. This rejects non-existent tails
+    // that try to escape via `..` and follows symlinks, so the stored path is
+    // stable.
+    let resolved = match paths::resolve(p, None, None) {
+        Some(r) => r,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError::new("invalid path")),
+            )
+                .into_response();
+        }
+    };
+
     // Create the directory if missing; reject if it exists as a file.
-    match tokio::fs::try_exists(p).await {
-        Ok(true) => match tokio::fs::metadata(p).await {
+    match tokio::fs::try_exists(&resolved).await {
+        Ok(true) => match tokio::fs::metadata(&resolved).await {
             Ok(meta) if !meta.is_dir() => {
                 return (
                     StatusCode::BAD_REQUEST,
@@ -101,7 +118,7 @@ async fn set_clone_root(
             }
         },
         Ok(false) => {
-            if let Err(e) = tokio::fs::create_dir_all(p).await {
+            if let Err(e) = tokio::fs::create_dir_all(&resolved).await {
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(ApiError::new(format!("cannot create directory: {e}"))),
@@ -118,7 +135,13 @@ async fn set_clone_root(
         }
     }
 
-    if let Err(e) = state.db.set_clone_root(user.id, Some(path)).await {
+    let final_path = match tokio::fs::canonicalize(&resolved).await {
+        Ok(c) => c,
+        Err(_) => resolved,
+    };
+    let path = final_path.to_string_lossy().to_string();
+
+    if let Err(e) = state.db.set_clone_root(user.id, Some(&path)).await {
         return map_err_internal(e).into_response();
     }
 
@@ -127,13 +150,13 @@ async fn set_clone_root(
         .audit(
             Some(user.id),
             "clone_root.set",
-            &serde_json::json!({"path": path}),
+            &serde_json::json!({"path": &path}),
             None,
         )
         .await;
 
     Json(CloneRootResponse {
-        path: Some(path.to_string()),
+        path: Some(path.clone()),
     })
     .into_response()
 }

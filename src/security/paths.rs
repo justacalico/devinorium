@@ -2,6 +2,37 @@
 
 use std::path::{Path, PathBuf};
 
+/// Normalize a user-supplied path string.
+///
+/// Strips surrounding quotes and expands a leading `~` to the given home
+/// directory. The result may still be relative; callers should validate and
+/// resolve as needed.
+pub fn normalize_path(path: &str, home: &Path) -> String {
+    let mut s = path.trim().to_string();
+
+    // Strip matching surrounding quotes, e.g. "/path/with spaces" or '/path'.
+    if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        s = inner.to_string();
+    } else if let Some(inner) = s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+        s = inner.to_string();
+    }
+
+    // Expand a leading `~` to the home directory.
+    if s == "~" || s == "~/" || s == "~\\" {
+        s = home.to_string_lossy().to_string();
+    } else if s.starts_with("~/") || s.starts_with("~\\") {
+        let sep = if s.starts_with("~/") { '/' } else { '\\' };
+        let rest = s[2..].trim_start_matches(sep);
+        s = if rest.is_empty() {
+            home.to_string_lossy().to_string()
+        } else {
+            home.join(rest).to_string_lossy().to_string()
+        };
+    }
+
+    s
+}
+
 /// Resolve `path` to a canonicalized absolute path.
 ///
 /// `base` is an optional directory used to resolve relative paths. If `path`
