@@ -89,6 +89,7 @@ pub struct UserRow {
     pub created_at: String,
     pub disabled: bool,
     pub is_owner: bool,
+    pub clone_root: Option<String>,
     pub provider_id: String,
     pub provider_command: String,
 }

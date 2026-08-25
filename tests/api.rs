@@ -4387,3 +4387,208 @@ async fn create_thread_preserves_threads_with_messages() {
     assert!(titles.contains(&"new thread"));
     assert!(!titles.contains(&"empty"));
 }
+
+#[tokio::test]
+async fn clone_root_owner_can_set_and_create_missing_directory() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let clone_dir = root.join("clones");
+    assert!(!clone_dir.exists());
+
+    let body = serde_json::json!({"path": clone_dir.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            &cookie,
+            &body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), clone_dir.to_string_lossy());
+    assert!(tokio::fs::try_exists(&clone_dir).await.unwrap());
+    assert!(tokio::fs::metadata(&clone_dir).await.unwrap().is_dir());
+}
+
+#[tokio::test]
+async fn clone_root_owner_can_clear() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let body = serde_json::json!({"path": root.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            &cookie,
+            &body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    for clear_body in [r#"{"path":""}"#, r#"{"path":null}"#] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "PUT",
+                "/api/settings/clone-root",
+                &cookie,
+                clear_body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "clear body: {clear_body}");
+        let body = body_str(resp.into_body()).await;
+        let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+        assert!(v["path"].is_null());
+
+        let resp = app
+            .clone()
+            .oneshot(authed("GET", "/api/settings/clone-root", &cookie, ""))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_str(resp.into_body()).await;
+        let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+        assert!(v["path"].is_null());
+    }
+}
+
+#[tokio::test]
+async fn clone_root_non_owner_can_get_but_not_set() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let body = serde_json::json!({"path": root.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            &owner_cookie,
+            &body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let uid = create_user(&app, &owner_cookie, "member", "supersecret123").await;
+    let member_cookie = login_as(&app, "member", "supersecret123").await;
+
+    // Non-owner GET returns the owner's configured clone root.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/settings/clone-root",
+            &member_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), root.to_string_lossy());
+
+    // Non-owner PUT is forbidden.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            &member_cookie,
+            r#"{"path":"/another/path"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // The clone root should be unchanged (the owner value, not the attempted path).
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/settings/clone-root",
+            &member_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), root.to_string_lossy());
+
+    // Sanity: the new user's own clone_root is still null.
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT clone_root FROM users WHERE id = ?",
+    )
+    .bind(uid)
+    .fetch_optional(_db.pool())
+    .await
+    .unwrap();
+    assert!(row.unwrap().0.is_none());
+}
+
+#[tokio::test]
+async fn clone_root_rejects_relative_and_traversal_paths() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let cases = [
+        (r#"{"path":"relative/path"}"#, "relative"),
+        (r#"{"path":"../escape"}"#, "relative with parent"),
+        (r#"{"path":"/tmp/../etc"}"#, "traversal"),
+    ];
+
+    for (body, label) in cases {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "PUT",
+                "/api/settings/clone-root",
+                &cookie,
+                body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "{label} should be rejected"
+        );
+    }
+}
+
+#[tokio::test]
+async fn clone_root_rejects_existing_file() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let file = root.join("not-a-dir");
+    tokio::fs::write(&file, b"nope").await.unwrap();
+
+    let body = serde_json::json!({"path": file.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            &cookie,
+            &body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
