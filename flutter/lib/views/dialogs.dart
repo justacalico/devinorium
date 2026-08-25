@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
-import '../models/models.dart';
 import '../state/app_state.dart';
 import 'folder_picker.dart';
 import 'git_branch_dialog.dart';
