@@ -1888,6 +1888,38 @@ void main() {
     expect(find.text('!42'), findsOneWidget);
   });
 
+  testWidgets('tapping linked MR chip opens the merge request dialog',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      linkedMergeRequest: const MergeRequestLink(
+        iid: 42,
+        title: 'Refactor backend',
+        state: 'opened',
+        sourceBranch: 'feat/x',
+        targetBranch: 'main',
+        webUrl: 'https://gitlab.com/group/project/-/merge_requests/42',
+        draft: false,
+      ),
+    );
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(LinkedMergeRequestChip));
+    await tester.pumpAndSettle();
+
+    expect(state.dialog, DialogKind.mergeRequest);
+    expect(state.mergeRequestUrl, 'https://gitlab.com/group/project/-/merge_requests/42');
+  });
+
   testWidgets('linked MR chip shows Draft prefix for draft MRs',
       (tester) async {
     final state = AppState.test(

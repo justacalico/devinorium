@@ -5,7 +5,6 @@ import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart' hide SyntaxHighlighter;
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
@@ -1533,7 +1532,7 @@ class LinkedMergeRequestChip extends StatelessWidget {
               },
         onTap: mr.webUrl.isEmpty
             ? null
-            : () => _openUrl(mr.webUrl, context),
+            : () => context.read<AppState>().openLink(mr.webUrl),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
@@ -1569,14 +1568,4 @@ class LinkedMergeRequestChip extends StatelessWidget {
     );
   }
 
-  Future<void> _openUrl(String url, BuildContext context) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!launched && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n(context).couldNotOpenLink)),
-      );
-    }
-  }
 }
