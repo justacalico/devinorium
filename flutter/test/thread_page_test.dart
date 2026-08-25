@@ -34,6 +34,10 @@ class _ThrowingClient extends BaseApiClient {
       throw UnimplementedError();
 
   @override
+  Future<Map<String, dynamic>> put(String path, [Object? body]) =>
+      throw UnimplementedError();
+
+  @override
   Future<Map<String, dynamic>> patch(String path, [Object? body]) =>
       throw UnimplementedError();
 

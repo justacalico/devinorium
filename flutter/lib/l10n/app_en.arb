@@ -65,6 +65,7 @@
   "ok": "OK",
   "back": "Back",
   "close": "Close",
+  "clear": "Clear",
   "required": "Required",
   "invalidNumber": "Must be a valid number",
   "otherOption": "Other (type your own)",
@@ -511,5 +512,11 @@
   "issueNoDescription": "No description provided.",
   "issueComments": "Comments",
   "issueLoadFailed": "Failed to load issue",
-  "issueOpenInBrowser": "Open in browser"
+  "issueOpenInBrowser": "Open in browser",
+  "cloneRoot": "Clone root",
+  "cloneRootDescription": "Directory where cloned repositories are placed.",
+  "cloneRootNotSet": "Not set yet",
+  "cloneRootSave": "Save",
+  "cloneRootBrowse": "Browse...",
+  "cloneRootOnlyOwner": "Only the owner can change the clone root."
 }

@@ -1082,6 +1082,115 @@ void main() {
     });
   });
 
+  group('Clone root', () {
+    test('loadCloneRoot populates state and clears global error', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'path': '/srv/clones'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api);
+      await base.loadCloneRoot();
+      expect(base.cloneRoot, '/srv/clones');
+      expect(base.loadingCloneRoot, isFalse);
+      expect(base.globalError, isEmpty);
+    });
+
+    test('loadCloneRoot sets global error on failure', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(500, {'error': 'database failed'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api);
+      await base.loadCloneRoot();
+      expect(base.cloneRoot, isNull);
+      expect(base.globalError, contains('database failed'));
+      expect(base.loadingCloneRoot, isFalse);
+    });
+
+    test('setCloneRoot updates state and clears global error', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'path': '/new/clones'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      await base.setCloneRoot('/new/clones');
+      expect(base.cloneRoot, '/new/clones');
+      expect(base.globalError, isEmpty);
+      expect(base.loadingCloneRoot, isFalse);
+    });
+
+    test('setCloneRoot clears value when passed null', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'path': null}),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        cloneRoot: '/old',
+      );
+      await base.setCloneRoot(null);
+      expect(base.cloneRoot, isNull);
+      expect(base.globalError, isEmpty);
+    });
+
+    test('setCloneRoot surfaces validation errors', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(400, {'error': 'path must be absolute'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      await base.setCloneRoot('relative');
+      expect(base.cloneRoot, isNull);
+      expect(base.globalError, contains('absolute'));
+    });
+  });
+
   group('Files', () {
     test('openFilesPanel loads entries', () async {
       final state = AppState(
@@ -2054,7 +2163,7 @@ void main() {
     });
 
     test(
-      'loadSettingsData fetches devices, git connections and users in parallel',
+      'loadSettingsData fetches devices, git connections, clone root and users in parallel',
       () async {
         final state = AppState.test(
           user: User(
@@ -2067,33 +2176,46 @@ void main() {
             providerCommand: 'devin',
           ),
           api: ApiService(
-            client: _clientFor([
-              _json(200, [
-                {
-                  'device_id': 'd1',
-                  'token_prefix': 'ab',
-                  'name': 'current',
-                  'created_at': '',
-                  'last_seen_at': '',
-                  'expires_at': '',
-                  'is_current': true,
-                },
-              ]),
-              _json(200, [
-                {'id': 'gitlab', 'name': 'GitLab', 'enabled': true},
-              ]),
-              _json(200, [
-                {
-                  'id': 1,
-                  'username': 'owner',
-                  'role': 'user',
-                  'is_owner': true,
-                  'disabled': false,
-                  'totp_enabled': false,
-                  'created_at': '',
-                },
-              ]),
-            ]),
+            client: ApiClient.withClient(
+              MockClient((req) async {
+                final path = req.url.path;
+                if (path == '/api/auth/devices') {
+                  return _json(200, [
+                    {
+                      'device_id': 'd1',
+                      'token_prefix': 'ab',
+                      'name': 'current',
+                      'created_at': '',
+                      'last_seen_at': '',
+                      'expires_at': '',
+                      'is_current': true,
+                    },
+                  ]);
+                }
+                if (path == '/api/git-connections') {
+                  return _json(200, [
+                    {'id': 'gitlab', 'name': 'GitLab', 'enabled': true},
+                  ]);
+                }
+                if (path == '/api/settings/clone-root') {
+                  return _json(200, {'path': '/srv/clones'});
+                }
+                if (path == '/api/users') {
+                  return _json(200, [
+                    {
+                      'id': 1,
+                      'username': 'owner',
+                      'role': 'user',
+                      'is_owner': true,
+                      'disabled': false,
+                      'totp_enabled': false,
+                      'created_at': '',
+                    },
+                  ]);
+                }
+                return _json(404, {'error': 'unexpected $path'});
+              }),
+            ),
           ),
         );
         await state.loadSettingsData();
@@ -2101,6 +2223,7 @@ void main() {
         expect(state.devices.first.deviceId, 'd1');
         expect(state.gitConnections, hasLength(1));
         expect(state.gitConnections.first.id, 'gitlab');
+        expect(state.cloneRoot, '/srv/clones');
         expect(state.users, hasLength(1));
         expect(state.users.first.username, 'owner');
       },

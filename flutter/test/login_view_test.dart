@@ -66,6 +66,10 @@ class _FakeClient implements BaseApiClient {
   }
 
   @override
+  Future<Map<String, dynamic>> put(String path, [Object? body]) =>
+      throw UnimplementedError();
+
+  @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) async {
     if (path == '/api/auth/login') {
       final map = body as Map<String, dynamic>? ?? {};

@@ -382,7 +382,7 @@ async fn list_threads(
 /// and return the canonical absolute path. Paths are resolved relative to the
 /// user's home directory unless they are absolute.
 async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<PathBuf> {
-    let path = normalize_path(path, &state.config.home_dir);
+    let path = paths::normalize_path(path, &state.config.home_dir);
 
     if std::path::Path::new(&path).is_absolute() {
         let resolved = paths::resolve(std::path::Path::new(&path), None, None)
@@ -416,32 +416,6 @@ async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<
 
     // Canonicalize so the stored path is stable.
     Ok(tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved))
-}
-
-fn normalize_path(path: &str, home: &std::path::Path) -> String {
-    let mut s = path.trim().to_string();
-
-    // Strip matching surrounding quotes, e.g. "/path/with spaces" or '/path'.
-    if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-        s = inner.to_string();
-    } else if let Some(inner) = s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
-        s = inner.to_string();
-    }
-
-    // Expand a leading `~` to the home directory.
-    if s == "~" || s == "~/" || s == "~\\" {
-        s = home.to_string_lossy().to_string();
-    } else if s.starts_with("~/") || s.starts_with("~\\") {
-        let sep = if s.starts_with("~/") { '/' } else { '\\' };
-        let rest = s[2..].trim_start_matches(sep);
-        s = if rest.is_empty() {
-            home.to_string_lossy().to_string()
-        } else {
-            home.join(rest).to_string_lossy().to_string()
-        };
-    }
-
-    s
 }
 
 async fn detect_type(

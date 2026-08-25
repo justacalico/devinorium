@@ -103,6 +103,43 @@ impl super::Db {
             .await
             .map_err(Into::into)
     }
+
+    /// Return the clone root for this user, or the first owner if the caller
+    /// is not an owner. Non-owner users can see where clones will land but
+    /// cannot change it.
+    pub async fn get_clone_root(&self, user_id: i64) -> anyhow::Result<Option<String>> {
+        if let Some(user) = self.get_user_by_id(user_id).await? {
+            if user.is_owner {
+                return Ok(user.clone_root);
+            }
+        }
+        let row: Option<(Option<String>,)> = sqlx::query_as(
+            "SELECT clone_root FROM users WHERE is_owner = 1 ORDER BY id LIMIT 1",
+        )
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.and_then(|r| r.0))
+    }
+
+    pub async fn set_clone_root(
+        &self,
+        user_id: i64,
+        path: Option<&str>,
+    ) -> anyhow::Result<()> {
+        if let Some(user) = self.get_user_by_id(user_id).await? {
+            if !user.is_owner {
+                anyhow::bail!("only the owner can set the clone root");
+            }
+        } else {
+            anyhow::bail!("user not found");
+        }
+        sqlx::query("UPDATE users SET clone_root = ? WHERE id = ?")
+            .bind(path)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]

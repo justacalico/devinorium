@@ -19,6 +19,7 @@ export 'api_types.dart';
 abstract class BaseApiClient {
   Future<Map<String, dynamic>> get(String path);
   Future<Map<String, dynamic>> post(String path, [Object? body]);
+  Future<Map<String, dynamic>> put(String path, [Object? body]);
   Future<Map<String, dynamic>> patch(String path, [Object? body]);
   Future<Map<String, dynamic>> delete(String path);
   Future<Map<String, dynamic>> deleteWithBody(String path, Object body);
@@ -117,6 +118,10 @@ class ApiClient implements BaseApiClient {
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) async =>
       _json('POST', path, body);
+
+  @override
+  Future<Map<String, dynamic>> put(String path, [Object? body]) async =>
+      _json('PUT', path, body);
 
   @override
   Future<Map<String, dynamic>> patch(String path, [Object? body]) async =>

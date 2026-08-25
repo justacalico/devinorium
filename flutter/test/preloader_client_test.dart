@@ -43,6 +43,12 @@ class _FakeClient implements BaseApiClient {
   }
 
   @override
+  Future<Map<String, dynamic>> put(String path, [Object? body]) {
+    _calls.add('PUT $path');
+    return Future.value({});
+  }
+
+  @override
   Future<Map<String, dynamic>> patch(String path, [Object? body]) {
     _calls.add('PATCH $path');
     return Future.value({});
