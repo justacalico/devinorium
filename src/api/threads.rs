@@ -1012,7 +1012,7 @@ async fn run_thread(
                 return;
             }
             let mut guard = plan_acc.lock().unwrap_or_else(|e| e.into_inner());
-            if guard.feed(&text) {
+            if guard.feed_safe(&text) {
                 if let Some(plan) = guard.current() {
                     let plan = plan.clone();
                     drop(guard);
