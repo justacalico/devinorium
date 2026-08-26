@@ -20,6 +20,7 @@ use devinorium::{
     config::Config,
     db,
     git::{GitRemoteService, GitService},
+    plan::{Plan, PlanStep},
     providers::{
         MessagePart, ModelInfo, PartEvent, Provider, SendRequest, SendResponse, StartRequest,
         StartResponse, ToolCallEvent,
@@ -4784,4 +4785,186 @@ async fn git_merge_request_for_branch_404_when_glab_missing() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+/// A stub provider that emits a `<proposed_plan>` block in its reply.
+struct PlanStubProvider;
+
+#[async_trait]
+impl Provider for PlanStubProvider {
+    fn id(&self) -> &str {
+        "plan-stub"
+    }
+    fn name(&self) -> &str {
+        "Plan Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "plan-stub-1".into(),
+            label: "Plan Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        let text = r#"<update_plan explanation="Build the thing"><step status="completed">A</step><step status="in_progress">B</step></update_plan>"#;
+        let parts = vec![MessagePart::text(text)];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+            }
+        }
+        Ok(StartResponse {
+            session_id: "plan-stub-session".into(),
+            reply: text.into(),
+            thinking: "".into(),
+            parts,
+            title: "Plan Thread".into(),
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        let text = r#"<update_plan explanation="Build the thing"><step status="completed">A</step><step status="in_progress">B</step></update_plan>"#;
+        let parts = vec![MessagePart::text(text)];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+            }
+        }
+        Ok(SendResponse {
+            reply: text.into(),
+            thinking: "".into(),
+            parts,
+        })
+    }
+    async fn export(
+        &self,
+        _session_id: &str,
+        _working_dir: &std::path::Path,
+    ) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::json!({}))
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+async fn make_app_with_provider(provider: Arc<dyn Provider>) -> (Router, db::Db) {
+    let (mut state, db) = app_state().await;
+    state.provider = provider;
+    let router = devinorium::build_app(state);
+    (router, db)
+}
+
+#[tokio::test]
+async fn thread_plan_endpoint_returns_latest_plan() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Plan test").await;
+    db.upsert_latest_plan(
+        &tid,
+        None,
+        &Plan::new(
+            Some("Build the thing".into()),
+            vec![
+                PlanStep::new("Step one", devinorium::plan::PlanStepStatus::Completed),
+                PlanStep::new("Step two", devinorium::plan::PlanStepStatus::Pending),
+            ],
+        ),
+    )
+    .await
+    .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/plan"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""explanation":"Build the thing""#));
+    assert!(body.contains(r#""step":"Step one""#));
+    assert!(body.contains(r#""status":"completed""#));
+    assert!(body.contains(r#""status":"pending""#));
+}
+
+#[tokio::test]
+async fn thread_get_one_includes_plan() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Plan detail").await;
+    db.upsert_latest_plan(
+        &tid,
+        None,
+        &Plan::new(
+            None,
+            vec![PlanStep::new("Only step", devinorium::plan::PlanStepStatus::InProgress)],
+        ),
+    )
+    .await
+    .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""step":"Only step""#));
+    assert!(body.contains(r#""status":"in_progress""#));
+}
+
+#[tokio::test]
+async fn thread_send_stream_emits_plan_update_and_persists_plan() {
+    let (app, _db) = make_app_with_provider(Arc::new(PlanStubProvider)).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Plan stream").await;
+
+    let boundary = "test-boundary";
+    let payload = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nhello\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"mode\"\r\n\r\ncode\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nplan-stub-1\r\n--{boundary}--\r\n"
+    );
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/threads/{tid}/send/stream"))
+        .header(header::HOST, "localhost")
+        .header(header::ORIGIN, "http://localhost")
+        .header("cookie", &cookie)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(payload))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let body = body_str(resp.into_body()).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains(r#"event: plan_update"#), "body: {body}");
+    assert!(body.contains(r#""explanation":"Build the thing""#), "body: {body}");
+    assert!(body.contains(r#""step":"A""#), "body: {body}");
+    assert!(body.contains(r#""step":"B""#), "body: {body}");
+
+    // Allow the spawned persistence task to finish.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/plan"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let persisted = body_str(resp.into_body()).await;
+    assert!(persisted.contains(r#""status":"completed""#), "persisted: {persisted}");
+    assert!(persisted.contains(r#""status":"in_progress""#), "persisted: {persisted}");
 }

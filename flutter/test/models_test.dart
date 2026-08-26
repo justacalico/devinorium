@@ -49,7 +49,10 @@ void main() {
         providerId: 'devin-cli',
         providerCommand: 'devin',
       );
-      final updated = user.copyWith(providerId: 'other', providerCommand: 'other-cli');
+      final updated = user.copyWith(
+        providerId: 'other',
+        providerCommand: 'other-cli',
+      );
       expect(updated.providerId, 'other');
       expect(updated.providerCommand, 'other-cli');
     });
@@ -67,6 +70,74 @@ void main() {
       expect(updated.id, 1);
       expect(updated.username, 'owner');
       expect(updated.providerId, 'devin-cli');
+    });
+  });
+
+  group('Plan', () {
+    test('parses plan with steps and explanation', () {
+      final plan = Plan.fromJson({
+        'explanation': 'Build the thing',
+        'steps': [
+          {'step': 'A', 'status': 'completed'},
+          {'step': 'B', 'status': 'in_progress'},
+          {'step': 'C', 'status': 'pending'},
+        ],
+      });
+      expect(plan.explanation, 'Build the thing');
+      expect(plan.steps.length, 3);
+      expect(plan.steps[0].step, 'A');
+      expect(plan.steps[0].status, 'completed');
+      expect(plan.progressPercent, 33);
+    });
+
+    test('progressPercent is zero for empty plan', () {
+      final plan = Plan();
+      expect(plan.progressPercent, 0);
+      expect(plan.isEmpty, isTrue);
+    });
+
+    test('status helpers derive from status string', () {
+      final step = PlanStep(step: 'X', status: 'in_progress');
+      expect(step.isInProgress, isTrue);
+      expect(step.isCompleted, isFalse);
+      expect(step.isPending, isFalse);
+    });
+
+    test('copyWith replaces steps', () {
+      final plan = Plan(
+        explanation: 'E',
+        steps: [PlanStep(step: 'A')],
+      );
+      final updated = plan.copyWith(
+        steps: [PlanStep(step: 'A', status: 'completed')],
+      );
+      expect(updated.steps[0].isCompleted, isTrue);
+      expect(updated.explanation, 'E');
+    });
+
+    test('ThreadDetail parses plan', () {
+      final detail = ThreadDetail.fromJson({
+        'thread': {
+          'id': 't1',
+          'title': 'Test',
+          'project_id': 1,
+          'model': 'm1',
+          'permission_mode': 'normal',
+          'created_at': '',
+          'updated_at': '',
+        },
+        'messages': [],
+        'total_messages': 0,
+        'plan': {
+          'explanation': 'Build',
+          'steps': [
+            {'step': 'A', 'status': 'completed'},
+          ],
+        },
+      });
+      expect(detail.plan, isNotNull);
+      expect(detail.plan!.explanation, 'Build');
+      expect(detail.plan!.steps[0].isCompleted, isTrue);
     });
   });
 
@@ -99,10 +170,7 @@ void main() {
 
   group('Message', () {
     test('parses plain message', () {
-      final m = Message.fromJson({
-        'role': 'user',
-        'content': 'hello',
-      });
+      final m = Message.fromJson({'role': 'user', 'content': 'hello'});
       expect(m.role, 'user');
       expect(m.content, 'hello');
       expect(m.thinking, isNull);
@@ -148,11 +216,7 @@ void main() {
     });
 
     test('allParts falls back to content and thinking', () {
-      final m = Message(
-        role: 'assistant',
-        content: 'hello',
-        thinking: 'hmm',
-      );
+      final m = Message(role: 'assistant', content: 'hello', thinking: 'hmm');
       expect(m.allParts, hasLength(2));
       expect(m.allParts.first.type, 'text');
       expect(m.allParts.first.content, 'hello');
@@ -259,10 +323,7 @@ void main() {
             'old_text': 'fn main() {\n    todo!()\n}\n',
             'new_text': 'fn main() {}\n',
           },
-          {
-            'path': '/tmp/src/new.rs',
-            'new_text': 'pub fn x() {}\n',
-          },
+          {'path': '/tmp/src/new.rs', 'new_text': 'pub fn x() {}\n'},
         ],
       });
       expect(tc.diffs, hasLength(2));
@@ -487,11 +548,7 @@ void main() {
     });
 
     test('defaults missing position to 0', () {
-      final p = Project.fromJson({
-        'id': 1,
-        'name': 'x',
-        'path': 'y',
-      });
+      final p = Project.fromJson({'id': 1, 'name': 'x', 'path': 'y'});
       expect(p.position, 0);
     });
 
@@ -576,11 +633,7 @@ void main() {
   group('ThreadDetail', () {
     test('parses thread detail with messages', () {
       final d = ThreadDetail.fromJson({
-        'thread': {
-          'id': 'abc',
-          'title': 'Thread',
-          'project_id': 1,
-        },
+        'thread': {'id': 'abc', 'title': 'Thread', 'project_id': 1},
         'messages': [
           {'role': 'user', 'content': 'hello'},
         ],
@@ -611,10 +664,7 @@ void main() {
 
   group('ProviderInfo', () {
     test('parses id and name', () {
-      final p = ProviderInfo.fromJson({
-        'id': 'devin-cli',
-        'name': 'Devin CLI',
-      });
+      final p = ProviderInfo.fromJson({'id': 'devin-cli', 'name': 'Devin CLI'});
       expect(p.id, 'devin-cli');
       expect(p.name, 'Devin CLI');
     });
@@ -1030,11 +1080,7 @@ void main() {
             ],
             'required': true,
           },
-          {
-            'id': 'q2',
-            'prompt': 'Notes',
-            'field_type': 'text',
-          },
+          {'id': 'q2', 'prompt': 'Notes', 'field_type': 'text'},
         ],
       });
       expect(req.requestId, 'a1');
