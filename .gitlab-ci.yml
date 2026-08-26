@@ -221,11 +221,13 @@ release:
     - git branch --set-upstream-to=origin/main main
     - git fetch origin --tags
   script:
+    - git clean -fd
     - |
-      if ! cog bump --dry-run --auto >/dev/null 2>&1; then
+      if ! version=$(cog bump --dry-run --auto); then
         echo "No version bump required, skipping release"
         exit 0
       fi
+      echo "Bumping to $version"
     - cog bump --auto --skip-ci
   rules:
     - if: $CI_COMMIT_BRANCH == "main"

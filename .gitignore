@@ -1,5 +1,11 @@
 # Build artifacts
 /target/
+/devinorium-*.apk
+/devinorium-*.aab
+/devinorium-*.deb
+/devinorium-*.tar.gz
+/devinorium-*.zip
+/devinorium-*-deb/
 **/*.rs.bk
 
 # Frontend build output (ignore built assets, keep placeholder)
