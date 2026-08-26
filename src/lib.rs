@@ -10,6 +10,7 @@ pub mod config;
 pub mod db;
 pub mod git;
 pub mod lock;
+pub mod plan;
 pub mod projects;
 pub mod providers;
 pub mod security;
