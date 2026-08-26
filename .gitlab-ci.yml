@@ -15,15 +15,18 @@ variables:
   ANDROID_HOME: "$CI_PROJECT_DIR/.ci-tools/android-sdk"
   FLUTTER_HOME: "$CI_PROJECT_DIR/.ci-tools/flutter"
 
+.tool-cache: &tool-cache
+  key:
+    files:
+      - Cargo.lock
+      - flutter/pubspec.yaml
+  paths:
+    - .ci-tools
+
 default:
   image: rust:1.88.0
   cache:
-    key:
-      files:
-        - Cargo.lock
-        - flutter/pubspec.yaml
-    paths:
-      - .ci-tools
+    <<: *tool-cache
 
 .install: &install
   - export PATH="$TOOLS_DIR/bin:$FLUTTER_HOME/bin:$PATH"
@@ -50,6 +53,9 @@ default:
 verify-cog:
   stage: verify
   tags: [linux-truenas]
+  cache:
+    <<: *tool-cache
+    policy: pull
   before_script:
     - *install
   script:
@@ -61,6 +67,9 @@ verify-cog:
 verify-frontend:
   stage: verify
   tags: [linux-truenas]
+  cache:
+    <<: *tool-cache
+    policy: pull
   before_script:
     - *install
   script:
@@ -72,6 +81,9 @@ verify-frontend:
 verify-backend:
   stage: verify
   tags: [linux-truenas]
+  cache:
+    <<: *tool-cache
+    policy: pull
   before_script:
     - *install
   script:
@@ -174,6 +186,7 @@ build-image:
   stage: build
   tags: [linux-truenas]
   allow_failure: true
+  cache: {}
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -203,6 +216,9 @@ release:
   stage: release
   tags: [linux-truenas]
   resource_group: release
+  cache:
+    <<: *tool-cache
+    policy: pull
   retry:
     max: 2
     when: script_failure
