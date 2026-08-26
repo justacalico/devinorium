@@ -704,11 +704,11 @@ class _ThreadTileState extends State<_ThreadTile>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 200),
     );
     _slide = Tween<Offset>(
       begin: Offset.zero,
-      end: const Offset(1.0, 0.0),
+      end: const Offset(-1.0, 0.0),
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.easeInOut,
