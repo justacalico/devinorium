@@ -2799,6 +2799,8 @@ void main() {
   });
 
   group('Plan overlay', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
     test('auto-opens when active thread has a plan', () {
       final state = AppState.test(
         activeProjectId: 1,
@@ -2875,5 +2877,135 @@ void main() {
         expect(state.activePlan?.steps[0].step, 'S');
       },
     );
+
+    test('dismissPlanOverlay and openPlanOverlay preserve collapsed state', () {
+      final state = AppState.test(
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          plan: Plan(steps: [PlanStep(step: 'S', status: 'pending')]),
+        ),
+      );
+      state.collapsePlanOverlay();
+      expect(state.planOverlayExpanded, isFalse);
+      state.dismissPlanOverlay();
+      expect(state.planOverlayVisible, isFalse);
+      expect(state.planOverlayExpanded, isFalse);
+      state.openPlanOverlay();
+      expect(state.planOverlayVisible, isTrue);
+      expect(state.planOverlayExpanded, isFalse);
+    });
+
+    test('togglePlanOverlay preserves collapsed state', () {
+      final state = AppState.test(
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          plan: Plan(steps: [PlanStep(step: 'S', status: 'pending')]),
+        ),
+      );
+      state.collapsePlanOverlay();
+      state.togglePlanOverlay();
+      expect(state.planOverlayVisible, isFalse);
+      expect(state.planOverlayExpanded, isFalse);
+      state.togglePlanOverlay();
+      expect(state.planOverlayVisible, isTrue);
+      expect(state.planOverlayExpanded, isFalse);
+    });
+
+    test('plan overlay state is persisted', () async {
+      final state = AppState.test(
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          plan: Plan(steps: [PlanStep(step: 'S', status: 'pending')]),
+        ),
+      );
+      state.collapsePlanOverlay();
+      state.dismissPlanOverlay();
+      await Future.delayed(Duration.zero);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('devinorium_plan_overlay_expanded'), isFalse);
+      expect(prefs.getBool('devinorium_plan_overlay_dismissed'), isTrue);
+    });
+
+    test('bootstrap loads saved plan overlay state', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_plan_overlay_expanded': false,
+        'devinorium_plan_overlay_dismissed': true,
+      });
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+            _json(200, [
+              {'id': 'glm-5-2', 'label': 'GLM'},
+            ]),
+            _json(200, [
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, [
+              {
+                'id': 'a',
+                'title': 't',
+                'project_id': 1,
+                'model': '',
+                'permission_mode': 'normal',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
+          ]),
+        ),
+      );
+      await state.bootstrap();
+      expect(state.planOverlayExpanded, isFalse);
+      expect(state.planOverlayDismissed, isTrue);
+    });
   });
 }
