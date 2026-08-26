@@ -220,6 +220,13 @@ impl PlanParser {
 
         let mut start = self.buffer.len() - MAX_KEEP;
 
+        // Do not split a multi-byte UTF-8 character. If the byte cut point
+        // falls inside a character, move it back to the character's start so
+        // the kept suffix stays valid UTF-8.
+        while start > 0 && !self.buffer.is_char_boundary(start) {
+            start -= 1;
+        }
+
         // Avoid cutting inside an XML-like tag. If the cut point is inside a
         // tag, move the start to the tag's opening '<' so the parser can still
         // reassemble the block as more chunks arrive.
@@ -480,5 +487,26 @@ mod tests {
             ],
         );
         assert_eq!(plan.progress_percent(), 67);
+    }
+
+    #[test]
+    fn trim_does_not_split_multibyte_char() {
+        let mut parser = PlanParser::new();
+
+        // Build a buffer where the 64 KiB byte cut point falls inside a
+        // multi-byte UTF-8 character (U+53D1, 3 bytes). This used to panic
+        // when trim_buffer sliced the string at a non-char-boundary.
+        let prefix = "x".repeat(10);
+        let suffix = "x".repeat(65534);
+        let mut text = String::with_capacity(65547);
+        text.push_str(&prefix);
+        text.push('发');
+        text.push_str(&suffix);
+
+        let plans = parser.feed(&text);
+        assert!(plans.is_empty());
+        assert!(parser.buffer.contains('发'));
+        assert!(parser.buffer.len() > 64 * 1024);
+        assert!(parser.buffer.len() <= 64 * 1024 + 3);
     }
 }
