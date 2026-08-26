@@ -15,6 +15,7 @@ class StreamingSnapshot {
   final int lastSeq;
   final PermissionRequest? pendingPermission;
   final AskRequest? pendingAsk;
+  final Plan? plan;
   final String? error;
   final String? startedAt;
 
@@ -25,14 +26,17 @@ class StreamingSnapshot {
     this.lastSeq = 0,
     this.pendingPermission,
     this.pendingAsk,
+    this.plan,
     this.error,
     this.startedAt,
   });
 
   static const empty = StreamingSnapshot();
 
-  bool get isActive => phase == StreamPhase.sending || phase == StreamPhase.running;
-  bool get isDone => phase == StreamPhase.completed || phase == StreamPhase.stopped;
+  bool get isActive =>
+      phase == StreamPhase.sending || phase == StreamPhase.running;
+  bool get isDone =>
+      phase == StreamPhase.completed || phase == StreamPhase.stopped;
   bool get hasFailed => phase == StreamPhase.failed;
 
   StreamingSnapshot copyWith({
@@ -44,6 +48,8 @@ class StreamingSnapshot {
     bool clearPendingPermission = false,
     AskRequest? pendingAsk,
     bool clearPendingAsk = false,
+    Plan? plan,
+    bool clearPlan = false,
     String? error,
     bool clearError = false,
     String? startedAt,
@@ -58,6 +64,7 @@ class StreamingSnapshot {
           ? null
           : (pendingPermission ?? this.pendingPermission),
       pendingAsk: clearPendingAsk ? null : (pendingAsk ?? this.pendingAsk),
+      plan: clearPlan ? null : (plan ?? this.plan),
       error: clearError ? null : (error ?? this.error),
       startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
     );

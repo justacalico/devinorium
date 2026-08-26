@@ -57,9 +57,7 @@ StreamingReduceResult reduceStreamingEvent({
       final finished = _finishSnapshot(next);
       return StreamingReduceResult(
         detail: detail,
-        snapshot: status == 'completed' || status == 'failed'
-            ? finished
-            : next,
+        snapshot: status == 'completed' || status == 'failed' ? finished : next,
       );
 
     case 'user_message':
@@ -202,6 +200,25 @@ StreamingReduceResult reduceStreamingEvent({
         ),
       );
 
+    case 'plan_update':
+      final decoded = tryDecodeJson(event.data);
+      if (decoded == null) {
+        return StreamingReduceResult(detail: detail, snapshot: snapshot);
+      }
+      try {
+        final plan = Plan.fromJson(decoded);
+        return StreamingReduceResult(
+          detail: detail,
+          snapshot: snapshot.copyWith(
+            phase: StreamPhase.running,
+            plan: plan,
+            lastSeq: seq ?? snapshot.lastSeq,
+          ),
+        );
+      } catch (_) {
+        return StreamingReduceResult(detail: detail, snapshot: snapshot);
+      }
+
     case 'stopped':
       // Keep streaming parts visible so the user doesn't see the partial
       // output vanish while the backend persists it. refreshTail() will
@@ -266,6 +283,13 @@ StreamingSnapshot _applyRunSnapshot({
     } catch (_) {}
   }
 
+  Plan? plan;
+  final planJson = json['plan'];
+  if (planJson is Map<String, dynamic>) {
+    try {
+      plan = Plan.fromJson(planJson);
+    } catch (_) {}
+  }
   final error = json['error'] as String?;
 
   return snapshot.copyWith(
@@ -276,6 +300,8 @@ StreamingSnapshot _applyRunSnapshot({
     clearPendingPermission: pendingPermission == null,
     pendingAsk: pendingAsk,
     clearPendingAsk: pendingAsk == null,
+    plan: plan,
+    clearPlan: plan == null,
     error: error,
     clearError: error == null,
     startedAt: json['started_at'] as String?,

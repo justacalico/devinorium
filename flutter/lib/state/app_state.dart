@@ -207,6 +207,8 @@ class AppState extends ChangeNotifier {
   bool _showTotpField = false;
   bool _userMenuOpen = false;
   bool _filesPanelOpen = false;
+  bool _planSidebarOpen = false;
+  bool _planSidebarUserClosed = false;
   List<String> _filesPath = [];
   List<DirEntry> _filesEntries = [];
   String _filesError = '';
@@ -292,6 +294,8 @@ class AppState extends ChangeNotifier {
   bool get showTotpField => _showTotpField;
   bool get userMenuOpen => _userMenuOpen;
   bool get filesPanelOpen => _filesPanelOpen;
+  bool get planSidebarOpen => _planSidebarOpen;
+  Plan? get activePlan => _activeStore?.plan;
   List<String> get filesPath => _filesPath;
   List<DirEntry> get filesEntries => _filesEntries;
   String get filesError => _filesError;
@@ -352,6 +356,8 @@ class AppState extends ChangeNotifier {
     _activeStore?.clearStreamingState();
     _activeStore = store;
     _activeThreadId = store?.threadId;
+    _planSidebarOpen = false;
+    _planSidebarUserClosed = false;
     store?.onStateChanged = _onThreadStoreChanged;
     _syncFromActiveStore();
     _clearLinkedMergeRequest();
@@ -396,6 +402,15 @@ class AppState extends ChangeNotifier {
       _dialog = DialogKind.permissionRequest;
     } else if (_dialog == DialogKind.permissionRequest) {
       _dialog = DialogKind.none;
+    }
+
+    // Auto-open the plan sidebar when a plan first appears for this thread,
+    // unless the user explicitly closed it.
+    if (!_planSidebarUserClosed &&
+        !_planSidebarOpen &&
+        store.plan != null &&
+        store.plan!.steps.isNotEmpty) {
+      _planSidebarOpen = true;
     }
   }
 
@@ -679,6 +694,26 @@ class AppState extends ChangeNotifier {
   void closeFilesPanel() {
     _filesPanelOpen = false;
     notifyListeners();
+  }
+
+  void openPlanSidebar() {
+    _planSidebarOpen = true;
+    _planSidebarUserClosed = false;
+    notifyListeners();
+  }
+
+  void closePlanSidebar() {
+    _planSidebarOpen = false;
+    _planSidebarUserClosed = true;
+    notifyListeners();
+  }
+
+  void togglePlanSidebar() {
+    if (_planSidebarOpen) {
+      closePlanSidebar();
+    } else {
+      openPlanSidebar();
+    }
   }
 
   Future<void> navigateFilesInto(String name) async {

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart' hide SyntaxHighlighter;
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
+    hide SyntaxHighlighter;
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
@@ -19,6 +20,7 @@ import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
 import 'model_picker.dart';
+import 'plan_sidebar.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
 import 'syntax_highlighter.dart';
@@ -76,6 +78,16 @@ class ThreadPage extends StatelessWidget {
               onPressed: () =>
                   state.openGitBranchDialog(state.activeProjectId!),
             ),
+          if (state.activePlan != null)
+            IconButton(
+              tooltip: state.planSidebarOpen ? 'Close plan' : 'Open plan',
+              icon: Icon(
+                state.planSidebarOpen
+                    ? Icons.playlist_add_check
+                    : Icons.playlist_add_check_outlined,
+              ),
+              onPressed: state.togglePlanSidebar,
+            ),
           IconButton(
             tooltip: l10n(context).fileManager,
             icon: const Icon(Icons.folder_outlined),
@@ -85,7 +97,17 @@ class ThreadPage extends StatelessWidget {
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
-      body: const ChatView(),
+      body: state.planSidebarOpen && state.activePlan != null
+          ? Row(
+              children: [
+                const Expanded(child: ChatView()),
+                PlanSidebar(
+                  plan: state.activePlan,
+                  onClose: state.closePlanSidebar,
+                ),
+              ],
+            )
+          : const ChatView(),
     );
   }
 }
@@ -135,14 +157,14 @@ class _ChatModel {
 
   @override
   int get hashCode => Object.hash(
-        activeThreadId,
-        detail,
-        loading,
-        messageCount,
-        streamingDigest,
-        streamingThinkingActive,
-        pendingAskRequestId,
-      );
+    activeThreadId,
+    detail,
+    loading,
+    messageCount,
+    streamingDigest,
+    streamingThinkingActive,
+    pendingAskRequestId,
+  );
 }
 
 int _streamingDigest(List<MessagePart> parts) {
@@ -150,15 +172,7 @@ int _streamingDigest(List<MessagePart> parts) {
   for (var i = 0; i < parts.length; i++) {
     final p = parts[i];
     final t = p.toolCall;
-    h = Object.hash(
-      h,
-      p.type,
-      p.id,
-      p.content,
-      t?.status,
-      t?.output,
-      i,
-    );
+    h = Object.hash(h, p.type, p.id, p.content, t?.status, t?.output, i);
   }
   return h;
 }
@@ -272,9 +286,7 @@ class _ChatViewState extends State<ChatView> {
               ),
             ),
             if (model.pendingAskRequestId != null)
-              AskRequestPanel(
-                key: ValueKey(model.pendingAskRequestId),
-              )
+              AskRequestPanel(key: ValueKey(model.pendingAskRequestId))
             else if (!model.loading) ...[
               if (state.sending)
                 Padding(
@@ -394,7 +406,11 @@ class _MessagesPanel extends StatelessWidget {
 class _MessageItem extends StatefulWidget {
   final Message message;
   final bool thinkingActive;
-  const _MessageItem({super.key, required this.message, this.thinkingActive = false});
+  const _MessageItem({
+    super.key,
+    required this.message,
+    this.thinkingActive = false,
+  });
 
   @override
   State<_MessageItem> createState() => _MessageItemState();
@@ -454,10 +470,12 @@ class _MessageItemState extends State<_MessageItem> {
             items.add(_ThinkingItem(type: 'thinking', content: text));
           }
         } else {
-          groups.add(_PartGroup(
-            type: 'thinking',
-            thinkingItems: [_ThinkingItem(type: 'thinking', content: text)],
-          ));
+          groups.add(
+            _PartGroup(
+              type: 'thinking',
+              thinkingItems: [_ThinkingItem(type: 'thinking', content: text)],
+            ),
+          );
         }
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
@@ -471,10 +489,12 @@ class _MessageItemState extends State<_MessageItem> {
             _ThinkingItem(type: 'tool_call', tool: tool),
           );
         } else {
-          groups.add(_PartGroup(
-            type: 'thinking',
-            thinkingItems: [_ThinkingItem(type: 'tool_call', tool: tool)],
-          ));
+          groups.add(
+            _PartGroup(
+              type: 'thinking',
+              thinkingItems: [_ThinkingItem(type: 'tool_call', tool: tool)],
+            ),
+          );
         }
       } else if (part.type == 'text') {
         final text = part.content ?? '';
@@ -504,9 +524,7 @@ class _MessageItemState extends State<_MessageItem> {
           if (href != null) context.read<AppState>().openLink(href);
         },
         extensionSet: markdown.ExtensionSet.gitHubFlavored,
-        builders: {
-          'pre': _PreBuilder(highlighter: highlighter),
-        },
+        builders: {'pre': _PreBuilder(highlighter: highlighter)},
         styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
           p: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
           code: theme.textTheme.bodySmall?.copyWith(
@@ -559,7 +577,9 @@ class _MessageItemState extends State<_MessageItem> {
       } else if (group.type == 'tool_call') {
         final tool = group.tool;
         if (tool != null) {
-          children.add(_ToolCallItem(key: ValueKey('tool-group-$i'), tool: tool));
+          children.add(
+            _ToolCallItem(key: ValueKey('tool-group-$i'), tool: tool),
+          );
         }
       } else if (group.type == 'thinking') {
         final isLast = i == groups.length - 1;
@@ -585,8 +605,9 @@ class _MessageItemState extends State<_MessageItem> {
     final theme = Theme.of(context);
     final message = widget.message;
     final l = l10n(context);
-    final assistantLabel =
-        message.model.isNotEmpty ? message.model : l.messageRoleAssistant;
+    final assistantLabel = message.model.isNotEmpty
+        ? message.model
+        : l.messageRoleAssistant;
     final (icon, label, avatarBg, avatarFg) = switch (message.role) {
       'user' => (
         Icons.person_outline,
@@ -920,11 +941,7 @@ class _ComposerState extends State<_Composer> {
     switch (result) {
       case PathAttached():
         state.addAttachments([
-          (
-            filename: result.filename,
-            mime: result.mime,
-            bytes: result.bytes,
-          ),
+          (filename: result.filename, mime: result.mime, bytes: result.bytes),
         ]);
       case PathTooLarge():
         state.setGlobalError(l.dropZoneFileTooLarge(result.filename));
@@ -1075,19 +1092,17 @@ class _ComposerState extends State<_Composer> {
                         style: theme.textTheme.bodyLarge,
                         onChanged: state.setComposerText,
                         contextMenuBuilder: (context, editableTextState) {
-                          final items =
-                              editableTextState.contextMenuButtonItems
-                                  .map((item) {
-                                    if (item.type ==
-                                        ContextMenuButtonType.paste) {
-                                      return ContextMenuButtonItem(
-                                        label: item.label,
-                                        onPressed: _handlePaste,
-                                      );
-                                    }
-                                    return item;
-                                  })
-                                  .toList();
+                          final items = editableTextState.contextMenuButtonItems
+                              .map((item) {
+                                if (item.type == ContextMenuButtonType.paste) {
+                                  return ContextMenuButtonItem(
+                                    label: item.label,
+                                    onPressed: _handlePaste,
+                                  );
+                                }
+                                return item;
+                              })
+                              .toList();
                           return AdaptiveTextSelectionToolbar.buttonItems(
                             buttonItems: items,
                             anchors: editableTextState.contextMenuAnchors,
@@ -1487,11 +1502,7 @@ class _PreBuilder extends MarkdownElementBuilder {
         }
       }
     }
-    return CodeBlock(
-      code: code,
-      language: language,
-      highlighter: highlighter,
-    );
+    return CodeBlock(code: code, language: language, highlighter: highlighter);
   }
 }
 
@@ -1507,12 +1518,8 @@ class LinkedMergeRequestChip extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final draft = mr.draft;
-    final label = draft
-        ? 'Draft !${mr.iid}'
-        : '!${mr.iid}';
-    final tooltip = mr.title.isEmpty
-        ? label
-        : '$label: ${mr.title}';
+    final label = draft ? 'Draft !${mr.iid}' : '!${mr.iid}';
+    final tooltip = mr.title.isEmpty ? label : '$label: ${mr.title}';
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -1536,8 +1543,11 @@ class LinkedMergeRequestChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: (draft ? colorScheme.errorContainer : colorScheme.secondaryContainer)
-                .withValues(alpha: 0.6),
+            color:
+                (draft
+                        ? colorScheme.errorContainer
+                        : colorScheme.secondaryContainer)
+                    .withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: (draft ? colorScheme.error : colorScheme.secondary)
@@ -1550,7 +1560,9 @@ class LinkedMergeRequestChip extends StatelessWidget {
               Icon(
                 draft ? Icons.edit_note : Icons.merge,
                 size: 14,
-                color: draft ? colorScheme.onErrorContainer : colorScheme.onSecondaryContainer,
+                color: draft
+                    ? colorScheme.onErrorContainer
+                    : colorScheme.onSecondaryContainer,
               ),
               const SizedBox(width: 4),
               Text(
@@ -1558,7 +1570,9 @@ class LinkedMergeRequestChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: draft ? colorScheme.onErrorContainer : colorScheme.onSecondaryContainer,
+                  color: draft
+                      ? colorScheme.onErrorContainer
+                      : colorScheme.onSecondaryContainer,
                 ),
               ),
             ],
@@ -1567,5 +1581,4 @@ class LinkedMergeRequestChip extends StatelessWidget {
       ),
     );
   }
-
 }
