@@ -17,7 +17,10 @@ pub mod devin_acp;
 pub mod parts;
 
 pub use ask::{AskCallback, AskOption, AskOutcome, AskQuestion, AskRequest, AskResponse};
-pub use parts::{collect_text, collect_thinking, MessagePart, PartCallback, PartEvent};
+pub use parts::{
+    collect_text, collect_thinking, strip_plan_markup_from_parts, MessagePart, PartCallback,
+    PartEvent,
+};
 
 use std::future::Future;
 use std::path::{Path, PathBuf};

@@ -294,10 +294,26 @@ const MAX_EXPLANATION_LEN: usize = 2000;
 const MAX_STEP_LEN: usize = 500;
 const MAX_STEPS: usize = 100;
 
+/// Matches complete `<proposed_plan>` and `<update_plan>` blocks, including
+/// their `<step>` children, so the raw XML can be removed from text shown to
+/// the user.
+static PLAN_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?s)<proposed_plan(?:\s+explanation="[^"]*")?\s*>(.*?)</proposed_plan>|<update_plan(?:\s+explanation="[^"]*")?\s*>(.*?)</update_plan>"#,
+    )
+    .expect("valid plan block regex")
+});
+
 static STEP_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?s)<step(?:\s+status="([^"]*)")?\s*>(.*?)</step>"#)
         .expect("valid step regex")
 });
+
+/// Remove `<proposed_plan>` and `<update_plan>` XML blocks from assistant text
+/// so they are rendered as the plan sidebar instead of raw markup in the chat.
+pub fn strip_plan_markup(text: &str) -> String {
+    PLAN_BLOCK_RE.replace_all(text, "").into_owned()
+}
 
 fn parse_steps_text(text: &str, explanation: Option<String>) -> Option<Plan> {
     let mut steps = Vec::new();
@@ -600,5 +616,39 @@ mod tests {
         assert!(!acc.feed_safe(&text));
         assert!(acc
             .feed_safe(r#"<update_plan><step status="completed">A</step></update_plan>"#));
+    }
+
+    #[test]
+    fn strip_plan_markup_removes_plan_blocks() {
+        let text = r#"Before <update_plan explanation="Build"><step status="completed">A</step><step status="in_progress">B</step></update_plan> after"#;
+        let stripped = strip_plan_markup(text);
+        assert_eq!(stripped, "Before  after");
+
+        let proposed = r#"<proposed_plan explanation="Plan"><step status="pending">X</step></proposed_plan>"#;
+        assert_eq!(strip_plan_markup(proposed), "");
+
+        let mixed = r#"<update_plan>one</update_plan><proposed_plan>two</proposed_plan>"#;
+        assert_eq!(strip_plan_markup(mixed), "");
+    }
+
+    #[test]
+    fn strip_plan_markup_preserves_non_plan_text() {
+        let text = "Use `git status` to check.\n<update_plan><step>A</step></update_plan>\nDone.";
+        let stripped = strip_plan_markup(text);
+        assert_eq!(stripped, "Use `git status` to check.\n\nDone.");
+    }
+
+    #[test]
+    fn strip_plan_markup_matches_opening_and_closing_tags() {
+        // A regex that treated `</update_plan>` as a valid closing for
+        // `<proposed_plan>` would remove more than it should.
+        let text = r#"<proposed_plan><step>A</step></proposed_plan><update_plan><step>B</step></update_plan>"#;
+        let stripped = strip_plan_markup(text);
+        assert_eq!(stripped, "");
+
+        // Explanation attributes may contain `>` and other characters.
+        let text = r#"<update_plan explanation="a > b"><step>A</step></update_plan>"#;
+        let stripped = strip_plan_markup(text);
+        assert_eq!(stripped, "");
     }
 }

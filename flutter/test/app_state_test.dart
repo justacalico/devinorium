@@ -2798,7 +2798,7 @@ void main() {
     );
   });
 
-  group('Plan sidebar', () {
+  group('Plan overlay', () {
     test('auto-opens when active thread has a plan', () {
       final state = AppState.test(
         activeProjectId: 1,
@@ -2820,10 +2820,11 @@ void main() {
         ),
       );
       expect(state.activePlan, isNotNull);
-      expect(state.planSidebarOpen, isTrue);
+      expect(state.planOverlayVisible, isTrue);
+      expect(state.planOverlayExpanded, isTrue);
     });
 
-    test('closePlanSidebar hides sidebar and openPlanSidebar reopens it', () {
+    test('dismissPlanOverlay hides overlay and openPlanOverlay reopens it', () {
       final state = AppState.test(
         activeProjectId: 1,
         activeThreadId: 'a',
@@ -2842,11 +2843,14 @@ void main() {
           ),
         ),
       );
-      expect(state.planSidebarOpen, isTrue);
-      state.closePlanSidebar();
-      expect(state.planSidebarOpen, isFalse);
-      state.openPlanSidebar();
-      expect(state.planSidebarOpen, isTrue);
+      expect(state.planOverlayVisible, isTrue);
+      expect(state.planOverlayExpanded, isTrue);
+      state.dismissPlanOverlay();
+      expect(state.planOverlayVisible, isFalse);
+      expect(state.planOverlayDismissed, isTrue);
+      state.openPlanOverlay();
+      expect(state.planOverlayVisible, isTrue);
+      expect(state.planOverlayExpanded, isTrue);
     });
 
     test(

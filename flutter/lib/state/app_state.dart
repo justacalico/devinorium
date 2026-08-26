@@ -207,8 +207,9 @@ class AppState extends ChangeNotifier {
   bool _showTotpField = false;
   bool _userMenuOpen = false;
   bool _filesPanelOpen = false;
-  bool _planSidebarOpen = false;
-  bool _planSidebarUserClosed = false;
+  bool _planOverlayVisible = false;
+  bool _planOverlayExpanded = false;
+  bool _planOverlayUserDismissed = false;
   List<String> _filesPath = [];
   List<DirEntry> _filesEntries = [];
   String _filesError = '';
@@ -294,7 +295,9 @@ class AppState extends ChangeNotifier {
   bool get showTotpField => _showTotpField;
   bool get userMenuOpen => _userMenuOpen;
   bool get filesPanelOpen => _filesPanelOpen;
-  bool get planSidebarOpen => _planSidebarOpen;
+  bool get planOverlayVisible => _planOverlayVisible;
+  bool get planOverlayExpanded => _planOverlayExpanded;
+  bool get planOverlayDismissed => _planOverlayUserDismissed;
   Plan? get activePlan => _activeStore?.plan;
   List<String> get filesPath => _filesPath;
   List<DirEntry> get filesEntries => _filesEntries;
@@ -356,8 +359,9 @@ class AppState extends ChangeNotifier {
     _activeStore?.clearStreamingState();
     _activeStore = store;
     _activeThreadId = store?.threadId;
-    _planSidebarOpen = false;
-    _planSidebarUserClosed = false;
+    _planOverlayVisible = false;
+    _planOverlayExpanded = false;
+    _planOverlayUserDismissed = false;
     store?.onStateChanged = _onThreadStoreChanged;
     _syncFromActiveStore();
     _clearLinkedMergeRequest();
@@ -404,13 +408,14 @@ class AppState extends ChangeNotifier {
       _dialog = DialogKind.none;
     }
 
-    // Auto-open the plan sidebar when a plan first appears for this thread,
-    // unless the user explicitly closed it.
-    if (!_planSidebarUserClosed &&
-        !_planSidebarOpen &&
+    // Auto-open the plan overlay when a plan first appears for this thread,
+    // unless the user explicitly dismissed it.
+    if (!_planOverlayUserDismissed &&
+        !_planOverlayVisible &&
         store.plan != null &&
         store.plan!.steps.isNotEmpty) {
-      _planSidebarOpen = true;
+      _planOverlayVisible = true;
+      _planOverlayExpanded = true;
     }
   }
 
@@ -696,24 +701,48 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void openPlanSidebar() {
-    _planSidebarOpen = true;
-    _planSidebarUserClosed = false;
+  void openPlanOverlay() {
+    _planOverlayVisible = true;
+    _planOverlayExpanded = true;
+    _planOverlayUserDismissed = false;
     notifyListeners();
   }
 
-  void closePlanSidebar() {
-    _planSidebarOpen = false;
-    _planSidebarUserClosed = true;
+  void dismissPlanOverlay() {
+    _planOverlayVisible = false;
+    _planOverlayExpanded = false;
+    _planOverlayUserDismissed = true;
     notifyListeners();
   }
 
-  void togglePlanSidebar() {
-    if (_planSidebarOpen) {
-      closePlanSidebar();
+  void togglePlanOverlay() {
+    if (_planOverlayVisible) {
+      dismissPlanOverlay();
     } else {
-      openPlanSidebar();
+      openPlanOverlay();
     }
+  }
+
+  void expandPlanOverlay() {
+    _planOverlayVisible = true;
+    _planOverlayExpanded = true;
+    _planOverlayUserDismissed = false;
+    notifyListeners();
+  }
+
+  void collapsePlanOverlay() {
+    _planOverlayVisible = true;
+    _planOverlayExpanded = false;
+    notifyListeners();
+  }
+
+  void togglePlanOverlayExpanded() {
+    if (_planOverlayVisible) {
+      _planOverlayExpanded = !_planOverlayExpanded;
+    } else {
+      openPlanOverlay();
+    }
+    notifyListeners();
   }
 
   Future<void> navigateFilesInto(String name) async {

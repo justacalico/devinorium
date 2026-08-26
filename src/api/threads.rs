@@ -27,9 +27,9 @@ use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, NewMessage, NewThread, ThreadRow};
 use crate::plan::PlanAccumulator;
 use crate::providers::{
-    collect_text, collect_thinking, AskCallback, AskOutcome, AskRequest, Attachment, MessagePart,
-    PartCallback, PartEvent, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions,
-    StartRequest,
+    collect_text, collect_thinking, strip_plan_markup_from_parts, AskCallback, AskOutcome,
+    AskRequest, Attachment, MessagePart, PartCallback, PartEvent, PermissionCallback,
+    PermissionOutcome, PermissionRequest, SendOptions, StartRequest,
 };
 use crate::thread_runner::{RunState, RunStatus};
 use crate::{AppState, PendingAskRequest, PendingPermissionRequest};
@@ -995,31 +995,44 @@ async fn run_thread(
         let run = run.clone();
         let plan_acc = plan_acc;
         move |ev: PartEvent| {
-            let part = ev.part().clone();
-            let is_tool_update = ev.is_update() && part.tool_id().is_some();
-            run.apply_part(part, is_tool_update);
-            let event = if is_tool_update { "part_update" } else { "part" };
-            if let Ok(json) = serde_json::to_string(ev.part()) {
-                run.emit(event, &json);
+            let original = ev.part().clone();
+
+            // Scan the original text/thinking for plan/todo blocks before
+            // stripping the markup, so the sidebar can still update.
+            let mut plan_text = original.text_content().unwrap_or("").to_string();
+            if let Some(t) = original.thinking_content() {
+                plan_text.push_str(t);
+            }
+            if !plan_text.is_empty() {
+                let mut guard = plan_acc.lock().unwrap_or_else(|e| e.into_inner());
+                if guard.feed_safe(&plan_text) {
+                    if let Some(plan) = guard.current() {
+                        let plan = plan.clone();
+                        drop(guard);
+                        run.set_plan(Some(plan.clone()));
+                        if let Ok(json) = serde_json::to_string(&plan) {
+                            run.emit("plan_update", &json);
+                        }
+                    }
+                }
             }
 
-            // Scan text and thinking chunks for plan/todo blocks.
-            let mut text = ev.part().text_content().unwrap_or("").to_string();
-            if let Some(t) = ev.part().thinking_content() {
-                text.push_str(t);
-            }
-            if text.is_empty() {
-                return;
-            }
-            let mut guard = plan_acc.lock().unwrap_or_else(|e| e.into_inner());
-            if guard.feed_safe(&text) {
-                if let Some(plan) = guard.current() {
-                    let plan = plan.clone();
-                    drop(guard);
-                    run.set_plan(Some(plan.clone()));
-                    if let Ok(json) = serde_json::to_string(&plan) {
-                        run.emit("plan_update", &json);
-                    }
+            // Remove `<proposed_plan>` / `<update_plan>` XML so the chat does
+            // not render raw plan markup.
+            let part = original.strip_plan_markup();
+            let is_tool_update = ev.is_update() && part.tool_id().is_some();
+            let event = if is_tool_update { "part_update" } else { "part" };
+            let part_json = serde_json::to_string(&part);
+            let is_empty_non_tool = match &part {
+                MessagePart::Text { content } | MessagePart::Thinking { content } => {
+                    content.is_empty()
+                }
+                MessagePart::ToolCall { .. } => false,
+            };
+            if !is_empty_non_tool {
+                run.apply_part(part, is_tool_update);
+                if let Ok(json) = part_json {
+                    run.emit(event, &json);
                 }
             }
         }
@@ -1057,6 +1070,7 @@ async fn run_thread(
                 None,
             ),
         };
+        let parts = strip_plan_markup_from_parts(parts);
         if let Some(ref sid) = new_session_id {
             let _ = state
                 .db
@@ -1559,10 +1573,15 @@ async fn persist_assistant_reply(
         return Err(crate::api::map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
     }
 
-    let reply = collect_text(parts);
-    let thinking = collect_thinking(parts);
+    // Strip plan XML from persisted parts so the final assistant message does
+    // not show raw `<proposed_plan>` / `<update_plan>` markup. Coalescing
+    // consecutive text/thinking parts first handles plan blocks split across
+    // chunks.
+    let stripped = strip_plan_markup_from_parts(parts.to_vec());
+    let reply = collect_text(&stripped);
+    let thinking = collect_thinking(&stripped);
     let thinking = (!thinking.is_empty()).then_some(thinking);
-    let parts_json = serde_json::to_string(parts).unwrap_or_else(|_| "[]".into());
+    let parts_json = serde_json::to_string(&stripped).unwrap_or_else(|_| "[]".into());
     let assistant_msg = state
         .db
         .add_message(NewMessage {
