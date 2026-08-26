@@ -21,7 +21,7 @@ import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
 import 'model_picker.dart';
-import 'plan_sidebar.dart';
+import 'plan_overlay.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
 import 'syntax_highlighter.dart';
@@ -81,13 +81,13 @@ class ThreadPage extends StatelessWidget {
             ),
           if (state.activePlan != null)
             IconButton(
-              tooltip: state.planSidebarOpen ? 'Close plan' : 'Open plan',
+              tooltip: state.planOverlayVisible ? 'Hide plan' : 'Show plan',
               icon: Icon(
-                state.planSidebarOpen
+                state.planOverlayVisible
                     ? Icons.playlist_add_check
                     : Icons.playlist_add_check_outlined,
               ),
-              onPressed: state.togglePlanSidebar,
+              onPressed: state.togglePlanOverlay,
             ),
           IconButton(
             tooltip: l10n(context).fileManager,
@@ -98,17 +98,7 @@ class ThreadPage extends StatelessWidget {
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
-      body: state.planSidebarOpen && state.activePlan != null
-          ? Row(
-              children: [
-                const Expanded(child: ChatView()),
-                PlanSidebar(
-                  plan: state.activePlan,
-                  onClose: state.closePlanSidebar,
-                ),
-              ],
-            )
-          : const ChatView(),
+      body: const ChatView(),
     );
   }
 }
@@ -176,6 +166,54 @@ int _streamingDigest(List<MessagePart> parts) {
     h = Object.hash(h, p.type, p.id, p.content, t?.status, t?.output, i);
   }
   return h;
+}
+
+@immutable
+class _PlanOverlayModel {
+  final Plan? plan;
+  final bool expanded;
+  final bool dismissed;
+
+  const _PlanOverlayModel({
+    this.plan,
+    required this.expanded,
+    required this.dismissed,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! _PlanOverlayModel) return false;
+    return plan == other.plan &&
+        expanded == other.expanded &&
+        dismissed == other.dismissed;
+  }
+
+  @override
+  int get hashCode => Object.hash(plan, expanded, dismissed);
+}
+
+/// The floating plan overlay at the top of the chat.
+class _PlanOverlay extends StatelessWidget {
+  const _PlanOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<AppState, _PlanOverlayModel>(
+      selector: (_, state) => _PlanOverlayModel(
+        plan: state.activePlan,
+        expanded: state.planOverlayExpanded,
+        dismissed: state.planOverlayDismissed,
+      ),
+      builder: (context, model, _) => PlanOverlay(
+        plan: model.plan,
+        expanded: model.expanded,
+        dismissed: model.dismissed,
+        onToggleExpand: () => context.read<AppState>().togglePlanOverlayExpanded(),
+        onDismiss: () => context.read<AppState>().dismissPlanOverlay(),
+      ),
+    );
+  }
 }
 
 class _ChatViewState extends State<ChatView> {
@@ -278,12 +316,23 @@ class _ChatViewState extends State<ChatView> {
         return Column(
           children: [
             Expanded(
-              child: _MessagesPanel(
-                detail: model.detail,
-                loading: model.loading,
-                streamingParts: state.streamingParts,
-                streamingThinkingActive: model.streamingThinkingActive,
-                controller: _scrollController,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _MessagesPanel(
+                    detail: model.detail,
+                    loading: model.loading,
+                    streamingParts: state.streamingParts,
+                    streamingThinkingActive: model.streamingThinkingActive,
+                    controller: _scrollController,
+                  ),
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    child: _PlanOverlay(),
+                  ),
+                ],
               ),
             ),
             if (model.pendingAskRequestId != null)
