@@ -12,6 +12,7 @@ import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/path_attachment.dart';
+import '../utils/plan_markup.dart';
 import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'ask_request_panel.dart';
@@ -515,10 +516,11 @@ class _MessageItemState extends State<_MessageItem> {
 
   Widget _buildTextContent(BuildContext context, String text, String role) {
     final theme = Theme.of(context);
+    final displayText = stripPlanMarkup(text);
     if (role == 'assistant') {
       final highlighter = SyntaxHighlighter(theme);
       return MarkdownBody(
-        data: text,
+        data: displayText,
         selectable: false,
         onTapLink: (txt, href, title) {
           if (href != null) context.read<AppState>().openLink(href);
@@ -554,7 +556,7 @@ class _MessageItemState extends State<_MessageItem> {
       );
     }
     return Linkify(
-      text: text,
+      text: displayText,
       onOpen: (link) => context.read<AppState>().openLink(link.url),
       style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
       linkStyle: theme.textTheme.bodyLarge?.copyWith(
@@ -760,7 +762,7 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    item.content!,
+                    stripPlanMarkup(item.content!),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       height: 1.5,
                       color: theme.colorScheme.onSurfaceVariant,

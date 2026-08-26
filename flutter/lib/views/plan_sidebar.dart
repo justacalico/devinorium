@@ -21,40 +21,36 @@ class PlanSidebar extends StatelessWidget {
     return SizedBox(
       width: width,
       child: Material(
-        elevation: 1,
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: theme.colorScheme.surfaceContainerLow,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       'Plan',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: theme.textTheme.titleMedium,
                     ),
                   ),
                   if (onClose != null)
                     IconButton(
-                      icon: const Icon(Icons.close, size: 18),
+                      icon: const Icon(Icons.close),
                       onPressed: onClose,
                       tooltip: 'Close plan',
                     ),
                 ],
               ),
             ),
+            const Divider(height: 1),
             if (effectivePlan == null || effectivePlan.isEmpty)
               Expanded(
                 child: Center(
                   child: Text(
                     'No plan yet',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    style: _bodyStyle(theme),
                   ),
                 ),
               )
@@ -66,6 +62,30 @@ class PlanSidebar extends StatelessWidget {
     );
   }
 }
+
+const _cjkFallback = [
+  'Noto Sans CJK SC',
+  'Noto Sans SC',
+  'Noto Sans CJK TC',
+  'Noto Sans TC',
+  'WenQuanYi Micro Hei',
+  'Microsoft YaHei',
+  'PingFang SC',
+  'Hiragino Sans GB',
+  'sans-serif',
+];
+
+TextStyle? _bodyStyle(ThemeData theme) =>
+    theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontFamilyFallback: _cjkFallback,
+    );
+
+TextStyle? _emphasisStyle(ThemeData theme) =>
+    theme.textTheme.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w500,
+      fontFamilyFallback: _cjkFallback,
+    );
 
 class _PlanContent extends StatelessWidget {
   final Plan plan;
@@ -82,9 +102,7 @@ class _PlanContent extends StatelessWidget {
         if (plan.explanation != null && plan.explanation!.isNotEmpty) ...[
           Text(
             plan.explanation!,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
+            style: _emphasisStyle(theme),
           ),
           const SizedBox(height: 12),
         ],
@@ -114,7 +132,7 @@ class _ProgressBar extends StatelessWidget {
           child: LinearProgressIndicator(
             value: percent / 100.0,
             minHeight: 6,
-            backgroundColor: theme.colorScheme.surfaceDim,
+            backgroundColor: theme.colorScheme.surfaceContainer,
             valueColor: AlwaysStoppedAnimation<Color>(color),
           ),
         ),
@@ -123,6 +141,7 @@ class _ProgressBar extends StatelessWidget {
           '$percent%',
           style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
+            fontFamilyFallback: _cjkFallback,
           ),
         ),
       ],
@@ -162,6 +181,7 @@ class _StepRow extends StatelessWidget {
                 color: step.isCompleted
                     ? theme.colorScheme.onSurfaceVariant
                     : theme.colorScheme.onSurface,
+                fontFamilyFallback: _cjkFallback,
               ),
             ),
           ),

@@ -4927,7 +4927,7 @@ async fn thread_get_one_includes_plan() {
 
 #[tokio::test]
 async fn thread_send_stream_emits_plan_update_and_persists_plan() {
-    let (app, _db) = make_app_with_provider(Arc::new(PlanStubProvider)).await;
+    let (app, db) = make_app_with_provider(Arc::new(PlanStubProvider)).await;
     let cookie = login(&app).await;
 
     let pid = create_project(&app, &cookie).await;
@@ -4967,4 +4967,17 @@ async fn thread_send_stream_emits_plan_update_and_persists_plan() {
     let persisted = body_str(resp.into_body()).await;
     assert!(persisted.contains(r#""status":"completed""#), "persisted: {persisted}");
     assert!(persisted.contains(r#""status":"in_progress""#), "persisted: {persisted}");
+
+    // The SSE stream and persisted message should not contain raw plan XML.
+    assert!(!body.contains("<update_plan>"), "stream contained raw XML: {body}");
+    assert!(!body.contains("<proposed_plan>"), "stream contained raw XML: {body}");
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let assistant = msgs.iter().find(|m| m.role == "assistant").unwrap();
+    assert_eq!(assistant.content, "");
+    assert!(
+        !assistant.parts.as_deref().unwrap_or("").contains("<update_plan>"),
+        "parts contained raw XML: {:?}",
+        assistant.parts
+    );
 }
