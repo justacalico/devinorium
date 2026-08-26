@@ -16,6 +16,7 @@ use sqlx::{
 
 pub mod audit;
 pub mod messages;
+pub mod plans;
 pub mod projects;
 pub mod sessions;
 pub mod thread_groups;
@@ -23,6 +24,7 @@ pub mod threads;
 pub mod users;
 
 pub use messages::NewMessage;
+pub use plans::{NewPlan, PlanRow};
 pub use projects::NewProject;
 pub use thread_groups::NewThreadGroup;
 pub use threads::NewThread;

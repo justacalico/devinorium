@@ -15,6 +15,7 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio::task::AbortHandle;
 use uuid::Uuid;
 
+use crate::plan::Plan;
 use crate::providers::{collect_text, collect_thinking, AskRequest, MessagePart, PermissionRequest};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,6 +62,7 @@ pub struct RunSnapshot {
     pub tool_calls: Vec<MessagePart>,
     pub permission_request: Option<PermissionRequest>,
     pub ask_request: Option<AskRequest>,
+    pub plan: Option<Plan>,
     pub last_seq: u64,
 }
 
@@ -80,6 +82,7 @@ pub struct RunState {
     pub parts: std::sync::Mutex<Vec<MessagePart>>,
     pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
     pub ask_request: std::sync::Mutex<Option<AskRequest>>,
+    pub plan: std::sync::Mutex<Option<Plan>>,
 }
 
 impl RunState {
@@ -113,6 +116,12 @@ impl RunState {
     pub fn set_ask_request(&self, req: Option<AskRequest>) {
         if let Ok(mut guard) = self.ask_request.lock() {
             *guard = req;
+        }
+    }
+
+    pub fn set_plan(&self, plan: Option<Plan>) {
+        if let Ok(mut guard) = self.plan.lock() {
+            *guard = plan;
         }
     }
 
@@ -191,6 +200,11 @@ impl RunState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let plan = self
+            .plan
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let text = collect_text(&parts);
         let thinking = collect_thinking(&parts);
         let thinking_active = matches!(parts.last(), Some(MessagePart::Thinking { .. }));
@@ -216,6 +230,7 @@ impl RunState {
             tool_calls,
             permission_request,
             ask_request,
+            plan,
             last_seq,
         }
     }
@@ -306,6 +321,7 @@ impl ThreadRunner {
             parts: std::sync::Mutex::new(Vec::new()),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
         });
 
         let state_for_task = state.clone();
@@ -416,6 +432,7 @@ mod tests {
             ]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
         };
 
         state.apply_part(
@@ -458,6 +475,7 @@ mod tests {
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
         };
 
         state.apply_part(
@@ -513,6 +531,7 @@ mod tests {
             ]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
         };
 
         state.apply_part(MessagePart::text("second "), true);
@@ -540,6 +559,7 @@ mod tests {
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
         };
 
         let mut rx = state.subscribe().unwrap();
@@ -570,6 +590,7 @@ mod tests {
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
         };
 
         let ask = AskRequest {

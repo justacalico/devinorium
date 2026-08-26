@@ -5,16 +5,55 @@ import 'package:devinorium_frontend/state/streaming_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('reduceStreamingEvent plan_update', () {
+    test('updates snapshot plan from plan_update event', () {
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'plan_update',
+          '{"explanation":"Build","steps":[{"step":"A","status":"completed"},{"step":"B","status":"pending"}]}',
+          id: '1',
+        ),
+      );
+      expect(res.snapshot.plan, isNotNull);
+      expect(res.snapshot.plan!.explanation, 'Build');
+      expect(res.snapshot.plan!.steps.length, 2);
+      expect(res.snapshot.plan!.steps[0].isCompleted, isTrue);
+      expect(res.snapshot.plan!.steps[1].isPending, isTrue);
+      expect(res.snapshot.phase, StreamPhase.running);
+    });
+
+    test('ignores malformed plan_update', () {
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent('plan_update', 'not json', id: '1'),
+      );
+      expect(res.snapshot.plan, isNull);
+    });
+
+    test('applies plan from state event snapshot', () {
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'state',
+          '{"status":"running","parts":[],"plan":{"explanation":"P","steps":[{"step":"S","status":"in_progress"}]}}',
+          id: '1',
+        ),
+      );
+      expect(res.snapshot.plan, isNotNull);
+      expect(res.snapshot.plan!.steps[0].isInProgress, isTrue);
+    });
+  });
+
   group('reduceStreamingEvent thinkingActive', () {
     test('is true when the last part is thinking', () {
       final res = reduceStreamingEvent(
         detail: null,
         snapshot: StreamingSnapshot.empty,
-        event: SseEvent(
-          'part',
-          '{"type":"thinking","content":"hmm"}',
-          id: '1',
-        ),
+        event: SseEvent('part', '{"type":"thinking","content":"hmm"}', id: '1'),
       );
       expect(res.snapshot.thinkingActive, isTrue);
     });
@@ -24,21 +63,13 @@ void main() {
       var res = reduceStreamingEvent(
         detail: null,
         snapshot: snapshot,
-        event: SseEvent(
-          'part',
-          '{"type":"thinking","content":"hmm"}',
-          id: '1',
-        ),
+        event: SseEvent('part', '{"type":"thinking","content":"hmm"}', id: '1'),
       );
       snapshot = res.snapshot;
       res = reduceStreamingEvent(
         detail: null,
         snapshot: snapshot,
-        event: SseEvent(
-          'part',
-          '{"type":"text","content":"hello"}',
-          id: '2',
-        ),
+        event: SseEvent('part', '{"type":"text","content":"hello"}', id: '2'),
       );
       expect(res.snapshot.thinkingActive, isFalse);
     });
@@ -114,9 +145,23 @@ void main() {
         ),
       );
       final res = reduceStreamingEvent(
-        detail: ThreadDetail(thread: Thread(id: 't1', title: 'T', projectId: 1, model: '', permissionMode: 'normal', createdAt: '', updatedAt: '')),
+        detail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'T',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ),
         snapshot: snapshot,
-        event: SseEvent('user_message', '{"role":"user","content":"hi"}', id: '2'),
+        event: SseEvent(
+          'user_message',
+          '{"role":"user","content":"hi"}',
+          id: '2',
+        ),
       );
       expect(res.snapshot.pendingAsk, isNull);
     });

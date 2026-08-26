@@ -177,10 +177,9 @@ class ApiService {
     String branch,
   ) async {
     if (branch.isEmpty) return null;
-    final uri = _buildPath(
-      '/api/projects/$projectId/git/merge-request',
-      {'branch': branch},
-    );
+    final uri = _buildPath('/api/projects/$projectId/git/merge-request', {
+      'branch': branch,
+    });
     try {
       final j = await _client.get(uri);
       // 204 No Content comes back as an empty map.
@@ -540,6 +539,20 @@ class ApiService {
     return await _client.get('/api/threads/$id/run');
   }
 
+  /// Get the latest plan for a thread.
+  Future<Plan?> getThreadPlan(String id) async {
+    final j = await _client.get('/api/threads/$id/plan');
+    final plan = j['plan'];
+    if (plan is Map<String, dynamic>) {
+      try {
+        return Plan.fromJson(plan);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   Future<List<String>> getThreadRuns() async {
     final j = await _client.get('/api/threads/runs');
     final list = (j['running_ids'] as List<dynamic>?) ?? [];
@@ -557,7 +570,7 @@ class ApiService {
   }
 
   /// Stream a message send. Returns a stream of [SseEvent] records with
-  /// `event` ∈ {`user_message`, `permission_request`, `part`, `part_update`, `done`, `stopped`, `error`}.
+  /// `event` ∈ {`user_message`, `permission_request`, `plan_update`, `part`, `part_update`, `done`, `stopped`, `error`}.
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,
@@ -606,10 +619,7 @@ class ApiService {
   }
 
   Future<String?> setCloneRoot(String? path) async {
-    final j = await _client.put(
-      '/api/settings/clone-root',
-      {'path': path},
-    );
+    final j = await _client.put('/api/settings/clone-root', {'path': path});
     return j['path'] as String?;
   }
 }

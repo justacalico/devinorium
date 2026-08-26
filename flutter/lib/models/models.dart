@@ -33,18 +33,18 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> j) => User(
-        id: (j['id'] as num).toInt(),
-        username: j['username'] as String,
-        role: j['role'] as String,
-        totpEnabled: (j['totp_enabled'] as bool?) ?? false,
-        isOwner: (j['is_owner'] as bool?) ?? false,
-        disabled: (j['disabled'] as bool?) ?? false,
-        createdAt: j['created_at'] as String? ?? '',
-        providerId: j['provider_id'] as String? ?? 'devin-cli',
-        providerCommand: (j['provider_command'] as String? ?? '').trim().isEmpty
-            ? 'devin'
-            : j['provider_command'] as String,
-      );
+    id: (j['id'] as num).toInt(),
+    username: j['username'] as String,
+    role: j['role'] as String,
+    totpEnabled: (j['totp_enabled'] as bool?) ?? false,
+    isOwner: (j['is_owner'] as bool?) ?? false,
+    disabled: (j['disabled'] as bool?) ?? false,
+    createdAt: j['created_at'] as String? ?? '',
+    providerId: j['provider_id'] as String? ?? 'devin-cli',
+    providerCommand: (j['provider_command'] as String? ?? '').trim().isEmpty
+        ? 'devin'
+        : j['provider_command'] as String,
+  );
 
   User copyWith({
     String? providerId,
@@ -52,18 +52,17 @@ class User {
     bool? isOwner,
     bool? disabled,
     String? createdAt,
-  }) =>
-      User(
-        id: id,
-        username: username,
-        role: role,
-        totpEnabled: totpEnabled,
-        isOwner: isOwner ?? this.isOwner,
-        disabled: disabled ?? this.disabled,
-        createdAt: createdAt ?? this.createdAt,
-        providerId: providerId ?? this.providerId,
-        providerCommand: providerCommand ?? this.providerCommand,
-      );
+  }) => User(
+    id: id,
+    username: username,
+    role: role,
+    totpEnabled: totpEnabled,
+    isOwner: isOwner ?? this.isOwner,
+    disabled: disabled ?? this.disabled,
+    createdAt: createdAt ?? this.createdAt,
+    providerId: providerId ?? this.providerId,
+    providerCommand: providerCommand ?? this.providerCommand,
+  );
 }
 
 class LoginResponse {
@@ -80,11 +79,11 @@ class LoginResponse {
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> j) => LoginResponse(
-        ok: (j['ok'] as bool?) ?? false,
-        totpRequired: (j['totp_required'] as bool?) ?? false,
-        username: j['username'] as String? ?? '',
-        token: j['token'] as String? ?? '',
-      );
+    ok: (j['ok'] as bool?) ?? false,
+    totpRequired: (j['totp_required'] as bool?) ?? false,
+    username: j['username'] as String? ?? '',
+    token: j['token'] as String? ?? '',
+  );
 }
 
 class Device {
@@ -107,14 +106,14 @@ class Device {
   });
 
   factory Device.fromJson(Map<String, dynamic> j) => Device(
-        deviceId: j['device_id'] as String? ?? '',
-        tokenPrefix: j['token_prefix'] as String? ?? '',
-        name: j['name'] as String?,
-        createdAt: j['created_at'] as String? ?? '',
-        lastSeenAt: j['last_seen_at'] as String? ?? '',
-        expiresAt: j['expires_at'] as String? ?? '',
-        isCurrent: (j['is_current'] as bool?) ?? false,
-      );
+    deviceId: j['device_id'] as String? ?? '',
+    tokenPrefix: j['token_prefix'] as String? ?? '',
+    name: j['name'] as String?,
+    createdAt: j['created_at'] as String? ?? '',
+    lastSeenAt: j['last_seen_at'] as String? ?? '',
+    expiresAt: j['expires_at'] as String? ?? '',
+    isCurrent: (j['is_current'] as bool?) ?? false,
+  );
 }
 
 class Attachment {
@@ -124,9 +123,9 @@ class Attachment {
   Attachment({required this.filename, required this.size});
 
   factory Attachment.fromJson(Map<String, dynamic> j) => Attachment(
-        filename: j['filename'] as String,
-        size: (j['size'] as num).toInt(),
-      );
+    filename: j['filename'] as String,
+    size: (j['size'] as num).toInt(),
+  );
 
   @override
   bool operator ==(Object other) {
@@ -159,18 +158,18 @@ class Message {
   });
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
-        id: (j['id'] as num?)?.toInt(),
-        role: j['role'] as String,
-        content: j['content'] as String? ?? '',
-        thinking: j['thinking'] as String?,
-        attachments: (j['attachments'] as List<dynamic>?)
-            ?.map((a) => Attachment.fromJson(a as Map<String, dynamic>))
-            .toList(),
-        parts: (j['parts'] as List<dynamic>?)
-            ?.map((p) => MessagePart.fromJson(p as Map<String, dynamic>))
-            .toList(),
-        model: j['model'] as String? ?? '',
-      );
+    id: (j['id'] as num?)?.toInt(),
+    role: j['role'] as String,
+    content: j['content'] as String? ?? '',
+    thinking: j['thinking'] as String?,
+    attachments: (j['attachments'] as List<dynamic>?)
+        ?.map((a) => Attachment.fromJson(a as Map<String, dynamic>))
+        .toList(),
+    parts: (j['parts'] as List<dynamic>?)
+        ?.map((p) => MessagePart.fromJson(p as Map<String, dynamic>))
+        .toList(),
+    model: j['model'] as String? ?? '',
+  );
 
   List<MessagePart> get allParts {
     if (parts != null && parts!.isNotEmpty) return parts!;
@@ -186,16 +185,15 @@ class Message {
     String? content,
     List<MessagePart>? parts,
     String? model,
-  }) =>
-      Message(
-        id: id ?? this.id,
-        role: role,
-        content: content ?? this.content,
-        thinking: thinking,
-        attachments: attachments,
-        parts: parts ?? this.parts,
-        model: model ?? this.model,
-      );
+  }) => Message(
+    id: id ?? this.id,
+    role: role,
+    content: content ?? this.content,
+    thinking: thinking,
+    attachments: attachments,
+    parts: parts ?? this.parts,
+    model: model ?? this.model,
+  );
 
   @override
   bool operator ==(Object other) {
@@ -228,23 +226,19 @@ class FileDiff {
   final String? oldText;
   final String newText;
 
-  const FileDiff({
-    required this.path,
-    this.oldText,
-    required this.newText,
-  });
+  const FileDiff({required this.path, this.oldText, required this.newText});
 
   factory FileDiff.fromJson(Map<String, dynamic> j) => FileDiff(
-        path: j['path'] as String? ?? '',
-        oldText: j['old_text'] as String?,
-        newText: j['new_text'] as String? ?? '',
-      );
+    path: j['path'] as String? ?? '',
+    oldText: j['old_text'] as String?,
+    newText: j['new_text'] as String? ?? '',
+  );
 
   Map<String, dynamic> toJson() => {
-        'path': path,
-        if (oldText != null) 'old_text': oldText,
-        'new_text': newText,
-      };
+    'path': path,
+    if (oldText != null) 'old_text': oldText,
+    'new_text': newText,
+  };
 
   FileDiff copyWith({String? path, String? oldText, String? newText}) =>
       FileDiff(
@@ -290,22 +284,24 @@ class ToolCallData {
   });
 
   factory ToolCallData.fromJson(Map<String, dynamic> j) => ToolCallData(
-        id: j['id'] as String,
-        title: j['title'] as String,
-        kind: j['kind'] as String,
-        status: j['status'] as String,
-        command: j['command'] as String?,
-        output: j['output'] as String?,
-        outputPreview: j['output_preview'] as String?,
-        changedFiles: (j['changed_files'] as List<dynamic>?)
-                ?.map((e) => e as String)
-                .toList() ??
-            const [],
-        diffs: (j['diffs'] as List<dynamic>?)
-                ?.map((e) => FileDiff.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            const [],
-      );
+    id: j['id'] as String,
+    title: j['title'] as String,
+    kind: j['kind'] as String,
+    status: j['status'] as String,
+    command: j['command'] as String?,
+    output: j['output'] as String?,
+    outputPreview: j['output_preview'] as String?,
+    changedFiles:
+        (j['changed_files'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList() ??
+        const [],
+    diffs:
+        (j['diffs'] as List<dynamic>?)
+            ?.map((e) => FileDiff.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+  );
 
   ToolCallData copyWith({
     String? title,
@@ -316,18 +312,17 @@ class ToolCallData {
     String? outputPreview,
     List<String>? changedFiles,
     List<FileDiff>? diffs,
-  }) =>
-      ToolCallData(
-        id: id,
-        title: title ?? this.title,
-        kind: kind ?? this.kind,
-        status: status ?? this.status,
-        command: command ?? this.command,
-        output: output ?? this.output,
-        outputPreview: outputPreview ?? this.outputPreview,
-        changedFiles: changedFiles ?? this.changedFiles,
-        diffs: diffs ?? this.diffs,
-      );
+  }) => ToolCallData(
+    id: id,
+    title: title ?? this.title,
+    kind: kind ?? this.kind,
+    status: status ?? this.status,
+    command: command ?? this.command,
+    output: output ?? this.output,
+    outputPreview: outputPreview ?? this.outputPreview,
+    changedFiles: changedFiles ?? this.changedFiles,
+    diffs: diffs ?? this.diffs,
+  );
 
   @override
   bool operator ==(Object other) {
@@ -346,7 +341,15 @@ class ToolCallData {
 
   @override
   int get hashCode {
-    var h = Object.hash(id, title, kind, status, command, output, outputPreview);
+    var h = Object.hash(
+      id,
+      title,
+      kind,
+      status,
+      command,
+      output,
+      outputPreview,
+    );
     for (final f in changedFiles) {
       h = Object.hash(h, f);
     }
@@ -363,12 +366,7 @@ class MessagePart {
   final String? content;
   final ToolCallData? toolCall;
 
-  MessagePart._({
-    required this.type,
-    this.id,
-    this.content,
-    this.toolCall,
-  });
+  MessagePart._({required this.type, this.id, this.content, this.toolCall});
 
   factory MessagePart.text({required String content}) =>
       MessagePart._(type: 'text', content: content);
@@ -437,17 +435,17 @@ class Project {
   });
 
   factory Project.fromJson(Map<String, dynamic> j) => Project(
-        id: (j['id'] as num).toInt(),
-        name: j['name'] as String,
-        path: j['path'] as String,
-        position: (j['position'] as num?)?.toInt() ?? 0,
-        pinned: j['pinned'] as bool? ?? false,
-        isRepo: j['is_repo'] as bool? ?? false,
-        gitBranch: j['branch'] as String? ?? '',
-        projectType: j['project_type'] as String? ?? 'generic',
-        createdAt: j['created_at'] as String? ?? '',
-        updatedAt: j['updated_at'] as String? ?? '',
-      );
+    id: (j['id'] as num).toInt(),
+    name: j['name'] as String,
+    path: j['path'] as String,
+    position: (j['position'] as num?)?.toInt() ?? 0,
+    pinned: j['pinned'] as bool? ?? false,
+    isRepo: j['is_repo'] as bool? ?? false,
+    gitBranch: j['branch'] as String? ?? '',
+    projectType: j['project_type'] as String? ?? 'generic',
+    createdAt: j['created_at'] as String? ?? '',
+    updatedAt: j['updated_at'] as String? ?? '',
+  );
 
   Project copyWith({
     int? id,
@@ -460,19 +458,18 @@ class Project {
     String? projectType,
     String? createdAt,
     String? updatedAt,
-  }) =>
-      Project(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        path: path ?? this.path,
-        position: position ?? this.position,
-        pinned: pinned ?? this.pinned,
-        isRepo: isRepo ?? this.isRepo,
-        gitBranch: gitBranch ?? this.gitBranch,
-        projectType: projectType ?? this.projectType,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => Project(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    path: path ?? this.path,
+    position: position ?? this.position,
+    pinned: pinned ?? this.pinned,
+    isRepo: isRepo ?? this.isRepo,
+    gitBranch: gitBranch ?? this.gitBranch,
+    projectType: projectType ?? this.projectType,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 
   @override
   bool operator ==(Object other) {
@@ -492,17 +489,17 @@ class Project {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        name,
-        path,
-        position,
-        pinned,
-        isRepo,
-        gitBranch,
-        projectType,
-        createdAt,
-        updatedAt,
-      );
+    id,
+    name,
+    path,
+    position,
+    pinned,
+    isRepo,
+    gitBranch,
+    projectType,
+    createdAt,
+    updatedAt,
+  );
 }
 
 class Thread {
@@ -537,41 +534,36 @@ class Thread {
   });
 
   factory Thread.fromJson(Map<String, dynamic> j) => Thread(
-        id: j['id'] as String,
-        title: j['title'] as String,
-        threadGroupId: j['thread_group_id'] as int?,
-        projectId: (j['project_id'] as num?)?.toInt() ?? 0,
-        devinSessionId: j['devin_session_id'] as String?,
-        model: j['model'] as String? ?? '',
-        permissionMode: j['permission_mode'] as String? ?? 'normal',
-        permissions: j['permissions'] as String?,
-        branch: j['branch'] as String?,
-        worktreePath: j['worktree_path'] as String?,
-        pinned: j['pinned'] as bool? ?? false,
-        createdAt: j['created_at'] as String? ?? '',
-        updatedAt: j['updated_at'] as String? ?? '',
-      );
+    id: j['id'] as String,
+    title: j['title'] as String,
+    threadGroupId: j['thread_group_id'] as int?,
+    projectId: (j['project_id'] as num?)?.toInt() ?? 0,
+    devinSessionId: j['devin_session_id'] as String?,
+    model: j['model'] as String? ?? '',
+    permissionMode: j['permission_mode'] as String? ?? 'normal',
+    permissions: j['permissions'] as String?,
+    branch: j['branch'] as String?,
+    worktreePath: j['worktree_path'] as String?,
+    pinned: j['pinned'] as bool? ?? false,
+    createdAt: j['created_at'] as String? ?? '',
+    updatedAt: j['updated_at'] as String? ?? '',
+  );
 
-  Thread copyWith({
-    String? title,
-    String? updatedAt,
-    bool? pinned,
-  }) =>
-      Thread(
-        id: id,
-        title: title ?? this.title,
-        threadGroupId: threadGroupId,
-        projectId: projectId,
-        devinSessionId: devinSessionId,
-        model: model,
-        permissionMode: permissionMode,
-        permissions: permissions,
-        branch: branch,
-        worktreePath: worktreePath,
-        pinned: pinned ?? this.pinned,
-        createdAt: createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  Thread copyWith({String? title, String? updatedAt, bool? pinned}) => Thread(
+    id: id,
+    title: title ?? this.title,
+    threadGroupId: threadGroupId,
+    projectId: projectId,
+    devinSessionId: devinSessionId,
+    model: model,
+    permissionMode: permissionMode,
+    permissions: permissions,
+    branch: branch,
+    worktreePath: worktreePath,
+    pinned: pinned ?? this.pinned,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 
   @override
   bool operator ==(Object other) {
@@ -594,20 +586,20 @@ class Thread {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        title,
-        threadGroupId,
-        projectId,
-        devinSessionId,
-        model,
-        permissionMode,
-        permissions,
-        branch,
-        worktreePath,
-        pinned,
-        createdAt,
-        updatedAt,
-      );
+    id,
+    title,
+    threadGroupId,
+    projectId,
+    devinSessionId,
+    model,
+    permissionMode,
+    permissions,
+    branch,
+    worktreePath,
+    pinned,
+    createdAt,
+    updatedAt,
+  );
 }
 
 class ThreadGroup {
@@ -624,52 +616,136 @@ class ThreadGroup {
   });
 
   factory ThreadGroup.fromJson(Map<String, dynamic> j) => ThreadGroup(
-        id: (j['id'] as num).toInt(),
-        name: j['name'] as String,
-        position: (j['position'] as num).toInt(),
-        createdAt: j['created_at'] as String? ?? '',
-      );
+    id: (j['id'] as num).toInt(),
+    name: j['name'] as String,
+    position: (j['position'] as num).toInt(),
+    createdAt: j['created_at'] as String? ?? '',
+  );
+}
+
+class PlanStep {
+  final String step;
+  final String status;
+
+  PlanStep({required this.step, this.status = 'pending'});
+
+  factory PlanStep.fromJson(Map<String, dynamic> j) => PlanStep(
+    step: j['step'] as String? ?? '',
+    status: j['status'] as String? ?? 'pending',
+  );
+
+  bool get isPending => status == 'pending';
+  bool get isInProgress => status == 'in_progress';
+  bool get isCompleted => status == 'completed';
+
+  PlanStep copyWith({String? status}) =>
+      PlanStep(step: step, status: status ?? this.status);
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! PlanStep) return false;
+    return step == other.step && status == other.status;
+  }
+
+  @override
+  int get hashCode => Object.hash(step, status);
+}
+
+class Plan {
+  final String? explanation;
+  final List<PlanStep> steps;
+
+  Plan({this.explanation, this.steps = const []});
+
+  factory Plan.fromJson(Map<String, dynamic> j) => Plan(
+    explanation: j['explanation'] as String?,
+    steps: ((j['steps'] as List<dynamic>?) ?? [])
+        .map((s) => PlanStep.fromJson(s as Map<String, dynamic>))
+        .toList(),
+  );
+
+  bool get isEmpty => steps.isEmpty;
+
+  int get progressPercent {
+    if (steps.isEmpty) return 0;
+    final completed = steps.where((s) => s.isCompleted).length;
+    final percent = ((completed / steps.length) * 100).round();
+    return percent.clamp(0, 100);
+  }
+
+  Plan copyWith({String? explanation, List<PlanStep>? steps}) => Plan(
+    explanation: explanation ?? this.explanation,
+    steps: steps ?? this.steps,
+  );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! Plan) return false;
+    return explanation == other.explanation && _listEquals(steps, other.steps);
+  }
+
+  @override
+  int get hashCode {
+    var h = Object.hash(explanation, steps.length);
+    for (final s in steps) {
+      h = Object.hash(h, s);
+    }
+    return h;
+  }
 }
 
 class ThreadDetail {
   final Thread thread;
   List<Message> messages;
   int totalMessages;
+  Plan? plan;
 
   ThreadDetail({
     required this.thread,
     this.messages = const [],
     this.totalMessages = 0,
+    this.plan,
   });
 
   factory ThreadDetail.fromJson(Map<String, dynamic> j) => ThreadDetail(
-        thread: Thread.fromJson(j['thread'] as Map<String, dynamic>),
-        messages: ((j['messages'] as List<dynamic>?) ?? [])
-            .map((m) => Message.fromJson(m as Map<String, dynamic>))
-            .toList(),
-        totalMessages: (j['total_messages'] as num?)?.toInt() ??
-            ((j['messages'] as List<dynamic>?) ?? []).length,
-      );
+    thread: Thread.fromJson(j['thread'] as Map<String, dynamic>),
+    messages: ((j['messages'] as List<dynamic>?) ?? [])
+        .map((m) => Message.fromJson(m as Map<String, dynamic>))
+        .toList(),
+    totalMessages:
+        (j['total_messages'] as num?)?.toInt() ??
+        ((j['messages'] as List<dynamic>?) ?? []).length,
+    plan: j['plan'] == null
+        ? null
+        : Plan.fromJson(j['plan'] as Map<String, dynamic>),
+  );
 
   ThreadDetail copyWith({
     Thread? thread,
     List<Message>? messages,
     int? totalMessages,
+    Plan? plan,
+    bool clearPlan = false,
   }) => ThreadDetail(
-        thread: thread ?? this.thread,
-        messages: messages ?? this.messages,
-        totalMessages: totalMessages ?? this.totalMessages,
-      );
+    thread: thread ?? this.thread,
+    messages: messages ?? this.messages,
+    totalMessages: totalMessages ?? this.totalMessages,
+    plan: clearPlan ? null : (plan ?? this.plan),
+  );
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! ThreadDetail) return false;
-    return thread == other.thread && totalMessages == other.totalMessages;
+    return thread == other.thread &&
+        totalMessages == other.totalMessages &&
+        plan == other.plan;
   }
 
   @override
-  int get hashCode => Object.hash(thread, totalMessages);
+  int get hashCode => Object.hash(thread, totalMessages, plan);
 }
 
 class ProviderInfo {
@@ -679,9 +755,9 @@ class ProviderInfo {
   ProviderInfo({required this.id, required this.name});
 
   factory ProviderInfo.fromJson(Map<String, dynamic> j) => ProviderInfo(
-        id: j['id'] as String,
-        name: j['name'] as String? ?? j['id'] as String,
-      );
+    id: j['id'] as String,
+    name: j['name'] as String? ?? j['id'] as String,
+  );
 }
 
 class ModelInfo {
@@ -708,16 +784,16 @@ class ModelInfo {
   });
 
   factory ModelInfo.fromJson(Map<String, dynamic> j) => ModelInfo(
-        id: j['id'] as String,
-        label: j['label'] as String? ?? j['id'] as String,
-        costTier: j['cost_tier'] as String? ?? '',
-        family: j['family'] as String? ?? '',
-        costSummary: j['cost_summary'] as String? ?? '',
-        maxContextTokens: (j['max_context_tokens'] as num?)?.toInt() ?? 0,
-        maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt() ?? 0,
-        isNew: j['is_new'] as bool? ?? false,
-        isBeta: j['is_beta'] as bool? ?? false,
-      );
+    id: j['id'] as String,
+    label: j['label'] as String? ?? j['id'] as String,
+    costTier: j['cost_tier'] as String? ?? '',
+    family: j['family'] as String? ?? '',
+    costSummary: j['cost_summary'] as String? ?? '',
+    maxContextTokens: (j['max_context_tokens'] as num?)?.toInt() ?? 0,
+    maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt() ?? 0,
+    isNew: j['is_new'] as bool? ?? false,
+    isBeta: j['is_beta'] as bool? ?? false,
+  );
 }
 
 class DirEntry {
@@ -728,10 +804,10 @@ class DirEntry {
   DirEntry({required this.name, required this.isDir, required this.size});
 
   factory DirEntry.fromJson(Map<String, dynamic> j) => DirEntry(
-        name: j['name'] as String,
-        isDir: (j['is_dir'] as bool?) ?? false,
-        size: (j['size'] as num).toInt(),
-      );
+    name: j['name'] as String,
+    isDir: (j['is_dir'] as bool?) ?? false,
+    size: (j['size'] as num).toInt(),
+  );
 }
 
 class TotpSetupResponse {
@@ -740,7 +816,8 @@ class TotpSetupResponse {
 
   TotpSetupResponse({required this.secret, required this.otpauthUri});
 
-  factory TotpSetupResponse.fromJson(Map<String, dynamic> j) => TotpSetupResponse(
+  factory TotpSetupResponse.fromJson(Map<String, dynamic> j) =>
+      TotpSetupResponse(
         secret: j['secret'] as String,
         otpauthUri: j['otpauth_uri'] as String? ?? '',
       );
@@ -751,17 +828,13 @@ class PermissionOption {
   final String kind;
   final String? label;
 
-  PermissionOption({
-    required this.id,
-    required this.kind,
-    this.label,
-  });
+  PermissionOption({required this.id, required this.kind, this.label});
 
   factory PermissionOption.fromJson(Map<String, dynamic> j) => PermissionOption(
-        id: j['id'] as String,
-        kind: j['kind'] as String? ?? '',
-        label: j['label'] as String?,
-      );
+    id: j['id'] as String,
+    kind: j['kind'] as String? ?? '',
+    label: j['label'] as String?,
+  );
 }
 
 class PermissionRequest {
@@ -779,13 +852,17 @@ class PermissionRequest {
     required this.options,
   });
 
-  factory PermissionRequest.fromJson(Map<String, dynamic> j) => PermissionRequest(
+  factory PermissionRequest.fromJson(Map<String, dynamic> j) =>
+      PermissionRequest(
         requestId: j['request_id'] as String,
         scope: j['scope'] as String? ?? '',
         title: j['title'] as String? ?? 'Unknown action',
         input: j['input'] as String?,
-        options: (j['options'] as List<dynamic>?)
-                ?.map((o) => PermissionOption.fromJson(o as Map<String, dynamic>))
+        options:
+            (j['options'] as List<dynamic>?)
+                ?.map(
+                  (o) => PermissionOption.fromJson(o as Map<String, dynamic>),
+                )
                 .toList() ??
             [],
       );
@@ -798,9 +875,9 @@ class AskOption {
   AskOption({required this.value, required this.label});
 
   factory AskOption.fromJson(Map<String, dynamic> j) => AskOption(
-        value: j['value'] as String? ?? '',
-        label: j['label'] as String? ?? '',
-      );
+    value: j['value'] as String? ?? '',
+    label: j['label'] as String? ?? '',
+  );
 }
 
 class AskQuestion {
@@ -821,16 +898,17 @@ class AskQuestion {
   });
 
   factory AskQuestion.fromJson(Map<String, dynamic> j) => AskQuestion(
-        id: j['id'] as String? ?? '',
-        prompt: j['prompt'] as String? ?? '',
-        description: j['description'] as String?,
-        fieldType: j['field_type'] as String? ?? 'text',
-        options: (j['options'] as List<dynamic>?)
-                ?.map((o) => AskOption.fromJson(o as Map<String, dynamic>))
-                .toList() ??
-            const [],
-        required: j['required'] as bool? ?? false,
-      );
+    id: j['id'] as String? ?? '',
+    prompt: j['prompt'] as String? ?? '',
+    description: j['description'] as String?,
+    fieldType: j['field_type'] as String? ?? 'text',
+    options:
+        (j['options'] as List<dynamic>?)
+            ?.map((o) => AskOption.fromJson(o as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    required: j['required'] as bool? ?? false,
+  );
 
   bool get isText => fieldType == 'text';
   bool get isNumber => fieldType == 'number';
@@ -851,13 +929,14 @@ class AskRequest {
   });
 
   factory AskRequest.fromJson(Map<String, dynamic> j) => AskRequest(
-        requestId: j['request_id'] as String? ?? '',
-        message: j['message'] as String? ?? '',
-        questions: (j['questions'] as List<dynamic>?)
-                ?.map((q) => AskQuestion.fromJson(q as Map<String, dynamic>))
-                .toList() ??
-            const [],
-      );
+    requestId: j['request_id'] as String? ?? '',
+    message: j['message'] as String? ?? '',
+    questions:
+        (j['questions'] as List<dynamic>?)
+            ?.map((q) => AskQuestion.fromJson(q as Map<String, dynamic>))
+            .toList() ??
+        const [],
+  );
 }
 
 class GitBranch {
@@ -884,16 +963,16 @@ class GitBranch {
   });
 
   factory GitBranch.fromJson(Map<String, dynamic> j) => GitBranch(
-        name: j['name'] as String,
-        refname: j['refname'] as String,
-        isCurrent: j['is_current'] as bool? ?? false,
-        isDefault: j['is_default'] as bool? ?? false,
-        isRemote: j['is_remote'] as bool? ?? false,
-        committerDate: (j['committer_date'] as num?)?.toInt() ?? 0,
-        symref: j['symref'] as String?,
-        ahead: (j['ahead'] as num?)?.toInt() ?? 0,
-        behind: (j['behind'] as num?)?.toInt() ?? 0,
-      );
+    name: j['name'] as String,
+    refname: j['refname'] as String,
+    isCurrent: j['is_current'] as bool? ?? false,
+    isDefault: j['is_default'] as bool? ?? false,
+    isRemote: j['is_remote'] as bool? ?? false,
+    committerDate: (j['committer_date'] as num?)?.toInt() ?? 0,
+    symref: j['symref'] as String?,
+    ahead: (j['ahead'] as num?)?.toInt() ?? 0,
+    behind: (j['behind'] as num?)?.toInt() ?? 0,
+  );
 }
 
 class GitRepoInfo {
@@ -916,14 +995,14 @@ class GitRepoInfo {
   });
 
   factory GitRepoInfo.fromJson(Map<String, dynamic> j) => GitRepoInfo(
-        isRepo: j['is_repo'] as bool? ?? false,
-        branch: j['branch'] as String? ?? '',
-        worktreePath: j['worktree_path'] as String? ?? '',
-        toplevel: j['toplevel'] as String? ?? '',
-        commonDir: j['common_dir'] as String? ?? '',
-        ahead: (j['ahead'] as num?)?.toInt() ?? 0,
-        behind: (j['behind'] as num?)?.toInt() ?? 0,
-      );
+    isRepo: j['is_repo'] as bool? ?? false,
+    branch: j['branch'] as String? ?? '',
+    worktreePath: j['worktree_path'] as String? ?? '',
+    toplevel: j['toplevel'] as String? ?? '',
+    commonDir: j['common_dir'] as String? ?? '',
+    ahead: (j['ahead'] as num?)?.toInt() ?? 0,
+    behind: (j['behind'] as num?)?.toInt() ?? 0,
+  );
 }
 
 class GitWorktree {
@@ -940,11 +1019,11 @@ class GitWorktree {
   });
 
   factory GitWorktree.fromJson(Map<String, dynamic> j) => GitWorktree(
-        path: j['path'] as String,
-        head: j['head'] as String,
-        branch: j['branch'] as String?,
-        isMain: j['is_main'] as bool? ?? false,
-      );
+    path: j['path'] as String,
+    head: j['head'] as String,
+    branch: j['branch'] as String?,
+    isMain: j['is_main'] as bool? ?? false,
+  );
 }
 
 class GitStatus {
@@ -965,13 +1044,13 @@ class GitStatus {
   });
 
   factory GitStatus.fromJson(Map<String, dynamic> j) => GitStatus(
-        ahead: (j['ahead'] as num?)?.toInt() ?? 0,
-        behind: (j['behind'] as num?)?.toInt() ?? 0,
-        dirtyFiles: (j['dirty_files'] as num?)?.toInt() ?? 0,
-        changedFiles: (j['changed_files'] as num?)?.toInt() ?? 0,
-        insertions: (j['insertions'] as num?)?.toInt() ?? 0,
-        deletions: (j['deletions'] as num?)?.toInt() ?? 0,
-      );
+    ahead: (j['ahead'] as num?)?.toInt() ?? 0,
+    behind: (j['behind'] as num?)?.toInt() ?? 0,
+    dirtyFiles: (j['dirty_files'] as num?)?.toInt() ?? 0,
+    changedFiles: (j['changed_files'] as num?)?.toInt() ?? 0,
+    insertions: (j['insertions'] as num?)?.toInt() ?? 0,
+    deletions: (j['deletions'] as num?)?.toInt() ?? 0,
+  );
 }
 
 class GitConnection {
@@ -996,15 +1075,15 @@ class GitConnection {
   });
 
   factory GitConnection.fromJson(Map<String, dynamic> j) => GitConnection(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        enabled: (j['enabled'] as bool?) ?? false,
-        available: (j['available'] as bool?) ?? false,
-        authed: (j['authed'] as bool?) ?? false,
-        account: j['account'] as String?,
-        host: j['host'] as String?,
-        comingSoon: (j['coming_soon'] as bool?) ?? false,
-      );
+    id: j['id'] as String,
+    name: j['name'] as String,
+    enabled: (j['enabled'] as bool?) ?? false,
+    available: (j['available'] as bool?) ?? false,
+    authed: (j['authed'] as bool?) ?? false,
+    account: j['account'] as String?,
+    host: j['host'] as String?,
+    comingSoon: (j['coming_soon'] as bool?) ?? false,
+  );
 }
 
 /// A lightweight merge request reference linked to a thread's branch.
@@ -1038,8 +1117,8 @@ class MergeRequestLink {
     final iid = raw is num
         ? raw.toInt()
         : raw is String
-            ? int.tryParse(raw) ?? 0
-            : 0;
+        ? int.tryParse(raw) ?? 0
+        : 0;
     return MergeRequestLink(
       iid: iid,
       title: j['title'] as String? ?? '',

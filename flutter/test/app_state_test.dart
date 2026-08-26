@@ -2706,86 +2706,170 @@ void main() {
       expect(mr.sourceBranch, 'feature/x');
     });
 
-    test('loadLinkedMergeRequest stores null when no MR exists (204)', () async {
-      final client = ApiClient.withClient(
-        MockClient((req) async {
-          if (req.url.path == '/api/projects/1/git/merge-request') {
-            return http.Response('', 204);
-          }
-          return _json(404, {'error': 'unexpected'});
-        }),
-      );
-      final state = AppState.test(
-        api: ApiService(client: client),
-        activeProjectId: 1,
-      );
-      await state.loadLinkedMergeRequest(1, 'feature/x');
-      expect(state.linkedMergeRequest, isNull);
-      expect(state.loadingLinkedMergeRequest, isFalse);
-    });
+    test(
+      'loadLinkedMergeRequest stores null when no MR exists (204)',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            if (req.url.path == '/api/projects/1/git/merge-request') {
+              return http.Response('', 204);
+            }
+            return _json(404, {'error': 'unexpected'});
+          }),
+        );
+        final state = AppState.test(
+          api: ApiService(client: client),
+          activeProjectId: 1,
+        );
+        await state.loadLinkedMergeRequest(1, 'feature/x');
+        expect(state.linkedMergeRequest, isNull);
+        expect(state.loadingLinkedMergeRequest, isFalse);
+      },
+    );
 
-    test('loadLinkedMergeRequest stores null on 404 (no GitLab remote)',
-        () async {
-      final client = ApiClient.withClient(
-        MockClient((req) async {
-          if (req.url.path == '/api/projects/1/git/merge-request') {
-            return _json(404, {'error': 'not a gitlab repository'});
-          }
-          return _json(404, {'error': 'unexpected'});
-        }),
-      );
-      final state = AppState.test(
-        api: ApiService(client: client),
-        activeProjectId: 1,
-      );
-      await state.loadLinkedMergeRequest(1, 'feature/x');
-      expect(state.linkedMergeRequest, isNull);
-      expect(state.loadingLinkedMergeRequest, isFalse);
-    });
+    test(
+      'loadLinkedMergeRequest stores null on 404 (no GitLab remote)',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            if (req.url.path == '/api/projects/1/git/merge-request') {
+              return _json(404, {'error': 'not a gitlab repository'});
+            }
+            return _json(404, {'error': 'unexpected'});
+          }),
+        );
+        final state = AppState.test(
+          api: ApiService(client: client),
+          activeProjectId: 1,
+        );
+        await state.loadLinkedMergeRequest(1, 'feature/x');
+        expect(state.linkedMergeRequest, isNull);
+        expect(state.loadingLinkedMergeRequest, isFalse);
+      },
+    );
 
-    test('refreshLinkedMergeRequest clears state when no branch is active',
-        () async {
-      final state = AppState.test(activeProjectId: 1);
-      await state.refreshLinkedMergeRequest();
-      expect(state.linkedMergeRequest, isNull);
-      expect(state.loadingLinkedMergeRequest, isFalse);
-    });
+    test(
+      'refreshLinkedMergeRequest clears state when no branch is active',
+      () async {
+        final state = AppState.test(activeProjectId: 1);
+        await state.refreshLinkedMergeRequest();
+        expect(state.linkedMergeRequest, isNull);
+        expect(state.loadingLinkedMergeRequest, isFalse);
+      },
+    );
 
-    test('refreshLinkedMergeRequest uses repo branch when thread has none',
-        () async {
-      final client = ApiClient.withClient(
-        MockClient((req) async {
-          if (req.url.path == '/api/projects/1/git/merge-request') {
-            expect(req.url.queryParameters['branch'], 'main');
-            return _json(200, {
-              'iid': 1,
-              'title': 'T',
-              'state': 'opened',
-              'source_branch': 'main',
-              'target_branch': 'main',
-              'web_url': 'https://x/-/merge_requests/1',
-              'draft': false,
-            });
-          }
-          return _json(404, {'error': 'unexpected'});
-        }),
-      );
+    test(
+      'refreshLinkedMergeRequest uses repo branch when thread has none',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            if (req.url.path == '/api/projects/1/git/merge-request') {
+              expect(req.url.queryParameters['branch'], 'main');
+              return _json(200, {
+                'iid': 1,
+                'title': 'T',
+                'state': 'opened',
+                'source_branch': 'main',
+                'target_branch': 'main',
+                'web_url': 'https://x/-/merge_requests/1',
+                'draft': false,
+              });
+            }
+            return _json(404, {'error': 'unexpected'});
+          }),
+        );
+        final state = AppState.test(
+          api: ApiService(client: client),
+          activeProjectId: 1,
+          gitRepoInfo: {
+            1: GitRepoInfo(
+              isRepo: true,
+              branch: 'main',
+              worktreePath: '/x',
+              toplevel: '/x',
+              commonDir: '/x/.git',
+            ),
+          },
+        );
+        await state.refreshLinkedMergeRequest();
+        expect(state.linkedMergeRequest, isNotNull);
+        expect(state.linkedMergeRequest!.iid, 1);
+      },
+    );
+  });
+
+  group('Plan sidebar', () {
+    test('auto-opens when active thread has a plan', () {
       final state = AppState.test(
-        api: ApiService(client: client),
         activeProjectId: 1,
-        gitRepoInfo: {
-          1: GitRepoInfo(
-            isRepo: true,
-            branch: 'main',
-            worktreePath: '/x',
-            toplevel: '/x',
-            commonDir: '/x/.git',
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
           ),
-        },
+          plan: Plan(
+            explanation: 'Build',
+            steps: [PlanStep(step: 'S', status: 'in_progress')],
+          ),
+        ),
       );
-      await state.refreshLinkedMergeRequest();
-      expect(state.linkedMergeRequest, isNotNull);
-      expect(state.linkedMergeRequest!.iid, 1);
+      expect(state.activePlan, isNotNull);
+      expect(state.planSidebarOpen, isTrue);
     });
+
+    test('closePlanSidebar hides sidebar and openPlanSidebar reopens it', () {
+      final state = AppState.test(
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          plan: Plan(
+            steps: [PlanStep(step: 'S', status: 'pending')],
+          ),
+        ),
+      );
+      expect(state.planSidebarOpen, isTrue);
+      state.closePlanSidebar();
+      expect(state.planSidebarOpen, isFalse);
+      state.openPlanSidebar();
+      expect(state.planSidebarOpen, isTrue);
+    });
+
+    test(
+      'activePlan falls back to detail plan when streaming plan is null',
+      () {
+        final state = AppState.test(
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 't',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            plan: Plan(steps: [PlanStep(step: 'S')]),
+          ),
+        );
+        expect(state.activePlan?.steps[0].step, 'S');
+      },
+    );
   });
 }

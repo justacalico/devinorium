@@ -89,8 +89,11 @@ class ThreadStore {
   bool get sending => _streaming.isActive;
   List<MessagePart> get streamingParts => _streaming.parts;
   bool get streamingThinkingActive => _streaming.thinkingActive;
-  PermissionRequest? get pendingPermissionRequest => _streaming.pendingPermission;
+  PermissionRequest? get pendingPermissionRequest =>
+      _streaming.pendingPermission;
   AskRequest? get pendingAskRequest => _streaming.pendingAsk;
+  Plan? get plan =>
+      _streaming.isActive ? _streaming.plan : _detail.valueOrNull?.plan;
   String? get startedAt => _streaming.startedAt;
 
   /// Load the persisted detail and, if the server says the thread is still
@@ -203,11 +206,17 @@ class ThreadStore {
       _streaming = _streaming.copyWith(phase: StreamPhase.sending);
       _lastRunStatus = 'running';
       _runFinishedFired = false;
+      // Each turn owns its own plan; don't show a stale plan from a previous
+      // turn while waiting for the model to emit a new one.
+      if (_detail.valueOrNull != null) {
+        _detail = AsyncValue.ready(_detail.valueOrNull!.copyWith(clearPlan: true));
+      }
       _emit();
 
-      final messageAttachments = List<({String filename, String mime, Uint8List bytes})>.of(
-        attachments,
-      );
+      final messageAttachments =
+          List<({String filename, String mime, Uint8List bytes})>.of(
+            attachments,
+          );
 
       try {
         _subscription = api
@@ -308,9 +317,9 @@ class ThreadStore {
     try {
       final older = await api.getThreadMessages(threadId, beforeId: oldestId);
       if (older.isNotEmpty) {
-        _detail = AsyncValue.ready(d.copyWith(
-          messages: [...older, ...d.messages],
-        ));
+        _detail = AsyncValue.ready(
+          d.copyWith(messages: [...older, ...d.messages]),
+        );
         _emit();
       }
     } catch (e) {
@@ -334,10 +343,12 @@ class ThreadStore {
     try {
       final tail = await api.getThreadMessages(threadId, afterId: newestId);
       if (tail.isNotEmpty) {
-        _detail = AsyncValue.ready(d.copyWith(
-          messages: [...d.messages, ...tail],
-          totalMessages: d.totalMessages + tail.length,
-        ));
+        _detail = AsyncValue.ready(
+          d.copyWith(
+            messages: [...d.messages, ...tail],
+            totalMessages: d.totalMessages + tail.length,
+          ),
+        );
         _emit();
       }
     } catch (_) {
@@ -404,7 +415,9 @@ class ThreadStore {
   }
 
   void _startStream(int token) {
-    _subscription = api.watchThreadEvents(threadId).listen(
+    _subscription = api
+        .watchThreadEvents(threadId)
+        .listen(
           (ev) => _handleEvent(ev, token),
           onError: (e) => _handleStreamError(e, token),
           onDone: () => _handleStreamDone(token),
@@ -469,10 +482,12 @@ class ThreadStore {
       try {
         final tail = await api.getThreadMessages(threadId, afterId: newestId);
         if (tail.isNotEmpty) {
-          _detail = AsyncValue.ready(d.copyWith(
-            messages: [...d.messages, ...tail],
-            totalMessages: d.totalMessages + tail.length,
-          ));
+          _detail = AsyncValue.ready(
+            d.copyWith(
+              messages: [...d.messages, ...tail],
+              totalMessages: d.totalMessages + tail.length,
+            ),
+          );
           _clearStreamingState();
           _emit();
           return;
@@ -522,6 +537,16 @@ class ThreadStore {
       error: error,
       clearError: error == null,
     );
+    // Persist the final streaming plan into the persisted detail so the
+    // sidebar stays in sync once the stream ends.
+    if (_detail.valueOrNull != null) {
+      _detail = AsyncValue.ready(
+        _detail.valueOrNull!.copyWith(
+          plan: _streaming.plan,
+          clearPlan: _streaming.plan == null,
+        ),
+      );
+    }
     _lastRunStatus = _statusFromPhase(phase);
     _emit();
     if (!_runFinishedFired &&
