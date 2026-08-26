@@ -110,6 +110,8 @@ pub struct PlanParser {
     proposed_re: Regex,
     update_re: Regex,
     checkbox_re: Regex,
+    #[cfg(test)]
+    panic_next_feed: bool,
 }
 
 impl PlanParser {
@@ -128,11 +130,17 @@ impl PlanParser {
                 r"(?m)^\s*[-*]\s*\[(\s|x|X|/|-)\]\s*(.+)$"
             )
             .expect("valid checkbox regex"),
+            #[cfg(test)]
+            panic_next_feed: false,
         }
     }
 
     /// Append new text and return any complete plan blocks found.
     pub fn feed(&mut self, text: &str) -> Vec<Plan> {
+        #[cfg(test)]
+        if std::mem::replace(&mut self.panic_next_feed, false) {
+            panic!("forced plan parser panic for feed_safe test");
+        }
         self.buffer.push_str(text);
         let mut plans = Vec::new();
         plans.extend(self.drain_blocks(&self.proposed_re.clone()));
@@ -343,6 +351,16 @@ fn truncate(s: &str, max: usize) -> std::borrow::Cow<'_, str> {
     }
 }
 
+fn payload_as_string(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
+}
+
 fn trim_checkbox(line: &str) -> String {
     let line = line.trim();
     if let Some(pos) = line.find(']') {
@@ -378,6 +396,25 @@ impl PlanAccumulator {
         changed
     }
 
+    /// Like [`feed`](Self::feed) but never panics. Plan parsing runs on a
+    /// tokio worker thread where an unexpected panic would take the whole
+    /// backend down. Any character the model emits must not be able to crash
+    /// the server, so we catch unwinds here, log them, and leave the previous
+    /// plan untouched. The text chunk itself is still saved as a message part
+    /// by the caller regardless of this return value.
+    pub fn feed_safe(&mut self, text: &str) -> bool {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.feed(text))) {
+            Ok(changed) => changed,
+            Err(payload) => {
+                tracing::warn!(
+                    payload = %payload_as_string(&payload),
+                    "plan parser panicked on model text; skipping plan update"
+                );
+                false
+            }
+        }
+    }
+
     pub fn current(&self) -> Option<&Plan> {
         self.current.as_ref()
     }
@@ -389,6 +426,11 @@ impl PlanAccumulator {
     /// Apply an explicit plan (e.g. from a persisted message on load).
     pub fn set(&mut self, plan: Plan) {
         self.current = Some(plan);
+    }
+
+    #[cfg(test)]
+    fn force_parser_panic(&mut self) {
+        self.parser.panic_next_feed = true;
     }
 }
 
@@ -508,5 +550,55 @@ mod tests {
         assert!(parser.buffer.contains('发'));
         assert!(parser.buffer.len() > 64 * 1024);
         assert!(parser.buffer.len() <= 64 * 1024 + 3);
+    }
+
+    #[test]
+    fn feed_safe_matches_feed_on_normal_input() {
+        let text = r#"<proposed_plan explanation="Build it">
+<step status="pending">A</step>
+<step status="in_progress">B</step>
+</proposed_plan>"#;
+        let mut a = PlanAccumulator::new();
+        let mut b = PlanAccumulator::new();
+        assert_eq!(a.feed_safe(text), b.feed(text));
+        assert_eq!(a.current(), b.current());
+    }
+
+    #[test]
+    fn feed_safe_swallows_parser_panic() {
+        let mut acc = PlanAccumulator::new();
+        // Seed an existing plan so we can confirm it survives the panic.
+        assert!(acc.feed_safe(
+            r#"<proposed_plan><step status="pending">A</step></proposed_plan>"#
+        ));
+        let before = acc.current().cloned();
+
+        acc.force_parser_panic();
+        // feed_safe must not propagate the panic.
+        assert!(!acc.feed_safe("anything"));
+        // The prior plan is untouched.
+        assert_eq!(acc.current(), before.as_ref());
+
+        // The accumulator is still usable after the caught panic.
+        assert!(acc.feed_safe(
+            r#"<update_plan><step status="completed">A</step></update_plan>"#
+        ));
+        let plan = acc.current().expect("plan updated after recovery");
+        assert_eq!(plan.steps[0].status, PlanStepStatus::Completed);
+    }
+
+    #[test]
+    fn feed_safe_handles_multibyte_trim_edge_case() {
+        // The em-dash scenario from the original crash report: a 3-byte
+        // character sitting right at the 64 KiB trim cut point. feed_safe
+        // must not panic and the accumulator must keep working.
+        let mut acc = PlanAccumulator::new();
+        let mut text = String::with_capacity(65547);
+        text.push_str(&"x".repeat(10));
+        text.push('—');
+        text.push_str(&"x".repeat(65534));
+        assert!(!acc.feed_safe(&text));
+        assert!(acc
+            .feed_safe(r#"<update_plan><step status="completed">A</step></update_plan>"#));
     }
 }
