@@ -25,6 +25,7 @@ use uuid::Uuid;
 
 use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, NewMessage, NewThread, ThreadRow};
+use crate::plan::PlanAccumulator;
 use crate::providers::{
     collect_text, collect_thinking, AskCallback, AskOutcome, AskRequest, Attachment, MessagePart,
     PartCallback, PartEvent, PermissionCallback, PermissionOutcome, PermissionRequest, SendOptions,
@@ -54,6 +55,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/threads/:id/ask/:request_id", post(respond_ask))
         .route("/api/threads/:id/project", get(get_project_path))
+        .route("/api/threads/:id/plan", get(get_plan))
 }
 
 #[derive(Debug, Serialize)]
@@ -272,10 +274,17 @@ async fn get_one(
                     Err(e) => return crate::api::map_err_internal(e).into_response(),
                 }
             }
+            let db_plan = match state.db.get_latest_plan(&id).await {
+                Ok(Some(row)) => row.to_plan().ok(),
+                _ => None,
+            };
+            let (has_active_run, active_plan) = active_run_plan(&state, &id).await;
+            let plan = if has_active_run { active_plan } else { db_plan };
             Json(serde_json::json!({
                 "thread": ThreadOut::from(t),
                 "total_messages": total,
                 "messages": messages,
+                "plan": plan,
             }))
             .into_response()
         }
@@ -976,8 +985,15 @@ async fn run_thread(
         &serde_json::to_string(&MessageOut::from(user_msg)).unwrap_or_else(|_| "{}".into()),
     );
 
+    // Each turn owns its own plan; clear any stale plan from a previous turn
+    // so the UI doesn't show outdated todos while the model thinks.
+    let _ = state.db.delete_plans_for_thread(&thread.id).await;
+
+    let plan_acc = std::sync::Mutex::new(PlanAccumulator::new());
+
     let part_callback: PartCallback = Arc::new({
         let run = run.clone();
+        let plan_acc = plan_acc;
         move |ev: PartEvent| {
             let part = ev.part().clone();
             let is_tool_update = ev.is_update() && part.tool_id().is_some();
@@ -985,6 +1001,26 @@ async fn run_thread(
             let event = if is_tool_update { "part_update" } else { "part" };
             if let Ok(json) = serde_json::to_string(ev.part()) {
                 run.emit(event, &json);
+            }
+
+            // Scan text and thinking chunks for plan/todo blocks.
+            let mut text = ev.part().text_content().unwrap_or("").to_string();
+            if let Some(t) = ev.part().thinking_content() {
+                text.push_str(t);
+            }
+            if text.is_empty() {
+                return;
+            }
+            let mut guard = plan_acc.lock().unwrap_or_else(|e| e.into_inner());
+            if guard.feed(&text) {
+                if let Some(plan) = guard.current() {
+                    let plan = plan.clone();
+                    drop(guard);
+                    run.set_plan(Some(plan.clone()));
+                    if let Ok(json) = serde_json::to_string(&plan) {
+                        run.emit("plan_update", &json);
+                    }
+                }
             }
         }
     });
@@ -1046,6 +1082,7 @@ async fn run_thread(
                 })
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
+            persist_run_plan(&state.db, &thread.id, &run).await;
         }
         return Err(anyhow::anyhow!("stopped by user"));
     }
@@ -1085,6 +1122,8 @@ async fn run_thread(
     )
     .await
     .map_err(|_| anyhow::anyhow!("failed to save assistant message"))?;
+
+    persist_run_plan(&state.db, &thread.id, &run).await;
 
     if run.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
         return Err(anyhow::anyhow!("stopped by user"));
@@ -1556,6 +1595,38 @@ async fn persist_assistant_reply(
     Ok(assistant_msg)
 }
 
+/// Persist the final active plan for a run to the database, if any.
+async fn persist_run_plan(db: &crate::db::Db, thread_id: &str, run: &RunState) {
+    let plan = run
+        .plan
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if let Some(plan) = plan {
+        let _ = db
+            .upsert_latest_plan(thread_id, Some(&run.run_id), &plan)
+            .await;
+    }
+}
+
+/// Return the plan currently held by an active run for `thread_id`. The first
+/// tuple element is true when a run is still in the runner, and the second
+/// element is its current plan (if the model has emitted one yet).
+async fn active_run_plan(
+    state: &AppState,
+    thread_id: &str,
+) -> (bool, Option<crate::plan::Plan>) {
+    let Some(run) = state.thread_runner.get(thread_id).await else {
+        return (false, None);
+    };
+    let plan = run
+        .plan
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    (true, plan)
+}
+
 /// Return the filesystem working directory for a thread.
 ///
 /// If the thread belongs to a project, use the project's canonical path.
@@ -1617,6 +1688,46 @@ async fn get_project_path(
             Json(crate::api::ApiError::new("not found")),
         )
             .into_response(),
+        Err(e) => crate::api::map_err_internal(e).into_response(),
+    }
+}
+
+/// Return the latest plan for a thread.
+async fn get_plan(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.db.get_thread(&id, user.id).await {
+        Ok(Some(_)) => {}
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+    }
+
+    let (has_active_run, active_plan) = active_run_plan(&state, &id).await;
+    if has_active_run {
+        return Json(serde_json::json!({
+            "plan": active_plan,
+            "updated_at": chrono::Utc::now().to_rfc3339(),
+        }))
+        .into_response();
+    }
+
+    match state.db.get_latest_plan(&id).await {
+        Ok(Some(row)) => match row.to_plan() {
+            Ok(plan) => Json(serde_json::json!({
+                "plan": plan,
+                "updated_at": row.updated_at,
+            }))
+            .into_response(),
+            Err(e) => crate::api::map_err_internal(e).into_response(),
+        },
+        Ok(None) => Json(serde_json::json!({"plan": None::<crate::plan::Plan>})).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }

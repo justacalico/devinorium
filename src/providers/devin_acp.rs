@@ -59,14 +59,22 @@ impl DevinAcpProvider {
     fn apply_interaction_mode_prefix(prompt: String, mode: &str) -> String {
         match mode.trim().to_lowercase().as_str() {
             "plan" => format!(
-                "You are in Plan mode. First produce a concise plan and do not \
-run tools, edit files, or execute commands until the user confirms.\n\n{prompt}"
+                "You are in Plan mode. First produce a concise, decision-complete \
+plan and do not run tools, edit files, or execute commands until the user \
+confirms. Wrap the final plan in a `<proposed_plan>` block with \
+`<step status=\"pending\">...</step>` children. At most one step may be \
+`in_progress`.\n\n{prompt}"
             ),
             "ask" => format!(
                 "You are in Ask mode. Answer the user's question directly and do \
 not use tools, edit files, or execute commands.\n\n{prompt}"
             ),
-            _ => prompt,
+            _ => format!(
+                "{prompt}\n\nWhen working on a multi-step task, you may track \
+progress by emitting `<update_plan explanation=\"...\"><step \
+status=\"pending|in_progress|completed\">...</step></update_plan>` blocks. \
+Only one step should be `in_progress` at a time."
+            ),
         }
     }
 
@@ -1514,6 +1522,7 @@ mod tests {
         assert!(out.contains("Plan mode"));
         assert!(out.contains("hello"));
         assert!(out.contains("do not run tools"));
+        assert!(out.contains("proposed_plan"));
     }
 
     #[test]
@@ -1525,9 +1534,10 @@ mod tests {
     }
 
     #[test]
-    fn apply_interaction_mode_prefix_leaves_code_prompt_unchanged() {
+    fn apply_interaction_mode_prefix_adds_code_plan_hint() {
         let out = DevinAcpProvider::apply_interaction_mode_prefix("go".into(), "code");
-        assert_eq!(out, "go");
+        assert!(out.starts_with("go\n\n"));
+        assert!(out.contains("update_plan"));
     }
 
     #[test]

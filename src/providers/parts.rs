@@ -39,6 +39,20 @@ impl MessagePart {
             _ => None,
         }
     }
+
+    pub fn text_content(&self) -> Option<&str> {
+        match self {
+            Self::Text { content } => Some(content.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn thinking_content(&self) -> Option<&str> {
+        match self {
+            Self::Thinking { content } => Some(content.as_str()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
