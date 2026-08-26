@@ -137,25 +137,37 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn single_instance_rejects_concurrent_process() {
+        use std::fs::File;
         use std::process::{Command, Stdio};
         use std::thread;
-        use std::time::Duration;
+        use std::time::{Duration, Instant};
 
         let tmp = tempfile::tempdir().unwrap();
         let lock = tmp.path().join("test.lock");
+        let ready = tmp.path().join("ready");
+
+        // Ensure the lock file exists so the flock command can open it.
+        File::create(&lock).unwrap();
 
         let mut child = Command::new("flock")
             .arg("-x")
             .arg(&lock)
             .arg("-c")
-            .arg("sleep 5")
+            .arg(format!("touch {} && sleep 5", ready.display()))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .expect("flock command should be available on Linux");
 
-        // Give the child time to acquire the lock.
-        thread::sleep(Duration::from_millis(100));
+        // Wait until the child has actually acquired the lock.
+        let start = Instant::now();
+        while !ready.exists() {
+            if start.elapsed() > Duration::from_secs(5) {
+                let _ = child.kill();
+                panic!("child did not acquire the lock in time");
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
 
         let result = SingleInstance::acquire(&lock);
         assert!(result.is_err(), "should fail when another process holds the lock");
