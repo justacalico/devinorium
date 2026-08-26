@@ -1532,4 +1532,61 @@ void main() {
     expect(border!.left, isNot(BorderSide.none));
     expect(border.left.width, 3);
   });
+
+  testWidgets('Deleting a thread slides the tile out before removing it', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    final delete = find.widgetWithIcon(IconButton, Icons.delete_outline);
+    expect(delete, findsOneWidget);
+    await tester.tap(delete);
+
+    await tester.pump(const Duration(milliseconds: 150));
+
+    // The thread is still visible mid-slide and the backend call is delayed.
+    expect(find.text('My thread'), findsOneWidget);
+    expect(api.deletedThreadIds, isEmpty);
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+
+    expect(api.deletedThreadIds, contains('a'));
+    expect(state.threads, isEmpty);
+    expect(find.text('My thread'), findsNothing);
+  });
 }
