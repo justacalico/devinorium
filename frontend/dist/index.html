@@ -18,19 +18,25 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Devinorium — a self-hosted AI coding assistant.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="devinorium_frontend">
+  <meta name="apple-mobile-web-app-title" content="Devinorium">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>devinorium_frontend</title>
+  <title>Devinorium</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Preload the Flutter bootstrap and main script so the browser can start
+       fetching them before the inline script in the body runs. -->
+  <link rel="preload" href="flutter_bootstrap.js" as="script">
+  <link rel="preload" href="flutter.js" as="script">
+  <link rel="preload" href="main.dart.js" as="script">
 </head>
 <body>
   <!--
