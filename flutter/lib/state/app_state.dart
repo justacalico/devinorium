@@ -208,7 +208,7 @@ class AppState extends ChangeNotifier {
   bool _userMenuOpen = false;
   bool _filesPanelOpen = false;
   bool _planOverlayVisible = false;
-  bool _planOverlayExpanded = false;
+  bool _planOverlayExpanded = true;
   bool _planOverlayUserDismissed = false;
   List<String> _filesPath = [];
   List<DirEntry> _filesEntries = [];
@@ -360,8 +360,8 @@ class AppState extends ChangeNotifier {
     _activeStore = store;
     _activeThreadId = store?.threadId;
     _planOverlayVisible = false;
-    _planOverlayExpanded = false;
-    _planOverlayUserDismissed = false;
+    // Keep _planOverlayExpanded and _planOverlayUserDismissed as user
+    // preferences so they survive thread switches and app restarts.
     store?.onStateChanged = _onThreadStoreChanged;
     _syncFromActiveStore();
     _clearLinkedMergeRequest();
@@ -409,13 +409,13 @@ class AppState extends ChangeNotifier {
     }
 
     // Auto-open the plan overlay when a plan first appears for this thread,
-    // unless the user explicitly dismissed it.
+    // unless the user explicitly dismissed it. Preserve the user's preferred
+    // collapsed/full state.
     if (!_planOverlayUserDismissed &&
         !_planOverlayVisible &&
         store.plan != null &&
         store.plan!.steps.isNotEmpty) {
       _planOverlayVisible = true;
-      _planOverlayExpanded = true;
     }
   }
 
@@ -701,18 +701,44 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _loadPlanOverlayState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _planOverlayExpanded =
+          prefs.getBool('devinorium_plan_overlay_expanded') ??
+          _planOverlayExpanded;
+      _planOverlayUserDismissed =
+          prefs.getBool('devinorium_plan_overlay_dismissed') ?? false;
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> _savePlanOverlayState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+        'devinorium_plan_overlay_expanded',
+        _planOverlayExpanded,
+      );
+      await prefs.setBool(
+        'devinorium_plan_overlay_dismissed',
+        _planOverlayUserDismissed,
+      );
+    } catch (_) {}
+  }
+
   void openPlanOverlay() {
     _planOverlayVisible = true;
-    _planOverlayExpanded = true;
     _planOverlayUserDismissed = false;
     notifyListeners();
+    unawaited(_savePlanOverlayState());
   }
 
   void dismissPlanOverlay() {
     _planOverlayVisible = false;
-    _planOverlayExpanded = false;
     _planOverlayUserDismissed = true;
     notifyListeners();
+    unawaited(_savePlanOverlayState());
   }
 
   void togglePlanOverlay() {
@@ -728,12 +754,15 @@ class AppState extends ChangeNotifier {
     _planOverlayExpanded = true;
     _planOverlayUserDismissed = false;
     notifyListeners();
+    unawaited(_savePlanOverlayState());
   }
 
   void collapsePlanOverlay() {
     _planOverlayVisible = true;
     _planOverlayExpanded = false;
+    _planOverlayUserDismissed = false;
     notifyListeners();
+    unawaited(_savePlanOverlayState());
   }
 
   void togglePlanOverlayExpanded() {
@@ -743,6 +772,7 @@ class AppState extends ChangeNotifier {
       openPlanOverlay();
     }
     notifyListeners();
+    unawaited(_savePlanOverlayState());
   }
 
   Future<void> navigateFilesInto(String name) async {
@@ -868,6 +898,7 @@ class AppState extends ChangeNotifier {
     await _loadLanguage();
     await _loadComposerMode();
     await _loadNotificationPrefs();
+    await _loadPlanOverlayState();
     setAppL10n(_locale);
     try {
       final configured = await api.client.isConfigured;
@@ -1134,6 +1165,7 @@ class AppState extends ChangeNotifier {
       _view = AppView.app;
       _showTotpField = false;
       _loginError = '';
+      await _loadPlanOverlayState();
       await Future.wait([_loadModelsAndProviders(), loadProjects()]);
       if (_projects.isNotEmpty) {
         await selectProject(_projects.first.id);
