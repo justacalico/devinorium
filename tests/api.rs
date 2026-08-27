@@ -4991,3 +4991,193 @@ async fn thread_send_stream_emits_plan_update_and_persists_plan() {
         assistant.parts
     );
 }
+
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::protocol::Message;
+
+async fn spawn_router(app: Router) -> (u16, tokio::sync::oneshot::Sender<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let shutdown = async move {
+        let _ = rx.await;
+    };
+    let server = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown);
+    tokio::spawn(async move { server.await });
+    (port, tx)
+}
+
+fn session_cookie(resp: &reqwest::Response) -> String {
+    let cookie = resp
+        .headers()
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .find_map(|h| {
+            let s = h.to_str().ok()?;
+            s.split(';').next().map(str::trim)
+        })
+        .unwrap();
+    cookie.to_string()
+}
+
+#[tokio::test]
+async fn terminal_create_kill_and_ws_round_trip() {
+    let (app, _db) = make_app().await;
+    let (port, shutdown) = spawn_router(app).await;
+    let base = format!("http://127.0.0.1:{port}");
+    let origin = base.clone();
+    let client = reqwest::Client::new();
+
+    // Login as owner.
+    let login = client
+        .post(format!("{base}/api/auth/login"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .json(&serde_json::json!({
+            "username": "owner",
+            "password": "supersecret123",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(login.status().is_success());
+    let cookie = session_cookie(&login);
+
+    // Create a project.
+    let project: serde_json::Value = client
+        .post(format!("{base}/api/projects"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .json(&serde_json::json!({
+            "name": "term project",
+            "path": "term",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let pid = project["id"].as_i64().unwrap();
+
+    // Create a thread.
+    let thread: serde_json::Value = client
+        .post(format!("{base}/api/threads"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .json(&serde_json::json!({"project_id": pid}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let tid = thread["id"].as_str().unwrap().to_string();
+
+    // Spawn a terminal session using "cat" for a round-trip echo test.
+    let term: serde_json::Value = client
+        .post(format!("{base}/api/terminal/sessions"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .json(&serde_json::json!({"thread_id": tid}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let terminal_id = term["id"].as_str().unwrap().to_string();
+
+    // Connect to the WebSocket endpoint.
+    let ws_url = format!("ws://127.0.0.1:{port}/api/terminal/sessions/{terminal_id}/ws");
+    let host = format!("127.0.0.1:{port}");
+    let ws_key = tokio_tungstenite::tungstenite::handshake::client::generate_key();
+    let req = Request::builder()
+        .uri(&ws_url)
+        .header("Host", &host)
+        .header("Connection", "Upgrade")
+        .header("Upgrade", "websocket")
+        .header("Sec-WebSocket-Version", "13")
+        .header("Sec-WebSocket-Key", &ws_key)
+        .header("Cookie", &cookie)
+        .header("Origin", &origin)
+        .body(())
+        .unwrap();
+    let (mut ws, _resp) = tokio_tungstenite::connect_async(req).await.unwrap();
+
+    // Send a resize and some input; "cat" will echo the input.
+    let _ = ws
+        .send(Message::Text(
+            r#"{"type":"resize","cols":120,"rows":30}"#.to_string(),
+        ))
+        .await;
+    let _ = ws
+        .send(Message::Text(
+            r#"{"type":"input","data":"ping"}"#.to_string(),
+        ))
+        .await;
+
+    // Wait for the echoed output; keep reading until we see "ping".
+    let mut saw_ping = false;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(5);
+    while tokio::time::Instant::now() < deadline {
+        match tokio::time::timeout(
+            tokio::time::Duration::from_millis(100),
+            ws.next(),
+        )
+        .await
+        {
+            Ok(Some(Ok(Message::Binary(bytes)))) => {
+                let text = String::from_utf8_lossy(&bytes);
+                if text.contains("ping") {
+                    saw_ping = true;
+                    break;
+                }
+            }
+            Ok(Some(Ok(_))) => {}
+            Ok(Some(Err(_))) => break,
+            Ok(None) => break,
+            Err(_) => {}
+        }
+    }
+    assert!(saw_ping, "expected 'ping' echoed by cat");
+
+    // Kill the terminal via the API.
+    let kill = client
+        .delete(format!("{base}/api/terminal/sessions/{terminal_id}"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert!(kill.status().is_success());
+
+    // The WebSocket should eventually receive the exited event.
+    let mut saw_exited = false;
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(5);
+    while tokio::time::Instant::now() < deadline {
+        match tokio::time::timeout(
+            tokio::time::Duration::from_millis(100),
+            ws.next(),
+        )
+        .await
+        {
+            Ok(Some(Ok(Message::Text(text)))) => {
+                if text.contains("exited") {
+                    saw_exited = true;
+                    break;
+                }
+            }
+            Ok(Some(Ok(_))) => {}
+            Ok(Some(Err(_))) => break,
+            Ok(None) => break,
+            Err(_) => {}
+        }
+    }
+    assert!(saw_exited, "expected exited event after kill");
+
+    let _ = shutdown.send(());
+}
