@@ -8,8 +8,8 @@ import '../state/app_state.dart';
 
 /// An inline ask form that lives in the chat prompt area instead of a modal.
 ///
-/// Renders each [AskQuestion] as a field, validates the form, and forwards the
-/// answers to [AppState.respondToAskRequest].
+/// Shows one [AskQuestion] at a time with Previous / Next navigation and
+/// forwards the collected answers to [AppState.respondToAskRequest].
 class AskRequestPanel extends StatefulWidget {
   const AskRequestPanel({super.key});
 
@@ -24,18 +24,35 @@ bool _isOtherValue(String value) => value == _otherValue || value == 'other';
 class _AskRequestPanelState extends State<AskRequestPanel> {
   final _formKey = GlobalKey<FormState>();
   final _answers = <String, dynamic>{};
+  final _textControllers = <String, TextEditingController>{};
   final _otherControllers = <String, TextEditingController>{};
   final _focusNodes = <String, FocusNode>{};
   final _otherFocusNodes = <String, FocusNode>{};
-  bool _didAutoFocus = false;
+  int _currentIndex = 0;
+
+  AskRequest? get _request => context.read<AppState>().pendingAskRequest;
+
+  List<AskQuestion> get _questions => _request?.questions ?? const [];
+
+  AskQuestion? get _currentQuestion {
+    final questions = _questions;
+    if (_currentIndex < 0 || _currentIndex >= questions.length) return null;
+    return questions[_currentIndex];
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final req = context.read<AppState>().pendingAskRequest;
+    final req = _request;
     if (req == null) return;
 
     for (final q in req.questions) {
+      if (q.isText || q.isNumber) {
+        _textControllers.putIfAbsent(
+          q.id,
+          () => TextEditingController(text: _answers[q.id]?.toString() ?? ''),
+        );
+      }
       if (!q.isBoolean && !q.isSingleSelect && !q.isMultiSelect) {
         _focusNodes.putIfAbsent(q.id, () => FocusNode());
       }
@@ -43,27 +60,14 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
         _otherFocusNodes.putIfAbsent(q.id, () => FocusNode());
       }
     }
-
-    if (_didAutoFocus) return;
-    _didAutoFocus = true;
-
-    AskQuestion? firstTextLike;
-    for (final q in req.questions) {
-      if (!q.isBoolean && !q.isSingleSelect && !q.isMultiSelect) {
-        firstTextLike = q;
-        break;
-      }
-    }
-    if (firstTextLike == null) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _focusNodes[firstTextLike!.id]?.requestFocus();
-    });
+    _focusCurrent();
   }
 
   @override
   void dispose() {
+    for (final c in _textControllers.values) {
+      c.dispose();
+    }
     for (final c in _otherControllers.values) {
       c.dispose();
     }
@@ -76,15 +80,155 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
     super.dispose();
   }
 
-  void _submit() {
-    if (_formKey.currentState?.validate() ?? false) {
-      _formKey.currentState?.save();
-      final answers = Map<String, dynamic>.from(_answers)
-        ..removeWhere(
-          (k, v) => v == null || (v is List && v.isEmpty),
-        );
-      context.read<AppState>().respondToAskRequest(answers);
+  void _focusCurrent() {
+    final q = _currentQuestion;
+    if (q == null) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (q.isText || q.isNumber) {
+        _focusNodes[q.id]?.requestFocus();
+      } else if (q.isSingleSelect) {
+        final value = _answers[q.id] as String?;
+        if (value != null && _isOtherValue(value)) {
+          _otherFocusNodes[q.id]?.requestFocus();
+        }
+      }
+    });
+  }
+
+  dynamic _currentValue(AskQuestion q) {
+    if (q.isText || q.isNumber) {
+      return _textControllers[q.id]?.text ?? '';
     }
+    return _answers[q.id];
+  }
+
+  String? _validateAnswer(AskQuestion q, dynamic value, AppLocalizations l) {
+    if (q.isText) {
+      final text = (value as String?)?.trim() ?? '';
+      if (q.required && text.isEmpty) return l.required;
+      return null;
+    }
+
+    if (q.isNumber) {
+      final text = (value as String?)?.trim() ?? '';
+      if (text.isEmpty) {
+        return q.required ? l.required : null;
+      }
+      if (num.tryParse(text) == null) return l.invalidNumber;
+      return null;
+    }
+
+    if (q.isBoolean) return null;
+
+    if (q.isSingleSelect) {
+      if (value == null) return q.required ? l.required : null;
+      if (value is String) {
+        if (_isOtherValue(value)) {
+          final text = _otherControllers[q.id]?.text.trim() ?? '';
+          if (text.isEmpty && q.required) return l.required;
+          return null;
+        }
+        if (value.trim().isEmpty && q.required) return l.required;
+      }
+      return null;
+    }
+
+    if (q.isMultiSelect) {
+      final list = (value as List?)?.cast<String>();
+      if (q.required && (list == null || list.isEmpty)) return l.required;
+      return null;
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic> _collectAnswers(AskRequest req) {
+    final result = <String, dynamic>{};
+    for (final q in req.questions) {
+      final value = _currentValue(q);
+      if (q.isText) {
+        final text = (value as String?)?.trim() ?? '';
+        if (text.isNotEmpty) result[q.id] = text;
+      } else if (q.isNumber) {
+        final text = (value as String?)?.trim() ?? '';
+        if (text.isNotEmpty) {
+          final n = num.tryParse(text);
+          if (n != null) result[q.id] = n;
+        }
+      } else if (q.isBoolean) {
+        result[q.id] = value ?? false;
+      } else if (q.isSingleSelect) {
+        final optionValues = q.options.map((o) => o.value).toSet();
+        if (value is String && value.isNotEmpty) {
+          if (_isOtherValue(value)) {
+            final text = _otherControllers[q.id]?.text.trim() ?? '';
+            if (text.isNotEmpty) result[q.id] = text;
+          } else if (optionValues.contains(value)) {
+            result[q.id] = value;
+          } else {
+            final text = value.trim();
+            if (text.isNotEmpty) result[q.id] = text;
+          }
+        }
+      } else if (q.isMultiSelect) {
+        final list = (value as List?)?.cast<String>().toList() ?? const [];
+        if (list.isNotEmpty) result[q.id] = list;
+      }
+    }
+    return result;
+  }
+
+  void _previous() {
+    if (_currentIndex <= 0) return;
+    setState(() {
+      _currentIndex--;
+    });
+    _focusCurrent();
+  }
+
+  void _nextOrSubmit() {
+    if (_currentIndex >= _questions.length - 1) {
+      _submit();
+    } else {
+      _next();
+    }
+  }
+
+  void _next() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    _formKey.currentState?.save();
+    setState(() {
+      _currentIndex++;
+    });
+    _focusCurrent();
+  }
+
+  void _submit() {
+    final req = _request;
+    if (req == null) return;
+
+    final l = l10n(context);
+    for (var i = 0; i < req.questions.length; i++) {
+      final q = req.questions[i];
+      final error = _validateAnswer(q, _currentValue(q), l);
+      if (error != null) {
+        setState(() {
+          _currentIndex = i;
+        });
+        _focusCurrent();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _formKey.currentState?.validate();
+        });
+        return;
+      }
+    }
+
+    _formKey.currentState?.save();
+    final answers = _collectAnswers(req);
+    context.read<AppState>().respondToAskRequest(answers);
   }
 
   @override
@@ -98,6 +242,9 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
     final l = l10n(context);
+    final question = _currentQuestion!;
+    final isFirst = _currentIndex == 0;
+    final isLast = _currentIndex == _questions.length - 1;
 
     return SafeArea(
       top: false,
@@ -126,19 +273,16 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
                   children: [
                     _buildHeader(context, req, theme),
                     const SizedBox(height: 16),
+                    Text(
+                      '${_currentIndex + 1} / ${_questions.length}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     Flexible(
                       child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            for (var i = 0; i < req.questions.length; i++) ...[
-                              _buildField(context, req.questions[i]),
-                              if (i < req.questions.length - 1)
-                                const SizedBox(height: 16),
-                            ],
-                          ],
-                        ),
+                        child: _buildField(context, question),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -149,10 +293,17 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
                           onPressed: () => state.respondToAskRequest(null),
                           child: Text(l.cancel),
                         ),
+                        if (!isFirst) ...[
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: _previous,
+                            child: Text(l.previous),
+                          ),
+                        ],
                         const SizedBox(width: 8),
                         FilledButton(
-                          onPressed: _submit,
-                          child: Text(l.send),
+                          onPressed: _nextOrSubmit,
+                          child: Text(isLast ? l.send : l.next),
                         ),
                       ],
                     ),
@@ -195,12 +346,14 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
     final theme = Theme.of(context);
     final label = q.prompt;
     final hint = q.description;
+    final isLast = _currentIndex == _questions.length - 1;
 
     if (q.isText) {
       return TextFormField(
         focusNode: _focusNodes[q.id],
-        textInputAction: TextInputAction.done,
-        onFieldSubmitted: (_) => _submit(),
+        controller: _textControllers[q.id],
+        textInputAction: isLast ? TextInputAction.done : TextInputAction.next,
+        onFieldSubmitted: (_) => _nextOrSubmit(),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
@@ -212,15 +365,20 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
           }
           return null;
         },
-        onSaved: (v) => _answers[q.id] = v?.trim(),
+        onSaved: (v) {
+          final trimmed = v?.trim() ?? '';
+          _answers[q.id] = trimmed.isNotEmpty ? trimmed : null;
+          _textControllers[q.id]?.text = trimmed;
+        },
       );
     }
 
     if (q.isNumber) {
       return TextFormField(
         focusNode: _focusNodes[q.id],
-        textInputAction: TextInputAction.done,
-        onFieldSubmitted: (_) => _submit(),
+        controller: _textControllers[q.id],
+        textInputAction: isLast ? TextInputAction.done : TextInputAction.next,
+        onFieldSubmitted: (_) => _nextOrSubmit(),
         keyboardType:
             const TextInputType.numberWithOptions(decimal: true, signed: true),
         inputFormatters: [
@@ -244,14 +402,16 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
           if (v == null) return;
           final trimmed = v.trim();
           if (trimmed.isEmpty) return;
-          _answers[q.id] = num.tryParse(trimmed);
+          final parsed = num.tryParse(trimmed);
+          _answers[q.id] = parsed;
+          _textControllers[q.id]?.text = parsed?.toString() ?? '';
         },
       );
     }
 
     if (q.isBoolean) {
       return FormField<bool>(
-        initialValue: false,
+        initialValue: _answers[q.id] as bool? ?? false,
         builder: (field) => SwitchListTile(
           title: Text(label),
           subtitle: hint != null ? Text(hint) : null,
@@ -273,7 +433,23 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
         );
       }
 
+      final currentValue = _answers[q.id] as String?;
+      String? initialValue;
+      if (currentValue != null) {
+        final optionValues = options.map((o) => o.value).toSet();
+        if (optionValues.contains(currentValue)) {
+          initialValue = currentValue;
+        } else {
+          initialValue = _otherValue;
+          _otherControllers.putIfAbsent(
+            q.id,
+            () => TextEditingController(text: currentValue),
+          );
+        }
+      }
+
       return FormField<String>(
+        initialValue: initialValue,
         builder: (field) {
           final selectedIsOther =
               field.value != null && _isOtherValue(field.value!);
@@ -316,8 +492,9 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
                 TextFormField(
                   controller: otherController,
                   focusNode: _otherFocusNodes[q.id],
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _submit(),
+                  textInputAction:
+                      isLast ? TextInputAction.done : TextInputAction.next,
+                  onFieldSubmitted: (_) => _nextOrSubmit(),
                   onChanged: (v) => _answers[q.id] = v,
                   decoration: InputDecoration(
                     labelText: l10n(context).otherOption,
@@ -355,6 +532,7 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
         onSaved: (v) {
           if (v != null && _isOtherValue(v)) {
             final text = _otherControllers[q.id]?.text.trim() ?? '';
+            _otherControllers[q.id]?.text = text;
             _answers[q.id] = text.isNotEmpty ? text : null;
           } else {
             _answers[q.id] = v;
@@ -364,8 +542,10 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
     }
 
     if (q.isMultiSelect) {
+      final current = (_answers[q.id] as List?)?.cast<String>().toSet() ??
+          const <String>{};
       return FormField<Set<String>>(
-        initialValue: const <String>{},
+        initialValue: current,
         builder: (field) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -413,8 +593,9 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
 
     return TextFormField(
       focusNode: _focusNodes[q.id],
-      textInputAction: TextInputAction.done,
-      onFieldSubmitted: (_) => _submit(),
+      controller: _textControllers[q.id],
+      textInputAction: isLast ? TextInputAction.done : TextInputAction.next,
+      onFieldSubmitted: (_) => _nextOrSubmit(),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

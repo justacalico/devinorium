@@ -789,6 +789,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get send => 'Send';
 
   @override
+  String get next => 'Next';
+
+  @override
+  String get previous => 'Previous';
+
+  @override
   String get stopGenerating => 'Stop generating';
 
   @override

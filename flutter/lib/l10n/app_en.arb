@@ -460,6 +460,8 @@
   "createAndSwitchBranch": "Create and switch",
   "createAndNewBranch": "Create and new branch",
   "send": "Send",
+  "next": "Next",
+  "previous": "Previous",
   "stopGenerating": "Stop generating",
   "notifications": "Notifications",
   "completionNotifications": "Notify when a thread completes",
