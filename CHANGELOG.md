@@ -2,6 +2,25 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.16.0 - 2026-08-27
+#### Features
+- 添加服务器端 git clone 功能 - (67adeb2) - HttpAnimations
+- 关闭非空终端和标签页时添加确认对话框 - (f0a33fa) - HttpAnimations
+- 终端标签页作为工作区，支持添加多个终端窗口 - (80c6d64) - HttpAnimations
+- 终端支持浏览器式标签页 - (c436a20) - HttpAnimations
+- 终端按线程隔离并保持会话存活 - (8fe87e5) - HttpAnimations
+- 将终端改为底部可调整面板并移除状态文字 - (009dd8b) - HttpAnimations
+- 添加前端本地和远程终端 UI 与 WebSocket 连接 - (4b72a31) - HttpAnimations
+- 添加后端远程终端管理器与 WebSocket 路由 - (6a31a12) - HttpAnimations
+#### Bug Fixes
+- 居中对齐终端会话卡片的关闭按钮 - (d8bd437) - HttpAnimations
+- 移除终端面板的关闭全部按钮 - (41ce879) - HttpAnimations
+- 移除终端工具栏的状态点 - (ce86bfc) - HttpAnimations
+- 将本地 PTY 恢复为规范模式以修复输入回显 - (6a10ce0) - HttpAnimations
+- 移除终端管理器中的冗余闭包 - (aec41de) - HttpAnimations
+
+- - -
+
 ## v0.15.0 - 2026-08-27
 #### Features
 - 将 AskRequestPanel 改为分步问答向导 - (409d5b7) - HttpAnimations
