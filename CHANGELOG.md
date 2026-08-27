@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.15.0 - 2026-08-27
+#### Features
+- 将 AskRequestPanel 改为分步问答向导 - (409d5b7) - HttpAnimations
+
+- - -
+
 ## v0.14.0 - 2026-08-26
 #### Features
 - 持久化计划覆盖层折叠与隐藏状态 - (a4e46f2) - HttpAnimations
