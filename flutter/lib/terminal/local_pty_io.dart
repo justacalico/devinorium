@@ -17,7 +17,7 @@ class LocalPtyBackend {
         shell,
         const <String>[],
         environment: Platform.environment,
-        raw: true,
+        raw: false,
       );
       _pty!.out.listen(
         terminal.write,
