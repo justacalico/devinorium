@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../api/api_service.dart';
 import '../l10n/l10n.dart';
-import 'terminal_grid.dart';
 import 'terminal_session.dart';
+import 'terminal_tabs.dart';
 
 /// A resizable bottom panel that hosts one or more terminal sessions for a
 /// thread, similar to the bottom terminal drawer in t3code.
@@ -40,6 +40,7 @@ class ThreadTerminalPanel extends StatefulWidget {
 class _ThreadData {
   final sessions = <TerminalSession>[];
   bool busy = false;
+  int activeIndex = 0;
 }
 
 class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
@@ -103,6 +104,7 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
       session.addListener(_onSessionUpdate);
       _sessionThreads[session] = threadId;
       data.sessions.add(session);
+      data.activeIndex = data.sessions.length - 1;
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
@@ -123,9 +125,19 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     if (threadId == null) return;
     final data = _dataFor(threadId);
     if (!data.sessions.remove(session)) return;
+    if (data.activeIndex >= data.sessions.length) {
+      data.activeIndex = data.sessions.isEmpty ? 0 : data.sessions.length - 1;
+    }
     session.removeListener(_onSessionUpdate);
     if (mounted) setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) => session.dispose());
+  }
+
+  void _setActiveTab(int index, String threadId) {
+    final data = _dataFor(threadId);
+    if (data.activeIndex == index) return;
+    data.activeIndex = index;
+    if (mounted) setState(() {});
   }
 
   @override
@@ -182,8 +194,11 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
                 ),
                 Divider(height: 1, color: colorScheme.outlineVariant),
                 Expanded(
-                  child: TerminalGrid(
+                  child: TerminalTabs(
                     sessions: data.sessions,
+                    activeIndex: data.activeIndex,
+                    onActiveIndexChanged: (index) =>
+                        _setActiveTab(index, widget.threadId),
                     onClose: _removeSession,
                   ),
                 ),
@@ -270,11 +285,13 @@ class _Header extends StatelessWidget {
           const Spacer(),
           if (local)
             IconButton(
+              key: const ValueKey('addLocalTerminal'),
               icon: const Icon(Icons.computer, size: 20),
               tooltip: 'Local terminal',
               onPressed: busy ? null : onAddLocal,
             ),
           IconButton(
+            key: const ValueKey('addRemoteTerminal'),
             icon: const Icon(Icons.cloud, size: 20),
             tooltip: 'Remote terminal',
             onPressed: busy ? null : onAddRemote,

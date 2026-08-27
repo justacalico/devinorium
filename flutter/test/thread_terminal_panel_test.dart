@@ -21,7 +21,7 @@ void main() {
 
     expect(find.text('No terminal sessions'), findsOneWidget);
     expect(find.text('Terminal'), findsOneWidget);
-    expect(find.byIcon(Icons.cloud), findsOneWidget);
+    expect(find.byKey(const ValueKey('addRemoteTerminal')), findsOneWidget);
     expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
   });
 
@@ -123,26 +123,81 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('No terminal sessions'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.cloud));
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
     await tester.pumpAndSettle();
-    expect(find.text('s-1-t1'), findsOneWidget);
+    // Tab label and terminal toolbar both show the session id.
+    expect(find.text('s-1-t1'), findsNWidgets(2));
 
     await tester.pumpWidget(build('t2'));
     await tester.pumpAndSettle();
     expect(find.text('s-1-t1'), findsNothing);
     expect(find.text('No terminal sessions'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.cloud));
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
     await tester.pumpAndSettle();
-    expect(find.text('s-2-t2'), findsOneWidget);
+    expect(find.text('s-2-t2'), findsNWidgets(2));
 
     await tester.pumpWidget(build('t1'));
     await tester.pumpAndSettle();
-    expect(find.text('s-1-t1'), findsOneWidget);
+    expect(find.text('s-1-t1'), findsNWidgets(2));
     expect(find.text('s-2-t2'), findsNothing);
 
     await tester.pumpWidget(build('t2'));
     await tester.pumpAndSettle();
-    expect(find.text('s-2-t2'), findsOneWidget);
+    expect(find.text('s-2-t2'), findsNWidgets(2));
+  });
+
+  testWidgets('switches and closes tabs like a browser', (tester) async {
+    var callCount = 0;
+    Future<TerminalSession> sessionFactory({
+      required ApiService api,
+      required String threadId,
+      required bool local,
+    }) async {
+      callCount++;
+      return TerminalSession(
+        id: 's-$callCount',
+        isLocal: local,
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ThreadTerminalPanel(
+            api: ApiService(),
+            threadId: 't1',
+            sessionFactory: sessionFactory,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No terminal sessions'), findsOneWidget);
+
+    // Add first tab.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsNWidgets(2));
+
+    // Add second tab; it becomes active.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsOneWidget); // tab label only
+    expect(find.text('s-2'), findsNWidgets(2)); // tab + toolbar
+
+    // Switch back to the first tab.
+    await tester.tap(find.text('s-1').first);
+    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsNWidgets(2));
+    expect(find.text('s-2'), findsOneWidget); // tab label only
+
+    // Close the second tab while the first one is active.
+    expect(find.byIcon(Icons.close), findsNWidgets(2));
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pumpAndSettle();
+    expect(find.text('s-2'), findsNothing);
+    expect(find.text('s-1'), findsNWidgets(2));
+    expect(find.byIcon(Icons.close), findsOneWidget);
   });
 }
