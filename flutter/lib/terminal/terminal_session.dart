@@ -20,7 +20,7 @@ enum TerminalStatus {
 }
 
 /// Controller for one terminal (local PTY or remote backend session).
-abstract class TerminalSession extends ChangeNotifier {
+class TerminalSession extends ChangeNotifier {
   TerminalSession({required this.id, required this.isLocal})
       : terminal = Terminal(maxLines: 10000) {
     _attach();
@@ -42,7 +42,7 @@ abstract class TerminalSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _attach();
+  void _attach() {}
 
   void _complete() {
     if (!_completed.isCompleted) _completed.complete();
@@ -192,6 +192,19 @@ class RemoteTerminalSession extends TerminalSession {
     super.dispose();
   }
 }
+
+/// Factory signature for creating a [TerminalSession] for a thread.
+///
+/// This is the default factory used by [ThreadTerminalPanel] so tests can
+/// inject a fake session without starting a real PTY or WebSocket.
+///
+/// Non-test callers should pass [createTerminalSession] and let it handle the
+/// actual local/remote backend.
+typedef TerminalSessionFactory = Future<TerminalSession> Function({
+  required ApiService api,
+  required String threadId,
+  required bool local,
+});
 
 /// Create a local or remote terminal session for [threadId].
 Future<TerminalSession> createTerminalSession({

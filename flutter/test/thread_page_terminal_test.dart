@@ -1,5 +1,6 @@
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/terminal/thread_terminal_panel.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +37,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No terminal sessions'), findsNothing);
+    // The panel is still mounted while hidden.
+    expect(
+      find.byType(ThreadTerminalPanel, skipOffstage: false),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byIcon(Icons.terminal));
     await tester.pumpAndSettle();
@@ -47,5 +53,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No terminal sessions'), findsNothing);
+    // The panel stays mounted so thread sessions survive hide/show.
+    expect(
+      find.byType(ThreadTerminalPanel, skipOffstage: false),
+      findsOneWidget,
+    );
   });
 }

@@ -63,6 +63,9 @@ class _ThreadPageState extends State<ThreadPage> {
     final activeThreadId = state.activeThreadId;
     final terminalOpen = activeThreadId != null &&
         (_terminalOpenByThread[activeThreadId] ?? false);
+    final terminalHeight = activeThreadId != null
+        ? (_terminalHeightByThread[activeThreadId] ?? _defaultTerminalHeight)
+        : _defaultTerminalHeight;
 
     return Scaffold(
       appBar: AppBar(
@@ -121,18 +124,20 @@ class _ThreadPageState extends State<ThreadPage> {
       body: Column(
         children: [
           const Expanded(child: ChatView()),
-          if (terminalOpen)
-            ThreadTerminalPanel(
-              key: ValueKey(activeThreadId),
-              api: state.api,
-              threadId: activeThreadId,
-              initialHeight:
-                  _terminalHeightByThread[activeThreadId] ??
-                  _defaultTerminalHeight,
-              onHeightChanged: (height) =>
-                  _setTerminalHeight(activeThreadId, height),
-              onClose: () => _toggleTerminal(activeThreadId),
-            ),
+          ThreadTerminalPanel(
+            api: state.api,
+            threadId: activeThreadId ?? '',
+            open: terminalOpen,
+            initialHeight: terminalHeight,
+            onHeightChanged: (height) {
+              if (activeThreadId != null) {
+                _setTerminalHeight(activeThreadId, height);
+              }
+            },
+            onClose: activeThreadId != null
+                ? () => _toggleTerminal(activeThreadId)
+                : null,
+          ),
         ],
       ),
     );

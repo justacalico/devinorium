@@ -8,21 +8,28 @@ import 'terminal_session.dart';
 
 /// A resizable bottom panel that hosts one or more terminal sessions for a
 /// thread, similar to the bottom terminal drawer in t3code.
+///
+/// The panel is keyed by [threadId] internally: sessions are kept per thread
+/// and survive thread switches and hide/show toggles.
 class ThreadTerminalPanel extends StatefulWidget {
   const ThreadTerminalPanel({
     super.key,
     required this.api,
     required this.threadId,
+    this.open = true,
     this.initialHeight = _defaultHeight,
     this.onHeightChanged,
     this.onClose,
+    this.sessionFactory = createTerminalSession,
   });
 
   final ApiService api;
   final String threadId;
+  final bool open;
   final double initialHeight;
   final ValueChanged<double>? onHeightChanged;
   final VoidCallback? onClose;
+  final TerminalSessionFactory sessionFactory;
 
   static const _defaultHeight = 280.0;
 
@@ -30,15 +37,19 @@ class ThreadTerminalPanel extends StatefulWidget {
   State<ThreadTerminalPanel> createState() => _ThreadTerminalPanelState();
 }
 
+class _ThreadData {
+  final sessions = <TerminalSession>[];
+  bool busy = false;
+}
+
 class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
-  final _sessions = <TerminalSession>[];
-  bool _busy = false;
+  final _data = <String, _ThreadData>{};
+  final _heights = <String, double>{};
+  final _sessionThreads = <TerminalSession, String>{};
   bool _dragging = false;
-  double _height = _ThreadTerminalPanelState._defaultHeight;
 
   static const _minHeight = 180.0;
   static const _maxHeightRatio = 0.75;
-  static const _defaultHeight = 280.0;
 
   bool get _canUseLocalTerminal =>
       !kIsWeb &&
@@ -46,41 +57,53 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
           defaultTargetPlatform == TargetPlatform.macOS ||
           defaultTargetPlatform == TargetPlatform.windows);
 
+  _ThreadData _dataFor(String threadId) =>
+      _data.putIfAbsent(threadId, () => _ThreadData());
+
   @override
   void initState() {
     super.initState();
-    _height = widget.initialHeight;
+    _heights[widget.threadId] = widget.initialHeight;
   }
 
   @override
   void didUpdateWidget(covariant ThreadTerminalPanel old) {
     super.didUpdateWidget(old);
-    if (old.initialHeight != widget.initialHeight && !_dragging) {
-      _height = widget.initialHeight;
+    if ((old.threadId != widget.threadId ||
+            old.initialHeight != widget.initialHeight) &&
+        !_dragging) {
+      _heights[widget.threadId] = widget.initialHeight;
     }
   }
 
   @override
   void dispose() {
-    for (final s in _sessions) {
-      s.removeListener(_onSessionUpdate);
-      s.dispose();
+    for (final session in _sessionThreads.keys) {
+      session.removeListener(_onSessionUpdate);
+      session.dispose();
     }
-    _sessions.clear();
+    _data.clear();
+    _heights.clear();
+    _sessionThreads.clear();
     super.dispose();
   }
 
   Future<void> _addSession({required bool local}) async {
-    if (_busy) return;
-    setState(() => _busy = true);
+    final threadId = widget.threadId;
+    final data = _dataFor(threadId);
+    if (data.busy) return;
+    data.busy = true;
+    if (mounted) setState(() {});
     try {
-      final session = await createTerminalSession(
+      final session = await widget.sessionFactory(
         api: widget.api,
-        threadId: widget.threadId,
+        threadId: threadId,
         local: local,
       );
       session.addListener(_onSessionUpdate);
-      if (mounted) setState(() => _sessions.add(session));
+      _sessionThreads[session] = threadId;
+      data.sessions.add(session);
+      if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -88,15 +111,20 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      data.busy = false;
+      if (mounted) setState(() {});
     }
   }
 
   void _onSessionUpdate() => setState(() {});
 
   void _removeSession(TerminalSession session) {
+    final threadId = _sessionThreads.remove(session);
+    if (threadId == null) return;
+    final data = _dataFor(threadId);
+    if (!data.sessions.remove(session)) return;
     session.removeListener(_onSessionUpdate);
-    setState(() => _sessions.remove(session));
+    if (mounted) setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) => session.dispose());
   }
 
@@ -104,50 +132,66 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxHeight = (constraints.maxHeight * _maxHeightRatio)
-            .clamp(_minHeight, constraints.maxHeight);
-        final clampedHeight = _height.clamp(_minHeight, maxHeight);
+    return Visibility(
+      visible: widget.open,
+      maintainState: true,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final data = _dataFor(widget.threadId);
+          final maxHeight = (constraints.maxHeight * _maxHeightRatio)
+              .clamp(_minHeight, constraints.maxHeight);
+          final height = (_heights[widget.threadId] ??
+                  ThreadTerminalPanel._defaultHeight)
+              .clamp(_minHeight, maxHeight);
 
-        return SizedBox(
-          height: clampedHeight,
-          child: Column(
-            children: [
-              _DragHandle(
-                onDragStart: () => _dragging = true,
-                onDragUpdate: (delta) {
-                  setState(() {
-                    _height -= delta;
-                    _height = _height.clamp(_minHeight, maxHeight);
-                  });
-                },
-                onDragEnd: () {
-                  _dragging = false;
-                  widget.onHeightChanged?.call(_height);
-                },
-              ),
-              _Header(
-                title: l10n(context).terminal,
-                local: _canUseLocalTerminal,
-                busy: _busy,
-                onAddLocal: _canUseLocalTerminal
-                    ? () => _addSession(local: true)
-                    : null,
-                onAddRemote: () => _addSession(local: false),
-                onClose: widget.onClose,
-              ),
-              Divider(height: 1, color: colorScheme.outlineVariant),
-              Expanded(
-                child: TerminalGrid(
-                  sessions: _sessions,
-                  onClose: _removeSession,
+          return SizedBox(
+            height: height,
+            child: Column(
+              children: [
+                _DragHandle(
+                  onDragStart: () => _dragging = true,
+                  onDragUpdate: (delta) {
+                    setState(() {
+                      _heights[widget.threadId] =
+                          (_heights[widget.threadId] ??
+                                  ThreadTerminalPanel._defaultHeight)
+                              .clamp(_minHeight, maxHeight) -
+                          delta;
+                      _heights[widget.threadId] =
+                          _heights[widget.threadId]!
+                              .clamp(_minHeight, maxHeight);
+                    });
+                  },
+                  onDragEnd: () {
+                    _dragging = false;
+                    widget.onHeightChanged?.call(
+                      _heights[widget.threadId] ??
+                          ThreadTerminalPanel._defaultHeight,
+                    );
+                  },
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+                _Header(
+                  title: l10n(context).terminal,
+                  local: _canUseLocalTerminal,
+                  busy: data.busy,
+                  onAddLocal: _canUseLocalTerminal
+                      ? () => _addSession(local: true)
+                      : null,
+                  onAddRemote: () => _addSession(local: false),
+                  onClose: widget.onClose,
+                ),
+                Divider(height: 1, color: colorScheme.outlineVariant),
+                Expanded(
+                  child: TerminalGrid(
+                    sessions: data.sessions,
+                    onClose: _removeSession,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
