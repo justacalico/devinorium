@@ -71,9 +71,13 @@ class _TerminalTile extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 4,
+              top: 0,
               right: 4,
               child: IconButton(
+                style: IconButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(32, 32),
+                ),
                 icon: const Icon(Icons.close, size: 18),
                 onPressed: () => onClose(session),
                 tooltip: 'Close terminal',
