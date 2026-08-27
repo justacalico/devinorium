@@ -100,19 +100,6 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     WidgetsBinding.instance.addPostFrameCallback((_) => session.dispose());
   }
 
-  void _closeAll() {
-    final toDispose = _sessions.toList();
-    for (final s in _sessions) {
-      s.removeListener(_onSessionUpdate);
-    }
-    setState(() => _sessions.clear());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final s in toDispose) {
-        s.dispose();
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -144,12 +131,10 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
                 title: l10n(context).terminal,
                 local: _canUseLocalTerminal,
                 busy: _busy,
-                hasSessions: _sessions.isNotEmpty,
                 onAddLocal: _canUseLocalTerminal
                     ? () => _addSession(local: true)
                     : null,
                 onAddRemote: () => _addSession(local: false),
-                onCloseAll: _closeAll,
                 onClose: widget.onClose,
               ),
               Divider(height: 1, color: colorScheme.outlineVariant),
@@ -214,20 +199,16 @@ class _Header extends StatelessWidget {
     required this.title,
     required this.local,
     required this.busy,
-    required this.hasSessions,
     this.onAddLocal,
     required this.onAddRemote,
-    required this.onCloseAll,
     this.onClose,
   });
 
   final String title;
   final bool local;
   final bool busy;
-  final bool hasSessions;
   final VoidCallback? onAddLocal;
   final VoidCallback onAddRemote;
-  final VoidCallback onCloseAll;
   final VoidCallback? onClose;
 
   @override
@@ -254,12 +235,6 @@ class _Header extends StatelessWidget {
             tooltip: 'Remote terminal',
             onPressed: busy ? null : onAddRemote,
           ),
-          if (hasSessions)
-            IconButton(
-              icon: const Icon(Icons.clear_all, size: 20),
-              tooltip: 'Close all',
-              onPressed: onCloseAll,
-            ),
           if (onClose != null)
             IconButton(
               icon: const Icon(Icons.keyboard_arrow_down, size: 20),
