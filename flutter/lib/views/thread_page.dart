@@ -21,6 +21,7 @@ import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
 import 'model_picker.dart';
+import '../terminal/terminal_screen.dart';
 import 'plan_overlay.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
@@ -94,11 +95,27 @@ class ThreadPage extends StatelessWidget {
             icon: const Icon(Icons.folder_outlined),
             onPressed: state.openFilesPanel,
           ),
+          if (state.activeThreadId != null)
+            IconButton(
+              tooltip: l10n(context).terminal,
+              icon: const Icon(Icons.terminal),
+              onPressed: () => _openTerminal(context, state),
+            ),
         ],
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
       body: const ChatView(),
+    );
+  }
+
+  void _openTerminal(BuildContext context, AppState state) {
+    final threadId = state.activeThreadId;
+    if (threadId == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TerminalScreen(api: state.api, threadId: threadId),
+      ),
     );
   }
 }

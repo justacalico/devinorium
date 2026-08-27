@@ -301,6 +301,7 @@
   },
   "selectOrCreateThread": "Select or create a thread",
   "fileManager": "File manager",
+  "terminal": "Terminal",
   "selectOrCreateThreadToChat": "Select or create a thread to start chatting.",
   "startConversationHint": "Start the conversation by sending a message below.",
   "messageRoleYou": "You",

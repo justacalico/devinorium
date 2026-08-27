@@ -1066,6 +1066,12 @@ abstract class AppLocalizations {
   /// **'File manager'**
   String get fileManager;
 
+  /// No description provided for @terminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal'**
+  String get terminal;
+
   /// No description provided for @selectOrCreateThreadToChat.
   ///
   /// In en, this message translates to:

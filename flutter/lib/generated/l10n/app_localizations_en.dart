@@ -540,6 +540,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileManager => 'File manager';
 
   @override
+  String get terminal => 'Terminal';
+
+  @override
   String get selectOrCreateThreadToChat =>
       'Select or create a thread to start chatting.';
 
