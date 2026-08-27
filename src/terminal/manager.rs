@@ -90,9 +90,7 @@ impl TerminalManager {
             })
             .context("open pty")?;
 
-        let program = shell
-            .map(String::from)
-            .unwrap_or_else(|| default_shell_program());
+        let program = shell.map(String::from).unwrap_or_else(default_shell_program);
 
         let cmd = CommandBuilder::new(&program);
         let child = pair.slave.spawn_command(cmd).context("spawn shell")?;
