@@ -259,4 +259,10 @@ class NativeApiClient implements BaseApiClient {
     await _ensureLoaded();
     return _baseUrl.isNotEmpty ? _baseUrl : null;
   }
+
+  @override
+  Future<String?> get token async {
+    await _ensureLoaded();
+    return _token.isNotEmpty ? _token : null;
+  }
 }

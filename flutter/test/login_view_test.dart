@@ -28,6 +28,9 @@ class _FakeClient implements BaseApiClient {
   Future<String?> get serverUrl async => _savedServerUrl;
 
   @override
+  Future<String?> get token async => null;
+
+  @override
   Future<void> setServerUrl(String serverUrl) async {
     lastServerUrl = serverUrl;
     _savedServerUrl = serverUrl;

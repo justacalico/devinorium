@@ -20,6 +20,9 @@ class _ThrowingClient extends BaseApiClient {
   bool get isNative => true;
   @override
   Future<String?> get serverUrl => Future.value(null);
+
+  @override
+  Future<String?> get token => Future.value(null);
   @override
   Future<void> setServerUrl(String serverUrl) => Future.value();
   @override

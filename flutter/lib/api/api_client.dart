@@ -61,6 +61,9 @@ abstract class BaseApiClient {
 
   /// The configured server URL, if any.
   Future<String?> get serverUrl;
+
+  /// The bearer token for native clients, null on web.
+  Future<String?> get token;
 }
 
 /// Thin wrapper around [http] that:
@@ -110,6 +113,9 @@ class ApiClient implements BaseApiClient {
 
   @override
   Future<String?> get serverUrl => Future.value(null);
+
+  @override
+  Future<String?> get token => Future.value(null);
 
   @override
   Future<Map<String, dynamic>> get(String path) async =>

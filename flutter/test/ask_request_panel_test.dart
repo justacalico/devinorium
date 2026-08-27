@@ -80,6 +80,9 @@ class _ThrowingClient extends BaseApiClient {
 
   @override
   Future<String?> get serverUrl => Future.value(null);
+
+  @override
+  Future<String?> get token => Future.value(null);
 }
 
 class _FakeApiService extends ApiService {

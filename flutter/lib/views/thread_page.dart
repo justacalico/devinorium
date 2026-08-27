@@ -21,13 +21,24 @@ import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
 import 'model_picker.dart';
+import '../terminal/thread_terminal_panel.dart';
 import 'plan_overlay.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
 import 'syntax_highlighter.dart';
 
-class ThreadPage extends StatelessWidget {
+class ThreadPage extends StatefulWidget {
   const ThreadPage({super.key});
+
+  @override
+  State<ThreadPage> createState() => _ThreadPageState();
+}
+
+class _ThreadPageState extends State<ThreadPage> {
+  final _terminalOpenByThread = <String, bool>{};
+  final _terminalHeightByThread = <String, double>{};
+
+  static const _defaultTerminalHeight = 280.0;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +60,12 @@ class ThreadPage extends StatelessWidget {
             runStatus: state.lastRunStatus,
           )
         : null;
+    final activeThreadId = state.activeThreadId;
+    final terminalOpen = activeThreadId != null &&
+        (_terminalOpenByThread[activeThreadId] ?? false);
+    final terminalHeight = activeThreadId != null
+        ? (_terminalHeightByThread[activeThreadId] ?? _defaultTerminalHeight)
+        : _defaultTerminalHeight;
 
     return Scaffold(
       appBar: AppBar(
@@ -94,12 +111,50 @@ class ThreadPage extends StatelessWidget {
             icon: const Icon(Icons.folder_outlined),
             onPressed: state.openFilesPanel,
           ),
+          if (activeThreadId != null)
+            IconButton(
+              tooltip: l10n(context).terminal,
+              icon: const Icon(Icons.terminal),
+              onPressed: () => _toggleTerminal(activeThreadId),
+            ),
         ],
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
-      body: const ChatView(),
+      body: Column(
+        children: [
+          const Expanded(child: ChatView()),
+          ThreadTerminalPanel(
+            api: state.api,
+            threadId: activeThreadId ?? '',
+            open: terminalOpen,
+            initialHeight: terminalHeight,
+            onHeightChanged: (height) {
+              if (activeThreadId != null) {
+                _setTerminalHeight(activeThreadId, height);
+              }
+            },
+            onClose: activeThreadId != null
+                ? () => _toggleTerminal(activeThreadId)
+                : null,
+          ),
+        ],
+      ),
     );
+  }
+
+  void _toggleTerminal(String threadId) {
+    setState(() {
+      final open = !(_terminalOpenByThread[threadId] ?? false);
+      _terminalOpenByThread[threadId] = open;
+      if (open) {
+        _terminalHeightByThread[threadId] ??= _defaultTerminalHeight;
+      }
+    });
+  }
+
+  void _setTerminalHeight(String threadId, double height) {
+    setState(() => _terminalHeightByThread[threadId] = height);
   }
 }
 

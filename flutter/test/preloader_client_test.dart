@@ -111,6 +111,9 @@ class _FakeClient implements BaseApiClient {
 
   @override
   Future<String?> get serverUrl => Future.value(null);
+
+  @override
+  Future<String?> get token => Future.value(null);
 }
 
 void main() {

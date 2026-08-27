@@ -622,6 +622,35 @@ class ApiService {
     final j = await _client.put('/api/settings/clone-root', {'path': path});
     return j['path'] as String?;
   }
+
+  // ---- Terminal ----
+
+  /// Create a remote terminal session for [threadId]. Returns the session id.
+  Future<String> createTerminalSession(String threadId) async {
+    final j = await _client.post('/api/terminal/sessions', {'thread_id': threadId});
+    return j['id'] as String;
+  }
+
+  /// Kill a remote terminal session.
+  Future<void> killTerminalSession(String sessionId) async {
+    await _client.delete('/api/terminal/sessions/$sessionId');
+  }
+
+  /// Build the WebSocket URL for a remote terminal session.
+  Future<Uri> terminalWebSocketUri(String sessionId) async {
+    final base = await _client.serverUrl;
+    final path = '/api/terminal/sessions/$sessionId/ws';
+    if (base == null || base.isEmpty) {
+      // Web build: same origin, relative URL.
+      return Uri.parse(path);
+    }
+    return Uri.parse(base)
+        .replace(path: path)
+        .replace(scheme: 'ws');
+  }
+
+  /// Native bearer token for WebSocket auth headers.
+  Future<String?> get terminalToken => _client.token;
 }
 
 /// Decode a JSON-serialized SSE `data` payload into a [Message].
