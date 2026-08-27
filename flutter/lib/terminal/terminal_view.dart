@@ -66,13 +66,6 @@ class _TerminalToolbar extends StatelessWidget {
       listenable: session,
       builder: (context, _) {
         final status = session.status;
-        final statusText = switch (status) {
-          TerminalStatus.connecting => 'connecting',
-          TerminalStatus.connected => 'connected',
-          TerminalStatus.disconnected => 'disconnected',
-          TerminalStatus.exited => 'exited',
-          TerminalStatus.idle => 'idle',
-        };
 
         return Container(
           height: 32,
@@ -98,11 +91,6 @@ class _TerminalToolbar extends StatelessWidget {
                   color: _statusColor(status, colorScheme),
                   shape: BoxShape.circle,
                 ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                statusText,
-                style: Theme.of(context).textTheme.labelSmall,
               ),
             ],
           ),
