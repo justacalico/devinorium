@@ -21,6 +21,7 @@ void main() {
 
     expect(find.text('No terminal sessions'), findsOneWidget);
     expect(find.text('Terminal'), findsOneWidget);
+    expect(find.byKey(const ValueKey('addTerminalTab')), findsOneWidget);
     expect(find.byKey(const ValueKey('addRemoteTerminal')), findsOneWidget);
     expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
   });
@@ -125,8 +126,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
     await tester.pumpAndSettle();
-    // Tab label and terminal toolbar both show the session id.
-    expect(find.text('s-1-t1'), findsNWidgets(2));
+    expect(find.text('Tab 1'), findsOneWidget);
+    expect(find.text('s-1-t1'), findsOneWidget);
 
     await tester.pumpWidget(build('t2'));
     await tester.pumpAndSettle();
@@ -135,16 +136,17 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
     await tester.pumpAndSettle();
-    expect(find.text('s-2-t2'), findsNWidgets(2));
+    expect(find.text('Tab 1'), findsOneWidget);
+    expect(find.text('s-2-t2'), findsOneWidget);
 
     await tester.pumpWidget(build('t1'));
     await tester.pumpAndSettle();
-    expect(find.text('s-1-t1'), findsNWidgets(2));
+    expect(find.text('s-1-t1'), findsOneWidget);
     expect(find.text('s-2-t2'), findsNothing);
 
     await tester.pumpWidget(build('t2'));
     await tester.pumpAndSettle();
-    expect(find.text('s-2-t2'), findsNWidgets(2));
+    expect(find.text('s-2-t2'), findsOneWidget);
   });
 
   testWidgets('switches and closes tabs like a browser', (tester) async {
@@ -175,29 +177,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('No terminal sessions'), findsOneWidget);
 
-    // Add first tab.
-    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    // Add an empty tab, then a terminal inside it.
+    await tester.tap(find.byKey(const ValueKey('addTerminalTab')));
     await tester.pumpAndSettle();
-    expect(find.text('s-1'), findsNWidgets(2));
+    expect(find.text('Tab 1'), findsOneWidget);
+    expect(find.text('No terminal sessions'), findsOneWidget);
 
-    // Add second tab; it becomes active.
     await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
     await tester.pumpAndSettle();
-    expect(find.text('s-1'), findsOneWidget); // tab label only
-    expect(find.text('s-2'), findsNWidgets(2)); // tab + toolbar
+    expect(find.text('s-1'), findsOneWidget);
+
+    // Add a second tab and a terminal there.
+    await tester.tap(find.byKey(const ValueKey('addTerminalTab')));
+    await tester.pumpAndSettle();
+    expect(find.text('Tab 2'), findsOneWidget);
+    expect(find.text('s-1'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-2'), findsOneWidget);
 
     // Switch back to the first tab.
-    await tester.tap(find.text('s-1').first);
+    await tester.tap(find.text('Tab 1'));
     await tester.pumpAndSettle();
-    expect(find.text('s-1'), findsNWidgets(2));
-    expect(find.text('s-2'), findsOneWidget); // tab label only
-
-    // Close the second tab while the first one is active.
-    expect(find.byIcon(Icons.close), findsNWidgets(2));
-    await tester.tap(find.byIcon(Icons.close).last);
-    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsOneWidget);
     expect(find.text('s-2'), findsNothing);
-    expect(find.text('s-1'), findsNWidgets(2));
-    expect(find.byIcon(Icons.close), findsOneWidget);
+
+    // Switch to the second tab again.
+    await tester.tap(find.text('Tab 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('s-2'), findsOneWidget);
+
+    // Close the second tab; the first one should be active.
+    expect(find.byTooltip('Close tab'), findsNWidgets(2));
+    await tester.tap(find.byTooltip('Close tab').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Tab 2'), findsNothing);
+    expect(find.text('s-2'), findsNothing);
+    expect(find.text('s-1'), findsOneWidget);
+
+    // Add another terminal to the first tab.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsOneWidget);
+    expect(find.text('s-3'), findsOneWidget);
+
+    // Close the second terminal in the active tab.
+    expect(find.byTooltip('Close terminal'), findsNWidgets(2));
+    await tester.tap(find.byTooltip('Close terminal').last);
+    await tester.pumpAndSettle();
+    expect(find.text('s-3'), findsNothing);
+    expect(find.text('s-1'), findsOneWidget);
   });
 }

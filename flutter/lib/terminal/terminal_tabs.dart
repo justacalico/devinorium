@@ -1,46 +1,57 @@
 import 'package:flutter/material.dart';
 
+import 'terminal_grid.dart';
 import 'terminal_session.dart';
-import 'terminal_view.dart';
 
-/// Displays one or more [TerminalSession] tabs like a browser tab bar, with
-/// the active session shown below.
+/// One workspace tab. A tab can hold multiple terminal sessions.
+class TerminalTab {
+  TerminalTab({required this.id});
+
+  final String id;
+  final List<TerminalSession> sessions = [];
+}
+
+/// Displays one or more workspace [TerminalTab]s like a browser tab bar, with
+/// the active tab's terminal grid shown below.
 class TerminalTabs extends StatelessWidget {
   const TerminalTabs({
     super.key,
-    required this.sessions,
-    required this.activeIndex,
-    required this.onActiveIndexChanged,
-    required this.onClose,
+    required this.tabs,
+    required this.activeTabIndex,
+    required this.onTabChanged,
+    required this.onAddTab,
+    required this.onCloseSession,
+    required this.onCloseTab,
   });
 
-  final List<TerminalSession> sessions;
-  final int activeIndex;
-  final ValueChanged<int> onActiveIndexChanged;
-  final ValueChanged<TerminalSession> onClose;
+  final List<TerminalTab> tabs;
+  final int activeTabIndex;
+  final ValueChanged<int> onTabChanged;
+  final VoidCallback onAddTab;
+  final ValueChanged<TerminalSession> onCloseSession;
+  final ValueChanged<TerminalTab> onCloseTab;
 
   @override
   Widget build(BuildContext context) {
-    if (sessions.isEmpty) {
-      return const Center(child: Text('No terminal sessions'));
-    }
-
-    final index = activeIndex.clamp(0, sessions.length - 1);
-    final session = sessions[index];
+    final index = tabs.isEmpty ? 0 : activeTabIndex.clamp(0, tabs.length - 1);
+    final tab = tabs.isEmpty ? null : tabs[index];
 
     return Column(
       children: [
         _TabBar(
-          sessions: sessions,
+          tabs: tabs,
           activeIndex: index,
-          onTap: onActiveIndexChanged,
-          onClose: onClose,
+          onTap: onTabChanged,
+          onClose: onCloseTab,
+          onAddTab: onAddTab,
         ),
         Expanded(
-          child: TerminalViewWidget(
-            session: session,
-            autofocus: true,
-          ),
+          child: tab == null
+              ? const Center(child: Text('No terminal sessions'))
+              : TerminalGrid(
+                  sessions: tab.sessions,
+                  onClose: onCloseSession,
+                ),
         ),
       ],
     );
@@ -49,16 +60,18 @@ class TerminalTabs extends StatelessWidget {
 
 class _TabBar extends StatelessWidget {
   const _TabBar({
-    required this.sessions,
+    required this.tabs,
     required this.activeIndex,
     required this.onTap,
     required this.onClose,
+    required this.onAddTab,
   });
 
-  final List<TerminalSession> sessions;
+  final List<TerminalTab> tabs;
   final int activeIndex;
   final ValueChanged<int> onTap;
-  final ValueChanged<TerminalSession> onClose;
+  final ValueChanged<TerminalTab> onClose;
+  final VoidCallback onAddTab;
 
   @override
   Widget build(BuildContext context) {
@@ -72,18 +85,26 @@ class _TabBar extends StatelessWidget {
           bottom: BorderSide(color: colorScheme.outlineVariant),
         ),
       ),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: sessions.length,
-        itemBuilder: (context, index) {
-          final session = sessions[index];
-          return _Tab(
-            session: session,
-            active: index == activeIndex,
-            onTap: () => onTap(index),
-            onClose: () => onClose(session),
-          );
-        },
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: tabs.length,
+              itemBuilder: (context, index) {
+                final tab = tabs[index];
+                return _Tab(
+                  index: index,
+                  tab: tab,
+                  active: index == activeIndex,
+                  onTap: () => onTap(index),
+                  onClose: () => onClose(tab),
+                );
+              },
+            ),
+          ),
+          _AddTabButton(onTap: onAddTab),
+        ],
       ),
     );
   }
@@ -91,13 +112,15 @@ class _TabBar extends StatelessWidget {
 
 class _Tab extends StatelessWidget {
   const _Tab({
-    required this.session,
+    required this.index,
+    required this.tab,
     required this.active,
     required this.onTap,
     required this.onClose,
   });
 
-  final TerminalSession session;
+  final int index;
+  final TerminalTab tab;
   final bool active;
   final VoidCallback onTap;
   final VoidCallback onClose;
@@ -113,20 +136,14 @@ class _Tab extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        width: 160,
+        width: 140,
         color: background,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           children: [
-            Icon(
-              session.isLocal ? Icons.terminal : Icons.cloud,
-              size: 14,
-              color: foreground,
-            ),
-            const SizedBox(width: 4),
             Expanded(
               child: Text(
-                session.id,
+                'Tab ${index + 1}',
                 style: Theme.of(context)
                     .textTheme
                     .labelMedium
@@ -149,6 +166,29 @@ class _Tab extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AddTabButton extends StatelessWidget {
+  const _AddTabButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return IconButton(
+      key: const ValueKey('addTerminalTab'),
+      style: IconButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(36, 36),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      icon: Icon(Icons.add, size: 18, color: colorScheme.onSurfaceVariant),
+      onPressed: onTap,
+      tooltip: 'New tab',
     );
   }
 }

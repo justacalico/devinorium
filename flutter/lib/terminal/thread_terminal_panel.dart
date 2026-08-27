@@ -38,9 +38,10 @@ class ThreadTerminalPanel extends StatefulWidget {
 }
 
 class _ThreadData {
-  final sessions = <TerminalSession>[];
+  final tabs = <TerminalTab>[];
   bool busy = false;
-  int activeIndex = 0;
+  int activeTabIndex = 0;
+  int tabCounter = 0;
 }
 
 class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
@@ -79,9 +80,13 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
 
   @override
   void dispose() {
-    for (final session in _sessionThreads.keys) {
-      session.removeListener(_onSessionUpdate);
-      session.dispose();
+    for (final data in _data.values) {
+      for (final tab in data.tabs) {
+        for (final session in tab.sessions) {
+          session.removeListener(_onSessionUpdate);
+          session.dispose();
+        }
+      }
     }
     _data.clear();
     _heights.clear();
@@ -93,9 +98,15 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     final threadId = widget.threadId;
     final data = _dataFor(threadId);
     if (data.busy) return;
+
+    if (data.tabs.isEmpty) {
+      _addTab();
+    }
+
     data.busy = true;
     if (mounted) setState(() {});
     try {
+      final tab = data.tabs[data.activeTabIndex];
       final session = await widget.sessionFactory(
         api: widget.api,
         threadId: threadId,
@@ -103,8 +114,7 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
       );
       session.addListener(_onSessionUpdate);
       _sessionThreads[session] = threadId;
-      data.sessions.add(session);
-      data.activeIndex = data.sessions.length - 1;
+      tab.sessions.add(session);
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
@@ -118,32 +128,55 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     }
   }
 
+  void _addTab() {
+    final data = _dataFor(widget.threadId);
+    final tab = TerminalTab(id: 'tab-${data.tabCounter++}');
+    data.tabs.add(tab);
+    data.activeTabIndex = data.tabs.length - 1;
+    if (mounted) setState(() {});
+  }
+
   void _onSessionUpdate() => setState(() {});
 
   void _removeSession(TerminalSession session) {
     final threadId = _sessionThreads.remove(session);
     if (threadId == null) return;
     final data = _dataFor(threadId);
-    if (!data.sessions.remove(session)) return;
-    if (data.activeIndex >= data.sessions.length) {
-      data.activeIndex = data.sessions.isEmpty ? 0 : data.sessions.length - 1;
+    for (final tab in data.tabs) {
+      if (!tab.sessions.remove(session)) continue;
+      session.removeListener(_onSessionUpdate);
+      if (mounted) setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) => session.dispose());
+      return;
     }
-    session.removeListener(_onSessionUpdate);
-    if (mounted) setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) => session.dispose());
   }
 
-  void _setActiveTab(int index, String threadId) {
-    final data = _dataFor(threadId);
-    if (data.activeIndex == index) return;
-    data.activeIndex = index;
+  void _removeTab(TerminalTab tab) {
+    final data = _dataFor(widget.threadId);
+    final index = data.tabs.indexOf(tab);
+    if (index == -1) return;
+    data.tabs.removeAt(index);
+    if (data.activeTabIndex >= data.tabs.length) {
+      data.activeTabIndex = data.tabs.isEmpty ? 0 : data.tabs.length - 1;
+    }
+    for (final session in tab.sessions) {
+      _sessionThreads.remove(session);
+      session.removeListener(_onSessionUpdate);
+      WidgetsBinding.instance.addPostFrameCallback((_) => session.dispose());
+    }
+    tab.sessions.clear();
+    if (mounted) setState(() {});
+  }
+
+  void _setActiveTab(int index) {
+    final data = _dataFor(widget.threadId);
+    if (data.activeTabIndex == index) return;
+    data.activeTabIndex = index;
     if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Visibility(
       visible: widget.open,
       maintainState: true,
@@ -192,14 +225,14 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
                   onAddRemote: () => _addSession(local: false),
                   onClose: widget.onClose,
                 ),
-                Divider(height: 1, color: colorScheme.outlineVariant),
                 Expanded(
                   child: TerminalTabs(
-                    sessions: data.sessions,
-                    activeIndex: data.activeIndex,
-                    onActiveIndexChanged: (index) =>
-                        _setActiveTab(index, widget.threadId),
-                    onClose: _removeSession,
+                    tabs: data.tabs,
+                    activeTabIndex: data.activeTabIndex,
+                    onTabChanged: _setActiveTab,
+                    onAddTab: _addTab,
+                    onCloseSession: _removeSession,
+                    onCloseTab: _removeTab,
                   ),
                 ),
               ],
