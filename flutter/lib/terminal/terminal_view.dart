@@ -62,50 +62,24 @@ class _TerminalToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return ListenableBuilder(
-      listenable: session,
-      builder: (context, _) {
-        final status = session.status;
-
-        return Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          color: colorScheme.surface,
-          child: Row(
-            children: [
-              Icon(
-                session.isLocal ? Icons.terminal : Icons.cloud,
-                size: 16,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                session.id,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              const Spacer(),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: _statusColor(status, colorScheme),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      color: colorScheme.surface,
+      child: Row(
+        children: [
+          Icon(
+            session.isLocal ? Icons.terminal : Icons.cloud,
+            size: 16,
+            color: colorScheme.onSurfaceVariant,
           ),
-        );
-      },
+          const SizedBox(width: 8),
+          Text(
+            session.id,
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+        ],
+      ),
     );
-  }
-
-  Color _statusColor(TerminalStatus status, ColorScheme scheme) {
-    return switch (status) {
-      TerminalStatus.connecting => Colors.orange,
-      TerminalStatus.connected => Colors.green,
-      TerminalStatus.disconnected => Colors.red,
-      TerminalStatus.exited => scheme.outline,
-      TerminalStatus.idle => scheme.primary,
-    };
   }
 }
