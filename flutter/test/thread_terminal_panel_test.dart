@@ -229,4 +229,89 @@ void main() {
     expect(find.text('s-3'), findsNothing);
     expect(find.text('s-1'), findsOneWidget);
   });
+
+  testWidgets('confirms before closing non-blank terminal or tab', (
+    tester,
+  ) async {
+    var callCount = 0;
+    Future<TerminalSession> sessionFactory({
+      required ApiService api,
+      required String threadId,
+      required bool local,
+    }) async {
+      callCount++;
+      final session = TerminalSession(
+        id: 's-$callCount',
+        isLocal: local,
+      );
+      session.terminal.write('hello');
+      return session;
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ThreadTerminalPanel(
+            api: ApiService(),
+            threadId: 't1',
+            sessionFactory: sessionFactory,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Add a tab with a non-blank terminal.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsOneWidget);
+    expect(find.text('Close terminal?'), findsNothing);
+
+    // Closing the terminal shows a confirmation dialog.
+    await tester.tap(find.byTooltip('Close terminal'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close terminal?'), findsOneWidget);
+
+    // Cancel keeps the terminal.
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close terminal?'), findsNothing);
+    expect(find.text('s-1'), findsOneWidget);
+
+    // Confirm closes the terminal.
+    await tester.tap(find.byTooltip('Close terminal'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close terminal?'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close terminal?'), findsNothing);
+    expect(find.text('s-1'), findsNothing);
+    expect(find.text('No terminal sessions'), findsOneWidget);
+
+    // Add another non-blank terminal to the same tab.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-2'), findsOneWidget);
+
+    // Closing the tab with a non-blank terminal shows a confirmation dialog.
+    await tester.tap(find.byTooltip('Close tab'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close tab?'), findsOneWidget);
+
+    // Cancel keeps the tab.
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close tab?'), findsNothing);
+    expect(find.text('s-2'), findsOneWidget);
+
+    // Confirm closes the tab.
+    await tester.tap(find.byTooltip('Close tab'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close tab?'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close tab?'), findsNothing);
+    expect(find.text('s-2'), findsNothing);
+    expect(find.text('No terminal sessions'), findsOneWidget);
+  });
 }

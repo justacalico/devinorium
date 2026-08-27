@@ -175,6 +175,65 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _confirmCloseSession(TerminalSession session) async {
+    if (session.isBlank) {
+      _removeSession(session);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Close terminal?'),
+        content: const Text(
+          'This terminal has running processes or output. Close it anyway?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      _removeSession(session);
+    }
+  }
+
+  Future<void> _confirmCloseTab(TerminalTab tab) async {
+    final nonBlankCount = tab.sessions.where((s) => !s.isBlank).length;
+    if (nonBlankCount == 0) {
+      _removeTab(tab);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Close tab?'),
+        content: Text(
+          'This tab contains $nonBlankCount active terminal(s). Close it anyway?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      _removeTab(tab);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Visibility(
@@ -231,8 +290,8 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
                     activeTabIndex: data.activeTabIndex,
                     onTabChanged: _setActiveTab,
                     onAddTab: _addTab,
-                    onCloseSession: _removeSession,
-                    onCloseTab: _removeTab,
+                    onCloseSession: _confirmCloseSession,
+                    onCloseTab: _confirmCloseTab,
                   ),
                 ),
               ],

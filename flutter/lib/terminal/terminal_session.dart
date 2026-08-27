@@ -33,6 +33,17 @@ class TerminalSession extends ChangeNotifier {
   TerminalStatus _status = TerminalStatus.idle;
   TerminalStatus get status => _status;
 
+  /// Whether the terminal buffer contains no visible content.
+  bool get isBlank {
+    final lines = terminal.buffer.lines;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].getText().trim().isNotEmpty) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   final _completed = Completer<void>();
   Future<void> get completed => _completed.future;
 
