@@ -1,0 +1,168 @@
+//! Persist user messages, assistant replies, and run plans.
+
+use std::sync::atomic::Ordering;
+
+use axum::response::{IntoResponse, Response};
+
+use crate::api::map_err_internal;
+use crate::db::{MessageRow, NewMessage, ThreadRow};
+use crate::plan::Plan;
+use crate::providers::{collect_text, collect_thinking, strip_plan_markup_from_parts, MessagePart};
+use crate::thread_runner::{RunState, ThreadRunner};
+use crate::AppState;
+
+use super::send::SendInput;
+
+pub(crate) async fn persist_user_message(
+    state: &AppState,
+    thread: &ThreadRow,
+    input: &SendInput,
+) -> anyhow::Result<MessageRow> {
+    let user_parts = serde_json::to_string(&[MessagePart::text(input.prompt.as_str())])
+        .unwrap_or_else(|_| "[]".into());
+    state
+        .db
+        .add_message(NewMessage {
+            thread_id: thread.id.clone(),
+            role: "user".into(),
+            content: input.prompt.clone(),
+            thinking: None,
+            parts: user_parts,
+            attachments: serde_json::to_string(&input.att_meta).unwrap_or_else(|_| "[]".into()),
+            model: String::new(),
+        })
+        .await
+}
+
+pub(crate) async fn persist_assistant_reply(
+    state: &AppState,
+    thread: &ThreadRow,
+    user_id: i64,
+    parts: &[MessagePart],
+    new_session_id: Option<String>,
+    new_title: Option<String>,
+    run: &RunState,
+) -> Result<MessageRow, Response> {
+    if run.cancelled.load(Ordering::SeqCst) {
+        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
+
+    let session_id_for_audit = new_session_id.clone();
+    if let Some(sid) = new_session_id {
+        if run.cancelled.load(Ordering::SeqCst) {
+            return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+        }
+        let _ = state
+            .db
+            .update_thread_session(&thread.id, &sid, new_title.as_deref())
+            .await;
+    }
+
+    if run.cancelled.load(Ordering::SeqCst) {
+        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
+    let _ = state.db.touch_thread(&thread.id).await;
+
+    if run.cancelled.load(Ordering::SeqCst) {
+        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
+
+    // Strip plan XML from persisted parts so the final assistant message does
+    // not show raw `<proposed_plan>` / `<update_plan>` markup. Coalescing
+    // consecutive text/thinking parts first handles plan blocks split across
+    // chunks.
+    let stripped = strip_plan_markup_from_parts(parts.to_vec());
+    let reply = collect_text(&stripped);
+    let thinking = collect_thinking(&stripped);
+    let thinking = (!thinking.is_empty()).then_some(thinking);
+    let parts_json = serde_json::to_string(&stripped).unwrap_or_else(|_| "[]".into());
+    let assistant_msg = state
+        .db
+        .add_message(NewMessage {
+            thread_id: thread.id.clone(),
+            role: "assistant".into(),
+            content: reply,
+            thinking,
+            parts: parts_json,
+            attachments: "[]".into(),
+            model: thread.model.clone(),
+        })
+        .await
+        .map_err(|e| map_err_internal(e).into_response())?;
+
+    if run.cancelled.load(Ordering::SeqCst) {
+        let _ = state.db.delete_message(assistant_msg.id).await;
+        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+    }
+
+    let _ = state
+        .db
+        .audit(
+            Some(user_id),
+            "thread.send",
+            &serde_json::json!({"thread_id": thread.id, "session_id": session_id_for_audit}),
+            None,
+        )
+        .await;
+
+    Ok(assistant_msg)
+}
+
+/// Persist the final active plan for a run to the database, if any.
+pub(crate) async fn persist_run_plan(db: &crate::db::Db, thread_id: &str, run: &RunState) {
+    let plan = run
+        .plan
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if let Some(plan) = plan {
+        let _ = db
+            .upsert_latest_plan(thread_id, Some(&run.run_id), &plan)
+            .await;
+    }
+}
+
+/// Return the plan currently held by an active run for `thread_id`. The first
+/// tuple element is true when a run is still in the runner, and the second
+/// element is its current plan (if the model has emitted one yet).
+pub(crate) async fn active_run_plan(
+    thread_runner: &ThreadRunner,
+    thread_id: &str,
+) -> (bool, Option<Plan>) {
+    let Some(run) = thread_runner.get(thread_id).await else {
+        return (false, None);
+    };
+    let plan = run
+        .plan
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    (true, plan)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::active_run_plan;
+    use crate::plan::{Plan, PlanStep, PlanStepStatus};
+    use crate::thread_runner::ThreadRunner;
+
+    #[tokio::test]
+    async fn active_run_plan_reports_runner_plan() {
+        let runner = ThreadRunner::new();
+        assert_eq!(active_run_plan(&runner, "missing").await, (false, None));
+
+        let run = runner
+            .start("t1".into(), |_run| async { Ok(()) })
+            .await
+            .unwrap();
+        let plan = Plan::new(
+            None,
+            vec![PlanStep::new("step 1", PlanStepStatus::Pending)],
+        );
+        run.set_plan(Some(plan.clone()));
+
+        let (active, got) = active_run_plan(&runner, "t1").await;
+        assert!(active);
+        assert_eq!(got, Some(plan));
+    }
+}
