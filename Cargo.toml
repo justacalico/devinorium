@@ -74,6 +74,8 @@ tempfile = "3"
 agent-client-protocol = { version = "2", features = ["unstable_elicitation"] }
 mini-moka = "0.10.3"
 rustix = { version = "1.1", features = ["fs"] }
+portable-pty = "0.9"
+bytes = "1"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }

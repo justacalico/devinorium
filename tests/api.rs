@@ -311,6 +311,10 @@ async fn app_state() -> (AppState, db::Db) {
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        terminal_manager: devinorium::terminal::manager::TerminalManager::new(
+            std::time::Duration::from_secs(30 * 60),
+            std::time::Duration::from_secs(60),
+        ),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
     };

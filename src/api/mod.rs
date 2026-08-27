@@ -11,6 +11,7 @@ pub mod pagination;
 pub mod projects;
 pub mod providers;
 pub mod settings;
+pub mod terminal;
 pub mod thread_groups;
 pub mod threads;
 

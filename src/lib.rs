@@ -14,6 +14,7 @@ pub mod plan;
 pub mod projects;
 pub mod providers;
 pub mod security;
+pub mod terminal;
 pub mod thread_runner;
 
 use std::collections::HashMap;
@@ -50,6 +51,7 @@ pub struct AppState {
     pub thread_runner: crate::thread_runner::ThreadRunner,
     pub git: Arc<crate::git::GitService>,
     pub git_remote: Arc<crate::git::GitRemoteService>,
+    pub terminal_manager: crate::terminal::manager::TerminalManager,
 }
 
 impl AppState {
@@ -115,6 +117,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::git::router())
         .merge(api::git_connections::router())
         .merge(api::thread_groups::router())
+        .merge(api::terminal::router())
         .merge(api::accounts::router())
         .merge(api::settings::router())
         .merge(api::models::router())

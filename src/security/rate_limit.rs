@@ -45,6 +45,9 @@ pub enum EndpointClass {
     /// Unauthenticated attempt to hit a protected endpoint. Very high cost —
     /// penalizes probing/scanning.
     UnauthProbe,
+    /// Spawning a new terminal session. PTY fork is expensive and a potential
+    /// fork-bomb vector, so it costs more than a normal write.
+    TerminalSpawn,
 }
 
 impl EndpointClass {
@@ -55,6 +58,7 @@ impl EndpointClass {
             EndpointClass::AuthWrite => 2.0,
             EndpointClass::AuthRead => 0.0,
             EndpointClass::UnauthProbe => 25.0,
+            EndpointClass::TerminalSpawn => 20.0,
         }
     }
 }
@@ -154,6 +158,11 @@ pub fn classify(req: &Request) -> EndpointClass {
     }
     if path == "/api/auth/totp/verify" {
         return EndpointClass::TotpVerify;
+    }
+
+    // Terminal spawn is expensive: each call forks a PTY and a shell.
+    if path == "/api/terminal/sessions" && *method == Method::POST {
+        return EndpointClass::TerminalSpawn;
     }
     if path == "/api/auth/logout" {
         return EndpointClass::AuthRead; // free

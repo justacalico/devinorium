@@ -49,6 +49,7 @@ async fn main() -> Result<()> {
             std::collections::HashMap::new(),
         )),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
+        terminal_manager: devinorium::terminal::manager::TerminalManager::default_manager(),
         git: Arc::new(git::GitService::new()),
         git_remote: Arc::new(git::GitRemoteService::new(cfg.home_dir.clone())),
     };
