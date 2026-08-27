@@ -27,6 +27,7 @@ enum DialogKind {
   none,
   totpSetup,
   newProject,
+  cloneRepo,
   permissionRequest,
   gitBranches,
   renameProject,
@@ -54,6 +55,8 @@ class AppState extends ChangeNotifier {
     List<GitConnection> gitConnections = const [],
     bool loadingGitConnections = false,
     String? cloneRoot,
+    bool cloningRepo = false,
+    String? cloneRepoResult,
     Map<int, GitRepoInfo> gitRepoInfo = const {},
     MergeRequestLink? linkedMergeRequest,
     int? activeProjectId,
@@ -89,6 +92,8 @@ class AppState extends ChangeNotifier {
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;
     _cloneRoot = cloneRoot;
+    _cloningRepo = cloningRepo;
+    _cloneRepoResult = cloneRepoResult;
     _gitRepoInfo.addAll(gitRepoInfo);
     _linkedMergeRequest = linkedMergeRequest;
     _user = user;
@@ -262,9 +267,11 @@ class AppState extends ChangeNotifier {
   List<GitConnection> _gitConnections = [];
   bool _loadingGitConnections = false;
 
-  // Clone root.
+  // Clone root and clone dialog.
   String? _cloneRoot;
   bool _loadingCloneRoot = false;
+  bool _cloningRepo = false;
+  String? _cloneRepoResult;
 
   // Connection health.
   ConnectionStatus _connectionStatus = ConnectionStatus.checking;
@@ -342,6 +349,8 @@ class AppState extends ChangeNotifier {
 
   String? get cloneRoot => _cloneRoot;
   bool get loadingCloneRoot => _loadingCloneRoot;
+  bool get cloningRepo => _cloningRepo;
+  String? get cloneRepoResult => _cloneRepoResult;
 
   bool hasMoreProjectThreads(int projectId) =>
       _projectThreadsHasMore[projectId] ?? false;
@@ -1337,6 +1346,61 @@ class AppState extends ChangeNotifier {
       await refreshThreadsAndGroups();
     } catch (e) {
       _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  void openCloneRepoDialog() {
+    _dialog = DialogKind.cloneRepo;
+    _cloningRepo = false;
+    _cloneRepoResult = null;
+    _globalError = '';
+    notifyListeners();
+  }
+
+  Future<String?> cloneRepo(String url) async {
+    _cloningRepo = true;
+    _cloneRepoResult = null;
+    _globalError = '';
+    notifyListeners();
+    try {
+      final path = await api.cloneRepo(url);
+      _cloneRepoResult = path;
+      await loadProjects();
+      return path;
+    } catch (e) {
+      _globalError = '$e';
+      _cloneRepoResult = null;
+      notifyListeners();
+      return null;
+    } finally {
+      _cloningRepo = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> openClonedProjectByPath(String path) async {
+    final project = _projects.firstWhere(
+      (p) => p.path == path,
+      orElse: () => Project(
+        id: 0,
+        name: '',
+        path: '',
+        pinned: false,
+        createdAt: '',
+        updatedAt: '',
+      ),
+    );
+    if (project.id != 0) {
+      _activeProjectId = project.id;
+      _setActiveStore(null);
+      _page = MainPage.threads;
+      _dialog = DialogKind.none;
+      _globalError = '';
+      await refreshThreadsAndGroups();
+      notifyListeners();
+    } else {
+      _globalError = 'Project not found after clone.';
       notifyListeners();
     }
   }

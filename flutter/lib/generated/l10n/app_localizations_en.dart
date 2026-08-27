@@ -211,6 +211,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newProject => 'New project';
 
   @override
+  String get cloneRepo => 'Clone repository';
+
+  @override
+  String get cloneRepoDescription =>
+      'Clone a remote repository into the configured clone root.';
+
+  @override
+  String get cloneRepoUrlLabel => 'Remote URL';
+
+  @override
+  String get cloneRepoButton => 'Clone';
+
+  @override
+  String get cloneRepoOpenProject => 'Open project';
+
+  @override
   String get newFolder => 'New folder';
 
   @override

@@ -21,6 +21,8 @@ class DialogLayer extends StatelessWidget {
         return const _TotpSetupDialog();
       case DialogKind.newProject:
         return const _NewProjectDialog();
+      case DialogKind.cloneRepo:
+        return const _CloneRepoDialog();
       case DialogKind.permissionRequest:
         return const _PermissionRequestDialog();
       case DialogKind.gitBranches:
@@ -526,5 +528,123 @@ class _RenameDialogState extends State<_RenameDialog> {
         ),
       ],
     );
+  }
+}
+
+class _CloneRepoDialog extends StatefulWidget {
+  const _CloneRepoDialog();
+
+  @override
+  State<_CloneRepoDialog> createState() => _CloneRepoDialogState();
+}
+
+class _CloneRepoDialogState extends State<_CloneRepoDialog> {
+  final _urlController = TextEditingController();
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final result = state.cloneRepoResult;
+    final hasResult = result != null && result.isNotEmpty;
+
+    return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l.cloneRepo, style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 8),
+                    Text(l.cloneRepoDescription),
+                    const SizedBox(height: 16),
+                    if (!hasResult)
+                      TextField(
+                        controller: _urlController,
+                        autofocus: true,
+                        enabled: !state.cloningRepo,
+                        decoration: InputDecoration(
+                          labelText: l.cloneRepoUrlLabel,
+                          hintText: 'https://gitlab.com/owner/repo.git',
+                          border: const OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _clone(state),
+                      ),
+                    if (hasResult) ...[
+                      const SizedBox(height: 8),
+                      SelectableText(result),
+                    ],
+                    if (state.globalError.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        state.globalError,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: state.closeDialog,
+                          child: Text(hasResult ? l.close : l.cancel),
+                        ),
+                        const SizedBox(width: 8),
+                        if (hasResult)
+                          FilledButton(
+                            onPressed: () =>
+                                state.openClonedProjectByPath(result),
+                            child: Text(l.cloneRepoOpenProject),
+                          )
+                        else
+                          FilledButton(
+                            onPressed:
+                                state.cloningRepo ? null : () => _clone(state),
+                            child: state.cloningRepo
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : Text(l.cloneRepoButton),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _clone(AppState state) async {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return;
+    await state.cloneRepo(url);
   }
 }

@@ -137,6 +137,11 @@ impl GitService {
         self.git.is_some()
     }
 
+    /// Return the path to the `git` binary, if one was found on PATH.
+    pub fn binary(&self) -> Option<&std::path::Path> {
+        self.git.as_deref()
+    }
+
     fn is_safe_branch_name(&self, name: &str) -> bool {
         if name.is_empty() || name.trim().is_empty() {
             return false;
