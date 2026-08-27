@@ -594,20 +594,194 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      final fields = find.byType(TextField);
-      final send = find.widgetWithText(FilledButton, 'Send');
-
-      await tester.enterText(fields.at(0), '-7');
-      await tester.enterText(fields.at(1), '3.14');
+      await tester.enterText(find.byType(TextField), '-7');
       await tester.pumpAndSettle();
 
-      await tester.tap(send);
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '3.14');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
       await tester.pumpAndSettle();
 
       expect(api.lastAskAnswers, {
         'neg': -7,
         'dec': 3.14,
       });
+    });
+
+    testWidgets('steps through multiple questions', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a3',
+          message: 'Need input',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'First',
+              fieldType: 'text',
+              required: true,
+            ),
+            AskQuestion(
+              id: 'q2',
+              prompt: 'Second',
+              fieldType: 'text',
+              required: true,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('First'), findsOneWidget);
+      expect(find.text('Second'), findsNothing);
+      expect(find.text('1 / 2'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Next'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'one');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Second'), findsOneWidget);
+      expect(find.text('First'), findsNothing);
+      expect(find.text('2 / 2'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Send'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'two');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastAskAnswers, {'q1': 'one', 'q2': 'two'});
+      expect(state.pendingAskRequest, isNull);
+    });
+
+    testWidgets('previous returns to the previous answer', (tester) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a3',
+          message: 'Need input',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'First',
+              fieldType: 'text',
+              required: true,
+            ),
+            AskQuestion(id: 'q2', prompt: 'Second', fieldType: 'text'),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'one');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'two');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Previous'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('First'), findsOneWidget);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller?.text, 'one');
+
+      // First step has no previous button.
+      expect(find.widgetWithText(TextButton, 'Previous'), findsNothing);
+    });
+
+    testWidgets('blocks next until the current question is valid', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a3',
+          message: 'Need input',
+          questions: [
+            AskQuestion(
+              id: 'q1',
+              prompt: 'First',
+              fieldType: 'text',
+              required: true,
+            ),
+            AskQuestion(id: 'q2', prompt: 'Second', fieldType: 'text'),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('First'), findsOneWidget);
+      expect(find.text('Second'), findsNothing);
+      expect(find.text('Required'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'answer');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Second'), findsOneWidget);
+    });
+
+    testWidgets('jumps to an invalid question on final submit', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      final state = _stateWithAsk(
+        api: api,
+        pendingAsk: AskRequest(
+          requestId: 'a3',
+          message: 'Need input',
+          questions: [
+            AskQuestion(id: 'q1', prompt: 'First', fieldType: 'text'),
+            AskQuestion(
+              id: 'q2',
+              prompt: 'Second',
+              fieldType: 'text',
+              required: true,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Second'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Second'), findsOneWidget);
+      expect(find.text('Required'), findsOneWidget);
+      expect(api.lastAskThreadId, isNull);
     });
 
     testWidgets('sends boolean answers', (tester) async {
