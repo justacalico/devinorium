@@ -87,12 +87,18 @@ class Sidebar extends StatelessWidget {
                         ?.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (!isSettings)
+                if (!isSettings) ...[
                   IconButton(
                     onPressed: () => state.openNewProjectDialog(),
                     icon: const Icon(Icons.create_new_folder_outlined),
                     tooltip: l10n(context).newProject,
                   ),
+                  IconButton(
+                    onPressed: () => state.openCloneRepoDialog(),
+                    icon: const Icon(Icons.cloud_download_outlined),
+                    tooltip: l10n(context).cloneRepo,
+                  ),
+                ],
               ],
             ),
           ),

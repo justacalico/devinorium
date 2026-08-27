@@ -352,6 +352,27 @@ impl GitRemoteService {
         Self::parse_gitlab_status(&output)
     }
 
+    /// Return the stored token for the given GitLab host, if one exists.
+    ///
+    /// The token is read from `glab`'s own config, so Devinorium never stores
+    /// credentials itself. Returns `None` when `glab` is not installed or has
+    /// no token for the host.
+    pub async fn gitlab_token_for_host(
+        &self,
+        user_id: i64,
+        hostname: &str,
+    ) -> Result<Option<String>, RemoteError> {
+        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let host = Self::api_host(hostname);
+        let (output, success) = self
+            .run_raw(user_id, bin, &["config", "get", "token", "--host", host])
+            .await?;
+        if !success || output.trim().is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(output.trim().to_string()))
+    }
+
     async fn gitlab_status_for_host(
         &self,
         user_id: i64,

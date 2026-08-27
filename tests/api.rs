@@ -5181,3 +5181,232 @@ async fn terminal_create_kill_and_ws_round_trip() {
 
     let _ = shutdown.send(());
 }
+
+// ---- git clone ----
+
+fn run_git_checked(cwd: &std::path::Path, args: &[&str]) {
+    let home = std::env::temp_dir();
+    let output = std::process::Command::new("git")
+        .current_dir(cwd)
+        .env("HOME", &home)
+        .env("GIT_AUTHOR_NAME", "test")
+        .env("GIT_AUTHOR_EMAIL", "test@test")
+        .env("GIT_COMMITTER_NAME", "test")
+        .env("GIT_COMMITTER_EMAIL", "test@test")
+        .args(args)
+        .output()
+        .unwrap();
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("git failed: {stderr}");
+    }
+}
+
+fn make_bare_repo(base: &std::path::Path) -> std::path::PathBuf {
+    let source = base.join("source_repo");
+    std::fs::create_dir_all(&source).unwrap();
+    run_git_checked(&source, &["init"]);
+    std::fs::write(source.join("README.md"), "# hello\n").unwrap();
+    run_git_checked(&source, &["add", "README.md"]);
+    run_git_checked(&source, &["commit", "-m", "init"]);
+    let bare = base.join("source_repo.git");
+    run_git_checked(
+        base,
+        &[
+            "clone",
+            "--bare",
+            source.to_str().unwrap(),
+            bare.to_str().unwrap(),
+        ],
+    );
+    bare
+}
+
+async fn set_clone_root(app: &axum::Router, cookie: &str, path: &std::path::Path) {
+    let body = serde_json::json!({"path": path.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            cookie,
+            &body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn clone_happy_path() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    let fixture = tempfile::tempdir().unwrap().keep();
+    let bare = make_bare_repo(&fixture);
+    let url = format!("file://{}", bare.to_string_lossy());
+
+    let body = serde_json::json!({"url": url}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let path = v["path"].as_str().unwrap();
+    assert!(path.starts_with(root.to_string_lossy().as_ref()));
+
+    let path = std::path::Path::new(path);
+    assert!(tokio::fs::try_exists(path).await.unwrap());
+    assert!(path.join(".git").exists() || path.join("HEAD").exists());
+
+    // A project row was created for the cloned repository.
+    let project = _db
+        .get_project_by_path(1, &path.to_string_lossy())
+        .await
+        .unwrap();
+    assert!(project.is_some());
+    assert!(project.unwrap().name.contains("repo"));
+}
+
+#[tokio::test]
+async fn clone_already_exists() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    let fixture = tempfile::tempdir().unwrap().keep();
+    let bare = make_bare_repo(&fixture);
+    let url = format!("file://{}", bare.to_string_lossy());
+
+    let body = serde_json::json!({"url": url}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn clone_missing_root() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let body = r#"{"path":null}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/clone-root",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = r#"{"url":"https://gitlab.com/owner/repo.git"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("clone root"), "{body}");
+}
+
+#[tokio::test]
+async fn clone_malformed_url() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    for url in ["", "not-a-url", "ftp://host/path/repo.git"] {
+        let body = serde_json::json!({"url": url}).to_string();
+        let resp = app
+            .clone()
+            .oneshot(authed("POST", "/api/clones", &cookie, &body))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "url should be rejected: {url}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn clone_no_owner() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    let body = r#"{"url":"https://gitlab.com/repo.git"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn clone_path_traversal() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    for url in [
+        "https://gitlab.com/../owner/repo.git",
+        "https://gitlab.com/owner/%2e%2e/repo.git",
+    ] {
+        let body = serde_json::json!({"url": url}).to_string();
+        let resp = app
+            .clone()
+            .oneshot(authed("POST", "/api/clones", &cookie, &body))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{url}");
+    }
+}
+
+#[tokio::test]
+async fn clone_non_gitlab_host_fails_cleanly() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    let body = r#"{"url":"git://127.0.0.1:1/owner/repo.git"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}

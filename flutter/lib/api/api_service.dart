@@ -611,6 +611,15 @@ class ApiService {
     }
   }
 
+  // ---- Clone ----
+
+  /// Clone a remote repository into the configured clone root.
+  /// Returns the absolute local path on success.
+  Future<String> cloneRepo(String url) async {
+    final j = await _client.post('/api/clones', {'url': url});
+    return j['path'] as String;
+  }
+
   // ---- Clone root ----
 
   Future<String?> getCloneRoot() async {

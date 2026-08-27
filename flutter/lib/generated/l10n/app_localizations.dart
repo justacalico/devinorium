@@ -478,6 +478,36 @@ abstract class AppLocalizations {
   /// **'New project'**
   String get newProject;
 
+  /// No description provided for @cloneRepo.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone repository'**
+  String get cloneRepo;
+
+  /// No description provided for @cloneRepoDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone a remote repository into the configured clone root.'**
+  String get cloneRepoDescription;
+
+  /// No description provided for @cloneRepoUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote URL'**
+  String get cloneRepoUrlLabel;
+
+  /// No description provided for @cloneRepoButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone'**
+  String get cloneRepoButton;
+
+  /// No description provided for @cloneRepoOpenProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Open project'**
+  String get cloneRepoOpenProject;
+
   /// No description provided for @newFolder.
   ///
   /// In en, this message translates to:

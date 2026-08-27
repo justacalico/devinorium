@@ -114,6 +114,7 @@ pub fn build_app(state: AppState) -> Router {
     let protected = api::threads::router()
         .merge(api::files::router())
         .merge(api::projects::router())
+        .merge(api::clones::router())
         .merge(api::git::router())
         .merge(api::git_connections::router())
         .merge(api::thread_groups::router())
