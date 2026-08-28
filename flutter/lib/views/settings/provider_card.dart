@@ -1,0 +1,175 @@
+part of '../settings_page.dart';
+
+String _providerName(List<ProviderInfo> providers, String id) {
+  for (final p in providers) {
+    if (p.id == id) return p.name;
+  }
+  return id.isEmpty ? '—' : id;
+}
+
+class _ProviderCard extends StatelessWidget {
+  final AppState state;
+  const _ProviderCard({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = state.user;
+    final providers = state.providers;
+    final l = l10n(context);
+
+    return _SectionCard(
+      title: l.provider,
+      children: [
+        _SettingsRow(
+          label: l.provider,
+          value: _providerName(providers, user?.providerId ?? ''),
+          trailing: _ProviderDropdown(state: state),
+        ),
+        const Divider(),
+        _ProviderCommandField(state: state),
+      ],
+    );
+  }
+}
+
+class _ProviderDropdown extends StatelessWidget {
+  final AppState state;
+  const _ProviderDropdown({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final providers = state.providers;
+    final currentId = state.user?.providerId ?? '';
+    if (providers.isEmpty) return const SizedBox.shrink();
+
+    final ids = providers.map((p) => p.id).toSet();
+    final effectiveId = ids.contains(currentId) ? currentId : providers.first.id;
+
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: effectiveId,
+        isDense: true,
+        items: providers
+            .map((p) => DropdownMenuItem(
+                  value: p.id,
+                  child: Text(p.name),
+                ))
+            .toList(),
+        onChanged: (id) {
+          if (id != null && id != currentId) {
+            final user = state.user;
+            if (user != null) {
+              state.saveProvider(
+                providerId: id,
+                providerCommand: user.providerCommand,
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _ProviderCommandField extends StatefulWidget {
+  final AppState state;
+  const _ProviderCommandField({required this.state});
+
+  @override
+  State<_ProviderCommandField> createState() => _ProviderCommandFieldState();
+}
+
+class _ProviderCommandFieldState extends State<_ProviderCommandField> {
+  final _controller = TextEditingController();
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final saved = (widget.state.user?.providerCommand ?? 'devin').trim();
+    _controller.text = saved.isEmpty ? 'devin' : saved;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String get _effectiveCommand {
+    final command = _controller.text.trim();
+    return command.isEmpty ? 'devin' : command;
+  }
+
+  Future<void> _save() async {
+    final user = widget.state.user;
+    if (user == null) return;
+    final command = _effectiveCommand;
+    _controller.text = command;
+    await widget.state.saveProvider(
+      providerId: user.providerId,
+      providerCommand: command,
+    );
+  }
+
+  Future<void> _test() async {
+    final user = widget.state.user;
+    if (user == null) return;
+
+    await _save();
+    final command = _effectiveCommand;
+
+    setState(() => _testing = true);
+    try {
+      await widget.state.testProvider(
+        providerId: user.providerId,
+        command: command,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n(context).providerIsReachable)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n(context).providerTestFailed('$e'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _controller,
+            decoration: InputDecoration(
+              labelText: l10n(context).command,
+              hintText: l10n(context).providerCommandHint,
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: _testing ? null : _test,
+          child: _testing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(l10n(context).test),
+        ),
+      ],
+    );
+  }
+}
