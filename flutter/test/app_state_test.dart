@@ -2351,7 +2351,7 @@ void main() {
     });
 
     test(
-      'openGitBranchDialog fetches repo, branches and worktrees in parallel',
+      'loadGitBranchData fetches repo, branches and worktrees in parallel',
       () async {
         final client = ApiClient.withClient(
           MockClient((req) async {
@@ -2387,8 +2387,7 @@ void main() {
         );
 
         final state = AppState.test(api: ApiService(client: client));
-        await state.openGitBranchDialog(1);
-        expect(state.gitDialogProjectId, 1);
+        await state.loadGitBranchData(1);
         expect(state.gitRepoInfo(1)?.branch, 'main');
         expect(state.gitBranches(1), hasLength(1));
         expect(state.gitWorktrees(1), isEmpty);
@@ -2459,6 +2458,293 @@ void main() {
       await state.gitCheckout(1, 'feature');
       expect(requests, contains('/api/projects'));
       expect(state.projects[0].gitBranch, 'feature');
+    });
+
+    test('gitCreateBranch returns true and refreshes repo', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          final path = req.url.path;
+          final method = req.method;
+          if (path == '/api/projects/1/git/branches' && method == 'POST') {
+            return _json(200, {'name': 'new'});
+          }
+          if (path == '/api/projects/1/git/branches' && method == 'GET') {
+            return _json(200, {
+              'branches': [
+                {
+                  'name': 'new',
+                  'refname': 'refs/heads/new',
+                  'is_current': true,
+                  'is_default': false,
+                  'is_remote': false,
+                  'committer_date': 0,
+                },
+              ],
+            });
+          }
+          if (path == '/api/projects/1/git') {
+            return _json(200, {
+              'is_repo': true,
+              'branch': 'new',
+              'worktree_path': '/x',
+              'toplevel': '/x',
+              'common_dir': '/x/.git',
+            });
+          }
+          if (path == '/api/projects/1/git/worktrees') {
+            return _json(200, []);
+          }
+          if (path == '/api/projects') {
+            return _json(200, []);
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(
+        api: ApiService(client: client),
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      final ok = await state.gitCreateBranch(1, 'new');
+      expect(ok, isTrue);
+      expect(state.gitRepoInfo(1)?.branch, 'new');
+    });
+
+    test('gitCreateBranch returns false when the API fails', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/branches') {
+            return _json(500, {'error': 'nope'});
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final ok = await state.gitCreateBranch(1, 'new');
+      expect(ok, isFalse);
+      expect(state.globalError, isNotEmpty);
+    });
+
+    test('gitCreateWorktree returns the created worktree', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          final path = req.url.path;
+          final method = req.method;
+          if (path == '/api/projects/1/git/worktrees' && method == 'POST') {
+            return _json(200, {
+              'path': '/x/wt',
+              'head': 'abc',
+              'branch': 'main',
+              'is_main': false,
+            });
+          }
+          if (path == '/api/projects/1/git/worktrees' && method == 'GET') {
+            return _json(200, [
+              {
+                'path': '/x/wt',
+                'head': 'abc',
+                'branch': 'main',
+                'is_main': false,
+              },
+            ]);
+          }
+          if (path == '/api/projects/1/git') {
+            return _json(200, {
+              'is_repo': true,
+              'branch': 'main',
+              'worktree_path': '/x',
+              'toplevel': '/x',
+              'common_dir': '/x/.git',
+            });
+          }
+          if (path == '/api/projects/1/git/branches') {
+            return _json(200, {
+              'branches': [
+                {
+                  'name': 'main',
+                  'refname': 'refs/heads/main',
+                  'is_current': true,
+                  'is_default': true,
+                  'is_remote': false,
+                  'committer_date': 0,
+                },
+              ],
+            });
+          }
+          if (path == '/api/projects') {
+            return _json(200, []);
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final worktree = await state.gitCreateWorktree(1, 'wt', 'main');
+      expect(worktree, isNotNull);
+      expect(worktree?.path, '/x/wt');
+    });
+
+    test('gitCreateWorktree returns null when the API fails', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/worktrees') {
+            return _json(500, {'error': 'nope'});
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final worktree = await state.gitCreateWorktree(1, 'wt', 'main');
+      expect(worktree, isNull);
+      expect(state.globalError, isNotEmpty);
+    });
+
+    test('gitPull returns true on success and refreshes repo', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          final path = req.url.path;
+          if (path == '/api/projects/1/git/pull') {
+            return _json(200, {});
+          }
+          if (path == '/api/projects/1/git/merge-request') {
+            return _json(204, {});
+          }
+          if (path == '/api/projects/1/git') {
+            return _json(200, {
+              'is_repo': true,
+              'branch': 'main',
+              'worktree_path': '/x',
+              'toplevel': '/x',
+              'common_dir': '/x/.git',
+            });
+          }
+          if (path == '/api/projects/1/git/branches') {
+            return _json(200, {
+              'branches': [
+                {
+                  'name': 'main',
+                  'refname': 'refs/heads/main',
+                  'is_current': true,
+                  'is_default': true,
+                  'is_remote': false,
+                  'committer_date': 0,
+                },
+              ],
+            });
+          }
+          if (path == '/api/projects/1/git/worktrees') {
+            return _json(200, []);
+          }
+          if (path == '/api/projects') {
+            return _json(200, []);
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final ok = await state.gitPull(1);
+      expect(ok, isTrue);
+    });
+
+    test('gitPull returns false on error', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/pull') {
+            return _json(500, {'error': 'nope'});
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final ok = await state.gitPull(1);
+      expect(ok, isFalse);
+      expect(state.globalError, isNotEmpty);
+    });
+
+    test('gitPush returns true on success and refreshes repo', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          final path = req.url.path;
+          if (path == '/api/projects/1/git/push') {
+            return _json(200, {});
+          }
+          if (path == '/api/projects/1/git/merge-request') {
+            return _json(204, {});
+          }
+          if (path == '/api/projects/1/git') {
+            return _json(200, {
+              'is_repo': true,
+              'branch': 'main',
+              'worktree_path': '/x',
+              'toplevel': '/x',
+              'common_dir': '/x/.git',
+            });
+          }
+          if (path == '/api/projects/1/git/branches') {
+            return _json(200, {
+              'branches': [
+                {
+                  'name': 'main',
+                  'refname': 'refs/heads/main',
+                  'is_current': true,
+                  'is_default': true,
+                  'is_remote': false,
+                  'committer_date': 0,
+                },
+              ],
+            });
+          }
+          if (path == '/api/projects/1/git/worktrees') {
+            return _json(200, []);
+          }
+          if (path == '/api/projects') {
+            return _json(200, []);
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final ok = await state.gitPush(1);
+      expect(ok, isTrue);
+    });
+
+    test('gitPush returns false on error', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/push') {
+            return _json(500, {'error': 'nope'});
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final ok = await state.gitPush(1);
+      expect(ok, isFalse);
+      expect(state.globalError, isNotEmpty);
+    });
+
+    test('gitCheckout returns false and surfaces an error when checkout fails', () async {
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.url.path == '/api/projects/1/git/checkout') {
+            return _json(500, {'error': 'nope'});
+          }
+          return _json(404, {'error': 'unexpected request'});
+        }),
+      );
+
+      final state = AppState.test(api: ApiService(client: client));
+      final ok = await state.gitCheckout(1, 'feature');
+      expect(ok, isFalse);
+      expect(state.globalError, isNotEmpty);
     });
 
     test('git refresh timer loads project branch periodically', () async {

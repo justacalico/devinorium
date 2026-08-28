@@ -23,14 +23,9 @@ mixin GitRefreshStore on AppStateBase {
     _refreshingGit = true;
     try {
       final projectId = _activeProjectId;
-      final dialogProjectId = _gitDialogProjectId;
       if (projectId != null) {
         await _refreshGitForProject(projectId);
       }
-      if (dialogProjectId != null && dialogProjectId != projectId) {
-        await _refreshGitForProject(dialogProjectId);
-      }
-      await loadProjects();
     } finally {
       _refreshingGit = false;
     }
@@ -42,10 +37,6 @@ mixin GitRefreshStore on AppStateBase {
       _gitRepoInfo[projectId] = info;
       _syncProjectBranch(projectId, info);
       _globalError = '';
-      if (_dialog == DialogKind.gitBranches &&
-          _gitDialogProjectId == projectId) {
-        await _loadGitBranchesAndWorktrees(projectId);
-      }
     } catch (e) {
       _gitRepoInfo.remove(projectId);
     }

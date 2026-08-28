@@ -16,6 +16,7 @@ import '../utils/plan_markup.dart';
 import '../utils/thread_status.dart';
 import '../widgets/thread_tag.dart';
 import 'ask_request_panel.dart';
+import 'branch_toolbar.dart';
 import 'drop_zone.dart';
 import 'code_block.dart';
 import 'edit_file_tool.dart';
@@ -61,10 +62,6 @@ class _ThreadPageState extends State<ThreadPage> {
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final thread = state.activeThreadDetail?.thread;
     final title = thread?.title ?? l10n(context).selectOrCreateThread;
-    final repo = state.activeProjectId != null
-        ? state.gitRepoInfo(state.activeProjectId!)
-        : null;
-    final isGit = repo?.isRepo ?? false;
     final tag = thread != null
         ? activeThreadTag(
             sending: state.sending,
@@ -100,16 +97,6 @@ class _ThreadPageState extends State<ThreadPage> {
         actions: [
           if (state.linkedMergeRequest != null)
             LinkedMergeRequestChip(mr: state.linkedMergeRequest!),
-          if (isGit && state.activeProjectId != null)
-            TextButton.icon(
-              icon: const Icon(Icons.call_split, size: 18),
-              label: Text(
-                thread?.branch ?? repo!.branch,
-                style: const TextStyle(fontSize: 12),
-              ),
-              onPressed: () =>
-                  state.openGitBranchDialog(state.activeProjectId!),
-            ),
           if (state.activePlan != null)
             IconButton(
               tooltip: state.planOverlayVisible ? 'Hide plan' : 'Show plan',

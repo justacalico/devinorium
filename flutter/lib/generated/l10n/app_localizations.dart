@@ -1342,18 +1342,6 @@ abstract class AppLocalizations {
   /// **'Push'**
   String get push;
 
-  /// No description provided for @notAGitRepo.
-  ///
-  /// In en, this message translates to:
-  /// **'This project is not a Git repository.'**
-  String get notAGitRepo;
-
-  /// No description provided for @searchBranches.
-  ///
-  /// In en, this message translates to:
-  /// **'Search branches'**
-  String get searchBranches;
-
   /// No description provided for @createBranch.
   ///
   /// In en, this message translates to:
@@ -1371,12 +1359,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Base branch (optional)'**
   String get baseBranchOptional;
-
-  /// No description provided for @switchAfterCreate.
-  ///
-  /// In en, this message translates to:
-  /// **'Switch to new branch'**
-  String get switchAfterCreate;
 
   /// No description provided for @createWorktree.
   ///
@@ -1407,6 +1389,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Worktrees'**
   String get worktrees;
+
+  /// No description provided for @mainWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Main worktree'**
+  String get mainWorktree;
+
+  /// No description provided for @worktreeBranchLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch back to the main worktree to change branches'**
+  String get worktreeBranchLocked;
 
   /// No description provided for @git.
   ///
@@ -1521,12 +1515,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create and switch'**
   String get createAndSwitchBranch;
-
-  /// No description provided for @createAndNewBranch.
-  ///
-  /// In en, this message translates to:
-  /// **'Create and new branch'**
-  String get createAndNewBranch;
 
   /// No description provided for @send.
   ///

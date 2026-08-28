@@ -8,8 +8,6 @@ mixin GitStore on AppStateBase {
   @override
   final Map<int, List<GitWorktree>> _gitWorktrees = {};
   @override
-  int? _gitDialogProjectId;
-  @override
   MergeRequestLink? _linkedMergeRequest;
   @override
   bool _loadingLinkedMergeRequest = false;
@@ -55,8 +53,6 @@ mixin GitStore on AppStateBase {
   @override
   List<GitWorktree> gitWorktrees(int projectId) =>
       _gitWorktrees[projectId] ?? [];
-  @override
-  int? get gitDialogProjectId => _gitDialogProjectId;
   @override
   List<GitConnection> get gitConnections => _gitConnections;
   @override
@@ -144,17 +140,7 @@ mixin GitStore on AppStateBase {
     notifyListeners();
   }
   @override
-  Future<void> openGitBranchDialog(int projectId) {
-    _gitDialogProjectId = projectId;
-    _dialog = DialogKind.gitBranches;
-    _userMenuOpen = false;
-    notifyListeners();
-    // Load repo, branches and worktrees in the background so the panel opens
-    // instantly and content streams in as it becomes ready.
-    return _loadGitData(projectId);
-  }
-  @override
-  Future<void> _loadGitData(int projectId) async {
+  Future<void> loadGitBranchData(int projectId) async {
     await Future.wait([
       loadGitRepoInfo(projectId, force: true),
       loadGitBranches(projectId, force: true),
@@ -169,7 +155,7 @@ mixin GitStore on AppStateBase {
     ]);
   }
   @override
-  Future<void> gitCreateBranch(
+  Future<bool> gitCreateBranch(
     int projectId,
     String name, {
     String? base,
@@ -187,13 +173,15 @@ mixin GitStore on AppStateBase {
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
       if (switchBranch) unawaited(refreshLinkedMergeRequest());
+      return true;
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
   @override
-  Future<void> gitCheckout(
+  Future<bool> gitCheckout(
     int projectId,
     String refName, {
     bool track = false,
@@ -205,13 +193,15 @@ mixin GitStore on AppStateBase {
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
       unawaited(refreshLinkedMergeRequest());
+      return true;
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
   @override
-  Future<void> gitPull(int projectId) async {
+  Future<bool> gitPull(int projectId) async {
     try {
       await api.gitPull(projectId);
       _globalError = '';
@@ -219,13 +209,15 @@ mixin GitStore on AppStateBase {
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
       unawaited(refreshLinkedMergeRequest());
+      return true;
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
   @override
-  Future<void> gitPullBranch(int projectId, String name) async {
+  Future<bool> gitPullBranch(int projectId, String name) async {
     try {
       await api.gitPullBranch(projectId, name);
       _globalError = '';
@@ -233,40 +225,52 @@ mixin GitStore on AppStateBase {
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
       unawaited(refreshLinkedMergeRequest());
+      return true;
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
   @override
-  Future<void> gitPush(int projectId) async {
+  Future<bool> gitPush(int projectId) async {
     try {
       await api.gitPush(projectId);
       _globalError = '';
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
+      unawaited(refreshLinkedMergeRequest());
+      return true;
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
   @override
-  Future<void> gitCreateWorktree(
+  Future<GitWorktree?> gitCreateWorktree(
     int projectId,
     String name,
     String base, {
     bool newBranch = false,
   }) async {
     try {
-      await api.gitCreateWorktree(projectId, name, base, newBranch: newBranch);
+      final worktree = await api.gitCreateWorktree(
+        projectId,
+        name,
+        base,
+        newBranch: newBranch,
+      );
       _globalError = '';
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
+      return worktree;
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+      return null;
     }
   }
   @override

@@ -28,7 +28,6 @@ mixin DialogStore on AppStateBase {
   @override
   void closeDialog() {
     _dialog = DialogKind.none;
-    _gitDialogProjectId = null;
     _mergeRequestUrl = null;
     _issueUrl = null;
     _renameProjectId = null;
