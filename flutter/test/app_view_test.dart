@@ -121,7 +121,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Type into the composer.
-      await tester.enterText(find.byType(TextField), 'hello world');
+      await tester.enterText(find.byKey(const Key('composer_input')), 'hello world');
       await tester.pumpAndSettle();
       expect(find.text('hello world'), findsOneWidget);
 

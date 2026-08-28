@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/thread_status.dart';
 import '../widgets/owner_badge.dart';
 import 'project_icon.dart';
 
@@ -52,11 +53,121 @@ String _timeAgo(String iso, AppLocalizations l) {
   return l.timeAgoYears((diff.inDays / 365).floor());
 }
 
+({Color color, String label})? _threadStatus(
+  BuildContext context,
+  AppState state,
+  Thread thread,
+) {
+  final l = l10n(context);
+  final isRunning = state.runningThreadIds.contains(thread.id);
+  final active = state.activeThreadDetail?.thread.id == thread.id;
+
+  String? tag;
+  if (isRunning || (active && state.sending)) {
+    tag = 'running';
+  } else if (active) {
+    tag = activeThreadTag(
+      sending: state.sending,
+      messages: state.activeThreadDetail?.messages ?? const [],
+      pendingPermissionRequest: state.pendingPermissionRequest,
+      pendingAskRequest: state.pendingAskRequest,
+      runStatus: state.lastRunStatus,
+    );
+  }
+
+  if (tag == null) return null;
+
+  return switch (tag) {
+    'running' || 'working' => (
+        color: const Color(0xFF0EA5E9),
+        label: l.threadStatusWorking,
+      ),
+    'failed' => (
+        color: const Color(0xFFEF4444),
+        label: l.threadStatusFailed,
+      ),
+    'needs approval' => (
+        color: const Color(0xFFF59E0B),
+        label: l.threadStatusApproval,
+      ),
+    'needs answer' => (
+        color: const Color(0xFF818CF8),
+        label: l.threadStatusInput,
+      ),
+    _ => (
+        color: const Color(0xFF22C55E),
+        label: l.threadStatusDone,
+      ),
+  };
+}
+
 /// The sidebar: projects, threads, and user menu.
 /// When the user is on the Settings page, the sidebar shows settings topics
 /// with a back button instead of the project/thread list.
-class Sidebar extends StatelessWidget {
+class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
+
+  @override
+  State<Sidebar> createState() => _SidebarState();
+}
+
+class _SidebarState extends State<Sidebar> {
+  final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    HardwareKeyboard.instance.addHandler(_onKeyEvent);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKeyEvent);
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool _onKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    if (!mounted) return false;
+
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+
+    final appState = context.read<AppState>();
+    if (appState.page == MainPage.settings) return false;
+
+    final shortcut = (HardwareKeyboard.instance.isMetaPressed ||
+            HardwareKeyboard.instance.isControlPressed) &&
+        event.logicalKey == LogicalKeyboardKey.keyK;
+    if (!shortcut) return false;
+
+    if (_searchFocus.hasFocus) {
+      _searchController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _searchController.text.length,
+      );
+      return true;
+    }
+
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus?.context != null) {
+      final editable =
+          focus!.context!.findAncestorWidgetOfExactType<EditableText>();
+      if (editable != null) return false;
+    }
+
+    _searchFocus.requestFocus();
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,121 +175,63 @@ class Sidebar extends StatelessWidget {
     final theme = Theme.of(context);
     final user = state.user;
     final username = user?.username ?? '';
-    final avatar =
-        username.isNotEmpty ? username[0].toUpperCase() : '?';
+    final avatar = username.isNotEmpty ? username[0].toUpperCase() : '?';
     final isSettings = state.page == MainPage.settings;
 
     return ColoredBox(
-      color: theme.colorScheme.surfaceContainerLow,
+      color: theme.colorScheme.surfaceContainerLowest,
       child: Column(
         children: [
-          // Header row
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-            child: Row(
-              children: [
-                if (isSettings)
-                  IconButton(
-                    onPressed: () {
-                      Scaffold.of(context).closeDrawer();
-                      state.setPage(MainPage.threads);
-                    },
-                    icon: const Icon(Icons.arrow_back),
-                    tooltip: l10n(context).back,
-                  )
-                else
-                  Icon(Icons.folder_outlined,
-                      color: theme.colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    isSettings ? l10n(context).settings : l10n(context).projects,
-                    style: theme.textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                if (!isSettings) ...[
-                  IconButton(
-                    onPressed: () => state.openNewProjectDialog(),
-                    icon: const Icon(Icons.create_new_folder_outlined),
-                    tooltip: l10n(context).newProject,
-                  ),
-                  IconButton(
-                    onPressed: () => state.openCloneRepoDialog(),
-                    icon: const Icon(Icons.cloud_download_outlined),
-                    tooltip: l10n(context).cloneRepo,
-                  ),
-                ],
-              ],
+          if (isSettings)
+            _SettingsHeader()
+          else ...[
+            _SearchField(
+              controller: _searchController,
+              focusNode: _searchFocus,
             ),
-          ),
-          // Project/thread list or settings navigation
+            _ProjectsHeader(),
+          ],
           Expanded(
             child: isSettings
                 ? const _SettingsNav()
-                : const _ProjectThreadList(),
+                : _ProjectThreadList(searchQuery: _searchController.text),
           ),
-          // User chip + menu
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            child: Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: theme.colorScheme.primary,
-                      foregroundColor: theme.colorScheme.onPrimary,
-                      child: Text(avatar),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        username,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                    const _ConnectionStatusIcon(),
-                    MenuAnchor(
-                      menuChildren: [
-                        MenuItemButton(
-                          leadingIcon: const Icon(Icons.settings_outlined),
-                          child: Text(l10n(context).settings),
-                          onPressed: () {
-                            state.setPage(MainPage.settings);
-                            state.setUserMenuOpen(false);
-                          },
-                        ),
-                        MenuItemButton(
-                          leadingIcon: const Icon(Icons.logout),
-                          child: Text(l10n(context).signOut),
-                          onPressed: () => state.logout(),
-                        ),
-                      ],
-                      builder: (context, controller, child) {
-                        return IconButton(
-                          tooltip: l10n(context).menu,
-                          icon: const Icon(Icons.more_vert),
-                          onPressed: () {
-                            if (controller.isOpen) {
-                              controller.close();
-                            } else {
-                              controller.open();
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
+          _UserChip(
+            username: username,
+            avatar: avatar,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final state = context.read<AppState>();
+    final theme = Theme.of(context);
+    final l = l10n(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () {
+              Scaffold.of(context).closeDrawer();
+              state.setPage(MainPage.threads);
+            },
+            icon: const Icon(Icons.arrow_back),
+            tooltip: l.back,
+            visualDensity: VisualDensity.compact,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              l.settings,
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -187,37 +240,208 @@ class Sidebar extends StatelessWidget {
   }
 }
 
-Widget? _threadSubtitle(AppState state, Thread thread, ThemeData theme) {
-  final parts = <String>[];
-  final repo = state.gitRepoInfo(thread.projectId);
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
 
-  if (thread.worktreePath != null && thread.worktreePath!.isNotEmpty) {
-    final worktrees = state.gitWorktrees(thread.projectId);
-    GitWorktree? active;
-    for (final w in worktrees) {
-      if (w.path == thread.worktreePath) {
-        active = w;
-        break;
-      }
-    }
-    final branch = active?.branch ??
-        active?.head ??
-        repo?.branch ??
-        thread.branch ??
-        '';
-    if (branch.isNotEmpty) parts.add(branch);
-    parts.add(thread.worktreePath!.split('/').last);
-  } else {
-    final branch = repo?.branch ?? thread.branch ?? '';
-    if (branch.isNotEmpty) parts.add(branch);
+  const _SearchField({required this.controller, required this.focusNode});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final query = controller.text;
+    final shortcutLabel = switch (theme.platform) {
+      TargetPlatform.macOS || TargetPlatform.iOS => l.searchKeyboardShortcut,
+      _ => l.searchKeyboardShortcutNonMac,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 10),
+            Icon(
+              Icons.search,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                key: const Key('sidebar_search'),
+                controller: controller,
+                focusNode: focusNode,
+                style: theme.textTheme.bodyMedium,
+                decoration: InputDecoration.collapsed(
+                  hintText: l.searchHint,
+                  hintStyle: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+            if (query.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    shortcutLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                onPressed: () {
+                  controller.clear();
+                  focusNode.unfocus();
+                },
+                icon: Icon(
+                  Icons.close,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                tooltip: l.clear,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+              ),
+          ],
+        ),
+      ),
+    );
   }
+}
 
-  if (parts.isEmpty) return null;
-  return Text(
-    parts.join('  '),
-    style: theme.textTheme.labelSmall
-        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-  );
+class _ProjectsHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final state = context.read<AppState>();
+    final theme = Theme.of(context);
+    final l = l10n(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              l.projects.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () => state.openNewProjectDialog(),
+            icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+            tooltip: l.newProject,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(4),
+          ),
+          IconButton(
+            onPressed: () => state.openCloneRepoDialog(),
+            icon: const Icon(Icons.cloud_download_outlined, size: 18),
+            tooltip: l.cloneRepo,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(4),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserChip extends StatelessWidget {
+  final String username;
+  final String avatar;
+
+  const _UserChip({required this.username, required this.avatar});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                child: Text(avatar),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  username,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w500),
+                ),
+              ),
+              const _ConnectionStatusIcon(),
+              MenuAnchor(
+                menuChildren: [
+                  MenuItemButton(
+                    leadingIcon: const Icon(Icons.settings_outlined),
+                    child: Text(l10n(context).settings),
+                    onPressed: () {
+                      state.setPage(MainPage.settings);
+                      state.setUserMenuOpen(false);
+                    },
+                  ),
+                  MenuItemButton(
+                    leadingIcon: const Icon(Icons.logout),
+                    child: Text(l10n(context).signOut),
+                    onPressed: () => state.logout(),
+                  ),
+                ],
+                builder: (context, controller, child) {
+                  return IconButton(
+                    tooltip: l10n(context).menu,
+                    icon: const Icon(Icons.more_vert),
+                    onPressed: () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Future<bool> _confirm(BuildContext context, String message) async {

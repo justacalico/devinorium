@@ -524,5 +524,15 @@
   "cloneRootNotSet": "Not set yet",
   "cloneRootSave": "Save",
   "cloneRootBrowse": "Browse...",
-  "cloneRootOnlyOwner": "Only the owner can change the clone root."
+  "cloneRootOnlyOwner": "Only the owner can change the clone root.",
+  "search": "Search",
+  "searchHint": "Search threads...",
+  "searchKeyboardShortcut": "⌘K",
+  "searchKeyboardShortcutNonMac": "Ctrl+K",
+  "noSearchResults": "No threads found.",
+  "threadStatusWorking": "Working",
+  "threadStatusDone": "Done",
+  "threadStatusFailed": "Failed",
+  "threadStatusApproval": "Approval",
+  "threadStatusInput": "Input"
 }

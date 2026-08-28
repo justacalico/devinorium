@@ -1803,6 +1803,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Only the owner can change the clone root.'**
   String get cloneRootOnlyOwner;
+
+  /// No description provided for @search.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get search;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search threads...'**
+  String get searchHint;
+
+  /// No description provided for @searchKeyboardShortcut.
+  ///
+  /// In en, this message translates to:
+  /// **'⌘K'**
+  String get searchKeyboardShortcut;
+
+  /// No description provided for @searchKeyboardShortcutNonMac.
+  ///
+  /// In en, this message translates to:
+  /// **'Ctrl+K'**
+  String get searchKeyboardShortcutNonMac;
+
+  /// No description provided for @noSearchResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No threads found.'**
+  String get noSearchResults;
+
+  /// No description provided for @threadStatusWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get threadStatusWorking;
+
+  /// No description provided for @threadStatusDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get threadStatusDone;
+
+  /// No description provided for @threadStatusFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get threadStatusFailed;
+
+  /// No description provided for @threadStatusApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Approval'**
+  String get threadStatusApproval;
+
+  /// No description provided for @threadStatusInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Input'**
+  String get threadStatusInput;
 }
 
 class _AppLocalizationsDelegate

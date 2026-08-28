@@ -2,7 +2,9 @@ part of '../sidebar.dart';
 
 /// A combined list of projects, each expandable to show its threads.
 class _ProjectThreadList extends StatefulWidget {
-  const _ProjectThreadList();
+  final String searchQuery;
+
+  const _ProjectThreadList({this.searchQuery = ''});
 
   @override
   State<_ProjectThreadList> createState() => _ProjectThreadListState();
@@ -67,8 +69,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       _lastActiveProjectId = activeProjectId;
       _lastThreads = threads;
 
-      // On initial load no thread is selected, so all projects start collapsed.
-      // When a thread becomes active, expand the project that owns it.
       if (activeThreadId != null) {
         final projectId = _projectIdForThread(threads, activeThreadId) ??
             activeProjectId;
@@ -89,6 +89,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     final projects = state.projects;
     final threads = state.threads;
     final activeThreadId = state.activeThreadId;
+    final query = widget.searchQuery.trim().toLowerCase();
 
     if (projects.isEmpty) {
       return const _NoProjects();
@@ -107,23 +108,38 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       });
     }
 
+    final visibleProjects = _filterProjects(projects, threadsByProject, query);
+    final visibleThreadsByProject = _filterThreads(
+      visibleProjects,
+      threadsByProject,
+      query,
+    );
+
+    if (visibleProjects.isEmpty) {
+      return const _NoSearchResults();
+    }
+
     return Column(
       children: [
         Expanded(
           child: ReorderableListView.builder(
             scrollController: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             buildDefaultDragHandles: false,
             onReorderItem: _onReorder,
-            itemCount: projects.length,
+            itemCount: visibleProjects.length,
             itemBuilder: (context, index) {
-              final p = projects[index];
+              final p = visibleProjects[index];
+              final projectThreads = visibleThreadsByProject[p.id] ?? [];
+              final isExpanded = query.isNotEmpty ||
+                  _expandedIds.contains(p.id);
+
               return _ProjectExpandableTile(
                 key: ValueKey(p.id),
                 index: index,
                 project: p,
-                threads: threadsByProject[p.id] ?? [],
-                isExpanded: _expandedIds.contains(p.id),
+                threads: projectThreads,
+                isExpanded: isExpanded,
                 activeThreadId: activeThreadId,
                 onToggle: () => _onToggle(p.id),
                 onNewThread: () {
@@ -135,7 +151,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
             },
           ),
         ),
-        if (state.hasMoreProjects || state.isLoadingMoreProjects)
+        if (query.isEmpty && (state.hasMoreProjects || state.isLoadingMoreProjects))
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
             child: state.isLoadingMoreProjects
@@ -153,8 +169,60 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     );
   }
 
+  List<Project> _filterProjects(
+    List<Project> projects,
+    Map<int, List<Thread>> threadsByProject,
+    String query,
+  ) {
+    if (query.isEmpty) return projects;
+
+    return projects.where((p) {
+      if (p.name.toLowerCase().contains(query) ||
+          p.path.toLowerCase().contains(query) ||
+          (p.isRepo && p.gitBranch.toLowerCase().contains(query))) {
+        return true;
+      }
+      final projectThreads = threadsByProject[p.id] ?? [];
+      return projectThreads.any(
+        (t) => t.title.toLowerCase().contains(query),
+      );
+    }).toList();
+  }
+
+  Map<int, List<Thread>> _filterThreads(
+    List<Project> visibleProjects,
+    Map<int, List<Thread>> threadsByProject,
+    String query,
+  ) {
+    final result = <int, List<Thread>>{};
+    for (final p in visibleProjects) {
+      final list = threadsByProject[p.id] ?? [];
+      if (query.isEmpty) {
+        result[p.id] = list;
+        continue;
+      }
+
+      final projectMatches =
+          p.name.toLowerCase().contains(query) ||
+          p.path.toLowerCase().contains(query) ||
+          (p.isRepo && p.gitBranch.toLowerCase().contains(query));
+
+      if (projectMatches) {
+        result[p.id] = list;
+      } else {
+        result[p.id] = list
+            .where((t) => t.title.toLowerCase().contains(query))
+            .toList();
+      }
+    }
+    return result;
+  }
+
   void _onReorder(int oldIndex, int newIndex) {
     final state = context.read<AppState>();
+    final query = widget.searchQuery.trim().toLowerCase();
+    if (query.isNotEmpty) return;
+
     final ids = state.projects.map((p) => p.id).toList();
     final moved = ids.removeAt(oldIndex);
     ids.insert(newIndex, moved);
@@ -180,5 +248,26 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       if (t.id == threadId) return t.projectId;
     }
     return null;
+  }
+}
+
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          l.noSearchResults,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ),
+    );
   }
 }

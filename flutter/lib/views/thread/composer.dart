@@ -185,6 +185,7 @@ class _ComposerState extends State<_Composer> {
                       focusNode: _keyFocusNode,
                       onKeyEvent: _handleKeyEvent,
                       child: TextField(
+                        key: const Key('composer_input'),
                         controller: widget.controller,
                         focusNode: _focusNode,
                         minLines: 1,
