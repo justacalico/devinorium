@@ -951,4 +951,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cloneRootOnlyOwner => 'Only the owner can change the clone root.';
+
+  @override
+  String get search => 'Search';
+
+  @override
+  String get searchHint => 'Search threads...';
+
+  @override
+  String get searchKeyboardShortcut => '⌘K';
+
+  @override
+  String get searchKeyboardShortcutNonMac => 'Ctrl+K';
+
+  @override
+  String get noSearchResults => 'No threads found.';
+
+  @override
+  String get threadStatusWorking => 'Working';
+
+  @override
+  String get threadStatusDone => 'Done';
+
+  @override
+  String get threadStatusFailed => 'Failed';
+
+  @override
+  String get threadStatusApproval => 'Approval';
+
+  @override
+  String get threadStatusInput => 'Input';
 }

@@ -76,6 +76,7 @@ class _FakeApiService extends ApiService {
   final unpinnedThreadIds = <String>[];
   final pinProjectReturns = <int, Project>{};
   final pinThreadReturns = <String, Thread>{};
+  List<Thread> listThreadsResult = const [];
   bool healthOk = true;
 
   _FakeApiService() : super(client: _ThrowingClient());
@@ -139,7 +140,7 @@ class _FakeApiService extends ApiService {
 
   @override
   Future<List<Thread>> listThreads({int? limit, int? offset}) =>
-      Future.value([]);
+      Future.value([...listThreadsResult]);
 
   @override
   Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
@@ -1591,5 +1592,356 @@ void main() {
     expect(api.deletedThreadIds, contains('a'));
     expect(state.threads, isEmpty);
     expect(find.text('My thread'), findsNothing);
+  });
+
+  testWidgets('Sidebar search filters projects and threads', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'alpha', path: '/x', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'beta', path: '/y', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'alpha task',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        Thread(
+          id: 'b',
+          title: 'beta task',
+          projectId: 2,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final search = find.byKey(const Key('sidebar_search'));
+    expect(search, findsOneWidget);
+
+    await tester.enterText(search, 'beta task');
+    await tester.pumpAndSettle();
+
+    expect(find.text('beta'), findsOneWidget);
+    expect(find.text('alpha'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(ListTile), matching: find.text('beta task')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(ListTile), matching: find.text('alpha task')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+
+    expect(find.text('alpha'), findsOneWidget);
+    expect(find.text('beta'), findsOneWidget);
+  });
+
+  testWidgets('Search shows no results when nothing matches', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.enterText(find.byKey(const Key('sidebar_search')), 'xyz');
+    await tester.pumpAndSettle();
+
+    expect(find.text('p'), findsNothing);
+    expect(find.text('My thread'), findsNothing);
+    expect(find.text('No threads found.'), findsOneWidget);
+  });
+
+  testWidgets('Active thread shows working status while sending', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ),
+      sending: true,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Working'), findsOneWidget);
+  });
+
+  testWidgets('Active thread shows done status after assistant reply', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(role: 'user', content: 'hello'),
+          Message(role: 'assistant', content: 'done'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Done'), findsOneWidget);
+  });
+
+  testWidgets('Thread delete still completes if tile unmounts during animation', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'keep',
+          title: 'keep thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        Thread(
+          id: 'trash',
+          title: 'trash thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'keep',
+    );
+
+    api.listThreadsResult = [
+      Thread(
+        id: 'keep',
+        title: 'keep thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    ];
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    final trashTile = find.ancestor(
+      of: find.text('trash thread'),
+      matching: find.byType(ListTile),
+    );
+    final delete = find.descendant(
+      of: trashTile,
+      matching: find.widgetWithIcon(IconButton, Icons.delete_outline),
+    );
+    expect(delete, findsOneWidget);
+    await tester.tap(delete);
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Filter the list while the delete animation is still running.
+    // The 'trash' tile unmounts, but its delete callback must still fire.
+    await tester.enterText(find.byKey(const Key('sidebar_search')), 'keep');
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    expect(api.deletedThreadIds, contains('trash'));
+    expect(find.text('trash thread'), findsNothing);
+    expect(find.text('keep thread'), findsOneWidget);
+  });
+
+  testWidgets('Ctrl+K focuses the sidebar search', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final searchField = find.byKey(const Key('sidebar_search'));
+    final editableFinder = find.descendant(
+      of: searchField,
+      matching: find.byType(EditableText),
+    );
+
+    expect(tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus, isFalse);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('Projects header is compact and uppercase', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.byKey(const Key('sidebar_search')), findsOneWidget);
+    expect(find.text('PROJECTS'), findsOneWidget);
+    expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
   });
 }
