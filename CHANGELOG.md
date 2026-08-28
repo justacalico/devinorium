@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.17.0 - 2026-08-28
+#### Features
+- 重新设计侧边栏为紧凑美观的 t3code 风格 - (d9433ca) - HttpAnimations
+- 分支和工作树创建改为对话框提示 - (60a11ea) - HttpAnimations
+- 将分支工具栏改为 t3code 紧凑菜单风格 - (b19eb32) - HttpAnimations
+- 在聊天编辑器下方添加分支和工作树工具栏 - (7722d15) - HttpAnimations
+
+- - -
+
 ## v0.16.0 - 2026-08-27
 #### Features
 - 添加服务器端 git clone 功能 - (67adeb2) - HttpAnimations
