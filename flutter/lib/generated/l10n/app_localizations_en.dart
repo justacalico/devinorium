@@ -732,6 +732,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mainWorktree => 'Main worktree';
 
   @override
+  String get worktreeBranchLocked =>
+      'Switch back to the main worktree to change branches';
+
+  @override
   String get git => 'Git';
 
   @override

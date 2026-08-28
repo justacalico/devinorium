@@ -1396,6 +1396,12 @@ abstract class AppLocalizations {
   /// **'Main worktree'**
   String get mainWorktree;
 
+  /// No description provided for @worktreeBranchLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch back to the main worktree to change branches'**
+  String get worktreeBranchLocked;
+
   /// No description provided for @git.
   ///
   /// In en, this message translates to:

@@ -18,23 +18,17 @@ class _BranchItem extends StatelessWidget {
     final label = name ?? branch?.name ?? '';
     final ahead = branch?.ahead ?? 0;
     final behind = branch?.behind ?? 0;
-    final isRemote = branch?.isRemote ?? false;
 
     return Row(
       children: [
-        Icon(
-          isCurrent
-              ? Icons.check_circle
-              : (isRemote ? Icons.cloud : Icons.call_split),
-          size: 16,
-          color: isCurrent ? theme.colorScheme.primary : null,
-        ),
-        const SizedBox(width: 8),
         Expanded(
           child: Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            style: isCurrent
+                ? TextStyle(color: theme.colorScheme.primary)
+                : null,
           ),
         ),
         if (behind > 0 || ahead > 0)
@@ -64,22 +58,29 @@ class _WorktreeItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final display = sublabel != null && sublabel!.isNotEmpty
-        ? '$label — $sublabel'
-        : label;
     return Row(
       children: [
-        Icon(
-          isCurrent ? Icons.check_circle : (isMain ? Icons.folder : Icons.folder_copy),
-          size: 16,
-          color: isCurrent ? theme.colorScheme.primary : null,
-        ),
-        const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            display,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: isCurrent
+                    ? TextStyle(color: theme.colorScheme.primary)
+                    : null,
+              ),
+              if (sublabel != null && sublabel!.isNotEmpty)
+                Text(
+                  sublabel!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+            ],
           ),
         ),
       ],
@@ -104,12 +105,12 @@ class _HeaderAction extends StatelessWidget {
   Widget build(BuildContext context) {
     if (loading) {
       return const SizedBox(
-        width: 40,
-        height: 32,
+        width: 28,
+        height: 28,
         child: Center(
           child: SizedBox(
-            width: 16,
-            height: 16,
+            width: 14,
+            height: 14,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
@@ -118,6 +119,11 @@ class _HeaderAction extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: TextButton(
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          minimumSize: const Size(28, 28),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
         onPressed: onPressed,
         child: Text(label),
       ),

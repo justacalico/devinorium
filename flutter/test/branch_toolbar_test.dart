@@ -362,7 +362,7 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      expect(find.byType(DropdownButton<String?>), findsNothing);
+      expect(find.byType(PopupMenuButton<String?>), findsNothing);
     });
 
     testWidgets('shows current repo branch, not stale thread branch', (
@@ -436,10 +436,10 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButton<String?>).first);
+      await tester.tap(find.byKey(const Key('branch_toolbar_branch')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('feature').last);
+      await tester.tap(find.text('feature'), warnIfMissed: false);
       await tester.pumpAndSettle();
 
       expect(api.currentBranch, 'feature');
@@ -454,10 +454,10 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButton<String?>).first);
+      await tester.tap(find.byKey(const Key('branch_toolbar_branch')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('origin/feature').last);
+      await tester.tap(find.text('origin/feature'), warnIfMissed: false);
       await tester.pumpAndSettle();
 
       expect(api.currentBranch, 'feature');
@@ -480,10 +480,10 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButton<String?>).last);
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.textContaining('wt-branch').last);
+      await tester.tap(find.text('wt-branch'), warnIfMissed: false);
       await tester.pumpAndSettle();
 
       expect(api.calls, contains('updateThreadGit:t1:wt-branch:/x/wt'));
@@ -496,7 +496,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.tap(find.byKey(const Key('branch_toolbar_branch')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, 'Branch name'), 'new-branch');
@@ -534,13 +536,15 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).last);
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create worktree'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, 'Worktree name'), 'wt');
       await tester.pump();
 
-      await tester.tap(find.text('Create worktree').last);
+      await tester.tap(find.text('Create worktree'));
       await tester.pumpAndSettle();
 
       expect(api.calls, contains('gitCreateWorktree:wt:main:false'));
@@ -554,13 +558,15 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.tap(find.byKey(const Key('branch_toolbar_branch')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButton<String?>).last);
+      await tester.tap(find.byType(DropdownButton<String?>).first);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('feature').last);
+      await tester.tap(find.text('feature'), warnIfMissed: false);
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, 'Branch name'), 'child');
@@ -579,7 +585,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).last);
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create worktree'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byType(Switch));
@@ -605,7 +613,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).last);
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create worktree'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, 'Worktree name'), 'bad');
@@ -655,7 +665,7 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      expect(find.byType(DropdownButton<String?>), findsNothing);
+      expect(find.byType(PopupMenuButton<String?>), findsNothing);
     });
 
     testWidgets('branch checkout is disabled on a non-main worktree', (
@@ -704,10 +714,11 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      // Tapping the branch dropdown when on a worktree must not trigger a checkout.
-      await tester.tap(find.byType(DropdownButton<String?>).first);
-      await tester.pumpAndSettle();
-
+      // The branch selector is disabled on a non-main worktree.
+      final branchButton = tester.widget<PopupMenuButton<String?>>(
+        find.byKey(const Key('branch_toolbar_branch')),
+      );
+      expect(branchButton.enabled, isFalse);
       expect(api.calls.where((c) => c.startsWith('gitCheckout')), isEmpty);
     });
 
@@ -718,7 +729,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.tap(find.byKey(const Key('branch_toolbar_branch')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(FilledButton, 'Create and switch'));
@@ -737,7 +750,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.tap(find.byKey(const Key('branch_toolbar_branch')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.widgetWithText(TextField, 'Branch name'), 'bad');

@@ -9,8 +9,8 @@ import '../state/app_state.dart';
 
 part 'branch_toolbar_items.dart';
 
-/// Git branch and worktree controls that live beneath the chat composer,
-/// similar to t3code. The branch display always tracks the repo's current
+/// Compact Git branch and worktree controls that live beneath the chat
+/// composer, similar to t3code. Branch display tracks the repo's current
 /// checkout (or the checked-out branch of the selected worktree) so the UI
 /// never claims the thread is on a branch it is not actually on.
 class BranchToolbar extends StatefulWidget {
@@ -80,9 +80,12 @@ class _BranchToolbarState extends State<BranchToolbar> {
     final isOnMainWorktree = activeWorktreePath == null ||
         activeWorktreePath == mainWorktreePath ||
         (activeWorktree != null && activeWorktree.isMain);
+    final worktreeBranch = activeWorktree?.branch;
     final effectiveBranch = isOnMainWorktree
         ? repo.branch
-        : (activeWorktree?.branch ?? repo.branch);
+        : (worktreeBranch?.isNotEmpty == true
+            ? worktreeBranch!
+            : (activeWorktree?.head ?? repo.branch));
 
     final theme = Theme.of(context);
     final l = l10n(context);
@@ -91,66 +94,87 @@ class _BranchToolbarState extends State<BranchToolbar> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             LayoutBuilder(
               builder: (context, constraints) {
-                final branchControl = _buildBranchControl(
-                  state: state,
-                  projectId: projectId,
-                  threadId: threadId,
-                  repo: repo,
-                  branches: branches,
-                  effectiveBranch: effectiveBranch,
-                  isOnMainWorktree: isOnMainWorktree,
-                  sending: sending,
-                  theme: theme,
-                  l: l,
-                );
-                final worktreeControl = _buildWorktreeControl(
-                  state: state,
-                  projectId: projectId,
-                  threadId: threadId,
-                  repo: repo,
-                  worktrees: worktrees,
-                  mainWorktreePath: mainWorktreePath,
-                  activeWorktree: activeWorktree,
-                  activeWorktreePath: activeWorktreePath,
-                  sending: sending,
-                  l: l,
-                  theme: theme,
-                );
-                if (constraints.maxWidth < 560) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      branchControl,
-                      const SizedBox(height: 8),
-                      worktreeControl,
-                    ],
-                  );
-                }
+                final compact = constraints.maxWidth < 420;
                 return Row(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(child: branchControl),
-                    const SizedBox(width: 16),
-                    Expanded(child: worktreeControl),
+                    _buildBranchButton(
+                      state: state,
+                      projectId: projectId,
+                      threadId: threadId,
+                      repo: repo,
+                      branches: branches,
+                      effectiveBranch: effectiveBranch,
+                      isOnMainWorktree: isOnMainWorktree,
+                      sending: sending,
+                      compact: compact,
+                      theme: theme,
+                      l: l,
+                    ),
+                    if (repo.behind > 0) ...[
+                      const SizedBox(width: 2),
+                      _HeaderAction(
+                        label: '↓${repo.behind}',
+                        tooltip: l.pull,
+                        loading: _pulling,
+                        onPressed: isOnMainWorktree && !sending
+                            ? () => _pull(state, projectId)
+                            : null,
+                      ),
+                    ],
+                    if (repo.ahead > 0) ...[
+                      const SizedBox(width: 2),
+                      _HeaderAction(
+                        label: '↑${repo.ahead}',
+                        tooltip: l.push,
+                        loading: _pushing,
+                        onPressed: isOnMainWorktree && !sending
+                            ? () => _push(state, projectId)
+                            : null,
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                    _buildWorktreeButton(
+                      state: state,
+                      projectId: projectId,
+                      threadId: threadId,
+                      repo: repo,
+                      worktrees: worktrees,
+                      mainWorktreePath: mainWorktreePath,
+                      activeWorktree: activeWorktree,
+                      activeWorktreePath: activeWorktreePath,
+                      sending: sending,
+                      compact: compact,
+                      theme: theme,
+                      l: l,
+                    ),
                   ],
                 );
               },
             ),
-            if (_creatingBranch) _buildCreateBranchForm(state, projectId, branches, l, theme),
+            if (_creatingBranch)
+              _buildCreateBranchForm(state, projectId, branches, l, theme),
             if (_creatingWorktree)
               _buildCreateWorktreeForm(state, projectId, branches, repo, l, theme),
           ],
         ),
       ),
     );
+  }
+
+  GitBranch? _findBranch(List<GitBranch> branches, String name) {
+    for (final b in branches) {
+      if (b.name == name) return b;
+    }
+    return null;
   }
 
   GitWorktree? _findWorktree(List<GitWorktree> worktrees, String path) {
@@ -160,7 +184,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
     return null;
   }
 
-  Widget _buildBranchControl({
+  Widget _buildBranchButton({
     required AppState state,
     required int projectId,
     required String threadId,
@@ -169,97 +193,146 @@ class _BranchToolbarState extends State<BranchToolbar> {
     required String effectiveBranch,
     required bool isOnMainWorktree,
     required bool sending,
+    required bool compact,
     required ThemeData theme,
     required AppLocalizations l,
   }) {
-    final branchItems = _buildBranchItems(
-      branches: branches,
-      currentBranch: effectiveBranch,
-      isOnMainWorktree: isOnMainWorktree,
-      theme: theme,
-    );
+    final enabled = isOnMainWorktree && !sending;
+    final foreground = theme.colorScheme.onSurfaceVariant;
 
-    final value = _itemValueForBranch(effectiveBranch, branchItems);
-
-    final actions = <Widget>[
-      if (repo.behind > 0) ...[
-        const SizedBox(width: 4),
-        _HeaderAction(
-          label: '↓${repo.behind}',
-          tooltip: l.pull,
-          loading: _pulling,
-          onPressed: isOnMainWorktree && !sending
-              ? () => _pull(state, projectId)
-              : null,
+    return Tooltip(
+      message: enabled ? l.gitBranches : l.worktreeBranchLocked,
+      child: PopupMenuButton<String?>(
+        key: const Key('branch_toolbar_branch'),
+        enabled: enabled,
+        tooltip: '',
+        offset: const Offset(0, -4),
+        onSelected: (value) => _onBranchMenuSelected(
+          state,
+          projectId,
+          threadId,
+          branches,
+          value,
         ),
-      ],
-      if (repo.ahead > 0) ...[
-        const SizedBox(width: 4),
-        _HeaderAction(
-          label: '↑${repo.ahead}',
-          tooltip: l.push,
-          loading: _pushing,
-          onPressed: isOnMainWorktree && !sending
-              ? () => _push(state, projectId)
-              : null,
+        itemBuilder: (context) => _buildBranchMenuItems(
+          branches: branches,
+          currentBranch: effectiveBranch,
+          l: l,
+          theme: theme,
         ),
-      ],
-      if (isOnMainWorktree) ...[
-        const SizedBox(width: 4),
-        IconButton(
-          iconSize: 18,
-          icon: const Icon(Icons.add),
-          tooltip: l.createBranch,
-          onPressed: sending
-              ? null
-              : () => setState(() {
-                _creatingBranch = !_creatingBranch;
-                _creatingWorktree = false;
-              }),
+        child: _ToolbarButton(
+          icon: Icons.call_split,
+          label: effectiveBranch,
+          compact: compact,
+          foreground: foreground,
+          theme: theme,
         ),
-      ],
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final dropdown = DropdownButton<String?>(
-          isExpanded: true,
-          isDense: true,
-          underline: const SizedBox(),
-          iconSize: 18,
-          menuMaxHeight: 320,
-          value: value,
-          hint: Text(l.gitBranches),
-          items: branchItems,
-          onTap: () => unawaited(state.loadGitBranches(projectId)),
-          onChanged: isOnMainWorktree && !sending
-              ? (value) => _onBranchSelected(state, projectId, threadId, branches, value)
-              : null,
-        );
-        if (constraints.maxWidth < 280) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              dropdown,
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: actions,
-              ),
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [Expanded(child: dropdown), ...actions],
-        );
-      },
+      ),
     );
   }
 
-  Widget _buildWorktreeControl({
+  List<PopupMenuEntry<String?>> _buildBranchMenuItems({
+    required List<GitBranch> branches,
+    required String currentBranch,
+    required AppLocalizations l,
+    required ThemeData theme,
+  }) {
+    final items = <PopupMenuEntry<String?>>[];
+    items.add(
+      PopupMenuItem<String?>(
+        enabled: false,
+        child: Text(
+          l.gitBranches,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+    items.add(const PopupMenuDivider(height: 8));
+
+    final defaultIndex = branches.indexWhere((b) => b.isDefault);
+    final defaultBranch = defaultIndex >= 0 ? branches[defaultIndex] : null;
+    final others = branches.where((b) => !b.isDefault).toList();
+
+    void addBranch(GitBranch b) {
+      final isCurrent = b.name == currentBranch;
+      items.add(
+        CheckedPopupMenuItem(
+          value: b.name,
+          checked: isCurrent,
+          child: _BranchItem(
+            branch: b,
+            isCurrent: isCurrent,
+            theme: theme,
+          ),
+        ),
+      );
+    }
+
+    if (defaultBranch != null) addBranch(defaultBranch);
+    for (final b in others) {
+      addBranch(b);
+    }
+
+    if (branches.isEmpty && currentBranch.isNotEmpty) {
+      items.add(
+        PopupMenuItem<String?>(
+          value: currentBranch,
+          enabled: false,
+          child: _BranchItem(
+            name: currentBranch,
+            isCurrent: true,
+            theme: theme,
+          ),
+        ),
+      );
+    }
+
+    items.add(const PopupMenuDivider(height: 8));
+    items.add(
+      PopupMenuItem<String?>(
+        value: '__create_branch__',
+        child: Row(
+          children: [
+            Icon(Icons.add, size: 16, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(l.createBranch),
+          ],
+        ),
+      ),
+    );
+    return items;
+  }
+
+  Future<void> _onBranchMenuSelected(
+    AppState state,
+    int projectId,
+    String threadId,
+    List<GitBranch> branches,
+    String? value,
+  ) async {
+    if (value == null) return;
+    if (value == '__create_branch__') {
+      setState(() {
+        _creatingBranch = !_creatingBranch;
+        _creatingWorktree = false;
+      });
+      return;
+    }
+    final branch = _findBranch(branches, value);
+    if (branch == null) return;
+    final ok = await state.gitCheckout(projectId, branch.name, track: branch.isRemote);
+    if (!ok) return;
+    final repo = state.gitRepoInfo(projectId);
+    final current = repo?.branch ?? branch.name;
+    if (current.isNotEmpty) {
+      await state.setThreadGit(threadId, branch: current);
+    }
+  }
+
+  Widget _buildWorktreeButton({
     required AppState state,
     required int projectId,
     required String threadId,
@@ -269,135 +342,85 @@ class _BranchToolbarState extends State<BranchToolbar> {
     required GitWorktree? activeWorktree,
     required String? activeWorktreePath,
     required bool sending,
+    required bool compact,
+    required ThemeData theme,
     required AppLocalizations l,
-    required ThemeData theme,
   }) {
-    final items = _buildWorktreeItems(
-      worktrees: worktrees,
-      repo: repo,
-      mainWorktreePath: mainWorktreePath,
-      activeWorktree: activeWorktree,
-      activeWorktreePath: activeWorktreePath,
-      l: l,
-      theme: theme,
-    );
     final currentValue = activeWorktreePath ?? mainWorktreePath;
+    final isOnMainWorktree = activeWorktreePath == null ||
+        activeWorktreePath == mainWorktreePath ||
+        (activeWorktree != null && activeWorktree.isMain);
+    final label = isOnMainWorktree
+        ? l.mainWorktree
+        : (activeWorktree?.branch ??
+            activeWorktree?.head ??
+            activeWorktreePath.split('/').last);
+    final icon = isOnMainWorktree ? Icons.folder : Icons.folder_copy;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: DropdownButton<String?>(
-            isExpanded: true,
-            isDense: true,
-            underline: const SizedBox(),
-            iconSize: 18,
-            menuMaxHeight: 320,
-            value: currentValue,
-            hint: Text(l.worktrees),
-            items: items,
-            onTap: () => unawaited(state.loadGitWorktrees(projectId)),
-            onChanged: sending
-                ? null
-                : (value) => _onWorktreeSelected(
-                    state,
-                    projectId,
-                    threadId,
-                    worktrees,
-                    mainWorktreePath,
-                    value,
-                  ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        IconButton(
-          iconSize: 18,
-          icon: const Icon(Icons.add),
-          tooltip: l.createWorktree,
-          onPressed: sending
-              ? null
-              : () => setState(() {
-                _creatingWorktree = !_creatingWorktree;
-                _creatingBranch = false;
-              }),
-        ),
-      ],
+    return PopupMenuButton<String?>(
+      key: const Key('branch_toolbar_worktree'),
+      enabled: !sending,
+      tooltip: l.worktrees,
+      offset: const Offset(0, -4),
+      onSelected: (value) => _onWorktreeMenuSelected(
+        state,
+        projectId,
+        threadId,
+        worktrees,
+        mainWorktreePath,
+        value,
+      ),
+      itemBuilder: (context) => _buildWorktreeMenuItems(
+        worktrees: worktrees,
+        repo: repo,
+        mainWorktreePath: mainWorktreePath,
+        currentValue: currentValue,
+        l: l,
+        theme: theme,
+      ),
+      child: _ToolbarButton(
+        icon: icon,
+        label: label,
+        compact: compact,
+        foreground: theme.colorScheme.onSurfaceVariant,
+        theme: theme,
+      ),
     );
   }
 
-  List<DropdownMenuItem<String?>> _buildBranchItems({
-    required List<GitBranch> branches,
-    required String currentBranch,
-    required bool isOnMainWorktree,
-    required ThemeData theme,
-  }) {
-    final items = <DropdownMenuItem<String?>>[];
-    final hasCurrent = branches.any((b) => b.name == currentBranch);
-    if (!hasCurrent && currentBranch.isNotEmpty) {
-      items.add(
-        DropdownMenuItem(
-          value: currentBranch,
-          enabled: false,
-          child: _BranchItem(name: currentBranch, isCurrent: true, theme: theme),
-        ),
-      );
-    }
-
-    final defaultIndex = branches.indexWhere((b) => b.isDefault);
-    final defaultBranch = defaultIndex >= 0 ? branches[defaultIndex] : null;
-    final others = branches.where((b) => !b.isDefault).toList();
-
-    void addItem(GitBranch b) {
-      final isCurrent = b.name == currentBranch;
-      items.add(
-        DropdownMenuItem(
-          value: b.name,
-          enabled: isOnMainWorktree && !isCurrent,
-          child: _BranchItem(branch: b, isCurrent: isCurrent, theme: theme),
-        ),
-      );
-    }
-
-    if (defaultBranch != null) {
-      addItem(defaultBranch);
-    }
-    for (final b in others) {
-      addItem(b);
-    }
-    return items;
-  }
-
-  String? _itemValueForBranch(
-    String currentBranch,
-    List<DropdownMenuItem<String?>> items,
-  ) {
-    if (items.isEmpty) return null;
-    for (final item in items) {
-      if (item.value == currentBranch) return currentBranch;
-    }
-    return items.first.value;
-  }
-
-  List<DropdownMenuItem<String?>> _buildWorktreeItems({
+  List<PopupMenuEntry<String?>> _buildWorktreeMenuItems({
     required List<GitWorktree> worktrees,
     required GitRepoInfo repo,
     required String mainWorktreePath,
-    required GitWorktree? activeWorktree,
-    required String? activeWorktreePath,
+    required String currentValue,
     required AppLocalizations l,
     required ThemeData theme,
   }) {
-    final currentValue = activeWorktree?.path ?? activeWorktreePath ?? mainWorktreePath;
-    final items = <DropdownMenuItem<String?>>[];
-
+    final items = <PopupMenuEntry<String?>>[];
     items.add(
-      DropdownMenuItem(
+      PopupMenuItem<String?>(
+        enabled: false,
+        child: Text(
+          l.worktrees,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+    items.add(const PopupMenuDivider(height: 8));
+
+    final isCurrent = currentValue == mainWorktreePath;
+    items.add(
+      CheckedPopupMenuItem(
         value: mainWorktreePath,
+        checked: isCurrent,
         child: _WorktreeItem(
           label: l.mainWorktree,
           sublabel: repo.branch,
           isMain: true,
-          isCurrent: currentValue == mainWorktreePath,
+          isCurrent: isCurrent,
           theme: theme,
         ),
       ),
@@ -407,8 +430,9 @@ class _BranchToolbarState extends State<BranchToolbar> {
       if (w.isMain && w.path == mainWorktreePath) continue;
       final isCurrent = w.path == currentValue;
       items.add(
-        DropdownMenuItem(
+        CheckedPopupMenuItem(
           value: w.path,
+          checked: isCurrent,
           child: _WorktreeItem(
             label: w.branch ?? w.head,
             sublabel: w.path.split('/').last,
@@ -420,10 +444,12 @@ class _BranchToolbarState extends State<BranchToolbar> {
       );
     }
 
-    final hasCurrent = items.any((i) => i.value == currentValue);
-    if (!hasCurrent && currentValue != mainWorktreePath) {
+    if (!items
+            .whereType<PopupMenuItem<String?>>()
+            .any((i) => i.value == currentValue) &&
+        currentValue != mainWorktreePath) {
       items.add(
-        DropdownMenuItem(
+        PopupMenuItem<String?>(
           value: currentValue,
           enabled: false,
           child: _WorktreeItem(
@@ -437,28 +463,23 @@ class _BranchToolbarState extends State<BranchToolbar> {
       );
     }
 
+    items.add(const PopupMenuDivider(height: 8));
+    items.add(
+      PopupMenuItem<String?>(
+        value: '__create_worktree__',
+        child: Row(
+          children: [
+            Icon(Icons.add, size: 16, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(l.createWorktree),
+          ],
+        ),
+      ),
+    );
     return items;
   }
 
-  Future<void> _onBranchSelected(
-    AppState state,
-    int projectId,
-    String threadId,
-    List<GitBranch> branches,
-    String? value,
-  ) async {
-    if (value == null || value.isEmpty) return;
-    final branch = branches.firstWhere((b) => b.name == value);
-    final ok = await state.gitCheckout(projectId, branch.name, track: branch.isRemote);
-    if (!ok) return;
-    final repo = state.gitRepoInfo(projectId);
-    final current = repo?.branch ?? branch.name;
-    if (current.isNotEmpty) {
-      await state.setThreadGit(threadId, branch: current);
-    }
-  }
-
-  Future<void> _onWorktreeSelected(
+  Future<void> _onWorktreeMenuSelected(
     AppState state,
     int projectId,
     String threadId,
@@ -467,6 +488,13 @@ class _BranchToolbarState extends State<BranchToolbar> {
     String? value,
   ) async {
     if (value == null) return;
+    if (value == '__create_worktree__') {
+      setState(() {
+        _creatingWorktree = !_creatingWorktree;
+        _creatingBranch = false;
+      });
+      return;
+    }
     if (value == mainWorktreePath) {
       final repo = state.gitRepoInfo(projectId);
       await state.setThreadGit(
@@ -498,94 +526,90 @@ class _BranchToolbarState extends State<BranchToolbar> {
         ? _createBranchBase
         : null;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _branchNameController,
-              enabled: !_submitting,
-              decoration: InputDecoration(
-                labelText: l.branchName,
-                isDense: true,
-                border: const OutlineInputBorder(),
-              ),
+    return _CompactForm(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _branchNameController,
+            enabled: !_submitting,
+            decoration: InputDecoration(
+              labelText: l.branchName,
+              isDense: true,
+              border: const OutlineInputBorder(),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: 8,
-              spacing: 8,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 220),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: l.baseBranchOptional,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 8,
+            spacing: 8,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: l.baseBranchOptional,
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      isExpanded: true,
                       isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        isExpanded: true,
-                        isDense: true,
-                        value: baseValue,
-                        hint: Text(l.none),
-                        items: [
-                          DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text(l.none),
+                      value: baseValue,
+                      hint: Text(l.none),
+                      items: [
+                        DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text(l.none),
+                        ),
+                        ...branchNames.map(
+                          (name) => DropdownMenuItem<String?>(
+                            value: name,
+                            child: Text(name),
                           ),
-                          ...branchNames.map(
-                            (name) => DropdownMenuItem<String?>(
-                              value: name,
-                              child: Text(name),
-                            ),
-                          ),
-                        ],
-                        onChanged: _submitting
-                            ? null
-                            : (v) => setState(() => _createBranchBase = v),
-                      ),
+                        ),
+                      ],
+                      onChanged: _submitting
+                          ? null
+                          : (v) => setState(() => _createBranchBase = v),
                     ),
                   ),
                 ),
-                FilledButton(
-                  onPressed: _submitting
-                      ? null
-                      : () => _createBranch(state, projectId, switchBranch: false),
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l.createBranch),
-                ),
-                FilledButton(
-                  onPressed: _submitting
-                      ? null
-                      : () => _createBranch(state, projectId, switchBranch: true),
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l.createAndSwitchBranch),
-                ),
-                TextButton(
-                  onPressed: _submitting ? null : () => setState(() => _creatingBranch = false),
-                  child: Text(l.close),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              FilledButton(
+                onPressed: _submitting
+                    ? null
+                    : () => _createBranch(state, projectId, switchBranch: false),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(l.createBranch),
+              ),
+              FilledButton(
+                onPressed: _submitting
+                    ? null
+                    : () => _createBranch(state, projectId, switchBranch: true),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(l.createAndSwitchBranch),
+              ),
+              TextButton(
+                onPressed: _submitting ? null : () => setState(() => _creatingBranch = false),
+                child: Text(l.close),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -636,7 +660,8 @@ class _BranchToolbarState extends State<BranchToolbar> {
     AppLocalizations l,
     ThemeData theme,
   ) {
-    final branchNames = branches.map((b) => b.name).toList();
+    final localBranches = branches.where((b) => !b.isRemote).toList();
+    final branchNames = localBranches.map((b) => b.name).toList();
     final baseValue = _createWorktreeBase != null &&
             branchNames.contains(_createWorktreeBase)
         ? _createWorktreeBase
@@ -644,114 +669,105 @@ class _BranchToolbarState extends State<BranchToolbar> {
             ? repo.branch
             : (branchNames.isNotEmpty ? branchNames.first : null));
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _worktreeNameController,
-              enabled: !_submitting,
-              decoration: InputDecoration(
-                labelText: l.worktreeName,
-                isDense: true,
-                border: const OutlineInputBorder(),
-              ),
+    return _CompactForm(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _worktreeNameController,
+            enabled: !_submitting,
+            decoration: InputDecoration(
+              labelText: l.worktreeName,
+              isDense: true,
+              border: const OutlineInputBorder(),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: 8,
-              spacing: 8,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 220),
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: l.baseBranch,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 8,
+            spacing: 8,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: l.baseBranch,
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      isExpanded: true,
                       isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        isExpanded: true,
-                        isDense: true,
-                        value: baseValue,
-                        hint: Text(l.baseBranch),
-                        items: branchNames
-                            .map(
-                              (name) => DropdownMenuItem<String?>(
-                                value: name,
-                                child: Text(name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: _submitting
-                            ? null
-                            : (v) => setState(() => _createWorktreeBase = v),
-                      ),
+                      value: baseValue,
+                      hint: Text(l.baseBranch),
+                      items: branchNames
+                          .map(
+                            (name) => DropdownMenuItem<String?>(
+                              value: name,
+                              child: Text(name),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _submitting
+                          ? null
+                          : (v) => setState(() => _createWorktreeBase = v),
                     ),
                   ),
                 ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Switch(
-                      value: _createWorktreeNewBranch,
-                      onChanged: _submitting
-                          ? null
-                          : (v) => setState(() => _createWorktreeNewBranch = v),
-                    ),
-                    Text(l.newBranchInWorktree),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: 8,
-              spacing: 8,
-              children: [
-                FilledButton(
-                  onPressed: _submitting || baseValue == null
-                      ? null
-                      : () => _createWorktree(state, projectId),
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l.createWorktree),
-                ),
-                TextButton(
-                  onPressed: _submitting ? null : () => setState(() => _creatingWorktree = false),
-                  child: Text(l.close),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Switch(
+                    value: _createWorktreeNewBranch,
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(() => _createWorktreeNewBranch = v),
+                  ),
+                  Text(l.newBranchInWorktree),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 8,
+            spacing: 8,
+            children: [
+              FilledButton(
+                onPressed: _submitting || baseValue == null
+                    ? null
+                    : () => _createWorktree(state, projectId, baseValue),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(l.createWorktree),
+              ),
+              TextButton(
+                onPressed: _submitting ? null : () => setState(() => _creatingWorktree = false),
+                child: Text(l.close),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _createWorktree(AppState state, int projectId) async {
+  Future<void> _createWorktree(
+    AppState state,
+    int projectId,
+    String base,
+  ) async {
     final name = _worktreeNameController.text.trim();
-    final branches = state.gitBranches(projectId);
-    final branchNames = branches.map((b) => b.name).toList();
-    var base = _createWorktreeBase;
-    if (base == null || !branchNames.contains(base)) {
-      final repo = state.gitRepoInfo(projectId);
-      base = branchNames.contains(repo?.branch) && repo?.branch.isNotEmpty == true
-          ? repo!.branch
-          : (branchNames.isNotEmpty ? branchNames.first : null);
-    }
-    if (name.isEmpty || base == null || base.isEmpty) return;
+    if (name.isEmpty || base.isEmpty) return;
     setState(() => _submitting = true);
     try {
       final threadId = state.activeThreadId;
@@ -799,5 +815,68 @@ class _BranchToolbarState extends State<BranchToolbar> {
     } finally {
       if (mounted) setState(() => _pushing = false);
     }
+  }
+}
+
+class _ToolbarButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool compact;
+  final Color? foreground;
+  final ThemeData theme;
+
+  const _ToolbarButton({
+    required this.icon,
+    required this.label,
+    required this.compact,
+    required this.foreground,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: foreground?.withValues(alpha: 0.85)),
+          if (!compact) ...[
+            const SizedBox(width: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 160),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(color: foreground),
+              ),
+            ),
+          ],
+          const SizedBox(width: 2),
+          Icon(
+            Icons.arrow_drop_down,
+            size: 16,
+            color: foreground?.withValues(alpha: 0.6),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactForm extends StatelessWidget {
+  final Widget child;
+  const _CompactForm({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(top: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: child,
+      ),
+    );
   }
 }

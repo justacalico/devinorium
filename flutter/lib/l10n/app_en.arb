@@ -422,6 +422,7 @@
   "newBranchInWorktree": "Create new branch in worktree",
   "worktrees": "Worktrees",
   "mainWorktree": "Main worktree",
+  "worktreeBranchLocked": "Switch back to the main worktree to change branches",
   "git": "Git",
   "gitConnections": "Connections",
   "gitlab": "GitLab",
