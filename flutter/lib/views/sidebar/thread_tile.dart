@@ -101,7 +101,7 @@ class _ThreadTileState extends State<_ThreadTile>
                     : null,
               ),
             ),
-            subtitle: _threadSubtitle(widget.thread, theme),
+            subtitle: _threadSubtitle(state, widget.thread, theme),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

@@ -25,7 +25,6 @@ class _ProjectExpandableTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final isRepo = project.isRepo;
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
 
@@ -92,15 +91,6 @@ class _ProjectExpandableTile extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (isRepo)
-                    IconButton(
-                      tooltip: project.gitBranch.isNotEmpty
-                          ? project.gitBranch
-                          : l10n(context).gitBranches,
-                      icon: Icon(Icons.call_split,
-                          size: 16, color: theme.colorScheme.onSurfaceVariant),
-                      onPressed: () => state.openGitBranchDialog(project.id),
-                    ),
                   if (onNewThread != null)
                     IconButton(
                       tooltip: l10n(context).newThreadIn(project.name),

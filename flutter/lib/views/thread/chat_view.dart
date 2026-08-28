@@ -215,6 +215,7 @@ class _ChatViewState extends State<ChatView> {
                   ),
                 ),
               _Composer(controller: _composerController),
+              const BranchToolbar(),
             ],
           ],
         );

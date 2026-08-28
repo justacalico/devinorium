@@ -226,10 +226,10 @@ void main() {
 
   group('DialogStore', () {
     test('dialog can be closed', () {
-      final state = AppState.test(dialog: DialogKind.gitBranches);
+      final state = AppState.test(dialog: DialogKind.cloneRepo);
       addTearDown(state.dispose);
 
-      expect(state.dialog, DialogKind.gitBranches);
+      expect(state.dialog, DialogKind.cloneRepo);
 
       state.closeDialog();
       expect(state.dialog, DialogKind.none);

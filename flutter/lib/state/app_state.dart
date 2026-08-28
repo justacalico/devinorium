@@ -46,7 +46,6 @@ enum DialogKind {
   newProject,
   cloneRepo,
   permissionRequest,
-  gitBranches,
   renameProject,
   renameThread,
   mergeRequest,

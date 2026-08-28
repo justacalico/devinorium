@@ -187,14 +187,31 @@ class Sidebar extends StatelessWidget {
   }
 }
 
-Widget? _threadSubtitle(Thread thread, ThemeData theme) {
+Widget? _threadSubtitle(AppState state, Thread thread, ThemeData theme) {
   final parts = <String>[];
-  if (thread.branch != null && thread.branch!.isNotEmpty) {
-    parts.add(thread.branch!);
-  }
+  final repo = state.gitRepoInfo(thread.projectId);
+
   if (thread.worktreePath != null && thread.worktreePath!.isNotEmpty) {
+    final worktrees = state.gitWorktrees(thread.projectId);
+    GitWorktree? active;
+    for (final w in worktrees) {
+      if (w.path == thread.worktreePath) {
+        active = w;
+        break;
+      }
+    }
+    final branch = active?.branch ??
+        active?.head ??
+        repo?.branch ??
+        thread.branch ??
+        '';
+    if (branch.isNotEmpty) parts.add(branch);
     parts.add(thread.worktreePath!.split('/').last);
+  } else {
+    final branch = repo?.branch ?? thread.branch ?? '';
+    if (branch.isNotEmpty) parts.add(branch);
   }
+
   if (parts.isEmpty) return null;
   return Text(
     parts.join('  '),
