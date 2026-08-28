@@ -544,7 +544,7 @@ void main() {
       await tester.enterText(find.widgetWithText(TextField, 'Worktree name'), 'wt');
       await tester.pump();
 
-      await tester.tap(find.text('Create worktree'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Create worktree'));
       await tester.pumpAndSettle();
 
       expect(api.calls, contains('gitCreateWorktree:wt:main:false'));
@@ -572,7 +572,7 @@ void main() {
       await tester.enterText(find.widgetWithText(TextField, 'Branch name'), 'child');
       await tester.pump();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Create branch'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Create branch'));
       await tester.pumpAndSettle();
 
       expect(api.calls, contains('gitCreateBranch:child:feature:false'));
@@ -738,6 +738,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls.where((c) => c.startsWith('gitCreateBranch')), isEmpty);
+    });
+
+    testWidgets('empty worktree name does not submit', (tester) async {
+      final api = _FakeApiService();
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create worktree').first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create worktree'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls.where((c) => c.startsWith('gitCreateWorktree')), isEmpty);
     });
 
     testWidgets('keeps the form open and surfaces an error on failure', (

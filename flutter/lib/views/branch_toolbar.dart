@@ -9,6 +9,9 @@ import '../state/app_state.dart';
 
 part 'branch_toolbar_items.dart';
 
+const _kCreateBranch = '__create_branch__';
+const _kCreateWorktree = '__create_worktree__';
+
 /// Compact Git branch and worktree controls that live beneath the chat
 /// composer, similar to t3code. Branch display tracks the repo's current
 /// checkout (or the checked-out branch of the selected worktree) so the UI
@@ -21,27 +24,10 @@ class BranchToolbar extends StatefulWidget {
 }
 
 class _BranchToolbarState extends State<BranchToolbar> {
-  final _branchNameController = TextEditingController();
-  final _worktreeNameController = TextEditingController();
-
-  bool _creatingBranch = false;
-  bool _creatingWorktree = false;
-  bool _submitting = false;
   bool _pulling = false;
   bool _pushing = false;
 
-  String? _createBranchBase;
-  String? _createWorktreeBase;
-  bool _createWorktreeNewBranch = false;
-
   int? _lastProjectId;
-
-  @override
-  void dispose() {
-    _branchNameController.dispose();
-    _worktreeNameController.dispose();
-    super.dispose();
-  }
 
   @override
   void didChangeDependencies() {
@@ -160,10 +146,6 @@ class _BranchToolbarState extends State<BranchToolbar> {
                 );
               },
             ),
-            if (_creatingBranch)
-              _buildCreateBranchForm(state, projectId, branches, l, theme),
-            if (_creatingWorktree)
-              _buildCreateWorktreeForm(state, projectId, branches, repo, l, theme),
           ],
         ),
       ),
@@ -293,7 +275,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
     items.add(const PopupMenuDivider(height: 8));
     items.add(
       PopupMenuItem<String?>(
-        value: '__create_branch__',
+        value: _kCreateBranch,
         child: Row(
           children: [
             Icon(Icons.add, size: 16, color: theme.colorScheme.primary),
@@ -314,11 +296,9 @@ class _BranchToolbarState extends State<BranchToolbar> {
     String? value,
   ) async {
     if (value == null) return;
-    if (value == '__create_branch__') {
-      setState(() {
-        _creatingBranch = !_creatingBranch;
-        _creatingWorktree = false;
-      });
+    if (value == _kCreateBranch) {
+      if (!mounted) return;
+      await _showCreateBranchDialog(context, state, projectId, threadId, branches);
       return;
     }
     final branch = _findBranch(branches, value);
@@ -466,7 +446,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
     items.add(const PopupMenuDivider(height: 8));
     items.add(
       PopupMenuItem<String?>(
-        value: '__create_worktree__',
+        value: _kCreateWorktree,
         child: Row(
           children: [
             Icon(Icons.add, size: 16, color: theme.colorScheme.primary),
@@ -488,11 +468,9 @@ class _BranchToolbarState extends State<BranchToolbar> {
     String? value,
   ) async {
     if (value == null) return;
-    if (value == '__create_worktree__') {
-      setState(() {
-        _creatingWorktree = !_creatingWorktree;
-        _creatingBranch = false;
-      });
+    if (value == _kCreateWorktree) {
+      if (!mounted) return;
+      await _showCreateWorktreeDialog(context, state, projectId, threadId);
       return;
     }
     if (value == mainWorktreePath) {
@@ -513,290 +491,316 @@ class _BranchToolbarState extends State<BranchToolbar> {
     );
   }
 
-  Widget _buildCreateBranchForm(
+  Future<void> _showCreateBranchDialog(
+    BuildContext context,
     AppState state,
     int projectId,
+    String threadId,
     List<GitBranch> branches,
-    AppLocalizations l,
-    ThemeData theme,
-  ) {
+  ) async {
+    final l = l10n(context);
     final branchNames = branches.map((b) => b.name).toList();
-    final baseValue = _createBranchBase != null &&
-            branchNames.contains(_createBranchBase)
-        ? _createBranchBase
-        : null;
+    String? base;
+    var name = '';
+    var submitting = false;
+    var error = '';
 
-    return _CompactForm(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _branchNameController,
-            enabled: !_submitting,
-            decoration: InputDecoration(
-              labelText: l.branchName,
-              isDense: true,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            runSpacing: 8,
-            spacing: 8,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 220),
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: l.baseBranchOptional,
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      isExpanded: true,
-                      isDense: true,
-                      value: baseValue,
-                      hint: Text(l.none),
-                      items: [
-                        DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text(l.none),
-                        ),
-                        ...branchNames.map(
-                          (name) => DropdownMenuItem<String?>(
-                            value: name,
-                            child: Text(name),
-                          ),
-                        ),
-                      ],
-                      onChanged: _submitting
-                          ? null
-                          : (v) => setState(() => _createBranchBase = v),
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> submit(bool switchBranch) async {
+              if (name.trim().isEmpty) return;
+              setState(() {
+                submitting = true;
+                error = '';
+              });
+              final ok = await state.gitCreateBranch(
+                projectId,
+                name.trim(),
+                base: base?.trim(),
+                switchBranch: switchBranch,
+              );
+              if (!dialogContext.mounted) return;
+              if (ok) {
+                Navigator.of(dialogContext).pop();
+                if (switchBranch) {
+                  final currentRepo = state.gitRepoInfo(projectId);
+                  final current = currentRepo?.branch ?? name;
+                  if (current.isNotEmpty) {
+                    await state.setThreadGit(threadId, branch: current);
+                  }
+                }
+                return;
+              }
+              setState(() {
+                submitting = false;
+                error = state.globalError;
+              });
+            }
+
+            return AlertDialog(
+              scrollable: true,
+              title: Text(l.createBranch),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      enabled: !submitting,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: l.branchName,
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setState(() => name = v),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: l.baseBranchOptional,
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          isExpanded: true,
+                          isDense: true,
+                          value: base,
+                          hint: Text(l.none),
+                          items: [
+                            DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text(l.none),
+                            ),
+                            ...branchNames.map(
+                              (name) => DropdownMenuItem<String?>(
+                                value: name,
+                                child: Text(name),
+                              ),
+                            ),
+                          ],
+                          onChanged: submitting
+                              ? null
+                              : (v) => setState(() => base = v),
+                        ),
+                      ),
+                    ),
+                    if (error.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        error,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              FilledButton(
-                onPressed: _submitting
-                    ? null
-                    : () => _createBranch(state, projectId, switchBranch: false),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(l.createBranch),
-              ),
-              FilledButton(
-                onPressed: _submitting
-                    ? null
-                    : () => _createBranch(state, projectId, switchBranch: true),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(l.createAndSwitchBranch),
-              ),
-              TextButton(
-                onPressed: _submitting ? null : () => setState(() => _creatingBranch = false),
-                child: Text(l.close),
-              ),
-            ],
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  child: Text(l.close),
+                ),
+                OutlinedButton(
+                  onPressed: submitting || name.trim().isEmpty
+                      ? null
+                      : () => submit(false),
+                  child: submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(l.createBranch),
+                ),
+                FilledButton(
+                  onPressed: submitting || name.trim().isEmpty
+                      ? null
+                      : () => submit(true),
+                  child: submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(l.createAndSwitchBranch),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  Future<void> _createBranch(
-    AppState state,
-    int projectId, {
-    required bool switchBranch,
-  }) async {
-    final name = _branchNameController.text.trim();
-    if (name.isEmpty) return;
-    final threadId = state.activeThreadId;
-    setState(() => _submitting = true);
-    try {
-      final ok = await state.gitCreateBranch(
-        projectId,
-        name,
-        base: _createBranchBase?.trim(),
-        switchBranch: switchBranch,
-      );
-      if (!ok || !mounted) return;
-      if (switchBranch && threadId != null) {
-        final repo = state.gitRepoInfo(projectId);
-        final current = repo?.branch ?? name;
-        if (current.isNotEmpty) {
-          await state.setThreadGit(threadId, branch: current);
-        }
-      }
-    } finally {
-      if (mounted && state.globalError.isEmpty) {
-        setState(() {
-          _submitting = false;
-          _creatingBranch = false;
-          _branchNameController.clear();
-          _createBranchBase = null;
-        });
-      } else if (mounted) {
-        setState(() => _submitting = false);
-      }
-    }
-  }
-
-  Widget _buildCreateWorktreeForm(
+  Future<void> _showCreateWorktreeDialog(
+    BuildContext context,
     AppState state,
     int projectId,
-    List<GitBranch> branches,
-    GitRepoInfo repo,
-    AppLocalizations l,
-    ThemeData theme,
-  ) {
+    String threadId,
+  ) async {
+    final l = l10n(context);
+    final branches = state.gitBranches(projectId);
+    final repo = state.gitRepoInfo(projectId);
+    var base = _resolveWorktreeBase(branches, repo);
+    var name = '';
+    var newBranch = false;
+    var submitting = false;
+    var error = '';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> submit() async {
+              final baseBranch = base;
+              if (name.trim().isEmpty ||
+                  baseBranch == null ||
+                  baseBranch.isEmpty) {
+                return;
+              }
+              setState(() {
+                submitting = true;
+                error = '';
+              });
+              final worktree = await state.gitCreateWorktree(
+                projectId,
+                name.trim(),
+                baseBranch,
+                newBranch: newBranch,
+              );
+              if (!dialogContext.mounted) return;
+              if (worktree != null) {
+                Navigator.of(dialogContext).pop();
+                await state.setThreadGit(
+                  threadId,
+                  branch: worktree.branch,
+                  worktreePath: worktree.path,
+                );
+                return;
+              }
+              setState(() {
+                submitting = false;
+                error = state.globalError;
+              });
+            }
+
+            final branchNames = branches
+                .where((b) => !b.isRemote)
+                .map((b) => b.name)
+                .toList();
+
+            return AlertDialog(
+              scrollable: true,
+              title: Text(l.createWorktree),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      enabled: !submitting,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: l.worktreeName,
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setState(() => name = v),
+                    ),
+                    const SizedBox(height: 16),
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: l.baseBranch,
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          isDense: true,
+                          value: base,
+                          hint: Text(l.baseBranch),
+                          items: branchNames
+                              .map(
+                                (name) => DropdownMenuItem<String>(
+                                  value: name,
+                                  child: Text(name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: submitting || branchNames.isEmpty
+                              ? null
+                              : (v) => setState(() => base = v),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      title: Text(l.newBranchInWorktree),
+                      value: newBranch,
+                      onChanged: submitting
+                          ? null
+                          : (v) => setState(() => newBranch = v),
+                    ),
+                    if (error.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        error,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  child: Text(l.close),
+                ),
+                FilledButton(
+                  onPressed: submitting ||
+                          base == null ||
+                          name.trim().isEmpty
+                      ? null
+                      : submit,
+                  child: submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(l.createWorktree),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String? _resolveWorktreeBase(List<GitBranch> branches, GitRepoInfo? repo) {
     final localBranches = branches.where((b) => !b.isRemote).toList();
     final branchNames = localBranches.map((b) => b.name).toList();
-    final baseValue = _createWorktreeBase != null &&
-            branchNames.contains(_createWorktreeBase)
-        ? _createWorktreeBase
-        : (branchNames.contains(repo.branch) && repo.branch.isNotEmpty
-            ? repo.branch
-            : (branchNames.isNotEmpty ? branchNames.first : null));
-
-    return _CompactForm(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _worktreeNameController,
-            enabled: !_submitting,
-            decoration: InputDecoration(
-              labelText: l.worktreeName,
-              isDense: true,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            runSpacing: 8,
-            spacing: 8,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 220),
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: l.baseBranch,
-                    isDense: true,
-                    border: const OutlineInputBorder(),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      isExpanded: true,
-                      isDense: true,
-                      value: baseValue,
-                      hint: Text(l.baseBranch),
-                      items: branchNames
-                          .map(
-                            (name) => DropdownMenuItem<String?>(
-                              value: name,
-                              child: Text(name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _submitting
-                          ? null
-                          : (v) => setState(() => _createWorktreeBase = v),
-                    ),
-                  ),
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Switch(
-                    value: _createWorktreeNewBranch,
-                    onChanged: _submitting
-                        ? null
-                        : (v) => setState(() => _createWorktreeNewBranch = v),
-                  ),
-                  Text(l.newBranchInWorktree),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            runSpacing: 8,
-            spacing: 8,
-            children: [
-              FilledButton(
-                onPressed: _submitting || baseValue == null
-                    ? null
-                    : () => _createWorktree(state, projectId, baseValue),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(l.createWorktree),
-              ),
-              TextButton(
-                onPressed: _submitting ? null : () => setState(() => _creatingWorktree = false),
-                child: Text(l.close),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _createWorktree(
-    AppState state,
-    int projectId,
-    String base,
-  ) async {
-    final name = _worktreeNameController.text.trim();
-    if (name.isEmpty || base.isEmpty) return;
-    setState(() => _submitting = true);
-    try {
-      final threadId = state.activeThreadId;
-      final worktree = await state.gitCreateWorktree(
-        projectId,
-        name,
-        base,
-        newBranch: _createWorktreeNewBranch,
-      );
-      if (worktree != null && threadId != null) {
-        await state.setThreadGit(
-          threadId,
-          branch: worktree.branch,
-          worktreePath: worktree.path,
-        );
-      }
-    } finally {
-      if (mounted && state.globalError.isEmpty) {
-        setState(() {
-          _submitting = false;
-          _creatingWorktree = false;
-          _worktreeNameController.clear();
-          _createWorktreeBase = null;
-          _createWorktreeNewBranch = false;
-        });
-      } else if (mounted) {
-        setState(() => _submitting = false);
-      }
+    if (repo?.branch != null &&
+        repo!.branch.isNotEmpty &&
+        branchNames.contains(repo.branch)) {
+      return repo.branch;
     }
+    return branchNames.isNotEmpty ? branchNames.first : null;
   }
 
   Future<void> _pull(AppState state, int projectId) async {
@@ -860,22 +864,6 @@ class _ToolbarButton extends StatelessWidget {
             color: foreground?.withValues(alpha: 0.6),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CompactForm extends StatelessWidget {
-  final Widget child;
-  const _CompactForm({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(top: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: child,
       ),
     );
   }
