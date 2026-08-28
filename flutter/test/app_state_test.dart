@@ -7,6 +7,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -972,6 +973,62 @@ void main() {
       expect(base.composerMode, ComposerMode.ask);
       expect(base.attachments, hasLength(1));
       expect(base.attachments.first.filename, 'f.txt');
+    });
+
+    test('openThread logs its duration in debug mode', () async {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+          'total_messages': 0,
+        }),
+        _json(200, {'project_id': 1, 'path': '/x'}),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+          'total_messages': 0,
+        }),
+      ]);
+      final api = _StreamableApiService(client)..runResponse = {'status': 'idle'};
+      final state = AppState.test(
+        api: api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+      );
+
+      await state.openThread('a');
+
+      expect(
+        logs,
+        anyElement(matches(RegExp(r'^Thread a opened in \d+ms$'))),
+      );
     });
 
     test('createNewThread requires a project', () async {
