@@ -5,10 +5,12 @@ class _ProjectExpandableTile extends StatelessWidget {
   final Project project;
   final List<Thread> threads;
   final bool isExpanded;
+  final bool showAll;
   final String? activeThreadId;
   final VoidCallback onToggle;
   final VoidCallback? onNewThread;
   final ValueChanged<String> onThreadTap;
+  final VoidCallback onShowMore;
 
   const _ProjectExpandableTile({
     super.key,
@@ -16,10 +18,12 @@ class _ProjectExpandableTile extends StatelessWidget {
     required this.project,
     required this.threads,
     required this.isExpanded,
+    this.showAll = false,
     this.activeThreadId,
     required this.onToggle,
     this.onNewThread,
     required this.onThreadTap,
+    required this.onShowMore,
   });
 
   @override
@@ -130,42 +134,84 @@ class _ProjectExpandableTile extends StatelessWidget {
                     child: threads.isEmpty &&
                             !state.hasMoreProjectThreads(project.id)
                         ? const _NoThreads()
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ...threads.map(
-                                (t) => _ThreadTile(
-                                  key: ValueKey(t.id),
-                                  thread: t,
-                                  isActive: activeThreadId == t.id,
-                                  onTap: () => onThreadTap(t.id),
-                                  onDelete: () => state.deleteThread(t.id),
-                                ),
-                              ),
-                              if (state.hasMoreProjectThreads(project.id))
-                                TextButton(
-                                  onPressed: state
-                                          .isLoadingMoreProjectThreads(project.id)
-                                      ? null
-                                      : () => state
-                                          .loadMoreProjectThreads(project.id),
-                                  child: state.isLoadingMoreProjectThreads(
-                                          project.id)
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2),
-                                        )
-                                      : const Text('Load more'),
-                                ),
-                            ],
+                        : _ThreadList(
+                            project: project,
+                            threads: threads,
+                            activeThreadId: activeThreadId,
+                            showAll: showAll,
+                            onThreadTap: onThreadTap,
+                            onShowMore: onShowMore,
                           ),
                   )
                 : const SizedBox.shrink(),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ThreadList extends StatelessWidget {
+  final Project project;
+  final List<Thread> threads;
+  final bool showAll;
+  final String? activeThreadId;
+  final ValueChanged<String> onThreadTap;
+  final VoidCallback onShowMore;
+
+  const _ThreadList({
+    required this.project,
+    required this.threads,
+    required this.showAll,
+    this.activeThreadId,
+    required this.onThreadTap,
+    required this.onShowMore,
+  });
+
+  static const int _maxVisible = 5;
+
+  List<Thread> _visibleThreads() {
+    if (showAll || threads.length <= _maxVisible) return threads;
+    return threads.take(_maxVisible).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final visible = _visibleThreads();
+    final hiddenCount = threads.length - visible.length;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ...visible.map(
+          (t) => _ThreadTile(
+            key: ValueKey(t.id),
+            thread: t,
+            isActive: activeThreadId == t.id,
+            onTap: () => onThreadTap(t.id),
+            onDelete: () => state.deleteThread(t.id),
+          ),
+        ),
+        if (hiddenCount > 0)
+          TextButton(
+            onPressed: onShowMore,
+            child: Text(l10n(context).showMoreThreads(hiddenCount)),
+          ),
+        if (hiddenCount == 0 && state.hasMoreProjectThreads(project.id))
+          TextButton(
+            onPressed: state.isLoadingMoreProjectThreads(project.id)
+                ? null
+                : () => state.loadMoreProjectThreads(project.id),
+            child: state.isLoadingMoreProjectThreads(project.id)
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(l10n(context).loadMore),
+          ),
+      ],
     );
   }
 }

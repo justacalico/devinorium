@@ -1863,6 +1863,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Input'**
   String get threadStatusInput;
+
+  /// No description provided for @showMoreThreads.
+  ///
+  /// In en, this message translates to:
+  /// **'Show {count} more'**
+  String showMoreThreads(int count);
+
+  /// No description provided for @loadMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Load more'**
+  String get loadMore;
 }
 
 class _AppLocalizationsDelegate

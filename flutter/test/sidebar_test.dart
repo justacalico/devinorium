@@ -1944,4 +1944,353 @@ void main() {
     expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
     expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
   });
+
+  testWidgets('Project with more than five threads shows a Show more button', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 't1',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T10:00:00Z',
+        ),
+        Thread(
+          id: 'b',
+          title: 't2',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T09:00:00Z',
+        ),
+        Thread(
+          id: 'c',
+          title: 't3',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T08:00:00Z',
+        ),
+        Thread(
+          id: 'd',
+          title: 't4',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T07:00:00Z',
+        ),
+        Thread(
+          id: 'e',
+          title: 't5',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T06:00:00Z',
+        ),
+        Thread(
+          id: 'f',
+          title: 't6',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T05:00:00Z',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'b',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    for (final title in ['t1', 't2', 't3', 't4', 't5']) {
+      expect(find.text(title), findsOneWidget);
+    }
+    expect(find.text('t6'), findsNothing);
+    expect(find.text('Show 1 more'), findsOneWidget);
+
+    await tester.tap(find.text('Show 1 more'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('t6'), findsOneWidget);
+    expect(find.text('Show 1 more'), findsNothing);
+  });
+
+  testWidgets('Active thread older than top five is hidden until Show more', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 't1',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T10:00:00Z',
+        ),
+        Thread(
+          id: 'b',
+          title: 't2',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T09:00:00Z',
+        ),
+        Thread(
+          id: 'c',
+          title: 't3',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T08:00:00Z',
+        ),
+        Thread(
+          id: 'd',
+          title: 't4',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T07:00:00Z',
+        ),
+        Thread(
+          id: 'e',
+          title: 't5',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T06:00:00Z',
+        ),
+        Thread(
+          id: 'f',
+          title: 't6',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T05:00:00Z',
+        ),
+        Thread(
+          id: 'g',
+          title: 't7',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T04:00:00Z',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'g',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    for (final title in ['t1', 't2', 't3', 't4', 't5']) {
+      expect(find.text(title), findsOneWidget);
+    }
+    expect(find.text('t6'), findsNothing);
+    expect(find.text('t7'), findsNothing);
+    expect(find.text('Show 2 more'), findsOneWidget);
+
+    await tester.tap(find.text('Show 2 more'));
+    await tester.pumpAndSettle();
+
+    for (final title in ['t1', 't2', 't3', 't4', 't5', 't6', 't7']) {
+      expect(find.text(title), findsOneWidget);
+    }
+    expect(find.text('Show 2 more'), findsNothing);
+  });
+
+  testWidgets('Five or fewer threads show no Show more button', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 't1',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T10:00:00Z',
+        ),
+        Thread(
+          id: 'b',
+          title: 't2',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T09:00:00Z',
+        ),
+        Thread(
+          id: 'c',
+          title: 't3',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T08:00:00Z',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    for (final title in ['t1', 't2', 't3']) {
+      expect(find.text(title), findsOneWidget);
+    }
+    expect(find.text('Show 1 more'), findsNothing);
+    expect(find.text('Show more'), findsNothing);
+  });
+
+  testWidgets('Search expands all matching threads', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'task one',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T10:00:00Z',
+        ),
+        Thread(
+          id: 'b',
+          title: 'task two',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T09:00:00Z',
+        ),
+        Thread(
+          id: 'c',
+          title: 'task three',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T08:00:00Z',
+        ),
+        Thread(
+          id: 'd',
+          title: 'task four',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T07:00:00Z',
+        ),
+        Thread(
+          id: 'e',
+          title: 'task five',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T06:00:00Z',
+        ),
+        Thread(
+          id: 'f',
+          title: 'task six',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2026-08-29T05:00:00Z',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('task six'), findsNothing);
+    expect(find.text('Show 1 more'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('sidebar_search')), 'task');
+    await tester.pumpAndSettle();
+
+    for (final title in [
+      'task one',
+      'task two',
+      'task three',
+      'task four',
+      'task five',
+      'task six',
+    ]) {
+      expect(find.text(title), findsOneWidget);
+    }
+    expect(find.text('Show 1 more'), findsNothing);
+  });
 }

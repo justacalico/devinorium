@@ -981,4 +981,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get threadStatusInput => 'Input';
+
+  @override
+  String showMoreThreads(int count) {
+    return 'Show $count more';
+  }
+
+  @override
+  String get loadMore => 'Load more';
 }
