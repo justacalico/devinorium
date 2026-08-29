@@ -36,33 +36,65 @@ class _PartGroup {
 class _MessageItemState extends State<_MessageItem> {
   static const _maxPreviewChars = 600;
   static const _maxPreviewLines = 8;
+  static const _minChunkChars = 10000;
+  static const _maxChunkChars = 100000;
 
   late Message _message;
+  late Message _previewMessage;
   bool _expanded = false;
   bool _isFull = false;
-  bool _loadingFull = false;
-  String _fullError = '';
+  bool _loadingMore = false;
+  String _error = '';
+  bool _isVisible = false;
+  ScrollPosition? _scrollPosition;
+  bool _visibilityCheckScheduled = false;
 
   @override
   void initState() {
     super.initState();
+    _previewMessage = widget.message;
     _message = widget.message;
+    _isFull = !_message.truncated;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final position = Scrollable.maybeOf(context)?.position;
+    if (position != _scrollPosition) {
+      _scrollPosition?.removeListener(_onScroll);
+      _scrollPosition = position;
+      _scrollPosition?.addListener(_onScroll);
+    }
+    _scheduleVisibilityCheck();
   }
 
   @override
   void didUpdateWidget(covariant _MessageItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     final incoming = widget.message;
-    if (incoming.id != _message.id ||
-        incoming.truncated != _message.truncated ||
-        (!_isFull && incoming != _message)) {
+    if (incoming.id != _previewMessage.id ||
+        incoming.truncated != _previewMessage.truncated ||
+        incoming != _previewMessage) {
+      _previewMessage = incoming;
       _message = incoming;
       _expanded = false;
-      _isFull = false;
-      _loadingFull = false;
-      _fullError = '';
+      _isFull = !incoming.truncated;
+      _loadingMore = false;
+      _error = '';
+      if (_isVisible && !_isFull) {
+        _loadMoreChunks();
+      }
     }
   }
+
+  @override
+  void dispose() {
+    _scrollPosition?.removeListener(_onScroll);
+    super.dispose();
+  }
+
+  bool get _isAssistant => _message.role == 'assistant';
 
   bool get _working {
     if (widget.thinkingActive) return true;
@@ -89,13 +121,17 @@ class _MessageItemState extends State<_MessageItem> {
   String? get _previewText {
     if (!_shouldCollapse) return null;
     final runes = _message.content.runes;
-    final end = runes.length < _maxPreviewChars ? runes.length : _maxPreviewChars;
+    final end = runes.length < _maxPreviewChars
+        ? runes.length
+        : _maxPreviewChars;
     final charsPreview = String.fromCharCodes(runes.take(end));
     final lines = _message.content
         .split('\n')
         .take(_maxPreviewLines)
         .join('\n');
-    return lines.runes.length <= charsPreview.runes.length ? lines : charsPreview;
+    return lines.runes.length <= charsPreview.runes.length
+        ? lines
+        : charsPreview;
   }
 
   Message get _effectiveMessage {
@@ -106,29 +142,113 @@ class _MessageItemState extends State<_MessageItem> {
     return _message;
   }
 
-  Future<void> _loadFull() async {
+  int _chunkSize(int total, int loaded) {
+    final remaining = total - loaded;
+    if (remaining <= _minChunkChars) return _minChunkChars;
+    final target = math.max(1, (total / 5).ceil());
+    return math.min(_maxChunkChars, math.max(_minChunkChars, target));
+  }
+
+  void _onScroll() => _scheduleVisibilityCheck();
+
+  void _scheduleVisibilityCheck() {
+    if (_visibilityCheckScheduled) return;
+    _visibilityCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibilityCheckScheduled = false;
+      if (mounted) _checkVisibility();
+    });
+  }
+
+  static const _visibilityMargin = 64.0;
+
+  void _checkVisibility() {
+    if (!mounted) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || box.size.isEmpty) return;
+
+    final viewport = RenderAbstractViewport.of(box) as RenderBox?;
+    if (viewport == null || viewport.size.isEmpty) return;
+
+    final itemOffset = box.localToGlobal(Offset.zero, ancestor: viewport);
+    final itemRect = itemOffset & box.size;
+    final viewportRect = Offset.zero & viewport.size;
+    final isVisible =
+        itemRect.overlaps(viewportRect.inflate(_visibilityMargin));
+
+    final wasVisible = _isVisible;
+    _isVisible = isVisible;
+
+    if (!wasVisible && isVisible) {
+      if (!_isFull && !_loadingMore && _message.truncated && _isAssistant) {
+        _loadMoreChunks();
+      }
+    } else if (wasVisible && !isVisible) {
+      _resetToPreview();
+    }
+  }
+
+  void _resetToPreview() {
+    if (_loadingMore) _loadingMore = false;
+    if (_message != _previewMessage) {
+      if (!mounted) return;
+      setState(() {
+        _message = _previewMessage;
+        _isFull = !_previewMessage.truncated;
+        _error = '';
+      });
+    }
+  }
+
+  Future<void> _loadMoreChunks() async {
+    if (_isFull || _loadingMore || !_isVisible) return;
     final state = context.read<AppState>();
     final threadId = state.activeThreadId;
     final messageId = _message.id;
-    if (threadId == null || messageId == null) return;
+    final total = _message.totalChars;
+    if (threadId == null || messageId == null || total == null) return;
 
-    setState(() {
-      _loadingFull = true;
-      _fullError = '';
-    });
+    final offset = _message.content.runes.length;
+    if (offset >= total) {
+      if (mounted) setState(() => _isFull = true);
+      return;
+    }
+
+    setState(() => _loadingMore = true);
     try {
-      final full = await state.api.getMessageFull(threadId, messageId);
+      final limit = _chunkSize(total, offset);
+      final chunk = await state.api.getMessageChunk(
+        threadId,
+        messageId,
+        offset: offset,
+        limit: limit,
+      );
       if (!mounted) return;
+
+      final currentLoaded = _message.content.runes.length;
+      if (!_isVisible || currentLoaded != offset) {
+        setState(() => _loadingMore = false);
+        return;
+      }
+
       setState(() {
-        _message = full;
-        _isFull = true;
-        _loadingFull = false;
+        _message = _message.copyWith(
+          content: _message.content + chunk.content,
+          totalChars: chunk.totalChars ?? total,
+        );
+        _loadingMore = false;
+        _error = '';
+        _isFull = _message.content.runes.length >= (_message.totalChars ?? total);
       });
+
+      if (!_isFull && _isVisible) {
+        await _loadMoreChunks();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _loadingFull = false;
-        _fullError = '$e';
+        _loadingMore = false;
+        _error = '$e';
       });
     }
   }
@@ -315,8 +435,12 @@ class _MessageItemState extends State<_MessageItem> {
         message.content.isEmpty &&
         groups.isEmpty;
     final showShowMore = _shouldCollapse;
-    final showShowFull =
-        message.role == 'assistant' && message.truncated && !_isFull;
+    final showLoadingMore = _isAssistant && _message.truncated && _loadingMore;
+    final showLoadError =
+        _isAssistant &&
+        _message.truncated &&
+        _error.isNotEmpty &&
+        !_loadingMore;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
@@ -358,28 +482,23 @@ class _MessageItemState extends State<_MessageItem> {
                     child: const Text('Show more'),
                   ),
                 ],
-                if (showShowFull) ...[
+                if (showLoadingMore) ...[
                   const SizedBox(height: 4),
-                  if (_loadingFull)
-                    Text(
-                      'Loading…',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    )
-                  else ...[
-                    if (_fullError.isNotEmpty)
-                      Text(
-                        _fullError,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.error,
-                        ),
-                      ),
-                    TextButton(
-                      onPressed: _loadFull,
-                      child: const Text('Show full message'),
+                  Text(
+                    'Loading more…',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ],
+                  ),
+                ],
+                if (showLoadError) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _error,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
                 ],
                 if (message.attachments != null &&
                     message.attachments!.isNotEmpty) ...[

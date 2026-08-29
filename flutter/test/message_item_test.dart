@@ -53,16 +53,30 @@ class _MessageItemApiService extends ApiService {
   Future<void> stopThread(String id) => Future.value();
 
   @override
-  Future<Message> getMessageFull(String threadId, int messageId) =>
-      Future.value(
-        Message(
-          id: messageId,
-          role: 'assistant',
-          content: 'full content ' * 20,
-          truncated: false,
-          totalChars: 200,
-        ),
+  Future<Message> getMessageChunk(
+    String threadId,
+    int messageId, {
+    int offset = 0,
+    int limit = 100000,
+  }) async {
+    final full = 'full content ' * 20;
+    if (offset == 0) {
+      return Message(
+        id: messageId,
+        role: 'assistant',
+        content: 'short preview',
+        truncated: true,
+        totalChars: 'short preview'.runes.length + full.runes.length,
       );
+    }
+    return Message(
+      id: messageId,
+      role: 'assistant',
+      content: full,
+      truncated: false,
+      totalChars: 'short preview'.runes.length + full.runes.length,
+    );
+  }
 }
 
 void main() {
@@ -110,10 +124,11 @@ void main() {
     expect(find.text('Show more'), findsNothing);
   });
 
-  testWidgets('truncated assistant message shows Show full message and fetches full', (
+  testWidgets('truncated assistant message loads chunks on visibility', (
     tester,
   ) async {
     final api = _MessageItemApiService();
+    final full = 'full content ' * 20;
     final state = AppState.test(
       api: api,
       activeThreadId: 't1',
@@ -133,7 +148,7 @@ void main() {
             role: 'assistant',
             content: 'short preview',
             truncated: true,
-            totalChars: 200,
+            totalChars: 'short preview'.runes.length + full.runes.length,
           ),
         ],
         totalMessages: 1,
@@ -150,12 +165,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Show full message'), findsOneWidget);
-
-    await tester.tap(find.text('Show full message'));
-    await tester.pumpAndSettle();
-
     expect(find.text('Show full message'), findsNothing);
+    expect(find.text('Loading more…'), findsNothing);
 
     final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody).first);
     expect(markdown.data, contains('full content'));

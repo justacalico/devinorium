@@ -239,10 +239,17 @@ class Message {
   );
 
   List<MessagePart> get allParts {
-    if (parts != null && parts!.isNotEmpty) return parts!;
-    final list = <MessagePart>[MessagePart.text(content: content)];
-    if (thinking != null && thinking!.isNotEmpty) {
+    final hasText = parts?.any((p) => p.type == 'text') ?? false;
+    final hasThinking = parts?.any((p) => p.type == 'thinking') ?? false;
+    final list = <MessagePart>[];
+    if (!hasText && content.isNotEmpty) {
+      list.add(MessagePart.text(content: content));
+    }
+    if (!hasThinking && thinking != null && thinking!.isNotEmpty) {
       list.add(MessagePart.thinking(content: thinking!));
+    }
+    if (parts != null) {
+      list.addAll(parts!);
     }
     return list;
   }
