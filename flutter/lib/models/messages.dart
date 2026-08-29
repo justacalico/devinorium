@@ -198,8 +198,13 @@ class Message {
   final List<Attachment>? attachments;
   final List<MessagePart>? parts;
   final String model;
+  final int? turnId;
+  final int? seq;
+  final bool truncated;
+  final int? totalChars;
+  final int? truncatedAt;
 
-  Message({
+  const Message({
     this.id,
     required this.role,
     required this.content,
@@ -207,6 +212,11 @@ class Message {
     this.attachments,
     this.parts,
     this.model = '',
+    this.turnId,
+    this.seq,
+    this.truncated = false,
+    this.totalChars,
+    this.truncatedAt,
   });
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
@@ -221,6 +231,11 @@ class Message {
         ?.map((p) => MessagePart.fromJson(p as Map<String, dynamic>))
         .toList(),
     model: j['model'] as String? ?? '',
+    turnId: (j['turn_id'] as num?)?.toInt(),
+    seq: (j['seq'] as num?)?.toInt(),
+    truncated: j['truncated'] as bool? ?? false,
+    totalChars: (j['total_chars'] as num?)?.toInt(),
+    truncatedAt: (j['truncated_at'] as num?)?.toInt(),
   );
 
   List<MessagePart> get allParts {
@@ -234,17 +249,30 @@ class Message {
 
   Message copyWith({
     int? id,
+    String? role,
     String? content,
+    String? thinking,
+    List<Attachment>? attachments,
     List<MessagePart>? parts,
     String? model,
+    int? turnId,
+    int? seq,
+    bool? truncated,
+    int? totalChars,
+    int? truncatedAt,
   }) => Message(
     id: id ?? this.id,
-    role: role,
+    role: role ?? this.role,
     content: content ?? this.content,
-    thinking: thinking,
-    attachments: attachments,
+    thinking: thinking ?? this.thinking,
+    attachments: attachments ?? this.attachments,
     parts: parts ?? this.parts,
     model: model ?? this.model,
+    turnId: turnId ?? this.turnId,
+    seq: seq ?? this.seq,
+    truncated: truncated ?? this.truncated,
+    totalChars: totalChars ?? this.totalChars,
+    truncatedAt: truncatedAt ?? this.truncatedAt,
   );
 
   @override
@@ -256,18 +284,107 @@ class Message {
         content == other.content &&
         thinking == other.thinking &&
         model == other.model &&
+        turnId == other.turnId &&
+        seq == other.seq &&
+        truncated == other.truncated &&
+        totalChars == other.totalChars &&
+        truncatedAt == other.truncatedAt &&
         listEquals(attachments, other.attachments) &&
         listEquals(parts, other.parts);
   }
 
   @override
   int get hashCode {
-    var h = Object.hash(id, role, content, thinking, model);
+    var h = Object.hash(
+      id,
+      role,
+      content,
+      thinking,
+      model,
+      turnId,
+      seq,
+      truncated,
+      totalChars,
+      truncatedAt,
+    );
     for (final a in attachments ?? const <Attachment>[]) {
       h = Object.hash(h, a);
     }
     for (final p in parts ?? const <MessagePart>[]) {
       h = Object.hash(h, p);
+    }
+    return h;
+  }
+}
+
+class MessagePage {
+  final List<Message> messages;
+  final int total;
+  final int? turnLimit;
+  final int? rawCount;
+  final String? beforeCursor;
+  final bool? hasMore;
+
+  const MessagePage({
+    this.messages = const [],
+    this.total = 0,
+    this.turnLimit,
+    this.rawCount,
+    this.beforeCursor,
+    this.hasMore,
+  });
+
+  factory MessagePage.fromJson(Map<String, dynamic> j) => MessagePage(
+    messages: ((j['messages'] as List<dynamic>?) ?? [])
+        .map((m) => Message.fromJson(m as Map<String, dynamic>))
+        .toList(),
+    total: (j['total'] as num?)?.toInt() ?? 0,
+    turnLimit: (j['turn_limit'] as num?)?.toInt(),
+    rawCount: (j['raw_count'] as num?)?.toInt(),
+    beforeCursor: j['before_cursor'] as String?,
+    hasMore: j['has_more'] as bool?,
+  );
+
+  MessagePage copyWith({
+    List<Message>? messages,
+    int? total,
+    int? turnLimit,
+    int? rawCount,
+    String? beforeCursor,
+    bool? hasMore,
+  }) => MessagePage(
+    messages: messages ?? this.messages,
+    total: total ?? this.total,
+    turnLimit: turnLimit ?? this.turnLimit,
+    rawCount: rawCount ?? this.rawCount,
+    beforeCursor: beforeCursor ?? this.beforeCursor,
+    hasMore: hasMore ?? this.hasMore,
+  );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! MessagePage) return false;
+    return total == other.total &&
+        turnLimit == other.turnLimit &&
+        rawCount == other.rawCount &&
+        beforeCursor == other.beforeCursor &&
+        hasMore == other.hasMore &&
+        listEquals(messages, other.messages);
+  }
+
+  @override
+  int get hashCode {
+    var h = Object.hash(
+      total,
+      turnLimit,
+      rawCount,
+      beforeCursor,
+      hasMore,
+      messages.length,
+    );
+    for (final m in messages) {
+      h = Object.hash(h, m);
     }
     return h;
   }

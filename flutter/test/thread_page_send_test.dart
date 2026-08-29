@@ -28,7 +28,11 @@ class _SendApiService extends ApiService {
   }) => Future.value();
 
   @override
-  Future<ThreadDetail> getThread(String id, {bool includeMessages = false}) {
+  Future<ThreadDetail> getThread(
+    String id, {
+    bool includeMessages = false,
+    int? turnLimit,
+  }) {
     getThreadCalls++;
     return Future.value(ThreadDetail(
       thread: Thread(
@@ -46,18 +50,23 @@ class _SendApiService extends ApiService {
   }
 
   @override
-  Future<List<Message>> getThreadMessages(
+  Future<MessagePage> getThreadMessages(
     String id, {
     int? beforeId,
     int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
     int limit = 50,
   }) async {
-    if (afterId == null && beforeId == null) {
-      return [
-        Message(id: 99, role: 'assistant', content: 'server stale message'),
-      ];
+    if (afterId == null && beforeId == null && beforeCursor == null) {
+      return MessagePage(
+        messages: [
+          Message(id: 99, role: 'assistant', content: 'server stale message'),
+        ],
+        total: 1,
+      );
     }
-    return const [];
+    return const MessagePage(messages: [], total: 0);
   }
 
   @override

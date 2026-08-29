@@ -34,9 +34,39 @@ class _PartGroup {
 }
 
 class _MessageItemState extends State<_MessageItem> {
+  static const _maxPreviewChars = 600;
+  static const _maxPreviewLines = 8;
+
+  late Message _message;
+  bool _expanded = false;
+  bool _isFull = false;
+  bool _loadingFull = false;
+  String _fullError = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _message = widget.message;
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final incoming = widget.message;
+    if (incoming.id != _message.id ||
+        incoming.truncated != _message.truncated ||
+        (!_isFull && incoming != _message)) {
+      _message = incoming;
+      _expanded = false;
+      _isFull = false;
+      _loadingFull = false;
+      _fullError = '';
+    }
+  }
+
   bool get _working {
     if (widget.thinkingActive) return true;
-    return widget.message.allParts.any(
+    return _message.allParts.any(
       (p) =>
           p.type == 'tool_call' &&
           p.toolCall != null &&
@@ -45,9 +75,63 @@ class _MessageItemState extends State<_MessageItem> {
     );
   }
 
-  bool get _hasText => widget.message.allParts.any(
+  bool get _hasText => _message.allParts.any(
     (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
   );
+
+  bool get _shouldCollapse {
+    if (_message.role != 'user' || _expanded) return false;
+    final lines = _message.content.split('\n').length;
+    return _message.content.runes.length > _maxPreviewChars ||
+        lines > _maxPreviewLines;
+  }
+
+  String? get _previewText {
+    if (!_shouldCollapse) return null;
+    final runes = _message.content.runes;
+    final end = runes.length < _maxPreviewChars ? runes.length : _maxPreviewChars;
+    final charsPreview = String.fromCharCodes(runes.take(end));
+    final lines = _message.content
+        .split('\n')
+        .take(_maxPreviewLines)
+        .join('\n');
+    return lines.runes.length <= charsPreview.runes.length ? lines : charsPreview;
+  }
+
+  Message get _effectiveMessage {
+    final preview = _previewText;
+    if (preview != null) {
+      return _message.copyWith(content: preview, parts: []);
+    }
+    return _message;
+  }
+
+  Future<void> _loadFull() async {
+    final state = context.read<AppState>();
+    final threadId = state.activeThreadId;
+    final messageId = _message.id;
+    if (threadId == null || messageId == null) return;
+
+    setState(() {
+      _loadingFull = true;
+      _fullError = '';
+    });
+    try {
+      final full = await state.api.getMessageFull(threadId, messageId);
+      if (!mounted) return;
+      setState(() {
+        _message = full;
+        _isFull = true;
+        _loadingFull = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingFull = false;
+        _fullError = '$e';
+      });
+    }
+  }
 
   List<_PartGroup> _buildGroups(List<MessagePart> parts) {
     final groups = <_PartGroup>[];
@@ -77,8 +161,6 @@ class _MessageItemState extends State<_MessageItem> {
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
         if (tool == null) continue;
-        // File edits and command executions are rendered as standalone cards
-        // outside the thinking block so the user can see them without expanding.
         if (tool.kind == 'edit' || tool.kind == 'execute') {
           groups.add(_PartGroup(type: 'tool_call', tool: tool));
         } else if (groups.isNotEmpty && groups.last.type == 'thinking') {
@@ -170,7 +252,7 @@ class _MessageItemState extends State<_MessageItem> {
       final group = groups[i];
       if (group.type == 'text') {
         children.add(
-          _buildTextContent(context, group.content ?? '', widget.message.role),
+          _buildTextContent(context, group.content ?? '', _message.role),
         );
       } else if (group.type == 'tool_call') {
         final tool = group.tool;
@@ -201,7 +283,7 @@ class _MessageItemState extends State<_MessageItem> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final message = widget.message;
+    final message = _message;
     final l = l10n(context);
     final assistantLabel = message.model.isNotEmpty
         ? message.model
@@ -227,11 +309,14 @@ class _MessageItemState extends State<_MessageItem> {
       ),
     };
 
-    final groups = _buildGroups(message.allParts);
+    final groups = _buildGroups(_effectiveMessage.allParts);
     final showLoading =
         message.role == 'assistant' &&
         message.content.isEmpty &&
         groups.isEmpty;
+    final showShowMore = _shouldCollapse;
+    final showShowFull =
+        message.role == 'assistant' && message.truncated && !_isFull;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
@@ -266,6 +351,36 @@ class _MessageItemState extends State<_MessageItem> {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                if (showShowMore) ...[
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: () => setState(() => _expanded = true),
+                    child: const Text('Show more'),
+                  ),
+                ],
+                if (showShowFull) ...[
+                  const SizedBox(height: 4),
+                  if (_loadingFull)
+                    Text(
+                      'Loading…',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    )
+                  else ...[
+                    if (_fullError.isNotEmpty)
+                      Text(
+                        _fullError,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    TextButton(
+                      onPressed: _loadFull,
+                      child: const Text('Show full message'),
+                    ),
+                  ],
+                ],
                 if (message.attachments != null &&
                     message.attachments!.isNotEmpty) ...[
                   const SizedBox(height: 8),

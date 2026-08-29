@@ -305,23 +305,55 @@ class ThreadStore {
   Future<void> loadMoreMessages() async {
     final d = _detail.valueOrNull;
     if (d == null) return;
+    if (d.hasMore == false) return;
+    if (d.hasMore == null &&
+        d.messages.isNotEmpty &&
+        d.messages.length >= d.totalMessages) {
+      return;
+    }
     if (d.messages.isEmpty) {
       if (d.totalMessages > 0) {
         await _loadInitialMessages();
       }
       return;
     }
-    if (d.messages.length >= d.totalMessages) return;
-    final oldestId = d.messages.first.id;
-    if (oldestId == null) return;
+
     try {
-      final older = await api.getThreadMessages(threadId, beforeId: oldestId);
-      if (older.isNotEmpty) {
-        _detail = AsyncValue.ready(
-          d.copyWith(messages: [...older, ...d.messages]),
+      final MessagePage page;
+      if (d.beforeCursor != null) {
+        page = await api.getThreadMessages(
+          threadId,
+          beforeCursor: d.beforeCursor,
+          turnLimit: d.turnLimit ?? 50,
         );
-        _emit();
+      } else {
+        final oldestId = d.messages.first.id;
+        if (oldestId == null) return;
+        page = await api.getThreadMessages(
+          threadId,
+          beforeId: oldestId,
+          limit: 50,
+        );
       }
+      if (page.messages.isEmpty) {
+        if (d.hasMore != false) {
+          _detail = AsyncValue.ready(d.copyWith(hasMore: false));
+          _emit();
+        }
+        return;
+      }
+      _detail = AsyncValue.ready(
+        d.copyWith(
+          messages: [...page.messages, ...d.messages],
+          totalMessages:
+              page.total > d.totalMessages ? page.total : d.totalMessages,
+          beforeCursor: page.beforeCursor,
+          hasMore: page.hasMore,
+          turnLimit: page.turnLimit ?? d.turnLimit,
+          rawCount: page.rawCount,
+        ),
+      );
+      _emit();
     } catch (e) {
       _globalError = '$e';
       _emit();
@@ -341,12 +373,19 @@ class ThreadStore {
       return;
     }
     try {
-      final tail = await api.getThreadMessages(threadId, afterId: newestId);
-      if (tail.isNotEmpty) {
+      final page = await api.getThreadMessages(
+        threadId,
+        afterId: newestId,
+        limit: 50,
+      );
+      if (page.messages.isNotEmpty) {
+        final total = page.total > 0
+            ? page.total
+            : d.totalMessages + page.messages.length;
         _detail = AsyncValue.ready(
           d.copyWith(
-            messages: [...d.messages, ...tail],
-            totalMessages: d.totalMessages + tail.length,
+            messages: [...d.messages, ...page.messages],
+            totalMessages: total,
           ),
         );
         _emit();
@@ -480,12 +519,19 @@ class ThreadStore {
       final newestId = d.messages.last.id;
       if (newestId == null) continue;
       try {
-        final tail = await api.getThreadMessages(threadId, afterId: newestId);
-        if (tail.isNotEmpty) {
+        final page = await api.getThreadMessages(
+          threadId,
+          afterId: newestId,
+          limit: 50,
+        );
+        if (page.messages.isNotEmpty) {
+          final total = page.total > 0
+              ? page.total
+              : d.totalMessages + page.messages.length;
           _detail = AsyncValue.ready(
             d.copyWith(
-              messages: [...d.messages, ...tail],
-              totalMessages: d.totalMessages + tail.length,
+              messages: [...d.messages, ...page.messages],
+              totalMessages: total,
             ),
           );
           _clearStreamingState();
@@ -505,7 +551,7 @@ class ThreadStore {
     if (token != _streamToken) return;
     if (e is ApiException && e.statusCode == 409) {
       // Another client is running this thread; try to resume the existing run.
-      resume();
+      unawaited(resume());
       return;
     }
     _finishStream(error: '$e', phase: StreamPhase.failed);
@@ -573,9 +619,19 @@ class ThreadStore {
     final d = _detail.valueOrNull;
     if (d == null || d.totalMessages == 0 || d.messages.isNotEmpty) return;
     try {
-      final messages = await api.getThreadMessages(threadId);
-      if (messages.isNotEmpty) {
-        _detail = AsyncValue.ready(d.copyWith(messages: messages));
+      final page = await api.getThreadMessages(threadId, turnLimit: 50);
+      if (page.messages.isNotEmpty) {
+        _detail = AsyncValue.ready(
+          d.copyWith(
+            messages: page.messages,
+            totalMessages:
+                page.total > d.totalMessages ? page.total : d.totalMessages,
+            beforeCursor: page.beforeCursor,
+            hasMore: page.hasMore,
+            turnLimit: page.turnLimit ?? 50,
+            rawCount: page.rawCount,
+          ),
+        );
         _globalError = '';
         _emit();
       }

@@ -112,9 +112,11 @@ class _ChatViewState extends State<ChatView> {
         final oldMax = _scrollController.position.maxScrollExtent;
         final state = context.read<AppState>();
         state.loadMoreMessages().whenComplete(() {
-          _loadingMore = false;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!_scrollController.hasClients) return;
+            if (!_scrollController.hasClients) {
+              _loadingMore = false;
+              return;
+            }
             final newPos = _scrollController.position.pixels;
             final newMax = _scrollController.position.maxScrollExtent;
             final delta = newMax - oldMax;
@@ -122,6 +124,7 @@ class _ChatViewState extends State<ChatView> {
             if (delta > 0 && newPos >= oldMax - _loadMoreThreshold) {
               _scrollController.jumpTo((newPos + delta).clamp(0, newMax));
             }
+            _loadingMore = false;
           });
         });
       }
@@ -137,9 +140,20 @@ class _ChatViewState extends State<ChatView> {
 
   void _maybeScrollToBottom({bool force = false}) {
     if (!force && !_autoScroll) return;
+    final snap = _autoScroll;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.jumpTo(0);
+      // Reversed ListView may correct the scroll offset after the initial
+      // jump when a new child is laid out. Give the next frame a chance to
+      // settle and snap back if it drifted above the auto-scroll threshold.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollController.hasClients) return;
+        if ((snap || _autoScroll) &&
+            _scrollController.position.pixels > _autoScrollThreshold) {
+          _scrollController.jumpTo(0);
+        }
+      });
     });
   }
 
@@ -165,7 +179,7 @@ class _ChatViewState extends State<ChatView> {
         if (newMessage || newParts) {
           // Keep the view at the bottom while the user is actively sending.
           if (newMessage && state.sending) _autoScroll = true;
-          _maybeScrollToBottom();
+          _maybeScrollToBottom(force: newMessage && state.sending);
         }
         _lastMessageCount = msgCount;
         _lastStreamingDigest = model.streamingDigest;

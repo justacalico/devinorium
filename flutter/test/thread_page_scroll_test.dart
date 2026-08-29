@@ -22,14 +22,30 @@ class _PaginatedApiService extends ApiService {
   }) : super(client: _ThrowingClient());
 
   @override
-  Future<List<Message>> getThreadMessages(
+  Future<MessagePage> getThreadMessages(
     String id, {
     int? beforeId,
     int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
     int limit = 50,
   }) async {
-    if (beforeId == initial.first.id) return older;
-    return initial;
+    if (afterId != null) {
+      return MessagePage(messages: const [], total: initial.length + older.length);
+    }
+    if (beforeId == initial.first.id || beforeCursor == 'c1') {
+      return MessagePage(
+        messages: older,
+        total: initial.length + older.length,
+        hasMore: false,
+      );
+    }
+    return MessagePage(
+      messages: initial,
+      total: initial.length + older.length,
+      beforeCursor: 'c1',
+      hasMore: true,
+    );
   }
 }
 
@@ -125,6 +141,7 @@ void main() {
     expect(find.textContaining('Message 49'), findsNothing);
 
     // A new message while the stream is active should bring the view back down.
+    expect(state.sending, isTrue);
     state.activeThreadDetail!.messages.add(
       Message(
         id: 50,

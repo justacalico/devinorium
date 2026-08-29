@@ -101,7 +101,11 @@ class _FakeApiService extends ApiService {
   }) => Future.value();
 
   @override
-  Future<ThreadDetail> getThread(String id, {bool includeMessages = false}) => Future.value(
+  Future<ThreadDetail> getThread(
+    String id, {
+    bool includeMessages = false,
+    int? turnLimit,
+  }) => Future.value(
     ThreadDetail(
       thread: Thread(
         id: id,
