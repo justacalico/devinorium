@@ -48,6 +48,10 @@ class _MessageItemState extends State<_MessageItem> {
   bool _isVisible = false;
   ScrollPosition? _scrollPosition;
   bool _visibilityCheckScheduled = false;
+  // Bumped whenever didUpdateWidget or _resetToPreview replaces _message. Stale
+  // chunk responses see the mismatch and return without touching _loadingMore;
+  // the caller that incremented the token is responsible for resetting the flag.
+  int _loadToken = 0;
 
   @override
   void initState() {
@@ -62,11 +66,11 @@ class _MessageItemState extends State<_MessageItem> {
     super.didChangeDependencies();
     final position = Scrollable.maybeOf(context)?.position;
     if (position != _scrollPosition) {
-      _scrollPosition?.removeListener(_onScroll);
+      _scrollPosition?.isScrollingNotifier.removeListener(_onScrollActivity);
       _scrollPosition = position;
-      _scrollPosition?.addListener(_onScroll);
+      _scrollPosition?.isScrollingNotifier.addListener(_onScrollActivity);
     }
-    _scheduleVisibilityCheck();
+    _maybeScheduleVisibilityCheck();
   }
 
   @override
@@ -76,21 +80,20 @@ class _MessageItemState extends State<_MessageItem> {
     if (incoming.id != _previewMessage.id ||
         incoming.truncated != _previewMessage.truncated ||
         incoming != _previewMessage) {
+      _loadToken++;
       _previewMessage = incoming;
       _message = incoming;
       _expanded = false;
       _isFull = !incoming.truncated;
       _loadingMore = false;
       _error = '';
-      if (_isVisible && !_isFull) {
-        _loadMoreChunks();
-      }
+      _maybeScheduleVisibilityCheck();
     }
   }
 
   @override
   void dispose() {
-    _scrollPosition?.removeListener(_onScroll);
+    _scrollPosition?.isScrollingNotifier.removeListener(_onScrollActivity);
     super.dispose();
   }
 
@@ -149,9 +152,14 @@ class _MessageItemState extends State<_MessageItem> {
     return math.min(_maxChunkChars, math.max(_minChunkChars, target));
   }
 
-  void _onScroll() => _scheduleVisibilityCheck();
+  void _onScrollActivity() {
+    if (!(_scrollPosition?.isScrollingNotifier.value ?? true)) {
+      _maybeScheduleVisibilityCheck();
+    }
+  }
 
-  void _scheduleVisibilityCheck() {
+  void _maybeScheduleVisibilityCheck() {
+    if (_scrollPosition?.isScrollingNotifier.value ?? false) return;
     if (_visibilityCheckScheduled) return;
     _visibilityCheckScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -164,6 +172,7 @@ class _MessageItemState extends State<_MessageItem> {
 
   void _checkVisibility() {
     if (!mounted) return;
+    if (_scrollPosition?.isScrollingNotifier.value ?? false) return;
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.attached || box.size.isEmpty) return;
 
@@ -189,67 +198,98 @@ class _MessageItemState extends State<_MessageItem> {
   }
 
   void _resetToPreview() {
-    if (_loadingMore) _loadingMore = false;
-    if (_message != _previewMessage) {
-      if (!mounted) return;
-      setState(() {
-        _message = _previewMessage;
-        _isFull = !_previewMessage.truncated;
-        _error = '';
-      });
-    }
+    final needsUpdate = _message != _previewMessage || _loadingMore;
+    if (!needsUpdate) return;
+    if (!mounted) return;
+    _loadToken++;
+    setState(() {
+      _message = _previewMessage;
+      _isFull = !_previewMessage.truncated;
+      _error = '';
+      _loadingMore = false;
+    });
   }
 
   Future<void> _loadMoreChunks() async {
     if (_isFull || _loadingMore || !_isVisible) return;
-    final state = context.read<AppState>();
-    final threadId = state.activeThreadId;
-    final messageId = _message.id;
-    final total = _message.totalChars;
-    if (threadId == null || messageId == null || total == null) return;
 
-    final offset = _message.content.runes.length;
-    if (offset >= total) {
-      if (mounted) setState(() => _isFull = true);
-      return;
-    }
+    while (mounted && _isVisible) {
+      final state = context.read<AppState>();
+      final threadId = state.activeThreadId;
+      final messageId = _message.id;
+      final total = _message.totalChars;
+      if (threadId == null || messageId == null || total == null) break;
 
-    setState(() => _loadingMore = true);
-    try {
-      final limit = _chunkSize(total, offset);
-      final chunk = await state.api.getMessageChunk(
-        threadId,
-        messageId,
-        offset: offset,
-        limit: limit,
-      );
-      if (!mounted) return;
+      final offset = _message.content.runes.length;
+      if (offset >= total) {
+        setState(() {
+          _isFull = true;
+          _loadingMore = false;
+        });
+        break;
+      }
 
-      final currentLoaded = _message.content.runes.length;
-      if (!_isVisible || currentLoaded != offset) {
-        setState(() => _loadingMore = false);
+      final token = _loadToken;
+      setState(() => _loadingMore = true);
+      try {
+        final limit = _chunkSize(total, offset);
+        final chunk = await state.api.getMessageChunk(
+          threadId,
+          messageId,
+          offset: offset,
+          limit: limit,
+        );
+        if (!mounted) return;
+
+        if (_loadToken != token) {
+          return;
+        }
+
+        final currentState = context.read<AppState>();
+        if (currentState.activeThreadId != threadId || _message.id != messageId) {
+          setState(() => _loadingMore = false);
+          return;
+        }
+
+        final currentLoaded = _message.content.runes.length;
+        if (!_isVisible || currentLoaded != offset) {
+          setState(() => _loadingMore = false);
+          return;
+        }
+
+        if (chunk.content.isEmpty) {
+          setState(() {
+            _loadingMore = false;
+            _isFull = true;
+          });
+          break;
+        }
+
+        setState(() {
+          _message = _message.copyWith(
+            content: _message.content + chunk.content,
+            totalChars: chunk.totalChars ?? total,
+          );
+          _loadingMore = false;
+          _error = '';
+          _isFull = _message.content.runes.length >= (_message.totalChars ?? total);
+        });
+      } catch (e) {
+        if (!mounted) return;
+        if (_loadToken != token) {
+          return;
+        }
+        final currentState = context.read<AppState>();
+        if (currentState.activeThreadId != threadId || _message.id != messageId) {
+          setState(() => _loadingMore = false);
+          return;
+        }
+        setState(() {
+          _loadingMore = false;
+          _error = '$e';
+        });
         return;
       }
-
-      setState(() {
-        _message = _message.copyWith(
-          content: _message.content + chunk.content,
-          totalChars: chunk.totalChars ?? total,
-        );
-        _loadingMore = false;
-        _error = '';
-        _isFull = _message.content.runes.length >= (_message.totalChars ?? total);
-      });
-
-      if (!_isFull && _isVisible) {
-        await _loadMoreChunks();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadingMore = false;
-        _error = '$e';
-      });
     }
   }
 

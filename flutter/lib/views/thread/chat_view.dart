@@ -91,48 +91,87 @@ class _ChatViewState extends State<ChatView> {
   int _lastStreamingDigest = 0;
   String? _lastThreadId;
   bool _loadingMore = false;
+  bool _jumpingAfterLoad = false;
+  ScrollPosition? _scrollPosition;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(() {
       if (!_scrollController.hasClients) return;
-      final max = _scrollController.position.maxScrollExtent;
-      final pos = _scrollController.position.pixels;
-      _autoScroll = pos < _autoScrollThreshold;
+      final position = _scrollController.position;
+      _autoScroll = position.pixels < _autoScrollThreshold;
+      _attachScrollEndListener(position);
+    });
+  }
 
-      // Near the top (trailing edge in the reversed list) means older
-      // messages are just off-screen.
-      final distFromTop = max - pos;
-      if (distFromTop < _loadMoreThreshold &&
-          pos > 0 &&
-          max > _loadMoreThreshold &&
-          !_loadingMore) {
-        _loadingMore = true;
-        final oldMax = _scrollController.position.maxScrollExtent;
-        final state = context.read<AppState>();
-        state.loadMoreMessages().whenComplete(() {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!_scrollController.hasClients) {
-              _loadingMore = false;
-              return;
-            }
-            final newPos = _scrollController.position.pixels;
-            final newMax = _scrollController.position.maxScrollExtent;
-            final delta = newMax - oldMax;
-            // Only adjust if the user is still near the top from before load.
-            if (delta > 0 && newPos >= oldMax - _loadMoreThreshold) {
-              _scrollController.jumpTo((newPos + delta).clamp(0, newMax));
-            }
-            _loadingMore = false;
-          });
-        });
-      }
+  void _attachScrollEndListener(ScrollPosition position) {
+    if (_scrollPosition == position) return;
+    _scrollPosition?.isScrollingNotifier.removeListener(_onScrollEnd);
+    _scrollPosition = position;
+    _scrollPosition!.isScrollingNotifier.addListener(_onScrollEnd);
+  }
+
+  void _onScrollEnd() {
+    if (_scrollPosition == null || _scrollPosition!.isScrollingNotifier.value) {
+      return;
+    }
+    if (_jumpingAfterLoad) {
+      _jumpingAfterLoad = false;
+      return;
+    }
+    final position = _scrollPosition!;
+    final max = position.maxScrollExtent;
+    final pos = position.pixels;
+    final distFromTop = max - pos;
+    if (distFromTop < _loadMoreThreshold &&
+        pos > 0 &&
+        max > _loadMoreThreshold &&
+        !_loadingMore) {
+      _loadMore();
+    }
+  }
+
+  void _loadMore() {
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    final threadId = state.activeThreadId;
+    if (threadId == null) return;
+    _loadingMore = true;
+    final oldMax = _scrollController.position.maxScrollExtent;
+    state.loadMoreMessages().whenComplete(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) {
+          _loadingMore = false;
+          return;
+        }
+        final newState = context.read<AppState>();
+        if (newState.activeThreadId != threadId) {
+          _loadingMore = false;
+          return;
+        }
+        try {
+          final newPos = _scrollController.position.pixels;
+          final newMax = _scrollController.position.maxScrollExtent;
+          final delta = newMax - oldMax;
+          // Only adjust if the user is still near the top from before load.
+          if (delta > 0 && newPos >= oldMax - _loadMoreThreshold) {
+            _jumpingAfterLoad = true;
+            _scrollController.jumpTo((newPos + delta).clamp(0, newMax));
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _jumpingAfterLoad = false;
+            });
+          }
+        } finally {
+          _loadingMore = false;
+        }
+      });
     });
   }
 
   @override
   void dispose() {
+    _scrollPosition?.isScrollingNotifier.removeListener(_onScrollEnd);
     _scrollController.dispose();
     _composerController.dispose();
     super.dispose();
@@ -140,16 +179,15 @@ class _ChatViewState extends State<ChatView> {
 
   void _maybeScrollToBottom({bool force = false}) {
     if (!force && !_autoScroll) return;
-    final snap = _autoScroll;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      if (!mounted || !_scrollController.hasClients) return;
       _scrollController.jumpTo(0);
       // Reversed ListView may correct the scroll offset after the initial
       // jump when a new child is laid out. Give the next frame a chance to
       // settle and snap back if it drifted above the auto-scroll threshold.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scrollController.hasClients) return;
-        if ((snap || _autoScroll) &&
+        if (!mounted || !_scrollController.hasClients) return;
+        if (_autoScroll &&
             _scrollController.position.pixels > _autoScrollThreshold) {
           _scrollController.jumpTo(0);
         }
