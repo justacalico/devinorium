@@ -154,6 +154,10 @@ pub struct MessageRow {
     pub attachments: String,
     pub model: String,
     pub created_at: String,
+    pub turn_id: i64,
+    pub seq: i64,
+    pub content_length: i64,
+    pub parts_length: Option<i64>,
 }
 
 /// A row from the `thread_groups` table.

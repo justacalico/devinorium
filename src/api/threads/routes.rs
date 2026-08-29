@@ -14,6 +14,7 @@ use crate::AppState;
 
 use super::persistence::active_run_plan;
 use super::{CreateThread, GetThread, ListMessages, MessageOut, PinThread, ThreadOut, UpdateThread};
+use crate::db::messages::TURN_LIMIT_DEFAULT;
 
 pub(super) async fn list(
     State(state): State<AppState>,
@@ -110,13 +111,34 @@ pub(super) async fn get_one(
         Ok(Some(t)) => {
             let total = state.db.count_messages(&id).await.unwrap_or(0);
             let mut messages = Vec::new();
+            let mut page_meta = None;
             if query.include_messages.as_deref().map_or(false, truthy) {
-                let limit = query.limit.unwrap_or(50).clamp(1, 200);
-                match state.db.list_messages_paginated(&id, None, None, limit).await {
-                    Ok(rows) => {
-                        messages = rows.into_iter().map(MessageOut::from).collect::<Vec<_>>();
+                if query.turn_limit.is_some() || query.before_cursor.is_some() {
+                    let turn_limit = query.turn_limit.unwrap_or(TURN_LIMIT_DEFAULT).clamp(1, 200);
+                    let before_cursor = query
+                        .before_cursor
+                        .as_deref()
+                        .and_then(crate::db::messages::TurnCursor::decode);
+                    match state
+                        .db
+                        .list_messages_turn_windowed(&id, before_cursor, turn_limit)
+                        .await
+                    {
+                        Ok((rows, _total, before_cursor, has_more)) => {
+                            let raw_count = rows.len();
+                            messages = rows.into_iter().map(MessageOut::from).collect::<Vec<_>>();
+                            page_meta = Some((before_cursor, has_more, turn_limit, raw_count));
+                        }
+                        Err(e) => return map_err_internal(e).into_response(),
                     }
-                    Err(e) => return map_err_internal(e).into_response(),
+                } else {
+                    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+                    match state.db.list_messages_paginated(&id, None, None, limit).await {
+                        Ok(rows) => {
+                            messages = rows.into_iter().map(MessageOut::from).collect::<Vec<_>>();
+                        }
+                        Err(e) => return map_err_internal(e).into_response(),
+                    }
                 }
             }
             let db_plan = match state.db.get_latest_plan(&id).await {
@@ -125,13 +147,20 @@ pub(super) async fn get_one(
             };
             let (has_active_run, active_plan) = active_run_plan(&state.thread_runner, &id).await;
             let plan = if has_active_run { active_plan } else { db_plan };
-            Json(serde_json::json!({
+            let mut body = serde_json::json!({
                 "thread": ThreadOut::from(t),
                 "total_messages": total,
                 "messages": messages,
                 "plan": plan,
-            }))
-            .into_response()
+            });
+            if let Some((before_cursor, has_more, turn_limit, raw_count)) = page_meta {
+                let before_cursor = before_cursor.map(|c| c.encode());
+                body["before_cursor"] = before_cursor.into();
+                body["has_more"] = has_more.into();
+                body["turn_limit"] = turn_limit.into();
+                body["raw_count"] = raw_count.into();
+            }
+            Json(body).into_response()
         }
         Ok(None) => (
             StatusCode::NOT_FOUND,
@@ -315,12 +344,42 @@ pub(super) async fn list_messages(
         }
     }
 
-    if query.before_id.is_some() && query.after_id.is_some() {
+    let turn_based = query.turn_limit.is_some() || query.before_cursor.is_some();
+
+    if !turn_based && query.before_id.is_some() && query.after_id.is_some() {
         return (
             StatusCode::BAD_REQUEST,
             Json(crate::api::ApiError::new("before_id and after_id cannot both be set")),
         )
             .into_response();
+    }
+
+    if turn_based {
+        let turn_limit = query.turn_limit.unwrap_or(TURN_LIMIT_DEFAULT).clamp(1, 200);
+        let before_cursor = query
+            .before_cursor
+            .as_deref()
+            .and_then(crate::db::messages::TurnCursor::decode);
+        match state
+            .db
+            .list_messages_turn_windowed(&id, before_cursor, turn_limit)
+            .await
+        {
+            Ok((rows, total, before_cursor, has_more)) => {
+                let raw_count = rows.len();
+                let before_cursor = before_cursor.map(|c| c.encode());
+                return Json(serde_json::json!({
+                    "messages": rows.into_iter().map(MessageOut::from).collect::<Vec<_>>(),
+                    "total": total,
+                    "turn_limit": turn_limit,
+                    "raw_count": raw_count,
+                    "before_cursor": before_cursor,
+                    "has_more": has_more,
+                }))
+                .into_response();
+            }
+            Err(e) => return map_err_internal(e).into_response(),
+        }
     }
 
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
@@ -341,6 +400,83 @@ pub(super) async fn list_messages(
 
 fn truthy(value: &str) -> bool {
     matches!(value, "true" | "1" | "yes" | "on")
+}
+
+pub(super) async fn get_message(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path((thread_id, message_id)): Path<(String, i64)>,
+    Query(query): Query<super::MessageChunkQuery>,
+) -> Response {
+    match state.db.get_thread(&thread_id, user.id).await {
+        Ok(Some(_)) => {}
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+    }
+
+    let offset = query.offset.unwrap_or(0).max(0);
+    let limit = query
+        .limit
+        .unwrap_or(crate::db::messages::MESSAGE_CHAR_BUDGET)
+        .clamp(1, crate::db::messages::MESSAGE_CHAR_BUDGET);
+
+    match state
+        .db
+        .get_message_chunk(&thread_id, message_id, offset, limit)
+        .await
+    {
+        Ok(Some((row, total))) => Json(serde_json::json!({
+            "message": MessageOut::from(row),
+            "offset": offset,
+            "limit": limit,
+            "total_chars": total,
+        }))
+        .into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
+        Err(e) => map_err_internal(e).into_response(),
+    }
+}
+
+pub(super) async fn get_message_full(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path((thread_id, message_id)): Path<(String, i64)>,
+) -> Response {
+    match state.db.get_thread(&thread_id, user.id).await {
+        Ok(Some(_)) => {}
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+    }
+
+    match state.db.get_message_full(&thread_id, message_id).await {
+        Ok(Some(row)) => {
+            let mut out = MessageOut::from(row);
+            out.truncated = false;
+            out.total_chars = None;
+            out.truncated_at = None;
+            Json(serde_json::json!({"message": out})).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
+        Err(e) => map_err_internal(e).into_response(),
+    }
 }
 
 fn is_valid_permission_mode(mode: &str) -> bool {

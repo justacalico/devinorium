@@ -80,7 +80,7 @@ pub(super) async fn send(
             return match status {
                 RunStatus::Stopped => Json(serde_json::json!({ "stopped": true })).into_response(),
                 RunStatus::Completed => {
-                    let messages = state.db.list_messages(&id).await.unwrap_or_default();
+                    let messages = state.db.list_messages_full(&id, 2).await.unwrap_or_default();
                     if let Some(reply) = build_send_reply(&messages) {
                         return reply;
                     }
@@ -173,7 +173,7 @@ pub(super) async fn send(
             .into_response();
     }
 
-    let messages = state.db.list_messages(&id).await.unwrap_or_default();
+    let messages = state.db.list_messages_full(&id, 2).await.unwrap_or_default();
     if let Some(reply) = build_send_reply(&messages) {
         return reply;
     }
@@ -318,10 +318,10 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
                 .into_response())
         }
     };
-    if prompt.len() > 64 * 1024 {
+    if prompt.chars().count() > 64 * 1024 {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ApiError::new("prompt too long (max 64 KiB)")),
+            Json(ApiError::new("prompt too long (max 64K characters)")),
         )
             .into_response());
     }
@@ -406,6 +406,10 @@ mod tests {
             attachments: "[]".into(),
             model: "m".into(),
             created_at: "now".into(),
+            turn_id: 1,
+            seq: 1,
+            content_length: 5,
+            parts_length: Some(0),
         };
         let assistant = MessageRow {
             id: 2,
@@ -417,6 +421,10 @@ mod tests {
             attachments: "[]".into(),
             model: "m".into(),
             created_at: "now".into(),
+            turn_id: 1,
+            seq: 2,
+            content_length: 5,
+            parts_length: Some(0),
         };
         assert!(build_send_reply(&[user.clone()]).is_none());
         assert!(build_send_reply(&[assistant.clone(), user.clone()]).is_none());
@@ -437,6 +445,10 @@ mod tests {
             attachments: "[]".into(),
             model: "m".into(),
             created_at: "now".into(),
+            turn_id: 1,
+            seq: 1,
+            content_length: 5,
+            parts_length: Some(0),
         };
         let assistant = MessageRow {
             id: 2,
@@ -448,6 +460,10 @@ mod tests {
             attachments: "[]".into(),
             model: "m".into(),
             created_at: "now".into(),
+            turn_id: 1,
+            seq: 2,
+            content_length: 5,
+            parts_length: Some(0),
         };
         let response = build_send_reply(&[user, assistant]).unwrap();
         let body = to_bytes(response.into_body(), 4096).await.unwrap();

@@ -336,16 +336,21 @@ async fn seed_messages(db: &db::Db, thread_id: &str, count: usize, content_prefi
         .expect("begin transaction");
 
     for i in 0..count {
+        let role = if i % 2 == 0 { "user" } else { "assistant" };
+        let turn_id = (i / 2 + 1) as i64;
         sqlx::query(
-            "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, turn_id, seq)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(thread_id)
-        .bind(if i % 2 == 0 { "user" } else { "assistant" })
+        .bind(role)
         .bind(format!("{content_prefix}{i}"))
         .bind::<Option<String>>(None)
         .bind("[]")
         .bind("[]")
+        .bind("")
+        .bind(turn_id)
+        .bind((i + 1) as i64)
         .execute(&mut *conn)
         .await
         .expect("insert message");
@@ -5409,4 +5414,213 @@ async fn clone_non_gitlab_host_fails_cleanly() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
+async fn thread_messages_turn_windowed_pagination() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "paging").await;
+
+    // Seed 20 messages: 10 user turns with one assistant reply each.
+    seed_messages(&_db, &tid, 20, "msg").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages?turn_limit=3"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+    let has_more = json["has_more"].as_bool().unwrap();
+    let before_cursor = json["before_cursor"].as_str();
+
+    // 3 turns = 6 messages (user + assistant each), ordered by id ascending.
+    assert_eq!(messages.len(), 6, "body: {body}");
+    assert!(has_more);
+    assert!(before_cursor.is_some());
+
+    // Fetch the next older page using the cursor.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!(
+                "/api/threads/{tid}/messages?turn_limit=3&before_cursor={}",
+                before_cursor.unwrap()
+            ),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let older = json["messages"].as_array().unwrap();
+    assert_eq!(older.len(), 6, "body: {body}");
+
+    // The new oldest ids should be lower than the previous page's oldest id.
+    let first_oldest = messages.first().unwrap()["id"].as_i64().unwrap();
+    let second_oldest = older.first().unwrap()["id"].as_i64().unwrap();
+    assert!(second_oldest < first_oldest);
+}
+
+#[tokio::test]
+async fn thread_messages_truncates_and_fetches_full_body() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "big").await;
+
+    let big = "x".repeat(250_000);
+    let mut conn = _db.pool().acquire().await.unwrap();
+    sqlx::query(
+        "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, turn_id, seq)
+         VALUES (?, 'user', ?, NULL, '[]', '[]', '', 1, 1)",
+    )
+    .bind(&tid)
+    .bind(&big)
+    .execute(&mut *conn)
+    .await
+    .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0]["truncated"].as_bool().unwrap());
+    assert!(messages[0]["total_chars"].as_i64().unwrap() >= 250_000);
+    assert!(messages[0]["content"].as_str().unwrap().len() <= 100_000);
+
+    let mid = messages[0]["id"].as_i64().unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{mid}/full"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["message"]["content"].as_str().unwrap().len(), 250_000);
+    assert!(!json["message"]["truncated"].as_bool().unwrap());
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{mid}?offset=100000&limit=100000"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["offset"].as_i64().unwrap(), 100_000);
+    assert_eq!(json["total_chars"].as_i64().unwrap(), 250_000);
+    assert_eq!(json["message"]["content"].as_str().unwrap().len(), 100_000);
+}
+
+#[tokio::test]
+async fn thread_messages_truncates_multibyte_content_correctly() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "unicode").await;
+
+    // 120,000 'é' characters = 240,000 bytes, but only 120,000 chars.
+    let big = "é".repeat(120_000);
+    let mut conn = _db.pool().acquire().await.unwrap();
+    sqlx::query(
+        "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, turn_id, seq)
+         VALUES (?, 'user', ?, NULL, '[]', '[]', '', 1, 1)",
+    )
+    .bind(&tid)
+    .bind(&big)
+    .execute(&mut *conn)
+    .await
+    .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}/messages"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+    assert!(messages[0]["truncated"].as_bool().unwrap());
+    assert_eq!(messages[0]["total_chars"].as_i64().unwrap(), 120_002);
+    assert!(messages[0]["content"].as_str().unwrap().chars().count() <= 100_000);
+
+    let mid = messages[0]["id"].as_i64().unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{mid}/full"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["message"]["content"].as_str().unwrap().chars().count(), 120_000);
+    assert!(!json["message"]["truncated"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn thread_messages_stream_reconnect_skips_past_gap() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "stream").await;
+
+    // 1005 messages makes the gap from 0 exceed the 1_000 threshold.
+    seed_messages(&_db, &tid, 1005, "s").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/stream?since_seq=0&live=false"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("event: snapshot"), "body: {text}");
+    assert!(text.contains("watermark"), "body: {text}");
 }

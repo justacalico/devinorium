@@ -485,6 +485,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn to_acp_content_parses_number_from_string() {
         let q = AskQuestion {
             id: "n".to_string(),
