@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.19.0 - 2026-08-29
+#### Features
+- 实现消息滚动分块加载和卸载 - (a37563d) - HttpAnimations
+- 实现 Flutter 消息分页、折叠和流式 UI - (d82877c) - HttpAnimations
+- 实现消息 turns 分页、size budget 和流式加载后端 - (1e142e8) - HttpAnimations
+#### Bug Fixes
+- 修复线程顶部滚动锁定并优化分页加载 - (8875d49) - HttpAnimations
+
+- - -
+
 ## v0.18.0 - 2026-08-29
 #### Features
 - 添加线程打开耗时调试日志 - (b7ec85d) - HttpAnimations
