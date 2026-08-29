@@ -90,6 +90,10 @@ impl Provider for StubProvider {
                 tokio::time::sleep(dur).await;
             }
         }
+        let session_id = format!("stub-session-{}", req.prompt.len());
+        if let Some(cb) = &req.options.session_callback {
+            cb(session_id.clone()).await;
+        }
         let mode = req.options.interaction_mode.clone();
         let reply = format!("echo: {} ({})", req.prompt, mode);
         let thinking = format!("reasoning about the prompt in {} mode", mode);
@@ -114,7 +118,7 @@ impl Provider for StubProvider {
             }
         }
         Ok(StartResponse {
-            session_id: format!("stub-session-{}", req.prompt.len()),
+            session_id,
             reply,
             thinking,
             parts,
@@ -292,6 +296,9 @@ impl Provider for FailingProvider {
         }])
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        if let Some(cb) = &req.options.session_callback {
+            cb(format!("failing-session-{}", req.prompt.chars().count())).await;
+        }
         let parts = vec![
             MessagePart::thinking("thinking about it"),
             MessagePart::text("partial reply"),
@@ -1042,6 +1049,13 @@ async fn thread_send_persists_partial_output_on_provider_error() {
     assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "thinking about it"));
     assert_eq!(msgs[2].role, "error");
     assert!(msgs[2].content.contains("provider crashed"));
+
+    let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
+    assert_eq!(
+        thread.devin_session_id.as_deref(),
+        Some("failing-session-11"),
+        "session id should be persisted before prompt fails"
+    );
 }
 
 #[tokio::test]

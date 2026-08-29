@@ -15,7 +15,7 @@ use crate::auth::session::CurrentUser;
 use crate::db::{MessageRow, ThreadRow};
 use crate::providers::{
     AskCallback, Attachment, MessagePart, PartCallback, PermissionCallback, SendOptions,
-    SendRequest, StartRequest,
+    SendRequest, SessionCallback, StartRequest,
 };
 use crate::thread_runner::{RunEvent, RunStatus};
 use crate::AppState;
@@ -346,6 +346,25 @@ pub(crate) async fn call_provider(
     let provider = state.provider_for_user(user);
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
+    let session_callback: Option<SessionCallback> = if thread.devin_session_id.is_none() {
+        let thread_id = thread.id.clone();
+        let state_for_session = state.clone();
+        Some({
+            let cb: SessionCallback = Arc::new(move |sid: String| {
+                let state = state_for_session.clone();
+                let thread_id = thread_id.clone();
+                Box::pin(async move {
+                    if let Err(err) = state.db.update_thread_session(&thread_id, &sid, None).await {
+                        tracing::error!(error = %err, "failed to persist session id");
+                    }
+                })
+            });
+            cb
+        })
+    } else {
+        None
+    };
+
     let options = SendOptions {
         model: thread.model.clone(),
         working_dir,
@@ -355,6 +374,7 @@ pub(crate) async fn call_provider(
         permission_callback,
         ask_callback,
         part_callback,
+        session_callback,
         interaction_mode: input.mode.clone(),
         cancel_signal: Some(cancel_signal),
     };

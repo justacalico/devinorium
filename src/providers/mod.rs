@@ -76,6 +76,12 @@ pub type PermissionCallback = Arc<
         + Sync,
 >;
 
+/// Callback the API layer supplies so the provider can report a session id
+/// as soon as a session is created, before the prompt completes.
+pub type SessionCallback = Arc<
+    dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync,
+>;
+
 /// A single file diff streamed from the agent via `ToolCallContent::Diff`.
 /// `old_text` is `None` for newly created files.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,6 +130,8 @@ pub struct SendOptions {
     pub ask_callback: Option<AskCallback>,
     /// Optional callback for each ordered message part.
     pub part_callback: Option<PartCallback>,
+    /// Optional callback fired as soon as the provider has a session id.
+    pub session_callback: Option<SessionCallback>,
     /// Provider interaction mode: "code", "plan", "ask".
     pub interaction_mode: String,
     /// Cancellation flag. When set to true the provider should cancel the
@@ -143,6 +151,7 @@ impl std::fmt::Debug for SendOptions {
             .field("permission_callback", &self.permission_callback.is_some())
             .field("ask_callback", &self.ask_callback.is_some())
             .field("part_callback", &self.part_callback.is_some())
+            .field("session_callback", &self.session_callback.is_some())
             .field("interaction_mode", &self.interaction_mode)
             .finish()
     }
