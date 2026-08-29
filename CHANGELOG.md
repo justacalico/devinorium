@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.18.0 - 2026-08-29
+#### Features
+- 添加线程打开耗时调试日志 - (b7ec85d) - HttpAnimations
+
+- - -
+
 ## v0.17.0 - 2026-08-28
 #### Features
 - 重新设计侧边栏为紧凑美观的 t3code 风格 - (d9433ca) - HttpAnimations
