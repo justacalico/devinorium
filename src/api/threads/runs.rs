@@ -25,7 +25,7 @@ use crate::thread_runner::{RunState, RunStatus};
 use crate::AppState;
 
 use super::permissions::{build_ask_callback, build_permission_callback};
-use super::persistence::{persist_assistant_reply, persist_run_plan};
+use super::persistence::{persist_assistant_reply, persist_run_plan, save_partial_assistant_message};
 use super::send::{call_provider, SendInput};
 use super::MessageOut;
 
@@ -309,6 +309,24 @@ pub(crate) async fn run_thread(
     let (new_session_id, new_title, parts) = match provider_result {
         Ok(t) => t,
         Err(e) => {
+            // The model may have already produced useful output before the
+            // provider crashed or rate-limited us. Persist that partial
+            // assistant reply so the user can see it and the next turn has
+            // context, then record the error separately.
+            let run_parts = run
+                .parts
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let partial_parts = strip_plan_markup_from_parts(run_parts);
+            if !partial_parts.is_empty() {
+                if let Err(err) =
+                    save_partial_assistant_message(&state, &thread, &partial_parts, &thread.model)
+                        .await
+                {
+                    tracing::error!(error = %err, "failed to persist partial assistant reply");
+                }
+            }
             let _ = state
                 .db
                 .add_message(NewMessage {
@@ -322,6 +340,7 @@ pub(crate) async fn run_thread(
                 })
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
+            persist_run_plan(&state.db, &thread.id, &run).await;
             return Err(e);
         }
     };

@@ -108,6 +108,38 @@ pub(crate) async fn persist_assistant_reply(
     Ok(assistant_msg)
 }
 
+/// Persist a partial or final assistant reply from the accumulated run parts.
+///
+/// Unlike `persist_assistant_reply`, this does not update the thread session or
+/// audit the request, so it is safe to call when the provider has failed or the
+/// turn was cancelled mid-generation.
+pub(crate) async fn save_partial_assistant_message(
+    state: &AppState,
+    thread: &ThreadRow,
+    parts: &[MessagePart],
+    model: &str,
+) -> anyhow::Result<MessageRow> {
+    let stripped = strip_plan_markup_from_parts(parts.to_vec());
+    let reply = collect_text(&stripped);
+    let thinking = collect_thinking(&stripped);
+    let thinking = (!thinking.is_empty()).then_some(thinking);
+    let parts_json = serde_json::to_string(&stripped).unwrap_or_else(|_| "[]".into());
+    let msg = state
+        .db
+        .add_message(NewMessage {
+            thread_id: thread.id.clone(),
+            role: "assistant".into(),
+            content: reply,
+            thinking,
+            parts: parts_json,
+            attachments: "[]".into(),
+            model: model.into(),
+        })
+        .await?;
+    let _ = state.db.touch_thread(&thread.id).await;
+    Ok(msg)
+}
+
 /// Persist the final active plan for a run to the database, if any.
 pub(crate) async fn persist_run_plan(db: &crate::db::Db, thread_id: &str, run: &RunState) {
     let plan = run
