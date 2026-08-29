@@ -12,6 +12,7 @@ class _ProjectThreadList extends StatefulWidget {
 
 class _ProjectThreadListState extends State<_ProjectThreadList> {
   final Set<int> _expandedIds = {};
+  final Set<int> _showAllProjectIds = {};
   int? _lastActiveProjectId;
   String? _lastActiveThreadId;
   List<Thread> _lastThreads = [];
@@ -81,6 +82,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     }
 
     _expandedIds.removeWhere((id) => !projects.any((p) => p.id == id));
+    _showAllProjectIds.removeWhere((id) => !projects.any((p) => p.id == id));
   }
 
   @override
@@ -133,6 +135,8 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
               final projectThreads = visibleThreadsByProject[p.id] ?? [];
               final isExpanded = query.isNotEmpty ||
                   _expandedIds.contains(p.id);
+              final showAll = query.isNotEmpty ||
+                  _showAllProjectIds.contains(p.id);
 
               return _ProjectExpandableTile(
                 key: ValueKey(p.id),
@@ -140,6 +144,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                 project: p,
                 threads: projectThreads,
                 isExpanded: isExpanded,
+                showAll: showAll,
                 activeThreadId: activeThreadId,
                 onToggle: () => _onToggle(p.id),
                 onNewThread: () {
@@ -147,6 +152,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                   state.createNewThread(projectId: p.id);
                 },
                 onThreadTap: (id) => state.openThread(id),
+                onShowMore: () => _onShowMore(p.id),
               );
             },
           ),
@@ -162,7 +168,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                   )
                 : TextButton(
                     onPressed: () => state.loadMoreProjects(),
-                    child: const Text('Load more'),
+                    child: Text(l10n(context).loadMore),
                   ),
           ),
       ],
@@ -241,6 +247,12 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       });
       state.selectProject(id);
     }
+  }
+
+  void _onShowMore(int id) {
+    setState(() {
+      _showAllProjectIds.add(id);
+    });
   }
 
   int? _projectIdForThread(List<Thread> threads, String threadId) {

@@ -534,5 +534,14 @@
   "threadStatusDone": "Done",
   "threadStatusFailed": "Failed",
   "threadStatusApproval": "Approval",
-  "threadStatusInput": "Input"
+  "threadStatusInput": "Input",
+  "showMoreThreads": "Show {count} more",
+  "@showMoreThreads": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "loadMore": "Load more"
 }

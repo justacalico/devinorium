@@ -96,7 +96,7 @@ class FilesPanel extends StatelessWidget {
                                     )
                                   : TextButton(
                                       onPressed: () => state.loadMoreFiles(),
-                                      child: const Text('Load more'),
+                                      child: Text(l10n(context).loadMore),
                                     ),
                             );
                           }
