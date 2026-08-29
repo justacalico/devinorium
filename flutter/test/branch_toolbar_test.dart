@@ -248,6 +248,7 @@ class _FakeApiService extends ApiService {
   Future<ThreadDetail> getThread(
     String id, {
     bool includeMessages = false,
+    int? turnLimit,
   }) async {
     calls.add('getThread:$id');
     return ThreadDetail(

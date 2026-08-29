@@ -8,12 +8,14 @@ pub(crate) mod plan;
 pub(crate) mod routes;
 pub(crate) mod send;
 pub(crate) mod runs;
+pub(crate) mod stream;
 pub(crate) mod permissions;
 pub(crate) mod persistence;
 
 use axum::routing::{get, post, Router};
 use serde::{Deserialize, Serialize};
 
+use crate::db::messages::{MESSAGE_CHAR_BUDGET, MESSAGE_PARTS_BUDGET};
 use crate::db::{MessageRow, ThreadRow};
 use crate::providers::{collect_text, collect_thinking, MessagePart};
 use crate::AppState;
@@ -28,6 +30,9 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/threads/:id/pin", post(routes::pin))
         .route("/api/threads/:id/messages", get(routes::list_messages))
+        .route("/api/threads/:id/messages/stream", get(stream::message_stream))
+        .route("/api/threads/:id/messages/:message_id", get(routes::get_message))
+        .route("/api/threads/:id/messages/:message_id/full", get(routes::get_message_full))
         .route("/api/threads/:id/send", post(send::send))
         .route("/api/threads/:id/send/stream", post(send::send_stream))
         .route("/api/threads/:id/run", get(runs::get_run))
@@ -89,26 +94,48 @@ pub struct MessageOut {
     pub attachments: serde_json::Value,
     pub model: String,
     pub created_at: String,
+    pub turn_id: i64,
+    pub seq: i64,
+    pub truncated: bool,
+    pub total_chars: Option<usize>,
+    pub truncated_at: Option<usize>,
 }
 
 impl From<MessageRow> for MessageOut {
     fn from(m: MessageRow) -> Self {
         let attachments: serde_json::Value =
             serde_json::from_str(&m.attachments).unwrap_or(serde_json::json!([]));
+
+        let content_truncated = m.content_length > MESSAGE_CHAR_BUDGET;
+
         let parts: Vec<MessagePart> = m
             .parts
             .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_else(|| {
-                let mut ps = vec![MessagePart::text(m.content.as_str())];
-                if let Some(t) = m.thinking.as_deref().filter(|s| !s.is_empty()) {
-                    ps.push(MessagePart::thinking(t));
-                }
-                ps
-            });
-        let content = collect_text(&parts);
-        let thinking = collect_thinking(&parts);
-        let thinking = (!thinking.is_empty()).then_some(thinking);
+            .and_then(|s| serde_json::from_str::<Vec<MessagePart>>(s).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| !content_truncated || matches!(p, MessagePart::ToolCall { .. }))
+            .collect();
+
+        let (content, thinking) = if content_truncated || parts.is_empty() {
+            (m.content.clone(), m.thinking.clone().filter(|s| !s.is_empty()))
+        } else {
+            let content = collect_text(&parts);
+            let thinking = collect_thinking(&parts);
+            let thinking = (!thinking.is_empty()).then_some(thinking);
+            (content, thinking)
+        };
+
+        let content_chars = content.chars().count() as i64;
+        let truncated = content_chars < m.content_length
+            || (m.parts.is_none() && m.parts_length.map_or(false, |l| l > MESSAGE_PARTS_BUDGET));
+        let (total_chars, truncated_at) = if truncated {
+            let total = (m.content_length + m.parts_length.unwrap_or(0)) as usize;
+            (Some(total), Some(content_chars as usize))
+        } else {
+            (None, None)
+        };
+
         Self {
             id: m.id,
             role: m.role,
@@ -118,6 +145,11 @@ impl From<MessageRow> for MessageOut {
             attachments,
             model: m.model,
             created_at: m.created_at,
+            turn_id: m.turn_id,
+            seq: m.seq,
+            truncated,
+            total_chars,
+            truncated_at,
         }
     }
 }
@@ -139,6 +171,8 @@ pub struct CreateThread {
 pub struct GetThread {
     pub include_messages: Option<String>,
     pub limit: Option<i64>,
+    pub turn_limit: Option<i64>,
+    pub before_cursor: Option<String>,
 }
 
 impl Default for GetThread {
@@ -146,6 +180,8 @@ impl Default for GetThread {
         Self {
             include_messages: None,
             limit: Some(50),
+            turn_limit: None,
+            before_cursor: None,
         }
     }
 }
@@ -156,6 +192,8 @@ pub struct ListMessages {
     pub before_id: Option<i64>,
     pub after_id: Option<i64>,
     pub limit: Option<i64>,
+    pub turn_limit: Option<i64>,
+    pub before_cursor: Option<String>,
 }
 
 impl Default for ListMessages {
@@ -164,6 +202,24 @@ impl Default for ListMessages {
             before_id: None,
             after_id: None,
             limit: Some(50),
+            turn_limit: None,
+            before_cursor: None,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct MessageChunkQuery {
+    pub offset: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+impl Default for MessageChunkQuery {
+    fn default() -> Self {
+        Self {
+            offset: Some(0),
+            limit: Some(crate::db::messages::MESSAGE_CHAR_BUDGET),
         }
     }
 }
@@ -260,10 +316,14 @@ mod tests {
             role: "assistant".into(),
             content: "ignored".into(),
             thinking: Some("ignored".into()),
-            parts: Some(parts_json),
+            parts: Some(parts_json.clone()),
             attachments: "[]".into(),
             model: "glm-5-2".into(),
             created_at: "2024-01-01T00:00:00Z".into(),
+            turn_id: 1,
+            seq: 1,
+            content_length: 7,
+            parts_length: Some(parts_json.len() as i64),
         };
         let out = MessageOut::from(row);
         assert_eq!(out.content, "hello world");

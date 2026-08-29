@@ -380,9 +380,10 @@ void main() {
         });
       });
       final service = _serviceFor(mock);
-      final msgs = await service.getThreadMessages('a');
-      expect(msgs.length, 1);
-      expect(msgs.first.id, 1);
+      final page = await service.getThreadMessages('a');
+      expect(page.messages.length, 1);
+      expect(page.messages.first.id, 1);
+      expect(page.total, 1);
     });
 
     test('getThreadMessages encodes beforeId, afterId and limit', () async {
@@ -402,6 +403,111 @@ void main() {
         afterId: 5,
         limit: 25,
       );
+    });
+
+    test('getThreadMessages uses turn-windowed params', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/threads/a/messages');
+        final q = req.url.queryParameters;
+        expect(q['turn_limit'], '50');
+        expect(q['before_cursor'], 'c1');
+        expect(q.containsKey('before_id'), isFalse);
+        expect(q.containsKey('after_id'), isFalse);
+        expect(q.containsKey('limit'), isFalse);
+        return _json(200, {
+          'messages': [{'id': 1, 'role': 'user', 'content': 'hi'}],
+          'total': 1,
+          'turn_limit': 50,
+          'raw_count': 1,
+          'before_cursor': 'c0',
+          'has_more': false,
+        });
+      });
+      final service = _serviceFor(mock);
+      final page = await service.getThreadMessages(
+        'a',
+        beforeCursor: 'c1',
+        turnLimit: 50,
+      );
+      expect(page.messages, hasLength(1));
+      expect(page.turnLimit, 50);
+      expect(page.rawCount, 1);
+      expect(page.beforeCursor, 'c0');
+      expect(page.hasMore, isFalse);
+    });
+
+    test('getMessageFull fetches full message', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/threads/a/messages/1/full'));
+        return _json(200, {
+          'message': {
+            'id': 1,
+            'role': 'assistant',
+            'content': 'full content',
+            'truncated': false,
+            'total_chars': 12,
+          },
+        });
+      });
+      final service = _serviceFor(mock);
+      final msg = await service.getMessageFull('a', 1);
+      expect(msg.id, 1);
+      expect(msg.content, 'full content');
+      expect(msg.truncated, isFalse);
+      expect(msg.totalChars, 12);
+    });
+
+    test('getMessageChunk encodes offset and limit', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/threads/a/messages/1');
+        final q = req.url.queryParameters;
+        expect(q['offset'], '100');
+        expect(q['limit'], '500');
+        return _json(200, {
+          'message': {
+            'id': 1,
+            'role': 'assistant',
+            'content': 'chunk',
+          },
+        });
+      });
+      final service = _serviceFor(mock);
+      final msg = await service.getMessageChunk('a', 1, offset: 100, limit: 500);
+      expect(msg.content, 'chunk');
+    });
+
+    test('getThread includeMessages encodes turn_limit', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/threads/a');
+        final q = req.url.queryParameters;
+        expect(q['include_messages'], '1');
+        expect(q['turn_limit'], '50');
+        return _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': '',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'total_messages': 1,
+          'messages': [{'id': 1, 'role': 'user', 'content': 'hello'}],
+          'turn_limit': 50,
+          'before_cursor': 'c1',
+          'has_more': false,
+        });
+      });
+      final service = _serviceFor(mock);
+      final d = await service.getThread('a', includeMessages: true, turnLimit: 50);
+      expect(d.messages, hasLength(1));
+      expect(d.turnLimit, 50);
+      expect(d.beforeCursor, 'c1');
+      expect(d.hasMore, isFalse);
     });
 
     test('getThread reuses inline messages when present', () async {

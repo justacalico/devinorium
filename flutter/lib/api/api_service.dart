@@ -306,33 +306,58 @@ class ApiService {
   Future<ThreadDetail> getThread(
     String id, {
     bool includeMessages = false,
+    int? turnLimit,
   }) async {
-    final path = includeMessages
-        ? '/api/threads/$id?include_messages=1'
-        : '/api/threads/$id';
-    final meta = await _client.get(path);
+    final params = <String, String>{};
+    if (includeMessages) params['include_messages'] = '1';
+    if (turnLimit != null) params['turn_limit'] = turnLimit.toString();
+    final uri = _buildPath('/api/threads/$id', params);
+    final meta = await _client.get(uri);
     return ThreadDetail.fromJson(meta);
   }
 
-  Future<List<Message>> getThreadMessages(
+  Future<MessagePage> getThreadMessages(
     String id, {
     int? beforeId,
     int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
     int limit = 50,
   }) async {
-    final q = <String, String>{'limit': limit.toString()};
-    if (beforeId != null) q['before_id'] = beforeId.toString();
-    if (afterId != null) q['after_id'] = afterId.toString();
-    final query = q.entries
-        .map(
-          (e) =>
-              '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}',
-        )
-        .join('&');
-    final j = await _client.get('/api/threads/$id/messages?$query');
-    return ((j['messages'] as List<dynamic>?) ?? [])
-        .map((m) => Message.fromJson(m as Map<String, dynamic>))
-        .toList();
+    final params = <String, String>{};
+    if (turnLimit != null || beforeCursor != null) {
+      params['turn_limit'] = (turnLimit ?? 50).toString();
+      if (beforeCursor != null) params['before_cursor'] = beforeCursor;
+    } else {
+      params['limit'] = limit.toString();
+      if (beforeId != null) params['before_id'] = beforeId.toString();
+      if (afterId != null) params['after_id'] = afterId.toString();
+    }
+    final uri = _buildPath('/api/threads/$id/messages', params);
+    final j = await _client.get(uri);
+    return MessagePage.fromJson(j);
+  }
+
+  Future<Message> getMessageFull(String threadId, int messageId) async {
+    final j = await _client.get(
+      '/api/threads/$threadId/messages/$messageId/full',
+    );
+    return Message.fromJson(j['message'] as Map<String, dynamic>);
+  }
+
+  Future<Message> getMessageChunk(
+    String threadId,
+    int messageId, {
+    int offset = 0,
+    int limit = 100000,
+  }) async {
+    final params = <String, String>{
+      'offset': offset.toString(),
+      'limit': limit.toString(),
+    };
+    final uri = _buildPath('/api/threads/$threadId/messages/$messageId', params);
+    final j = await _client.get(uri);
+    return Message.fromJson(j['message'] as Map<String, dynamic>);
   }
 
   Future<void> renameThread(String id, String title) async {
@@ -562,6 +587,22 @@ class ApiService {
   /// Watch an existing backend run as an SSE event stream.
   Stream<SseEvent> watchThreadEvents(String id) {
     return _client.getStream(path: '/api/threads/$id/events');
+  }
+
+  /// Watch the message stream for a thread.
+  Stream<SseEvent> watchMessageStream(
+    String threadId, {
+    int? sinceSeq,
+    int? turnLimit,
+    bool live = true,
+  }) {
+    final params = <String, String>{
+      'since_seq': (sinceSeq ?? 0).toString(),
+      'turn_limit': (turnLimit ?? 50).toString(),
+      'live': live.toString(),
+    };
+    final uri = _buildPath('/api/threads/$threadId/messages/stream', params);
+    return _client.getStream(path: uri);
   }
 
   /// Stop the currently running model/ACP session for a thread.

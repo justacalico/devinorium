@@ -36,7 +36,11 @@ class _TestApiService extends ApiService {
   }
 
   @override
-  Future<ThreadDetail> getThread(String id, {bool includeMessages = false}) {
+  Future<ThreadDetail> getThread(
+    String id, {
+    bool includeMessages = false,
+    int? turnLimit,
+  }) {
     getThreadCalls++;
     if (throwOnGetThread) {
       return Future.error(Exception('getThread failed'));
@@ -57,13 +61,15 @@ class _TestApiService extends ApiService {
   }
 
   @override
-  Future<List<Message>> getThreadMessages(
+  Future<MessagePage> getThreadMessages(
     String id, {
     int? beforeId,
     int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
     int limit = 50,
   }) async =>
-      const [];
+      const MessagePage(messages: [], total: 0);
 
   @override
   Future<Map<String, dynamic>> getThreadRun(String id) =>
@@ -206,4 +212,142 @@ void main() {
     expect(api.getThreadCalls, 1);
     expect(store.globalError, isNotEmpty);
   });
+
+  group('turn-windowed pagination', () {
+    test('load fetches initial page and stores cursors', () async {
+      final api = _CursorApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+      );
+      final completer = Completer<void>();
+      store.onStateChanged = () {
+        if (store.detail.valueOrNull?.messages.length == 2) {
+          completer.complete();
+        }
+      };
+
+      await store.load();
+      await completer.future.timeout(const Duration(seconds: 1));
+
+      final d = store.detail.valueOrNull!;
+      expect(d.messages, hasLength(2));
+      expect(d.totalMessages, 3);
+      expect(d.beforeCursor, 'c1');
+      expect(d.hasMore, isTrue);
+      expect(d.turnLimit, 50);
+      expect(d.rawCount, 2);
+    });
+
+    test('loadMoreMessages uses beforeCursor and prepends older turns', () async {
+      final api = _CursorApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [
+            Message(id: 2, role: 'user', content: 'hello'),
+            Message(id: 3, role: 'assistant', content: 'hi'),
+          ],
+          totalMessages: 3,
+          beforeCursor: 'c1',
+          hasMore: true,
+          turnLimit: 50,
+          rawCount: 2,
+        )),
+      );
+
+      await store.loadMoreMessages();
+
+      final d = store.detail.valueOrNull!;
+      expect(d.messages, hasLength(3));
+      expect(d.messages.first.id, 1);
+      expect(d.messages.first.content, 'older');
+      expect(d.beforeCursor, isNull);
+      expect(d.hasMore, isFalse);
+      expect(d.rawCount, 1);
+    });
+  });
+}
+
+class _CursorApiService extends ApiService {
+  _CursorApiService() : super(client: _ThrowingClient());
+
+  var getThreadMessagesCalls = 0;
+
+  @override
+  Future<ThreadDetail> getThread(
+    String id, {
+    bool includeMessages = false,
+    int? turnLimit,
+  }) =>
+      Future.value(ThreadDetail(
+        thread: Thread(
+          id: id,
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: const [],
+        totalMessages: 3,
+      ));
+
+  @override
+  Future<Map<String, dynamic>> getThreadRun(String id) =>
+      Future.value({'status': 'idle', 'parts': []});
+
+  @override
+  Future<void> updateThreadSettings(
+    String id, {
+    String? model,
+    String? permissionMode,
+    String? permissions,
+  }) =>
+      Future.value();
+
+  @override
+  Future<MessagePage> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
+    int limit = 50,
+  }) async {
+    getThreadMessagesCalls++;
+    if (beforeCursor == 'c1') {
+      return MessagePage(
+        messages: [Message(id: 1, role: 'user', content: 'older')],
+        total: 3,
+        turnLimit: 50,
+        rawCount: 1,
+        hasMore: false,
+      );
+    }
+    return MessagePage(
+      messages: [
+        Message(id: 2, role: 'user', content: 'hello'),
+        Message(id: 3, role: 'assistant', content: 'hi'),
+      ],
+      total: 3,
+      turnLimit: 50,
+      rawCount: 2,
+      beforeCursor: 'c1',
+      hasMore: true,
+    );
+  }
 }

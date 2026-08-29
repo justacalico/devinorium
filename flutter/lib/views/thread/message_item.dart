@@ -34,9 +34,74 @@ class _PartGroup {
 }
 
 class _MessageItemState extends State<_MessageItem> {
+  static const _maxPreviewChars = 600;
+  static const _maxPreviewLines = 8;
+  static const _minChunkChars = 10000;
+  static const _maxChunkChars = 100000;
+
+  late Message _message;
+  late Message _previewMessage;
+  bool _expanded = false;
+  bool _isFull = false;
+  bool _loadingMore = false;
+  String _error = '';
+  bool _isVisible = false;
+  ScrollPosition? _scrollPosition;
+  bool _visibilityCheckScheduled = false;
+  // Bumped whenever didUpdateWidget or _resetToPreview replaces _message. Stale
+  // chunk responses see the mismatch and return without touching _loadingMore;
+  // the caller that incremented the token is responsible for resetting the flag.
+  int _loadToken = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _previewMessage = widget.message;
+    _message = widget.message;
+    _isFull = !_message.truncated;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final position = Scrollable.maybeOf(context)?.position;
+    if (position != _scrollPosition) {
+      _scrollPosition?.isScrollingNotifier.removeListener(_onScrollActivity);
+      _scrollPosition = position;
+      _scrollPosition?.isScrollingNotifier.addListener(_onScrollActivity);
+    }
+    _maybeScheduleVisibilityCheck();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final incoming = widget.message;
+    if (incoming.id != _previewMessage.id ||
+        incoming.truncated != _previewMessage.truncated ||
+        incoming != _previewMessage) {
+      _loadToken++;
+      _previewMessage = incoming;
+      _message = incoming;
+      _expanded = false;
+      _isFull = !incoming.truncated;
+      _loadingMore = false;
+      _error = '';
+      _maybeScheduleVisibilityCheck();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollPosition?.isScrollingNotifier.removeListener(_onScrollActivity);
+    super.dispose();
+  }
+
+  bool get _isAssistant => _message.role == 'assistant';
+
   bool get _working {
     if (widget.thinkingActive) return true;
-    return widget.message.allParts.any(
+    return _message.allParts.any(
       (p) =>
           p.type == 'tool_call' &&
           p.toolCall != null &&
@@ -45,9 +110,188 @@ class _MessageItemState extends State<_MessageItem> {
     );
   }
 
-  bool get _hasText => widget.message.allParts.any(
+  bool get _hasText => _message.allParts.any(
     (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
   );
+
+  bool get _shouldCollapse {
+    if (_message.role != 'user' || _expanded) return false;
+    final lines = _message.content.split('\n').length;
+    return _message.content.runes.length > _maxPreviewChars ||
+        lines > _maxPreviewLines;
+  }
+
+  String? get _previewText {
+    if (!_shouldCollapse) return null;
+    final runes = _message.content.runes;
+    final end = runes.length < _maxPreviewChars
+        ? runes.length
+        : _maxPreviewChars;
+    final charsPreview = String.fromCharCodes(runes.take(end));
+    final lines = _message.content
+        .split('\n')
+        .take(_maxPreviewLines)
+        .join('\n');
+    return lines.runes.length <= charsPreview.runes.length
+        ? lines
+        : charsPreview;
+  }
+
+  Message get _effectiveMessage {
+    final preview = _previewText;
+    if (preview != null) {
+      return _message.copyWith(content: preview, parts: []);
+    }
+    return _message;
+  }
+
+  int _chunkSize(int total, int loaded) {
+    final remaining = total - loaded;
+    if (remaining <= _minChunkChars) return _minChunkChars;
+    final target = math.max(1, (total / 5).ceil());
+    return math.min(_maxChunkChars, math.max(_minChunkChars, target));
+  }
+
+  void _onScrollActivity() {
+    if (!(_scrollPosition?.isScrollingNotifier.value ?? true)) {
+      _maybeScheduleVisibilityCheck();
+    }
+  }
+
+  void _maybeScheduleVisibilityCheck() {
+    if (_scrollPosition?.isScrollingNotifier.value ?? false) return;
+    if (_visibilityCheckScheduled) return;
+    _visibilityCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibilityCheckScheduled = false;
+      if (mounted) _checkVisibility();
+    });
+  }
+
+  static const _visibilityMargin = 64.0;
+
+  void _checkVisibility() {
+    if (!mounted) return;
+    if (_scrollPosition?.isScrollingNotifier.value ?? false) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || box.size.isEmpty) return;
+
+    final viewport = RenderAbstractViewport.of(box) as RenderBox?;
+    if (viewport == null || viewport.size.isEmpty) return;
+
+    final itemOffset = box.localToGlobal(Offset.zero, ancestor: viewport);
+    final itemRect = itemOffset & box.size;
+    final viewportRect = Offset.zero & viewport.size;
+    final isVisible =
+        itemRect.overlaps(viewportRect.inflate(_visibilityMargin));
+
+    final wasVisible = _isVisible;
+    _isVisible = isVisible;
+
+    if (!wasVisible && isVisible) {
+      if (!_isFull && !_loadingMore && _message.truncated && _isAssistant) {
+        _loadMoreChunks();
+      }
+    } else if (wasVisible && !isVisible) {
+      _resetToPreview();
+    }
+  }
+
+  void _resetToPreview() {
+    final needsUpdate = _message != _previewMessage || _loadingMore;
+    if (!needsUpdate) return;
+    if (!mounted) return;
+    _loadToken++;
+    setState(() {
+      _message = _previewMessage;
+      _isFull = !_previewMessage.truncated;
+      _error = '';
+      _loadingMore = false;
+    });
+  }
+
+  Future<void> _loadMoreChunks() async {
+    if (_isFull || _loadingMore || !_isVisible) return;
+
+    while (mounted && _isVisible) {
+      final state = context.read<AppState>();
+      final threadId = state.activeThreadId;
+      final messageId = _message.id;
+      final total = _message.totalChars;
+      if (threadId == null || messageId == null || total == null) break;
+
+      final offset = _message.content.runes.length;
+      if (offset >= total) {
+        setState(() {
+          _isFull = true;
+          _loadingMore = false;
+        });
+        break;
+      }
+
+      final token = _loadToken;
+      setState(() => _loadingMore = true);
+      try {
+        final limit = _chunkSize(total, offset);
+        final chunk = await state.api.getMessageChunk(
+          threadId,
+          messageId,
+          offset: offset,
+          limit: limit,
+        );
+        if (!mounted) return;
+
+        if (_loadToken != token) {
+          return;
+        }
+
+        final currentState = context.read<AppState>();
+        if (currentState.activeThreadId != threadId || _message.id != messageId) {
+          setState(() => _loadingMore = false);
+          return;
+        }
+
+        final currentLoaded = _message.content.runes.length;
+        if (!_isVisible || currentLoaded != offset) {
+          setState(() => _loadingMore = false);
+          return;
+        }
+
+        if (chunk.content.isEmpty) {
+          setState(() {
+            _loadingMore = false;
+            _isFull = true;
+          });
+          break;
+        }
+
+        setState(() {
+          _message = _message.copyWith(
+            content: _message.content + chunk.content,
+            totalChars: chunk.totalChars ?? total,
+          );
+          _loadingMore = false;
+          _error = '';
+          _isFull = _message.content.runes.length >= (_message.totalChars ?? total);
+        });
+      } catch (e) {
+        if (!mounted) return;
+        if (_loadToken != token) {
+          return;
+        }
+        final currentState = context.read<AppState>();
+        if (currentState.activeThreadId != threadId || _message.id != messageId) {
+          setState(() => _loadingMore = false);
+          return;
+        }
+        setState(() {
+          _loadingMore = false;
+          _error = '$e';
+        });
+        return;
+      }
+    }
+  }
 
   List<_PartGroup> _buildGroups(List<MessagePart> parts) {
     final groups = <_PartGroup>[];
@@ -77,8 +321,6 @@ class _MessageItemState extends State<_MessageItem> {
       } else if (part.type == 'tool_call') {
         final tool = part.toolCall;
         if (tool == null) continue;
-        // File edits and command executions are rendered as standalone cards
-        // outside the thinking block so the user can see them without expanding.
         if (tool.kind == 'edit' || tool.kind == 'execute') {
           groups.add(_PartGroup(type: 'tool_call', tool: tool));
         } else if (groups.isNotEmpty && groups.last.type == 'thinking') {
@@ -170,7 +412,7 @@ class _MessageItemState extends State<_MessageItem> {
       final group = groups[i];
       if (group.type == 'text') {
         children.add(
-          _buildTextContent(context, group.content ?? '', widget.message.role),
+          _buildTextContent(context, group.content ?? '', _message.role),
         );
       } else if (group.type == 'tool_call') {
         final tool = group.tool;
@@ -201,7 +443,7 @@ class _MessageItemState extends State<_MessageItem> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final message = widget.message;
+    final message = _message;
     final l = l10n(context);
     final assistantLabel = message.model.isNotEmpty
         ? message.model
@@ -227,11 +469,18 @@ class _MessageItemState extends State<_MessageItem> {
       ),
     };
 
-    final groups = _buildGroups(message.allParts);
+    final groups = _buildGroups(_effectiveMessage.allParts);
     final showLoading =
         message.role == 'assistant' &&
         message.content.isEmpty &&
         groups.isEmpty;
+    final showShowMore = _shouldCollapse;
+    final showLoadingMore = _isAssistant && _message.truncated && _loadingMore;
+    final showLoadError =
+        _isAssistant &&
+        _message.truncated &&
+        _error.isNotEmpty &&
+        !_loadingMore;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
@@ -266,6 +515,31 @@ class _MessageItemState extends State<_MessageItem> {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                if (showShowMore) ...[
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: () => setState(() => _expanded = true),
+                    child: const Text('Show more'),
+                  ),
+                ],
+                if (showLoadingMore) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Loading more…',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (showLoadError) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _error,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ],
                 if (message.attachments != null &&
                     message.attachments!.isNotEmpty) ...[
                   const SizedBox(height: 8),

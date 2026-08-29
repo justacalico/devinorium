@@ -2,6 +2,12 @@ import 'package:flutter/foundation.dart' show listEquals;
 
 import 'messages.dart';
 
+class _Unset {
+  const _Unset();
+}
+
+const Object _unset = _Unset();
+
 class Project {
   final int id;
   final String name;
@@ -294,12 +300,20 @@ class ThreadDetail {
   List<Message> messages;
   int totalMessages;
   Plan? plan;
+  String? beforeCursor;
+  bool? hasMore;
+  int? turnLimit;
+  int? rawCount;
 
   ThreadDetail({
     required this.thread,
     this.messages = const [],
     this.totalMessages = 0,
     this.plan,
+    this.beforeCursor,
+    this.hasMore,
+    this.turnLimit,
+    this.rawCount,
   });
 
   factory ThreadDetail.fromJson(Map<String, dynamic> j) => ThreadDetail(
@@ -313,6 +327,10 @@ class ThreadDetail {
     plan: j['plan'] == null
         ? null
         : Plan.fromJson(j['plan'] as Map<String, dynamic>),
+    beforeCursor: j['before_cursor'] as String?,
+    hasMore: j['has_more'] as bool?,
+    turnLimit: (j['turn_limit'] as num?)?.toInt(),
+    rawCount: (j['raw_count'] as num?)?.toInt(),
   );
 
   ThreadDetail copyWith({
@@ -321,11 +339,19 @@ class ThreadDetail {
     int? totalMessages,
     Plan? plan,
     bool clearPlan = false,
+    Object? beforeCursor = _unset,
+    Object? hasMore = _unset,
+    Object? turnLimit = _unset,
+    Object? rawCount = _unset,
   }) => ThreadDetail(
     thread: thread ?? this.thread,
     messages: messages ?? this.messages,
     totalMessages: totalMessages ?? this.totalMessages,
     plan: clearPlan ? null : (plan ?? this.plan),
+    beforeCursor: beforeCursor == _unset ? this.beforeCursor : beforeCursor as String?,
+    hasMore: hasMore == _unset ? this.hasMore : hasMore as bool?,
+    turnLimit: turnLimit == _unset ? this.turnLimit : turnLimit as int?,
+    rawCount: rawCount == _unset ? this.rawCount : rawCount as int?,
   );
 
   @override
@@ -333,10 +359,24 @@ class ThreadDetail {
     if (identical(this, other)) return true;
     if (other is! ThreadDetail) return false;
     return thread == other.thread &&
+        listEquals(messages, other.messages) &&
         totalMessages == other.totalMessages &&
-        plan == other.plan;
+        plan == other.plan &&
+        beforeCursor == other.beforeCursor &&
+        hasMore == other.hasMore &&
+        turnLimit == other.turnLimit &&
+        rawCount == other.rawCount;
   }
 
   @override
-  int get hashCode => Object.hash(thread, totalMessages, plan);
+  int get hashCode => Object.hash(
+    thread,
+    Object.hashAll(messages),
+    totalMessages,
+    plan,
+    beforeCursor,
+    hasMore,
+    turnLimit,
+    rawCount,
+  );
 }

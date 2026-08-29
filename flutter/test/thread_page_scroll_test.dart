@@ -22,14 +22,30 @@ class _PaginatedApiService extends ApiService {
   }) : super(client: _ThrowingClient());
 
   @override
-  Future<List<Message>> getThreadMessages(
+  Future<MessagePage> getThreadMessages(
     String id, {
     int? beforeId,
     int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
     int limit = 50,
   }) async {
-    if (beforeId == initial.first.id) return older;
-    return initial;
+    if (afterId != null) {
+      return MessagePage(messages: const [], total: initial.length + older.length);
+    }
+    if (beforeId == initial.first.id || beforeCursor == 'c1') {
+      return MessagePage(
+        messages: older,
+        total: initial.length + older.length,
+        hasMore: false,
+      );
+    }
+    return MessagePage(
+      messages: initial,
+      total: initial.length + older.length,
+      beforeCursor: 'c1',
+      hasMore: true,
+    );
   }
 }
 
@@ -125,6 +141,7 @@ void main() {
     expect(find.textContaining('Message 49'), findsNothing);
 
     // A new message while the stream is active should bring the view back down.
+    expect(state.sending, isTrue);
     state.activeThreadDetail!.messages.add(
       Message(
         id: 50,
@@ -232,6 +249,58 @@ void main() {
     await tester.pumpWidget(buildWithState(state));
     await tester.pumpAndSettle();
 
+    // Scroll to the top to trigger loadMore.
+    await tester.drag(
+      find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)),
+      const Offset(0, 30000),
+    );
+    await tester.pumpAndSettle();
+
+    // The oldest of the newly loaded messages should now be visible.
+    expect(find.textContaining('Message 0'), findsOneWidget);
+  });
+
+  testWidgets('can scroll back down after loading older messages', (
+    tester,
+  ) async {
+    final initial = List.generate(
+      50,
+      (i) => Message(
+        id: i + 50,
+        role: i.isEven ? 'user' : 'assistant',
+        content: 'Message ${i + 50}\n${'more text ' * 100}',
+      ),
+    );
+    final older = List.generate(
+      50,
+      (i) => Message(
+        id: i,
+        role: i.isEven ? 'user' : 'assistant',
+        content: 'Message $i\n${'more text ' * 100}',
+      ),
+    );
+
+    final state = AppState.test(
+      activeThreadId: 't1',
+      api: _PaginatedApiService(initial: initial, older: older),
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: initial,
+        totalMessages: initial.length + older.length,
+      ),
+    );
+
+    await tester.pumpWidget(buildWithState(state));
+    await tester.pumpAndSettle();
+
     final scrollable = tester.state<ScrollableState>(
       find.descendant(
         of: find.byType(ListView),
@@ -239,11 +308,25 @@ void main() {
       ),
     );
 
-    // Scroll to the top to trigger loadMore.
-    scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+    // Scroll to the very top.
+    await tester.drag(
+      find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)),
+      const Offset(0, 30000),
+    );
     await tester.pumpAndSettle();
 
-    // The oldest of the newly loaded messages should now be visible.
+    final topPosition = scrollable.position.pixels;
     expect(find.textContaining('Message 0'), findsOneWidget);
+
+    // Scroll back to the bottom.
+    await tester.drag(
+      find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)),
+      const Offset(0, -30000),
+    );
+    await tester.pumpAndSettle();
+
+    expect(scrollable.position.pixels, lessThan(topPosition));
+    // The view should have moved down enough to leave the oldest message.
+    expect(find.textContaining('Message 0'), findsNothing);
   });
 }

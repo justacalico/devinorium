@@ -63,6 +63,7 @@ class _MessagesPanel extends StatelessWidget {
       child: ListView.builder(
         controller: controller,
         reverse: true,
+        physics: const ClampingScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 24),
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
