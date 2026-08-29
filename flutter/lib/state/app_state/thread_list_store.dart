@@ -280,6 +280,7 @@ mixin ThreadListStore on AppStateBase {
   }
   @override
   Future<void> openThread(String id) async {
+    final stopwatch = kDebugMode ? (Stopwatch()..start()) : null;
     final previous = _threadStores[id];
     _setActiveStore(null);
     _activeThreadId = id;
@@ -329,8 +330,13 @@ mixin ThreadListStore on AppStateBase {
 
       // If the backend is already running this thread, reconnect to it.
       await store.resume();
+      if (stopwatch != null) {
+        stopwatch.stop();
+        debugPrint('Thread $id opened in ${stopwatch.elapsedMilliseconds}ms');
+      }
       unawaited(refreshLinkedMergeRequest());
     } catch (e) {
+      stopwatch?.stop();
       _threadOpening = false;
       _globalError = '$e';
       notifyListeners();
