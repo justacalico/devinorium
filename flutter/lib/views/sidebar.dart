@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -181,9 +182,11 @@ class _SidebarState extends State<Sidebar> {
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (!isSettings) const _AppTitle(),
           if (isSettings)
-            _SettingsHeader()
+            const _SettingsHeader()
           else ...[
             _SearchField(
               controller: _searchController,
@@ -206,7 +209,78 @@ class _SidebarState extends State<Sidebar> {
   }
 }
 
+class _AppTitle extends StatefulWidget {
+  const _AppTitle();
+
+  @override
+  State<_AppTitle> createState() => _AppTitleState();
+}
+
+class _AppTitleState extends State<_AppTitle> {
+  late final Future<PackageInfo> _packageInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfo = PackageInfo.fromPlatform();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: FutureBuilder<PackageInfo>(
+        future: _packageInfo,
+        builder: (context, snapshot) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                fit: FlexFit.loose,
+                child: Text(
+                  l.appTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              if (snapshot.hasData) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    snapshot.data!.version,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _SettingsHeader extends StatelessWidget {
+  const _SettingsHeader();
+
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();

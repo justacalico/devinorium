@@ -94,7 +94,7 @@ abstract class AppLocalizations {
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[Locale('en')];
 
-  /// Application title shown in the taskbar
+  /// Application title shown in the sidebar
   ///
   /// In en, this message translates to:
   /// **'Devinorium'**

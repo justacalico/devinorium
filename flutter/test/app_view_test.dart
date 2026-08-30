@@ -2,8 +2,11 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/app_view.dart';
 import 'package:devinorium_frontend/views/files_panel.dart';
+import 'package:devinorium_frontend/views/sidebar.dart';
+import 'package:devinorium_frontend/views/window_title_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 Widget _buildWithState(
@@ -52,6 +55,16 @@ AppState _baseState() => AppState.test(
     );
 
 void main() {
+  setUpAll(() {
+    PackageInfo.setMockInitialValues(
+      appName: 'Devinorium',
+      packageName: 'devinorium_frontend',
+      version: '0.21.0',
+      buildNumber: '25',
+      buildSignature: '',
+    );
+  });
+
   group('AppShell files panel on narrow screens', () {
     testWidgets('openFilesPanel opens end drawer on narrow screens',
         (tester) async {
@@ -141,6 +154,33 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('hello world'), findsOneWidget);
+    });
+  });
+
+  group('AppShell title placement', () {
+    testWidgets('app title is in the sidebar, not the top bar', (tester) async {
+      final state = _baseState();
+      await tester.pumpWidget(
+        _buildWithState(
+          state,
+          size: const Size(1200, 800),
+          platform: TargetPlatform.linux,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(of: find.byType(Sidebar), matching: find.text('Devinorium')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: find.byType(Sidebar), matching: find.text('0.21.0')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: find.byType(WindowTitleBar), matching: find.text('Devinorium')),
+        findsNothing,
+      );
     });
   });
 }

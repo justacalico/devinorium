@@ -11,17 +11,17 @@ Widget _buildWithPlatform(TargetPlatform platform, Widget child) {
 
 void main() {
   group('WindowTitleBar', () {
-    testWidgets('renders title and controls on desktop', (tester) async {
+    testWidgets('renders controls on desktop', (tester) async {
       await tester.pumpWidget(
         _buildWithPlatform(
           TargetPlatform.linux,
           const Scaffold(
-            body: WindowTitleBar(title: Text('Devinorium')),
+            body: WindowTitleBar(),
           ),
         ),
       );
 
-      expect(find.text('Devinorium'), findsOneWidget);
+      expect(find.text('Devinorium'), findsNothing);
       expect(find.byIcon(Icons.remove), findsOneWidget);
       expect(find.byIcon(Icons.crop_square), findsOneWidget);
       expect(find.byIcon(Icons.close), findsOneWidget);
@@ -32,7 +32,7 @@ void main() {
         _buildWithPlatform(
           TargetPlatform.iOS,
           const Scaffold(
-            body: WindowTitleBar(title: Text('Devinorium')),
+            body: WindowTitleBar(),
           ),
         ),
       );
