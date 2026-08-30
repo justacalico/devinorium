@@ -8,12 +8,26 @@ use super::{GitRemoteService, RemoteError};
 /// A single CI/CD pipeline for a GitLab merge request.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GitLabPipeline {
+    pub id: i64,
     pub status: String,
     pub name: String,
     pub web_url: String,
     pub ref_name: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// A single job inside a GitLab CI/CD pipeline.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitLabPipelineJob {
+    pub id: i64,
+    pub name: String,
+    pub status: String,
+    pub stage: String,
+    pub web_url: String,
+    pub started_at: String,
+    pub finished_at: String,
+    pub duration: f64,
 }
 
 impl GitRemoteService {
@@ -29,6 +43,10 @@ impl GitRemoteService {
         project_path: &str,
         iid: i64,
     ) -> Result<Vec<GitLabPipeline>, RemoteError> {
+        if project_path.is_empty() {
+            return Err(RemoteError::StatusFailed("project is required".into()));
+        }
+
         let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
         let path =
             format!("projects/{encoded_project}/merge_requests/{iid}/pipelines?per_page=100");
@@ -49,6 +67,39 @@ impl GitRemoteService {
         });
         Ok(pipelines)
     }
+
+    /// Fetch the CI/CD jobs for a GitLab pipeline.
+    ///
+    /// [project_path] is the raw "group/project" style path and is encoded
+    /// before being passed to `glab api`.
+    pub async fn gitlab_pipeline_jobs(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        pipeline_id: i64,
+    ) -> Result<Vec<GitLabPipelineJob>, RemoteError> {
+        if project_path.is_empty() {
+            return Err(RemoteError::StatusFailed("project is required".into()));
+        }
+        if pipeline_id <= 0 {
+            return Err(RemoteError::StatusFailed(
+                "pipeline id must be positive".into(),
+            ));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let path = format!("projects/{encoded_project}/pipelines/{pipeline_id}/jobs?per_page=100");
+
+        let output = self.gitlab_api(user_id, hostname, &path).await?;
+        let jobs: Vec<serde_json::Value> = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid job json: {e}"))
+        })?;
+
+        jobs.into_iter()
+            .map(parse_pipeline_job)
+            .collect::<Result<Vec<_>, _>>()
+    }
 }
 
 fn parse_timestamp(s: &str) -> DateTime<Utc> {
@@ -58,6 +109,11 @@ fn parse_timestamp(s: &str) -> DateTime<Utc> {
 }
 
 fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteError> {
+    let id = value["id"]
+        .as_i64()
+        .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
+        .unwrap_or(0);
+
     let status = value["status"]
         .as_str()
         .or_else(|| {
@@ -80,12 +136,39 @@ fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteErro
     let updated_at = value["updated_at"].as_str().unwrap_or("");
 
     Ok(GitLabPipeline {
+        id,
         status: status.to_string(),
         name: name.to_string(),
         web_url: web_url.to_string(),
         ref_name: ref_name.to_string(),
         created_at: created_at.to_string(),
         updated_at: updated_at.to_string(),
+    })
+}
+
+fn parse_pipeline_job(value: serde_json::Value) -> Result<GitLabPipelineJob, RemoteError> {
+    let id = value["id"]
+        .as_i64()
+        .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
+        .unwrap_or(0);
+
+    let name = value["name"].as_str().unwrap_or("");
+    let status = value["status"].as_str().unwrap_or("unknown");
+    let stage = value["stage"].as_str().unwrap_or("");
+    let web_url = value["web_url"].as_str().unwrap_or("");
+    let started_at = value["started_at"].as_str().unwrap_or("");
+    let finished_at = value["finished_at"].as_str().unwrap_or("");
+    let duration = value["duration"].as_f64().unwrap_or(0.0);
+
+    Ok(GitLabPipelineJob {
+        id,
+        name: name.to_string(),
+        status: status.to_string(),
+        stage: stage.to_string(),
+        web_url: web_url.to_string(),
+        started_at: started_at.to_string(),
+        finished_at: finished_at.to_string(),
+        duration,
     })
 }
 
@@ -101,6 +184,7 @@ mod tests {
             "ref": "feature",
         });
         let p = parse_pipeline(value).unwrap();
+        assert_eq!(p.id, 7);
         assert_eq!(p.status, "unknown");
         assert_eq!(p.name, "feature");
         assert_eq!(p.ref_name, "feature");
@@ -120,14 +204,52 @@ mod tests {
             "updated_at": "2026-01-02T00:00:00Z",
         });
         let p = parse_pipeline(value).unwrap();
+        assert_eq!(p.id, 1);
         assert_eq!(p.status, "success");
         assert_eq!(p.name, "build");
+    }
+
+    #[test]
+    fn parse_pipeline_job_reads_all_fields() {
+        let value = serde_json::json!({
+            "id": 101,
+            "name": "cargo test",
+            "status": "running",
+            "stage": "test",
+            "web_url": "https://gitlab.example.com/-/jobs/101",
+            "started_at": "2026-01-01T00:00:00Z",
+            "finished_at": "2026-01-01T00:01:00Z",
+            "duration": 60.5,
+        });
+        let job = parse_pipeline_job(value).unwrap();
+        assert_eq!(job.id, 101);
+        assert_eq!(job.name, "cargo test");
+        assert_eq!(job.status, "running");
+        assert_eq!(job.stage, "test");
+        assert_eq!(job.web_url, "https://gitlab.example.com/-/jobs/101");
+        assert_eq!(job.started_at, "2026-01-01T00:00:00Z");
+        assert_eq!(job.finished_at, "2026-01-01T00:01:00Z");
+        assert!((job.duration - 60.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_pipeline_job_falls_back_to_defaults() {
+        let value = serde_json::json!({
+            "name": "build",
+        });
+        let job = parse_pipeline_job(value).unwrap();
+        assert_eq!(job.id, 0);
+        assert_eq!(job.name, "build");
+        assert_eq!(job.status, "unknown");
+        assert_eq!(job.stage, "");
+        assert_eq!(job.duration, 0.0);
     }
 
     #[test]
     fn pipelines_sort_by_updated_at_descending() {
         let mut pipelines = [
             GitLabPipeline {
+                id: 1,
                 status: "success".into(),
                 name: "old".into(),
                 web_url: "".into(),
@@ -136,6 +258,7 @@ mod tests {
                 updated_at: "2026-01-01T00:00:00Z".into(),
             },
             GitLabPipeline {
+                id: 2,
                 status: "failed".into(),
                 name: "new".into(),
                 web_url: "".into(),
@@ -157,6 +280,7 @@ mod tests {
     fn missing_timestamp_sorts_to_bottom() {
         let mut pipelines = [
             GitLabPipeline {
+                id: 1,
                 status: "failed".into(),
                 name: "missing".into(),
                 web_url: "".into(),
@@ -165,6 +289,7 @@ mod tests {
                 updated_at: "".into(),
             },
             GitLabPipeline {
+                id: 2,
                 status: "success".into(),
                 name: "has".into(),
                 web_url: "".into(),

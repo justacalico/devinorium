@@ -19,6 +19,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/git-connections/gitlab", delete(logout_gitlab))
         .route("/api/git-connections/gitlab/proxy", get(gitlab_proxy))
         .route(
+            "/api/git-connections/gitlab/pipelines/jobs",
+            get(gitlab_pipeline_jobs),
+        )
+        .route(
             "/api/git-connections/gitlab/pipelines",
             get(gitlab_pipelines),
         )
@@ -146,6 +150,54 @@ pub struct GitLabPipelinesQuery {
     pub hostname: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GitLabPipelineJobsQuery {
+    pub project: String,
+    pub pipeline_id: i64,
+    pub hostname: Option<String>,
+}
+
+async fn gitlab_pipeline_jobs(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<GitLabPipelineJobsQuery>,
+) -> Response {
+    let hostname = q
+        .hostname
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("gitlab.com");
+
+    if q.project.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("project is required")),
+        )
+            .into_response();
+    }
+    if q.pipeline_id <= 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("pipeline_id must be positive")),
+        )
+            .into_response();
+    }
+
+    match state
+        .git_remote
+        .gitlab_pipeline_jobs(user.id, hostname, &q.project, q.pipeline_id)
+        .await
+    {
+        Ok(jobs) => Json(jobs).into_response(),
+        Err(RemoteError::GitLabNotAvailable) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiError::new("gitlab cli is not installed")),
+        )
+            .into_response(),
+        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+    }
+}
+
 async fn gitlab_pipelines(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -157,6 +209,13 @@ async fn gitlab_pipelines(
         .filter(|s| !s.is_empty())
         .unwrap_or("gitlab.com");
 
+    if q.project.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("project is required")),
+        )
+            .into_response();
+    }
     if q.iid <= 0 {
         return (
             StatusCode::BAD_REQUEST,

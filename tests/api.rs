@@ -3598,6 +3598,10 @@ fi
 if [ "$1" = "api" ]; then
   path="$2"
   case "$path" in
+    *"/jobs"*)
+      printf '[{"id":101,"name":"cargo test","status":"running","stage":"test","web_url":"https://gitlab.example.com/-/jobs/101","started_at":"2026-01-01T00:00:00Z","finished_at":"","duration":0},{"id":102,"name":"flutter test","status":"success","stage":"test","web_url":"https://gitlab.example.com/-/jobs/102","started_at":"2026-01-01T00:00:00Z","finished_at":"2026-01-01T00:01:00Z","duration":60.5}]\n'
+      exit 0
+      ;;
     *"/pipelines"*)
       if echo "$path" | grep -q "empty"; then
         printf '[]\n'
@@ -3854,6 +3858,84 @@ async fn git_connections_gitlab_pipelines_rejects_invalid_iid() {
         .oneshot(authed(
             "GET",
             "/api/git-connections/gitlab/pipelines?project=group%2Fproject&iid=0",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_pipeline_jobs_returns_jobs_list() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_pipelines(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines/jobs?project=group%2Fproject&pipeline_id=42&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v.is_array());
+    assert_eq!(v.as_array().unwrap().len(), 2);
+    assert_eq!(v[0]["name"], "cargo test");
+    assert_eq!(v[0]["status"], "running");
+    assert_eq!(v[1]["name"], "flutter test");
+    assert_eq!(v[1]["status"], "success");
+    assert_eq!(v[1]["duration"], 60.5);
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_pipeline_jobs_rejects_invalid_pipeline_id() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_pipelines(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines/jobs?project=group%2Fproject&pipeline_id=0&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_pipeline_jobs_rejects_empty_project() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_pipelines(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines/jobs?project=&pipeline_id=42&hostname=gitlab.example.com",
             &cookie,
             "",
         ))
