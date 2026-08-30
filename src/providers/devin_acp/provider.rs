@@ -207,6 +207,12 @@ impl DevinAcpProvider {
                         (resp.session_id.to_string(), resp.config_options)
                     };
 
+                    if maybe_session.is_none() {
+                        if let Some(ref cb) = options.session_callback {
+                            cb(session_id.clone()).await;
+                        }
+                    }
+
                     apply_session_config(
                         &connection,
                         &session_id,

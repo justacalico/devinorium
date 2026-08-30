@@ -90,6 +90,10 @@ impl Provider for StubProvider {
                 tokio::time::sleep(dur).await;
             }
         }
+        let session_id = format!("stub-session-{}", req.prompt.len());
+        if let Some(cb) = &req.options.session_callback {
+            cb(session_id.clone()).await;
+        }
         let mode = req.options.interaction_mode.clone();
         let reply = format!("echo: {} ({})", req.prompt, mode);
         let thinking = format!("reasoning about the prompt in {} mode", mode);
@@ -114,7 +118,7 @@ impl Provider for StubProvider {
             }
         }
         Ok(StartResponse {
-            session_id: format!("stub-session-{}", req.prompt.len()),
+            session_id,
             reply,
             thinking,
             parts,
@@ -253,6 +257,70 @@ impl Provider for StreamingStubProvider {
             thinking: "thinking about it".into(),
             parts,
         })
+    }
+    async fn export(
+        &self,
+        _session_id: &str,
+        _working_dir: &std::path::Path,
+    ) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::json!({}))
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+/// A provider that emits a partial response and then fails, simulating a
+/// provider crash or rate-limit mid-generation.
+struct FailingProvider;
+
+#[async_trait]
+impl Provider for FailingProvider {
+    fn id(&self) -> &str {
+        "failing-stub"
+    }
+    fn name(&self) -> &str {
+        "Failing Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "stub-1".into(),
+            label: "Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        if let Some(cb) = &req.options.session_callback {
+            cb(format!("failing-session-{}", req.prompt.chars().count())).await;
+        }
+        let parts = vec![
+            MessagePart::thinking("thinking about it"),
+            MessagePart::text("partial reply"),
+        ];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+            }
+        }
+        anyhow::bail!("provider crashed")
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        let parts = vec![
+            MessagePart::thinking("thinking about it"),
+            MessagePart::text("partial reply"),
+        ];
+        if let Some(cb) = &req.options.part_callback {
+            for part in &parts {
+                cb(PartEvent::New(part.clone()));
+            }
+        }
+        anyhow::bail!("provider crashed")
     }
     async fn export(
         &self,
@@ -938,6 +1006,56 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     // Thread now has a session id.
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
     assert!(thread.devin_session_id.is_some());
+}
+
+#[tokio::test]
+async fn thread_send_persists_partial_output_on_provider_error() {
+    let (app, db) = make_app_with_provider(Arc::new(FailingProvider) as Arc<dyn Provider>).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "F").await;
+
+    let boundary = "----failboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 3, "expected user, partial assistant, and error messages");
+    assert_eq!(msgs[0].role, "user");
+    assert_eq!(msgs[0].content, "Hello world");
+    assert_eq!(msgs[1].role, "assistant");
+    assert_eq!(msgs[1].content, "partial reply");
+    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "thinking about it"));
+    assert_eq!(msgs[2].role, "error");
+    assert!(msgs[2].content.contains("provider crashed"));
+
+    let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
+    assert_eq!(
+        thread.devin_session_id.as_deref(),
+        Some("failing-session-11"),
+        "session id should be persisted before prompt fails"
+    );
 }
 
 #[tokio::test]
