@@ -280,6 +280,24 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get close;
 
+  /// No description provided for @windowClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get windowClose;
+
+  /// No description provided for @windowMinimize.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimize'**
+  String get windowMinimize;
+
+  /// No description provided for @windowZoom.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom'**
+  String get windowZoom;
+
   /// No description provided for @clear.
   ///
   /// In en, this message translates to:

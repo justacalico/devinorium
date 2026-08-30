@@ -3,7 +3,7 @@ import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/app_view.dart';
 import 'package:devinorium_frontend/views/files_panel.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
-import 'package:devinorium_frontend/views/window_title_bar.dart';
+import 'package:devinorium_frontend/views/window_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -158,7 +158,7 @@ void main() {
   });
 
   group('AppShell title placement', () {
-    testWidgets('app title is in the sidebar, not the top bar', (tester) async {
+    testWidgets('app title and controls are in the sidebar', (tester) async {
       final state = _baseState();
       await tester.pumpWidget(
         _buildWithState(
@@ -178,8 +178,11 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: find.byType(WindowTitleBar), matching: find.text('Devinorium')),
-        findsNothing,
+        find.descendant(
+          of: find.byType(Sidebar),
+          matching: find.byType(WindowControls),
+        ),
+        findsOneWidget,
       );
     });
   });

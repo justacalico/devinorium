@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -7,10 +8,12 @@ import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../models/models.dart';
+import '../services/window_actions.dart';
 import '../state/app_state.dart';
 import '../utils/thread_status.dart';
 import '../widgets/owner_badge.dart';
 import 'project_icon.dart';
+import 'window_controls.dart';
 
 part 'sidebar/project_thread_list.dart';
 part 'sidebar/project_icon.dart';
@@ -39,6 +42,17 @@ Color _projectColor(String name) {
     hash &= 0x3fffffff;
   }
   return colors[hash % colors.length];
+}
+
+bool _isDesktop(BuildContext context) {
+  if (kIsWeb) return false;
+  return switch (Theme.of(context).platform) {
+    TargetPlatform.linux ||
+    TargetPlatform.macOS ||
+    TargetPlatform.windows =>
+      true,
+    _ => false,
+  };
 }
 
 String _timeAgo(String iso, AppLocalizations l) {
@@ -229,50 +243,67 @@ class _AppTitleState extends State<_AppTitle> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = l10n(context);
+    final isDesktop = _isDesktop(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: FutureBuilder<PackageInfo>(
-        future: _packageInfo,
-        builder: (context, snapshot) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                fit: FlexFit.loose,
-                child: Text(
-                  l.appTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (isDesktop) ...[
+            const WindowControls(),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: (_) => startWindowDragging(),
+              onDoubleTap: toggleMaximize,
+              child: FutureBuilder<PackageInfo>(
+                future: _packageInfo,
+                builder: (context, snapshot) {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        fit: FlexFit.loose,
+                        child: Text(
+                          l.appTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      if (snapshot.hasData) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            snapshot.data!.version,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
-              if (snapshot.hasData) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    snapshot.data!.version,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -286,11 +317,17 @@ class _SettingsHeader extends StatelessWidget {
     final state = context.read<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
+    final isDesktop = _isDesktop(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+      padding: const EdgeInsets.fromLTRB(16, 16, 8, 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          if (isDesktop) ...[
+            const WindowControls(),
+            const SizedBox(width: 12),
+          ],
           IconButton(
             onPressed: () {
               Scaffold.of(context).closeDrawer();
@@ -302,10 +339,15 @@ class _SettingsHeader extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              l.settings,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: (_) => startWindowDragging(),
+              onDoubleTap: toggleMaximize,
+              child: Text(
+                l.settings,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
             ),
           ),
         ],

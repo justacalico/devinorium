@@ -9,6 +9,7 @@ import '../widgets/git_provider_tile.dart';
 import '../widgets/owner_badge.dart';
 import 'create_user_dialog.dart';
 import 'folder_picker_dialog.dart';
+import 'window_title_drag.dart';
 
 part 'settings/account_section.dart';
 part 'settings/devices_section.dart';
@@ -61,7 +62,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 onPressed: () => Scaffold.of(context).openDrawer(),
               )
             : null,
-        title: Text(l10n(context).settings),
+        title: WindowTitleDrag(child: Text(l10n(context).settings)),
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
