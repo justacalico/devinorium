@@ -2331,6 +2331,114 @@ void main() {
     );
   });
 
+  group('Sidebar window controls', () {
+    testWidgets('shows traffic lights on desktop', (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            platform: TargetPlatform.linux,
+            useMaterial3: true,
+          ),
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const Scaffold(
+              drawer: Drawer(child: Sidebar()),
+              body: SizedBox.shrink(),
+            ),
+          ),
+        ),
+      );
+      await _openDrawer(tester);
+
+      expect(find.byKey(const Key('window_close_button')), findsOneWidget);
+      expect(find.byKey(const Key('window_minimize_button')), findsOneWidget);
+      expect(find.byKey(const Key('window_maximize_button')), findsOneWidget);
+    });
+
+    testWidgets('hides traffic lights on mobile', (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            platform: TargetPlatform.iOS,
+            useMaterial3: true,
+          ),
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const Scaffold(
+              drawer: Drawer(child: Sidebar()),
+              body: SizedBox.shrink(),
+            ),
+          ),
+        ),
+      );
+      await _openDrawer(tester);
+
+      expect(find.byKey(const Key('window_close_button')), findsNothing);
+      expect(find.byKey(const Key('window_minimize_button')), findsNothing);
+      expect(find.byKey(const Key('window_maximize_button')), findsNothing);
+    });
+
+    testWidgets('settings header still shows traffic lights on desktop',
+        (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      state.setPage(MainPage.settings);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            platform: TargetPlatform.linux,
+            useMaterial3: true,
+          ),
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const Scaffold(
+              drawer: Drawer(child: Sidebar()),
+              body: SizedBox.shrink(),
+            ),
+          ),
+        ),
+      );
+      await _openDrawer(tester);
+
+      expect(find.byKey(const Key('window_close_button')), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+    });
+  });
+
   testWidgets('Sidebar hides the app title on the settings page', (tester) async {
     final state = AppState.test(
       user: User(

@@ -7,7 +7,7 @@ import 'files_panel.dart';
 import 'settings_page.dart';
 import 'sidebar.dart';
 import 'thread_page.dart';
-import 'window_title_bar.dart';
+import 'window_drag_strip.dart';
 
 /// The main authenticated layout: sidebar + main content area.
 /// Uses a Row with a fixed-width sidebar (300px) and a flexible main area.
@@ -32,7 +32,9 @@ class _AppShellState extends State<AppShell> {
     // A stable key lets Flutter reparent this subtree (and preserve all
     // stateful descendants such as text controllers) when the layout
     // switches between narrow and wide, instead of rebuilding it.
-    final main = DropZone(key: _mainKey, child: _MainArea());
+    final main = WindowDragStrip(
+      child: DropZone(key: _mainKey, child: _MainArea()),
+    );
 
     if (isNarrow) {
       if (state.filesPanelOpen && !_wasFilesPanelOpen) {
@@ -42,49 +44,35 @@ class _AppShellState extends State<AppShell> {
       }
       _wasFilesPanelOpen = state.filesPanelOpen;
 
-      return Column(
-        children: [
-          const WindowTitleBar(),
-          Expanded(
-            child: Scaffold(
-              key: _scaffoldKey,
-              drawer: const Drawer(width: 300, child: Sidebar()),
-              body: main,
-              endDrawer: state.filesPanelOpen
-                  ? const Drawer(width: 360, child: FilesPanel())
-                  : null,
-              onEndDrawerChanged: (opened) {
-                if (!opened && state.filesPanelOpen) {
-                  state.closeFilesPanel();
-                }
-              },
-            ),
-          ),
-        ],
+      return Scaffold(
+        key: _scaffoldKey,
+        drawer: const Drawer(width: 300, child: Sidebar()),
+        body: main,
+        endDrawer: state.filesPanelOpen
+            ? const Drawer(width: 360, child: FilesPanel())
+            : null,
+        onEndDrawerChanged: (opened) {
+          if (!opened && state.filesPanelOpen) {
+            state.closeFilesPanel();
+          }
+        },
       );
     }
 
     _wasFilesPanelOpen = state.filesPanelOpen;
 
-    return Column(
-      children: [
-        const WindowTitleBar(),
-        Expanded(
-          child: Scaffold(
-            body: Row(
-              children: [
-                const SizedBox(width: 300, child: Sidebar()),
-                const VerticalDivider(width: 1),
-                Expanded(child: main),
-                if (state.filesPanelOpen) ...[
-                  const VerticalDivider(width: 1),
-                  const SizedBox(width: 360, child: FilesPanel()),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ],
+    return Scaffold(
+      body: Row(
+        children: [
+          const SizedBox(width: 300, child: Sidebar()),
+          const VerticalDivider(width: 1),
+          Expanded(child: main),
+          if (state.filesPanelOpen) ...[
+            const VerticalDivider(width: 1),
+            const SizedBox(width: 360, child: FilesPanel()),
+          ],
+        ],
+      ),
     );
   }
 }
