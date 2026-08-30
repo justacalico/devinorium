@@ -58,6 +58,8 @@ Database migrations run automatically on startup.
 ## Testing
 
 ```bash
+cargo fmt -- --check
+cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
