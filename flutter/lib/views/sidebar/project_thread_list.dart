@@ -15,7 +15,6 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   final Set<int> _showAllProjectIds = {};
   int? _lastActiveProjectId;
   String? _lastActiveThreadId;
-  List<Thread> _lastThreads = [];
   Timer? _pollTimer;
   final ScrollController _scrollController = ScrollController();
   static const _loadMoreThreshold = 200.0;
@@ -63,26 +62,24 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
     final threads = state.threads;
     final projects = state.projects;
 
+    _expandedIds.removeWhere((id) => !projects.any((p) => p.id == id));
+    _showAllProjectIds.removeWhere((id) => !projects.any((p) => p.id == id));
+
     if (activeThreadId != _lastActiveThreadId ||
-        activeProjectId != _lastActiveProjectId ||
-        threads != _lastThreads) {
+        activeProjectId != _lastActiveProjectId) {
       _lastActiveThreadId = activeThreadId;
       _lastActiveProjectId = activeProjectId;
-      _lastThreads = threads;
 
       if (activeThreadId != null) {
         final projectId = _projectIdForThread(threads, activeThreadId) ??
             activeProjectId;
-        if (projectId != null && !_expandedIds.contains(projectId)) {
-          setState(() {
-            _expandedIds.add(projectId);
-          });
+        if (projectId != null &&
+            !_expandedIds.contains(projectId) &&
+            projects.any((p) => p.id == projectId)) {
+          _expandedIds.add(projectId);
         }
       }
     }
-
-    _expandedIds.removeWhere((id) => !projects.any((p) => p.id == id));
-    _showAllProjectIds.removeWhere((id) => !projects.any((p) => p.id == id));
   }
 
   @override

@@ -144,6 +144,14 @@ class _FakeApiService extends ApiService {
       Future.value([...listThreadsResult]);
 
   @override
+  Future<List<Thread>> listThreadsForProject(
+    int id, {
+    int? limit,
+    int? offset,
+  }) =>
+      Future.value([]);
+
+  @override
   Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
       Future.value([]);
 
@@ -2457,5 +2465,174 @@ void main() {
     await _openDrawer(tester);
 
     expect(find.text('Devinorium'), findsNothing);
+  });
+
+  testWidgets('Expanding another project does not re-expand the active one', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    api.listThreadsResult = [
+      Thread(
+        id: 'a',
+        title: 'Active thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+      Thread(
+        id: 'b',
+        title: 'Other thread',
+        projectId: 2,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    ];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Active thread'), findsOneWidget);
+    expect(find.text('Other thread'), findsNothing);
+
+    // Collapse the active project manually.
+    await tester.tap(find.text('p1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active thread'), findsNothing);
+
+    // Expand the other project.
+    await tester.tap(find.text('p2'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Other thread'), findsOneWidget);
+    expect(find.text('Active thread'), findsNothing);
+  });
+
+  testWidgets('Collapsed active project stays collapsed after a refresh', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    api.listThreadsResult = [
+      Thread(
+        id: 'a',
+        title: 'Active thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+      Thread(
+        id: 'b',
+        title: 'Other thread',
+        projectId: 2,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    ];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.tap(find.text('p1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active thread'), findsNothing);
+
+    await state.refreshRunningThreads();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active thread'), findsNothing);
+  });
+
+  testWidgets('Selecting a project with no active thread expands only that one', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    api.listThreadsResult = [
+      Thread(
+        id: 'b',
+        title: 'Other thread',
+        projectId: 2,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    ];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Other thread'), findsNothing);
+
+    await tester.tap(find.text('p2'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Other thread'), findsOneWidget);
   });
 }
