@@ -87,6 +87,8 @@ verify-backend:
   before_script:
     - *install
   script:
+    - cargo fmt -- --check
+    - cargo clippy --all-targets -- -D warnings
     - cargo test
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
