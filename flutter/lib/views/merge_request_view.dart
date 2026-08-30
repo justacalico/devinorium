@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart' hide SyntaxHighlighter;
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
+    hide SyntaxHighlighter;
 import 'package:markdown/markdown.dart' as markdown;
 
 import '../l10n/l10n.dart';
@@ -20,6 +21,10 @@ class MergeRequestView extends StatelessWidget {
   final VoidCallback? onRetry;
   final ValueChanged<String>? onLinkTap;
 
+  /// Loads CI/CD jobs for a pipeline. When null, pipeline tiles are not
+  /// expandable and only the open-in-browser action is available.
+  final PipelineJobsLoader? onLoadJobs;
+
   /// Applies a state change to the merge request. When null, no action
   /// buttons are shown.
   final Future<void> Function(MergeRequestAction action)? onAction;
@@ -30,6 +35,7 @@ class MergeRequestView extends StatelessWidget {
     this.url,
     this.onRetry,
     this.onLinkTap,
+    this.onLoadJobs,
     this.onAction,
   });
 
@@ -40,10 +46,12 @@ class MergeRequestView extends StatelessWidget {
         detail: detail.valueOrNull!,
         url: url,
         onLinkTap: onLinkTap,
+        onLoadJobs: onLoadJobs,
         onAction: onAction,
       );
     }
-    if (detail.isLoading) return const Center(child: CircularProgressIndicator());
+    if (detail.isLoading)
+      return const Center(child: CircularProgressIndicator());
     if (detail.isError) {
       return _ErrorView(error: '${detail.errorOrNull}', onRetry: onRetry);
     }
@@ -55,12 +63,14 @@ class _MergeRequestBody extends StatefulWidget {
   final MergeRequestDetail detail;
   final String? url;
   final ValueChanged<String>? onLinkTap;
+  final PipelineJobsLoader? onLoadJobs;
   final Future<void> Function(MergeRequestAction action)? onAction;
 
   const _MergeRequestBody({
     required this.detail,
     this.url,
     this.onLinkTap,
+    this.onLoadJobs,
     this.onAction,
   });
 
@@ -101,14 +111,20 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
             Tab(text: l10n(context).overview),
             Tab(text: '${l10n(context).changes} (${detail.changes.length})'),
             Tab(text: '${l10n(context).comments} (${detail.comments.length})'),
-            Tab(text: '${l10n(context).pipelines} (${detail.pipelines.length})'),
+            Tab(
+              text: '${l10n(context).pipelines} (${detail.pipelines.length})',
+            ),
           ],
         ),
         Expanded(
           child: TabBarView(
             controller: _tabController,
             children: [
-              _OverviewTab(detail: detail, onLinkTap: widget.onLinkTap),
+              _OverviewTab(
+                detail: detail,
+                onLinkTap: widget.onLinkTap,
+                onLoadJobs: widget.onLoadJobs,
+              ),
               _ChangesTab(changes: detail.changes),
               _CommentsTab(
                 comments: detail.comments,
@@ -117,6 +133,7 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
               _PipelinesTab(
                 pipelines: detail.pipelines,
                 onLinkTap: widget.onLinkTap,
+                onLoadJobs: widget.onLoadJobs,
               ),
             ],
           ),
@@ -152,16 +169,14 @@ class _Header extends StatelessWidget {
             Expanded(
               child: Text(
                 detail.title,
-                style: theme.textTheme.titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (stateChip != null) ...[
-              const SizedBox(width: 12),
-              stateChip!,
-            ],
+            if (stateChip != null) ...[const SizedBox(width: 12), stateChip!],
           ],
         ),
         const SizedBox(height: 8),
@@ -169,21 +184,20 @@ class _Header extends StatelessWidget {
           children: [
             Text(
               'MR !${detail.iid}',
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(width: 12),
             Text(
               detail.branches,
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(color: theme.colorScheme.primary),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
             ),
             const SizedBox(width: 12),
             if (author != null)
-              Text(
-                '@${author.username}',
-                style: theme.textTheme.labelMedium,
-              ),
+              Text('@${author.username}', style: theme.textTheme.labelMedium),
             const Spacer(),
             if (url != null && isOpenableLink(url))
               IconButton(
@@ -214,11 +228,7 @@ Widget? _stateChip(BuildContext context, MergeRequestDetail detail) {
       detail.draft && detail.isOpen
           ? '${l10n(context).draft} · ${detail.state}'
           : detail.state,
-      style: TextStyle(
-        color: color,
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-      ),
+      style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
     ),
     backgroundColor: color.withValues(alpha: 0.12),
     side: BorderSide.none,
@@ -230,14 +240,16 @@ Widget? _stateChip(BuildContext context, MergeRequestDetail detail) {
 class _OverviewTab extends StatelessWidget {
   final MergeRequestDetail detail;
   final ValueChanged<String>? onLinkTap;
+  final PipelineJobsLoader? onLoadJobs;
 
-  const _OverviewTab({required this.detail, this.onLinkTap});
+  const _OverviewTab({required this.detail, this.onLinkTap, this.onLoadJobs});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final latestPipeline =
-        detail.pipelines.isNotEmpty ? detail.pipelines.first : null;
+    final latestPipeline = detail.pipelines.isNotEmpty
+        ? detail.pipelines.first
+        : null;
 
     final highlighter = SyntaxHighlighter(theme);
     final description = detail.description.isEmpty
@@ -259,7 +271,13 @@ class _OverviewTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (latestPipeline != null && latestPipeline.isPresent) ...[
-            _PipelineCard(pipeline: latestPipeline, onLinkTap: onLinkTap),
+            _PipelineTile(
+              key: ValueKey(latestPipeline.id),
+              pipeline: latestPipeline,
+              onLinkTap: onLinkTap,
+              onLoadJobs: onLoadJobs,
+              margin: EdgeInsets.zero,
+            ),
             const SizedBox(height: 16),
           ],
           description,
@@ -278,51 +296,293 @@ class _NoDescription extends StatelessWidget {
     return Center(
       child: Text(
         l10n(context).noDescription,
-        style: theme.textTheme.bodyMedium
-            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
 }
 
-class _PipelineCard extends StatelessWidget {
+class _PipelineTile extends StatefulWidget {
   final MergeRequestPipeline pipeline;
   final ValueChanged<String>? onLinkTap;
+  final PipelineJobsLoader? onLoadJobs;
+  final EdgeInsetsGeometry margin;
 
-  const _PipelineCard({required this.pipeline, this.onLinkTap});
+  const _PipelineTile({
+    super.key,
+    required this.pipeline,
+    this.onLinkTap,
+    this.onLoadJobs,
+    this.margin = const EdgeInsets.symmetric(vertical: 4),
+  });
+
+  @override
+  State<_PipelineTile> createState() => _PipelineTileState();
+}
+
+class _PipelineTileState extends State<_PipelineTile> {
+  bool _expanded = false;
+  bool _loading = false;
+  List<MergeRequestPipelineJob>? _jobs;
+  Object? _error;
+
+  bool get _canExpand => widget.onLoadJobs != null && widget.pipeline.id > 0;
+
+  void _toggle() {
+    if (!_canExpand) {
+      _openPipeline();
+      return;
+    }
+
+    final expanding = !_expanded;
+    setState(() {
+      _expanded = expanding;
+      if (!expanding) {
+        _jobs = null;
+        _error = null;
+      }
+    });
+
+    if (expanding && _jobs == null && _error == null) {
+      _loadJobs();
+    }
+  }
+
+  void _openPipeline() {
+    if (widget.pipeline.webUrl.isNotEmpty &&
+        isOpenableLink(widget.pipeline.webUrl)) {
+      widget.onLinkTap?.call(widget.pipeline.webUrl);
+    }
+  }
+
+  void _retry() {
+    _loadJobs();
+  }
+
+  Future<void> _loadJobs() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _jobs = null;
+    });
+
+    try {
+      final jobs = await widget.onLoadJobs!(widget.pipeline);
+      if (!mounted) return;
+      setState(() {
+        _jobs = jobs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _PipelineTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pipeline.id != oldWidget.pipeline.id) {
+      _expanded = false;
+      _loading = false;
+      _jobs = null;
+      _error = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _pipelineColor(theme, pipeline.status);
-    final openable = pipeline.webUrl.isNotEmpty && isOpenableLink(pipeline.webUrl);
+    final color = _pipelineColor(theme, widget.pipeline.status);
+    final openable =
+        widget.pipeline.webUrl.isNotEmpty &&
+        isOpenableLink(widget.pipeline.webUrl);
+
+    final trailingChildren = <Widget>[];
+    if (openable) {
+      trailingChildren.add(
+        IconButton(
+          icon: const Icon(Icons.open_in_new, size: 18),
+          tooltip: l10n(context).openInBrowser,
+          onPressed: _openPipeline,
+        ),
+      );
+    }
+    if (_canExpand) {
+      if (trailingChildren.isNotEmpty) {
+        trailingChildren.add(const SizedBox(width: 4));
+      }
+      trailingChildren.add(
+        Icon(
+          _expanded ? Icons.expand_less : Icons.expand_more,
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    final subtitleParts = [
+      widget.pipeline.status,
+      if (widget.pipeline.createdAt.isNotEmpty) widget.pipeline.createdAt,
+    ];
 
     return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        leading: Icon(
-          _pipelineIcon(pipeline.status),
-          color: color,
+      margin: widget.margin,
+      child: InkWell(
+        onTap: _canExpand || openable ? _toggle : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              leading: Icon(
+                _pipelineIcon(widget.pipeline.status),
+                color: color,
+              ),
+              title: Text(
+                widget.pipeline.name.isNotEmpty
+                    ? widget.pipeline.name
+                    : widget.pipeline.status,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                subtitleParts.join(' · '),
+                style: theme.textTheme.bodySmall?.copyWith(color: color),
+              ),
+              trailing: trailingChildren.isNotEmpty
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: trailingChildren,
+                    )
+                  : null,
+            ),
+            if (_expanded) _buildJobs(context),
+          ],
         ),
-        title: Text(
-          pipeline.name.isNotEmpty ? pipeline.name : pipeline.status,
-          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          pipeline.status,
-          style: theme.textTheme.bodySmall?.copyWith(color: color),
-        ),
-        trailing: openable
-            ? IconButton(
-                icon: const Icon(Icons.open_in_new, size: 18),
-                tooltip: l10n(context).openInBrowser,
-                onPressed: () => onLinkTap?.call(pipeline.webUrl),
-              )
-            : null,
-        onTap: openable ? () => onLinkTap?.call(pipeline.webUrl) : null,
       ),
+    );
+  }
+
+  Widget _buildJobs(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    final error = _error;
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$error',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+            TextButton(onPressed: _retry, child: Text(l10n(context).retry)),
+          ],
+        ),
+      );
+    }
+
+    final jobs = _jobs ?? [];
+    if (jobs.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Text(
+          l10n(context).noJobs,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: _PipelineJobsList(jobs: jobs, onLinkTap: widget.onLinkTap),
+    );
+  }
+}
+
+class _PipelineJobsList extends StatelessWidget {
+  final List<MergeRequestPipelineJob> jobs;
+  final ValueChanged<String>? onLinkTap;
+
+  const _PipelineJobsList({required this.jobs, this.onLinkTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: jobs
+            .map((job) => _PipelineJobRow(job: job, onLinkTap: onLinkTap))
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _PipelineJobRow extends StatelessWidget {
+  final MergeRequestPipelineJob job;
+  final ValueChanged<String>? onLinkTap;
+
+  const _PipelineJobRow({required this.job, this.onLinkTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = _pipelineColor(theme, job.status);
+    final openable = job.webUrl.isNotEmpty && isOpenableLink(job.webUrl);
+
+    final subtitleParts = [job.status, if (job.stage.isNotEmpty) job.stage];
+
+    return ListTile(
+      dense: true,
+      leading: Icon(_pipelineIcon(job.status), color: color, size: 20),
+      title: Text(
+        job.name.isNotEmpty ? job.name : job.status,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w500,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        subtitleParts.join(' · '),
+        style: theme.textTheme.bodySmall?.copyWith(color: color),
+      ),
+      trailing: openable
+          ? IconButton(
+              icon: const Icon(Icons.open_in_new, size: 18),
+              tooltip: l10n(context).openInBrowser,
+              onPressed: () => onLinkTap?.call(job.webUrl),
+            )
+          : null,
+      onTap: openable ? () => onLinkTap?.call(job.webUrl) : null,
     );
   }
 }
@@ -332,7 +592,9 @@ Color _pipelineColor(ThemeData theme, String status) {
   if (lower == 'success') return Colors.green;
   if (lower == 'failed' || lower == 'failure') return theme.colorScheme.error;
   if (lower == 'running') return theme.colorScheme.primary;
-  if (lower == 'pending' || lower == 'created' || lower == 'waiting_for_resource') {
+  if (lower == 'pending' ||
+      lower == 'created' ||
+      lower == 'waiting_for_resource') {
     return Colors.orange;
   }
   return theme.colorScheme.onSurfaceVariant;
@@ -351,8 +613,13 @@ IconData _pipelineIcon(String status) {
 class _PipelinesTab extends StatelessWidget {
   final List<MergeRequestPipeline> pipelines;
   final ValueChanged<String>? onLinkTap;
+  final PipelineJobsLoader? onLoadJobs;
 
-  const _PipelinesTab({required this.pipelines, this.onLinkTap});
+  const _PipelinesTab({
+    required this.pipelines,
+    this.onLinkTap,
+    this.onLoadJobs,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -362,8 +629,9 @@ class _PipelinesTab extends StatelessWidget {
       return Center(
         child: Text(
           l10n(context).noPipelines,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       );
     }
@@ -373,37 +641,11 @@ class _PipelinesTab extends StatelessWidget {
       itemCount: pipelines.length,
       itemBuilder: (context, index) {
         final pipeline = pipelines[index];
-        final color = _pipelineColor(theme, pipeline.status);
-        final openable =
-            pipeline.webUrl.isNotEmpty && isOpenableLink(pipeline.webUrl);
-
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          child: ListTile(
-            leading: Icon(_pipelineIcon(pipeline.status), color: color),
-            title: Text(
-              pipeline.name.isNotEmpty ? pipeline.name : pipeline.status,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w500),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              [
-                pipeline.status,
-                if (pipeline.createdAt.isNotEmpty) pipeline.createdAt,
-              ].join(' · '),
-              style: theme.textTheme.bodySmall?.copyWith(color: color),
-            ),
-            trailing: openable
-                ? IconButton(
-                    icon: const Icon(Icons.open_in_new, size: 18),
-                    tooltip: l10n(context).openInBrowser,
-                    onPressed: () => onLinkTap?.call(pipeline.webUrl),
-                  )
-                : null,
-            onTap: openable ? () => onLinkTap?.call(pipeline.webUrl) : null,
-          ),
+        return _PipelineTile(
+          key: ValueKey(pipeline.id),
+          pipeline: pipeline,
+          onLinkTap: onLinkTap,
+          onLoadJobs: onLoadJobs,
         );
       },
     );
@@ -430,8 +672,9 @@ class _ChangesTabState extends State<_ChangesTab> {
       return Center(
         child: Text(
           l10n(context).noChanges,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       );
     }
@@ -459,8 +702,9 @@ class _ChangesTabState extends State<_ChangesTab> {
                       Expanded(
                         child: Text(
                           change.displayPath,
-                          style: theme.textTheme.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w500),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -486,9 +730,12 @@ class _ChangesTabState extends State<_ChangesTab> {
   }
 
   Widget _changeIcon(MergeRequestChange change) {
-    if (change.newFile) return const Icon(Icons.add, size: 18, color: Colors.green);
-    if (change.deletedFile) return const Icon(Icons.remove, size: 18, color: Colors.red);
-    if (change.renamedFile) return const Icon(Icons.drive_file_rename_outline, size: 18);
+    if (change.newFile)
+      return const Icon(Icons.add, size: 18, color: Colors.green);
+    if (change.deletedFile)
+      return const Icon(Icons.remove, size: 18, color: Colors.red);
+    if (change.renamedFile)
+      return const Icon(Icons.drive_file_rename_outline, size: 18);
     return const Icon(Icons.edit, size: 18);
   }
 }
@@ -497,10 +744,7 @@ class _CommentsTab extends StatelessWidget {
   final List<MergeRequestComment> comments;
   final ValueChanged<String>? onLinkTap;
 
-  const _CommentsTab({
-    required this.comments,
-    this.onLinkTap,
-  });
+  const _CommentsTab({required this.comments, this.onLinkTap});
 
   @override
   Widget build(BuildContext context) {
@@ -510,8 +754,9 @@ class _CommentsTab extends StatelessWidget {
       return Center(
         child: Text(
           l10n(context).noComments,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       );
     }
@@ -533,20 +778,24 @@ class _CommentsTab extends StatelessWidget {
                 if (author != null)
                   Text(
                     '@${author.username}',
-                    style: theme.textTheme.labelMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 if (comment.createdAt.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
                     comment.createdAt,
-                    style: theme.textTheme.labelSmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
                 const SizedBox(height: 8),
                 MarkdownBody(
-                  data: comment.system ? htmlToMarkdown(comment.body) : comment.body,
+                  data: comment.system
+                      ? htmlToMarkdown(comment.body)
+                      : comment.body,
                   selectable: false,
                   onTapLink: (txt, href, title) {
                     if (href != null) onLinkTap?.call(href);
@@ -614,7 +863,11 @@ class _DiffView extends StatelessWidget {
       color = Colors.green;
     } else if (line.startsWith('-')) {
       color = Colors.red;
-    } else if (line.startsWith('@@') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('diff ') || line.startsWith('index ')) {
+    } else if (line.startsWith('@@') ||
+        line.startsWith('---') ||
+        line.startsWith('+++') ||
+        line.startsWith('diff ') ||
+        line.startsWith('index ')) {
       color = theme.colorScheme.primary;
     } else {
       color = theme.colorScheme.onSurface;
@@ -649,8 +902,7 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline,
-                color: theme.colorScheme.error, size: 40),
+            Icon(Icons.error_outline, color: theme.colorScheme.error, size: 40),
             const SizedBox(height: 16),
             Text(
               error,
@@ -659,7 +911,10 @@ class _ErrorView extends StatelessWidget {
             ),
             if (onRetry != null) ...[
               const SizedBox(height: 16),
-              FilledButton(onPressed: onRetry, child: Text(l10n(context).retry)),
+              FilledButton(
+                onPressed: onRetry,
+                child: Text(l10n(context).retry),
+              ),
             ],
           ],
         ),

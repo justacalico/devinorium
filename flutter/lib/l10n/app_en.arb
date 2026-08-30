@@ -503,6 +503,7 @@
   "noChanges": "No changed files.",
   "noComments": "No comments yet.",
   "noPipelines": "No pipelines yet.",
+  "noJobs": "No jobs yet.",
   "openInBrowser": "Open in browser",
   "draft": "Draft",
   "retry": "Retry",

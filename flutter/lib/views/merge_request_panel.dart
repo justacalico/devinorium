@@ -22,19 +22,27 @@ class MergeRequestPanel extends StatefulWidget {
 }
 
 class _MergeRequestPanelState extends State<MergeRequestPanel> {
-  late final MergeRequestProvider _provider;
+  MergeRequestProvider? _provider;
+  bool _ownsProvider = false;
 
   @override
-  void initState() {
-    super.initState();
-    _provider = widget.provider ??
-        GitLabMergeRequestProvider(context.read<AppState>().api.client);
-    _provider.load(widget.url);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _provider ??= _createProvider();
+  }
+
+  MergeRequestProvider _createProvider() {
+    if (widget.provider != null) {
+      return widget.provider!;
+    }
+    _ownsProvider = true;
+    final client = context.read<AppState>().api.client;
+    return GitLabMergeRequestProvider(client)..load(widget.url);
   }
 
   @override
   void dispose() {
-    _provider.dispose();
+    if (_ownsProvider) _provider?.dispose();
     super.dispose();
   }
 
@@ -68,8 +76,9 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
                         Expanded(
                           child: Text(
                             l10n(context).mergeRequest,
-                            style: theme.textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                         IconButton(
@@ -85,13 +94,17 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                       child: ListenableBuilder(
-                        listenable: _provider,
+                        listenable: _provider!,
                         builder: (context, _) => MergeRequestView(
-                          detail: _provider.value,
+                          detail: _provider!.value,
                           url: widget.url,
-                          onRetry: () => _provider.load(widget.url),
-                          onLinkTap: (url) => context.read<AppState>().openLink(url),
-                          onAction: _provider.perform,
+                          onRetry: () => _provider!.load(widget.url),
+                          onLinkTap: (url) =>
+                              context.read<AppState>().openLink(url),
+                          onLoadJobs: _provider! is GitLabMergeRequestProvider
+                              ? _provider!.loadJobs
+                              : null,
+                          onAction: _provider!.perform,
                         ),
                       ),
                     ),

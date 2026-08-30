@@ -80,6 +80,36 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     await _refresh(ref, url, generation, keepOnError: true);
   }
 
+  /// Load the jobs for a pipeline.
+  ///
+  /// Throws [StateError] if no merge request is loaded, or forwards backend
+  /// errors as [ApiException].
+  @override
+  Future<List<MergeRequestPipelineJob>> loadJobs(
+    MergeRequestPipeline pipeline,
+  ) async {
+    if (pipeline.id <= 0) {
+      throw ArgumentError('pipeline id must be positive');
+    }
+    final ref = _ref;
+    if (ref == null) {
+      throw StateError('No merge request loaded');
+    }
+
+    final query =
+        'project=${Uri.encodeQueryComponent(ref.projectPath)}'
+        '&pipeline_id=${pipeline.id}'
+        '&hostname=${Uri.encodeQueryComponent(ref.hostname)}';
+    final response = await _client.get(
+      '/api/git-connections/gitlab/pipelines/jobs?$query',
+    );
+    final list = (response['_list'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(MergeRequestPipelineJob.fromJson)
+        .toList();
+    return list;
+  }
+
   Future<void> _refresh(
     _MergeRequestRef ref,
     String url,
@@ -105,28 +135,33 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     if (!_disposed) notifyListeners();
   }
 
-  Future<MergeRequestDetail> _fetchDetail(_MergeRequestRef ref, String webUrl) async {
-    final mrPath = 'projects/${Uri.encodeComponent(ref.projectPath)}/merge_requests/${ref.iid}';
+  Future<MergeRequestDetail> _fetchDetail(
+    _MergeRequestRef ref,
+    String webUrl,
+  ) async {
+    final mrPath =
+        'projects/${Uri.encodeComponent(ref.projectPath)}/merge_requests/${ref.iid}';
 
-    final results = await Future.wait([
-      _proxy(ref, mrPath),
-      _proxy(ref, '$mrPath/diffs'),
-      _proxy(ref, '$mrPath/notes?per_page=100'),
-      _pipeline(ref),
-    ]);
+    final mr = await _proxy(ref, mrPath);
 
-    final mr = results[0];
-    final diffs = results[1];
-    final notes = results[2];
-    final pipelineJson = results[3];
+    final futures = [
+      _proxyOrEmpty(ref, '$mrPath/diffs'),
+      _proxyOrEmpty(ref, '$mrPath/notes?per_page=100'),
+      _pipeline(ref).catchError((_) => <String, dynamic>{'_list': <dynamic>[]}),
+    ];
+
+    final results = await Future.wait(futures);
+    final diffs = results[0];
+    final notes = results[1];
+    final pipelineJson = results[2];
 
     final changes = (diffs['_list'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>()
+        .whereType<Map<String, dynamic>>()
         .map(MergeRequestChange.fromJson)
         .toList();
 
     final comments = (notes['_list'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>()
+        .whereType<Map<String, dynamic>>()
         .map(MergeRequestComment.fromJson)
         .toList();
 
@@ -159,14 +194,30 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     );
   }
 
-  Future<Map<String, dynamic>> _proxy(_MergeRequestRef ref, String gitlabPath) async {
-    final query = 'path=${Uri.encodeQueryComponent(gitlabPath)}'
+  Future<Map<String, dynamic>> _proxy(
+    _MergeRequestRef ref,
+    String gitlabPath,
+  ) async {
+    final query =
+        'path=${Uri.encodeQueryComponent(gitlabPath)}'
         '&hostname=${Uri.encodeQueryComponent(ref.hostname)}';
     return _client.get('/api/git-connections/gitlab/proxy?$query');
   }
 
+  Future<Map<String, dynamic>> _proxyOrEmpty(
+    _MergeRequestRef ref,
+    String gitlabPath,
+  ) async {
+    try {
+      return await _proxy(ref, gitlabPath);
+    } catch (_) {
+      return {'_list': <dynamic>[]};
+    }
+  }
+
   Future<Map<String, dynamic>> _pipeline(_MergeRequestRef ref) async {
-    final query = 'project=${Uri.encodeQueryComponent(ref.projectPath)}'
+    final query =
+        'project=${Uri.encodeQueryComponent(ref.projectPath)}'
         '&iid=${ref.iid}'
         '&hostname=${Uri.encodeQueryComponent(ref.hostname)}';
     return _client.get('/api/git-connections/gitlab/pipelines?$query');
