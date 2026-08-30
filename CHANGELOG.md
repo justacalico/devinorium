@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.21.0 - 2026-08-30
+#### Features
+- 切换分支后自动获取远程状态以显示拉取提示 - (423126a) - HttpAnimations
+
+- - -
+
 ## v0.20.0 - 2026-08-30
 #### Features
 - 添加项目线程“显示更多”折叠按钮 - (7e1de3e) - HttpAnimations
