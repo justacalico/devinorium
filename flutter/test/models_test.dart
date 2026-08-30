@@ -1047,6 +1047,23 @@ void main() {
       expect(ComposerModeX.fromString('ask'), ComposerMode.ask);
       expect(ComposerModeX.fromString('code'), ComposerMode.code);
     });
+
+    test('hasAskPrefix matches command with word boundary', () {
+      expect(hasAskPrefix('/ask hello'), isTrue);
+      expect(hasAskPrefix('/ask'), isTrue);
+      expect(hasAskPrefix('/ask\nnext'), isTrue);
+      expect(hasAskPrefix('/asking'), isFalse);
+      expect(hasAskPrefix(' /ask'), isFalse);
+      expect(hasAskPrefix('hello /ask'), isFalse);
+    });
+
+    test('stripAskPrefix removes command and following whitespace', () {
+      expect(stripAskPrefix('/ask hello'), 'hello');
+      expect(stripAskPrefix('/ask  hello'), 'hello');
+      expect(stripAskPrefix('/ask'), '');
+      expect(stripAskPrefix('/asking'), '/asking');
+      expect(stripAskPrefix('/ask\n\nhello'), 'hello');
+    });
   });
 
   group('SSE parser', () {

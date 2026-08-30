@@ -189,7 +189,7 @@ class ThreadStore {
 
   /// Send a user message and start a new streaming turn.
   Future<void> sendMessage() async {
-    final prompt = composerText.trim();
+    final prompt = _promptForMode(composerText.trim());
     if (prompt.isEmpty) return;
     _globalError = '';
 
@@ -639,6 +639,11 @@ class ThreadStore {
       _globalError = '$e';
       _emit();
     }
+  }
+
+  String _promptForMode(String prompt) {
+    if (composerMode != ComposerMode.ask) return prompt;
+    return stripAskPrefix(prompt);
   }
 
   String? _statusFromPhase(StreamPhase phase) {

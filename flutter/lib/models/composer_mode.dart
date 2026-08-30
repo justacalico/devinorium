@@ -3,6 +3,15 @@
 /// without editing files, or build directly).
 enum ComposerMode { code, plan, ask }
 
+/// Whether [text] starts with the `/ask` command prefix.
+bool hasAskPrefix(String text) => _askPrefix.hasMatch(text);
+
+/// Removes a leading `/ask` command prefix and any following whitespace.
+String stripAskPrefix(String text) => text.replaceFirst(_askSendPrefix, '');
+
+final _askPrefix = RegExp(r'^/ask(?:\s|$)');
+final _askSendPrefix = RegExp(r'^/ask(?:\s+|$)');
+
 extension ComposerModeX on ComposerMode {
   String get name => switch (this) {
     ComposerMode.code => 'code',

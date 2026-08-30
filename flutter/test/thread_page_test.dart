@@ -1558,6 +1558,100 @@ void main() {
     expect(state.composerMode, ComposerMode.plan);
   });
 
+  testWidgets('/ask prefix in composer toggles ask mode and back', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      composerMode: ComposerMode.plan,
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(state.composerMode, ComposerMode.plan);
+
+    await tester.enterText(find.byKey(const Key('composer_input')), '/ask hello');
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.ask);
+    expect(state.composerText, '/ask hello');
+
+    await tester.enterText(find.byKey(const Key('composer_input')), 'hello');
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.plan);
+    expect(state.composerText, 'hello');
+  });
+
+  testWidgets('/ask prefix requires a word boundary', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('composer_input')), '/asking');
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.code);
+    expect(state.composerText, '/asking');
+  });
+
+  testWidgets('/ask alone toggles ask mode', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('composer_input')), '/ask');
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.ask);
+
+    await tester.enterText(find.byKey(const Key('composer_input')), '/as');
+    await tester.pump();
+
+    expect(state.composerMode, ComposerMode.code);
+  });
+
   testWidgets('stop button is shown while sending', (tester) async {
     final state = AppState.test(
       api: _FakeApiService(),

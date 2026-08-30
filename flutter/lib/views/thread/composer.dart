@@ -12,6 +12,9 @@ class _ComposerState extends State<_Composer> {
   final _focusNode = FocusNode();
   final _keyFocusNode = FocusNode();
   bool _wasSending = false;
+  ComposerMode? _preAskMode;
+  bool _promptDrivenAsk = false;
+  String? _lastThreadId;
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -77,7 +80,36 @@ class _ComposerState extends State<_Composer> {
       text: newText,
       selection: newSelection,
     );
-    state.setComposerText(newText);
+    _updateComposerFromText(newText, state);
+  }
+
+  void _onTextChanged(String text) {
+    final state = context.read<AppState>();
+    _updateComposerFromText(text, state);
+  }
+
+  void _updateComposerFromText(String text, AppState state) {
+    _applySlashCommandMode(text, state);
+    state.setComposerText(text);
+  }
+
+  void _applySlashCommandMode(String text, AppState state) {
+    final has = hasAskPrefix(text);
+    if (has && state.composerMode != ComposerMode.ask) {
+      _preAskMode = state.composerMode;
+      _promptDrivenAsk = true;
+      state.setComposerMode(ComposerMode.ask, persist: false);
+    } else if (!has &&
+        _promptDrivenAsk &&
+        state.composerMode == ComposerMode.ask &&
+        _preAskMode != null) {
+      _promptDrivenAsk = false;
+      state.setComposerMode(_preAskMode!, persist: false);
+    }
+
+    if (state.composerMode != ComposerMode.ask) {
+      _preAskMode = state.composerMode;
+    }
   }
 
   @override
@@ -88,12 +120,20 @@ class _ComposerState extends State<_Composer> {
   }
 
   void _submit(AppState state) {
-    if (state.composerText.trim().isNotEmpty &&
+    if (_effectivePrompt(state).isNotEmpty &&
         state.activeThreadId != null &&
         !state.sending) {
       widget.controller.clear();
       state.sendMessage();
     }
+  }
+
+  String _effectivePrompt(AppState state) {
+    var prompt = state.composerText.trim();
+    if (state.composerMode == ComposerMode.ask) {
+      prompt = stripAskPrefix(prompt);
+    }
+    return prompt;
   }
 
   void _cycleComposerMode(AppState state) {
@@ -110,6 +150,25 @@ class _ComposerState extends State<_Composer> {
       });
     }
     _wasSending = state.sending;
+
+    final threadId = state.activeThreadId;
+    if (threadId != _lastThreadId) {
+      _lastThreadId = threadId;
+      _preAskMode = null;
+      _promptDrivenAsk = false;
+      _applySlashCommandMode(state.composerText, state);
+      if (state.composerMode == ComposerMode.ask &&
+          hasAskPrefix(state.composerText)) {
+        _promptDrivenAsk = true;
+        _preAskMode = state.defaultComposerMode;
+      }
+    }
+
+    if (state.composerMode == ComposerMode.ask &&
+        !hasAskPrefix(state.composerText)) {
+      _promptDrivenAsk = false;
+      _preAskMode = null;
+    }
   }
 
   static Color _modeColor(ComposerMode mode) => switch (mode) {
@@ -197,7 +256,7 @@ class _ComposerState extends State<_Composer> {
                           hintText: l10n(context).composerHint,
                         ),
                         style: theme.textTheme.bodyLarge,
-                        onChanged: state.setComposerText,
+                        onChanged: _onTextChanged,
                         contextMenuBuilder: (context, editableTextState) {
                           final items = editableTextState.contextMenuButtonItems
                               .map((item) {
@@ -281,8 +340,7 @@ class _ComposerState extends State<_Composer> {
                               ? () {
                                   if (isSending) {
                                     state.stopThread();
-                                  } else if (state.composerText
-                                      .trim()
+                                  } else if (_effectivePrompt(state)
                                       .isNotEmpty) {
                                     widget.controller.clear();
                                     state.sendMessage();
