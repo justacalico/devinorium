@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.20.0 - 2026-08-30
+#### Features
+- 添加项目线程“显示更多”折叠按钮 - (7e1de3e) - HttpAnimations
+#### Bug Fixes
+- 会话创建时立即持久化 devin_session_id 并等待回调完成 - (6be9bc9) - HttpAnimations
+- 在模型失败时持久化部分回复以保留上下文 - (7b0b78f) - HttpAnimations
+
+- - -
+
 ## v0.19.0 - 2026-08-29
 #### Features
 - 实现消息滚动分块加载和卸载 - (a37563d) - HttpAnimations
