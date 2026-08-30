@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -218,14 +219,36 @@ class _AppTitle extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Text(
-        l.appTitle,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: theme.colorScheme.onSurface,
-        ),
+      child: FutureBuilder<PackageInfo>(
+        future: PackageInfo.fromPlatform(),
+        builder: (context, snapshot) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                fit: FlexFit.loose,
+                child: Text(
+                  l.appTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              if (snapshot.hasData) ...[
+                const SizedBox(width: 8),
+                Text(
+                  snapshot.data!.version,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

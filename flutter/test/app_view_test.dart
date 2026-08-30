@@ -6,6 +6,7 @@ import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:devinorium_frontend/views/window_title_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 Widget _buildWithState(
@@ -54,6 +55,16 @@ AppState _baseState() => AppState.test(
     );
 
 void main() {
+  setUpAll(() {
+    PackageInfo.setMockInitialValues(
+      appName: 'Devinorium',
+      packageName: 'devinorium_frontend',
+      version: '0.21.0',
+      buildNumber: '25',
+      buildSignature: '',
+    );
+  });
+
   group('AppShell files panel on narrow screens', () {
     testWidgets('openFilesPanel opens end drawer on narrow screens',
         (tester) async {
@@ -160,6 +171,10 @@ void main() {
 
       expect(
         find.descendant(of: find.byType(Sidebar), matching: find.text('Devinorium')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: find.byType(Sidebar), matching: find.text('0.21.0')),
         findsOneWidget,
       );
       expect(

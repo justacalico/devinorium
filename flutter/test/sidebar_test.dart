@@ -6,6 +6,7 @@ import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:devinorium_frontend/widgets/thread_tag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -175,6 +176,16 @@ Future<void> _openDrawer(WidgetTester tester) async {
 }
 
 void main() {
+  setUpAll(() {
+    PackageInfo.setMockInitialValues(
+      appName: 'Devinorium',
+      packageName: 'devinorium_frontend',
+      version: '0.21.0',
+      buildNumber: '25',
+      buildSignature: '',
+    );
+  });
+
   testWidgets('Sidebar shows settings topics for owners', (tester) async {
     final state = AppState.test(
       user: User(
@@ -2294,7 +2305,7 @@ void main() {
     expect(find.text('Show 1 more'), findsNothing);
   });
 
-  testWidgets('Sidebar shows the app title', (tester) async {
+  testWidgets('Sidebar shows the app title and version', (tester) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -2312,6 +2323,10 @@ void main() {
 
     expect(
       find.descendant(of: find.byType(Sidebar), matching: find.text('Devinorium')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(Sidebar), matching: find.text('0.21.0')),
       findsOneWidget,
     );
   });
