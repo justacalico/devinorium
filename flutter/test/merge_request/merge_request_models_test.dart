@@ -5,6 +5,7 @@ void main() {
   group('MergeRequestPipeline', () {
     test('parses from JSON', () {
       final pipeline = MergeRequestPipeline.fromJson({
+        'id': 7,
         'status': 'failed',
         'name': 'lint-and-test',
         'web_url': 'https://gitlab.com/group/project/-/pipelines/7',
@@ -13,6 +14,7 @@ void main() {
         'updated_at': '2026-01-02T00:00:00Z',
       });
 
+      expect(pipeline.id, 7);
       expect(pipeline.status, 'failed');
       expect(pipeline.name, 'lint-and-test');
       expect(pipeline.webUrl, 'https://gitlab.com/group/project/-/pipelines/7');
@@ -31,13 +33,53 @@ void main() {
 
     test('treats unfinished statuses as active', () {
       for (final status in ['running', 'PENDING', 'created', 'scheduled']) {
-        expect(MergeRequestPipeline(status: status).isActive, isTrue,
-            reason: status);
+        expect(
+          MergeRequestPipeline(status: status).isActive,
+          isTrue,
+          reason: status,
+        );
       }
       for (final status in ['success', 'failed', 'canceled', '']) {
-        expect(MergeRequestPipeline(status: status).isActive, isFalse,
-            reason: status);
+        expect(
+          MergeRequestPipeline(status: status).isActive,
+          isFalse,
+          reason: status,
+        );
       }
+    });
+  });
+
+  group('MergeRequestPipelineJob', () {
+    test('parses from JSON', () {
+      final job = MergeRequestPipelineJob.fromJson({
+        'id': 101,
+        'name': 'cargo test',
+        'status': 'running',
+        'stage': 'test',
+        'web_url': 'https://gitlab.com/-/jobs/101',
+        'started_at': '2026-01-01T00:00:00Z',
+        'finished_at': '2026-01-01T00:01:00Z',
+        'duration': 60.5,
+      });
+
+      expect(job.id, 101);
+      expect(job.name, 'cargo test');
+      expect(job.status, 'running');
+      expect(job.stage, 'test');
+      expect(job.webUrl, 'https://gitlab.com/-/jobs/101');
+      expect(job.startedAt, '2026-01-01T00:00:00Z');
+      expect(job.finishedAt, '2026-01-01T00:01:00Z');
+      expect(job.duration, 60.5);
+      expect(job.isPresent, isTrue);
+    });
+
+    test('uses defaults for missing fields', () {
+      final job = MergeRequestPipelineJob.fromJson({'name': 'build'});
+
+      expect(job.id, 0);
+      expect(job.name, 'build');
+      expect(job.status, '');
+      expect(job.isPresent, isTrue);
     });
   });
 
@@ -46,17 +88,16 @@ void main() {
       String state = 'opened',
       bool draft = false,
       bool hasConflicts = false,
-    }) =>
-        MergeRequestDetail(
-          title: 'MR',
-          state: state,
-          sourceBranch: 'feature',
-          targetBranch: 'main',
-          iid: 1,
-          webUrl: '',
-          draft: draft,
-          hasConflicts: hasConflicts,
-        );
+    }) => MergeRequestDetail(
+      title: 'MR',
+      state: state,
+      sourceBranch: 'feature',
+      targetBranch: 'main',
+      iid: 1,
+      webUrl: '',
+      draft: draft,
+      hasConflicts: hasConflicts,
+    );
 
     test('maps state to flags', () {
       expect(detail().isOpen, isTrue);
@@ -79,8 +120,10 @@ void main() {
       expect(MergeRequestAction.close.wire, 'close');
       expect(MergeRequestAction.reopen.wire, 'reopen');
       expect(MergeRequestAction.merge.wire, 'merge');
-      expect(MergeRequestAction.mergeWhenPipelineSucceeds.wire,
-          'merge_when_pipeline_succeeds');
+      expect(
+        MergeRequestAction.mergeWhenPipelineSucceeds.wire,
+        'merge_when_pipeline_succeeds',
+      );
     });
   });
 }

@@ -20,4 +20,15 @@ abstract class MergeRequestProvider extends ChangeNotifier {
   ///
   /// Throws if no merge request is loaded or the host rejects the action.
   Future<void> perform(MergeRequestAction action);
+
+  /// Load the CI/CD jobs for a [pipeline] belonging to the current merge
+  /// request.
+  ///
+  /// Throws [UnsupportedError] by default; providers that support pipelines
+  /// (GitLab) should override this.
+  Future<List<MergeRequestPipelineJob>> loadJobs(
+    MergeRequestPipeline pipeline,
+  ) {
+    throw UnsupportedError('Pipeline jobs are not supported by this provider');
+  }
 }

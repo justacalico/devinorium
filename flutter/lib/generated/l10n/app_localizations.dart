@@ -1672,6 +1672,12 @@ abstract class AppLocalizations {
   /// **'No pipelines yet.'**
   String get noPipelines;
 
+  /// No description provided for @noJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'No jobs yet.'**
+  String get noJobs;
+
   /// No description provided for @openInBrowser.
   ///
   /// In en, this message translates to:

@@ -883,6 +883,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noPipelines => 'No pipelines yet.';
 
   @override
+  String get noJobs => 'No jobs yet.';
+
+  @override
   String get openInBrowser => 'Open in browser';
 
   @override
