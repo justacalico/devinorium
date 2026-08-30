@@ -37,7 +37,9 @@ async fn health(
     if provider_id.is_empty() || command.is_empty() {
         return (
             axum::http::StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("provider_id and command are required")),
+            Json(crate::api::ApiError::new(
+                "provider_id and command are required",
+            )),
         )
             .into_response();
     }
@@ -63,7 +65,9 @@ async fn health(
         Err(e) => {
             return (
                 axum::http::StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new(format!("failed to build provider: {e}"))),
+                Json(crate::api::ApiError::new(format!(
+                    "failed to build provider: {e}"
+                ))),
             )
                 .into_response()
         }
@@ -73,7 +77,9 @@ async fn health(
         Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => (
             axum::http::StatusCode::BAD_GATEWAY,
-            Json(crate::api::ApiError::new(format!("provider health check failed: {e}"))),
+            Json(crate::api::ApiError::new(format!(
+                "provider health check failed: {e}"
+            ))),
         )
             .into_response(),
     }

@@ -30,9 +30,8 @@ impl GitRemoteService {
         iid: i64,
     ) -> Result<Vec<GitLabPipeline>, RemoteError> {
         let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
-        let path = format!(
-            "projects/{encoded_project}/merge_requests/{iid}/pipelines?per_page=100"
-        );
+        let path =
+            format!("projects/{encoded_project}/merge_requests/{iid}/pipelines?per_page=100");
 
         let output = self.gitlab_api(user_id, hostname, &path).await?;
         let pipelines: Vec<serde_json::Value> = serde_json::from_str(&output).map_err(|e| {
@@ -127,7 +126,7 @@ mod tests {
 
     #[test]
     fn pipelines_sort_by_updated_at_descending() {
-        let mut pipelines = vec![
+        let mut pipelines = [
             GitLabPipeline {
                 status: "success".into(),
                 name: "old".into(),
@@ -156,7 +155,7 @@ mod tests {
 
     #[test]
     fn missing_timestamp_sorts_to_bottom() {
-        let mut pipelines = vec![
+        let mut pipelines = [
             GitLabPipeline {
                 status: "failed".into(),
                 name: "missing".into(),

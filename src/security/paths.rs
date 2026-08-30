@@ -43,11 +43,7 @@ pub fn normalize_path(path: &str, home: &Path) -> String {
 ///
 /// When `roots` is `Some` the canonicalized path must be contained within one
 /// of the given roots.
-pub fn resolve(
-    path: &Path,
-    base: Option<&Path>,
-    roots: Option<&[PathBuf]>,
-) -> Option<PathBuf> {
+pub fn resolve(path: &Path, base: Option<&Path>, roots: Option<&[PathBuf]>) -> Option<PathBuf> {
     // First, join with base if relative and base is set.
     let joined = if path.is_relative() {
         base?.join(path)

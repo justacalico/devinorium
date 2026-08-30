@@ -200,9 +200,7 @@ impl super::Db {
             return Ok(Vec::new());
         }
         let placeholders = thread_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql = format!(
-            "SELECT id FROM threads WHERE user_id = ? AND id IN ({placeholders})"
-        );
+        let sql = format!("SELECT id FROM threads WHERE user_id = ? AND id IN ({placeholders})");
         let mut query = sqlx::query_as::<_, (String,)>(&sql).bind(user_id);
         for id in thread_ids {
             query = query.bind(id);
@@ -213,11 +211,7 @@ impl super::Db {
 
     /// Delete all threads for a user+project that have zero messages.
     /// Returns the number of threads deleted.
-    pub async fn delete_empty_threads(
-        &self,
-        user_id: i64,
-        project_id: i64,
-    ) -> anyhow::Result<u64> {
+    pub async fn delete_empty_threads(&self, user_id: i64, project_id: i64) -> anyhow::Result<u64> {
         let result = sqlx::query(
             "DELETE FROM threads
              WHERE user_id = ? AND project_id = ?

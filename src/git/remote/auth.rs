@@ -22,7 +22,9 @@ impl GitRemoteService {
         user_id: i64,
         hostname: Option<&str>,
     ) -> Result<GitLabStatus, RemoteError> {
-        self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        self.glab_bin
+            .as_ref()
+            .ok_or(RemoteError::GitLabNotAvailable)?;
         let host = hostname.unwrap_or("gitlab.com");
 
         let status = self.gitlab_status_for_host(user_id, host).await?;
@@ -41,7 +43,10 @@ impl GitRemoteService {
         user_id: i64,
         hostname: Option<&str>,
     ) -> Result<(), RemoteError> {
-        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let bin = self
+            .glab_bin
+            .as_ref()
+            .ok_or(RemoteError::GitLabNotAvailable)?;
         let host = hostname.unwrap_or("gitlab.com");
 
         let _ = self
@@ -68,7 +73,10 @@ impl GitRemoteService {
 
     /// Return the first available GitLab status. Used for the connections list.
     pub async fn gitlab_status(&self, user_id: i64) -> Result<GitLabStatus, RemoteError> {
-        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let bin = self
+            .glab_bin
+            .as_ref()
+            .ok_or(RemoteError::GitLabNotAvailable)?;
         let (output, _) = self.run_raw(user_id, bin, &["auth", "status"]).await?;
         Self::parse_gitlab_status(&output)
     }
@@ -83,7 +91,10 @@ impl GitRemoteService {
         user_id: i64,
         hostname: &str,
     ) -> Result<Option<String>, RemoteError> {
-        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let bin = self
+            .glab_bin
+            .as_ref()
+            .ok_or(RemoteError::GitLabNotAvailable)?;
         let host = Self::api_host(hostname);
         let (output, success) = self
             .run_raw(user_id, bin, &["config", "get", "token", "--host", host])
@@ -99,7 +110,10 @@ impl GitRemoteService {
         user_id: i64,
         host: &str,
     ) -> Result<GitLabStatus, RemoteError> {
-        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let bin = self
+            .glab_bin
+            .as_ref()
+            .ok_or(RemoteError::GitLabNotAvailable)?;
         let (output, _) = self
             .run_raw(user_id, bin, &["auth", "status", "--hostname", host])
             .await?;
@@ -109,8 +123,7 @@ impl GitRemoteService {
     pub(super) fn parse_gitlab_status(output: &str) -> Result<GitLabStatus, RemoteError> {
         static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
         let re = RE.get_or_init(|| {
-            Regex::new(r"(?:[✓✗xX!]\s+)?Logged in to\s+(\S+)\s+as\s+(\S+)")
-                .unwrap()
+            Regex::new(r"(?:[✓✗xX!]\s+)?Logged in to\s+(\S+)\s+as\s+(\S+)").unwrap()
         });
 
         if let Some(caps) = re.captures(output) {

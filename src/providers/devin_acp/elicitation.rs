@@ -46,7 +46,7 @@ mod tests {
 
     use agent_client_protocol::schema::v1::{
         CreateElicitationRequest, ElicitationFormMode, ElicitationId, ElicitationMode,
-        ElicitationScope, ElicitationSessionScope, ElicitationSchema, SessionId,
+        ElicitationSchema, ElicitationScope, ElicitationSessionScope, SessionId,
     };
 
     use crate::providers::AskRequest;

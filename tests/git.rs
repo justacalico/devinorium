@@ -368,10 +368,7 @@ async fn pull_fast_forwards_behind_commits() {
         &["clone", remote.path().to_str().unwrap(), "."],
         other.path(),
     );
-    git_cli(
-        &["checkout", "-b", "main", "origin/main"],
-        other.path(),
-    );
+    git_cli(&["checkout", "-b", "main", "origin/main"], other.path());
     std::fs::write(other.path().join("file2.txt"), "from other").unwrap();
     git_cli(&["add", "file2.txt"], other.path());
     git_cli(&["commit", "-m", "remote commit"], other.path());
@@ -409,10 +406,7 @@ async fn pulls_non_current_branch_without_checking_out() {
         &["clone", remote.path().to_str().unwrap(), "."],
         other.path(),
     );
-    git_cli(
-        &["checkout", "-b", "feature", "origin/main"],
-        other.path(),
-    );
+    git_cli(&["checkout", "-b", "feature", "origin/main"], other.path());
     std::fs::write(other.path().join("file2.txt"), "from other").unwrap();
     git_cli(&["add", "file2.txt"], other.path());
     git_cli(&["commit", "-m", "feature commit"], other.path());
@@ -531,7 +525,11 @@ async fn git_remote_gitlab_login_and_logout() {
     let svc = GitRemoteService::with_glab_bin(config_root.clone(), Some(glab));
 
     // Simulate a pre-authenticated glab CLI by writing the token it expects.
-    let token_file = config_root.join("glab").join("1").join(".config").join("token");
+    let token_file = config_root
+        .join("glab")
+        .join("1")
+        .join(".config")
+        .join("token");
     std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
     std::fs::write(&token_file, "glpat-test-token").unwrap();
 
@@ -557,7 +555,11 @@ async fn git_remote_gitlab_login_uses_custom_host() {
     std::fs::create_dir_all(&config_root).unwrap();
     let svc = GitRemoteService::with_glab_bin(config_root.clone(), Some(glab));
 
-    let token_file = config_root.join("glab").join("1").join(".config").join("token");
+    let token_file = config_root
+        .join("glab")
+        .join("1")
+        .join(".config")
+        .join("token");
     std::fs::create_dir_all(token_file.parent().unwrap()).unwrap();
     std::fs::write(&token_file, "glpat-test-token").unwrap();
 
@@ -642,7 +644,11 @@ async fn git_remote_gitlab_api_forwards_path_and_host() {
     let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
 
     let out = svc
-        .gitlab_api(1, "gitlab.example.com", "projects/group%2Fproject/merge_requests/1")
+        .gitlab_api(
+            1,
+            "gitlab.example.com",
+            "projects/group%2Fproject/merge_requests/1",
+        )
         .await
         .unwrap();
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -736,7 +742,10 @@ exit 1
     assert_eq!(pipelines.len(), 1);
     assert_eq!(pipelines[0].status, "unknown");
     assert_eq!(pipelines[0].name, "feature");
-    assert_eq!(pipelines[0].web_url, "https://gitlab.example.com/-/pipelines/7");
+    assert_eq!(
+        pipelines[0].web_url,
+        "https://gitlab.example.com/-/pipelines/7"
+    );
     assert_eq!(pipelines[0].ref_name, "feature");
 }
 
@@ -947,8 +956,7 @@ async fn git_remote_merge_request_merge_calls_merge_endpoint() {
 
 #[tokio::test]
 async fn git_remote_merge_request_merge_when_pipeline_succeeds_sets_field() {
-    let args =
-        merge_request_action_args(MergeRequestAction::MergeWhenPipelineSucceeds).await;
+    let args = merge_request_action_args(MergeRequestAction::MergeWhenPipelineSucceeds).await;
     assert!(args.contains("projects/group%2Fproject/merge_requests/7/merge"));
     assert!(args.contains("--field merge_when_pipeline_succeeds=true"));
 }
@@ -962,7 +970,13 @@ async fn git_remote_merge_request_action_rejects_invalid_json() {
     let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
 
     let err = svc
-        .gitlab_merge_request_action(1, "gitlab.com", "group/project", 1, MergeRequestAction::Merge)
+        .gitlab_merge_request_action(
+            1,
+            "gitlab.com",
+            "group/project",
+            1,
+            MergeRequestAction::Merge,
+        )
         .await
         .unwrap_err();
     assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
@@ -974,7 +988,11 @@ async fn git_remote_merge_request_action_reports_glab_failure() {
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
     let bin = bin_dir.join("glab");
-    std::fs::write(&bin, "#!/bin/sh\necho '405 Method Not Allowed' >&2\nexit 1\n").unwrap();
+    std::fs::write(
+        &bin,
+        "#!/bin/sh\necho '405 Method Not Allowed' >&2\nexit 1\n",
+    )
+    .unwrap();
     let mut perms = std::fs::metadata(&bin).unwrap().permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&bin, perms).unwrap();
@@ -984,7 +1002,13 @@ async fn git_remote_merge_request_action_reports_glab_failure() {
     let svc = GitRemoteService::with_glab_bin(config_root, Some(bin));
 
     let err = svc
-        .gitlab_merge_request_action(1, "gitlab.com", "group/project", 1, MergeRequestAction::Close)
+        .gitlab_merge_request_action(
+            1,
+            "gitlab.com",
+            "group/project",
+            1,
+            MergeRequestAction::Close,
+        )
         .await
         .unwrap_err();
     assert!(format!("{err}").contains("405"));
@@ -1041,8 +1065,7 @@ fn parse_gitlab_remote_url_handles_ssh_scheme_with_port() {
 
 #[test]
 fn parse_gitlab_remote_url_strips_trailing_dot_git_and_slash() {
-    let r =
-        devinorium::git::parse_gitlab_remote_url("https://gitlab.com/group/project/").unwrap();
+    let r = devinorium::git::parse_gitlab_remote_url("https://gitlab.com/group/project/").unwrap();
     assert_eq!(r.project_path, "group/project");
 }
 

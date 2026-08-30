@@ -25,7 +25,9 @@ use crate::thread_runner::{RunState, RunStatus};
 use crate::AppState;
 
 use super::permissions::{build_ask_callback, build_permission_callback};
-use super::persistence::{persist_assistant_reply, persist_run_plan, save_partial_assistant_message};
+use super::persistence::{
+    persist_assistant_reply, persist_run_plan, save_partial_assistant_message,
+};
 use super::send::{call_provider, SendInput};
 use super::MessageOut;
 
@@ -39,11 +41,7 @@ pub(super) async fn get_run(
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ApiError::new("not found")),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response();
         }
         Err(e) => return map_err_internal(e).into_response(),
     }
@@ -92,22 +90,14 @@ pub(super) async fn stop(
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ApiError::new("not found")),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response();
         }
         Err(e) => return map_err_internal(e).into_response(),
     }
 
     match state.thread_runner.stop(&id).await {
         Some(snapshot) => Json(snapshot).into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("no active run")),
-        )
-            .into_response(),
+        None => (StatusCode::NOT_FOUND, Json(ApiError::new("no active run"))).into_response(),
     }
 }
 
@@ -122,22 +112,14 @@ pub(super) async fn events(
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ApiError::new("not found")),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response();
         }
         Err(e) => return map_err_internal(e).into_response(),
     }
 
     match state.thread_runner.get(&id).await {
         Some(run) => events_stream(run).await.into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("no active run")),
-        )
-            .into_response(),
+        None => (StatusCode::NOT_FOUND, Json(ApiError::new("no active run"))).into_response(),
     }
 }
 
@@ -175,7 +157,9 @@ pub(crate) async fn events_stream(
         Ok::<_, std::convert::Infallible>(Event::default().event("state").data(state_json));
     let initial = tokio_stream::once(state_event);
 
-    Sse::new(FuturesStreamExt::boxed(FuturesStreamExt::chain(initial, live)))
+    Sse::new(FuturesStreamExt::boxed(FuturesStreamExt::chain(
+        initial, live,
+    )))
 }
 
 pub(crate) async fn run_thread(
@@ -227,7 +211,11 @@ pub(crate) async fn run_thread(
             // not render raw plan markup.
             let part = original.strip_plan_markup();
             let is_tool_update = ev.is_update() && part.tool_id().is_some();
-            let event = if is_tool_update { "part_update" } else { "part" };
+            let event = if is_tool_update {
+                "part_update"
+            } else {
+                "part"
+            };
             let part_json = serde_json::to_string(&part);
             let is_empty_non_tool = match &part {
                 MessagePart::Text { content } | MessagePart::Thinking { content } => {
@@ -245,8 +233,7 @@ pub(crate) async fn run_thread(
     });
     let permission_callback =
         build_permission_callback(state.clone(), user.id, thread.id.clone(), run.clone());
-    let ask_callback =
-        build_ask_callback(state.clone(), user.id, thread.id.clone(), run.clone());
+    let ask_callback = build_ask_callback(state.clone(), user.id, thread.id.clone(), run.clone());
 
     let provider_result = call_provider(
         &state,
@@ -268,10 +255,7 @@ pub(crate) async fn run_thread(
         let (parts, new_session_id, new_title) = match &provider_result {
             Ok(t) => (t.2.clone(), t.0.clone(), t.1.clone()),
             Err(_) => (
-                run.parts
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone(),
+                run.parts.lock().unwrap_or_else(|e| e.into_inner()).clone(),
                 None,
                 None,
             ),
@@ -313,11 +297,7 @@ pub(crate) async fn run_thread(
             // provider crashed or rate-limited us. Persist that partial
             // assistant reply so the user can see it and the next turn has
             // context, then record the error separately.
-            let run_parts = run
-                .parts
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
+            let run_parts = run.parts.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let partial_parts = strip_plan_markup_from_parts(run_parts);
             if !partial_parts.is_empty() {
                 if let Err(err) =
@@ -397,18 +377,13 @@ mod tests {
             .unwrap();
 
         let response = events_stream(run).await.into_response();
-        assert_eq!(
-            response.headers()["content-type"],
-            "text/event-stream"
-        );
+        assert_eq!(response.headers()["content-type"], "text/event-stream");
 
-        let body = tokio::time::timeout(
-            Duration::from_secs(1),
-            to_bytes(response.into_body(), 4096),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let body =
+            tokio::time::timeout(Duration::from_secs(1), to_bytes(response.into_body(), 4096))
+                .await
+                .unwrap()
+                .unwrap();
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("event: state"), "body: {text}");
         assert!(text.contains("event: done"), "body: {text}");

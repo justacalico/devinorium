@@ -29,15 +29,19 @@ impl PlanStepStatus {
             PlanStepStatus::Completed => "completed",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s.trim().to_lowercase().as_str() {
+impl std::str::FromStr for PlanStepStatus {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.trim().to_lowercase().as_str() {
             "in_progress" | "inprogress" | "in-progress" | "active" | "[-]" | "[/]" => {
                 PlanStepStatus::InProgress
             }
             "completed" | "done" | "complete" | "[x]" | "[X]" => PlanStepStatus::Completed,
             _ => PlanStepStatus::Pending,
-        }
+        })
     }
 }
 
@@ -119,17 +123,15 @@ impl PlanParser {
         Self {
             buffer: String::new(),
             proposed_re: Regex::new(
-                r#"(?s)<proposed_plan(?:\s+explanation="([^"]*)")?\s*>(.*?)</proposed_plan>"#
+                r#"(?s)<proposed_plan(?:\s+explanation="([^"]*)")?\s*>(.*?)</proposed_plan>"#,
             )
             .expect("valid proposed_plan regex"),
             update_re: Regex::new(
-                r#"(?s)<update_plan(?:\s+explanation="([^"]*)")?\s*>(.*?)</update_plan>"#
+                r#"(?s)<update_plan(?:\s+explanation="([^"]*)")?\s*>(.*?)</update_plan>"#,
             )
             .expect("valid update_plan regex"),
-            checkbox_re: Regex::new(
-                r"(?m)^\s*[-*]\s*\[(\s|x|X|/|-)\]\s*(.+)$"
-            )
-            .expect("valid checkbox regex"),
+            checkbox_re: Regex::new(r"(?m)^\s*[-*]\s*\[(\s|x|X|/|-)\]\s*(.+)$")
+                .expect("valid checkbox regex"),
             #[cfg(test)]
             panic_next_feed: false,
         }
@@ -199,7 +201,7 @@ impl PlanParser {
                 if step.is_empty() {
                     continue;
                 }
-                let status = PlanStepStatus::from_str(&format!("[{marker}]"));
+                let status: PlanStepStatus = format!("[{marker}]").parse().unwrap();
                 steps.push(PlanStep::new(
                     truncate(step, MAX_STEP_LEN).into_owned(),
                     status,
@@ -305,8 +307,7 @@ static PLAN_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 static STEP_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?s)<step(?:\s+status="([^"]*)")?\s*>(.*?)</step>"#)
-        .expect("valid step regex")
+    Regex::new(r#"(?s)<step(?:\s+status="([^"]*)")?\s*>(.*?)</step>"#).expect("valid step regex")
 });
 
 /// Remove `<proposed_plan>` and `<update_plan>` XML blocks from assistant text
@@ -322,7 +323,7 @@ fn parse_steps_text(text: &str, explanation: Option<String>) -> Option<Plan> {
     for caps in STEP_RE.captures_iter(text) {
         let status = caps
             .get(1)
-            .map(|m| PlanStepStatus::from_str(m.as_str()))
+            .map(|m| m.as_str().parse::<PlanStepStatus>().unwrap())
             .unwrap_or(PlanStepStatus::Pending);
         let step = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
         if !step.is_empty() {
@@ -528,7 +529,9 @@ mod tests {
     #[test]
     fn split_block_across_chunks() {
         let mut parser = PlanParser::new();
-        assert!(parser.feed("<proposed_plan><step status=\"pending\">").is_empty());
+        assert!(parser
+            .feed("<proposed_plan><step status=\"pending\">")
+            .is_empty());
         let plans = parser.feed("Add migration</step></proposed_plan>");
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].steps[0].step, "Add migration");
@@ -584,9 +587,7 @@ mod tests {
     fn feed_safe_swallows_parser_panic() {
         let mut acc = PlanAccumulator::new();
         // Seed an existing plan so we can confirm it survives the panic.
-        assert!(acc.feed_safe(
-            r#"<proposed_plan><step status="pending">A</step></proposed_plan>"#
-        ));
+        assert!(acc.feed_safe(r#"<proposed_plan><step status="pending">A</step></proposed_plan>"#));
         let before = acc.current().cloned();
 
         acc.force_parser_panic();
@@ -596,9 +597,7 @@ mod tests {
         assert_eq!(acc.current(), before.as_ref());
 
         // The accumulator is still usable after the caught panic.
-        assert!(acc.feed_safe(
-            r#"<update_plan><step status="completed">A</step></update_plan>"#
-        ));
+        assert!(acc.feed_safe(r#"<update_plan><step status="completed">A</step></update_plan>"#));
         let plan = acc.current().expect("plan updated after recovery");
         assert_eq!(plan.steps[0].status, PlanStepStatus::Completed);
     }
@@ -614,8 +613,7 @@ mod tests {
         text.push('—');
         text.push_str(&"x".repeat(65534));
         assert!(!acc.feed_safe(&text));
-        assert!(acc
-            .feed_safe(r#"<update_plan><step status="completed">A</step></update_plan>"#));
+        assert!(acc.feed_safe(r#"<update_plan><step status="completed">A</step></update_plan>"#));
     }
 
     #[test]
@@ -624,7 +622,8 @@ mod tests {
         let stripped = strip_plan_markup(text);
         assert_eq!(stripped, "Before  after");
 
-        let proposed = r#"<proposed_plan explanation="Plan"><step status="pending">X</step></proposed_plan>"#;
+        let proposed =
+            r#"<proposed_plan explanation="Plan"><step status="pending">X</step></proposed_plan>"#;
         assert_eq!(strip_plan_markup(proposed), "");
 
         let mixed = r#"<update_plan>one</update_plan><proposed_plan>two</proposed_plan>"#;

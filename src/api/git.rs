@@ -26,7 +26,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/:id/git/worktrees", post(create_worktree))
         .route("/api/projects/:id/git/worktrees", delete(delete_worktree))
         .route("/api/projects/:id/git/status", get(status_summary))
-        .route("/api/projects/:id/git/merge-request", get(merge_request_for_branch))
+        .route(
+            "/api/projects/:id/git/merge-request",
+            get(merge_request_for_branch),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -320,11 +323,7 @@ async fn pull(
         }
     };
 
-    match state
-        .git
-        .pull(PathBuf::from(&project.path).as_path())
-        .await
-    {
+    match state.git.pull(PathBuf::from(&project.path).as_path()).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -386,11 +385,7 @@ async fn push(
         }
     };
 
-    match state
-        .git
-        .push(PathBuf::from(&project.path).as_path())
-        .await
-    {
+    match state.git.push(PathBuf::from(&project.path).as_path()).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -578,7 +573,11 @@ async fn merge_request_for_branch(
             Json(crate::api::ApiError::new("gitlab cli is not installed")),
         )
             .into_response(),
-        Err(e) => (e.status_code(), Json(crate::api::ApiError::new(e.to_string()))).into_response(),
+        Err(e) => (
+            e.status_code(),
+            Json(crate::api::ApiError::new(e.to_string())),
+        )
+            .into_response(),
     }
 }
 

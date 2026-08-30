@@ -78,9 +78,8 @@ pub type PermissionCallback = Arc<
 
 /// Callback the API layer supplies so the provider can report a session id
 /// as soon as a session is created, before the prompt completes.
-pub type SessionCallback = Arc<
-    dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync,
->;
+pub type SessionCallback =
+    Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 /// A single file diff streamed from the agent via `ToolCallContent::Diff`.
 /// `old_text` is `None` for newly created files.

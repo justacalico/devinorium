@@ -13,7 +13,9 @@ use crate::db::NewThread;
 use crate::AppState;
 
 use super::persistence::active_run_plan;
-use super::{CreateThread, GetThread, ListMessages, MessageOut, PinThread, ThreadOut, UpdateThread};
+use super::{
+    CreateThread, GetThread, ListMessages, MessageOut, PinThread, ThreadOut, UpdateThread,
+};
 use crate::db::messages::TURN_LIMIT_DEFAULT;
 
 pub(super) async fn list(
@@ -112,7 +114,7 @@ pub(super) async fn get_one(
             let total = state.db.count_messages(&id).await.unwrap_or(0);
             let mut messages = Vec::new();
             let mut page_meta = None;
-            if query.include_messages.as_deref().map_or(false, truthy) {
+            if query.include_messages.as_deref().is_some_and(truthy) {
                 if query.turn_limit.is_some() || query.before_cursor.is_some() {
                     let turn_limit = query.turn_limit.unwrap_or(TURN_LIMIT_DEFAULT).clamp(1, 200);
                     let before_cursor = query
@@ -133,7 +135,11 @@ pub(super) async fn get_one(
                     }
                 } else {
                     let limit = query.limit.unwrap_or(50).clamp(1, 200);
-                    match state.db.list_messages_paginated(&id, None, None, limit).await {
+                    match state
+                        .db
+                        .list_messages_paginated(&id, None, None, limit)
+                        .await
+                    {
                         Ok(rows) => {
                             messages = rows.into_iter().map(MessageOut::from).collect::<Vec<_>>();
                         }
@@ -349,7 +355,9 @@ pub(super) async fn list_messages(
     if !turn_based && query.before_id.is_some() && query.after_id.is_some() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("before_id and after_id cannot both be set")),
+            Json(crate::api::ApiError::new(
+                "before_id and after_id cannot both be set",
+            )),
         )
             .into_response();
     }

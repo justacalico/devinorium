@@ -8,8 +8,12 @@ use crate::plan;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MessagePart {
-    Text { content: String },
-    Thinking { content: String },
+    Text {
+        content: String,
+    },
+    Thinking {
+        content: String,
+    },
     #[serde(rename = "tool_call")]
     ToolCall {
         #[serde(flatten)]
@@ -163,8 +167,8 @@ fn flush_thinking(buf: &mut String, out: &mut Vec<MessagePart>) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::ToolCallEvent;
+    use super::*;
 
     #[test]
     fn text_and_thinking_round_trip() {
@@ -210,16 +214,14 @@ mod tests {
 
     #[test]
     fn strip_plan_markup_cleans_text_and_thinking() {
-        let text = MessagePart::text(
-            r#"<update_plan explanation="Build"><step>A</step></update_plan>"#,
-        )
-        .strip_plan_markup();
+        let text =
+            MessagePart::text(r#"<update_plan explanation="Build"><step>A</step></update_plan>"#)
+                .strip_plan_markup();
         assert_eq!(text.text_content(), Some(""));
 
-        let thinking = MessagePart::thinking(
-            "Plan: <proposed_plan><step>X</step></proposed_plan> done",
-        )
-        .strip_plan_markup();
+        let thinking =
+            MessagePart::thinking("Plan: <proposed_plan><step>X</step></proposed_plan> done")
+                .strip_plan_markup();
         assert_eq!(thinking.thinking_content(), Some("Plan:  done"));
 
         let tool = MessagePart::tool_call(ToolCallEvent {

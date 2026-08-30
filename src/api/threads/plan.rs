@@ -24,11 +24,7 @@ pub(super) async fn get_plan(
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(_)) => {}
         _ => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ApiError::new("not found")),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response();
         }
     }
 
@@ -81,11 +77,7 @@ pub(super) async fn get_project_path(
             )
                 .into_response(),
         },
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("not found")),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response(),
         Err(e) => map_err_internal(e).into_response(),
     }
 }

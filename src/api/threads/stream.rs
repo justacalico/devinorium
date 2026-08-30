@@ -66,10 +66,11 @@ pub(super) async fn message_stream(
     let turn_limit = query.turn_limit.unwrap_or(TURN_LIMIT_DEFAULT).clamp(1, 200);
     let live = query.live.unwrap_or(true);
 
-    let (initial, watermark) = match build_initial_events(&state, &thread_id, since_seq, turn_limit).await {
-        Ok(v) => v,
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
-    };
+    let (initial, watermark) =
+        match build_initial_events(&state, &thread_id, since_seq, turn_limit).await {
+            Ok(v) => v,
+            Err(e) => return crate::api::map_err_internal(e).into_response(),
+        };
 
     let combined: BoxStream<'static, Result<Event, Infallible>> = if live {
         let live = live_message_stream(state.clone(), thread_id.clone(), watermark);
@@ -142,7 +143,11 @@ fn live_message_stream(
             async move {
                 let mut batch = Vec::new();
                 let since = *last_seq.lock().await;
-                match state.db.list_messages_since(&thread_id, since, EVENT_GAP_THRESHOLD).await {
+                match state
+                    .db
+                    .list_messages_since(&thread_id, since, EVENT_GAP_THRESHOLD)
+                    .await
+                {
                     Ok(rows) => {
                         let mut max = since;
                         for row in rows {

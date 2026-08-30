@@ -86,7 +86,10 @@ verify-backend:
     policy: pull
   before_script:
     - *install
+    - rustup component add rustfmt clippy
   script:
+    - cargo fmt -- --check
+    - cargo clippy --all-targets -- -D warnings
     - cargo test
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

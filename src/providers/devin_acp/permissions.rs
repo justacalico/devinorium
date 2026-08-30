@@ -3,7 +3,9 @@ use agent_client_protocol::schema::v1::{
     RequestPermissionOutcome, RequestPermissionRequest, SelectedPermissionOutcome,
 };
 
-use crate::providers::{PermissionCallback, PermissionOutcome, PermissionRequest, PermissionOption};
+use crate::providers::{
+    PermissionCallback, PermissionOption, PermissionOutcome, PermissionRequest,
+};
 
 pub(crate) async fn handle_permission_request(
     request: RequestPermissionRequest,
@@ -51,7 +53,11 @@ pub(crate) fn select_allow_option(options: &[AcpPermissionOption]) -> Option<&Ac
     options
         .iter()
         .find(|o| matches!(o.kind, AcpPermissionOptionKind::AllowOnce))
-        .or_else(|| options.iter().find(|o| matches!(o.kind, AcpPermissionOptionKind::AllowAlways)))
+        .or_else(|| {
+            options
+                .iter()
+                .find(|o| matches!(o.kind, AcpPermissionOptionKind::AllowAlways))
+        })
 }
 
 pub(crate) fn map_permission_request(request: &RequestPermissionRequest) -> PermissionRequest {
@@ -120,7 +126,11 @@ mod tests {
     fn recording_callback(allowed_id: &'static str, called: Arc<AtomicBool>) -> PermissionCallback {
         Arc::new(move |_req| {
             called.store(true, Ordering::SeqCst);
-            Box::pin(async move { PermissionOutcome::Allow { option_id: allowed_id.into() } })
+            Box::pin(async move {
+                PermissionOutcome::Allow {
+                    option_id: allowed_id.into(),
+                }
+            })
         })
     }
 
@@ -136,9 +146,12 @@ mod tests {
 
         let outcome = handle_permission_request(request, "bypass", callback.as_ref()).await;
 
-        assert!(!called.load(Ordering::SeqCst), "callback should not be invoked in bypass mode");
+        assert!(
+            !called.load(Ordering::SeqCst),
+            "callback should not be invoked in bypass mode"
+        );
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-once");
     }
@@ -146,7 +159,11 @@ mod tests {
     #[tokio::test]
     async fn bypass_falls_back_to_allow_always() {
         let options = vec![
-            AcpPermissionOption::new("allow-always", "Always", AcpPermissionOptionKind::AllowAlways),
+            AcpPermissionOption::new(
+                "allow-always",
+                "Always",
+                AcpPermissionOptionKind::AllowAlways,
+            ),
             AcpPermissionOption::new("reject", "Cancel", AcpPermissionOptionKind::RejectOnce),
         ];
         let request = make_permission_request(options);
@@ -154,58 +171,70 @@ mod tests {
         let outcome = handle_permission_request(request, "bypass", None).await;
 
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-always");
     }
 
     #[tokio::test]
     async fn bypass_falls_back_to_callback_when_no_allow_option() {
-        let options = vec![
-            AcpPermissionOption::new("reject", "Cancel", AcpPermissionOptionKind::RejectOnce),
-        ];
+        let options = vec![AcpPermissionOption::new(
+            "reject",
+            "Cancel",
+            AcpPermissionOptionKind::RejectOnce,
+        )];
         let request = make_permission_request(options);
         let called = Arc::new(AtomicBool::new(false));
         let callback = Some(recording_callback("reject", called.clone()));
 
         let outcome = handle_permission_request(request, "bypass", callback.as_ref()).await;
 
-        assert!(called.load(Ordering::SeqCst), "callback should be invoked when no allow option");
+        assert!(
+            called.load(Ordering::SeqCst),
+            "callback should be invoked when no allow option"
+        );
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "reject");
     }
 
     #[tokio::test]
     async fn normal_mode_forwards_to_callback() {
-        let options = vec![
-            AcpPermissionOption::new("allow-once", "Allow", AcpPermissionOptionKind::AllowOnce),
-        ];
+        let options = vec![AcpPermissionOption::new(
+            "allow-once",
+            "Allow",
+            AcpPermissionOptionKind::AllowOnce,
+        )];
         let request = make_permission_request(options);
         let called = Arc::new(AtomicBool::new(false));
         let callback = Some(recording_callback("allow-once", called.clone()));
 
         let outcome = handle_permission_request(request, "normal", callback.as_ref()).await;
 
-        assert!(called.load(Ordering::SeqCst), "callback should be invoked in normal mode");
+        assert!(
+            called.load(Ordering::SeqCst),
+            "callback should be invoked in normal mode"
+        );
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-once");
     }
 
     #[tokio::test]
     async fn yolo_is_treated_as_bypass() {
-        let options = vec![
-            AcpPermissionOption::new("allow-always", "Always", AcpPermissionOptionKind::AllowAlways),
-        ];
+        let options = vec![AcpPermissionOption::new(
+            "allow-always",
+            "Always",
+            AcpPermissionOptionKind::AllowAlways,
+        )];
         let request = make_permission_request(options);
 
         let outcome = handle_permission_request(request, " yolo ", None).await;
 
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-always");
     }

@@ -171,9 +171,18 @@ mod tests {
     #[test]
     fn remote_error_status_codes() {
         use axum::http::StatusCode;
-        assert_eq!(RemoteError::GitLabNotAvailable.status_code(), StatusCode::NOT_FOUND);
-        assert_eq!(RemoteError::GitHubNotAvailable.status_code(), StatusCode::NOT_FOUND);
-        assert_eq!(RemoteError::Timeout.status_code(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(
+            RemoteError::GitLabNotAvailable.status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            RemoteError::GitHubNotAvailable.status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            RemoteError::Timeout.status_code(),
+            StatusCode::GATEWAY_TIMEOUT
+        );
         assert_eq!(
             RemoteError::LoginFailed("no".into()).status_code(),
             StatusCode::BAD_REQUEST
@@ -184,7 +193,10 @@ mod tests {
     fn with_glab_bin_uses_isolated_config() {
         let svc = GitRemoteService::with_glab_bin("/tmp", Some(PathBuf::from("/bin/glab")));
         assert!(svc.isolated);
-        assert_eq!(svc.glab_bin.as_deref(), Some(std::path::Path::new("/bin/glab")));
+        assert_eq!(
+            svc.glab_bin.as_deref(),
+            Some(std::path::Path::new("/bin/glab"))
+        );
         assert_eq!(svc.merge_timeout, Duration::from_secs(120));
         assert_eq!(svc.poll_interval, Duration::from_secs(3));
     }

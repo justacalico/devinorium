@@ -79,11 +79,7 @@ impl super::Db {
         .map_err(Into::into)
     }
 
-    pub async fn delete_session_for_user(
-        &self,
-        token: &str,
-        user_id: i64,
-    ) -> anyhow::Result<bool> {
+    pub async fn delete_session_for_user(&self, token: &str, user_id: i64) -> anyhow::Result<bool> {
         let res = sqlx::query("DELETE FROM sessions WHERE token = ? AND user_id = ?")
             .bind(token)
             .bind(user_id)
@@ -97,12 +93,11 @@ impl super::Db {
         device_id: &str,
         user_id: i64,
     ) -> anyhow::Result<bool> {
-        let res =
-            sqlx::query("DELETE FROM sessions WHERE device_id = ? AND user_id = ?")
-                .bind(device_id)
-                .bind(user_id)
-                .execute(self.pool())
-                .await?;
+        let res = sqlx::query("DELETE FROM sessions WHERE device_id = ? AND user_id = ?")
+            .bind(device_id)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
         Ok(res.rows_affected() > 0)
     }
 

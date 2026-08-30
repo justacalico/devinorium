@@ -89,11 +89,8 @@ pub fn lock_path_from_db_url(db_url: &str) -> Option<PathBuf> {
 
     if path_part.starts_with("//") {
         let without_leading = &path_part[2..];
-        if let Some(idx) = without_leading.find('/') {
-            path_part = without_leading[idx..].to_string();
-        } else {
-            return None;
-        }
+        let idx = without_leading.find('/')?;
+        path_part = without_leading[idx..].to_string();
     }
 
     if path_part.is_empty() {
@@ -120,7 +117,9 @@ mod tests {
     fn lock_path_parses_absolute_db_url() {
         assert_eq!(
             lock_path_from_db_url("sqlite:///home/calico/devinorium/data/devinorium.db"),
-            Some(PathBuf::from("/home/calico/devinorium/data/devinorium.lock"))
+            Some(PathBuf::from(
+                "/home/calico/devinorium/data/devinorium.lock"
+            ))
         );
     }
 
@@ -170,8 +169,12 @@ mod tests {
         }
 
         let result = SingleInstance::acquire(&lock);
-        assert!(result.is_err(), "should fail when another process holds the lock");
+        assert!(
+            result.is_err(),
+            "should fail when another process holds the lock"
+        );
 
         let _ = child.kill();
+        let _ = child.wait();
     }
 }

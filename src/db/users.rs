@@ -39,14 +39,12 @@ impl super::Db {
         provider_id: &str,
         provider_command: &str,
     ) -> anyhow::Result<()> {
-        sqlx::query(
-            "UPDATE users SET provider_id = ?, provider_command = ? WHERE id = ?",
-        )
-        .bind(provider_id)
-        .bind(provider_command)
-        .bind(user_id)
-        .execute(self.pool())
-        .await?;
+        sqlx::query("UPDATE users SET provider_id = ?, provider_command = ? WHERE id = ?")
+            .bind(provider_id)
+            .bind(provider_command)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 
@@ -113,19 +111,14 @@ impl super::Db {
                 return Ok(user.clone_root);
             }
         }
-        let row: Option<(Option<String>,)> = sqlx::query_as(
-            "SELECT clone_root FROM users WHERE is_owner = 1 ORDER BY id LIMIT 1",
-        )
-        .fetch_optional(self.pool())
-        .await?;
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT clone_root FROM users WHERE is_owner = 1 ORDER BY id LIMIT 1")
+                .fetch_optional(self.pool())
+                .await?;
         Ok(row.and_then(|r| r.0))
     }
 
-    pub async fn set_clone_root(
-        &self,
-        user_id: i64,
-        path: Option<&str>,
-    ) -> anyhow::Result<()> {
+    pub async fn set_clone_root(&self, user_id: i64, path: Option<&str>) -> anyhow::Result<()> {
         if let Some(user) = self.get_user_by_id(user_id).await? {
             if !user.is_owner {
                 anyhow::bail!("only the owner can set the clone root");

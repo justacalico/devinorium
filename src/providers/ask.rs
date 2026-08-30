@@ -52,9 +52,8 @@ pub enum AskOutcome {
 
 /// Callback the API layer supplies to the provider so ask requests
 /// can be forwarded to the client and awaited.
-pub type AskCallback = Arc<
-    dyn Fn(AskRequest) -> Pin<Box<dyn Future<Output = AskOutcome> + Send>> + Send + Sync,
->;
+pub type AskCallback =
+    Arc<dyn Fn(AskRequest) -> Pin<Box<dyn Future<Output = AskOutcome> + Send>> + Send + Sync>;
 
 /// Convert an ACP `elicitation/create` request into a frontend-friendly ask.
 /// Returns `None` for unsupported modes (e.g. URL elicitation).
@@ -211,9 +210,7 @@ fn value_to_acp(value: &serde_json::Value, field_type: &str) -> Option<Elicitati
             serde_json::Value::Number(n) if n.is_i64() => {
                 Some(ElicitationContentValue::Integer(n.as_i64().unwrap()))
             }
-            serde_json::Value::Number(n) => {
-                n.as_f64().map(ElicitationContentValue::Number)
-            }
+            serde_json::Value::Number(n) => n.as_f64().map(ElicitationContentValue::Number),
             serde_json::Value::String(s) => s
                 .parse::<i64>()
                 .ok()
@@ -419,7 +416,10 @@ mod tests {
         );
         assert_eq!(
             content.get("tags"),
-            Some(&ElicitationContentValue::StringArray(vec!["x".to_string(), "y".to_string()]))
+            Some(&ElicitationContentValue::StringArray(vec![
+                "x".to_string(),
+                "y".to_string()
+            ]))
         );
     }
 
@@ -436,7 +436,7 @@ mod tests {
 
         let mut answers = HashMap::new();
         answers.insert("tags".to_string(), serde_json::json!(["x", "y"]));
-        let content = to_acp_content(&[q.clone()], &answers);
+        let content = to_acp_content(std::slice::from_ref(&q), &answers);
         assert_eq!(
             content.get("tags"),
             Some(&ElicitationContentValue::StringArray(vec![

@@ -45,8 +45,7 @@ async fn provider_lists_models() {
     let ids: Vec<_> = models.iter().map(|m| m.id.as_str()).collect();
     assert!(
         ids.contains(&"glm-5-2"),
-        "free model glm-5-2 should be listed: {:?}",
-        ids
+        "free model glm-5-2 should be listed: {ids:?}"
     );
 }
 
@@ -297,8 +296,7 @@ async fn provider_writes_file_in_working_dir() {
             let content = std::fs::read_to_string(&target).unwrap_or_default();
             assert!(
                 content.contains("Devinorium"),
-                "file content should contain the marker: got {:?}",
-                content
+                "file content should contain the marker: got {content:?}"
             );
             return;
         }
@@ -351,7 +349,7 @@ async fn provider_accepts_all_permission_modes() {
             res.err()
         );
         let r = res.unwrap();
-        assert!(!r.reply.is_empty(), "mode {} produced empty reply", mode);
+        assert!(!r.reply.is_empty(), "mode {mode} produced empty reply");
     }
 }
 

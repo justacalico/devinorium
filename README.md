@@ -58,8 +58,12 @@ Database migrations run automatically on startup.
 ## Testing
 
 ```bash
+cargo fmt -- --check
+cargo clippy --all-targets -- -D warnings
 cargo test
 ```
+
+Stricter `clippy::pedantic` and `clippy::nursery` lints can be triaged with `cargo clippy --all-targets -- -W clippy::pedantic -W clippy::nursery` and enabled incrementally.
 
 ## Deployment
 

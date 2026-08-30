@@ -46,7 +46,10 @@ pub fn parse_gitlab_remote_url(url: &str) -> Option<GitLabProjectRef> {
     }
 
     // http(s)://[user:pass@]host/path
-    if let Some(rest) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) {
+    if let Some(rest) = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+    {
         let after_auth = match rest.split_once('@') {
             Some((_, host_and_path)) => host_and_path,
             None => rest,
@@ -125,8 +128,8 @@ mod tests {
         assert_eq!(r.hostname, "gitlab.com");
         assert_eq!(r.project_path, "group/project");
 
-        let r = parse_gitlab_remote_url("git@gitlab.example.com:group/subgroup/project.git")
-            .unwrap();
+        let r =
+            parse_gitlab_remote_url("git@gitlab.example.com:group/subgroup/project.git").unwrap();
         assert_eq!(r.hostname, "gitlab.example.com");
         assert_eq!(r.project_path, "group/subgroup/project");
     }
@@ -177,12 +180,17 @@ mod tests {
     #[test]
     fn api_host_defaults_to_gitlab_com() {
         assert_eq!(GitRemoteService::api_host(""), "gitlab.com");
-        assert_eq!(GitRemoteService::api_host("gitlab.example.com"), "gitlab.example.com");
+        assert_eq!(
+            GitRemoteService::api_host("gitlab.example.com"),
+            "gitlab.example.com"
+        );
     }
 
     #[test]
     fn check_api_path_allows_project_paths_and_rejects_invalid_input() {
-        assert!(GitRemoteService::check_api_path("projects/group%2Fproject/merge_requests/1").is_ok());
+        assert!(
+            GitRemoteService::check_api_path("projects/group%2Fproject/merge_requests/1").is_ok()
+        );
         assert!(GitRemoteService::check_api_path("groups/some-group").is_err());
         assert!(GitRemoteService::check_api_path("/projects/foo").is_err());
         assert!(GitRemoteService::check_api_path("projects/foo\nbar").is_err());

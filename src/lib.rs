@@ -148,7 +148,10 @@ pub fn build_app(state: AppState) -> Router {
         ));
 
     let mut app = Router::new()
-        .route("/healthz", get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }))
+        .route(
+            "/healthz",
+            get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }),
+        )
         .merge(public)
         .merge(protected)
         .merge(assets::router())

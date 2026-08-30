@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn same_host_origin_allowed() {
         assert!(origin_ok_same_host(
-            &req(Method::POST, Some("http://example.com"), "example.com").headers(),
+            req(Method::POST, Some("http://example.com"), "example.com").headers(),
             "example.com"
         ));
     }
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn cross_host_origin_rejected() {
         assert!(!origin_ok_same_host(
-            &req(Method::POST, Some("http://evil.com"), "example.com").headers(),
+            req(Method::POST, Some("http://evil.com"), "example.com").headers(),
             "example.com"
         ));
     }
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn missing_origin_rejected() {
         assert!(!origin_ok_same_host(
-            &req(Method::POST, None, "example.com").headers(),
+            req(Method::POST, None, "example.com").headers(),
             "example.com"
         ));
     }
@@ -153,17 +153,16 @@ mod tests {
     #[test]
     fn bearer_auth_skips_origin_check() {
         let mut r = req(Method::POST, None, "example.com");
-        r.headers_mut().insert(
-            header::AUTHORIZATION,
-            "Bearer abc123".parse().unwrap(),
-        );
+        r.headers_mut()
+            .insert(header::AUTHORIZATION, "Bearer abc123".parse().unwrap());
         assert!(has_bearer_auth(r.headers()));
     }
 
     #[test]
     fn plain_authorization_is_not_bearer() {
         let mut r = req(Method::POST, None, "example.com");
-        r.headers_mut().insert(header::AUTHORIZATION, "abc123".parse().unwrap());
+        r.headers_mut()
+            .insert(header::AUTHORIZATION, "abc123".parse().unwrap());
         assert!(!has_bearer_auth(r.headers()));
     }
 }

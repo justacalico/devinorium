@@ -21,18 +21,16 @@ use agent_client_protocol::{
         ElicitationAction, ElicitationCapabilities, ElicitationFormCapabilities, ImageContent,
         InitializeRequest, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
         NewSessionResponse, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SessionId, SessionNotification, SetSessionModeRequest, TextContent,
+        RequestPermissionResponse, SessionId, SessionNotification, SetSessionModeRequest,
+        TextContent,
     },
     schema::ProtocolVersion as ProtocolVersionEnum,
     AcpAgent, Agent, Client, ConnectionTo,
 };
 
 use super::{
-    content::sanitize,
-    elicitation::handle_ask_request,
-    models::static_models,
-    permissions::handle_permission_request,
-    session_config::apply_session_config,
+    content::sanitize, elicitation::handle_ask_request, models::static_models,
+    permissions::handle_permission_request, session_config::apply_session_config,
     tool_calls::apply_notification,
 };
 use crate::providers::{
@@ -249,10 +247,8 @@ impl DevinAcpProvider {
                     );
 
                     replaying.store(false, Ordering::SeqCst);
-                    let sent = connection.send_request(PromptRequest::new(
-                        session_id.clone(),
-                        prompt_blocks,
-                    ));
+                    let sent = connection
+                        .send_request(PromptRequest::new(session_id.clone(), prompt_blocks));
                     let prompt_result = if let Some(ref cancel) = cancel_signal {
                         let cancel_clone = cancel.clone();
                         tokio::select! {
@@ -309,7 +305,10 @@ impl DevinAcpProvider {
         for (i, att) in attachments.iter().enumerate() {
             if att.mime.starts_with("image/") && !att.mime.ends_with("svg+xml") {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&att.data);
-                blocks.push(ContentBlock::Image(ImageContent::new(b64, att.mime.clone())));
+                blocks.push(ContentBlock::Image(ImageContent::new(
+                    b64,
+                    att.mime.clone(),
+                )));
             } else {
                 let name = format!("{}_{}", i, sanitize(&att.filename));
                 let path = att_dir.join(&name);
@@ -413,9 +412,8 @@ async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<Pa
 }
 
 fn client_capabilities() -> ClientCapabilities {
-    ClientCapabilities::new().elicitation(
-        ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()),
-    )
+    ClientCapabilities::new()
+        .elicitation(ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()))
 }
 
 #[async_trait]
@@ -517,7 +515,10 @@ mod tests {
         let ContentBlock::Image(img) = &blocks[0] else {
             panic!("expected image block, got {:?}", blocks[0]);
         };
-        assert_eq!(img.data, base64::engine::general_purpose::STANDARD.encode(&png));
+        assert_eq!(
+            img.data,
+            base64::engine::general_purpose::STANDARD.encode(&png)
+        );
         assert_eq!(img.mime_type, "image/png");
     }
 

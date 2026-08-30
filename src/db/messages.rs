@@ -164,7 +164,11 @@ impl super::Db {
         Ok(row.0)
     }
 
-    pub async fn get_message(&self, thread_id: &str, id: i64) -> anyhow::Result<Option<MessageRow>> {
+    pub async fn get_message(
+        &self,
+        thread_id: &str,
+        id: i64,
+    ) -> anyhow::Result<Option<MessageRow>> {
         let sql = format!(
             "WITH cte AS ({SELECT_TRUNCATED} WHERE thread_id = ? AND id = ?)\nSELECT * FROM cte ORDER BY id ASC"
         );
@@ -181,7 +185,11 @@ impl super::Db {
             .map_err(Into::into)
     }
 
-    pub async fn get_message_full(&self, thread_id: &str, id: i64) -> anyhow::Result<Option<MessageRow>> {
+    pub async fn get_message_full(
+        &self,
+        thread_id: &str,
+        id: i64,
+    ) -> anyhow::Result<Option<MessageRow>> {
         sqlx::query_as::<_, MessageRow>("SELECT * FROM messages WHERE thread_id = ? AND id = ?")
             .bind(thread_id)
             .bind(id)
@@ -191,12 +199,11 @@ impl super::Db {
     }
 
     pub async fn max_seq(&self, thread_id: &str) -> anyhow::Result<i64> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COALESCE(MAX(seq), 0) FROM messages WHERE thread_id = ?",
-        )
-        .bind(thread_id)
-        .fetch_one(self.pool())
-        .await?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COALESCE(MAX(seq), 0) FROM messages WHERE thread_id = ?")
+                .bind(thread_id)
+                .fetch_one(self.pool())
+                .await?;
         Ok(row.0)
     }
 
@@ -257,9 +264,7 @@ impl super::Db {
             return Ok(Vec::new());
         }
 
-        let mut sql = format!(
-            "WITH cte AS (\n{SELECT_TRUNCATED}\n",
-        );
+        let mut sql = format!("WITH cte AS (\n{SELECT_TRUNCATED}\n",);
 
         match (before_id, after_id) {
             (Some(before), _) => {
@@ -308,12 +313,15 @@ impl super::Db {
         turn_limit: i64,
     ) -> anyhow::Result<(Vec<MessageRow>, i64, Option<TurnCursor>, bool)> {
         if turn_limit <= 0 {
-            return Ok((Vec::new(), self.count_messages(thread_id).await?, before_cursor, false));
+            return Ok((
+                Vec::new(),
+                self.count_messages(thread_id).await?,
+                before_cursor,
+                false,
+            ));
         }
 
-        let mut sql = format!(
-            "WITH cte AS (\n{SELECT_TRUNCATED}\n  WHERE thread_id = ? AND (\n",
-        );
+        let mut sql = format!("WITH cte AS (\n{SELECT_TRUNCATED}\n  WHERE thread_id = ? AND (\n",);
 
         // Select the turn_limit most recent distinct turn ids older than the cursor.
         sql.push_str(

@@ -67,7 +67,8 @@ impl GitRemoteService {
         {
             Ok(output) => Self::parse_merge_request_json(&output),
             Err(RemoteError::Timeout) if action == MergeRequestAction::Merge => {
-                self.poll_merge_request_state(user_id, hostname, &base).await
+                self.poll_merge_request_state(user_id, hostname, &base)
+                    .await
             }
             Err(e) => Err(e),
         }
@@ -208,7 +209,11 @@ mod tests {
             )
         );
         assert_eq!(
-            merge_request_path_and_fields(project, 7, MergeRequestAction::MergeWhenPipelineSucceeds),
+            merge_request_path_and_fields(
+                project,
+                7,
+                MergeRequestAction::MergeWhenPipelineSucceeds
+            ),
             (
                 "projects/group%2Fproject/merge_requests/7/merge".to_string(),
                 vec![("merge_when_pipeline_succeeds", "true")]
