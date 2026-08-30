@@ -3,8 +3,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use super::{GitError, GitService};
 use super::branch::is_safe_branch_name;
+use super::{GitError, GitService};
 
 impl GitService {
     /// Pull the current branch's upstream using fast-forward only.
@@ -88,10 +88,7 @@ impl GitService {
         let mut cmd = self.git_cmd(path);
         cmd.arg("fetch")
             .arg(&remote)
-            .arg(format!(
-                "refs/heads/{}:refs/heads/{}",
-                remote_branch, name
-            ));
+            .arg(format!("refs/heads/{}:refs/heads/{}", remote_branch, name));
         self.run(&mut cmd, Duration::from_secs(60)).await?;
         self.invalidate(path);
         Ok(())
@@ -161,7 +158,11 @@ impl GitService {
             .ok_or_else(|| GitError::Other("no remote configured".to_string()))?;
 
         let url = self
-            .run_with(path, &["remote", "get-url", &remote], Duration::from_secs(5))
+            .run_with(
+                path,
+                &["remote", "get-url", &remote],
+                Duration::from_secs(5),
+            )
             .await?;
         Ok(url.trim().to_string())
     }
@@ -197,8 +198,14 @@ mod tests {
             pick_remote(Some("upstream"), "origin\nupstream"),
             Some("upstream".to_string())
         );
-        assert_eq!(pick_remote(None, "origin\nupstream"), Some("origin".to_string()));
-        assert_eq!(pick_remote(None, "upstream\nfork"), Some("upstream".to_string()));
+        assert_eq!(
+            pick_remote(None, "origin\nupstream"),
+            Some("origin".to_string())
+        );
+        assert_eq!(
+            pick_remote(None, "upstream\nfork"),
+            Some("upstream".to_string())
+        );
         assert_eq!(pick_remote(None, ""), None);
     }
 }

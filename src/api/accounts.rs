@@ -9,9 +9,9 @@ use axum::routing::{get, patch, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use crate::api::{map_err_internal, ApiError};
 use crate::auth::{password, session::CurrentUser};
 use crate::db::{NewUser, UserRow};
-use crate::api::{map_err_internal, ApiError};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -99,14 +99,20 @@ async fn create(
     let username = match req.username.as_deref().filter(|s| !s.is_empty()) {
         Some(u) => u,
         None => {
-            return (StatusCode::BAD_REQUEST, Json(ApiError::new("username is required")))
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError::new("username is required")),
+            )
                 .into_response()
         }
     };
     let password = match req.password.as_deref().filter(|s| !s.is_empty()) {
         Some(p) => p,
         None => {
-            return (StatusCode::BAD_REQUEST, Json(ApiError::new("password is required")))
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError::new("password is required")),
+            )
                 .into_response()
         }
     };
@@ -129,7 +135,10 @@ async fn create(
     }
 
     if let Ok(Some(_)) = state.db.get_user_by_username(username).await {
-        return (StatusCode::CONFLICT, Json(ApiError::new("username already taken")))
+        return (
+            StatusCode::CONFLICT,
+            Json(ApiError::new("username already taken")),
+        )
             .into_response();
     }
 
@@ -205,7 +214,11 @@ async fn update(
         .db
         .audit(
             Some(user.id),
-            if req.disabled { "user.disable" } else { "user.enable" },
+            if req.disabled {
+                "user.disable"
+            } else {
+                "user.enable"
+            },
             &serde_json::json!({"target_user_id": id}),
             None,
         )

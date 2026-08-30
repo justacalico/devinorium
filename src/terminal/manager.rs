@@ -65,10 +65,7 @@ impl TerminalManager {
 
     /// Default manager: 30-minute TTL, 60-second cleanup sweep.
     pub fn default_manager() -> Self {
-        Self::new(
-            Duration::from_secs(30 * 60),
-            Duration::from_secs(60),
-        )
+        Self::new(Duration::from_secs(30 * 60), Duration::from_secs(60))
     }
 
     /// Spawn a new PTY session for `user_id` and `thread_id`. If `shell` is
@@ -90,7 +87,9 @@ impl TerminalManager {
             })
             .context("open pty")?;
 
-        let program = shell.map(String::from).unwrap_or_else(default_shell_program);
+        let program = shell
+            .map(String::from)
+            .unwrap_or_else(default_shell_program);
 
         let cmd = CommandBuilder::new(&program);
         let child = pair.slave.spawn_command(cmd).context("spawn shell")?;
@@ -98,7 +97,8 @@ impl TerminalManager {
         let writer = pair.master.take_writer().context("take pty writer")?;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let session = TerminalSession::spawn(id.clone(), thread_id, user_id, pair.master, writer, child)?;
+        let session =
+            TerminalSession::spawn(id.clone(), thread_id, user_id, pair.master, writer, child)?;
 
         let mut guard = self.inner.lock().await;
         guard.sessions.insert(id, session.clone());
@@ -157,10 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn lifecycle_spawn_write_resize_kill() {
-        let manager = TerminalManager::new(
-            Duration::from_secs(60),
-            Duration::from_secs(10),
-        );
+        let manager = TerminalManager::new(Duration::from_secs(60), Duration::from_secs(10));
         let session = manager
             .spawn(1, "t1".into(), Some("cat"))
             .await
@@ -176,12 +173,7 @@ mod tests {
 
         let mut saw_output = false;
         while tokio::time::Instant::now() < deadline {
-            match tokio::time::timeout(
-                tokio::time::Duration::from_millis(100),
-                rx.recv(),
-            )
-            .await
-            {
+            match tokio::time::timeout(tokio::time::Duration::from_millis(100), rx.recv()).await {
                 Ok(Ok(TerminalEvent::Output(bytes))) => {
                     let text = String::from_utf8_lossy(&bytes);
                     if text.contains("hello world") {
@@ -202,10 +194,7 @@ mod tests {
 
     #[tokio::test]
     async fn ttl_expires_session() {
-        let manager = TerminalManager::new(
-            Duration::from_millis(100),
-            Duration::from_millis(50),
-        );
+        let manager = TerminalManager::new(Duration::from_millis(100), Duration::from_millis(50));
         let session = manager
             .spawn(1, "t1".into(), Some("cat"))
             .await

@@ -55,18 +55,15 @@ impl Db {
         Ok(max.unwrap_or(-1) + 1)
     }
 
-    pub async fn update_project_positions(
-        &self,
-        user_id: i64,
-        ids: &[i64],
-    ) -> anyhow::Result<()> {
+    pub async fn update_project_positions(&self, user_id: i64, ids: &[i64]) -> anyhow::Result<()> {
         let mut tx = self.pool().begin().await?;
 
-        let current: Vec<i64> =
-            sqlx::query_scalar("SELECT id FROM projects WHERE user_id = ? ORDER BY position ASC, id ASC")
-                .bind(user_id)
-                .fetch_all(&mut *tx)
-                .await?;
+        let current: Vec<i64> = sqlx::query_scalar(
+            "SELECT id FROM projects WHERE user_id = ? ORDER BY position ASC, id ASC",
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await?;
 
         if ids.len() != current.len() {
             anyhow::bail!("reorder request does not match user's projects");

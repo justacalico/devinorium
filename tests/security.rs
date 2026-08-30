@@ -13,7 +13,13 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use tower::ServiceExt;
 
-use devinorium::{auth, config::Config, db, git::{GitRemoteService, GitService}, providers, AppState};
+use devinorium::{
+    auth,
+    config::Config,
+    db,
+    git::{GitRemoteService, GitService},
+    providers, AppState,
+};
 
 async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
@@ -59,9 +65,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
-        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
+        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         terminal_manager: devinorium::terminal::manager::TerminalManager::new(
             std::time::Duration::from_secs(30 * 60),
@@ -278,9 +282,7 @@ async fn body_size_limit_rejects_oversized() {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
-        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
+        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         terminal_manager: devinorium::terminal::manager::TerminalManager::new(
             std::time::Duration::from_secs(30 * 60),

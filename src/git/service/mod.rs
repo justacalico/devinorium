@@ -5,14 +5,14 @@ use std::time::Duration;
 
 use mini_moka::sync::Cache;
 
+pub mod branch;
 pub mod runner;
 pub mod status;
-pub mod branch;
-pub mod worktree;
 pub mod sync;
+pub mod worktree;
 
-pub use status::RepoStatus;
 pub use branch::Branch;
+pub use status::RepoStatus;
 pub use worktree::Worktree;
 
 /// Time-to-live for cached branch/ref snapshots.

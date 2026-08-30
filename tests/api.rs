@@ -375,9 +375,7 @@ async fn app_state() -> (AppState, db::Db) {
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
-        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
+        pending_ask_requests: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         thread_runner: devinorium::thread_runner::ThreadRunner::new(),
         terminal_manager: devinorium::terminal::manager::TerminalManager::new(
             std::time::Duration::from_secs(30 * 60),
@@ -838,7 +836,12 @@ async fn thread_pin_success_and_sorts_first() {
     // Listing the project's threads also puts the pinned one first.
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/projects/{pid}/threads"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/threads"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -997,7 +1000,10 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "echo: Hello world (code)");
-    assert_eq!(msgs[1].model, "stub-1", "assistant message should store thread model");
+    assert_eq!(
+        msgs[1].model, "stub-1",
+        "assistant message should store thread model"
+    );
     assert!(msgs[1]
         .thinking
         .as_ref()
@@ -1041,12 +1047,19 @@ async fn thread_send_persists_partial_output_on_provider_error() {
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 
     let msgs = db.list_messages(&tid).await.unwrap();
-    assert_eq!(msgs.len(), 3, "expected user, partial assistant, and error messages");
+    assert_eq!(
+        msgs.len(),
+        3,
+        "expected user, partial assistant, and error messages"
+    );
     assert_eq!(msgs[0].role, "user");
     assert_eq!(msgs[0].content, "Hello world");
     assert_eq!(msgs[1].role, "assistant");
     assert_eq!(msgs[1].content, "partial reply");
-    assert!(msgs[1].thinking.as_ref().is_some_and(|s| s == "thinking about it"));
+    assert!(msgs[1]
+        .thinking
+        .as_ref()
+        .is_some_and(|s| s == "thinking about it"));
     assert_eq!(msgs[2].role, "error");
     assert!(msgs[2].content.contains("provider crashed"));
 
@@ -1220,7 +1233,12 @@ async fn thread_stop_ends_active_run() {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         let resp = app
             .clone()
-            .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/run"),
+                &cookie,
+                "",
+            ))
             .await
             .unwrap();
         if resp.status() == StatusCode::OK {
@@ -1233,7 +1251,12 @@ async fn thread_stop_ends_active_run() {
 
     let resp = app
         .clone()
-        .oneshot(authed("POST", &format!("/api/threads/{tid}/stop"), &cookie, ""))
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/stop"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1248,7 +1271,12 @@ async fn thread_stop_ends_active_run() {
     // The thread should still show a stopped run for a while.
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/run"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1258,7 +1286,12 @@ async fn thread_stop_ends_active_run() {
     // No assistant message should have been persisted.
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/messages"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1313,7 +1346,12 @@ async fn thread_stop_persists_partial_output() {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         let resp = app
             .clone()
-            .oneshot(authed("GET", &format!("/api/threads/{tid}/run"), &cookie, ""))
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/run"),
+                &cookie,
+                "",
+            ))
             .await
             .unwrap();
         if resp.status() == StatusCode::OK {
@@ -1326,7 +1364,12 @@ async fn thread_stop_persists_partial_output() {
 
     let resp = app
         .clone()
-        .oneshot(authed("POST", &format!("/api/threads/{tid}/stop"), &cookie, ""))
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/stop"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1338,7 +1381,12 @@ async fn thread_stop_persists_partial_output() {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         let resp = app
             .clone()
-            .oneshot(authed("GET", &format!("/api/threads/{tid}/messages"), &cookie, ""))
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/messages"),
+                &cookie,
+                "",
+            ))
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -1350,7 +1398,10 @@ async fn thread_stop_persists_partial_output() {
             break;
         }
     }
-    assert!(found, "partial assistant message was not persisted after stop");
+    assert!(
+        found,
+        "partial assistant message was not persisted after stop"
+    );
 
     drop(database);
 }
@@ -2195,10 +2246,7 @@ async fn project_rejects_duplicate_name() {
     let first_dir = home.join("first_dir");
     let second_dir = home.join("second_dir");
 
-    let body = format!(
-        r#"{{"name":"dup","path":"{}"}}"#,
-        first_dir.display()
-    );
+    let body = format!(r#"{{"name":"dup","path":"{}"}}"#, first_dir.display());
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/projects", &cookie, &body))
@@ -2206,10 +2254,7 @@ async fn project_rejects_duplicate_name() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED, "first project");
 
-    let body = format!(
-        r#"{{"name":"dup","path":"{}"}}"#,
-        second_dir.display()
-    );
+    let body = format!(r#"{{"name":"dup","path":"{}"}}"#, second_dir.display());
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/projects", &cookie, &body))
@@ -2235,7 +2280,10 @@ async fn project_rejects_duplicate_path_with_tilde() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED, "first project");
 
-    let body = format!(r#"{{"name":"abs","path":"{}"}}"#, home.join("dup2").display());
+    let body = format!(
+        r#"{{"name":"abs","path":"{}"}}"#,
+        home.join("dup2").display()
+    );
     let resp = app
         .clone()
         .oneshot(authed("POST", "/api/projects", &cookie, &body))
@@ -2256,14 +2304,24 @@ async fn project_delete_cascades_threads() {
 
     let resp = app
         .clone()
-        .oneshot(authed("DELETE", &format!("/api/projects/{pid}"), &cookie, ""))
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/projects/{pid}"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/project"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/project"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -3334,9 +3392,7 @@ async fn git_pull_branch_rejects_untracked_branch() {
     init_git_repo(&repo);
 
     let mut branch_cmd = std::process::Command::new("git");
-    branch_cmd
-        .args(["branch", "untracked"])
-        .current_dir(&repo);
+    branch_cmd.args(["branch", "untracked"]).current_dir(&repo);
     assert!(branch_cmd.output().unwrap().status.success());
 
     let pid = create_git_project(&app, &cookie, &repo).await;
@@ -3837,7 +3893,8 @@ async fn git_connections_merge_request_action_closes_merge_request() {
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
 
-    let body = r#"{"project":"group/project","iid":7,"action":"close","hostname":"gitlab.example.com"}"#;
+    let body =
+        r#"{"project":"group/project","iid":7,"action":"close","hostname":"gitlab.example.com"}"#;
     let resp = app
         .clone()
         .oneshot(authed(
@@ -3869,8 +3926,7 @@ async fn git_connections_merge_request_action_merges_when_pipeline_succeeds() {
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
 
-    let body =
-        r#"{"project":"group/project","iid":7,"action":"merge_when_pipeline_succeeds"}"#;
+    let body = r#"{"project":"group/project","iid":7,"action":"merge_when_pipeline_succeeds"}"#;
     let resp = app
         .clone()
         .oneshot(authed(
@@ -4368,7 +4424,10 @@ async fn thread_messages_pagination() {
     let newer = v["messages"].as_array().unwrap();
     assert_eq!(newer.len(), 50);
     assert_eq!(newer[0]["id"].as_i64().unwrap(), latest_first_id);
-    assert_eq!(newer[newer.len() - 1]["id"].as_i64().unwrap(), latest_last_id);
+    assert_eq!(
+        newer[newer.len() - 1]["id"].as_i64().unwrap(),
+        latest_last_id
+    );
 }
 
 #[tokio::test]
@@ -4445,7 +4504,11 @@ async fn huge_thread_messages_pagination_is_fast() {
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     let msgs = v["messages"].as_array().unwrap();
     assert_eq!(msgs.len(), 50);
-    assert!(elapsed.as_millis() < 10000, "pagination took {} ms", elapsed.as_millis());
+    assert!(
+        elapsed.as_millis() < 10000,
+        "pagination took {} ms",
+        elapsed.as_millis()
+    );
 }
 
 #[tokio::test]
@@ -4534,12 +4597,7 @@ async fn clone_root_owner_can_set_and_create_missing_directory() {
     let body = serde_json::json!({"path": clone_dir.to_string_lossy()}).to_string();
     let resp = app
         .clone()
-        .oneshot(authed(
-            "PUT",
-            "/api/settings/clone-root",
-            &cookie,
-            &body,
-        ))
+        .oneshot(authed("PUT", "/api/settings/clone-root", &cookie, &body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -4559,12 +4617,7 @@ async fn clone_root_owner_can_clear() {
     let body = serde_json::json!({"path": root.to_string_lossy()}).to_string();
     let resp = app
         .clone()
-        .oneshot(authed(
-            "PUT",
-            "/api/settings/clone-root",
-            &cookie,
-            &body,
-        ))
+        .oneshot(authed("PUT", "/api/settings/clone-root", &cookie, &body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -4664,13 +4717,12 @@ async fn clone_root_non_owner_can_get_but_not_set() {
     assert_eq!(v["path"].as_str().unwrap(), root.to_string_lossy());
 
     // Sanity: the new user's own clone_root is still null.
-    let row: Option<(Option<String>,)> = sqlx::query_as(
-        "SELECT clone_root FROM users WHERE id = ?",
-    )
-    .bind(uid)
-    .fetch_optional(_db.pool())
-    .await
-    .unwrap();
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT clone_root FROM users WHERE id = ?")
+            .bind(uid)
+            .fetch_optional(_db.pool())
+            .await
+            .unwrap();
     assert!(row.unwrap().0.is_none());
 }
 
@@ -4689,12 +4741,7 @@ async fn clone_root_rejects_relative_and_traversal_paths() {
     for (body, label) in cases {
         let resp = app
             .clone()
-            .oneshot(authed(
-                "PUT",
-                "/api/settings/clone-root",
-                &cookie,
-                body,
-            ))
+            .oneshot(authed("PUT", "/api/settings/clone-root", &cookie, body))
             .await
             .unwrap();
         assert_eq!(
@@ -4755,12 +4802,7 @@ async fn clone_root_rejects_existing_file() {
     let body = serde_json::json!({"path": file.to_string_lossy()}).to_string();
     let resp = app
         .clone()
-        .oneshot(authed(
-            "PUT",
-            "/api/settings/clone-root",
-            &cookie,
-            &body,
-        ))
+        .oneshot(authed("PUT", "/api/settings/clone-root", &cookie, &body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -4800,7 +4842,12 @@ exit 1
 async fn make_gitlab_project(app: &Router, cookie: &str, repo: &std::path::Path) -> i64 {
     let mut remote = std::process::Command::new("git");
     remote
-        .args(["remote", "add", "origin", "git@gitlab.example.com:group/project.git"])
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "git@gitlab.example.com:group/project.git",
+        ])
         .current_dir(repo);
     assert!(remote.output().unwrap().status.success());
     create_git_project(app, cookie, repo).await
@@ -5016,7 +5063,12 @@ async fn thread_plan_endpoint_returns_latest_plan() {
 
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/plan"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/plan"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -5040,7 +5092,10 @@ async fn thread_get_one_includes_plan() {
         None,
         &Plan::new(
             None,
-            vec![PlanStep::new("Only step", devinorium::plan::PlanStepStatus::InProgress)],
+            vec![PlanStep::new(
+                "Only step",
+                devinorium::plan::PlanStepStatus::InProgress,
+            )],
         ),
     )
     .await
@@ -5076,7 +5131,10 @@ async fn thread_send_stream_emits_plan_update_and_persists_plan() {
         .header(header::HOST, "localhost")
         .header(header::ORIGIN, "http://localhost")
         .header("cookie", &cookie)
-        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
         .body(Body::from(payload))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -5084,7 +5142,10 @@ async fn thread_send_stream_emits_plan_update_and_persists_plan() {
     let body = body_str(resp.into_body()).await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(body.contains(r#"event: plan_update"#), "body: {body}");
-    assert!(body.contains(r#""explanation":"Build the thing""#), "body: {body}");
+    assert!(
+        body.contains(r#""explanation":"Build the thing""#),
+        "body: {body}"
+    );
     assert!(body.contains(r#""step":"A""#), "body: {body}");
     assert!(body.contains(r#""step":"B""#), "body: {body}");
 
@@ -5093,23 +5154,44 @@ async fn thread_send_stream_emits_plan_update_and_persists_plan() {
 
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/plan"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/plan"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let persisted = body_str(resp.into_body()).await;
-    assert!(persisted.contains(r#""status":"completed""#), "persisted: {persisted}");
-    assert!(persisted.contains(r#""status":"in_progress""#), "persisted: {persisted}");
+    assert!(
+        persisted.contains(r#""status":"completed""#),
+        "persisted: {persisted}"
+    );
+    assert!(
+        persisted.contains(r#""status":"in_progress""#),
+        "persisted: {persisted}"
+    );
 
     // The SSE stream and persisted message should not contain raw plan XML.
-    assert!(!body.contains("<update_plan>"), "stream contained raw XML: {body}");
-    assert!(!body.contains("<proposed_plan>"), "stream contained raw XML: {body}");
+    assert!(
+        !body.contains("<update_plan>"),
+        "stream contained raw XML: {body}"
+    );
+    assert!(
+        !body.contains("<proposed_plan>"),
+        "stream contained raw XML: {body}"
+    );
 
     let msgs = db.list_messages(&tid).await.unwrap();
     let assistant = msgs.iter().find(|m| m.role == "assistant").unwrap();
     assert_eq!(assistant.content, "");
     assert!(
-        !assistant.parts.as_deref().unwrap_or("").contains("<update_plan>"),
+        !assistant
+            .parts
+            .as_deref()
+            .unwrap_or("")
+            .contains("<update_plan>"),
         "parts contained raw XML: {:?}",
         assistant.parts
     );
@@ -5247,12 +5329,7 @@ async fn terminal_create_kill_and_ws_round_trip() {
     let mut saw_ping = false;
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(5);
     while tokio::time::Instant::now() < deadline {
-        match tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            ws.next(),
-        )
-        .await
-        {
+        match tokio::time::timeout(tokio::time::Duration::from_millis(100), ws.next()).await {
             Ok(Some(Ok(Message::Binary(bytes)))) => {
                 let text = String::from_utf8_lossy(&bytes);
                 if text.contains("ping") {
@@ -5282,12 +5359,7 @@ async fn terminal_create_kill_and_ws_round_trip() {
     let mut saw_exited = false;
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(5);
     while tokio::time::Instant::now() < deadline {
-        match tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            ws.next(),
-        )
-        .await
-        {
+        match tokio::time::timeout(tokio::time::Duration::from_millis(100), ws.next()).await {
             Ok(Some(Ok(Message::Text(text)))) => {
                 if text.contains("exited") {
                     saw_exited = true;
@@ -5349,12 +5421,7 @@ async fn set_clone_root(app: &axum::Router, cookie: &str, path: &std::path::Path
     let body = serde_json::json!({"path": path.to_string_lossy()}).to_string();
     let resp = app
         .clone()
-        .oneshot(authed(
-            "PUT",
-            "/api/settings/clone-root",
-            cookie,
-            &body,
-        ))
+        .oneshot(authed("PUT", "/api/settings/clone-root", cookie, &body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -5434,12 +5501,7 @@ async fn clone_missing_root() {
     let body = r#"{"path":null}"#;
     let resp = app
         .clone()
-        .oneshot(authed(
-            "PUT",
-            "/api/settings/clone-root",
-            &cookie,
-            body,
-        ))
+        .oneshot(authed("PUT", "/api/settings/clone-root", &cookie, body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -5687,7 +5749,12 @@ async fn thread_messages_truncates_multibyte_content_correctly() {
 
     let resp = app
         .clone()
-        .oneshot(authed("GET", &format!("/api/threads/{tid}/messages"), &cookie, ""))
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages"),
+            &cookie,
+            "",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -5712,7 +5779,10 @@ async fn thread_messages_truncates_multibyte_content_correctly() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(json["message"]["content"].as_str().unwrap().chars().count(), 120_000);
+    assert_eq!(
+        json["message"]["content"].as_str().unwrap().chars().count(),
+        120_000
+    );
     assert!(!json["message"]["truncated"].as_bool().unwrap());
 }
 

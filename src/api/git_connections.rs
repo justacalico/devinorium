@@ -18,7 +18,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/git-connections/gitlab", post(login_gitlab))
         .route("/api/git-connections/gitlab", delete(logout_gitlab))
         .route("/api/git-connections/gitlab/proxy", get(gitlab_proxy))
-        .route("/api/git-connections/gitlab/pipelines", get(gitlab_pipelines))
+        .route(
+            "/api/git-connections/gitlab/pipelines",
+            get(gitlab_pipelines),
+        )
         .route(
             "/api/git-connections/gitlab/merge-requests/actions",
             post(gitlab_merge_request_action),
@@ -105,9 +108,17 @@ async fn gitlab_proxy(
     CurrentUser(user): CurrentUser,
     Query(q): Query<GitLabProxyQuery>,
 ) -> Response {
-    let hostname = q.hostname.as_deref().filter(|s| !s.is_empty()).unwrap_or("gitlab.com");
+    let hostname = q
+        .hostname
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("gitlab.com");
 
-    match state.git_remote.gitlab_api(user.id, hostname, &q.path).await {
+    match state
+        .git_remote
+        .gitlab_api(user.id, hostname, &q.path)
+        .await
+    {
         Ok(output) => match serde_json::from_str::<serde_json::Value>(&output) {
             Ok(v) => Json(v).into_response(),
             Err(e) => {
@@ -140,10 +151,17 @@ async fn gitlab_pipelines(
     CurrentUser(user): CurrentUser,
     Query(q): Query<GitLabPipelinesQuery>,
 ) -> Response {
-    let hostname = q.hostname.as_deref().filter(|s| !s.is_empty()).unwrap_or("gitlab.com");
+    let hostname = q
+        .hostname
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("gitlab.com");
 
     if q.iid <= 0 {
-        return (StatusCode::BAD_REQUEST, Json(ApiError::new("iid must be positive")))
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("iid must be positive")),
+        )
             .into_response();
     }
 

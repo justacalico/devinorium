@@ -257,11 +257,23 @@ mod tests {
 
     #[test]
     fn devin_mode_id_maps_interaction_modes() {
-        assert_eq!(DevinAcpProvider::devin_mode_id("plan").unwrap().0.as_ref(), "plan");
-        assert_eq!(DevinAcpProvider::devin_mode_id("ask").unwrap().0.as_ref(), "ask");
-        assert_eq!(DevinAcpProvider::devin_mode_id("code").unwrap().0.as_ref(), "default");
         assert_eq!(
-            DevinAcpProvider::devin_mode_id("unknown").unwrap().0.as_ref(),
+            DevinAcpProvider::devin_mode_id("plan").unwrap().0.as_ref(),
+            "plan"
+        );
+        assert_eq!(
+            DevinAcpProvider::devin_mode_id("ask").unwrap().0.as_ref(),
+            "ask"
+        );
+        assert_eq!(
+            DevinAcpProvider::devin_mode_id("code").unwrap().0.as_ref(),
+            "default"
+        );
+        assert_eq!(
+            DevinAcpProvider::devin_mode_id("unknown")
+                .unwrap()
+                .0
+                .as_ref(),
             "default"
         );
     }

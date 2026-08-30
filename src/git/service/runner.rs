@@ -72,11 +72,7 @@ impl GitService {
         self.run(&mut cmd, max).await
     }
 
-    pub(super) async fn tracking(
-        &self,
-        path: &Path,
-        branch: &str,
-    ) -> Result<(i64, i64), GitError> {
+    pub(super) async fn tracking(&self, path: &Path, branch: &str) -> Result<(i64, i64), GitError> {
         if branch.is_empty() || !super::branch::is_safe_branch_name(branch) {
             return Ok((0, 0));
         }

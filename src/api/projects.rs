@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 
 use axum::extract::{Path, Query, State};
-use futures::StreamExt;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, Router};
 use axum::Json;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::session::CurrentUser;
@@ -41,7 +41,11 @@ pub struct ProjectOut {
 
 impl ProjectOut {
     pub async fn from_row(state: &AppState, p: ProjectRow) -> Self {
-        let (is_repo, branch) = match state.git.repo_status(std::path::Path::new(&p.path), false).await {
+        let (is_repo, branch) = match state
+            .git
+            .repo_status(std::path::Path::new(&p.path), false)
+            .await
+        {
             Ok(s) => (s.is_repo, s.branch),
             Err(_) => (false, String::new()),
         };
@@ -74,12 +78,10 @@ async fn list(
     let (limit, offset) = pagination.bounds();
     match state.db.list_projects(user.id, limit, offset).await {
         Ok(rows) => {
-            let out: Vec<ProjectOut> = futures::stream::iter(
-                rows.into_iter().map(|p| {
-                    let state = state.clone();
-                    async move { ProjectOut::from_row(&state, p).await }
-                }),
-            )
+            let out: Vec<ProjectOut> = futures::stream::iter(rows.into_iter().map(|p| {
+                let state = state.clone();
+                async move { ProjectOut::from_row(&state, p).await }
+            }))
             .buffer_unordered(8)
             .collect()
             .await;
@@ -335,7 +337,11 @@ async fn reorder(
             .into_response();
     }
 
-    match state.db.update_project_positions(user.id, &req.project_ids).await {
+    match state
+        .db
+        .update_project_positions(user.id, &req.project_ids)
+        .await
+    {
         Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => {
             tracing::warn!(error = %e, user_id = user.id, "project reorder failed");
@@ -366,14 +372,17 @@ async fn list_threads(
     Query(pagination): Query<crate::api::pagination::Pagination>,
 ) -> Response {
     let (limit, offset) = pagination.bounds();
-    match state.db.list_threads_for_project(id, user.id, limit, offset).await {
-        Ok(rows) => {
-            Json(rows
-                .into_iter()
+    match state
+        .db
+        .list_threads_for_project(id, user.id, limit, offset)
+        .await
+    {
+        Ok(rows) => Json(
+            rows.into_iter()
                 .map(crate::api::threads::ThreadOut::from)
-                .collect::<Vec<_>>())
-            .into_response()
-        }
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
 }
@@ -425,7 +434,13 @@ async fn detect_type(
 ) -> Response {
     let project = match state.db.get_project(id, user.id).await {
         Ok(Some(p)) => p,
-        Ok(None) => return (StatusCode::NOT_FOUND, Json(crate::api::ApiError::new("project not found"))).into_response(),
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("project not found")),
+            )
+                .into_response()
+        }
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
 

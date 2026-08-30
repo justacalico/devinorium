@@ -85,7 +85,13 @@ async fn create(
                     None,
                 )
                 .await;
-            (StatusCode::CREATED, Json(TerminalCreated { id: session.id.clone() })).into_response()
+            (
+                StatusCode::CREATED,
+                Json(TerminalCreated {
+                    id: session.id.clone(),
+                }),
+            )
+                .into_response()
         }
         Err(e) => crate::api::map_err_internal(e).into_response(),
     }
@@ -244,10 +250,7 @@ async fn handle_socket(
         .await;
 }
 
-async fn handle_client_message(
-    session: &TerminalSession,
-    text: &str,
-) -> anyhow::Result<()> {
+async fn handle_client_message(session: &TerminalSession, text: &str) -> anyhow::Result<()> {
     let msg: ClientMessage = serde_json::from_str(text)?;
     match msg {
         ClientMessage::Input { data } => session.write_input(&data)?,

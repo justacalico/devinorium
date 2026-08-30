@@ -34,11 +34,7 @@ pub(super) async fn send(
     let thread = match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => t,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ApiError::new("not found")),
-            )
-                .into_response()
+            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
         }
         Err(e) => return map_err_internal(e).into_response(),
     };
@@ -80,7 +76,11 @@ pub(super) async fn send(
             return match status {
                 RunStatus::Stopped => Json(serde_json::json!({ "stopped": true })).into_response(),
                 RunStatus::Completed => {
-                    let messages = state.db.list_messages_full(&id, 2).await.unwrap_or_default();
+                    let messages = state
+                        .db
+                        .list_messages_full(&id, 2)
+                        .await
+                        .unwrap_or_default();
                     if let Some(reply) = build_send_reply(&messages) {
                         return reply;
                     }
@@ -97,11 +97,7 @@ pub(super) async fn send(
                         .await
                         .clone()
                         .unwrap_or_else(|| "provider error".into());
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(ApiError::new(&error)),
-                    )
-                        .into_response()
+                    (StatusCode::BAD_GATEWAY, Json(ApiError::new(&error))).into_response()
                 }
                 RunStatus::Running | RunStatus::Idle => (
                     StatusCode::SERVICE_UNAVAILABLE,
@@ -122,11 +118,7 @@ pub(super) async fn send(
                 break;
             }
             Ok(Ok(RunEvent { event, data, .. })) if event == "error" => {
-                return (
-                    StatusCode::BAD_GATEWAY,
-                    Json(ApiError::new(&data)),
-                )
-                    .into_response();
+                return (StatusCode::BAD_GATEWAY, Json(ApiError::new(&data))).into_response();
             }
             Ok(Ok(RunEvent { event, data, .. })) if event == "permission_request" => {
                 permission_request = Some(data);
@@ -173,7 +165,11 @@ pub(super) async fn send(
             .into_response();
     }
 
-    let messages = state.db.list_messages_full(&id, 2).await.unwrap_or_default();
+    let messages = state
+        .db
+        .list_messages_full(&id, 2)
+        .await
+        .unwrap_or_default();
     if let Some(reply) = build_send_reply(&messages) {
         return reply;
     }
@@ -194,11 +190,7 @@ pub(super) async fn send_stream(
     let thread = match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => t,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ApiError::new("not found")),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response();
         }
         Err(e) => return map_err_internal(e).into_response(),
     };
@@ -410,7 +402,10 @@ mod tests {
 
     #[test]
     fn sanitize_sse_data_normalizes_newlines() {
-        assert_eq!(sanitize_sse_data("line1\r\nline2\rline3"), "line1\nline2\nline3");
+        assert_eq!(
+            sanitize_sse_data("line1\r\nline2\rline3"),
+            "line1\nline2\nline3"
+        );
         assert_eq!(sanitize_sse_data("plain\n"), "plain\n");
     }
 

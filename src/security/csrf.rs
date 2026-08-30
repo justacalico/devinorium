@@ -153,17 +153,16 @@ mod tests {
     #[test]
     fn bearer_auth_skips_origin_check() {
         let mut r = req(Method::POST, None, "example.com");
-        r.headers_mut().insert(
-            header::AUTHORIZATION,
-            "Bearer abc123".parse().unwrap(),
-        );
+        r.headers_mut()
+            .insert(header::AUTHORIZATION, "Bearer abc123".parse().unwrap());
         assert!(has_bearer_auth(r.headers()));
     }
 
     #[test]
     fn plain_authorization_is_not_bearer() {
         let mut r = req(Method::POST, None, "example.com");
-        r.headers_mut().insert(header::AUTHORIZATION, "abc123".parse().unwrap());
+        r.headers_mut()
+            .insert(header::AUTHORIZATION, "abc123".parse().unwrap());
         assert!(!has_bearer_auth(r.headers()));
     }
 }

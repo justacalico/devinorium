@@ -32,10 +32,7 @@ struct SetCloneRootRequest {
     path: Option<String>,
 }
 
-async fn get_clone_root(
-    State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-) -> Response {
+async fn get_clone_root(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     match state.db.get_clone_root(user.id).await {
         Ok(path) => Json(CloneRootResponse { path }).into_response(),
         Err(e) => map_err_internal(e).into_response(),
@@ -90,11 +87,7 @@ async fn set_clone_root(
     let resolved = match paths::resolve(p, None, None) {
         Some(r) => r,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ApiError::new("invalid path")),
-            )
-                .into_response();
+            return (StatusCode::BAD_REQUEST, Json(ApiError::new("invalid path"))).into_response();
         }
     };
 

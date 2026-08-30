@@ -32,7 +32,8 @@ pub(crate) fn build_permission_callback(
             let thread_id = thread_id.clone();
             Box::pin(async move {
                 let (response_tx, response_rx) = tokio::sync::oneshot::channel::<String>();
-                let _cleanup = RemoveOnDrop::new(state.clone(), run.clone(), req.request_id.clone());
+                let _cleanup =
+                    RemoveOnDrop::new(state.clone(), run.clone(), req.request_id.clone());
 
                 {
                     let mut map = state.pending_permission_requests.lock().await;
@@ -235,7 +236,10 @@ impl Drop for AskRemoveOnDrop {
         }
         if let Some(run) = self.run.take() {
             if let Ok(guard) = run.ask_request.lock() {
-                if guard.as_ref().is_some_and(|r| r.request_id == self.request_id) {
+                if guard
+                    .as_ref()
+                    .is_some_and(|r| r.request_id == self.request_id)
+                {
                     drop(guard);
                     run.set_ask_request(None);
                 }

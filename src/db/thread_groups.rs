@@ -29,8 +29,8 @@ impl super::Db {
         limit: Option<i64>,
         offset: i64,
     ) -> anyhow::Result<Vec<ThreadGroupRow>> {
-        let mut sql =
-            "SELECT * FROM thread_groups WHERE user_id = ? ORDER BY position ASC, id ASC".to_string();
+        let mut sql = "SELECT * FROM thread_groups WHERE user_id = ? ORDER BY position ASC, id ASC"
+            .to_string();
         if let Some(l) = limit {
             sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
         }

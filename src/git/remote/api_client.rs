@@ -20,11 +20,15 @@ impl GitRemoteService {
         hostname: &str,
         path: &str,
     ) -> Result<String, RemoteError> {
-        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let bin = self
+            .glab_bin
+            .as_ref()
+            .ok_or(RemoteError::GitLabNotAvailable)?;
         let host = Self::api_host(hostname);
         Self::check_api_path(path)?;
 
-        self.run(user_id, bin, &["api", path, "--hostname", host]).await
+        self.run(user_id, bin, &["api", path, "--hostname", host])
+            .await
     }
 
     /// Call the GitLab API with an explicit HTTP method and body fields.
@@ -40,7 +44,10 @@ impl GitRemoteService {
         fields: &[(&str, &str)],
         timeout: Duration,
     ) -> Result<String, RemoteError> {
-        let bin = self.glab_bin.as_ref().ok_or(RemoteError::GitLabNotAvailable)?;
+        let bin = self
+            .glab_bin
+            .as_ref()
+            .ok_or(RemoteError::GitLabNotAvailable)?;
         let host = Self::api_host(hostname);
         Self::check_api_path(path)?;
 
@@ -94,7 +101,11 @@ impl GitRemoteService {
         if !success {
             let combined = format!("{stdout}\n{stderr}");
             let msg = combined.trim();
-            let msg = if msg.is_empty() { "command failed" } else { msg };
+            let msg = if msg.is_empty() {
+                "command failed"
+            } else {
+                msg
+            };
             return Err(RemoteError::StatusFailed(msg.to_string()));
         }
         Ok(stdout)
@@ -107,8 +118,9 @@ impl GitRemoteService {
         bin: &Path,
         args: &[&str],
     ) -> Result<(String, bool), RemoteError> {
-        let (stdout, stderr, success) =
-            self.run_parts(user_id, bin, args, Duration::from_secs(30)).await?;
+        let (stdout, stderr, success) = self
+            .run_parts(user_id, bin, args, Duration::from_secs(30))
+            .await?;
         Ok((format!("{stdout}\n{stderr}"), success))
     }
 
@@ -208,10 +220,7 @@ mod tests {
 
     #[tokio::test]
     async fn gitlab_api_write_rejects_at_file_fields() {
-        let svc = GitRemoteService::with_glab_bin(
-            "/tmp",
-            Some(PathBuf::from("/nonexistent-glab")),
-        );
+        let svc = GitRemoteService::with_glab_bin("/tmp", Some(PathBuf::from("/nonexistent-glab")));
         let err = svc
             .gitlab_api_write(
                 1,

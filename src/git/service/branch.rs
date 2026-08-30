@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 
-use super::{GitError, GitService};
 use super::runner::parse_track;
+use super::{GitError, GitService};
 
 /// A branch or remote ref.
 #[derive(Debug, Clone, serde::Serialize)]

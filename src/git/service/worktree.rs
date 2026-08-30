@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::{GitError, GitService};
 use super::branch::is_safe_branch_name;
+use super::{GitError, GitService};
 
 /// A worktree.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -186,7 +186,8 @@ mod tests {
 
     #[test]
     fn parse_worktrees_lists_main_first() {
-        let out = "worktree /repo\0HEAD abc123\0branch refs/heads/main\0worktree /repo.wt\0HEAD def456\0";
+        let out =
+            "worktree /repo\0HEAD abc123\0branch refs/heads/main\0worktree /repo.wt\0HEAD def456\0";
         let worktrees = parse_worktrees(out);
         assert_eq!(worktrees.len(), 2);
         assert_eq!(worktrees[0].path, std::path::PathBuf::from("/repo"));

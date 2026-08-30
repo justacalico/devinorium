@@ -98,8 +98,8 @@ pub async fn clone_repo(
         .map_err(|e| CloneError::CloneFailed(format!("database error: {e}")))?
         .ok_or(CloneError::MissingCloneRoot)?;
     let root = paths::normalize_path(&root, &config.home_dir);
-    let clone_root = paths::resolve(Path::new(&root), None, None)
-        .ok_or(CloneError::MissingCloneRoot)?;
+    let clone_root =
+        paths::resolve(Path::new(&root), None, None).ok_or(CloneError::MissingCloneRoot)?;
 
     let target = clone_root
         .join(&parsed.platform)
@@ -109,11 +109,15 @@ pub async fn clone_repo(
     let resolved_target = paths::resolve(&target, None, Some(&[clone_root.clone()]))
         .ok_or(CloneError::InvalidSegment)?;
 
-    if tokio::fs::try_exists(&resolved_target).await.unwrap_or(false) {
+    if tokio::fs::try_exists(&resolved_target)
+        .await
+        .unwrap_or(false)
+    {
         return Err(CloneError::AlreadyExists);
     }
 
-    if db.get_project_by_path(user_id, &resolved_target.to_string_lossy())
+    if db
+        .get_project_by_path(user_id, &resolved_target.to_string_lossy())
         .await
         .map_err(|e| CloneError::CloneFailed(format!("database error: {e}")))?
         .is_some()
@@ -174,9 +178,9 @@ pub async fn clone_repo(
         }
     }
 
-    let final_path = tokio::fs::canonicalize(&resolved_target).await.map_err(|e| {
-        CloneError::CloneFailed(format!("clone did not create directory: {e}"))
-    })?;
+    let final_path = tokio::fs::canonicalize(&resolved_target)
+        .await
+        .map_err(|e| CloneError::CloneFailed(format!("clone did not create directory: {e}")))?;
     if !paths::is_within(&final_path, &clone_root) {
         let _ = db.delete_project(project.id, user_id).await;
         return Err(CloneError::InvalidSegment);
@@ -211,10 +215,7 @@ fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
     let is_gitlab = platform == "gitlab";
 
     let project_path = raw_project_path.trim_matches('/');
-    let segments: Vec<&str> = project_path
-        .split('/')
-        .filter(|s| !s.is_empty())
-        .collect();
+    let segments: Vec<&str> = project_path.split('/').filter(|s| !s.is_empty()).collect();
     if segments.len() < 2 {
         return Err(CloneError::NoOwner);
     }
@@ -318,9 +319,7 @@ fn parse_httpish(rest: &str) -> Result<(String, String), CloneError> {
         Some((_, h_p)) => h_p,
         None => rest,
     };
-    let (host_and_port, path) = after_auth
-        .split_once('/')
-        .ok_or(CloneError::MalformedUrl)?;
+    let (host_and_port, path) = after_auth.split_once('/').ok_or(CloneError::MalformedUrl)?;
     if host_and_port.is_empty() {
         return Err(CloneError::MalformedUrl);
     }
@@ -385,7 +384,10 @@ async fn build_clone_url(
     parsed: &ParsedRemote,
 ) -> String {
     if parsed.is_gitlab {
-        match git_remote.gitlab_token_for_host(user_id, &parsed.host).await {
+        match git_remote
+            .gitlab_token_for_host(user_id, &parsed.host)
+            .await
+        {
             Ok(Some(token)) => {
                 return format!(
                     "https://oauth2:{}@{}/{}",
@@ -408,7 +410,8 @@ async fn unique_project_name(
     repo: &str,
 ) -> Result<String, CloneError> {
     let base = format!("{owner}/{repo}");
-    if db.get_project_by_name(user_id, &base)
+    if db
+        .get_project_by_name(user_id, &base)
         .await
         .map_err(|e| CloneError::CloneFailed(format!("database error: {e}")))?
         .is_none()
@@ -417,7 +420,8 @@ async fn unique_project_name(
     }
     for n in 2..1000 {
         let candidate = format!("{owner}/{repo}-{n}");
-        if db.get_project_by_name(user_id, &candidate)
+        if db
+            .get_project_by_name(user_id, &candidate)
             .await
             .map_err(|e| CloneError::CloneFailed(format!("database error: {e}")))?
             .is_none()
@@ -425,7 +429,9 @@ async fn unique_project_name(
             return Ok(candidate);
         }
     }
-    Err(CloneError::CloneFailed("could not find a unique project name".to_string()))
+    Err(CloneError::CloneFailed(
+        "could not find a unique project name".to_string(),
+    ))
 }
 
 async fn run_git_clone(cmd: &mut Command, max: Duration) -> Result<(), CloneError> {

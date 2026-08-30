@@ -142,11 +142,7 @@ pub(crate) async fn save_partial_assistant_message(
 
 /// Persist the final active plan for a run to the database, if any.
 pub(crate) async fn persist_run_plan(db: &crate::db::Db, thread_id: &str, run: &RunState) {
-    let plan = run
-        .plan
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
+    let plan = run.plan.lock().unwrap_or_else(|e| e.into_inner()).clone();
     if let Some(plan) = plan {
         let _ = db
             .upsert_latest_plan(thread_id, Some(&run.run_id), &plan)
@@ -164,11 +160,7 @@ pub(crate) async fn active_run_plan(
     let Some(run) = thread_runner.get(thread_id).await else {
         return (false, None);
     };
-    let plan = run
-        .plan
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
+    let plan = run.plan.lock().unwrap_or_else(|e| e.into_inner()).clone();
     (true, plan)
 }
 
@@ -187,10 +179,7 @@ mod tests {
             .start("t1".into(), |_run| async { Ok(()) })
             .await
             .unwrap();
-        let plan = Plan::new(
-            None,
-            vec![PlanStep::new("step 1", PlanStepStatus::Pending)],
-        );
+        let plan = Plan::new(None, vec![PlanStep::new("step 1", PlanStepStatus::Pending)]);
         run.set_plan(Some(plan.clone()));
 
         let (active, got) = active_run_plan(&runner, "t1").await;

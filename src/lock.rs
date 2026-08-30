@@ -120,7 +120,9 @@ mod tests {
     fn lock_path_parses_absolute_db_url() {
         assert_eq!(
             lock_path_from_db_url("sqlite:///home/calico/devinorium/data/devinorium.db"),
-            Some(PathBuf::from("/home/calico/devinorium/data/devinorium.lock"))
+            Some(PathBuf::from(
+                "/home/calico/devinorium/data/devinorium.lock"
+            ))
         );
     }
 
@@ -170,7 +172,10 @@ mod tests {
         }
 
         let result = SingleInstance::acquire(&lock);
-        assert!(result.is_err(), "should fail when another process holds the lock");
+        assert!(
+            result.is_err(),
+            "should fail when another process holds the lock"
+        );
 
         let _ = child.kill();
     }

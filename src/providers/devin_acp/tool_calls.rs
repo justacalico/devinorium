@@ -12,16 +12,20 @@ pub(crate) fn apply_notification(
     parts: &mut Vec<MessagePart>,
 ) -> Option<PartEvent> {
     match &notification.update {
-        SessionUpdate::AgentMessageChunk(chunk) => text_from_content_block(&chunk.content).map(|text| {
-            let part = MessagePart::text(text);
-            parts.push(part.clone());
-            PartEvent::New(part)
-        }),
-        SessionUpdate::AgentThoughtChunk(chunk) => text_from_content_block(&chunk.content).map(|text| {
-            let part = MessagePart::thinking(text);
-            parts.push(part.clone());
-            PartEvent::New(part)
-        }),
+        SessionUpdate::AgentMessageChunk(chunk) => {
+            text_from_content_block(&chunk.content).map(|text| {
+                let part = MessagePart::text(text);
+                parts.push(part.clone());
+                PartEvent::New(part)
+            })
+        }
+        SessionUpdate::AgentThoughtChunk(chunk) => {
+            text_from_content_block(&chunk.content).map(|text| {
+                let part = MessagePart::thinking(text);
+                parts.push(part.clone());
+                PartEvent::New(part)
+            })
+        }
         SessionUpdate::ToolCall(tool_call) => {
             let id = tool_call.tool_call_id.to_string();
             if let Some(idx) = parts.iter().position(|p| p.tool_id() == Some(id.as_str())) {
@@ -403,7 +407,10 @@ mod tests {
     #[test]
     fn tool_call_update_before_initial_call_does_not_duplicate() {
         let mut parts = Vec::new();
-        apply_notification(&tool_update("tc-1", ToolCallStatus::Completed, "ok"), &mut parts);
+        apply_notification(
+            &tool_update("tc-1", ToolCallStatus::Completed, "ok"),
+            &mut parts,
+        );
         apply_notification(&tool_call("tc-1", "Read main.rs"), &mut parts);
 
         assert_eq!(parts.len(), 1);
@@ -418,7 +425,10 @@ mod tests {
         let mut parts = Vec::new();
         apply_notification(&tool_call("tc-1", "Read main.rs"), &mut parts);
         apply_notification(&note("found it"), &mut parts);
-        apply_notification(&tool_update("tc-1", ToolCallStatus::Completed, "ok"), &mut parts);
+        apply_notification(
+            &tool_update("tc-1", ToolCallStatus::Completed, "ok"),
+            &mut parts,
+        );
 
         assert_eq!(parts.len(), 2);
         let first = &parts[0];
@@ -432,7 +442,9 @@ mod tests {
     #[test]
     fn tool_call_output_from_content_handles_chinese() {
         let text = "中文工具输出";
-        let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(text)))];
+        let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(
+            text,
+        )))];
         let (output, changed, diffs) = tool_call_output_from_content(&content);
         assert_eq!(output.as_deref(), Some(text));
         assert!(changed.is_empty());
@@ -454,7 +466,10 @@ mod tests {
         assert_eq!(changed, vec!["/tmp/src/main.rs", "/tmp/src/new.rs"]);
         assert_eq!(diffs.len(), 2);
         assert_eq!(diffs[0].path, "/tmp/src/main.rs");
-        assert_eq!(diffs[0].old_text.as_deref(), Some("fn main() {\n    todo!()\n}\n"));
+        assert_eq!(
+            diffs[0].old_text.as_deref(),
+            Some("fn main() {\n    todo!()\n}\n")
+        );
         assert_eq!(diffs[0].new_text, "fn main() {}\n");
         assert_eq!(diffs[1].path, "/tmp/src/new.rs");
         assert!(diffs[1].old_text.is_none());
@@ -532,7 +547,9 @@ mod tests {
     #[test]
     fn merge_tool_call_update_truncates_chinese_preview() {
         let long = "这是一个测试".repeat(25);
-        let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(&long)))];
+        let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(
+            &long,
+        )))];
         let update = ToolCallUpdate::new(
             "tc-1",
             ToolCallUpdateFields::new()

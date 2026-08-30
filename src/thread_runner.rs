@@ -16,7 +16,9 @@ use tokio::task::AbortHandle;
 use uuid::Uuid;
 
 use crate::plan::Plan;
-use crate::providers::{collect_text, collect_thinking, AskRequest, MessagePart, PermissionRequest};
+use crate::providers::{
+    collect_text, collect_thinking, AskRequest, MessagePart, PermissionRequest,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunEvent {
@@ -91,10 +93,7 @@ impl RunState {
     /// are appended. Updates for non-tool parts are ignored because they have
     /// no stable identity.
     pub fn apply_part(&self, part: MessagePart, is_update: bool) {
-        let mut parts = self
-            .parts
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut parts = self.parts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(tool_id) = part.tool_id() {
             if let Some(idx) = parts.iter().position(|p| p.tool_id() == Some(tool_id)) {
                 parts[idx] = part;
@@ -127,7 +126,10 @@ impl RunState {
 
     /// Emit an event to all current listeners. Returns the number of receivers.
     pub fn emit(&self, event: &str, data: &str) -> usize {
-        let seq = self.next_seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let seq = self
+            .next_seq
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
         let Ok(guard) = self.events.lock() else {
             return 0;
         };
@@ -154,7 +156,10 @@ impl RunState {
                 return Some(rx);
             }
         }
-        self.events.lock().ok().and_then(|g| g.as_ref().map(|s| s.subscribe()))
+        self.events
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|s| s.subscribe()))
     }
 
     /// Close the event sender so SSE streams end.
@@ -185,11 +190,7 @@ impl RunState {
     }
 
     pub async fn snapshot(&self) -> RunSnapshot {
-        let parts = self
-            .parts
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let parts = self.parts.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let permission_request = self
             .permission_request
             .lock()
@@ -200,11 +201,7 @@ impl RunState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let plan = self
-            .plan
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let plan = self.plan.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let text = collect_text(&parts);
         let thinking = collect_thinking(&parts);
         let thinking_active = matches!(parts.last(), Some(MessagePart::Thinking { .. }));
@@ -526,9 +523,7 @@ mod tests {
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            parts: std::sync::Mutex::new(vec![
-                MessagePart::text("first "),
-            ]),
+            parts: std::sync::Mutex::new(vec![MessagePart::text("first ")]),
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),

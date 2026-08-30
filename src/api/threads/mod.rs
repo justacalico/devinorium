@@ -4,13 +4,13 @@
 //! (`provider.start`); subsequent sends continue it (`provider.send`). Every
 //! user message and assistant reply is persisted in the `messages` table.
 
-pub(crate) mod plan;
-pub(crate) mod routes;
-pub(crate) mod send;
-pub(crate) mod runs;
-pub(crate) mod stream;
 pub(crate) mod permissions;
 pub(crate) mod persistence;
+pub(crate) mod plan;
+pub(crate) mod routes;
+pub(crate) mod runs;
+pub(crate) mod send;
+pub(crate) mod stream;
 
 use axum::routing::{get, post, Router};
 use serde::{Deserialize, Serialize};
@@ -26,13 +26,24 @@ pub fn router() -> Router<AppState> {
         .route("/api/threads/runs", get(runs::list_runs))
         .route(
             "/api/threads/:id",
-            get(routes::get_one).patch(routes::rename).delete(routes::delete),
+            get(routes::get_one)
+                .patch(routes::rename)
+                .delete(routes::delete),
         )
         .route("/api/threads/:id/pin", post(routes::pin))
         .route("/api/threads/:id/messages", get(routes::list_messages))
-        .route("/api/threads/:id/messages/stream", get(stream::message_stream))
-        .route("/api/threads/:id/messages/:message_id", get(routes::get_message))
-        .route("/api/threads/:id/messages/:message_id/full", get(routes::get_message_full))
+        .route(
+            "/api/threads/:id/messages/stream",
+            get(stream::message_stream),
+        )
+        .route(
+            "/api/threads/:id/messages/:message_id",
+            get(routes::get_message),
+        )
+        .route(
+            "/api/threads/:id/messages/:message_id/full",
+            get(routes::get_message_full),
+        )
         .route("/api/threads/:id/send", post(send::send))
         .route("/api/threads/:id/send/stream", post(send::send_stream))
         .route("/api/threads/:id/run", get(runs::get_run))
@@ -42,7 +53,10 @@ pub fn router() -> Router<AppState> {
             "/api/threads/:id/permission/:request_id",
             post(permissions::respond_permission),
         )
-        .route("/api/threads/:id/ask/:request_id", post(permissions::respond_ask))
+        .route(
+            "/api/threads/:id/ask/:request_id",
+            post(permissions::respond_ask),
+        )
         .route("/api/threads/:id/project", get(plan::get_project_path))
         .route("/api/threads/:id/plan", get(plan::get_plan))
 }
@@ -118,7 +132,10 @@ impl From<MessageRow> for MessageOut {
             .collect();
 
         let (content, thinking) = if content_truncated || parts.is_empty() {
-            (m.content.clone(), m.thinking.clone().filter(|s| !s.is_empty()))
+            (
+                m.content.clone(),
+                m.thinking.clone().filter(|s| !s.is_empty()),
+            )
         } else {
             let content = collect_text(&parts);
             let thinking = collect_thinking(&parts);
