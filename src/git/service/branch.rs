@@ -21,12 +21,13 @@ pub struct Branch {
     pub behind: i64,
 }
 
-/// Validate a branch name without hitting the filesystem.
+/// Validate a branch/ref name without hitting the filesystem.
 pub(super) fn is_safe_branch_name(name: &str) -> bool {
-    if name.is_empty() || name.trim().is_empty() {
+    let name = name.trim();
+    if name.is_empty() {
         return false;
     }
-    if name.starts_with('/') || name.starts_with('~') {
+    if name.starts_with('/') || name.starts_with('~') || name.starts_with('-') {
         return false;
     }
     if name.contains("..") || name.contains('\0') {
@@ -123,7 +124,8 @@ impl GitService {
     ) -> Result<String, GitError> {
         self.repo_status(path, false).await?;
 
-        if ref_name.trim().is_empty() {
+        let ref_name = ref_name.trim();
+        if ref_name.is_empty() || !is_safe_branch_name(ref_name) {
             return Err(GitError::Other("ref name is required".to_string()));
         }
 
@@ -136,6 +138,11 @@ impl GitService {
         self.run(&mut cmd, Duration::from_secs(10)).await?;
 
         self.invalidate(path);
+        // Refresh remote-tracking refs so the UI can re-check for pull.
+        // Network issues are non-fatal: the checkout already succeeded.
+        if let Err(e) = self.fetch(path).await {
+            tracing::warn!(error = %e, "post-checkout fetch failed");
+        }
         Ok(ref_name.to_string())
     }
 
@@ -269,10 +276,13 @@ mod tests {
     fn is_safe_branch_name_rejects_dangerous_names() {
         assert!(is_safe_branch_name("feature"));
         assert!(is_safe_branch_name("feature/foo"));
+        assert!(is_safe_branch_name("origin/feature"));
         assert!(!is_safe_branch_name("../escape"));
         assert!(!is_safe_branch_name("/root"));
         assert!(!is_safe_branch_name(".."));
         assert!(!is_safe_branch_name(""));
+        assert!(!is_safe_branch_name("-b"));
+        assert!(!is_safe_branch_name("  "));
     }
 
     #[test]

@@ -38,7 +38,8 @@ impl GitService {
             .env("LC_ALL", "C")
             .env("GCM_INTERACTIVE", "never")
             .env("GIT_TERMINAL_PROMPT", "0")
-            .env("SSH_ASKPASS_REQUIRE", "never");
+            .env("SSH_ASKPASS_REQUIRE", "never")
+            .kill_on_drop(true);
         cmd
     }
 
