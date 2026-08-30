@@ -181,6 +181,7 @@ class _SidebarState extends State<Sidebar> {
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isSettings) const _AppTitle(),
           if (isSettings)
