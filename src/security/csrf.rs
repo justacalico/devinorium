@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn same_host_origin_allowed() {
         assert!(origin_ok_same_host(
-            &req(Method::POST, Some("http://example.com"), "example.com").headers(),
+            req(Method::POST, Some("http://example.com"), "example.com").headers(),
             "example.com"
         ));
     }
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn cross_host_origin_rejected() {
         assert!(!origin_ok_same_host(
-            &req(Method::POST, Some("http://evil.com"), "example.com").headers(),
+            req(Method::POST, Some("http://evil.com"), "example.com").headers(),
             "example.com"
         ));
     }
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn missing_origin_rejected() {
         assert!(!origin_ok_same_host(
-            &req(Method::POST, None, "example.com").headers(),
+            req(Method::POST, None, "example.com").headers(),
             "example.com"
         ));
     }

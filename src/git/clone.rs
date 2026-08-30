@@ -106,7 +106,7 @@ pub async fn clone_repo(
         .join(&parsed.owner)
         .join(&parsed.repo);
 
-    let resolved_target = paths::resolve(&target, None, Some(&[clone_root.clone()]))
+    let resolved_target = paths::resolve(&target, None, Some(std::slice::from_ref(&clone_root)))
         .ok_or(CloneError::InvalidSegment)?;
 
     if tokio::fs::try_exists(&resolved_target)

@@ -325,6 +325,7 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn call_provider(
     state: &AppState,
     user: &crate::db::UserRow,
@@ -441,7 +442,7 @@ mod tests {
             content_length: 5,
             parts_length: Some(0),
         };
-        assert!(build_send_reply(&[user.clone()]).is_none());
+        assert!(build_send_reply(std::slice::from_ref(&user)).is_none());
         assert!(build_send_reply(&[assistant.clone(), user.clone()]).is_none());
 
         let response = build_send_reply(&[user, assistant]).unwrap();

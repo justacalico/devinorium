@@ -5,20 +5,11 @@
 
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Pagination {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
-}
-
-impl Default for Pagination {
-    fn default() -> Self {
-        Self {
-            limit: None,
-            offset: None,
-        }
-    }
 }
 
 impl Pagination {
@@ -52,7 +43,7 @@ impl Pagination {
         let (limit, offset) = self.bounds();
         (
             limit.map(|l| l as usize),
-            std::cmp::min(offset, i64::MAX as i64) as usize,
+            std::cmp::min(offset, i64::MAX) as usize,
         )
     }
 }

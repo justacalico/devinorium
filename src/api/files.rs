@@ -64,7 +64,11 @@ async fn resolve(
 
     let rel = rel.unwrap_or("");
     if rel.is_empty() {
-        match paths::resolve_within(&root_canon, Some(&root_canon), &[root_canon.clone()]) {
+        match paths::resolve_within(
+            &root_canon,
+            Some(&root_canon),
+            std::slice::from_ref(&root_canon),
+        ) {
             Some(p) => Ok((p, root_canon)),
             None => Err((
                 StatusCode::BAD_REQUEST,
@@ -83,7 +87,11 @@ async fn resolve(
         }
     } else {
         let target = root_canon.join(rel);
-        match paths::resolve_within(&target, Some(&root_canon), &[root_canon.clone()]) {
+        match paths::resolve_within(
+            &target,
+            Some(&root_canon),
+            std::slice::from_ref(&root_canon),
+        ) {
             Some(p) => Ok((p, root_canon)),
             None => Err((
                 StatusCode::BAD_REQUEST,
@@ -94,24 +102,13 @@ async fn resolve(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct ListQuery {
     path: Option<String>,
     project_id: Option<i64>,
     limit: Option<i64>,
     offset: Option<i64>,
-}
-
-impl Default for ListQuery {
-    fn default() -> Self {
-        Self {
-            path: None,
-            project_id: None,
-            limit: None,
-            offset: None,
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -270,7 +267,7 @@ async fn upload(
         let resolved = if std::path::Path::new(rel).is_absolute() {
             paths::resolve(&target, None, None)
         } else {
-            paths::resolve_within(&target, Some(&root_base), &[root_base.clone()])
+            paths::resolve_within(&target, Some(&root_base), std::slice::from_ref(&root_base))
         };
         let resolved = match resolved {
             Some(p) => p,
@@ -338,7 +335,7 @@ async fn mv(
     let to = if std::path::Path::new(&req.to).is_absolute() {
         paths::resolve(&to_target, None, None)
     } else {
-        paths::resolve_within(&to_target, Some(&root), &[root.clone()])
+        paths::resolve_within(&to_target, Some(&root), std::slice::from_ref(&root))
     };
     let to = match to {
         Some(p) => p,

@@ -114,7 +114,7 @@ pub(super) async fn get_one(
             let total = state.db.count_messages(&id).await.unwrap_or(0);
             let mut messages = Vec::new();
             let mut page_meta = None;
-            if query.include_messages.as_deref().map_or(false, truthy) {
+            if query.include_messages.as_deref().is_some_and(truthy) {
                 if query.turn_limit.is_some() || query.before_cursor.is_some() {
                     let turn_limit = query.turn_limit.unwrap_or(TURN_LIMIT_DEFAULT).clamp(1, 200);
                     let before_cursor = query

@@ -196,6 +196,7 @@ pub(crate) fn merge_tool_call_update(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_tool_call_event_core(
     id: impl AsRef<str>,
     title: Option<&str>,

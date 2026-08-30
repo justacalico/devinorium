@@ -1964,7 +1964,7 @@ async fn file_manager_list_paginates() {
     let pid = v["id"].as_i64().unwrap();
     let path = v["path"].as_str().unwrap();
 
-    std::fs::create_dir_all(&path).unwrap();
+    std::fs::create_dir_all(path).unwrap();
     for i in 0..3 {
         std::fs::write(format!("{path}/file{i}.txt"), "x").unwrap();
     }

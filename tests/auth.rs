@@ -796,13 +796,13 @@ async fn device_list_and_revoke() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = read_body(resp.into_body()).await;
     let devices: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
-    assert!(devices.len() >= 1);
+    assert!(!devices.is_empty());
     let device = devices
         .iter()
         .find(|d| {
             d["token_prefix"]
                 .as_str()
-                .map_or(false, |p| token.starts_with(p))
+                .is_some_and(|p| token.starts_with(p))
         })
         .expect("token session should be listed");
     let device_id = device["device_id"].as_str().unwrap().to_string();

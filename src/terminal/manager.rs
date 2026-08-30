@@ -173,15 +173,14 @@ mod tests {
 
         let mut saw_output = false;
         while tokio::time::Instant::now() < deadline {
-            match tokio::time::timeout(tokio::time::Duration::from_millis(100), rx.recv()).await {
-                Ok(Ok(TerminalEvent::Output(bytes))) => {
-                    let text = String::from_utf8_lossy(&bytes);
-                    if text.contains("hello world") {
-                        saw_output = true;
-                        break;
-                    }
+            if let Ok(Ok(TerminalEvent::Output(bytes))) =
+                tokio::time::timeout(tokio::time::Duration::from_millis(100), rx.recv()).await
+            {
+                let text = String::from_utf8_lossy(&bytes);
+                if text.contains("hello world") {
+                    saw_output = true;
+                    break;
                 }
-                _ => {}
             }
         }
         assert!(saw_output, "expected echo of 'hello world'");

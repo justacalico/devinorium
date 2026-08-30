@@ -145,7 +145,7 @@ impl From<MessageRow> for MessageOut {
 
         let content_chars = content.chars().count() as i64;
         let truncated = content_chars < m.content_length
-            || (m.parts.is_none() && m.parts_length.map_or(false, |l| l > MESSAGE_PARTS_BUDGET));
+            || (m.parts.is_none() && m.parts_length.is_some_and(|l| l > MESSAGE_PARTS_BUDGET));
         let (total_chars, truncated_at) = if truncated {
             let total = (m.content_length + m.parts_length.unwrap_or(0)) as usize;
             (Some(total), Some(content_chars as usize))

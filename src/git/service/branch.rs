@@ -65,10 +65,7 @@ impl GitService {
         };
 
         if let Some(q) = query {
-            branches = branches
-                .into_iter()
-                .filter(|b| b.name.to_lowercase().contains(&q.to_lowercase()))
-                .collect();
+            branches.retain(|b| b.name.to_lowercase().contains(&q.to_lowercase()));
         }
 
         if let Some(limit) = limit {

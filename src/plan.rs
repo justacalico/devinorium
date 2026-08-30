@@ -29,15 +29,19 @@ impl PlanStepStatus {
             PlanStepStatus::Completed => "completed",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s.trim().to_lowercase().as_str() {
+impl std::str::FromStr for PlanStepStatus {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.trim().to_lowercase().as_str() {
             "in_progress" | "inprogress" | "in-progress" | "active" | "[-]" | "[/]" => {
                 PlanStepStatus::InProgress
             }
             "completed" | "done" | "complete" | "[x]" | "[X]" => PlanStepStatus::Completed,
             _ => PlanStepStatus::Pending,
-        }
+        })
     }
 }
 
@@ -197,7 +201,7 @@ impl PlanParser {
                 if step.is_empty() {
                     continue;
                 }
-                let status = PlanStepStatus::from_str(&format!("[{marker}]"));
+                let status: PlanStepStatus = format!("[{marker}]").parse().unwrap();
                 steps.push(PlanStep::new(
                     truncate(step, MAX_STEP_LEN).into_owned(),
                     status,
@@ -319,7 +323,7 @@ fn parse_steps_text(text: &str, explanation: Option<String>) -> Option<Plan> {
     for caps in STEP_RE.captures_iter(text) {
         let status = caps
             .get(1)
-            .map(|m| PlanStepStatus::from_str(m.as_str()))
+            .map(|m| m.as_str().parse::<PlanStepStatus>().unwrap())
             .unwrap_or(PlanStepStatus::Pending);
         let step = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
         if !step.is_empty() {

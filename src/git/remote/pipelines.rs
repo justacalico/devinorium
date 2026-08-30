@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn pipelines_sort_by_updated_at_descending() {
-        let mut pipelines = vec![
+        let mut pipelines = [
             GitLabPipeline {
                 status: "success".into(),
                 name: "old".into(),
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn missing_timestamp_sorts_to_bottom() {
-        let mut pipelines = vec![
+        let mut pipelines = [
             GitLabPipeline {
                 status: "failed".into(),
                 name: "missing".into(),

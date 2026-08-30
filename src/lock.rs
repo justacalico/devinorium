@@ -89,11 +89,8 @@ pub fn lock_path_from_db_url(db_url: &str) -> Option<PathBuf> {
 
     if path_part.starts_with("//") {
         let without_leading = &path_part[2..];
-        if let Some(idx) = without_leading.find('/') {
-            path_part = without_leading[idx..].to_string();
-        } else {
-            return None;
-        }
+        let idx = without_leading.find('/')?;
+        path_part = without_leading[idx..].to_string();
     }
 
     if path_part.is_empty() {
@@ -178,5 +175,6 @@ mod tests {
         );
 
         let _ = child.kill();
+        let _ = child.wait();
     }
 }

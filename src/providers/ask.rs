@@ -436,7 +436,7 @@ mod tests {
 
         let mut answers = HashMap::new();
         answers.insert("tags".to_string(), serde_json::json!(["x", "y"]));
-        let content = to_acp_content(&[q.clone()], &answers);
+        let content = to_acp_content(std::slice::from_ref(&q), &answers);
         assert_eq!(
             content.get("tags"),
             Some(&ElicitationContentValue::StringArray(vec![
