@@ -209,8 +209,21 @@ class _SidebarState extends State<Sidebar> {
   }
 }
 
-class _AppTitle extends StatelessWidget {
+class _AppTitle extends StatefulWidget {
   const _AppTitle();
+
+  @override
+  State<_AppTitle> createState() => _AppTitleState();
+}
+
+class _AppTitleState extends State<_AppTitle> {
+  late final Future<PackageInfo> _packageInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfo = PackageInfo.fromPlatform();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +233,7 @@ class _AppTitle extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: FutureBuilder<PackageInfo>(
-        future: PackageInfo.fromPlatform(),
+        future: _packageInfo,
         builder: (context, snapshot) {
           return Row(
             mainAxisSize: MainAxisSize.min,
@@ -239,10 +252,21 @@ class _AppTitle extends StatelessWidget {
               ),
               if (snapshot.hasData) ...[
                 const SizedBox(width: 8),
-                Text(
-                  snapshot.data!.version,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    snapshot.data!.version,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],
