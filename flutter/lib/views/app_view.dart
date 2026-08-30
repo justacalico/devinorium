@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../l10n/l10n.dart';
 import '../state/app_state.dart';
 import 'drop_zone.dart';
 import 'files_panel.dart';
@@ -45,7 +44,7 @@ class _AppShellState extends State<AppShell> {
 
       return Column(
         children: [
-          WindowTitleBar(title: Text(l10n(context).appTitle)),
+          const WindowTitleBar(),
           Expanded(
             child: Scaffold(
               key: _scaffoldKey,
@@ -69,7 +68,7 @@ class _AppShellState extends State<AppShell> {
 
     return Column(
       children: [
-        WindowTitleBar(title: Text(l10n(context).appTitle)),
+        const WindowTitleBar(),
         Expanded(
           child: Scaffold(
             body: Row(

@@ -2,7 +2,7 @@
   "@@locale": "en",
   "appTitle": "Devinorium",
   "@appTitle": {
-    "description": "Application title shown in the taskbar"
+    "description": "Application title shown in the sidebar"
   },
   "connectionFailed": "connection failed",
   "importFailed": "import failed",

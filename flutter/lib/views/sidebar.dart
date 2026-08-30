@@ -182,8 +182,9 @@ class _SidebarState extends State<Sidebar> {
       color: theme.colorScheme.surfaceContainerLowest,
       child: Column(
         children: [
+          if (!isSettings) const _AppTitle(),
           if (isSettings)
-            _SettingsHeader()
+            const _SettingsHeader()
           else ...[
             _SearchField(
               controller: _searchController,
@@ -206,7 +207,32 @@ class _SidebarState extends State<Sidebar> {
   }
 }
 
+class _AppTitle extends StatelessWidget {
+  const _AppTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Text(
+        l.appTitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.onSurface,
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsHeader extends StatelessWidget {
+  const _SettingsHeader();
+
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();

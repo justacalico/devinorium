@@ -8,12 +8,7 @@ import '../services/window_actions.dart';
 /// Includes a drag region for moving the window and minimize / maximize /
 /// close buttons.
 class WindowTitleBar extends StatelessWidget {
-  final Widget? title;
-
-  const WindowTitleBar({
-    super.key,
-    this.title,
-  });
+  const WindowTitleBar({super.key});
 
   bool _isDesktop(BuildContext context) =>
       switch (Theme.of(context).platform) {
@@ -51,18 +46,7 @@ class WindowTitleBar extends StatelessWidget {
               behavior: HitTestBehavior.translucent,
               onPanStart: (_) => startWindowDragging(),
               onDoubleTap: toggleMaximize,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 16),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: DefaultTextStyle(
-                    style: theme.textTheme.titleSmall!.copyWith(
-                      color: theme.colorScheme.onSurface,
-                    ),
-                    child: title ?? const Text('Devinorium'),
-                  ),
-                ),
-              ),
+              child: const SizedBox.expand(),
             ),
           ),
           // Window controls.

@@ -2293,4 +2293,46 @@ void main() {
     }
     expect(find.text('Show 1 more'), findsNothing);
   });
+
+  testWidgets('Sidebar shows the app title', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(
+      find.descendant(of: find.byType(Sidebar), matching: find.text('Devinorium')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Sidebar hides the app title on the settings page', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    state.setPage(MainPage.settings);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Devinorium'), findsNothing);
+  });
 }
