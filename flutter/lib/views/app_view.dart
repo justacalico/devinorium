@@ -7,7 +7,6 @@ import 'files_panel.dart';
 import 'settings_page.dart';
 import 'sidebar.dart';
 import 'thread_page.dart';
-import 'window_drag_strip.dart';
 
 /// The main authenticated layout: sidebar + main content area.
 /// Uses a Row with a fixed-width sidebar (300px) and a flexible main area.
@@ -32,9 +31,7 @@ class _AppShellState extends State<AppShell> {
     // A stable key lets Flutter reparent this subtree (and preserve all
     // stateful descendants such as text controllers) when the layout
     // switches between narrow and wide, instead of rebuilding it.
-    final main = WindowDragStrip(
-      child: DropZone(key: _mainKey, child: _MainArea()),
-    );
+    final main = DropZone(key: _mainKey, child: _MainArea());
 
     if (isNarrow) {
       if (state.filesPanelOpen && !_wasFilesPanelOpen) {

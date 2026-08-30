@@ -28,6 +28,7 @@ import '../terminal/thread_terminal_panel.dart';
 import 'plan_overlay.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
+import 'window_title_drag.dart';
 import 'syntax_highlighter.dart';
 
 part 'thread/chat_view.dart';
@@ -88,13 +89,15 @@ class _ThreadPageState extends State<ThreadPage> {
                 onPressed: () => Scaffold.of(context).openDrawer(),
               )
             : null,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            if (tag != null) ...[const SizedBox(height: 2), ThreadTag(tag)],
-          ],
+        title: WindowTitleDrag(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (tag != null) ...[const SizedBox(height: 2), ThreadTag(tag)],
+            ],
+          ),
         ),
         actions: [
           if (state.linkedMergeRequest != null)
