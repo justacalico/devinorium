@@ -86,7 +86,7 @@ impl GitService {
                 &[
                     "for-each-ref",
                     "--format=%(upstream:track)",
-                    &format!("refs/heads/{}", branch),
+                    &format!("refs/heads/{branch}"),
                 ],
                 Duration::from_secs(5),
             )

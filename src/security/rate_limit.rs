@@ -236,7 +236,7 @@ mod tests {
         let lim = RateLimiter::new(100, 0.0);
         // AuthWrite costs 2 — 50 calls = 100 tokens.
         for i in 0..50 {
-            assert!(lim.check("b", "ip", 2.0).await, "call {} should pass", i);
+            assert!(lim.check("b", "ip", 2.0).await, "call {i} should pass");
         }
         assert!(
             !lim.check("b", "ip", 2.0).await,

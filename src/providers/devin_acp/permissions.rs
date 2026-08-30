@@ -151,7 +151,7 @@ mod tests {
             "callback should not be invoked in bypass mode"
         );
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-once");
     }
@@ -171,7 +171,7 @@ mod tests {
         let outcome = handle_permission_request(request, "bypass", None).await;
 
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-always");
     }
@@ -194,7 +194,7 @@ mod tests {
             "callback should be invoked when no allow option"
         );
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "reject");
     }
@@ -217,7 +217,7 @@ mod tests {
             "callback should be invoked in normal mode"
         );
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-once");
     }
@@ -234,7 +234,7 @@ mod tests {
         let outcome = handle_permission_request(request, " yolo ", None).await;
 
         let RequestPermissionOutcome::Selected(selected) = outcome else {
-            panic!("expected Selected outcome, got {:?}", outcome);
+            panic!("expected Selected outcome, got {outcome:?}");
         };
         assert_eq!(selected.option_id.0.as_ref(), "allow-always");
     }

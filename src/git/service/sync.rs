@@ -50,7 +50,7 @@ impl GitService {
                 &[
                     "for-each-ref",
                     "--format=%(upstream)",
-                    &format!("refs/heads/{}", name),
+                    &format!("refs/heads/{name}"),
                 ],
                 Duration::from_secs(5),
             )
@@ -65,7 +65,7 @@ impl GitService {
         let remote = self
             .run_with(
                 path,
-                &["config", "--get", &format!("branch.{}.remote", name)],
+                &["config", "--get", &format!("branch.{name}.remote")],
                 Duration::from_secs(5),
             )
             .await?
@@ -76,7 +76,7 @@ impl GitService {
             return Err(GitError::Other("invalid remote name".to_string()));
         }
 
-        let prefix = format!("refs/remotes/{}/", remote);
+        let prefix = format!("refs/remotes/{remote}/");
         let remote_branch = full_upstream
             .strip_prefix(&prefix)
             .ok_or_else(|| GitError::Other("invalid upstream".to_string()))?;
@@ -88,7 +88,7 @@ impl GitService {
         let mut cmd = self.git_cmd(path);
         cmd.arg("fetch")
             .arg(&remote)
-            .arg(format!("refs/heads/{}:refs/heads/{}", remote_branch, name));
+            .arg(format!("refs/heads/{remote_branch}:refs/heads/{name}"));
         self.run(&mut cmd, Duration::from_secs(60)).await?;
         self.invalidate(path);
         Ok(())

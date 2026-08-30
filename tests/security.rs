@@ -239,8 +239,7 @@ async fn rate_limit_blocks_after_burst() {
         .count();
     assert!(
         too_many >= 1,
-        "expected rate limiting to kick in: {:?}",
-        statuses
+        "expected rate limiting to kick in: {statuses:?}"
     );
 }
 

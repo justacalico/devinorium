@@ -96,7 +96,7 @@ impl Provider for StubProvider {
         }
         let mode = req.options.interaction_mode.clone();
         let reply = format!("echo: {} ({})", req.prompt, mode);
-        let thinking = format!("reasoning about the prompt in {} mode", mode);
+        let thinking = format!("reasoning about the prompt in {mode} mode");
         let parts = vec![
             MessagePart::thinking(thinking.clone()),
             MessagePart::tool_call(ToolCallEvent {
@@ -142,7 +142,7 @@ impl Provider for StubProvider {
         }
         let mode = req.options.interaction_mode.clone();
         let reply = format!("echo: {} ({})", req.prompt, mode);
-        let thinking = format!("reasoning about the prompt in {} mode", mode);
+        let thinking = format!("reasoning about the prompt in {mode} mode");
         let parts = vec![
             MessagePart::thinking(thinking.clone()),
             MessagePart::tool_call(ToolCallEvent {
