@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/async_value.dart';
 import 'package:devinorium_frontend/state/thread_store.dart';
@@ -100,6 +101,24 @@ class _TestApiService extends ApiService {
           id: '3',
         ),
       ]);
+}
+
+class _RecordingApiService extends _TestApiService {
+  String? lastPrompt;
+  String? lastMode;
+
+  @override
+  Stream<SseEvent> sendMessageStream({
+    required String threadId,
+    required String prompt,
+    String? mode,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) {
+    lastPrompt = prompt;
+    lastMode = mode;
+    return const Stream.empty();
+  }
 }
 
 void main() {
@@ -211,6 +230,182 @@ void main() {
     expect(api.updateThreadSettingsCalls, 1);
     expect(api.getThreadCalls, 1);
     expect(store.globalError, isNotEmpty);
+  });
+
+  group('ask prefix handling', () {
+    test('sendMessage strips /ask prefix in ask mode', () async {
+      final api = _RecordingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: '/ask  hello world',
+        composerMode: ComposerMode.ask,
+        detail: AsyncValue.ready(ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        )),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+
+      expect(api.lastPrompt, 'hello world');
+      expect(api.lastMode, 'ask');
+    });
+
+    test('sendMessage keeps /ask prefix in non-ask mode', () async {
+      final api = _RecordingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: '/ask hello',
+        composerMode: ComposerMode.code,
+        detail: AsyncValue.ready(ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        )),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+
+      expect(api.lastPrompt, '/ask hello');
+      expect(api.lastMode, 'code');
+    });
+
+    test('sendMessage keeps /ask prefix in plan mode', () async {
+      final api = _RecordingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: '/ask hello',
+        composerMode: ComposerMode.plan,
+        detail: AsyncValue.ready(ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        )),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+
+      expect(api.lastPrompt, '/ask hello');
+      expect(api.lastMode, 'plan');
+    });
+
+    test('sendMessage does not strip glued /ask prefix', () async {
+      final api = _RecordingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: '/askhello',
+        composerMode: ComposerMode.ask,
+        detail: AsyncValue.ready(ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        )),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+
+      expect(api.lastPrompt, '/askhello');
+      expect(api.lastMode, 'ask');
+    });
+
+    test('sendMessage returns early when stripped prompt is empty', () async {
+      final api = _RecordingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: '/ask',
+        composerMode: ComposerMode.ask,
+        detail: AsyncValue.ready(ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        )),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+
+      expect(api.lastPrompt, isNull);
+      expect(store.composerText, '/ask');
+    });
+
+    test('sendMessage does not mutate composerText', () async {
+      final api = _RecordingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: '/ask  hello world',
+        composerMode: ComposerMode.ask,
+        detail: AsyncValue.ready(ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        )),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+
+      expect(api.lastPrompt, 'hello world');
+      expect(store.composerText, '/ask  hello world');
+    });
   });
 
   group('turn-windowed pagination', () {

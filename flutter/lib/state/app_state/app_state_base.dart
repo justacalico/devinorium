@@ -181,6 +181,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String get selectedModel;
   String get selectedPermission;
   ComposerMode get composerMode;
+  ComposerMode get defaultComposerMode;
   List<MessagePart> get streamingParts;
   bool get streamingThinkingActive;
   PermissionRequest? get pendingPermissionRequest;
@@ -229,7 +230,7 @@ abstract class AppStateBase extends ChangeNotifier {
   void clearAttachments();
   void setSelectedModel(String m);
   void setSelectedPermission(String p);
-  void setComposerMode(ComposerMode m);
+  void setComposerMode(ComposerMode m, {bool persist});
   Future<void> _saveComposerMode(ComposerMode m);
   Future<void> _loadComposerMode();
   void setLoginError(String e);

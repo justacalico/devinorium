@@ -10,6 +10,8 @@ mixin ComposerStore on AppStateBase {
   @override
   ComposerMode get composerMode => _activeStore?.composerMode ?? _composerMode;
   @override
+  ComposerMode get defaultComposerMode => _composerMode;
+  @override
   void setComposerText(String t) {
     final store = _activeStore;
     if (store != null) {
@@ -20,7 +22,7 @@ mixin ComposerStore on AppStateBase {
     notifyListeners();
   }
   @override
-  void setComposerMode(ComposerMode m) {
+  void setComposerMode(ComposerMode m, {bool persist = true}) {
     final store = _activeStore;
     if (store != null) {
       store.composerMode = m;
@@ -28,7 +30,7 @@ mixin ComposerStore on AppStateBase {
       _composerMode = m;
     }
     notifyListeners();
-    unawaited(_saveComposerMode(m));
+    if (persist) unawaited(_saveComposerMode(m));
   }
   @override
   Future<void> _saveComposerMode(ComposerMode m) async {

@@ -111,6 +111,15 @@ void main() {
       expect(prefs.getString('devinorium_composer_mode'), 'ask');
     });
 
+    test('composer mode is not persisted when persist is false', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test();
+      state.setComposerMode(ComposerMode.ask, persist: false);
+      await Future.delayed(Duration.zero);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_composer_mode'), isNull);
+    });
+
     test('composer mode is loaded from shared preferences', () async {
       SharedPreferences.setMockInitialValues({
         'devinorium_composer_mode': 'plan',
