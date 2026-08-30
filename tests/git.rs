@@ -448,6 +448,98 @@ async fn pulls_non_current_branch_without_checking_out() {
     assert!(!local.path().join("file2.txt").exists());
 }
 
+#[tokio::test]
+async fn fetch_updates_remote_tracking_and_reveals_behind() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    git_cli(
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        local.path(),
+    );
+    git_cli(&["push", "-u", "origin", "main"], local.path());
+
+    let other = TempDir::new().unwrap();
+    git_cli(
+        &["clone", remote.path().to_str().unwrap(), "."],
+        other.path(),
+    );
+    git_cli(&["checkout", "-b", "main", "origin/main"], other.path());
+    std::fs::write(other.path().join("file2.txt"), "from other").unwrap();
+    git_cli(&["add", "file2.txt"], other.path());
+    git_cli(&["commit", "-m", "remote commit"], other.path());
+    git_cli(&["push", "origin", "main"], other.path());
+
+    let svc = GitService::new();
+    let status = svc.repo_status(local.path(), false).await.unwrap();
+    assert_eq!(status.behind, 0);
+
+    svc.fetch(local.path()).await.unwrap();
+    let status = svc.repo_status(local.path(), false).await.unwrap();
+    assert_eq!(status.behind, 1);
+    assert_eq!(status.ahead, 0);
+}
+
+#[tokio::test]
+async fn checkout_refreshes_behind_after_remote_commit() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+
+    let remote = TempDir::new().unwrap();
+    git_cli(&["init", "--bare"], remote.path());
+    git_cli(
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        local.path(),
+    );
+    git_cli(&["push", "-u", "origin", "main"], local.path());
+
+    let other = TempDir::new().unwrap();
+    git_cli(
+        &["clone", remote.path().to_str().unwrap(), "."],
+        other.path(),
+    );
+    git_cli(&["checkout", "-b", "main", "origin/main"], other.path());
+    std::fs::write(other.path().join("file2.txt"), "from other").unwrap();
+    git_cli(&["add", "file2.txt"], other.path());
+    git_cli(&["commit", "-m", "remote commit"], other.path());
+    git_cli(&["push", "origin", "main"], other.path());
+
+    // Start on a different local branch, then switch to main.
+    git_cli(&["checkout", "-b", "feature"], local.path());
+
+    let svc = GitService::new();
+    svc.checkout(local.path(), "main", false).await.unwrap();
+    let status = svc.repo_status(local.path(), false).await.unwrap();
+    assert_eq!(status.branch, "main");
+    assert_eq!(status.behind, 1);
+    assert_eq!(status.ahead, 0);
+}
+
+#[tokio::test]
+async fn checkout_succeeds_when_fetch_fails() {
+    let local = make_repo();
+    git_cli(&["checkout", "-b", "main"], local.path());
+    git_cli(&["checkout", "-b", "feature"], local.path());
+
+    // Add a remote that does not exist so fetch fails, but the branch exists.
+    git_cli(
+        &["remote", "add", "origin", "/nonexistent/bare/repo.git"],
+        local.path(),
+    );
+
+    let svc = GitService::new();
+    let name = svc.checkout(local.path(), "main", false).await.unwrap();
+    assert_eq!(name, "main");
+    let head = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(local.path())
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+}
+
 fn write_fake_glab(dir: &Path) -> std::path::PathBuf {
     let bin_dir = dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();

@@ -7,6 +7,18 @@ use super::branch::is_safe_branch_name;
 use super::{GitError, GitService};
 
 impl GitService {
+    /// Fetch from the current branch's tracked remote to refresh
+    /// remote-tracking refs. This is a best-effort refresh used after branch
+    /// switches so the UI can re-check for pull.
+    pub async fn fetch(&self, path: &Path) -> Result<(), GitError> {
+        self.repo_status(path, false).await?;
+        let mut cmd = self.git_cmd(path);
+        cmd.arg("fetch");
+        self.run(&mut cmd, Duration::from_secs(30)).await?;
+        self.invalidate(path);
+        Ok(())
+    }
+
     /// Pull the current branch's upstream using fast-forward only.
     pub async fn pull(&self, path: &Path) -> Result<(), GitError> {
         self.repo_status(path, false).await?;
