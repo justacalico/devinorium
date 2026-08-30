@@ -30,19 +30,20 @@ void main() {
         ),
         MergeRequestComment(
           author: MergeRequestAuthor(name: 'GitLab', username: 'GitLab'),
-          body: 'added 1 commit\n\n<ul><li><a href="/diffs">126cdcc5 - refactor: remove token</a></li></ul>\n\n[Compare with previous version](/compare)',
+          body:
+              'added 1 commit\n\n<ul><li><a href="/diffs">126cdcc5 - refactor: remove token</a></li></ul>\n\n[Compare with previous version](/compare)',
           system: true,
         ),
       ],
     );
 
     Widget wrap(AsyncValue<MergeRequestDetail> value) => MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: MergeRequestView(detail: value, url: detail.webUrl),
-          ),
-        );
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: MergeRequestView(detail: value, url: detail.webUrl),
+      ),
+    );
 
     testWidgets('shows loading state', (tester) async {
       await tester.pumpWidget(wrap(const AsyncValue.loading()));
@@ -123,7 +124,9 @@ void main() {
       expect(find.byIcon(Icons.open_in_new), findsOneWidget);
     });
 
-    testWidgets('switches to pipelines tab and lists pipelines', (tester) async {
+    testWidgets('switches to pipelines tab and lists pipelines', (
+      tester,
+    ) async {
       const detailWithPipeline = MergeRequestDetail(
         title: 'Add feature',
         description: '## Summary',
@@ -169,6 +172,211 @@ void main() {
       expect(find.text('success'), findsOneWidget);
     });
 
+    testWidgets('expands a pipeline and shows its jobs', (tester) async {
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            id: 42,
+            status: 'running',
+            name: 'test-and-build',
+          ),
+        ],
+      );
+
+      Future<List<MergeRequestPipelineJob>> onLoadJobs(_) async => const [
+        MergeRequestPipelineJob(
+          id: 1,
+          name: 'cargo test',
+          status: 'running',
+          stage: 'test',
+        ),
+        MergeRequestPipelineJob(
+          id: 2,
+          name: 'flutter test',
+          status: 'success',
+          stage: 'test',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithPipeline),
+              url: '',
+              onLoadJobs: onLoadJobs,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('test-and-build'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('cargo test'), findsOneWidget);
+      expect(find.text('flutter test'), findsOneWidget);
+    });
+
+    testWidgets('expands a pipeline and shows empty jobs', (tester) async {
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            id: 42,
+            status: 'success',
+            name: 'test-and-build',
+          ),
+        ],
+      );
+
+      Future<List<MergeRequestPipelineJob>> onLoadJobs(_) async => [];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithPipeline),
+              url: '',
+              onLoadJobs: onLoadJobs,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('test-and-build'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No jobs yet.'), findsOneWidget);
+    });
+
+    testWidgets('expands a pipeline and surfaces a job loading error', (
+      tester,
+    ) async {
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            id: 42,
+            status: 'success',
+            name: 'test-and-build',
+          ),
+        ],
+      );
+
+      var shouldFail = true;
+      Future<List<MergeRequestPipelineJob>> onLoadJobs(_) async {
+        if (shouldFail) throw Exception('jobs failed');
+        return [];
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithPipeline),
+              url: '',
+              onLoadJobs: onLoadJobs,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('test-and-build'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('jobs failed'), findsOneWidget);
+
+      shouldFail = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No jobs yet.'), findsOneWidget);
+      expect(find.textContaining('jobs failed'), findsNothing);
+    });
+
+    testWidgets('does not expand a pipeline without an id', (tester) async {
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            id: 0,
+            status: 'success',
+            name: 'test-and-build',
+          ),
+        ],
+      );
+
+      Future<List<MergeRequestPipelineJob>> onLoadJobs(_) async => [
+        const MergeRequestPipelineJob(
+          id: 1,
+          name: 'cargo test',
+          status: 'running',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithPipeline),
+              url: '',
+              onLoadJobs: onLoadJobs,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('test-and-build'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('cargo test'), findsNothing);
+    });
+
     testWidgets('switches to empty pipelines tab', (tester) async {
       await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
       await tester.pumpAndSettle();
@@ -179,7 +387,9 @@ void main() {
       expect(find.text('No pipelines yet.'), findsOneWidget);
     });
 
-    testWidgets('hides action buttons when no callback is given', (tester) async {
+    testWidgets('hides action buttons when no callback is given', (
+      tester,
+    ) async {
       await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
       await tester.pumpAndSettle();
 
