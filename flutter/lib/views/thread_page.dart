@@ -124,6 +124,7 @@ class _ThreadPageState extends State<ThreadPage> {
               onPressed: () => _toggleTerminal(activeThreadId),
             ),
         ],
+        centerTitle: false,
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),

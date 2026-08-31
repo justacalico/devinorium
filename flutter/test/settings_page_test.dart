@@ -824,4 +824,30 @@ void main() {
 
     expect(find.text('Select current folder'), findsOneWidget);
   });
+
+  testWidgets('app bar title is left aligned and ellipsized', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    expect(appBar.centerTitle, isFalse);
+
+    final titleText = tester.widget<Text>(
+      find.descendant(of: find.byType(AppBar), matching: find.text('Settings')),
+    );
+    expect(titleText.maxLines, 1);
+    expect(titleText.overflow, TextOverflow.ellipsis);
+  });
 }

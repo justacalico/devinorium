@@ -62,7 +62,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 onPressed: () => Scaffold.of(context).openDrawer(),
               )
             : null,
-        title: WindowTitleDrag(child: Text(l10n(context).settings)),
+        title: WindowTitleDrag(
+          child: Text(
+            l10n(context).settings,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        centerTitle: false,
         backgroundColor: theme.colorScheme.surface,
         scrolledUnderElevation: 0,
       ),
