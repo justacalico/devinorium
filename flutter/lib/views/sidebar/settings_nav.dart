@@ -13,6 +13,7 @@ class _SettingsNav extends StatelessWidget {
       (icon: Icons.cloud_outlined, label: l.providers),
       (icon: Icons.palette_outlined, label: l.personalization),
       (icon: Icons.code_outlined, label: l.git),
+      (icon: Icons.folder_outlined, label: l.cloneRoot),
       if (state.isOwner)
         (icon: Icons.manage_accounts_outlined, label: l.manage),
     ];
