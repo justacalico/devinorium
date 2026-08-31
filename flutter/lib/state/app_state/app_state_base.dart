@@ -49,8 +49,6 @@ abstract class AppStateBase extends ChangeNotifier {
   set _activeThreadId(String? value);
   List<User> get _users;
   set _users(List<User> value);
-  List<Device> get _devices;
-  set _devices(List<Device> value);
   String get _loginError;
   set _loginError(String value);
   bool get _showTotpField;
@@ -155,7 +153,6 @@ abstract class AppStateBase extends ChangeNotifier {
   ThreadDetail? get activeThreadDetail;
   bool get activeThreadLoading;
   List<User> get users;
-  List<Device> get devices;
   bool get isOwner;
   String get loginError;
   bool get showTotpField;
@@ -280,9 +277,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> refreshRunningThreads();
   Future<void> doLogin({    required String serverUrl,    required String username,    required String password,    String? totp,  });
   Future<void> loadUsers();
-  Future<void> loadDevices();
   Future<void> loadSettingsData();
-  Future<void> revokeDevice(String token);
   Future<void> createUser({    required String username,    required String password,  });
   Future<void> setUserDisabled(int id, bool disabled);
   Future<void> logout();

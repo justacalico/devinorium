@@ -436,12 +436,6 @@ abstract class AppLocalizations {
   /// **'Provider'**
   String get provider;
 
-  /// No description provided for @devices.
-  ///
-  /// In en, this message translates to:
-  /// **'Devices'**
-  String get devices;
-
   /// No description provided for @personalization.
   ///
   /// In en, this message translates to:
@@ -585,12 +579,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Owner'**
   String get ownerBadge;
-
-  /// No description provided for @revoke.
-  ///
-  /// In en, this message translates to:
-  /// **'Revoke'**
-  String get revoke;
 
   /// No description provided for @enable2fa.
   ///
@@ -873,48 +861,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Do not include http:// or https:// in the server address'**
   String get serverUrlInvalid;
-
-  /// No description provided for @devicesDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Active sessions for your account.'**
-  String get devicesDescription;
-
-  /// No description provided for @noPairedDevices.
-  ///
-  /// In en, this message translates to:
-  /// **'No devices.'**
-  String get noPairedDevices;
-
-  /// No description provided for @deviceToken.
-  ///
-  /// In en, this message translates to:
-  /// **'Device {tokenPrefix}'**
-  String deviceToken(String tokenPrefix);
-
-  /// No description provided for @current.
-  ///
-  /// In en, this message translates to:
-  /// **'Current'**
-  String get current;
-
-  /// No description provided for @paired.
-  ///
-  /// In en, this message translates to:
-  /// **'Paired'**
-  String get paired;
-
-  /// No description provided for @revokeDeviceTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Revoke device?'**
-  String get revokeDeviceTitle;
-
-  /// No description provided for @revokeDeviceBody.
-  ///
-  /// In en, this message translates to:
-  /// **'This device will be signed out immediately.'**
-  String get revokeDeviceBody;
 
   /// No description provided for @disable2faTitle.
   ///

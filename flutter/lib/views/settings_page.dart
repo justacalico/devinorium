@@ -12,7 +12,6 @@ import 'folder_picker_dialog.dart';
 import 'window_title_drag.dart';
 
 part 'settings/account_section.dart';
-part 'settings/devices_section.dart';
 part 'settings/provider_card.dart';
 part 'settings/personalization_section.dart';
 part 'settings/accounts_section.dart';
@@ -46,7 +45,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final sections = [
       _AccountSection(state: state),
       _ProviderCard(state: state),
-      _DevicesSection(state: state),
       _PersonalizationSection(state: state),
       _GitSection(state: state),
       _CloneRootSection(state: state),

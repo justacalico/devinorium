@@ -16,7 +16,6 @@ class _FakeApiService extends ApiService {
   int updateMeCalls = 0;
   int testProviderCalls = 0;
   int createUserCalls = 0;
-  int revokeDeviceCalls = 0;
   int getCloneRootCalls = 0;
   int setCloneRootCalls = 0;
   String? savedProviderCommand;
@@ -28,12 +27,10 @@ class _FakeApiService extends ApiService {
   List<DirEntry> listFilesToReturn = const [];
 
   final List<User> _users;
-  final List<Device> _devices;
   final List<GitConnection> _gitConnections;
 
   _FakeApiService({
     List<User>? users,
-    List<Device>? devices,
     List<GitConnection>? gitConnections,
   })  : _users = users ??
             [User(
@@ -44,16 +41,6 @@ class _FakeApiService extends ApiService {
               isOwner: true,
               providerId: 'devin-cli',
               providerCommand: 'devin',
-            )],
-        _devices = devices ??
-            [Device(
-              deviceId: 'dev1',
-              tokenPrefix: 'abc',
-              name: 'Phone',
-              createdAt: '',
-              lastSeenAt: '',
-              expiresAt: '',
-              isCurrent: true,
             )],
         _gitConnections = gitConnections ??
             const [
@@ -110,9 +97,6 @@ class _FakeApiService extends ApiService {
   }
 
   @override
-  Future<List<Device>> listDevices() async => List.unmodifiable(_devices);
-
-  @override
   Future<List<GitConnection>> listGitConnections() async =>
       List.unmodifiable(_gitConnections);
 
@@ -122,12 +106,6 @@ class _FakeApiService extends ApiService {
 
   @override
   Future<void> disconnectGitLab({String? hostname}) async {}
-
-  @override
-  Future<void> revokeDevice(String deviceId) async {
-    revokeDeviceCalls++;
-    _devices.removeWhere((d) => d.deviceId == deviceId);
-  }
 
   @override
   Future<String?> getCloneRoot() async {
@@ -330,7 +308,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(6);
+    state.setSettingsTopicIndex(5);
     await tester.pumpAndSettle();
 
     expect(find.text('Manage'), findsOneWidget);
@@ -360,31 +338,6 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Create user'), findsNothing);
   });
 
-  testWidgets('Devices section lists paired devices', (tester) async {
-    final fake = _FakeApiService();
-    final state = AppState.test(
-      api: fake,
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-    );
-
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
-
-    state.setSettingsTopicIndex(2);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Devices'), findsOneWidget);
-    expect(find.text('Phone'), findsOneWidget);
-  });
-
   testWidgets('Creating a user adds it to the accounts list', (tester) async {
     final fake = _FakeApiService();
     final state = AppState.test(
@@ -403,7 +356,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(6);
+    state.setSettingsTopicIndex(5);
     await tester.pumpAndSettle();
 
     final openButton = find.widgetWithText(FilledButton, 'Create user');
@@ -443,7 +396,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // With 6 sections for non-owners, index 10 clamps to 5 (Clone root).
+    // With 5 sections for non-owners, index 10 clamps to 4 (Clone root).
     expect(find.text('Clone root'), findsOneWidget);
   });
 
@@ -463,7 +416,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(3);
+    state.setSettingsTopicIndex(2);
     await tester.pumpAndSettle();
 
     expect(find.text('Theme'), findsOneWidget);
@@ -488,7 +441,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(3);
+    state.setSettingsTopicIndex(2);
     await tester.pumpAndSettle();
 
     expect(find.text('Language'), findsOneWidget);
@@ -517,7 +470,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.text('Git'), findsOneWidget);
@@ -545,7 +498,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.byType(GitLabIcon), findsOneWidget);
@@ -571,7 +524,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.byType(GitProviderTile), findsNWidgets(2));
@@ -606,7 +559,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.text('Disconnect'), findsOneWidget);
@@ -637,7 +590,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.text('GitLab CLI (glab) is not installed'), findsOneWidget);
@@ -666,7 +619,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.text('Bitbucket'), findsOneWidget);
@@ -693,7 +646,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     expect(find.text('Clone root'), findsOneWidget);
@@ -722,7 +675,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     expect(find.text('Clone root'), findsOneWidget);
@@ -751,7 +704,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     final field = find.byType(TextField);
@@ -784,7 +737,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     final field = find.byType(TextField);
@@ -814,7 +767,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     final browse = find.byTooltip('Browse...');

@@ -1,6 +1,5 @@
 export 'attachment.dart';
 export 'auth.dart';
-export 'device.dart';
 export 'files.dart';
 export 'git.dart';
 export 'json_utils.dart';

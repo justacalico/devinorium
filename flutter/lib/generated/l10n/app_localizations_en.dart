@@ -190,9 +190,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get provider => 'Provider';
 
   @override
-  String get devices => 'Devices';
-
-  @override
   String get personalization => 'Personalization';
 
   @override
@@ -264,9 +261,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ownerBadge => 'Owner';
-
-  @override
-  String get revoke => 'Revoke';
 
   @override
   String get enable2fa => 'Enable 2FA';
@@ -422,29 +416,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get serverUrlInvalid =>
       'Do not include http:// or https:// in the server address';
-
-  @override
-  String get devicesDescription => 'Active sessions for your account.';
-
-  @override
-  String get noPairedDevices => 'No devices.';
-
-  @override
-  String deviceToken(String tokenPrefix) {
-    return 'Device $tokenPrefix';
-  }
-
-  @override
-  String get current => 'Current';
-
-  @override
-  String get paired => 'Paired';
-
-  @override
-  String get revokeDeviceTitle => 'Revoke device?';
-
-  @override
-  String get revokeDeviceBody => 'This device will be signed out immediately.';
 
   @override
   String get disable2faTitle => 'Disable 2FA?';
