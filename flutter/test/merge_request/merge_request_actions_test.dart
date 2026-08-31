@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 import 'package:devinorium_frontend/merge_request/merge_request_models.dart';
 import 'package:devinorium_frontend/state/async_value.dart';
+import 'package:devinorium_frontend/views/merge_request_action_bar.dart';
 import 'package:devinorium_frontend/views/merge_request_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -177,8 +178,8 @@ void main() {
       );
       expect(
         tester
-            .widget<TextButton>(
-                find.widgetWithText(TextButton, 'Close merge request'))
+            .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Close merge request'))
             .onPressed,
         isNull,
       );
@@ -186,6 +187,15 @@ void main() {
       await tester.tap(find.text('Close merge request'));
       await tester.pump();
       expect(performed, [MergeRequestAction.merge]);
+
+      final disabledClose = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'Close merge request'),
+      );
+      final disabledFg = disabledClose.style?.foregroundColor
+          ?.resolve({WidgetState.disabled});
+      final enabledFg = disabledClose.style?.foregroundColor
+          ?.resolve(<WidgetState>{});
+      expect(disabledFg, isNot(equals(enabledFg)));
 
       gate.complete();
       await tester.pumpAndSettle();
@@ -233,6 +243,37 @@ void main() {
 
       expect(find.text('Method Not Allowed'), findsOneWidget);
       expect(find.text('Add feature'), findsOneWidget);
+    });
+
+    testWidgets('groups compact macOS-style buttons tightly together',
+        (tester) async {
+      await tester.pumpWidget(wrap(_detail()));
+      await tester.pumpAndSettle();
+
+      final bar = tester.widget<Wrap>(
+        find.descendant(
+          of: find.byType(MergeRequestActionBar),
+          matching: find.byType(Wrap),
+        ),
+      );
+      expect(bar.spacing, 6);
+      expect(bar.runSpacing, 6);
+
+      final merge = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Merge'),
+      );
+      final mergeShape = merge.style?.shape?.resolve({});
+      expect(mergeShape, isA<RoundedRectangleBorder>());
+      expect(
+        (mergeShape as RoundedRectangleBorder).borderRadius,
+        BorderRadius.circular(7),
+      );
+
+      final close = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'Close merge request'),
+      );
+      expect(close.style?.minimumSize?.resolve({})?.height, 30);
+      expect(close.style?.shape?.resolve({}), isA<RoundedRectangleBorder>());
     });
   });
 }
