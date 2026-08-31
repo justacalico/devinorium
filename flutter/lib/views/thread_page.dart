@@ -90,12 +90,17 @@ class _ThreadPageState extends State<ThreadPage> {
               )
             : null,
         title: WindowTitleDrag(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              if (tag != null) ...[const SizedBox(height: 2), ThreadTag(tag)],
+              if (tag != null) ...[ThreadTag(tag), const SizedBox(width: 8)],
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ),
