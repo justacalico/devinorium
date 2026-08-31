@@ -214,6 +214,7 @@ void main() {
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Providers'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
+    expect(find.text('Clone root'), findsOneWidget);
     expect(find.text('Manage'), findsOneWidget);
     expect(find.text('Owner'), findsOneWidget);
   });
@@ -238,6 +239,7 @@ void main() {
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Providers'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
+    expect(find.text('Clone root'), findsOneWidget);
     expect(find.text('Manage'), findsNothing);
   });
 
@@ -262,6 +264,58 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.settingsTopicIndex, 2);
+  });
+
+  testWidgets('Tapping Manage nav topic selects the accounts section', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    state.setPage(MainPage.settings);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.tap(find.text('Manage'));
+    await tester.pumpAndSettle();
+
+    // Manage is the last owner topic; its index must map to the accounts
+    // section, not the clone-root section that precedes it.
+    expect(state.settingsTopicIndex, 5);
+  });
+
+  testWidgets('Tapping Clone root nav topic selects the clone-root section', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    state.setPage(MainPage.settings);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.tap(find.text('Clone root'));
+    await tester.pumpAndSettle();
+
+    expect(state.settingsTopicIndex, 4);
   });
 
   testWidgets('Sidebar thread tiles do not show status tags', (tester) async {
