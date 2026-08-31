@@ -95,6 +95,40 @@ void main() {
     expect(find.text('Working'), findsOneWidget);
   });
 
+  testWidgets('ThreadPage renders tag pill and title on the same line', (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Thread one',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [Message(role: 'user', content: 'hi')],
+      ),
+      sending: true,
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: ChangeNotifierProvider<AppState>.value(
+        value: state,
+        child: const ThreadPage(),
+      ),
+    ));
+    await tester.pump();
+
+    final tagCenter = tester.getCenter(find.text('Running'));
+    final titleCenter = tester.getCenter(find.text('Thread one'));
+
+    // Same horizontal line: vertical centers match, pill sits left of the title.
+    expect((tagCenter.dy - titleCenter.dy).abs(), lessThan(1.0));
+    expect(tagCenter.dx, lessThan(titleCenter.dx));
+  });
+
   testWidgets('ThreadPage shows Needs approval when a permission request is pending', (tester) async {
     final state = AppState.test(
       activeThreadId: 't1',
