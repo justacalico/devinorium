@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.24.0 - 2026-08-31
+#### Features
+- 发布前端二进制到 GitLab releases - (52cc985) - HttpAnimations
+
+- - -
+
 ## v0.23.0 - 2026-08-31
 #### Features
 - 线程失败时通过 kDebugMode 守护的日志输出调试信息 - (5a3ae66) - HttpAnimations
