@@ -50,8 +50,9 @@ class MergeRequestView extends StatelessWidget {
         onAction: onAction,
       );
     }
-    if (detail.isLoading)
+    if (detail.isLoading) {
       return const Center(child: CircularProgressIndicator());
+    }
     if (detail.isError) {
       return _ErrorView(error: '${detail.errorOrNull}', onRetry: onRetry);
     }
@@ -730,12 +731,15 @@ class _ChangesTabState extends State<_ChangesTab> {
   }
 
   Widget _changeIcon(MergeRequestChange change) {
-    if (change.newFile)
+    if (change.newFile) {
       return const Icon(Icons.add, size: 18, color: Colors.green);
-    if (change.deletedFile)
+    }
+    if (change.deletedFile) {
       return const Icon(Icons.remove, size: 18, color: Colors.red);
-    if (change.renamedFile)
+    }
+    if (change.renamedFile) {
       return const Icon(Icons.drive_file_rename_outline, size: 18);
+    }
     return const Icon(Icons.edit, size: 18);
   }
 }
