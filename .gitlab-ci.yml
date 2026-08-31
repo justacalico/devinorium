@@ -136,7 +136,7 @@ build-android:
     paths:
       - devinorium-android.apk
       - devinorium-android.aab
-    expire_in: 30 days
+    expire_in: 3 days
   after_script:
     - rm -f flutter/android/app/upload-keystore.jks flutter/android/app/key.properties
   rules:
@@ -180,7 +180,7 @@ build-linux:
       - devinorium-linux-x86_64.tar.gz
       - devinorium-linux-x86_64.zip
       - devinorium-linux-x86_64.deb
-    expire_in: 30 days
+    expire_in: 3 days
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   timeout: 2h
@@ -219,6 +219,17 @@ release:
   stage: release
   tags: [linux-truenas]
   resource_group: release
+  needs:
+    - job: verify-cog
+      artifacts: false
+    - job: verify-frontend
+      artifacts: false
+    - job: verify-backend
+      artifacts: false
+    - job: build-android
+      artifacts: true
+    - job: build-linux
+      artifacts: true
   cache:
     <<: *tool-cache
     policy: pull
