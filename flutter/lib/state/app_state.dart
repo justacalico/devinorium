@@ -11,6 +11,7 @@ import '../l10n/global_l10n.dart';
 import '../merge_request/gitlab_merge_request_provider.dart';
 import '../models/composer_mode.dart';
 import '../utils/link_opener.dart' as link_opener;
+import '../utils/debug_log.dart';
 import '../models/models.dart';
 import '../services/notification_service.dart';
 import 'async_value.dart';

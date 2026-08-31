@@ -96,7 +96,9 @@ mixin ThreadListStore on AppStateBase {
       }
       _userThreadsOffset += chunk.length;
       _userThreadsHasMore = chunk.length == _threadChunkSize;
-    } catch (_) {}
+    } catch (e) {
+      debugLogFailure('threadList.loadUserThreadsChunk', e);
+    }
     _loadingMoreUserThreads = false;
   }
 
@@ -122,7 +124,9 @@ mixin ThreadListStore on AppStateBase {
       _mergeThreads(chunk);
       _projectThreadOffsets[projectId] = offset + chunk.length;
       _projectThreadsHasMore[projectId] = chunk.length == _threadChunkSize;
-    } catch (_) {}
+    } catch (e) {
+      debugLogFailure('threadList.loadProjectThreadsChunk', e);
+    }
     _loadingMoreProjectThreads[projectId] = false;
   }
 
@@ -142,7 +146,9 @@ mixin ThreadListStore on AppStateBase {
       (() async {
         try {
           _groups = await api.listThreadGroups();
-        } catch (_) {}
+        } catch (e) {
+          debugLogFailure('threadList.listThreadGroups', e);
+        }
       })(),
     ]);
     notifyListeners();
@@ -175,7 +181,8 @@ mixin ThreadListStore on AppStateBase {
       _runningThreadIds
         ..clear()
         ..addAll(running.where((id) => loaded.contains(id)));
-    } catch (_) {
+    } catch (e) {
+      debugLogFailure('threadList.refreshRunningThreads', e);
       _runningThreadIds.clear();
     }
     notifyListeners();
@@ -213,6 +220,7 @@ mixin ThreadListStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      debugLogFailure('threadList.renameThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
     }
@@ -241,6 +249,7 @@ mixin ThreadListStore on AppStateBase {
       _globalError = '';
       notifyListeners();
     } catch (e) {
+      debugLogFailure('threadList.pinThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
     }
@@ -285,6 +294,7 @@ mixin ThreadListStore on AppStateBase {
       await store.load();
       await refreshThreadsAndGroups();
     } catch (e) {
+      debugLogFailure('threadList.createNewThread', e);
       _globalError = '$e';
       notifyListeners();
     }
@@ -315,7 +325,9 @@ mixin ThreadListStore on AppStateBase {
         if (apiProjectId != 0) {
           projectId = apiProjectId;
         }
-      } catch (_) {}
+      } catch (e) {
+        debugLogFailure('threadList.openThread.project', e, threadId: id);
+      }
       _activeProjectId = projectId;
 
       // Load the threads list for the active project.
@@ -350,6 +362,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (e) {
       stopwatch?.stop();
       _threadOpening = false;
+      debugLogFailure('threadList.openThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
     }
@@ -363,6 +376,7 @@ mixin ThreadListStore on AppStateBase {
       await store.saveSettings();
       await refreshThreadsAndGroups();
     } catch (e) {
+      debugLogFailure('threadList.saveThreadSettings', e);
       _globalError = '$e';
       notifyListeners();
     }
@@ -379,6 +393,7 @@ mixin ThreadListStore on AppStateBase {
       }
       await refreshThreadsAndGroups();
     } catch (e) {
+      debugLogFailure('threadList.deleteThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
     }
@@ -390,6 +405,7 @@ mixin ThreadListStore on AppStateBase {
       await api.deleteThreadGroup(id);
       await refreshThreadsAndGroups();
     } catch (e) {
+      debugLogFailure('threadList.deleteThreadGroup', e);
       _globalError = '$e';
       notifyListeners();
     }
@@ -402,6 +418,7 @@ mixin ThreadListStore on AppStateBase {
     try {
       await store.loadMoreMessages();
     } catch (e) {
+      debugLogFailure('threadList.loadMoreMessages', e);
       _globalError = '$e';
       notifyListeners();
     }
@@ -418,6 +435,7 @@ mixin ThreadListStore on AppStateBase {
     try {
       await store.resume();
     } catch (e) {
+      debugLogFailure('threadList.resumeThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
     }
@@ -445,6 +463,7 @@ mixin ThreadListStore on AppStateBase {
     try {
       await store.respondToPermissionRequest(optionId);
     } catch (e) {
+      debugLogFailure('threadList.respondToPermissionRequest', e);
       _globalError = '$e';
       notifyListeners();
     }
@@ -457,6 +476,7 @@ mixin ThreadListStore on AppStateBase {
     try {
       await store.respondToAskRequest(answers);
     } catch (e) {
+      debugLogFailure('threadList.respondToAskRequest', e);
       _globalError = '$e';
       notifyListeners();
     }

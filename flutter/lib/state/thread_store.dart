@@ -8,6 +8,7 @@ import '../api/api_service.dart';
 import '../l10n/global_l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
+import '../utils/debug_log.dart';
 import 'async_value.dart';
 import 'command_scheduler.dart';
 import 'streaming_reducer.dart';
@@ -171,6 +172,7 @@ class ThreadStore {
       _applyRunSnapshot(run as Map<String, dynamic>);
       unawaited(_loadInitialMessages());
     } catch (e) {
+      debugLogFailure('thread.load', e, threadId: threadId);
       _status = ThreadStoreStatus.error;
       _globalError = '$e';
       _emit();
@@ -186,6 +188,7 @@ class ThreadStore {
       _emit();
       unawaited(_loadInitialMessages());
     } catch (e) {
+      debugLogFailure('thread.reloadDetail', e, threadId: threadId);
       _globalError = '$e';
       _emit();
     }
@@ -214,6 +217,7 @@ class ThreadStore {
             _globalError = '';
             _emit();
           } catch (e) {
+            debugLogFailure('thread.resume.loadDetail', e, threadId: threadId);
             _globalError = '$e';
             _emit();
             return;
@@ -231,6 +235,7 @@ class ThreadStore {
           await reloadDetail();
         }
       } catch (e) {
+        debugLogFailure('thread.resume', e, threadId: threadId);
         _globalError = '$e';
         _emit();
       }
@@ -306,6 +311,7 @@ class ThreadStore {
               onDone: () => _handleStreamDone(token),
             );
       } catch (e) {
+        debugLogFailure('thread.sendMessage.listen', e, threadId: threadId);
         _finishStream(error: '$e', phase: StreamPhase.failed);
       }
     });
@@ -326,6 +332,7 @@ class ThreadStore {
         await reloadDetail();
       }
     } catch (e) {
+      debugLogFailure('thread.saveSettings', e, threadId: threadId);
       _globalError = '$e';
       _emit();
     }
@@ -337,6 +344,7 @@ class ThreadStore {
       try {
         await api.stopThread(threadId);
       } catch (e) {
+        debugLogFailure('thread.stop', e, threadId: threadId);
         _globalError = '$e';
         _emit();
       }
@@ -353,6 +361,7 @@ class ThreadStore {
         _streaming = _streaming.copyWith(clearPendingPermission: true);
         _emit();
       } catch (e) {
+        debugLogFailure('thread.respondPermission', e, threadId: threadId);
         _globalError = '$e';
         _emit();
       }
@@ -369,6 +378,7 @@ class ThreadStore {
         _streaming = _streaming.copyWith(clearPendingAsk: true);
         _emit();
       } catch (e) {
+        debugLogFailure('thread.respondAsk', e, threadId: threadId);
         _globalError = '$e';
         _emit();
       }
@@ -430,6 +440,7 @@ class ThreadStore {
       );
       _emit();
     } catch (e) {
+      debugLogFailure('thread.loadMoreMessages', e, threadId: threadId);
       _globalError = '$e';
       _emit();
     }
@@ -465,7 +476,8 @@ class ThreadStore {
         );
         _emit();
       }
-    } catch (_) {
+    } catch (e) {
+      debugLogFailure('thread.refreshTail', e, threadId: threadId);
       await reloadDetail();
     }
   }
@@ -580,6 +592,11 @@ class ThreadStore {
       refreshTail();
     } else if (ev.event == 'error') {
       _cancelStream();
+      debugLogFailure(
+        'thread.stream.event',
+        ev.data.isNotEmpty ? ev.data : 'error event',
+        threadId: threadId,
+      );
       _finishStream(
         phase: StreamPhase.failed,
         error: ev.data.isNotEmpty ? ev.data : null,
@@ -624,7 +641,8 @@ class ThreadStore {
           _emit();
           return;
         }
-      } catch (_) {
+      } catch (e) {
+        debugLogFailure('thread.stop.refreshTail', e, threadId: threadId);
         // keep polling
       }
     }
@@ -643,6 +661,7 @@ class ThreadStore {
       unawaited(resume());
       return;
     }
+    debugLogFailure('thread.stream', e, threadId: threadId);
     _finishStream(error: '$e', phase: StreamPhase.failed);
   }
 
@@ -652,6 +671,7 @@ class ThreadStore {
     // waiting for a user message acknowledgement, treat it as a failure and
     // restore the composer so the user can retry.
     if (_pendingSend != null) {
+      debugLogFailure('thread.stream.done', appL10n.connectionFailed, threadId: threadId);
       _finishStream(phase: StreamPhase.failed, error: appL10n.connectionFailed);
       return;
     }
@@ -739,6 +759,7 @@ class ThreadStore {
         _emit();
       }
     } catch (e) {
+      debugLogFailure('thread.loadInitialMessages', e, threadId: threadId);
       _globalError = '$e';
       _emit();
     }
