@@ -91,7 +91,6 @@
   "account": "Account",
   "providers": "Providers",
   "provider": "Provider",
-  "devices": "Devices",
   "personalization": "Personalization",
   "manage": "Manage",
   "projects": "Projects",
@@ -116,7 +115,6 @@
   "newName": "New name",
   "options": "Options",
   "ownerBadge": "Owner",
-  "revoke": "Revoke",
   "enable2fa": "Enable 2FA",
   "totpSetupInstructions": "Scan this secret in your authenticator app, then enter the current code.",
   "verify": "Verify",
@@ -206,20 +204,6 @@
   "serverUrl": "Server URL",
   "serverUrlHint": "example.com",
   "serverUrlInvalid": "Do not include http:// or https:// in the server address",
-  "devicesDescription": "Active sessions for your account.",
-  "noPairedDevices": "No devices.",
-  "deviceToken": "Device {tokenPrefix}",
-  "@deviceToken": {
-    "placeholders": {
-      "tokenPrefix": {
-        "type": "String"
-      }
-    }
-  },
-  "current": "Current",
-  "paired": "Paired",
-  "revokeDeviceTitle": "Revoke device?",
-  "revokeDeviceBody": "This device will be signed out immediately.",
   "disable2faTitle": "Disable 2FA?",
   "disable2faConfirmation": "This will remove TOTP-based two-factor authentication from your account. Are you sure?",
   "disable2fa": "Disable 2FA",

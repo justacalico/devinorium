@@ -437,16 +437,15 @@ async fn bearer_token_bypasses_csrf_with_cors() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/auth/devices/revoke")
+                .uri("/api/auth/totp/disable")
                 .header(header::ORIGIN, "https://devinorium.example")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"device_id":"does-not-exist"}"#))
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(
         resp.headers().get("access-control-allow-origin").unwrap(),
         "https://devinorium.example"
@@ -464,13 +463,12 @@ async fn bearer_token_bypasses_csrf_without_origin() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/auth/devices/revoke")
+                .uri("/api/auth/totp/disable")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"device_id":"does-not-exist"}"#))
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
 }

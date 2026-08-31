@@ -3,7 +3,6 @@
 pub mod accounts;
 pub mod auth;
 pub mod clones;
-pub mod devices;
 pub mod files;
 pub mod git;
 pub mod git_connections;

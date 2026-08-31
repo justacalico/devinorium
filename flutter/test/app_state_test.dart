@@ -2229,7 +2229,7 @@ void main() {
     });
 
     test(
-      'loadSettingsData fetches devices, git connections, clone root and users in parallel',
+      'loadSettingsData fetches git connections, clone root and users in parallel',
       () async {
         final state = AppState.test(
           user: User(
@@ -2245,19 +2245,6 @@ void main() {
             client: ApiClient.withClient(
               MockClient((req) async {
                 final path = req.url.path;
-                if (path == '/api/auth/devices') {
-                  return _json(200, [
-                    {
-                      'device_id': 'd1',
-                      'token_prefix': 'ab',
-                      'name': 'current',
-                      'created_at': '',
-                      'last_seen_at': '',
-                      'expires_at': '',
-                      'is_current': true,
-                    },
-                  ]);
-                }
                 if (path == '/api/git-connections') {
                   return _json(200, [
                     {'id': 'gitlab', 'name': 'GitLab', 'enabled': true},
@@ -2285,8 +2272,6 @@ void main() {
           ),
         );
         await state.loadSettingsData();
-        expect(state.devices, hasLength(1));
-        expect(state.devices.first.deviceId, 'd1');
         expect(state.gitConnections, hasLength(1));
         expect(state.gitConnections.first.id, 'gitlab');
         expect(state.cloneRoot, '/srv/clones');

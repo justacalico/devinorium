@@ -213,7 +213,6 @@ void main() {
 
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Providers'), findsOneWidget);
-    expect(find.text('Devices'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
     expect(find.text('Manage'), findsOneWidget);
     expect(find.text('Owner'), findsOneWidget);
@@ -238,7 +237,6 @@ void main() {
 
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Providers'), findsOneWidget);
-    expect(find.text('Devices'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
     expect(find.text('Manage'), findsNothing);
   });
@@ -263,7 +261,7 @@ void main() {
     await tester.tap(find.text('Personalization'));
     await tester.pumpAndSettle();
 
-    expect(state.settingsTopicIndex, 3);
+    expect(state.settingsTopicIndex, 2);
   });
 
   testWidgets('Sidebar thread tiles do not show status tags', (tester) async {

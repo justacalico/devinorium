@@ -856,37 +856,6 @@ void main() {
     });
   });
 
-  group('Device', () {
-    test('parses all fields', () {
-      final d = Device.fromJson({
-        'device_id': 'dev123',
-        'token_prefix': 'abc',
-        'name': 'Phone',
-        'created_at': '2024-01-01',
-        'last_seen_at': '2024-01-02',
-        'expires_at': '2024-02-01',
-        'is_current': true,
-      });
-      expect(d.deviceId, 'dev123');
-      expect(d.tokenPrefix, 'abc');
-      expect(d.name, 'Phone');
-      expect(d.createdAt, '2024-01-01');
-      expect(d.lastSeenAt, '2024-01-02');
-      expect(d.expiresAt, '2024-02-01');
-      expect(d.isCurrent, true);
-    });
-
-    test('defaults missing fields', () {
-      final d = Device.fromJson({'device_id': 'd'});
-      expect(d.tokenPrefix, '');
-      expect(d.name, isNull);
-      expect(d.createdAt, '');
-      expect(d.lastSeenAt, '');
-      expect(d.expiresAt, '');
-      expect(d.isCurrent, false);
-    });
-  });
-
   group('GitRepoInfo', () {
     test('parses repo status', () {
       final r = GitRepoInfo.fromJson({

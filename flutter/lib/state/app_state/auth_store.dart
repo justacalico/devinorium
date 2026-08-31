@@ -6,8 +6,6 @@ mixin AuthStore on AppStateBase {
   @override
   List<User> _users = [];
   @override
-  List<Device> _devices = [];
-  @override
   String _loginError = '';
   @override
   bool _showTotpField = false;
@@ -17,8 +15,6 @@ mixin AuthStore on AppStateBase {
   User? get user => _user;
   @override
   List<User> get users => _users;
-  @override
-  List<Device> get devices => _devices;
   @override
   bool get isOwner => _user?.isOwner ?? false;
   @override
@@ -127,19 +123,8 @@ mixin AuthStore on AppStateBase {
     notifyListeners();
   }
   @override
-  Future<void> loadDevices() async {
-    try {
-      _devices = await api.listDevices();
-      _globalError = '';
-    } catch (e) {
-      _globalError = '$e';
-    }
-    notifyListeners();
-  }
-  @override
   Future<void> loadSettingsData() async {
     final futures = <Future<void>>[
-      loadDevices(),
       loadGitConnections(),
       loadCloneRoot(),
     ];
@@ -147,17 +132,6 @@ mixin AuthStore on AppStateBase {
       futures.add(loadUsers());
     }
     await Future.wait(futures);
-  }
-  @override
-  Future<void> revokeDevice(String token) async {
-    try {
-      await api.revokeDevice(token);
-      _globalError = '';
-      await loadDevices();
-    } catch (e) {
-      _globalError = '$e';
-      notifyListeners();
-    }
   }
   @override
   Future<void> createUser({

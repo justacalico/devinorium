@@ -11,7 +11,6 @@ class _SettingsNav extends StatelessWidget {
     final topics = [
       (icon: Icons.person_outline, label: l.account),
       (icon: Icons.cloud_outlined, label: l.providers),
-      (icon: Icons.devices_outlined, label: l.devices),
       (icon: Icons.palette_outlined, label: l.personalization),
       (icon: Icons.code_outlined, label: l.git),
       if (state.isOwner)

@@ -53,17 +53,6 @@ class ApiService {
     await _client.post('/api/auth/totp/disable', {});
   }
 
-  // ---- Devices ----
-
-  Future<List<Device>> listDevices() async {
-    final list = await _client.getList('/api/auth/devices');
-    return list.map(Device.fromJson).toList();
-  }
-
-  Future<void> revokeDevice(String deviceId) async {
-    await _client.post('/api/auth/devices/revoke', {'device_id': deviceId});
-  }
-
   // ---- Git ----
 
   Future<GitRepoInfo> gitRepoStatus(int projectId, {bool force = false}) async {
