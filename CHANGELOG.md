@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.23.0 - 2026-08-31
+#### Features
+- 线程失败时通过 kDebugMode 守护的日志输出调试信息 - (5a3ae66) - HttpAnimations
+
+- - -
+
 ## v0.22.0 - 2026-08-31
 #### Features
 - 合并请求操作按钮改为紧凑 macOS 风格 - (bae5476) - HttpAnimations
