@@ -38,6 +38,7 @@ class _StreamableApiService extends ApiService {
   Stream<SseEvent> Function()? eventsBuilder;
   Map<String, dynamic>? runResponse;
   String? stoppedThread;
+  String? lastClientMessageId;
 
   _StreamableApiService(ApiClient client) : super(client: client);
 
@@ -51,9 +52,11 @@ class _StreamableApiService extends ApiService {
     required String threadId,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
+    lastClientMessageId = clientMessageId;
     return streamBuilder?.call() ?? Stream.empty();
   }
 
@@ -1023,7 +1026,8 @@ void main() {
           'total_messages': 0,
         }),
       ]);
-      final api = _StreamableApiService(client)..runResponse = {'status': 'idle'};
+      final api = _StreamableApiService(client)
+        ..runResponse = {'status': 'idle'};
       final state = AppState.test(
         api: api,
         projects: [
@@ -1034,10 +1038,7 @@ void main() {
 
       await state.openThread('a');
 
-      expect(
-        logs,
-        anyElement(matches(RegExp(r'^Thread a opened in \d+ms$'))),
-      );
+      expect(logs, anyElement(matches(RegExp(r'^Thread a opened in \d+ms$'))));
     });
 
     test('createNewThread requires a project', () async {
@@ -2077,68 +2078,83 @@ void main() {
       await eventsController.close();
     });
 
-    test('sendMessage clears composer only after user_message event', () async {
-      final client = _clientFor([
-        _json(200, {}),
-        _json(200, {
-          'thread': {
-            'id': 'a',
-            'title': 't',
-            'project_id': 1,
-            'model': 'glm-5-2',
-            'permission_mode': 'normal',
-            'created_at': '',
-            'updated_at': '',
-          },
-          'messages': [],
-        }),
-        _json(200, []),
-        _json(200, []),
-        _json(200, []),
-        _json(200, []),
-      ]);
-      final api = _StreamableApiService(client);
-      final controller = StreamController<SseEvent>();
-      api.streamBuilder = () => controller.stream;
+    test(
+      'sendMessage clears composer immediately and replaces optimistic on user_message',
+      () async {
+        final client = _clientFor([
+          _json(200, {}),
+          _json(200, {
+            'thread': {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': 'glm-5-2',
+              'permission_mode': 'normal',
+              'created_at': '',
+              'updated_at': '',
+            },
+            'messages': [],
+          }),
+          _json(200, []),
+          _json(200, []),
+          _json(200, []),
+          _json(200, []),
+        ]);
+        final api = _StreamableApiService(client);
+        final controller = StreamController<SseEvent>();
+        api.streamBuilder = () => controller.stream;
 
-      final state = AppState.test(
-        api: api,
-        activeProjectId: 1,
-        activeThreadId: 'a',
-        activeThreadDetail: ThreadDetail(
-          thread: Thread(
-            id: 'a',
-            title: 't',
-            projectId: 1,
-            model: '',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        final state = AppState.test(
+          api: api,
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 't',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: [],
           ),
-          messages: [],
-        ),
-      );
-      state.setSelectedModel('glm-5-2');
-      state.setSelectedPermission('normal');
-      state.setComposerText('hello');
+        );
+        state.setSelectedModel('glm-5-2');
+        state.setSelectedPermission('normal');
+        state.setComposerText('hello');
 
-      final completer = Completer<void>();
-      state.addListener(() {
-        if (state.activeThreadDetail!.messages.isNotEmpty) {
-          if (!completer.isCompleted) completer.complete();
-        }
-      });
+        final completer = Completer<void>();
+        state.addListener(() {
+          if (state.activeThreadDetail!.messages.any((m) => m.id != null)) {
+            if (!completer.isCompleted) completer.complete();
+          }
+        });
 
-      await state.sendMessage();
-      expect(state.composerText, 'hello');
-      controller.add(
-        SseEvent('user_message', '{"role":"user","content":"hello"}'),
-      );
-      await completer.future.timeout(Duration(seconds: 2));
-      expect(state.composerText, '');
+        await state.sendMessage();
+        expect(state.composerText, '');
+        expect(state.activeThreadDetail!.messages, hasLength(1));
+        expect(
+          state.activeThreadDetail!.messages.first.clientMessageId,
+          isNotNull,
+        );
 
-      await controller.close();
-    });
+        final clientId = api.lastClientMessageId;
+        controller.add(
+          SseEvent(
+            'user_message',
+            '{"id":2,"role":"user","content":"hello","client_message_id":"$clientId"}',
+          ),
+        );
+        await completer.future.timeout(Duration(seconds: 2));
+        expect(state.composerText, '');
+        expect(state.activeThreadDetail!.messages, hasLength(1));
+        expect(state.activeThreadDetail!.messages.first.id, 2);
+
+        await controller.close();
+      },
+    );
   });
 
   group('TOTP, dialog and accounts', () {
@@ -2782,21 +2798,24 @@ void main() {
       expect(state.globalError, isNotEmpty);
     });
 
-    test('gitCheckout returns false and surfaces an error when checkout fails', () async {
-      final client = ApiClient.withClient(
-        MockClient((req) async {
-          if (req.url.path == '/api/projects/1/git/checkout') {
-            return _json(500, {'error': 'nope'});
-          }
-          return _json(404, {'error': 'unexpected request'});
-        }),
-      );
+    test(
+      'gitCheckout returns false and surfaces an error when checkout fails',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            if (req.url.path == '/api/projects/1/git/checkout') {
+              return _json(500, {'error': 'nope'});
+            }
+            return _json(404, {'error': 'unexpected request'});
+          }),
+        );
 
-      final state = AppState.test(api: ApiService(client: client));
-      final ok = await state.gitCheckout(1, 'feature');
-      expect(ok, isFalse);
-      expect(state.globalError, isNotEmpty);
-    });
+        final state = AppState.test(api: ApiService(client: client));
+        final ok = await state.gitCheckout(1, 'feature');
+        expect(ok, isFalse);
+        expect(state.globalError, isNotEmpty);
+      },
+    );
 
     test('git refresh timer loads project branch periodically', () async {
       var calls = 0;
@@ -3229,7 +3248,9 @@ void main() {
             createdAt: '',
             updatedAt: '',
           ),
-          plan: Plan(steps: [PlanStep(step: 'S', status: 'pending')]),
+          plan: Plan(
+            steps: [PlanStep(step: 'S', status: 'pending')],
+          ),
         ),
       );
       state.collapsePlanOverlay();
@@ -3256,7 +3277,9 @@ void main() {
             createdAt: '',
             updatedAt: '',
           ),
-          plan: Plan(steps: [PlanStep(step: 'S', status: 'pending')]),
+          plan: Plan(
+            steps: [PlanStep(step: 'S', status: 'pending')],
+          ),
         ),
       );
       state.collapsePlanOverlay();
@@ -3282,7 +3305,9 @@ void main() {
             createdAt: '',
             updatedAt: '',
           ),
-          plan: Plan(steps: [PlanStep(step: 'S', status: 'pending')]),
+          plan: Plan(
+            steps: [PlanStep(step: 'S', status: 'pending')],
+          ),
         ),
       );
       state.collapsePlanOverlay();

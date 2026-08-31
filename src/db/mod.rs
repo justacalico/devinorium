@@ -23,7 +23,7 @@ pub mod thread_groups;
 pub mod threads;
 pub mod users;
 
-pub use messages::NewMessage;
+pub use messages::{DuplicateClientMessageId, NewMessage, MAX_CLIENT_MESSAGE_ID_LEN};
 pub use plans::{NewPlan, PlanRow};
 pub use projects::NewProject;
 pub use thread_groups::NewThreadGroup;
@@ -153,6 +153,7 @@ pub struct MessageRow {
     pub parts: Option<String>,
     pub attachments: String,
     pub model: String,
+    pub client_message_id: Option<String>,
     pub created_at: String,
     pub turn_id: i64,
     pub seq: i64,

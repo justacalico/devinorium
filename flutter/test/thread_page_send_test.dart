@@ -34,19 +34,21 @@ class _SendApiService extends ApiService {
     int? turnLimit,
   }) {
     getThreadCalls++;
-    return Future.value(ThreadDetail(
-      thread: Thread(
-        id: id,
-        title: 'Test',
-        projectId: 1,
-        model: 'm1',
-        permissionMode: 'normal',
-        createdAt: '',
-        updatedAt: '',
+    return Future.value(
+      ThreadDetail(
+        thread: Thread(
+          id: id,
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: const [],
+        totalMessages: 1,
       ),
-      messages: const [],
-      totalMessages: 1,
-    ));
+    );
   }
 
   @override
@@ -78,26 +80,22 @@ class _SendApiService extends ApiService {
     required String threadId,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      Stream.fromIterable([
-        SseEvent(
-          'user_message',
-          '{"id": 2, "role": "user", "content": "hello"}',
-          id: '1',
-        ),
-        SseEvent(
-          'part',
-          '{"type": "text", "content": "Hi"}',
-          id: '2',
-        ),
-        SseEvent(
-          'done',
-          '{"id": 3, "role": "assistant", "content": "Final"}',
-          id: '3',
-        ),
-      ]);
+  }) => Stream.fromIterable([
+    SseEvent(
+      'user_message',
+      '{"id": 2, "role": "user", "content": "hello"}',
+      id: '1',
+    ),
+    SseEvent('part', '{"type": "text", "content": "Hi"}', id: '2'),
+    SseEvent(
+      'done',
+      '{"id": 3, "role": "assistant", "content": "Final"}',
+      id: '3',
+    ),
+  ]);
 }
 
 void main() {
@@ -118,20 +116,20 @@ void main() {
           createdAt: '',
           updatedAt: '',
         ),
-        messages: [
-          Message(id: 1, role: 'user', content: 'existing'),
-        ],
+        messages: [Message(id: 1, role: 'user', content: 'existing')],
         totalMessages: 1,
       ),
       composerText: 'hello',
     );
 
-    await tester.pumpWidget(MaterialApp(
-      home: ChangeNotifierProvider<AppState>.value(
-        value: state,
-        child: const ThreadPage(),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const ThreadPage(),
+        ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
     final send = find.widgetWithIcon(IconButton, Icons.send);

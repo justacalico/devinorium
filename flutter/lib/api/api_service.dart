@@ -344,7 +344,10 @@ class ApiService {
       'offset': offset.toString(),
       'limit': limit.toString(),
     };
-    final uri = _buildPath('/api/threads/$threadId/messages/$messageId', params);
+    final uri = _buildPath(
+      '/api/threads/$threadId/messages/$messageId',
+      params,
+    );
     final j = await _client.get(uri);
     return Message.fromJson(j['message'] as Map<String, dynamic>);
   }
@@ -605,6 +608,7 @@ class ApiService {
     required String threadId,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
@@ -612,6 +616,7 @@ class ApiService {
       path: '/api/threads/$threadId/send/stream',
       prompt: prompt,
       mode: mode,
+      clientMessageId: clientMessageId,
       attachments: attachments,
     );
   }
@@ -666,7 +671,9 @@ class ApiService {
 
   /// Create a remote terminal session for [threadId]. Returns the session id.
   Future<String> createTerminalSession(String threadId) async {
-    final j = await _client.post('/api/terminal/sessions', {'thread_id': threadId});
+    final j = await _client.post('/api/terminal/sessions', {
+      'thread_id': threadId,
+    });
     return j['id'] as String;
   }
 
@@ -683,9 +690,7 @@ class ApiService {
       // Web build: same origin, relative URL.
       return Uri.parse(path);
     }
-    return Uri.parse(base)
-        .replace(path: path)
-        .replace(scheme: 'ws');
+    return Uri.parse(base).replace(path: path).replace(scheme: 'ws');
   }
 
   /// Native bearer token for WebSocket auth headers.

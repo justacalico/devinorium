@@ -46,19 +46,21 @@ class _TestApiService extends ApiService {
     if (throwOnGetThread) {
       return Future.error(Exception('getThread failed'));
     }
-    return Future.value(ThreadDetail(
-      thread: Thread(
-        id: id,
-        title: 'Test',
-        projectId: 1,
-        model: 'm1',
-        permissionMode: 'normal',
-        createdAt: '',
-        updatedAt: '',
+    return Future.value(
+      ThreadDetail(
+        thread: Thread(
+          id: id,
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: const [],
+        totalMessages: 0,
       ),
-      messages: const [],
-      totalMessages: 0,
-    ));
+    );
   }
 
   @override
@@ -69,8 +71,7 @@ class _TestApiService extends ApiService {
     int? turnLimit,
     String? beforeCursor,
     int limit = 50,
-  }) async =>
-      const MessagePage(messages: [], total: 0);
+  }) async => const MessagePage(messages: [], total: 0);
 
   @override
   Future<Map<String, dynamic>> getThreadRun(String id) =>
@@ -81,44 +82,59 @@ class _TestApiService extends ApiService {
     required String threadId,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      Stream.fromIterable([
-        SseEvent(
-          'user_message',
-          '{"id": 2, "role": "user", "content": "hello"}',
-          id: '1',
-        ),
-        SseEvent(
-          'part',
-          '{"type": "text", "content": "Hi"}',
-          id: '2',
-        ),
-        SseEvent(
-          'done',
-          '{"id": 3, "role": "assistant", "content": "Final"}',
-          id: '3',
-        ),
-      ]);
+  }) => Stream.fromIterable([
+    SseEvent(
+      'user_message',
+      '{"id": 2, "role": "user", "content": "hello"}',
+      id: '1',
+    ),
+    SseEvent('part', '{"type": "text", "content": "Hi"}', id: '2'),
+    SseEvent(
+      'done',
+      '{"id": 3, "role": "assistant", "content": "Final"}',
+      id: '3',
+    ),
+  ]);
 }
 
 class _RecordingApiService extends _TestApiService {
   String? lastPrompt;
   String? lastMode;
+  String? lastClientMessageId;
 
   @override
   Stream<SseEvent> sendMessageStream({
     required String threadId,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
     lastPrompt = prompt;
     lastMode = mode;
+    lastClientMessageId = clientMessageId;
     return const Stream.empty();
   }
+}
+
+class _ControlledApiService extends _TestApiService {
+  final _controller = StreamController<SseEvent>();
+
+  StreamController<SseEvent> get controller => _controller;
+
+  @override
+  Stream<SseEvent> sendMessageStream({
+    required String threadId,
+    required String prompt,
+    String? mode,
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) => _controller.stream;
 }
 
 void main() {
@@ -138,33 +154,38 @@ void main() {
     expect(store.detail.valueOrNull, isNotNull);
   });
 
-  test('saveSettings does not reload detail when it is already loaded', () async {
-    final api = _TestApiService();
-    final store = ThreadStore(
-      api: api,
-      threadId: 't1',
-      projectId: 1,
-      detail: AsyncValue.ready(ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
+  test(
+    'saveSettings does not reload detail when it is already loaded',
+    () async {
+      final api = _TestApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+            totalMessages: 0,
+          ),
         ),
-        messages: const [],
-        totalMessages: 0,
-      )),
-      composerText: 'hello',
-    );
+        composerText: 'hello',
+      );
 
-    await store.saveSettings();
+      await store.saveSettings();
 
-    expect(api.updateThreadSettingsCalls, 1);
-    expect(api.getThreadCalls, 0);
-  });
+      expect(api.updateThreadSettingsCalls, 1);
+      expect(api.getThreadCalls, 0);
+    },
+  );
 
   test('saveSettings does not reload detail while it is loading', () async {
     final api = _TestApiService();
@@ -241,18 +262,20 @@ void main() {
         projectId: 1,
         composerText: '/ask  hello world',
         composerMode: ComposerMode.ask,
-        detail: AsyncValue.ready(ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
           ),
-          messages: const [],
-        )),
+        ),
       );
 
       store.onStateChanged = () {};
@@ -270,18 +293,20 @@ void main() {
         projectId: 1,
         composerText: '/ask hello',
         composerMode: ComposerMode.code,
-        detail: AsyncValue.ready(ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
           ),
-          messages: const [],
-        )),
+        ),
       );
 
       store.onStateChanged = () {};
@@ -299,18 +324,20 @@ void main() {
         projectId: 1,
         composerText: '/ask hello',
         composerMode: ComposerMode.plan,
-        detail: AsyncValue.ready(ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
           ),
-          messages: const [],
-        )),
+        ),
       );
 
       store.onStateChanged = () {};
@@ -328,18 +355,20 @@ void main() {
         projectId: 1,
         composerText: '/askhello',
         composerMode: ComposerMode.ask,
-        detail: AsyncValue.ready(ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
           ),
-          messages: const [],
-        )),
+        ),
       );
 
       store.onStateChanged = () {};
@@ -357,18 +386,20 @@ void main() {
         projectId: 1,
         composerText: '/ask',
         composerMode: ComposerMode.ask,
-        detail: AsyncValue.ready(ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
           ),
-          messages: const [],
-        )),
+        ),
       );
 
       store.onStateChanged = () {};
@@ -378,7 +409,7 @@ void main() {
       expect(store.composerText, '/ask');
     });
 
-    test('sendMessage does not mutate composerText', () async {
+    test('sendMessage clears composer and shows optimistic message', () async {
       final api = _RecordingApiService();
       final store = ThreadStore(
         api: api,
@@ -386,36 +417,221 @@ void main() {
         projectId: 1,
         composerText: '/ask  hello world',
         composerMode: ComposerMode.ask,
-        detail: AsyncValue.ready(ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
           ),
-          messages: const [],
-        )),
+        ),
       );
 
       store.onStateChanged = () {};
       await store.sendMessage();
 
       expect(api.lastPrompt, 'hello world');
-      expect(store.composerText, '/ask  hello world');
+      expect(store.composerText, '');
+      final messages = store.displayDetail?.messages ?? [];
+      expect(messages, hasLength(1));
+      expect(messages.first.role, 'user');
+      expect(messages.first.content, 'hello world');
+      expect(messages.first.clientMessageId, api.lastClientMessageId);
     });
+
+    test(
+      'sendMessage removes optimistic message when server echoes it',
+      () async {
+        final api = _ControlledApiService();
+        final store = ThreadStore(
+          api: api,
+          threadId: 't1',
+          projectId: 1,
+          composerText: 'hello',
+          detail: AsyncValue.ready(
+            ThreadDetail(
+              thread: Thread(
+                id: 't1',
+                title: 'Test',
+                projectId: 1,
+                model: 'm1',
+                permissionMode: 'normal',
+                createdAt: '',
+                updatedAt: '',
+              ),
+              messages: const [],
+            ),
+          ),
+        );
+
+        store.onStateChanged = () {};
+        await store.sendMessage();
+
+        final clientId = api.controller.hasListener
+            ? store.displayDetail?.messages.last.clientMessageId
+            : null;
+        api.controller.add(
+          SseEvent(
+            'user_message',
+            '{"id": 2, "role": "user", "content": "hello", '
+                '"client_message_id": "$clientId"}',
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 10));
+
+        final messages = store.displayDetail?.messages ?? [];
+        expect(messages, hasLength(1));
+        expect(messages.first.id, 2);
+        expect(messages.first.clientMessageId, clientId);
+      },
+    );
+
+    test(
+      'sendMessage restores composer when send fails before acknowledgement',
+      () async {
+        final api = _ControlledApiService();
+        final store = ThreadStore(
+          api: api,
+          threadId: 't1',
+          projectId: 1,
+          composerText: '/ask  hello',
+          composerMode: ComposerMode.ask,
+          attachments: [
+            (
+              filename: 'note.txt',
+              mime: 'text/plain',
+              bytes: Uint8List.fromList([1, 2, 3]),
+            ),
+          ],
+          detail: AsyncValue.ready(
+            ThreadDetail(
+              thread: Thread(
+                id: 't1',
+                title: 'Test',
+                projectId: 1,
+                model: 'm1',
+                permissionMode: 'normal',
+                createdAt: '',
+                updatedAt: '',
+              ),
+              messages: const [],
+            ),
+          ),
+        );
+
+        store.onStateChanged = () {};
+        await store.sendMessage();
+        expect(store.composerText, '');
+        expect(store.attachments, isEmpty);
+
+        await api.controller.close();
+        await Future.delayed(const Duration(milliseconds: 10));
+
+        expect(store.composerText, '/ask  hello');
+        expect(store.attachments, hasLength(1));
+        expect(store.displayDetail?.messages ?? [], isEmpty);
+      },
+    );
+
+    test('sendMessage restores composer on 409 conflict', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+          ),
+        ),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+      expect(store.composerText, '');
+      expect(store.displayDetail?.messages, hasLength(1));
+
+      api.controller.addError(ApiException('thread is already running', 409));
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(store.composerText, 'hello');
+      expect(store.displayDetail?.messages ?? [], isEmpty);
+    });
+
+    test(
+      'sendMessage replaces existing message when server echoes same id',
+      () async {
+        final api = _ControlledApiService();
+        final store = ThreadStore(
+          api: api,
+          threadId: 't1',
+          projectId: 1,
+          composerText: 'optimistic',
+          detail: AsyncValue.ready(
+            ThreadDetail(
+              thread: Thread(
+                id: 't1',
+                title: 'Test',
+                projectId: 1,
+                model: 'm1',
+                permissionMode: 'normal',
+                createdAt: '',
+                updatedAt: '',
+              ),
+              messages: [
+                Message(
+                  id: 2,
+                  role: 'user',
+                  content: 'from refresh',
+                  clientMessageId: 'cm-existing',
+                ),
+              ],
+            ),
+          ),
+        );
+
+        store.onStateChanged = () {};
+        await store.sendMessage();
+        final clientId = store.displayDetail?.messages.last.clientMessageId;
+
+        api.controller.add(
+          SseEvent(
+            'user_message',
+            '{"id": 2, "role": "user", "content": "hello", '
+                '"client_message_id": "$clientId"}',
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 10));
+
+        final messages = store.displayDetail?.messages ?? [];
+        expect(messages, hasLength(1));
+        expect(messages.first.id, 2);
+        expect(messages.first.content, 'hello');
+        expect(messages.first.clientMessageId, clientId);
+      },
+    );
   });
 
   group('turn-windowed pagination', () {
     test('load fetches initial page and stores cursors', () async {
       final api = _CursorApiService();
-      final store = ThreadStore(
-        api: api,
-        threadId: 't1',
-        projectId: 1,
-      );
+      final store = ThreadStore(api: api, threadId: 't1', projectId: 1);
       final completer = Completer<void>();
       store.onStateChanged = () {
         if (store.detail.valueOrNull?.messages.length == 2) {
@@ -435,44 +651,49 @@ void main() {
       expect(d.rawCount, 2);
     });
 
-    test('loadMoreMessages uses beforeCursor and prepends older turns', () async {
-      final api = _CursorApiService();
-      final store = ThreadStore(
-        api: api,
-        threadId: 't1',
-        projectId: 1,
-        detail: AsyncValue.ready(ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+    test(
+      'loadMoreMessages uses beforeCursor and prepends older turns',
+      () async {
+        final api = _CursorApiService();
+        final store = ThreadStore(
+          api: api,
+          threadId: 't1',
+          projectId: 1,
+          detail: AsyncValue.ready(
+            ThreadDetail(
+              thread: Thread(
+                id: 't1',
+                title: 'Test',
+                projectId: 1,
+                model: 'm1',
+                permissionMode: 'normal',
+                createdAt: '',
+                updatedAt: '',
+              ),
+              messages: [
+                Message(id: 2, role: 'user', content: 'hello'),
+                Message(id: 3, role: 'assistant', content: 'hi'),
+              ],
+              totalMessages: 3,
+              beforeCursor: 'c1',
+              hasMore: true,
+              turnLimit: 50,
+              rawCount: 2,
+            ),
           ),
-          messages: [
-            Message(id: 2, role: 'user', content: 'hello'),
-            Message(id: 3, role: 'assistant', content: 'hi'),
-          ],
-          totalMessages: 3,
-          beforeCursor: 'c1',
-          hasMore: true,
-          turnLimit: 50,
-          rawCount: 2,
-        )),
-      );
+        );
 
-      await store.loadMoreMessages();
+        await store.loadMoreMessages();
 
-      final d = store.detail.valueOrNull!;
-      expect(d.messages, hasLength(3));
-      expect(d.messages.first.id, 1);
-      expect(d.messages.first.content, 'older');
-      expect(d.beforeCursor, isNull);
-      expect(d.hasMore, isFalse);
-      expect(d.rawCount, 1);
-    });
+        final d = store.detail.valueOrNull!;
+        expect(d.messages, hasLength(3));
+        expect(d.messages.first.id, 1);
+        expect(d.messages.first.content, 'older');
+        expect(d.beforeCursor, isNull);
+        expect(d.hasMore, isFalse);
+        expect(d.rawCount, 1);
+      },
+    );
   });
 }
 
@@ -486,20 +707,21 @@ class _CursorApiService extends ApiService {
     String id, {
     bool includeMessages = false,
     int? turnLimit,
-  }) =>
-      Future.value(ThreadDetail(
-        thread: Thread(
-          id: id,
-          title: 'Test',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
-        ),
-        messages: const [],
-        totalMessages: 3,
-      ));
+  }) => Future.value(
+    ThreadDetail(
+      thread: Thread(
+        id: id,
+        title: 'Test',
+        projectId: 1,
+        model: 'm1',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+      messages: const [],
+      totalMessages: 3,
+    ),
+  );
 
   @override
   Future<Map<String, dynamic>> getThreadRun(String id) =>
@@ -511,8 +733,7 @@ class _CursorApiService extends ApiService {
     String? model,
     String? permissionMode,
     String? permissions,
-  }) =>
-      Future.value();
+  }) => Future.value();
 
   @override
   Future<MessagePage> getThreadMessages(

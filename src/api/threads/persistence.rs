@@ -30,6 +30,7 @@ pub(crate) async fn persist_user_message(
             parts: user_parts,
             attachments: serde_json::to_string(&input.att_meta).unwrap_or_else(|_| "[]".into()),
             model: String::new(),
+            client_message_id: input.client_message_id.clone(),
         })
         .await
 }
@@ -86,6 +87,7 @@ pub(crate) async fn persist_assistant_reply(
             parts: parts_json,
             attachments: "[]".into(),
             model: thread.model.clone(),
+            client_message_id: None,
         })
         .await
         .map_err(|e| map_err_internal(e).into_response())?;
@@ -134,6 +136,7 @@ pub(crate) async fn save_partial_assistant_message(
             parts: parts_json,
             attachments: "[]".into(),
             model: model.into(),
+            client_message_id: None,
         })
         .await?;
     let _ = state.db.touch_thread(&thread.id).await;

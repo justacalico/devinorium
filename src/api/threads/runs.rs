@@ -282,6 +282,7 @@ pub(crate) async fn run_thread(
                     parts: parts_json,
                     attachments: "[]".into(),
                     model: thread.model.clone(),
+                    client_message_id: None,
                 })
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
@@ -317,6 +318,7 @@ pub(crate) async fn run_thread(
                     parts: "[]".into(),
                     attachments: "[]".into(),
                     model: String::new(),
+                    client_message_id: None,
                 })
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;

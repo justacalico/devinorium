@@ -1190,6 +1190,405 @@ async fn thread_send_streams_reply_as_sse() {
 }
 
 #[tokio::test]
+async fn thread_send_stream_echoes_client_message_id() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----clientidboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello world\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
+        cm-abc-123\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let user_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: user_message"))
+        .expect("user_message block");
+    let user_data = user_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("user_message data");
+    let user_json: serde_json::Value =
+        serde_json::from_str(&user_data[6..]).expect("valid user json");
+    assert_eq!(user_json["role"], "user");
+    assert_eq!(user_json["client_message_id"], "cm-abc-123");
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[0].role, "user");
+    assert_eq!(msgs[0].client_message_id.as_deref(), Some("cm-abc-123"));
+}
+
+#[tokio::test]
+async fn thread_send_includes_client_message_id() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----clientidboundary2";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello world\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
+        cm-abc-456\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["user_message"]["client_message_id"], "cm-abc-456");
+    assert_eq!(json["assistant_message"]["role"], "assistant");
+}
+
+#[tokio::test]
+async fn thread_send_rejects_duplicate_client_message_id() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let (boundary, body) = {
+        let boundary = "----dupboundary";
+        let client_id = "cm-dup-1";
+        let body = format!(
+            "--{boundary}\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            Hello world\r\n\
+            --{boundary}\r\n\
+            Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
+            {client_id}\r\n\
+            --{boundary}--\r\n"
+        );
+        (boundary.to_string(), body)
+    };
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let (boundary, body) = {
+        let boundary = "----dupboundary";
+        let client_id = "cm-dup-1";
+        let body = format!(
+            "--{boundary}\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            Hello world\r\n\
+            --{boundary}\r\n\
+            Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
+            {client_id}\r\n\
+            --{boundary}--\r\n"
+        );
+        (boundary.to_string(), body)
+    };
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn thread_send_stream_rejects_duplicate_client_message_id() {
+    let (app, _db) = make_app_with_delay(5000).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    fn send_body(client_id: &str) -> (String, String) {
+        let boundary = "----dupstreamboundary";
+        let body = format!(
+            "--{boundary}\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            Hello world\r\n\
+            --{boundary}\r\n\
+            Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
+            {client_id}\r\n\
+            --{boundary}--\r\n"
+        );
+        (boundary.to_string(), body)
+    }
+
+    let (boundary, body) = send_body("cm-stream-dup-1");
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    // Give the first run a moment to start.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let (boundary, body) = send_body("cm-stream-dup-1");
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn thread_send_rolls_back_user_message_on_already_running() {
+    let (app, db) = make_app_with_delay(5000).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let first_cookie = cookie.clone();
+    let first_tid = tid.clone();
+    let first_app = app.clone();
+    let first = tokio::spawn(async move {
+        let boundary = "----firstboundary";
+        let body = format!(
+            "--{boundary}\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            First\r\n\
+            --{boundary}--\r\n"
+        );
+        first_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/threads/{first_tid}/send"))
+                    .header(header::HOST, "localhost")
+                    .header(header::ORIGIN, "http://localhost")
+                    .header("cookie", &first_cookie)
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+    });
+
+    // Wait for the first run to start and persist its user message.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let boundary = "----secondboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Second\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+    // Only the first user message should be persisted; the second was rolled back.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].content, "First");
+
+    first.abort();
+}
+
+#[tokio::test]
+async fn thread_send_stream_rolls_back_user_message_on_already_running() {
+    let (app, db) = make_app_with_delay(5000).await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let first_cookie = cookie.clone();
+    let first_tid = tid.clone();
+    let first_app = app.clone();
+    let first = tokio::spawn(async move {
+        let boundary = "----firststreamboundary";
+        let body = format!(
+            "--{boundary}\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            First stream\r\n\
+            --{boundary}--\r\n"
+        );
+        first_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/threads/{first_tid}/send/stream"))
+                    .header(header::HOST, "localhost")
+                    .header(header::ORIGIN, "http://localhost")
+                    .header("cookie", &first_cookie)
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+    });
+
+    // Wait for the first stream to start and persist its user message.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let boundary = "----secondstreamboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Second stream\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+    // Only the first user message should be persisted; the second was rolled back.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].content, "First stream");
+
+    first.abort();
+}
+
+#[tokio::test]
 async fn thread_stop_ends_active_run() {
     let (app, _db) = make_app_with_delay(5000).await;
     let cookie = login(&app).await;

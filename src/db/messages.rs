@@ -7,6 +7,22 @@ pub const MESSAGE_PARTS_BUDGET: i64 = 100_000;
 pub const TURN_LIMIT_DEFAULT: i64 = 50;
 pub const MAX_RAW_TURNS_PER_PAGE: i64 = 150;
 
+/// Maximum length for a client-generated message id.
+pub const MAX_CLIENT_MESSAGE_ID_LEN: usize = 64;
+
+/// Error returned when a message with the same `client_message_id` already
+/// exists in the thread.
+#[derive(Debug, Clone, Copy)]
+pub struct DuplicateClientMessageId;
+
+impl std::fmt::Display for DuplicateClientMessageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "a message with this client id already exists")
+    }
+}
+
+impl std::error::Error for DuplicateClientMessageId {}
+
 pub struct NewMessage {
     pub thread_id: String,
     pub role: String,
@@ -15,6 +31,7 @@ pub struct NewMessage {
     pub parts: String,
     pub attachments: String,
     pub model: String,
+    pub client_message_id: Option<String>,
 }
 
 /// Cursor for the next page of older turns.
@@ -50,9 +67,9 @@ impl super::Db {
         sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
 
         let result = sqlx::query_as::<_, MessageRow>(
-            "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, turn_id, seq)
+            "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, client_message_id, turn_id, seq)
              VALUES (
-                 ?, ?, ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?, ?, ?, ?,
                  CASE
                      WHEN ? = 'user'
                          THEN (SELECT COALESCE(MAX(turn_id), 0) + 1 FROM messages WHERE thread_id = ?)
@@ -69,6 +86,7 @@ impl super::Db {
         .bind(&new.parts)
         .bind(&new.attachments)
         .bind(&new.model)
+        .bind(&new.client_message_id)
         .bind(&new.role)
         .bind(&new.thread_id)
         .bind(&new.thread_id)
@@ -83,7 +101,11 @@ impl super::Db {
             }
             Err(e) => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-                Err(e.into())
+                if is_unique_client_message_id_error(&e) {
+                    Err(DuplicateClientMessageId.into())
+                } else {
+                    Err(e.into())
+                }
             }
         }
     }
@@ -233,7 +255,7 @@ impl super::Db {
         let meta = sqlx::query_as::<_, MessageRow>(
             "SELECT id, thread_id, role, ? AS content,
                 CASE WHEN thinking IS NOT NULL AND length(thinking) > ? THEN NULL ELSE thinking END AS thinking,
-                NULL AS parts, attachments, model, created_at, turn_id, seq, content_length, 0 AS parts_length
+                NULL AS parts, attachments, model, client_message_id, created_at, turn_id, seq, content_length, 0 AS parts_length
              FROM messages WHERE thread_id = ? AND id = ?",
         )
         .bind(content)
@@ -389,6 +411,21 @@ impl super::Db {
     }
 }
 
+fn is_unique_client_message_id_error(e: &sqlx::Error) -> bool {
+    if let Some(db) = e.as_database_error() {
+        if let Some(code) = db.code() {
+            if code == "2067" || code == "1555" {
+                return true;
+            }
+        }
+        let msg = db.message();
+        if !msg.is_empty() {
+            return msg.contains("UNIQUE constraint failed") && msg.contains("client_message_id");
+        }
+    }
+    false
+}
+
 const SELECT_TRUNCATED: &str = "SELECT
     id,
     thread_id,
@@ -407,6 +444,7 @@ const SELECT_TRUNCATED: &str = "SELECT
     END AS parts,
     attachments,
     model,
+    client_message_id,
     created_at,
     turn_id,
     seq,

@@ -57,7 +57,9 @@ class _ThrowingClient extends BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})>? attachments,
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
   }) => throw UnimplementedError();
 
   @override
@@ -111,10 +113,7 @@ Widget _buildWithState(AppState state) => MaterialApp(
   ),
 );
 
-AppState _stateWithAsk({
-  ApiService? api,
-  required AskRequest pendingAsk,
-}) =>
+AppState _stateWithAsk({ApiService? api, required AskRequest pendingAsk}) =>
     AppState.test(
       api: api,
       user: User(
@@ -171,7 +170,10 @@ void main() {
 
       expect(find.byType(AskRequestPanel), findsOneWidget);
       expect(find.byIcon(Icons.send), findsNothing);
-      expect(find.text('What would you like to work on today?'), findsOneWidget);
+      expect(
+        find.text('What would you like to work on today?'),
+        findsOneWidget,
+      );
       expect(find.text('Next task'), findsOneWidget);
       expect(find.text('Code changes'), findsOneWidget);
       expect(find.text('New project'), findsOneWidget);
@@ -248,7 +250,10 @@ void main() {
       await tester.tap(find.text('Other (type your own)'));
       await tester.pumpAndSettle();
 
-      final otherField = find.widgetWithText(TextFormField, 'Other (type your own)');
+      final otherField = find.widgetWithText(
+        TextFormField,
+        'Other (type your own)',
+      );
       expect(otherField, findsOneWidget);
 
       await tester.enterText(otherField, '  Custom task  ');
@@ -274,9 +279,7 @@ void main() {
               prompt: 'Choice',
               fieldType: 'single_select',
               required: true,
-              options: [
-                AskOption(value: 'a', label: 'A'),
-              ],
+              options: [AskOption(value: 'a', label: 'A')],
             ),
           ],
         ),
@@ -308,9 +311,7 @@ void main() {
               prompt: 'Choice',
               fieldType: 'single_select',
               required: false,
-              options: [
-                AskOption(value: 'a', label: 'A'),
-              ],
+              options: [AskOption(value: 'a', label: 'A')],
             ),
           ],
         ),
@@ -330,7 +331,9 @@ void main() {
       expect(state.pendingAskRequest, isNull);
     });
 
-    testWidgets('switching from Other to a normal option clears it', (tester) async {
+    testWidgets('switching from Other to a normal option clears it', (
+      tester,
+    ) async {
       final api = _FakeApiService();
       final state = _stateWithAsk(
         api: api,
@@ -343,9 +346,7 @@ void main() {
               prompt: 'Choice',
               fieldType: 'single_select',
               required: true,
-              options: [
-                AskOption(value: 'a', label: 'A'),
-              ],
+              options: [AskOption(value: 'a', label: 'A')],
             ),
           ],
         ),
@@ -380,11 +381,7 @@ void main() {
           requestId: 'a1',
           message: 'Need input',
           questions: [
-            AskQuestion(
-              id: 'q1',
-              prompt: 'Notes',
-              fieldType: 'text',
-            ),
+            AskQuestion(id: 'q1', prompt: 'Notes', fieldType: 'text'),
           ],
         ),
       );
@@ -609,10 +606,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Send'));
       await tester.pumpAndSettle();
 
-      expect(api.lastAskAnswers, {
-        'neg': -7,
-        'dec': 3.14,
-      });
+      expect(api.lastAskAnswers, {'neg': -7, 'dec': 3.14});
     });
 
     testWidgets('steps through multiple questions', (tester) async {
@@ -750,9 +744,7 @@ void main() {
       expect(find.text('Second'), findsOneWidget);
     });
 
-    testWidgets('jumps to an invalid question on final submit', (
-      tester,
-    ) async {
+    testWidgets('jumps to an invalid question on final submit', (tester) async {
       final api = _FakeApiService();
       final state = _stateWithAsk(
         api: api,
@@ -795,11 +787,7 @@ void main() {
           requestId: 'a1',
           message: 'Need input',
           questions: [
-            AskQuestion(
-              id: 'q1',
-              prompt: 'Subscribe',
-              fieldType: 'boolean',
-            ),
+            AskQuestion(id: 'q1', prompt: 'Subscribe', fieldType: 'boolean'),
           ],
         ),
       );
@@ -824,11 +812,7 @@ void main() {
           requestId: 'a1',
           message: 'Need input',
           questions: [
-            AskQuestion(
-              id: 'q1',
-              prompt: 'Subscribe',
-              fieldType: 'boolean',
-            ),
+            AskQuestion(id: 'q1', prompt: 'Subscribe', fieldType: 'boolean'),
           ],
         ),
       );
@@ -894,9 +878,7 @@ void main() {
               prompt: 'Choice',
               fieldType: 'single_select',
               required: true,
-              options: [
-                AskOption(value: 'a', label: 'A'),
-              ],
+              options: [AskOption(value: 'a', label: 'A')],
             ),
           ],
         ),
@@ -920,11 +902,7 @@ void main() {
           requestId: 'a1',
           message: 'Need input',
           questions: [
-            AskQuestion(
-              id: 'q1',
-              prompt: 'Your name',
-              fieldType: 'text',
-            ),
+            AskQuestion(id: 'q1', prompt: 'Your name', fieldType: 'text'),
           ],
         ),
       );

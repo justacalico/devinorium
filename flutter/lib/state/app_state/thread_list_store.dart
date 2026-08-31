@@ -37,7 +37,7 @@ mixin ThreadListStore on AppStateBase {
   @override
   String? get activeThreadId => _activeThreadId;
   @override
-  ThreadDetail? get activeThreadDetail => _activeStore?.detail.valueOrNull;
+  ThreadDetail? get activeThreadDetail => _activeStore?.displayDetail;
   @override
   bool get activeThreadLoading =>
       _threadOpening || _activeStore?.status == ThreadStoreStatus.loading;
@@ -75,6 +75,7 @@ mixin ThreadListStore on AppStateBase {
     }
     return null;
   }
+
   @override
   Future<void> _loadUserThreadsChunk({bool reset = false}) async {
     if (reset) {
@@ -98,6 +99,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (_) {}
     _loadingMoreUserThreads = false;
   }
+
   @override
   Future<void> _loadProjectThreadsChunk(
     int projectId, {
@@ -123,6 +125,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (_) {}
     _loadingMoreProjectThreads[projectId] = false;
   }
+
   @override
   void _mergeThreads(List<Thread> incoming) {
     final existing = <String>{for (final t in _threads) t.id};
@@ -131,6 +134,7 @@ mixin ThreadListStore on AppStateBase {
       _threads = [..._threads, ...fresh];
     }
   }
+
   @override
   Future<void> refreshThreadsAndGroups() async {
     await Future.wait([
@@ -144,16 +148,19 @@ mixin ThreadListStore on AppStateBase {
     notifyListeners();
     unawaited(refreshRunningThreads());
   }
+
   @override
   Future<void> loadMoreThreads() async {
     await _loadUserThreadsChunk();
     notifyListeners();
   }
+
   @override
   Future<void> loadMoreProjectThreads(int projectId) async {
     await _loadProjectThreadsChunk(projectId);
     notifyListeners();
   }
+
   @override
   Future<void> refreshRunningThreads() async {
     if (_threads.isEmpty) {
@@ -173,6 +180,7 @@ mixin ThreadListStore on AppStateBase {
     }
     notifyListeners();
   }
+
   @override
   Future<void> openRenameThreadDialog(String id, String title) async {
     _renameProjectId = null;
@@ -182,6 +190,7 @@ mixin ThreadListStore on AppStateBase {
     _userMenuOpen = false;
     notifyListeners();
   }
+
   @override
   Future<void> renameThread(String id, String title) async {
     _globalError = '';
@@ -208,6 +217,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> pinThread(String id, bool pinned) async {
     _globalError = '';
@@ -235,6 +245,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> createNewThread({int? projectId}) async {
     final targetId = projectId ?? _activeProjectId;
@@ -278,6 +289,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> openThread(String id) async {
     final stopwatch = kDebugMode ? (Stopwatch()..start()) : null;
@@ -342,6 +354,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> saveThreadSettings() async {
     final store = _activeStore;
@@ -354,6 +367,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> deleteThread(String id) async {
     try {
@@ -369,6 +383,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> deleteThreadGroup(int id) async {
     try {
@@ -379,6 +394,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> loadMoreMessages() async {
     final store = _activeStore;
@@ -390,6 +406,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> resumeThread(String id) async {
     ThreadStore? store = _threadStores[id];
@@ -405,6 +422,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> sendMessage() async {
     final store = _activeStore;
@@ -412,12 +430,14 @@ mixin ThreadListStore on AppStateBase {
     if (store.composerText.trim().isEmpty) return;
     await store.sendMessage();
   }
+
   @override
   Future<void> stopThread() async {
     final store = _activeStore;
     if (store == null || !store.sending) return;
     await store.stop();
   }
+
   @override
   Future<void> respondToPermissionRequest(String? optionId) async {
     final store = _activeStore;
@@ -429,6 +449,7 @@ mixin ThreadListStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> respondToAskRequest(Map<String, dynamic>? answers) async {
     final store = _activeStore;

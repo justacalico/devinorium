@@ -339,5 +339,64 @@ void main() {
       final diff = DateTime.now().toUtc().difference(parsed!).inSeconds.abs();
       expect(diff, lessThan(5));
     });
+
+    test('user_message event appends a new message', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [Message(id: 1, role: 'user', content: 'first')],
+        totalMessages: 1,
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'user_message',
+          '{"id":2,"role":"user","content":"second"}',
+          id: '2',
+        ),
+      );
+      expect(res.detail!.messages, hasLength(2));
+      expect(res.detail!.totalMessages, 2);
+      expect(res.detail!.messages.last.id, 2);
+    });
+
+    test(
+      'user_message event replaces an existing message with the same id',
+      () {
+        final detail = ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [Message(id: 1, role: 'user', content: 'stale')],
+          totalMessages: 1,
+        );
+        final res = reduceStreamingEvent(
+          detail: detail,
+          snapshot: StreamingSnapshot.empty,
+          event: SseEvent(
+            'user_message',
+            '{"id":1,"role":"user","content":"fresh"}',
+            id: '1',
+          ),
+        );
+        expect(res.detail!.messages, hasLength(1));
+        expect(res.detail!.totalMessages, 1);
+        expect(res.detail!.messages.first.content, 'fresh');
+      },
+    );
   });
 }
