@@ -58,9 +58,47 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
         !detail.mergeWhenPipelineSucceeds &&
         (latest?.isActive ?? false);
 
+    final primaryStyle = FilledButton.styleFrom(
+      minimumSize: const Size(0, 30),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      iconSize: 18,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(7)),
+      ),
+    );
+    final secondaryStyle = OutlinedButton.styleFrom(
+      minimumSize: const Size(0, 30),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      iconSize: 18,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      foregroundColor: theme.colorScheme.onSurface,
+      backgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+      disabledForegroundColor:
+          theme.colorScheme.onSurface.withValues(alpha: 0.38),
+      disabledBackgroundColor:
+          theme.colorScheme.onSurface.withValues(alpha: 0.02),
+      disabledIconColor: theme.colorScheme.onSurface.withValues(alpha: 0.38),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(7)),
+      ),
+    ).copyWith(
+      side: WidgetStateProperty.resolveWith((states) {
+        final dim = states.contains(WidgetState.disabled);
+        return BorderSide(
+          color: dim
+              ? theme.colorScheme.outlineVariant.withValues(alpha: 0.5)
+              : theme.colorScheme.outlineVariant,
+        );
+      }),
+    );
+
     final buttons = <Widget>[
       if (detail.isOpen)
         FilledButton.icon(
+          style: primaryStyle,
           onPressed: busy || !detail.canMerge
               ? null
               : () => _run(MergeRequestAction.merge),
@@ -69,19 +107,22 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
         ),
       if (showAutoMerge)
         OutlinedButton.icon(
+          style: secondaryStyle,
           onPressed:
               busy ? null : () => _run(MergeRequestAction.mergeWhenPipelineSucceeds),
           icon: const Icon(Icons.schedule, size: 18),
           label: Text(l10n(context).mergeWhenPipelineSucceeds),
         ),
       if (detail.isOpen)
-        TextButton.icon(
+        OutlinedButton.icon(
+          style: secondaryStyle,
           onPressed: busy ? null : () => _run(MergeRequestAction.close),
           icon: const Icon(Icons.block, size: 18),
           label: Text(l10n(context).closeMergeRequest),
         ),
       if (detail.isClosed)
         FilledButton.icon(
+          style: primaryStyle,
           onPressed: busy ? null : () => _run(MergeRequestAction.reopen),
           icon: const Icon(Icons.restart_alt, size: 18),
           label: Text(l10n(context).reopenMergeRequest),
@@ -100,7 +141,7 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
           Row(
             children: [
               Expanded(
-                child: Wrap(spacing: 8, runSpacing: 8, children: buttons),
+                child: Wrap(spacing: 6, runSpacing: 6, children: buttons),
               ),
               if (busy) ...[
                 const SizedBox(width: 12),
