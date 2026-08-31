@@ -2,6 +2,27 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.22.0 - 2026-08-31
+#### Features
+- 合并请求操作按钮改为紧凑 macOS 风格 - (bae5476) - HttpAnimations
+- 前端实现乐观消息发送与回显 - (31ee222) - HttpAnimations
+- 后端添加 client_message_id 支持并保证唯一性 - (92d98cf) - HttpAnimations
+- 添加可展开的流水线任务视图 - (56a4dee) - HttpAnimations
+- 添加 GitLab 流水线任务后端接口 - (7e107f1) - HttpAnimations
+- 将桌面窗口控制按钮从顶栏移到侧边栏 - (72bfed3) - HttpAnimations
+- 实现 /ask 前缀切换 composer 为 ask 模式并剥离前缀发送 - (cde3ce3) - HttpAnimations
+- 版本号使用胶囊样式显示 - (e032635) - HttpAnimations
+- 在侧边栏标题旁显示版本号 - (620c63a) - HttpAnimations
+#### Bug Fixes
+- 设置侧边栏新增克隆根条目以对齐管理主题索引 - (7b1f050) - HttpAnimations
+- 顶栏状态药丸与标题同行显示 - (71bad27) - HttpAnimations
+- 将标题栏文本左对齐并截断过长内容 - (5e55745) - HttpAnimations
+- 修复展开其他项目时同时重新展开活跃线程项目的问题 - (132a15c) - HttpAnimations
+- 修复顶栏按钮被拖拽区域覆盖导致无法点击的问题 - (ec0412f) - HttpAnimations
+- 侧边栏标题左对齐 - (debae54) - HttpAnimations
+
+- - -
+
 ## v0.21.0 - 2026-08-30
 #### Features
 - 切换分支后自动获取远程状态以显示拉取提示 - (423126a) - HttpAnimations
