@@ -21,6 +21,24 @@ void main() {
       expect(m.truncatedAt, 200);
     });
 
+    test('parses client_message_id', () {
+      final m = Message.fromJson({
+        'id': 1,
+        'role': 'user',
+        'content': 'hello',
+        'client_message_id': 'cm-123',
+      });
+      expect(m.clientMessageId, 'cm-123');
+    });
+
+    test('clientMessageId affects equality, hashCode and copyWith', () {
+      final a = Message(role: 'user', content: 'hi', clientMessageId: 'cm-1');
+      final b = Message(role: 'user', content: 'hi', clientMessageId: 'cm-2');
+      expect(a, isNot(b));
+      expect(a.copyWith(clientMessageId: 'cm-2'), b);
+      expect(a.hashCode, isNot(b.hashCode));
+    });
+
     test('defaults truncated to false and others to null', () {
       final m = Message.fromJson({'role': 'user', 'content': 'hi'});
       expect(m.truncated, isFalse);
@@ -100,9 +118,7 @@ void main() {
     });
 
     test('defaults missing fields to safe values', () {
-      final page = MessagePage.fromJson({
-        'messages': [],
-      });
+      final page = MessagePage.fromJson({'messages': []});
       expect(page.messages, isEmpty);
       expect(page.total, 0);
       expect(page.turnLimit, isNull);
@@ -112,10 +128,7 @@ void main() {
     });
 
     test('copyWith updates page fields', () {
-      const page = MessagePage(
-        messages: [],
-        total: 0,
-      );
+      const page = MessagePage(messages: [], total: 0);
       final updated = page.copyWith(
         messages: [Message(role: 'user', content: 'hi')],
         total: 1,
@@ -130,17 +143,23 @@ void main() {
 
     test('equality and hashCode compare messages and pagination fields', () {
       final a = MessagePage.fromJson({
-        'messages': [{'id': 1, 'role': 'user', 'content': 'hello'}],
+        'messages': [
+          {'id': 1, 'role': 'user', 'content': 'hello'},
+        ],
         'total': 1,
         'turn_limit': 50,
       });
       final b = MessagePage.fromJson({
-        'messages': [{'id': 1, 'role': 'user', 'content': 'hello'}],
+        'messages': [
+          {'id': 1, 'role': 'user', 'content': 'hello'},
+        ],
         'total': 1,
         'turn_limit': 50,
       });
       final c = MessagePage.fromJson({
-        'messages': [{'id': 1, 'role': 'user', 'content': 'hello'}],
+        'messages': [
+          {'id': 1, 'role': 'user', 'content': 'hello'},
+        ],
         'total': 1,
         'turn_limit': 25,
       });

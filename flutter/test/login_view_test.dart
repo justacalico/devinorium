@@ -125,6 +125,7 @@ class _FakeClient implements BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) => Stream.empty();

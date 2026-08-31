@@ -57,7 +57,9 @@ class _ThrowingClient extends BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})>? attachments,
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
   }) => throw UnimplementedError();
 
   @override
@@ -502,7 +504,10 @@ void main() {
       await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextField, 'Branch name'), 'new-branch');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Branch name'),
+        'new-branch',
+      );
       await tester.pump();
 
       await tester.tap(find.text('Create and switch').last);
@@ -542,7 +547,10 @@ void main() {
       await tester.tap(find.text('Create worktree'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextField, 'Worktree name'), 'wt');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Worktree name'),
+        'wt',
+      );
       await tester.pump();
 
       await tester.tap(find.widgetWithText(FilledButton, 'Create worktree'));
@@ -570,7 +578,10 @@ void main() {
       await tester.tap(find.text('feature'), warnIfMissed: false);
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextField, 'Branch name'), 'child');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Branch name'),
+        'child',
+      );
       await tester.pump();
 
       await tester.tap(find.widgetWithText(OutlinedButton, 'Create branch'));
@@ -594,7 +605,10 @@ void main() {
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextField, 'Worktree name'), 'wt');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Worktree name'),
+        'wt',
+      );
       await tester.pump();
 
       await tester.tap(find.widgetWithText(FilledButton, 'Create worktree'));
@@ -604,31 +618,35 @@ void main() {
       expect(api.calls, contains('updateThreadGit:t1:wt:/x/wt'));
     });
 
-    testWidgets('create worktree keeps form open and surfaces an error on failure', (
-      tester,
-    ) async {
-      final api = _FakeApiService();
-      api.failCreateWorktree = true;
-      final state = _testState(api);
+    testWidgets(
+      'create worktree keeps form open and surfaces an error on failure',
+      (tester) async {
+        final api = _FakeApiService();
+        api.failCreateWorktree = true;
+        final state = _testState(api);
 
-      await tester.pumpWidget(_buildWithState(state));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Create worktree'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Create worktree'));
+        await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextField, 'Worktree name'), 'bad');
-      await tester.pump();
+        await tester.enterText(
+          find.widgetWithText(TextField, 'Worktree name'),
+          'bad',
+        );
+        await tester.pump();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Create worktree'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Create worktree'));
+        await tester.pumpAndSettle();
 
-      expect(api.calls, contains('gitCreateWorktree:bad:main:false'));
-      expect(state.globalError, isNotEmpty);
-      expect(find.widgetWithText(TextField, 'Worktree name'), findsOneWidget);
-    });
+        expect(api.calls, contains('gitCreateWorktree:bad:main:false'));
+        expect(state.globalError, isNotEmpty);
+        expect(find.widgetWithText(TextField, 'Worktree name'), findsOneWidget);
+      },
+    );
 
     testWidgets('hides when the project is not a git repo', (tester) async {
       final api = _FakeApiService();
@@ -756,7 +774,10 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Create worktree'));
       await tester.pumpAndSettle();
 
-      expect(api.calls.where((c) => c.startsWith('gitCreateWorktree')), isEmpty);
+      expect(
+        api.calls.where((c) => c.startsWith('gitCreateWorktree')),
+        isEmpty,
+      );
     });
 
     testWidgets('keeps the form open and surfaces an error on failure', (
@@ -774,7 +795,10 @@ void main() {
       await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextField, 'Branch name'), 'bad');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Branch name'),
+        'bad',
+      );
       await tester.pump();
 
       await tester.tap(find.widgetWithText(FilledButton, 'Create and switch'));

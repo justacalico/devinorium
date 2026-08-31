@@ -61,7 +61,9 @@ class _ThrowingClient extends BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})>? attachments,
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
   }) => throw UnimplementedError();
 
   @override
@@ -125,6 +127,7 @@ class _FakeApiService extends ApiService {
     required String threadId,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) => Stream.fromFuture(Future.value(SseEvent('done', '')));
@@ -543,62 +546,63 @@ void main() {
     expect(find.text('Done editing'), findsOneWidget);
   });
 
-  testWidgets('edit tool call between two thinking blocks renders outside both', (
-    tester,
-  ) async {
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      activeThreadId: 't1',
-      activeThreadDetail: ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test thread',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
+  testWidgets(
+    'edit tool call between two thinking blocks renders outside both',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
         ),
-        messages: [
-          Message(
-            role: 'assistant',
-            content: '',
-            parts: [
-              MessagePart.thinking(content: 'first think'),
-              MessagePart.toolCall(
-                toolCall: ToolCallData(
-                  id: 'tc-edit-1',
-                  title: 'Edit a.rs',
-                  kind: 'edit',
-                  status: 'completed',
-                  diffs: [
-                    FileDiff(path: '/tmp/a.rs', oldText: 'a', newText: 'b'),
-                  ],
-                ),
-              ),
-              MessagePart.thinking(content: 'second think'),
-            ],
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
           ),
-        ],
-      ),
-    );
+          messages: [
+            Message(
+              role: 'assistant',
+              content: '',
+              parts: [
+                MessagePart.thinking(content: 'first think'),
+                MessagePart.toolCall(
+                  toolCall: ToolCallData(
+                    id: 'tc-edit-1',
+                    title: 'Edit a.rs',
+                    kind: 'edit',
+                    status: 'completed',
+                    diffs: [
+                      FileDiff(path: '/tmp/a.rs', oldText: 'a', newText: 'b'),
+                    ],
+                  ),
+                ),
+                MessagePart.thinking(content: 'second think'),
+              ],
+            ),
+          ],
+        ),
+      );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    // Edit tool card visible without expanding either thinking block.
-    expect(find.textContaining('a.rs'), findsOneWidget);
-    // Both thinking blocks are collapsed (no text, not working).
-    expect(find.text('Show thinking'), findsNWidgets(2));
-  });
+      // Edit tool card visible without expanding either thinking block.
+      expect(find.textContaining('a.rs'), findsOneWidget);
+      // Both thinking blocks are collapsed (no text, not working).
+      expect(find.text('Show thinking'), findsNWidgets(2));
+    },
+  );
 
   testWidgets('execute tool calls render outside the thinking block', (
     tester,
@@ -711,60 +715,61 @@ void main() {
     expect(find.text('Finished'), findsOneWidget);
   });
 
-  testWidgets('execute tool call between two thinking blocks renders outside both', (
-    tester,
-  ) async {
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      activeThreadId: 't1',
-      activeThreadDetail: ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test thread',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
+  testWidgets(
+    'execute tool call between two thinking blocks renders outside both',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
         ),
-        messages: [
-          Message(
-            role: 'assistant',
-            content: '',
-            parts: [
-              MessagePart.thinking(content: 'first think'),
-              MessagePart.toolCall(
-                toolCall: ToolCallData(
-                  id: 'tc-exec-1',
-                  title: 'Run cmd',
-                  kind: 'execute',
-                  status: 'completed',
-                  command: 'echo hello',
-                ),
-              ),
-              MessagePart.thinking(content: 'second think'),
-            ],
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
           ),
-        ],
-      ),
-    );
+          messages: [
+            Message(
+              role: 'assistant',
+              content: '',
+              parts: [
+                MessagePart.thinking(content: 'first think'),
+                MessagePart.toolCall(
+                  toolCall: ToolCallData(
+                    id: 'tc-exec-1',
+                    title: 'Run cmd',
+                    kind: 'execute',
+                    status: 'completed',
+                    command: 'echo hello',
+                  ),
+                ),
+                MessagePart.thinking(content: 'second think'),
+              ],
+            ),
+          ],
+        ),
+      );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    // Execute tool card shows the command, visible without expanding either thinking block.
-    expect(find.textContaining('echo hello'), findsOneWidget);
-    // Both thinking blocks are collapsed.
-    expect(find.text('Show thinking'), findsNWidgets(2));
-  });
+      // Execute tool card shows the command, visible without expanding either thinking block.
+      expect(find.textContaining('echo hello'), findsOneWidget);
+      // Both thinking blocks are collapsed.
+      expect(find.text('Show thinking'), findsNWidgets(2));
+    },
+  );
 
   testWidgets('interleaves thinking text and tool calls in order', (
     tester,
@@ -916,9 +921,7 @@ void main() {
                 content: 'let me switch to branch this-thing',
               ),
               MessagePart.text(content: 'switched to branch this-thing'),
-              MessagePart.thinking(
-                content: 'ok done let me do the change now',
-              ),
+              MessagePart.thinking(content: 'ok done let me do the change now'),
             ],
           ),
         ],
@@ -953,85 +956,86 @@ void main() {
     expect(textCenter.dy, lessThan(secondThinking.dy));
   });
 
-  testWidgets('keeps tool calls with their preceding thinking group when interleaved', (
-    tester,
-  ) async {
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      activeThreadId: 't1',
-      activeThreadDetail: ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test thread',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
+  testWidgets(
+    'keeps tool calls with their preceding thinking group when interleaved',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
         ),
-        messages: [
-          Message(
-            role: 'assistant',
-            content: '',
-            parts: [
-              MessagePart.thinking(content: 'first think'),
-              MessagePart.toolCall(
-                toolCall: ToolCallData(
-                  id: 'tc-1',
-                  title: 'Run a',
-                  kind: 'search',
-                  status: 'completed',
-                  command: 'echo a',
-                ),
-              ),
-              MessagePart.text(content: 'middle text'),
-              MessagePart.thinking(content: 'second think'),
-              MessagePart.toolCall(
-                toolCall: ToolCallData(
-                  id: 'tc-2',
-                  title: 'Run b',
-                  kind: 'search',
-                  status: 'completed',
-                  command: 'echo b',
-                ),
-              ),
-            ],
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
           ),
-        ],
-      ),
-    );
+          messages: [
+            Message(
+              role: 'assistant',
+              content: '',
+              parts: [
+                MessagePart.thinking(content: 'first think'),
+                MessagePart.toolCall(
+                  toolCall: ToolCallData(
+                    id: 'tc-1',
+                    title: 'Run a',
+                    kind: 'search',
+                    status: 'completed',
+                    command: 'echo a',
+                  ),
+                ),
+                MessagePart.text(content: 'middle text'),
+                MessagePart.thinking(content: 'second think'),
+                MessagePart.toolCall(
+                  toolCall: ToolCallData(
+                    id: 'tc-2',
+                    title: 'Run b',
+                    kind: 'search',
+                    status: 'completed',
+                    command: 'echo b',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    expect(find.byType(AnimatedCrossFade), findsNWidgets(2));
-    expect(find.byType(MarkdownBody), findsOneWidget);
+      expect(find.byType(AnimatedCrossFade), findsNWidgets(2));
+      expect(find.byType(MarkdownBody), findsOneWidget);
 
-    final firstBlock = tester.getCenter(
-      find.ancestor(
-        of: find.text('Run a'),
-        matching: find.byType(AnimatedCrossFade),
-      ),
-    );
-    final textCenter = tester.getCenter(find.byType(MarkdownBody));
-    final secondBlock = tester.getCenter(
-      find.ancestor(
-        of: find.text('Run b'),
-        matching: find.byType(AnimatedCrossFade),
-      ),
-    );
+      final firstBlock = tester.getCenter(
+        find.ancestor(
+          of: find.text('Run a'),
+          matching: find.byType(AnimatedCrossFade),
+        ),
+      );
+      final textCenter = tester.getCenter(find.byType(MarkdownBody));
+      final secondBlock = tester.getCenter(
+        find.ancestor(
+          of: find.text('Run b'),
+          matching: find.byType(AnimatedCrossFade),
+        ),
+      );
 
-    expect(firstBlock.dy, lessThan(textCenter.dy));
-    expect(textCenter.dy, lessThan(secondBlock.dy));
-  });
+      expect(firstBlock.dy, lessThan(textCenter.dy));
+      expect(textCenter.dy, lessThan(secondBlock.dy));
+    },
+  );
 
   testWidgets('each thinking block expands and collapses independently', (
     tester,
@@ -1441,7 +1445,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('composer mode defaults to code and can be switched', (tester) async {
+  testWidgets('composer mode defaults to code and can be switched', (
+    tester,
+  ) async {
     final state = AppState.test(
       activeThreadId: 't1',
       activeThreadDetail: ThreadDetail(
@@ -1558,7 +1564,9 @@ void main() {
     expect(state.composerMode, ComposerMode.plan);
   });
 
-  testWidgets('/ask prefix in composer toggles ask mode and back', (tester) async {
+  testWidgets('/ask prefix in composer toggles ask mode and back', (
+    tester,
+  ) async {
     final state = AppState.test(
       activeThreadId: 't1',
       composerMode: ComposerMode.plan,
@@ -1581,7 +1589,10 @@ void main() {
 
     expect(state.composerMode, ComposerMode.plan);
 
-    await tester.enterText(find.byKey(const Key('composer_input')), '/ask hello');
+    await tester.enterText(
+      find.byKey(const Key('composer_input')),
+      '/ask hello',
+    );
     await tester.pump();
 
     expect(state.composerMode, ComposerMode.ask);
@@ -1730,7 +1741,9 @@ void main() {
     );
   });
 
-  testWidgets('send button keeps default style when not sending', (tester) async {
+  testWidgets('send button keeps default style when not sending', (
+    tester,
+  ) async {
     final state = AppState.test(
       api: _FakeApiService(),
       user: User(
@@ -1935,7 +1948,9 @@ void main() {
     expect(find.text('Assistant'), findsNothing);
   });
 
-  testWidgets('assistant message without model falls back to Assistant label', (tester) async {
+  testWidgets('assistant message without model falls back to Assistant label', (
+    tester,
+  ) async {
     final state = AppState.test(
       activeThreadId: 't1',
       activeThreadDetail: ThreadDetail(
@@ -1948,9 +1963,7 @@ void main() {
           createdAt: '',
           updatedAt: '',
         ),
-        messages: [
-          Message(role: 'assistant', content: 'hello'),
-        ],
+        messages: [Message(role: 'assistant', content: 'hello')],
       ),
     );
 
@@ -1960,8 +1973,9 @@ void main() {
     expect(find.text('Assistant'), findsOneWidget);
   });
 
-  testWidgets('linked MR chip renders in app bar when MR is present',
-      (tester) async {
+  testWidgets('linked MR chip renders in app bar when MR is present', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -1989,8 +2003,9 @@ void main() {
     expect(find.text('!42'), findsOneWidget);
   });
 
-  testWidgets('tapping linked MR chip opens the merge request dialog',
-      (tester) async {
+  testWidgets('tapping linked MR chip opens the merge request dialog', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -2018,11 +2033,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.dialog, DialogKind.mergeRequest);
-    expect(state.mergeRequestUrl, 'https://gitlab.com/group/project/-/merge_requests/42');
+    expect(
+      state.mergeRequestUrl,
+      'https://gitlab.com/group/project/-/merge_requests/42',
+    );
   });
 
-  testWidgets('linked MR chip shows Draft prefix for draft MRs',
-      (tester) async {
+  testWidgets('linked MR chip shows Draft prefix for draft MRs', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,

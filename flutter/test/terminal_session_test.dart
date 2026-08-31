@@ -72,8 +72,9 @@ class _FakeBaseClient extends BaseApiClient {
       throw UnimplementedError();
 
   @override
-  Future<Map<String, dynamic>> post(String path, [Object? body]) async =>
-      {'id': 'sess-42'};
+  Future<Map<String, dynamic>> post(String path, [Object? body]) async => {
+    'id': 'sess-42',
+  };
 
   @override
   Future<Map<String, dynamic>> put(String path, [Object? body]) =>
@@ -96,17 +97,17 @@ class _FakeBaseClient extends BaseApiClient {
     String path,
     Map<String, String> fields,
     List<({String filename, String mime, Uint8List bytes})> files,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
 
   @override
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})>? attachments,
-  }) =>
-      throw UnimplementedError();
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) => throw UnimplementedError();
 
   @override
   Future<void> setServerUrl(String serverUrl) async => _serverUrl = serverUrl;
@@ -143,7 +144,8 @@ class _FailingConnector {
 }
 
 WebSocketChannel Function(Uri, {String? token}) _returnFake(
-        _FakeWebSocketChannel fake) =>
+  _FakeWebSocketChannel fake,
+) =>
     (Uri uri, {String? token}) => fake;
 
 void main() {
@@ -178,14 +180,15 @@ void main() {
       session.terminal.onOutput!('ls -la');
 
       expect(outgoing.length, greaterThanOrEqualTo(2));
-      expect(
-        jsonDecode(outgoing[0] as String),
-        {'type': 'resize', 'cols': 80, 'rows': 24},
-      );
-      expect(
-        jsonDecode(outgoing[1] as String),
-        {'type': 'input', 'data': 'ls -la'},
-      );
+      expect(jsonDecode(outgoing[0] as String), {
+        'type': 'resize',
+        'cols': 80,
+        'rows': 24,
+      });
+      expect(jsonDecode(outgoing[1] as String), {
+        'type': 'input',
+        'data': 'ls -la',
+      });
     });
 
     testWidgets('reconnects on failure and eventually exits', (tester) async {

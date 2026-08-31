@@ -55,16 +55,16 @@ class _ThrowingClient extends BaseApiClient {
     String path,
     Map<String, String> fields,
     List<({String filename, String mime, Uint8List bytes})> files,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
   @override
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})>? attachments,
-  }) =>
-      throw UnimplementedError();
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) => throw UnimplementedError();
 }
 
 class _FakeApiService extends ApiService {
@@ -105,15 +105,14 @@ class _FakeApiService extends ApiService {
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
-      home: ChangeNotifierProvider<AppState>.value(
-        value: state,
-        child: const DialogLayer(),
-      ),
-    );
+  home: ChangeNotifierProvider<AppState>.value(
+    value: state,
+    child: const DialogLayer(),
+  ),
+);
 
-Finder _findTextContaining(String text) => find.byWidgetPredicate(
-      (w) => w is Text && w.data?.contains(text) == true,
-    );
+Finder _findTextContaining(String text) =>
+    find.byWidgetPredicate((w) => w is Text && w.data?.contains(text) == true);
 
 void main() {
   testWidgets('clone dialog submits and shows result', (tester) async {

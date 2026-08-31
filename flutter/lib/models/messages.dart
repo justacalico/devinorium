@@ -198,6 +198,7 @@ class Message {
   final List<Attachment>? attachments;
   final List<MessagePart>? parts;
   final String model;
+  final String? clientMessageId;
   final int? turnId;
   final int? seq;
   final bool truncated;
@@ -212,6 +213,7 @@ class Message {
     this.attachments,
     this.parts,
     this.model = '',
+    this.clientMessageId,
     this.turnId,
     this.seq,
     this.truncated = false,
@@ -231,6 +233,7 @@ class Message {
         ?.map((p) => MessagePart.fromJson(p as Map<String, dynamic>))
         .toList(),
     model: j['model'] as String? ?? '',
+    clientMessageId: j['client_message_id'] as String?,
     turnId: (j['turn_id'] as num?)?.toInt(),
     seq: (j['seq'] as num?)?.toInt(),
     truncated: j['truncated'] as bool? ?? false,
@@ -262,6 +265,7 @@ class Message {
     List<Attachment>? attachments,
     List<MessagePart>? parts,
     String? model,
+    String? clientMessageId,
     int? turnId,
     int? seq,
     bool? truncated,
@@ -275,6 +279,7 @@ class Message {
     attachments: attachments ?? this.attachments,
     parts: parts ?? this.parts,
     model: model ?? this.model,
+    clientMessageId: clientMessageId ?? this.clientMessageId,
     turnId: turnId ?? this.turnId,
     seq: seq ?? this.seq,
     truncated: truncated ?? this.truncated,
@@ -291,6 +296,7 @@ class Message {
         content == other.content &&
         thinking == other.thinking &&
         model == other.model &&
+        clientMessageId == other.clientMessageId &&
         turnId == other.turnId &&
         seq == other.seq &&
         truncated == other.truncated &&
@@ -308,6 +314,7 @@ class Message {
       content,
       thinking,
       model,
+      clientMessageId,
       turnId,
       seq,
       truncated,

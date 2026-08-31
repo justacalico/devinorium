@@ -84,9 +84,10 @@ class _FakeClient implements BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})> attachments = const [],
-  }) =>
-      const Stream.empty();
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) => const Stream.empty();
 
   @override
   Future<bool> get isConfigured => Future.value(true);
@@ -198,10 +199,7 @@ void main() {
       ]);
       await f2;
 
-      expect(inner.calls, [
-        'GETLIST /api/projects',
-        'GETLIST /api/projects',
-      ]);
+      expect(inner.calls, ['GETLIST /api/projects', 'GETLIST /api/projects']);
     });
   });
 }

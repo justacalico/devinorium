@@ -33,6 +33,7 @@ abstract class BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments,
   });
 
@@ -233,11 +234,15 @@ class ApiClient implements BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
+    String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
   }) {
     final fields = <String, String>{'prompt': prompt};
     if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
+    if (clientMessageId != null && clientMessageId.isNotEmpty) {
+      fields['client_message_id'] = clientMessageId;
+    }
     return fetchSseStream(
       client: _client,
       path: path,

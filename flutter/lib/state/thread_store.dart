@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -14,6 +15,24 @@ import 'streaming_state.dart';
 
 /// Lifecycle status for an individual thread store.
 enum ThreadStoreStatus { empty, loading, ready, error, deleted }
+
+/// Composer snapshot saved while a message is in flight so the prompt and
+/// attachments can be restored if the turn fails before acknowledgement.
+class _PendingSend {
+  final String prompt;
+  final String composerText;
+  final List<({String filename, String mime, Uint8List bytes})> attachments;
+  final String clientMessageId;
+  final ComposerMode composerMode;
+
+  _PendingSend({
+    required this.prompt,
+    required this.composerText,
+    required this.attachments,
+    required this.clientMessageId,
+    required this.composerMode,
+  });
+}
 
 /// Per-thread state and lifecycle.
 ///
@@ -64,6 +83,15 @@ class ThreadStore {
   String selectedModel;
   String selectedPermission;
 
+  // Optimistic messages that have been cleared from the composer but not yet
+  // echoed back by the server. Kept separate from the persisted detail so paging
+  // and tail refreshes never confuse them with real rows.
+  final List<Message> _optimisticMessages = [];
+
+  /// Snapshot of the composer at send time so we can restore it if the turn
+  /// fails before the server acknowledges the user message.
+  _PendingSend? _pendingSend;
+
   // Stream lifecycle.
   StreamSubscription? _subscription;
   int _streamToken = 0;
@@ -82,6 +110,28 @@ class ThreadStore {
 
   ThreadStoreStatus get status => _status;
   AsyncValue<ThreadDetail> get detail => _detail;
+
+  /// The persisted detail merged with any optimistic user messages that have
+  /// not yet been echoed back by the server. This is the view the UI should
+  /// render; callers that need the raw persisted list should use [detail].
+  ThreadDetail? get displayDetail {
+    final d = _detail.valueOrNull;
+    if (d == null || _optimisticMessages.isEmpty) return d;
+    final serverIds = <String>{
+      for (final m in d.messages)
+        if (m.clientMessageId != null) m.clientMessageId!,
+    };
+    final pending = _optimisticMessages
+        .where(
+          (m) =>
+              m.clientMessageId != null &&
+              !serverIds.contains(m.clientMessageId),
+        )
+        .toList();
+    if (pending.isEmpty) return d;
+    return d.copyWith(messages: [...d.messages, ...pending]);
+  }
+
   StreamingSnapshot get streaming => _streaming;
   String get globalError => _globalError;
   String? get lastRunStatus => _lastRunStatus;
@@ -191,6 +241,7 @@ class ThreadStore {
   Future<void> sendMessage() async {
     final prompt = _promptForMode(composerText.trim());
     if (prompt.isEmpty) return;
+    if (_pendingSend != null) return;
     _globalError = '';
 
     await _scheduler.run('stream', () async {
@@ -202,6 +253,31 @@ class ThreadStore {
       }
       if (token != _streamToken || onStateChanged == null) return;
 
+      final messageAttachments =
+          List<({String filename, String mime, Uint8List bytes})>.of(
+            attachments,
+          );
+      final clientMessageId = _newClientMessageId();
+
+      // Snapshot the composer so we can restore it if the turn fails before the
+      // server acknowledges the user message.
+      _pendingSend = _PendingSend(
+        prompt: prompt,
+        composerText: composerText,
+        attachments: messageAttachments,
+        clientMessageId: clientMessageId,
+        composerMode: composerMode,
+      );
+
+      // Clear the composer and show the message immediately, like t3code does.
+      // The message is removed once the server echoes the same client id.
+      composerText = '';
+      attachments.clear();
+      _optimisticMessages.add(
+        _buildOptimisticMessage(prompt, messageAttachments, clientMessageId),
+      );
+      _emit();
+
       _clearStreamingState();
       _streaming = _streaming.copyWith(phase: StreamPhase.sending);
       _lastRunStatus = 'running';
@@ -209,14 +285,11 @@ class ThreadStore {
       // Each turn owns its own plan; don't show a stale plan from a previous
       // turn while waiting for the model to emit a new one.
       if (_detail.valueOrNull != null) {
-        _detail = AsyncValue.ready(_detail.valueOrNull!.copyWith(clearPlan: true));
+        _detail = AsyncValue.ready(
+          _detail.valueOrNull!.copyWith(clearPlan: true),
+        );
       }
       _emit();
-
-      final messageAttachments =
-          List<({String filename, String mime, Uint8List bytes})>.of(
-            attachments,
-          );
 
       try {
         _subscription = api
@@ -224,6 +297,7 @@ class ThreadStore {
               threadId: threadId,
               prompt: prompt,
               mode: composerMode.name,
+              clientMessageId: clientMessageId,
               attachments: messageAttachments,
             )
             .listen(
@@ -345,8 +419,9 @@ class ThreadStore {
       _detail = AsyncValue.ready(
         d.copyWith(
           messages: [...page.messages, ...d.messages],
-          totalMessages:
-              page.total > d.totalMessages ? page.total : d.totalMessages,
+          totalMessages: page.total > d.totalMessages
+              ? page.total
+              : d.totalMessages,
           beforeCursor: page.beforeCursor,
           hasMore: page.hasMore,
           turnLimit: page.turnLimit ?? d.turnLimit,
@@ -482,8 +557,19 @@ class ThreadStore {
     }
 
     if (ev.event == 'user_message') {
-      composerText = '';
-      attachments.clear();
+      final msg = parseSseMessage(ev.data);
+      if (msg?.clientMessageId != null) {
+        _removeOptimisticMessage(msg!.clientMessageId!);
+      } else if (msg != null) {
+        // Fallback for servers that do not echo the client id yet: match by
+        // role and content and remove only the first duplicate.
+        final idx = _optimisticMessages.indexWhere(
+          (m) => m.role == msg.role && m.content == msg.content,
+        );
+        if (idx != -1) {
+          _optimisticMessages.removeAt(idx);
+        }
+      }
     }
 
     _emit();
@@ -550,7 +636,10 @@ class ThreadStore {
   void _handleStreamError(Object e, int token) {
     if (token != _streamToken) return;
     if (e is ApiException && e.statusCode == 409) {
-      // Another client is running this thread; try to resume the existing run.
+      // Another client is running this thread; restore our composer and then
+      // try to resume the existing run so the user can see what's happening.
+      _restorePendingSend();
+      _emit();
       unawaited(resume());
       return;
     }
@@ -559,8 +648,13 @@ class ThreadStore {
 
   void _handleStreamDone(int token) {
     if (token != _streamToken) return;
-    // Stream closed without an explicit done/error event. Finish the stream
-    // so the UI and notification callback are updated.
+    // Stream closed without an explicit done/error event. If we are still
+    // waiting for a user message acknowledgement, treat it as a failure and
+    // restore the composer so the user can retry.
+    if (_pendingSend != null) {
+      _finishStream(phase: StreamPhase.failed, error: appL10n.connectionFailed);
+      return;
+    }
     if (_streaming.isActive) {
       _finishStream(phase: StreamPhase.completed);
     }
@@ -593,6 +687,14 @@ class ThreadStore {
         ),
       );
     }
+    if (phase == StreamPhase.failed) {
+      _restorePendingSend();
+    } else if (_optimisticMessages.isNotEmpty) {
+      // The turn ended successfully but a stray optimistic message remains;
+      // drop it rather than showing a duplicate.
+      _optimisticMessages.clear();
+      _pendingSend = null;
+    }
     _lastRunStatus = _statusFromPhase(phase);
     _emit();
     if (!_runFinishedFired &&
@@ -624,8 +726,9 @@ class ThreadStore {
         _detail = AsyncValue.ready(
           d.copyWith(
             messages: page.messages,
-            totalMessages:
-                page.total > d.totalMessages ? page.total : d.totalMessages,
+            totalMessages: page.total > d.totalMessages
+                ? page.total
+                : d.totalMessages,
             beforeCursor: page.beforeCursor,
             hasMore: page.hasMore,
             turnLimit: page.turnLimit ?? 50,
@@ -639,6 +742,56 @@ class ThreadStore {
       _globalError = '$e';
       _emit();
     }
+  }
+
+  final _random = Random.secure();
+
+  String _newClientMessageId() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final rnd = _random.nextInt(0x7fffffff);
+    return 'cm-$now-$rnd';
+  }
+
+  Message _buildOptimisticMessage(
+    String prompt,
+    List<({String filename, String mime, Uint8List bytes})> attachments,
+    String clientMessageId,
+  ) {
+    return Message(
+      role: 'user',
+      content: prompt,
+      clientMessageId: clientMessageId,
+      attachments: attachments
+          .map((a) => Attachment(filename: a.filename, size: a.bytes.length))
+          .toList(),
+    );
+  }
+
+  void _removeOptimisticMessage(String clientMessageId) {
+    _optimisticMessages.removeWhere(
+      (m) => m.clientMessageId == clientMessageId,
+    );
+    if (_pendingSend?.clientMessageId == clientMessageId) {
+      _pendingSend = null;
+    }
+  }
+
+  void _restorePendingSend() {
+    final pending = _pendingSend;
+    if (pending == null) {
+      _optimisticMessages.clear();
+      return;
+    }
+    composerText = pending.composerText;
+    attachments
+      ..clear()
+      ..addAll(pending.attachments);
+    composerMode = pending.composerMode;
+    _optimisticMessages.removeWhere(
+      (m) => m.clientMessageId == pending.clientMessageId,
+    );
+    _pendingSend = null;
+    _globalError = '';
   }
 
   String _promptForMode(String prompt) {

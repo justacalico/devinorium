@@ -65,9 +65,16 @@ StreamingReduceResult reduceStreamingEvent({
       if (msg == null || detail == null) {
         return StreamingReduceResult(detail: detail, snapshot: snapshot);
       }
+      final existing =
+          msg.id != null && detail.messages.any((m) => m.id == msg.id);
+      final nextMessages = existing
+          ? detail.messages.map((m) => m.id == msg.id ? msg : m).toList()
+          : [...detail.messages, msg];
       final nextDetail = detail.copyWith(
-        messages: [...detail.messages, msg],
-        totalMessages: detail.totalMessages + 1,
+        messages: nextMessages,
+        totalMessages: existing
+            ? detail.totalMessages
+            : detail.totalMessages + 1,
       );
       return StreamingReduceResult(
         detail: nextDetail,

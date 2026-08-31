@@ -64,7 +64,9 @@ class _ThrowingClient extends BaseApiClient {
     required String path,
     required String prompt,
     String? mode,
-    List<({String filename, String mime, Uint8List bytes})>? attachments,
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
   }) => throw UnimplementedError();
 }
 
@@ -148,8 +150,7 @@ class _FakeApiService extends ApiService {
     int id, {
     int? limit,
     int? offset,
-  }) =>
-      Future.value([]);
+  }) => Future.value([]);
 
   @override
   Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
@@ -1664,11 +1665,17 @@ void main() {
     expect(find.text('beta'), findsOneWidget);
     expect(find.text('alpha'), findsNothing);
     expect(
-      find.descendant(of: find.byType(ListTile), matching: find.text('beta task')),
+      find.descendant(
+        of: find.byType(ListTile),
+        matching: find.text('beta task'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: find.byType(ListTile), matching: find.text('alpha task')),
+      find.descendant(
+        of: find.byType(ListTile),
+        matching: find.text('alpha task'),
+      ),
       findsNothing,
     );
 
@@ -1818,25 +1825,49 @@ void main() {
     expect(find.text('Done'), findsOneWidget);
   });
 
-  testWidgets('Thread delete still completes if tile unmounts during animation', (
-    tester,
-  ) async {
-    final api = _FakeApiService();
-    final state = AppState.test(
-      api: api,
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      projects: [
-        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
-      ],
-      threads: [
+  testWidgets(
+    'Thread delete still completes if tile unmounts during animation',
+    (tester) async {
+      final api = _FakeApiService();
+      final state = AppState.test(
+        api: api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        threads: [
+          Thread(
+            id: 'keep',
+            title: 'keep thread',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          Thread(
+            id: 'trash',
+            title: 'trash thread',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 'keep',
+      );
+
+      api.listThreadsResult = [
         Thread(
           id: 'keep',
           title: 'keep thread',
@@ -1846,62 +1877,39 @@ void main() {
           createdAt: '',
           updatedAt: '',
         ),
-        Thread(
-          id: 'trash',
-          title: 'trash thread',
-          projectId: 1,
-          model: '',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
-        ),
-      ],
-      activeProjectId: 1,
-      activeThreadId: 'keep',
-    );
+      ];
 
-    api.listThreadsResult = [
-      Thread(
-        id: 'keep',
-        title: 'keep thread',
-        projectId: 1,
-        model: '',
-        permissionMode: 'normal',
-        createdAt: '',
-        updatedAt: '',
-      ),
-    ];
+      await tester.pumpWidget(_buildWithState(state));
+      await _openDrawer(tester);
 
-    await tester.pumpWidget(_buildWithState(state));
-    await _openDrawer(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
 
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.pump();
+      final trashTile = find.ancestor(
+        of: find.text('trash thread'),
+        matching: find.byType(ListTile),
+      );
+      final delete = find.descendant(
+        of: trashTile,
+        matching: find.widgetWithIcon(IconButton, Icons.delete_outline),
+      );
+      expect(delete, findsOneWidget);
+      await tester.tap(delete);
+      await tester.pump(const Duration(milliseconds: 50));
 
-    final trashTile = find.ancestor(
-      of: find.text('trash thread'),
-      matching: find.byType(ListTile),
-    );
-    final delete = find.descendant(
-      of: trashTile,
-      matching: find.widgetWithIcon(IconButton, Icons.delete_outline),
-    );
-    expect(delete, findsOneWidget);
-    await tester.tap(delete);
-    await tester.pump(const Duration(milliseconds: 50));
+      // Filter the list while the delete animation is still running.
+      // The 'trash' tile unmounts, but its delete callback must still fire.
+      await tester.enterText(find.byKey(const Key('sidebar_search')), 'keep');
+      await tester.pumpAndSettle();
 
-    // Filter the list while the delete animation is still running.
-    // The 'trash' tile unmounts, but its delete callback must still fire.
-    await tester.enterText(find.byKey(const Key('sidebar_search')), 'keep');
-    await tester.pumpAndSettle();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
 
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.pump();
-
-    expect(api.deletedThreadIds, contains('trash'));
-    expect(find.text('trash thread'), findsNothing);
-    expect(find.text('keep thread'), findsOneWidget);
-  });
+      expect(api.deletedThreadIds, contains('trash'));
+      expect(find.text('trash thread'), findsNothing);
+      expect(find.text('keep thread'), findsOneWidget);
+    },
+  );
 
   testWidgets('Ctrl+K focuses the sidebar search', (tester) async {
     final state = AppState.test(
@@ -1928,7 +1936,10 @@ void main() {
       matching: find.byType(EditableText),
     );
 
-    expect(tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus, isFalse);
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isFalse,
+    );
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
@@ -1939,7 +1950,10 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
 
-    expect(tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus, isTrue);
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isTrue,
+    );
   });
 
   testWidgets('Projects header is compact and uppercase', (tester) async {
@@ -2330,7 +2344,10 @@ void main() {
     await _openDrawer(tester);
 
     expect(
-      find.descendant(of: find.byType(Sidebar), matching: find.text('Devinorium')),
+      find.descendant(
+        of: find.byType(Sidebar),
+        matching: find.text('Devinorium'),
+      ),
       findsOneWidget,
     );
     expect(
@@ -2355,10 +2372,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(
-            platform: TargetPlatform.linux,
-            useMaterial3: true,
-          ),
+          theme: ThemeData(platform: TargetPlatform.linux, useMaterial3: true),
           home: ChangeNotifierProvider<AppState>.value(
             value: state,
             child: const Scaffold(
@@ -2390,10 +2404,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(
-            platform: TargetPlatform.iOS,
-            useMaterial3: true,
-          ),
+          theme: ThemeData(platform: TargetPlatform.iOS, useMaterial3: true),
           home: ChangeNotifierProvider<AppState>.value(
             value: state,
             child: const Scaffold(
@@ -2410,8 +2421,9 @@ void main() {
       expect(find.byKey(const Key('window_maximize_button')), findsNothing);
     });
 
-    testWidgets('settings header still shows traffic lights on desktop',
-        (tester) async {
+    testWidgets('settings header still shows traffic lights on desktop', (
+      tester,
+    ) async {
       final state = AppState.test(
         user: User(
           id: 1,
@@ -2427,10 +2439,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(
-            platform: TargetPlatform.linux,
-            useMaterial3: true,
-          ),
+          theme: ThemeData(platform: TargetPlatform.linux, useMaterial3: true),
           home: ChangeNotifierProvider<AppState>.value(
             value: state,
             child: const Scaffold(
@@ -2447,7 +2456,9 @@ void main() {
     });
   });
 
-  testWidgets('Sidebar hides the app title on the settings page', (tester) async {
+  testWidgets('Sidebar hides the app title on the settings page', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -2591,48 +2602,49 @@ void main() {
     expect(find.text('Active thread'), findsNothing);
   });
 
-  testWidgets('Selecting a project with no active thread expands only that one', (
-    tester,
-  ) async {
-    final api = _FakeApiService();
-    api.listThreadsResult = [
-      Thread(
-        id: 'b',
-        title: 'Other thread',
-        projectId: 2,
-        model: '',
-        permissionMode: 'normal',
-        createdAt: '',
-        updatedAt: '',
-      ),
-    ];
+  testWidgets(
+    'Selecting a project with no active thread expands only that one',
+    (tester) async {
+      final api = _FakeApiService();
+      api.listThreadsResult = [
+        Thread(
+          id: 'b',
+          title: 'Other thread',
+          projectId: 2,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ];
 
-    final state = AppState.test(
-      api: api,
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      projects: [
-        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
-        Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
-      ],
-      threads: [...api.listThreadsResult],
-    );
+      final state = AppState.test(
+        api: api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        projects: [
+          Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+          Project(id: 2, name: 'p2', path: '/y', createdAt: '', updatedAt: ''),
+        ],
+        threads: [...api.listThreadsResult],
+      );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await _openDrawer(tester);
+      await tester.pumpWidget(_buildWithState(state));
+      await _openDrawer(tester);
 
-    expect(find.text('Other thread'), findsNothing);
+      expect(find.text('Other thread'), findsNothing);
 
-    await tester.tap(find.text('p2'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('p2'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Other thread'), findsOneWidget);
-  });
+      expect(find.text('Other thread'), findsOneWidget);
+    },
+  );
 }
