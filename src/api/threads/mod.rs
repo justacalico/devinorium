@@ -107,6 +107,7 @@ pub struct MessageOut {
     pub parts: Vec<MessagePart>,
     pub attachments: serde_json::Value,
     pub model: String,
+    pub client_message_id: Option<String>,
     pub created_at: String,
     pub turn_id: i64,
     pub seq: i64,
@@ -161,6 +162,7 @@ impl From<MessageRow> for MessageOut {
             parts,
             attachments,
             model: m.model,
+            client_message_id: m.client_message_id,
             created_at: m.created_at,
             turn_id: m.turn_id,
             seq: m.seq,
@@ -336,6 +338,7 @@ mod tests {
             parts: Some(parts_json.clone()),
             attachments: "[]".into(),
             model: "glm-5-2".into(),
+            client_message_id: None,
             created_at: "2024-01-01T00:00:00Z".into(),
             turn_id: 1,
             seq: 1,
@@ -346,5 +349,28 @@ mod tests {
         assert_eq!(out.content, "hello world");
         assert_eq!(out.thinking, Some("hmm".into()));
         assert_eq!(out.parts.len(), 3);
+    }
+
+    #[test]
+    fn message_out_serializes_client_message_id() {
+        let row = MessageRow {
+            id: 1,
+            thread_id: "th-1".into(),
+            role: "user".into(),
+            content: "hello".into(),
+            thinking: None,
+            parts: None,
+            attachments: "[]".into(),
+            model: "glm-5-2".into(),
+            client_message_id: Some("cm-123".into()),
+            created_at: "2024-01-01T00:00:00Z".into(),
+            turn_id: 1,
+            seq: 1,
+            content_length: 5,
+            parts_length: None,
+        };
+        let out = MessageOut::from(row);
+        let json = serde_json::to_value(out).unwrap();
+        assert_eq!(json["client_message_id"], "cm-123");
     }
 }

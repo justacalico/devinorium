@@ -12,7 +12,8 @@ use axum::Json;
 use crate::api::map_err_internal;
 use crate::api::ApiError;
 use crate::auth::session::CurrentUser;
-use crate::db::{MessageRow, ThreadRow};
+use crate::db::messages::MAX_CLIENT_MESSAGE_ID_LEN;
+use crate::db::{DuplicateClientMessageId, MessageRow, ThreadRow};
 use crate::providers::{
     AskCallback, Attachment, MessagePart, PartCallback, PermissionCallback, SendOptions,
     SendRequest, SessionCallback, StartRequest,
@@ -46,8 +47,18 @@ pub(super) async fn send(
 
     let user_msg = match persist_user_message(&state, &thread, &input).await {
         Ok(m) => m,
-        Err(e) => return map_err_internal(e).into_response(),
+        Err(e) => {
+            if e.downcast_ref::<DuplicateClientMessageId>().is_some() {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(ApiError::new("message with this client id already exists")),
+                )
+                    .into_response();
+            }
+            return map_err_internal(e).into_response();
+        }
     };
+    let user_msg_id = user_msg.id;
 
     let run = match state
         .thread_runner
@@ -59,6 +70,12 @@ pub(super) async fn send(
     {
         Ok(run) => run,
         Err(crate::thread_runner::StartError::AlreadyRunning) => {
+            // Roll back the user message we just inserted; the client will
+            // restore its composer and retry/resume instead.
+            if let Err(e) = state.db.delete_message(user_msg_id).await {
+                tracing::error!(error = %e, "failed to roll back optimistic user message");
+                return map_err_internal(e).into_response();
+            }
             return (
                 StatusCode::CONFLICT,
                 Json(ApiError::new("thread is already running")),
@@ -202,8 +219,18 @@ pub(super) async fn send_stream(
 
     let user_msg = match persist_user_message(&state, &thread, &input).await {
         Ok(m) => m,
-        Err(e) => return map_err_internal(e).into_response(),
+        Err(e) => {
+            if e.downcast_ref::<DuplicateClientMessageId>().is_some() {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(ApiError::new("message with this client id already exists")),
+                )
+                    .into_response();
+            }
+            return map_err_internal(e).into_response();
+        }
     };
+    let user_msg_id = user_msg.id;
 
     let run = match state
         .thread_runner
@@ -215,6 +242,12 @@ pub(super) async fn send_stream(
     {
         Ok(run) => run,
         Err(crate::thread_runner::StartError::AlreadyRunning) => {
+            // Roll back the user message we just inserted; the client will
+            // restore its composer and retry/resume instead.
+            if let Err(e) = state.db.delete_message(user_msg_id).await {
+                tracing::error!(error = %e, "failed to roll back optimistic user message");
+                return map_err_internal(e).into_response();
+            }
             return (
                 StatusCode::CONFLICT,
                 Json(ApiError::new("thread is already running")),
@@ -226,12 +259,13 @@ pub(super) async fn send_stream(
     events_stream(run).await.into_response()
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct SendInput {
     pub prompt: String,
     pub mode: String,
     pub attachments: Vec<Attachment>,
     pub att_meta: Vec<serde_json::Value>,
+    pub client_message_id: Option<String>,
 }
 
 pub(crate) fn build_send_reply(messages: &[MessageRow]) -> Option<Response> {
@@ -261,6 +295,7 @@ pub(crate) fn sanitize_sse_data(s: &str) -> String {
 pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Response> {
     let mut prompt: Option<String> = None;
     let mut mode: String = "code".to_string();
+    let mut client_message_id: Option<String> = None;
     let mut attachments: Vec<Attachment> = Vec::new();
     let mut att_meta: Vec<serde_json::Value> = Vec::new();
 
@@ -280,6 +315,18 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
         } else if name == "mode" {
             let raw = String::from_utf8_lossy(&bytes).to_string();
             mode = normalize_mode(&raw);
+        } else if name == "client_message_id" {
+            let s = String::from_utf8_lossy(&bytes).to_string();
+            if s.len() > MAX_CLIENT_MESSAGE_ID_LEN {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiError::new("client_message_id too long")),
+                )
+                    .into_response());
+            }
+            if !s.is_empty() {
+                client_message_id = Some(s);
+            }
         } else if !filename.is_empty() {
             if bytes.len() > 8 * 1024 * 1024 {
                 return Err((
@@ -322,6 +369,7 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
         mode,
         attachments,
         att_meta,
+        client_message_id,
     })
 }
 
@@ -399,7 +447,7 @@ mod tests {
     use crate::providers::MessagePart;
     use axum::body::{to_bytes, Body};
     use axum::extract::{FromRequest, Multipart};
-    use axum::http::Request;
+    use axum::http::{Request, StatusCode};
 
     #[test]
     fn sanitize_sse_data_normalizes_newlines() {
@@ -421,6 +469,7 @@ mod tests {
             parts: Some(serde_json::to_string(&[MessagePart::text("hello")]).unwrap()),
             attachments: "[]".into(),
             model: "m".into(),
+            client_message_id: None,
             created_at: "now".into(),
             turn_id: 1,
             seq: 1,
@@ -436,6 +485,7 @@ mod tests {
             parts: Some(serde_json::to_string(&[MessagePart::text("reply")]).unwrap()),
             attachments: "[]".into(),
             model: "m".into(),
+            client_message_id: None,
             created_at: "now".into(),
             turn_id: 1,
             seq: 2,
@@ -460,6 +510,7 @@ mod tests {
             parts: Some(serde_json::to_string(&[MessagePart::text("hello")]).unwrap()),
             attachments: "[]".into(),
             model: "m".into(),
+            client_message_id: None,
             created_at: "now".into(),
             turn_id: 1,
             seq: 1,
@@ -475,6 +526,7 @@ mod tests {
             parts: Some(serde_json::to_string(&[MessagePart::text("reply")]).unwrap()),
             attachments: "[]".into(),
             model: "m".into(),
+            client_message_id: None,
             created_at: "now".into(),
             turn_id: 1,
             seq: 2,
@@ -491,13 +543,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parse_send_multipart_extracts_prompt_mode_and_attachment() {
+    async fn parse_send_multipart_extracts_prompt_mode_client_id_and_attachment() {
         let body = "--boundary\r\n\
             Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
             hello\r\n\
             --boundary\r\n\
             Content-Disposition: form-data; name=\"mode\"\r\n\r\n\
             plan\r\n\
+            --boundary\r\n\
+            Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
+            cm-123\r\n\
             --boundary\r\n\
             Content-Disposition: form-data; name=\"attachment\"; filename=\"note.txt\"\r\n\
             Content-Type: text/plain\r\n\r\n\
@@ -512,9 +567,32 @@ mod tests {
         let input = parse_send_multipart(multipart).await.unwrap();
         assert_eq!(input.prompt, "hello");
         assert_eq!(input.mode, "plan");
+        assert_eq!(input.client_message_id.as_deref(), Some("cm-123"));
         assert_eq!(input.attachments.len(), 1);
         assert_eq!(input.attachments[0].filename, "note.txt");
         assert_eq!(input.attachments[0].data, b"file body");
         assert_eq!(input.att_meta[0]["filename"], "note.txt");
+    }
+
+    #[tokio::test]
+    async fn parse_send_multipart_rejects_too_long_client_id() {
+        let long_id = "x".repeat(65);
+        let body = format!(
+            "--boundary\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            hello\r\n\
+            --boundary\r\n\
+            Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
+            {long_id}\r\n\
+            --boundary--\r\n"
+        );
+        let req = Request::builder()
+            .method("POST")
+            .header("content-type", "multipart/form-data; boundary=boundary")
+            .body(Body::from(body.into_bytes()))
+            .unwrap();
+        let multipart = Multipart::from_request(req, &()).await.unwrap();
+        let resp = parse_send_multipart(multipart).await.unwrap_err();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }
