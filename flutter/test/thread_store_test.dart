@@ -7,6 +7,8 @@ import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/async_value.dart';
 import 'package:devinorium_frontend/state/thread_store.dart';
+import 'package:devinorium_frontend/utils/debug_log.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_test/flutter_test.dart';
 
 class _ThrowingClient implements BaseApiClient {
@@ -695,6 +697,126 @@ void main() {
       },
     );
   });
+
+  group('debug failure logging', () {
+    test('debugLogFailure emits the expected format in debug mode', () {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      debugLogFailure('unit.test', 'boom', threadId: 't9');
+
+      expect(logs, hasLength(1));
+      expect(
+        logs.single,
+        matches(RegExp(r'^\[devinorium\] unit\.test failed thread=t9: boom$')),
+      );
+    });
+
+    test('debugLogFailure omits thread segment when threadId is null', () {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      debugLogFailure('unit.test', 'boom');
+
+      expect(logs, hasLength(1));
+      expect(
+        logs.single,
+        matches(RegExp(r'^\[devinorium\] unit\.test failed: boom$')),
+      );
+    });
+
+    test('saveSettings logs failure via debugPrint in debug mode', () async {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      final api = _TestApiService();
+      api.throwOnUpdateThreadSettings = true;
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+      );
+
+      await store.saveSettings();
+
+      expect(store.globalError, isNotEmpty);
+      expect(
+        logs,
+        anyElement(matches(RegExp(r'thread\.saveSettings failed.*t1'))),
+      );
+    });
+
+    test('load logs failure via debugPrint in debug mode', () async {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      final api = _TestApiService();
+      api.throwOnGetThread = true;
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+      );
+
+      await store.load();
+
+      expect(store.status, ThreadStoreStatus.error);
+      expect(logs, anyElement(matches(RegExp(r'thread\.load failed.*t1'))));
+    });
+
+    test('stop logs failure via debugPrint in debug mode', () async {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      final api = _StopFailingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+          ),
+        ),
+      );
+      store.onStateChanged = () {};
+
+      await store.stop();
+
+      expect(store.globalError, isNotEmpty);
+      expect(logs, anyElement(matches(RegExp(r'thread\.stop failed.*t1'))));
+    });
+  });
 }
 
 class _CursorApiService extends ApiService {
@@ -766,4 +888,10 @@ class _CursorApiService extends ApiService {
       hasMore: true,
     );
   }
+}
+
+class _StopFailingApiService extends _TestApiService {
+  @override
+  Future<void> stopThread(String id) =>
+      Future.error(Exception('stopThread failed'));
 }

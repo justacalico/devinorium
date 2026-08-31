@@ -1058,6 +1058,29 @@ void main() {
       expect(base.activeThreadId, isNull);
     });
 
+    test('deleteThread logs failure via debugPrint in debug mode', () async {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      // A 500 response makes deleteThread throw, which the store catches.
+      final state = AppState(
+        api: ApiService(client: _clientFor([_json(500, {'error': 'boom'})])),
+      );
+      final base = AppState.test(api: state.api, activeThreadId: 'a');
+
+      await base.deleteThread('a');
+
+      expect(base.globalError, isNotEmpty);
+      expect(
+        logs,
+        anyElement(matches(RegExp(r'threadList\.deleteThread failed.*a'))),
+      );
+    });
+
     test('saveThreadSettings updates active thread detail', () async {
       final state = AppState(
         api: ApiService(
