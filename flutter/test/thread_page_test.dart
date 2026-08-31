@@ -2067,4 +2067,45 @@ void main() {
 
     expect(find.byType(LinkedMergeRequestChip), findsNothing);
   });
+
+  testWidgets('app bar title is left aligned and ellipsized', (tester) async {
+    const longTitle =
+        'A very long thread title that should not overflow the title bar';
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: longTitle,
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: const [],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    expect(appBar.centerTitle, isFalse);
+
+    final titleText = tester.widget<Text>(
+      find.descendant(of: find.byType(AppBar), matching: find.text(longTitle)),
+    );
+    expect(titleText.maxLines, 1);
+    expect(titleText.overflow, TextOverflow.ellipsis);
+  });
 }

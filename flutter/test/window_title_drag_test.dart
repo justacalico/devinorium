@@ -70,5 +70,25 @@ void main() {
       expect(find.byType(GestureDetector), findsNothing);
       expect(find.text('title'), findsOneWidget);
     });
+
+    testWidgets('aligns child to the left on desktop', (tester) async {
+      await tester.pumpWidget(
+        _buildWithPlatform(
+          TargetPlatform.linux,
+          const WindowTitleDrag(
+            key: Key('title_drag'),
+            child: Text('title'),
+          ),
+        ),
+      );
+
+      final container = tester.widget<Container>(
+        find.descendant(
+          of: find.byKey(const Key('title_drag')),
+          matching: find.byType(Container),
+        ),
+      );
+      expect(container.alignment, AlignmentDirectional.centerStart);
+    });
   });
 }

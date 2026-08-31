@@ -38,7 +38,7 @@ class WindowTitleDrag extends StatelessWidget {
       child: Container(
         color: Colors.transparent,
         width: double.infinity,
-        alignment: Alignment.center,
+        alignment: AlignmentDirectional.centerStart,
         child: child,
       ),
     );
