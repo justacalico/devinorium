@@ -124,6 +124,7 @@ void main() {
         MergeRequestAction.mergeWhenPipelineSucceeds.wire,
         'merge_when_pipeline_succeeds',
       );
+      expect(MergeRequestAction.cancelAutoMerge.wire, 'cancel_auto_merge');
     });
   });
 }

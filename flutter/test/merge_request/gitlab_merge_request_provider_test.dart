@@ -324,6 +324,50 @@ void main() {
       expect(actions.first['action'], 'merge_when_pipeline_succeeds');
     });
 
+    test('sends cancel auto merge and refreshes the detail', () async {
+      final actions = <Map<String, dynamic>>[];
+      var refreshed = false;
+      final mock = MockClient((req) async {
+        if (req.url.path ==
+            '/api/git-connections/gitlab/merge-requests/actions') {
+          actions.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return _json(200, {'status': 'success'});
+        }
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+            'merge_when_pipeline_succeeds': refreshed ? false : true,
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      expect(provider.value.valueOrNull?.mergeWhenPipelineSucceeds, isTrue);
+
+      refreshed = true;
+      await provider.perform(MergeRequestAction.cancelAutoMerge);
+
+      expect(actions, hasLength(1));
+      expect(actions.first['project'], 'group/project');
+      expect(actions.first['iid'], 1);
+      expect(actions.first['hostname'], 'gitlab.com');
+      expect(actions.first['action'], 'cancel_auto_merge');
+      expect(provider.value.valueOrNull?.mergeWhenPipelineSucceeds, isFalse);
+    });
+
     test('parses merge_when_pipeline_succeeds', () async {
       final mock = MockClient((req) async {
         if (req.url.path == '/api/git-connections/gitlab/pipelines') {

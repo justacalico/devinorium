@@ -1654,6 +1654,12 @@ abstract class AppLocalizations {
   /// **'Merge when pipeline succeeds'**
   String get mergeWhenPipelineSucceeds;
 
+  /// No description provided for @cancelAutoMerge.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel auto merge'**
+  String get cancelAutoMerge;
+
   /// No description provided for @closeMergeRequest.
   ///
   /// In en, this message translates to:

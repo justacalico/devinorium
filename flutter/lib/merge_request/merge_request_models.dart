@@ -9,7 +9,8 @@ enum MergeRequestAction {
   close('close'),
   reopen('reopen'),
   merge('merge'),
-  mergeWhenPipelineSucceeds('merge_when_pipeline_succeeds');
+  mergeWhenPipelineSucceeds('merge_when_pipeline_succeeds'),
+  cancelAutoMerge('cancel_auto_merge');
 
   final String wire;
 
