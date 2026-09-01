@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.26.0 - 2026-09-01
+#### Features
+- 在文件面板中显示 Git 状态 - (5e22677) - 珍惜
+
+- - -
+
 ## v0.25.0 - 2026-09-01
 #### Features
 - 在设置页添加服务器管理 UI - (8ba920b) - HttpAnimations
