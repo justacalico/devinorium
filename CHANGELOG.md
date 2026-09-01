@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.25.0 - 2026-09-01
+#### Features
+- 在设置页添加服务器管理 UI - (8ba920b) - HttpAnimations
+- 重构 AppState 和认证状态以支持多服务器 - (59cd134) - HttpAnimations
+- 添加多服务器状态管理 - (b9cba32) - HttpAnimations
+- 添加服务器配置、注册表和迁移 - (5d8429d) - HttpAnimations
+
+- - -
+
 ## v0.24.0 - 2026-08-31
 #### Features
 - 发布前端二进制到 GitLab releases - (52cc985) - HttpAnimations
