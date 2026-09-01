@@ -332,6 +332,32 @@ void main() {
       expect(state.projects, isEmpty);
       expect(state.settingsTopicIndex, 0);
     });
+
+    test('addServer adds a profile without changing the active view', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'ok': true,
+              'totp_required': false,
+              'username': 'owner',
+              'token': 'abc',
+            }),
+          ]),
+        ),
+      );
+      state.setView(AppView.app);
+      await state.addServer(
+        serverUrl: 'http://other',
+        username: 'owner',
+        password: 'pw',
+      );
+      expect(state.view, AppView.app);
+      expect(state.serverProfiles.length, 2);
+      expect(state.activeServerId, 'default');
+      expect(state.globalError, isEmpty);
+    });
   });
 
   group('Projects and threads', () {

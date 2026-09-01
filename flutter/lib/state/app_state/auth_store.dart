@@ -42,30 +42,25 @@ mixin AuthStore on AppStateBase {
     await _loadPlanOverlayState();
     setAppL10n(_locale);
     try {
-      final configured = await api.client.isConfigured;
-      if (!configured) {
+      if (!multiServerState.hasAnyServer) {
+        await multiServerState.loadFromRegistry();
+      }
+      final active = multiServerState.activeApi;
+      if (active == null || !(await active.client.isConfigured)) {
         _view = AppView.login;
         notifyListeners();
         return;
       }
-      _user = await api.me();
-      _view = AppView.app;
-      await Future.wait([_loadModelsAndProviders(), loadProjects()]);
-      if (_projects.isNotEmpty) {
-        await selectProject(_projects.first.id);
-      } else {
-        await selectAllProjects();
-      }
-      startHealthChecks();
-      startGitRefresh();
+      await _loadUserAndData();
     } catch (e) {
       if (e is ApiException && e.statusCode == 401) {
-        await api.client.clearCredentials();
+        await multiServerState.clearActiveToken();
       }
       _view = AppView.login;
       notifyListeners();
     }
   }
+
   @override
   Future<void> doLogin({
     required String serverUrl,
@@ -76,42 +71,130 @@ mixin AuthStore on AppStateBase {
     _loginError = '';
     notifyListeners();
     try {
-      await api.client.setServerUrl(serverUrl.trim());
-      final res = await api.login(
+      final profile = await _performServerLogin(
+        serverUrl: serverUrl,
         username: username,
         password: password,
         totp: totp,
       );
-      if (res.totpRequired) {
+      if (profile == null) {
         _view = AppView.login;
         _showTotpField = true;
         _loginError = appL10n.totpPrompt;
         notifyListeners();
         return;
       }
-      if (res.token.isNotEmpty) {
-        await api.client.setToken(res.token);
-        await api.client.setUsername(res.username);
-      }
-      _user = await api.me();
-      _view = AppView.app;
-      _showTotpField = false;
-      _loginError = '';
-      await _loadPlanOverlayState();
-      await Future.wait([_loadModelsAndProviders(), loadProjects()]);
-      if (_projects.isNotEmpty) {
-        await selectProject(_projects.first.id);
-      } else {
-        await selectAllProjects();
-      }
-      startHealthChecks();
-      startGitRefresh();
+      await multiServerState.addProfile(
+        profile.copyWith(isPrimary: true),
+        setActive: true,
+        api: _isRealNativeClient(api.client) ? null : api,
+      );
+      await _loadUserAndData();
     } catch (e) {
       _view = AppView.login;
       _loginError = '$e';
       notifyListeners();
     }
   }
+
+  @override
+  Future<void> addServer({
+    required String serverUrl,
+    required String username,
+    required String password,
+    String? totp,
+  }) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final profile = await _performServerLogin(
+        serverUrl: serverUrl,
+        username: username,
+        password: password,
+        totp: totp,
+      );
+      if (profile == null) {
+        _globalError = appL10n.totpPrompt;
+        notifyListeners();
+        return;
+      }
+      await multiServerState.addProfile(
+        profile.copyWith(isPrimary: false),
+        setActive: false,
+        api: _isRealNativeClient(api.client) ? null : api,
+      );
+      _globalError = '';
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+
+  Future<ServerProfile?> _performServerLogin({
+    required String serverUrl,
+    required String username,
+    required String password,
+    String? totp,
+  }) async {
+    final trimmedUrl = serverUrl.trim();
+    final loginApi = _loginApiFor(trimmedUrl);
+    final res = await loginApi.login(
+      username: username,
+      password: password,
+      totp: totp,
+    );
+    if (res.totpRequired) return null;
+    await _configureLoginClient(
+      trimmedUrl,
+      res.token,
+      res.username.isNotEmpty ? res.username : username.trim(),
+    );
+    return ServerProfile(
+      id: ServerProfile.generateId(),
+      label: _serverLabel(trimmedUrl),
+      baseUrl: trimmedUrl,
+      token: res.token,
+      username: res.username.isNotEmpty ? res.username : username.trim(),
+      createdAt: DateTime.now().toUtc(),
+      isPrimary: true,
+    );
+  }
+
+  ApiService _loginApiFor(String serverUrl) {
+    if (_isRealNativeClient(api.client)) {
+      final tempProfile = ServerProfile(
+        id: ServerProfile.generateId(),
+        label: _serverLabel(serverUrl),
+        baseUrl: serverUrl,
+        token: '',
+        username: '',
+        createdAt: DateTime.now().toUtc(),
+        isPrimary: true,
+      );
+      return ApiService(client: createApiClient(tempProfile));
+    }
+    return api;
+  }
+
+  Future<void> _configureLoginClient(String serverUrl, String token, String username) async {
+    final client = api.client;
+    if (_isRealNativeClient(client)) {
+      // Real native clients get a fresh service per profile; no need to mutate
+      // the transient unconfigured client.
+      return;
+    }
+    await client.setServerUrl(serverUrl);
+    await client.setToken(token);
+    await client.setUsername(username);
+  }
+
+  bool _isRealNativeClient(BaseApiClient client) {
+    if (client is NativeApiClient) return true;
+    if (client is PreloaderClient) return client.inner is NativeApiClient;
+    return false;
+  }
+
   @override
   Future<void> loadUsers() async {
     try {
@@ -171,38 +254,40 @@ mixin AuthStore on AppStateBase {
     try {
       await api.logout();
     } catch (_) {}
-    try {
-      await api.client.clearCredentials();
-    } catch (_) {}
-    _user = null;
-    _users = [];
+    await multiServerState.clearActiveToken();
+    _resetServerState();
     _settingsTopicIndex = 0;
-    _view = AppView.login;
-    _page = MainPage.threads;
     _userMenuOpen = false;
-    _projects = [];
-    _projectsOffset = 0;
-    _projectsHasMore = true;
-    _threads = [];
-    _userThreadsOffset = 0;
-    _userThreadsHasMore = true;
-    _projectThreadOffsets.clear();
-    _projectThreadsHasMore.clear();
-    _loadingMoreProjectThreads.clear();
-    _filesEntries = [];
-    _filesOffset = 0;
-    _filesHasMore = true;
-    _activeProjectId = null;
-    _showTotpField = false;
-    _loginError = '';
-    _composerText = '';
-    _composerMode = ComposerMode.code;
-    _attachments.clear();
-    _selectedModel = '';
-    _selectedPermission = 'normal';
-    _runningThreadIds.clear();
-    _connectionStatus = ConnectionStatus.checking;
+    _view = AppView.login;
     notifyListeners();
+  }
+  @override
+  Future<void> switchServer(String serverId) async {
+    stopHealthChecks();
+    stopGitRefresh();
+    _resetServerState();
+    try {
+      await multiServerState.setActiveServer(serverId);
+      await _loadUserAndData();
+    } catch (e) {
+      _view = AppView.login;
+      _loginError = '$e';
+      notifyListeners();
+    }
+  }
+  @override
+  Future<void> removeServer(String serverId) async {
+    final wasActive = multiServerState.activeServerId == serverId;
+    stopHealthChecks();
+    stopGitRefresh();
+    _resetServerState();
+    await multiServerState.removeServer(serverId);
+    if (wasActive && multiServerState.activeApi != null) {
+      await _loadUserAndData();
+    } else if (multiServerState.activeApi == null) {
+      _view = AppView.login;
+      notifyListeners();
+    }
   }
   @override
   Future<void> saveProvider({
@@ -273,6 +358,68 @@ mixin AuthStore on AppStateBase {
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+    }
+  }
+
+  Future<void> _loadUserAndData() async {
+    _showTotpField = false;
+    _loginError = '';
+    _user = await api.me();
+    _view = AppView.app;
+    await _loadPlanOverlayState();
+    await Future.wait([_loadModelsAndProviders(), loadProjects()]);
+    if (_projects.isNotEmpty) {
+      await selectProject(_projects.first.id);
+    } else {
+      await selectAllProjects();
+    }
+    startHealthChecks();
+    startGitRefresh();
+  }
+
+  void _resetServerState() {
+    _user = null;
+    _users = [];
+    _projects = [];
+    _projectsOffset = 0;
+    _projectsHasMore = true;
+    _threads = [];
+    _userThreadsOffset = 0;
+    _userThreadsHasMore = true;
+    _projectThreadOffsets.clear();
+    _projectThreadsHasMore.clear();
+    _loadingMoreProjectThreads.clear();
+    _filesEntries = [];
+    _filesOffset = 0;
+    _filesHasMore = true;
+    _activeProjectId = null;
+    _activeThreadId = null;
+    for (final store in _threadStores.values) {
+      store.dispose();
+    }
+    _threadStores.clear();
+    _activeStore = null;
+    _gitRepoInfo.clear();
+    _gitBranches.clear();
+    _gitWorktrees.clear();
+    _gitConnections = [];
+    _linkedMergeRequest = null;
+    _composerText = '';
+    _attachments.clear();
+    _selectedModel = '';
+    _selectedPermission = 'normal';
+    _runningThreadIds.clear();
+    _connectionStatus = ConnectionStatus.checking;
+    _page = MainPage.threads;
+    _dialog = DialogKind.none;
+    _globalError = '';
+  }
+
+  static String _serverLabel(String url) {
+    try {
+      return Uri.parse(url).host;
+    } catch (_) {
+      return url;
     }
   }
 }
