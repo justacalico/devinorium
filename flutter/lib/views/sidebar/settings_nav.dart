@@ -16,6 +16,7 @@ class _SettingsNav extends StatelessWidget {
       (icon: Icons.folder_outlined, label: l.cloneRoot),
       if (state.isOwner)
         (icon: Icons.manage_accounts_outlined, label: l.manage),
+      (icon: Icons.dns_outlined, label: 'Servers'),
     ];
 
     return ListView(
