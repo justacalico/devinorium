@@ -718,11 +718,22 @@ void main() {
       expect(e.name, 'foo.txt');
       expect(e.isDir, isFalse);
       expect(e.size, 123);
+      expect(e.gitStatus, isNull);
     });
 
     test('defaults is_dir to false', () {
       final e = DirEntry.fromJson({'name': 'x', 'size': 0});
       expect(e.isDir, isFalse);
+    });
+
+    test('parses git_status', () {
+      final e = DirEntry.fromJson({
+        'name': 'foo.txt',
+        'is_dir': false,
+        'size': 123,
+        'git_status': 'modified',
+      });
+      expect(e.gitStatus, 'modified');
     });
   });
 

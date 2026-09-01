@@ -4,6 +4,7 @@
 //! home directory. Absolute paths are accepted, and path traversal via `..`
 //! is prevented by canonicalization.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use axum::extract::{Multipart, Query, State};
@@ -116,6 +117,8 @@ struct DirEntry {
     name: String,
     is_dir: bool,
     size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git_status: Option<String>,
 }
 
 async fn list_dir(
@@ -144,9 +147,16 @@ async fn list_dir(
             name,
             is_dir: ft.map(|t| t.is_dir()).unwrap_or(false),
             size,
+            git_status: None,
         });
     }
     out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+
+    let git_statuses = if state.git.is_enabled() {
+        state.git.file_statuses(&target).await.unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
 
     let limit = q
         .limit
@@ -159,6 +169,12 @@ async fn list_dir(
             .skip(offset)
             .take(limit.unwrap_or(usize::MAX))
             .collect();
+    }
+
+    for e in &mut out {
+        if let Some(status) = git_statuses.get(&e.name) {
+            e.git_status = Some(status.clone());
+        }
     }
 
     Json(out).into_response()

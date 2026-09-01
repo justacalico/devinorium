@@ -111,9 +111,15 @@ class FilesPanel extends StatelessWidget {
                                   ? theme.colorScheme.primary
                                   : _fileIconColor(e.name, theme),
                             ),
-                            title: Text(e.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
+                            title: Text(
+                              e.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: e.gitStatus != null
+                                  ? TextStyle(
+                                      color: _gitStatusColor(e.gitStatus!, theme))
+                                  : null,
+                            ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -324,6 +330,21 @@ class FilesPanel extends StatelessWidget {
       return l.sizeKilobytes((n / 1024).toStringAsFixed(1));
     }
     return l.sizeMegabytes((n / 1048576).toStringAsFixed(1));
+  }
+
+  Color _gitStatusColor(String status, ThemeData theme) {
+    return switch (status) {
+      'modified' => Colors.orange,
+      'added' => Colors.green,
+      'deleted' => Colors.red,
+      'renamed' => Colors.purple,
+      'copied' => Colors.pink,
+      'untracked' => Colors.blue,
+      'conflict' => Colors.redAccent,
+      'ignored' => theme.colorScheme.outline,
+      'descendant' => Colors.orange,
+      _ => theme.colorScheme.outline,
+    };
   }
 
   Future<void> _promptMkdir(BuildContext context, AppState state) async {
