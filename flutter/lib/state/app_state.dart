@@ -6,6 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../api/api_service.dart';
+import '../api/client_factory.dart';
+import '../api/native_api_client.dart';
+import '../api/preloader_client.dart';
+import '../servers/multi_server_state.dart';
+import '../servers/server_profile.dart';
 import '../issue/gitlab_issue_provider.dart';
 import '../l10n/global_l10n.dart';
 import '../merge_request/gitlab_merge_request_provider.dart';
@@ -55,9 +60,39 @@ enum DialogKind {
 
 class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, ProjectStore, ThreadListStore, ComposerStore, AttachmentStore, ModelStore, PlanOverlayStore, FilesPanelStore, HealthCheckStore, GitStore, GitRefreshStore, DialogStore, SettingsStore {
   @override
-  final ApiService api;
-  AppState({ApiService? api}) : api = api ?? ApiService();
+  final MultiServerState multiServerState;
+
+  ApiService? _defaultApi;
+  @override
+  ApiService get api => multiServerState.activeApi ?? (_defaultApi ??= ApiService());
+
+  /// The list of configured servers, for the UI switcher and settings.
+  List<ServerProfile> get serverProfiles => multiServerState.profiles;
+
+  /// The id of the currently active server, or `null`.
+  String? get activeServerId => multiServerState.activeServerId;
+
+  AppState({MultiServerState? multiServerState, ApiService? api})
+      : multiServerState = multiServerState ?? MultiServerState() {
+    this.multiServerState.addListener(notifyListeners);
+    if (api != null) {
+      this.multiServerState.addTestConnection(
+            ServerProfile(
+              id: 'default',
+              label: 'default',
+              baseUrl: 'http://localhost',
+              token: 'token',
+              username: 'user',
+              createdAt: DateTime.now().toUtc(),
+              isPrimary: true,
+            ),
+            api,
+          );
+    }
+  }
+
   AppState.test({
+    MultiServerState? multiServerState,
     ApiService? api,
     User? user,
     List<User> users = const [],
@@ -99,7 +134,23 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     String? startedAt,
     bool threadLoading = false,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
-  }) : api = api ?? ApiService() {
+  }) : multiServerState = multiServerState ?? MultiServerState() {
+    this.multiServerState.addListener(notifyListeners);
+    if (api != null) {
+      this.multiServerState.addTestConnection(
+            ServerProfile(
+              id: 'test',
+              label: 'test',
+              baseUrl: 'http://test',
+              token: 'token',
+              username: user?.username ?? 'test',
+              createdAt: DateTime.now().toUtc(),
+              isPrimary: true,
+            ),
+            api,
+          );
+    }
+
     _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
@@ -176,6 +227,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
       _selectedPermission = selectedPermission ?? 'normal';
     }
   }
+
   @override
   void dispose() {
     _healthTimer?.cancel();
@@ -185,8 +237,10 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     }
     _threadStores.clear();
     _activeStore = null;
+    multiServerState.removeListener(notifyListeners);
     super.dispose();
   }
+
   @override
   void _setActiveStore(ThreadStore? store) {
     if (_activeStore == store) return;
@@ -203,6 +257,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     _clearLinkedMergeRequest();
     notifyListeners();
   }
+
   @override
   void _onThreadStoreChanged() {
     final store = _activeStore;
@@ -210,6 +265,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     _syncFromActiveStore();
     notifyListeners();
   }
+
   @override
   void _syncFromActiveStore() {
     final store = _activeStore;
@@ -247,6 +303,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
       _planOverlayVisible = true;
     }
   }
+
   @override
   ThreadStore _createStore(
     String id, {

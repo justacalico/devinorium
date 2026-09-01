@@ -4,6 +4,7 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 // ignore_for_file: unused_element_parameter
 
 abstract class AppStateBase extends ChangeNotifier {
+  MultiServerState get multiServerState;
   ApiService get api;
   AppView get _view;
   set _view(AppView value);
@@ -334,6 +335,14 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadGitConnections();
   Future<void> connectGitLab({String? hostname});
   Future<void> disconnectGitLab({String? hostname});
+  Future<void> addServer({
+    required String serverUrl,
+    required String username,
+    required String password,
+    String? totp,
+  });
+  Future<void> switchServer(String serverId);
+  Future<void> removeServer(String serverId);
   void closeDialog();
   Future<void> openLink(String url);
 }

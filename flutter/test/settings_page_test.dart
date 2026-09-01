@@ -396,8 +396,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // With 5 sections for non-owners, index 10 clamps to 4 (Clone root).
-    expect(find.text('Clone root'), findsOneWidget);
+    // With 6 sections for non-owners, index 10 clamps to 5 (Servers).
+    expect(find.text('Servers'), findsOneWidget);
   });
 
   testWidgets('Personalization tab has theme selector', (tester) async {
