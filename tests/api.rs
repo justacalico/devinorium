@@ -2400,6 +2400,134 @@ async fn file_manager_list_paginates() {
 }
 
 #[tokio::test]
+async fn file_manager_includes_git_status() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &cookie,
+            r#"{"name":"git-status","path":"git-status"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap();
+
+    std::fs::create_dir_all(path).unwrap();
+    std::fs::write(format!("{path}/tracked.txt"), "tracked").unwrap();
+    std::fs::create_dir_all(format!("{path}/sub")).unwrap();
+    std::fs::write(format!("{path}/sub/nested.txt"), "nested").unwrap();
+
+    let run_git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .current_dir(path)
+            .args(args)
+            .output()
+            .expect("git command");
+        assert!(out.status.success(), "git {args:?} failed: {out:?}");
+    };
+    run_git(&["init", "-q"]);
+    run_git(&["config", "user.email", "test@example.com"]);
+    run_git(&["config", "user.name", "Test"]);
+    run_git(&["add", "."]);
+    run_git(&["commit", "-q", "-m", "init"]);
+
+    // Modify tracked, delete tracked, add new, and modify nested.
+    std::fs::write(format!("{path}/tracked.txt"), "changed").unwrap();
+    std::fs::remove_file(format!("{path}/tracked.txt")).unwrap();
+    std::fs::write(format!("{path}/new.txt"), "new").unwrap();
+    std::fs::write(format!("{path}/sub/nested.txt"), "changed").unwrap();
+
+    let find_in = |body: &str, name: &str| {
+        let entries: Vec<serde_json::Value> = serde_json::from_str(body).unwrap();
+        entries
+            .into_iter()
+            .find(|e| e["name"].as_str() == Some(name))
+            .map(|e| e["git_status"].clone())
+    };
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={pid}&path=."),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+
+    assert_eq!(find_in(&body, "new.txt"), Some("untracked".into()));
+    assert_eq!(find_in(&body, "sub"), Some("descendant".into()));
+    // tracked.txt was deleted and removed from disk, so it is not in the listing.
+    assert_eq!(find_in(&body, "tracked.txt"), None);
+
+    // Listing a subdirectory should map statuses relative to that path.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={pid}&path=sub"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert_eq!(find_in(&body, "nested.txt"), Some("modified".into()));
+}
+
+#[tokio::test]
+async fn file_manager_omits_git_status_outside_git_repo() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &cookie,
+            r#"{"name":"nogit","path":"nogit"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap();
+    std::fs::write(format!("{path}/readme.txt"), "hi").unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={pid}&path=."),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let entries: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    for e in entries {
+        assert!(e.get("git_status").is_none());
+    }
+}
+
+#[tokio::test]
 async fn project_accepts_absolute_path_with_spaces() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

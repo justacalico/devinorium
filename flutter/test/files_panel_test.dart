@@ -137,5 +137,39 @@ void main() {
 
       expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
     });
+
+    testWidgets('highlights modified files in the title color', (tester) async {
+      await tester.pumpWidget(_buildWithState(
+        _stateWithEntries([
+          DirEntry(
+            name: 'main.dart',
+            isDir: false,
+            size: 200,
+            gitStatus: 'modified',
+          ),
+        ]),
+      ));
+      await tester.pumpAndSettle();
+
+      final text = tester.widget<Text>(find.text('main.dart'));
+      expect(text.style?.color, Colors.orange);
+    });
+
+    testWidgets('highlights folders containing changes in the title color', (tester) async {
+      await tester.pumpWidget(_buildWithState(
+        _stateWithEntries([
+          DirEntry(
+            name: 'src',
+            isDir: true,
+            size: 0,
+            gitStatus: 'descendant',
+          ),
+        ]),
+      ));
+      await tester.pumpAndSettle();
+
+      final text = tester.widget<Text>(find.text('src'));
+      expect(text.style?.color, Colors.orange);
+    });
   });
 }
