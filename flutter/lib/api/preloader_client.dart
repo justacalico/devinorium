@@ -15,6 +15,9 @@ class PreloaderClient implements BaseApiClient {
   final BaseApiClient _inner;
   final Preloader _preloader;
 
+  /// The wrapped client, exposed so callers can inspect the platform client.
+  BaseApiClient get inner => _inner;
+
   static const _listTtl = Duration(seconds: 2);
 
   @override
