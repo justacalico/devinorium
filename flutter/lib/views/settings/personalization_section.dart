@@ -20,25 +20,36 @@ class _PersonalizationSection extends StatelessWidget {
             Text(
               l.theme,
               style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant),
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: _ThemeSelector(
                 choice: choice,
                 hasValidCustom: themeProvider.hasValidCustomTheme,
-                onSelected: (value) => _onThemeSelected(context, value, themeProvider),
+                onSelected: (value) =>
+                    _onThemeSelected(context, value, themeProvider),
               ),
             ),
             const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () => _showCustomThemeDialog(context, themeProvider),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
               icon: const Icon(Icons.upload_file, size: 18),
-              label: Text(l.themeImport),
+              label: Text(
+                l.themeImport,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
-        if (choice is CustomThemeChoice && themeProvider.hasValidCustomTheme) ...[
+        if (choice is CustomThemeChoice &&
+            themeProvider.hasValidCustomTheme) ...[
           const SizedBox(height: 16),
           _CustomThemeInfo(theme: themeProvider.activeTheme),
         ],
@@ -48,7 +59,8 @@ class _PersonalizationSection extends StatelessWidget {
             Text(
               l.language,
               style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant),
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -67,10 +79,7 @@ class _PersonalizationSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-        Text(
-          l.notifications,
-          style: theme.textTheme.titleSmall,
-        ),
+        Text(l.notifications, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         SwitchListTile(
           title: Text(l.completionNotifications),
@@ -124,6 +133,22 @@ class _PersonalizationSection extends StatelessWidget {
 
 enum _ThemeMenuItem { system, light, dark, oled, custom }
 
+class _SegmentLabel extends StatelessWidget {
+  final String text;
+
+  const _SegmentLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
 class _ThemeSelector extends StatelessWidget {
   final ThemeChoice choice;
   final bool hasValidCustom;
@@ -150,37 +175,47 @@ class _ThemeSelector extends StatelessWidget {
       _ => null,
     };
 
-    return SegmentedButton<_ThemeMenuItem?>(
-      multiSelectionEnabled: false,
-      emptySelectionAllowed: true,
-      showSelectedIcon: false,
-      selected: value != null ? {value} : <_ThemeMenuItem?>{},
-      onSelectionChanged: (selection) {
-        if (selection.isEmpty) return;
-        onSelected(selection.first);
-      },
-      segments: [
-        ButtonSegment(
-          value: _ThemeMenuItem.system,
-          label: Text(l.system),
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: constraints.maxWidth.isFinite ? constraints.maxWidth : 0,
+          ),
+          child: SegmentedButton<_ThemeMenuItem?>(
+            multiSelectionEnabled: false,
+            emptySelectionAllowed: true,
+            showSelectedIcon: false,
+            selected: value != null ? {value} : <_ThemeMenuItem?>{},
+            onSelectionChanged: (selection) {
+              if (selection.isEmpty) return;
+              onSelected(selection.first);
+            },
+            segments: [
+              ButtonSegment(
+                value: _ThemeMenuItem.system,
+                label: _SegmentLabel(l.system),
+              ),
+              ButtonSegment(
+                value: _ThemeMenuItem.light,
+                label: _SegmentLabel(l.light),
+              ),
+              ButtonSegment(
+                value: _ThemeMenuItem.dark,
+                label: _SegmentLabel(l.dark),
+              ),
+              ButtonSegment(
+                value: _ThemeMenuItem.oled,
+                label: _SegmentLabel(l.oledTheme),
+              ),
+              ButtonSegment(
+                value: _ThemeMenuItem.custom,
+                label: _SegmentLabel(l.themeCustom),
+              ),
+            ],
+          ),
         ),
-        ButtonSegment(
-          value: _ThemeMenuItem.light,
-          label: Text(l.light),
-        ),
-        ButtonSegment(
-          value: _ThemeMenuItem.dark,
-          label: Text(l.dark),
-        ),
-        ButtonSegment(
-          value: _ThemeMenuItem.oled,
-          label: Text(l.oledTheme),
-        ),
-        ButtonSegment(
-          value: _ThemeMenuItem.custom,
-          label: Text(l.themeCustom),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -199,10 +234,7 @@ class _CustomThemeInfo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          l.themeCustom,
-          style: textTheme.titleSmall,
-        ),
+        Text(l.themeCustom, style: textTheme.titleSmall),
         if (theme.name != null) ...[
           const SizedBox(height: 8),
           Text(theme.name!, style: textTheme.bodyMedium),
@@ -269,10 +301,7 @@ class _CustomThemeDialogState extends State<_CustomThemeDialog> {
             mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                l.themeImport,
-                style: theme.textTheme.headlineSmall,
-              ),
+              Text(l.themeImport, style: theme.textTheme.headlineSmall),
               const SizedBox(height: 8),
               Text(
                 l.themeImportHint,
@@ -304,7 +333,8 @@ class _CustomThemeDialogState extends State<_CustomThemeDialog> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: () => Navigator.of(context).pop(_controller.text),
+                    onPressed: () =>
+                        Navigator.of(context).pop(_controller.text),
                     child: Text(l.ok),
                   ),
                 ],
