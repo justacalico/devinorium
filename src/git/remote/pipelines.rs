@@ -151,9 +151,7 @@ impl GitRemoteService {
 
         match self.gitlab_api(user_id, hostname, &path).await {
             Ok(trace) => Ok(trace),
-            Err(RemoteError::StatusFailed(ref msg)) if is_trace_not_found(msg) => {
-                Ok(String::new())
-            }
+            Err(RemoteError::StatusFailed(ref msg)) if is_trace_not_found(msg) => Ok(String::new()),
             Err(e) => Err(e),
         }
     }
@@ -200,9 +198,7 @@ fn validate_project_path(path: &str) -> Result<(), RemoteError> {
 
 fn is_trace_not_found(msg: &str) -> bool {
     let first = msg.trim().lines().next().unwrap_or(msg.trim());
-    first.starts_with("404 ")
-        || first.contains(": 404 ")
-        || first.contains(" 404 ")
+    first.starts_with("404 ") || first.contains(": 404 ") || first.contains(" 404 ")
 }
 
 fn parse_timestamp(s: &str) -> DateTime<Utc> {
