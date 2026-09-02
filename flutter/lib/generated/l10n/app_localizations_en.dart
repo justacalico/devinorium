@@ -1018,4 +1018,32 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get serverUrlMustIncludeScheme =>
       'URL must start with http:// or https://';
+
+  @override
+  String get oledTheme => 'OLED';
+
+  @override
+  String get themeCustom => 'Custom';
+
+  @override
+  String get themeBuiltIn => 'Built-in';
+
+  @override
+  String get themeImport => 'Import custom';
+
+  @override
+  String get themeImportHint =>
+      'Paste a restricted CSS file below. Only :root and colour values are allowed.';
+
+  @override
+  String get themeImportError => 'Failed to import theme';
+
+  @override
+  String get themeCreator => 'Creator';
+
+  @override
+  String get themeVersion => 'Version';
+
+  @override
+  String get themeDescription => 'Description';
 }

@@ -96,8 +96,6 @@ abstract class AppStateBase extends ChangeNotifier {
   set _globalError(String value);
   String get _lastThreadError;
   set _lastThreadError(String value);
-  ThemeMode get _themeMode;
-  set _themeMode(ThemeMode value);
   Locale get _locale;
   set _locale(Locale value);
   int get _settingsTopicIndex;
@@ -187,7 +185,6 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get startedAt;
   String get globalError;
   ConnectionStatus get connectionStatus;
-  ThemeMode get themeMode;
   Locale get locale;
   int get settingsTopicIndex;
   bool get notificationsEnabled;
@@ -235,8 +232,6 @@ abstract class AppStateBase extends ChangeNotifier {
   void setShowTotpField(bool v);
   void setGlobalError(String e);
   void clearGlobalError();
-  Future<void> setThemeMode(ThemeMode mode);
-  Future<void> _loadThemeMode();
   Future<void> setLanguage(String language);
   Future<void> _loadLanguage();
   Future<void> setNotificationsEnabled(bool enabled);

@@ -246,9 +246,6 @@ void main() {
       state.setSettingsTopicIndex(2);
       expect(state.settingsTopicIndex, 2);
 
-      state.setThemeMode(ThemeMode.dark);
-      expect(state.themeMode, ThemeMode.dark);
-
       state.setLanguage('zh');
       expect(state.locale, const Locale('zh'));
 

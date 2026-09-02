@@ -583,5 +583,41 @@
   "serverUrlMustIncludeScheme": "URL must start with http:// or https://",
   "@serverUrlMustIncludeScheme": {
     "description": "Validation error when the add-server URL is missing a scheme"
+  },
+  "oledTheme": "OLED",
+  "@oledTheme": {
+    "description": "OLED built-in theme option"
+  },
+  "themeCustom": "Custom",
+  "@themeCustom": {
+    "description": "Label for a user-supplied custom theme"
+  },
+  "themeBuiltIn": "Built-in",
+  "@themeBuiltIn": {
+    "description": "Label shown when a custom theme is active"
+  },
+  "themeImport": "Import custom",
+  "@themeImport": {
+    "description": "Button to open the custom theme import dialog"
+  },
+  "themeImportHint": "Paste a restricted CSS file below. Only :root and colour values are allowed.",
+  "@themeImportHint": {
+    "description": "Hint text in the custom theme import dialog"
+  },
+  "themeImportError": "Failed to import theme",
+  "@themeImportError": {
+    "description": "Error shown when a custom theme file cannot be parsed"
+  },
+  "themeCreator": "Creator",
+  "@themeCreator": {
+    "description": "Label for the theme creator metadata field"
+  },
+  "themeVersion": "Version",
+  "@themeVersion": {
+    "description": "Label for the theme version metadata field"
+  },
+  "themeDescription": "Description",
+  "@themeDescription": {
+    "description": "Label for the theme description metadata field"
   }
 }
