@@ -110,17 +110,19 @@ class ThemeParser {
   };
 
   static final _comment = RegExp(r'/\*[\s\S]*?\*/');
+  static final _metadataLinePrefix = RegExp(r'^\*+\s*');
 
   /// Parses [css] and returns a [ColorTheme].
   static ColorTheme parse(String css, {String? name}) {
+    final lines = css.split('\n');
+    final metadata = _parseMetadata(lines);
+
     final unclosed = _findUnclosedComment(css);
     if (unclosed != null) {
       final line = css.substring(0, unclosed).split('\n').length;
       throw ThemeParseException('unclosed comment block', line: line);
     }
 
-    final lines = css.split('\n');
-    final metadata = _parseMetadata(lines);
     final stripped = css.replaceAll(_comment, '').trim();
     final rootBlock = _extractRootBlock(stripped);
     final colors = _parseRootBlock(rootBlock);
@@ -171,7 +173,7 @@ class ThemeParser {
 
     final fields = <String, String>{};
     for (final line in raw.split('\n')) {
-      final clean = line.replaceFirst(RegExp(r'^\*+\s*'), '').trim();
+      final clean = line.replaceFirst(_metadataLinePrefix, '').trim();
       if (clean.isEmpty) continue;
       final colon = clean.indexOf(':');
       if (colon == -1) continue;

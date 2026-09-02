@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -157,14 +158,17 @@ class ThemeProvider extends ChangeNotifier {
     try {
       final prefs = _prefs ?? await SharedPreferences.getInstance();
       await prefs.setString(_key, jsonEncode(_choice.toJson()));
-    } catch (_) {}
+    } catch (e, stack) {
+      debugPrint('Failed to save theme choice: $e\n$stack');
+    }
   }
 
   void _loadCustomTheme() {
     final custom = _choice as CustomThemeChoice;
     try {
       _customTheme = ThemeParser.parse(custom.css, name: custom.name);
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('Failed to load custom theme: $e\n$stack');
       _customTheme = null;
     }
   }

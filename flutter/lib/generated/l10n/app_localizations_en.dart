@@ -1030,7 +1030,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themeImportHint =>
-      'Paste a restricted CSS file below. Only :root and colour values are allowed.';
+      'Paste a restricted CSS file below. Only :root and color values are allowed.';
 
   @override
   String get themeImportError => 'Failed to import theme';

@@ -596,7 +596,7 @@
   "@themeImport": {
     "description": "Button to open the custom theme import dialog"
   },
-  "themeImportHint": "Paste a restricted CSS file below. Only :root and colour values are allowed.",
+  "themeImportHint": "Paste a restricted CSS file below. Only :root and color values are allowed.",
   "@themeImportHint": {
     "description": "Hint text in the custom theme import dialog"
   },

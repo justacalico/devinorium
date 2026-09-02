@@ -50,7 +50,11 @@ impl std::error::Error for ThemeParseError {}
 pub fn parse(css: &str, name: Option<&str>) -> Result<ColorTheme, ThemeParseError> {
     let (metadata, css_without_metadata) = extract_metadata(css)?;
     if let Some(start) = find_unclosed_comment(&css_without_metadata) {
-        let line = css[..start].chars().filter(|&c| c == '\n').count() + 1;
+        let line = css_without_metadata[..start]
+            .chars()
+            .filter(|&c| c == '\n')
+            .count()
+            + 1;
         return Err(ThemeParseError::new_with_line(
             "unclosed comment block",
             line,
@@ -75,27 +79,54 @@ pub fn parse(css: &str, name: Option<&str>) -> Result<ColorTheme, ThemeParseErro
 }
 
 fn extract_metadata(css: &str) -> Result<(ThemeMetadata, String), ThemeParseError> {
-    if let Some(start) = css.find("/* @theme") {
-        let content_start = start + "/* @theme".len();
-        match css[content_start..].find("*/") {
-            Some(end_offset) => {
-                let end = content_start + end_offset + 2;
-                let content = css[content_start..content_start + end_offset].to_string();
-                let remaining = format!("{}{}", &css[..start], &css[end..]);
-                let metadata = parse_metadata_block(&content)?;
-                Ok((metadata, remaining))
+    let mut in_block = false;
+    let mut buffer = String::new();
+    let mut block_start_line = None;
+    let mut cleaned = String::new();
+
+    for (index, line) in css.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if !in_block {
+            if trimmed.starts_with("/* @theme") {
+                in_block = true;
+                buffer.clear();
+                block_start_line = Some(index + 1);
+                let rest = &trimmed["/* @theme".len()..];
+                if let Some(end) = rest.find("*/") {
+                    buffer.push_str(rest[..end].trim());
+                    buffer.push('\n');
+                    in_block = false;
+                    cleaned.push_str(&rest[end + 2..]);
+                    cleaned.push('\n');
+                } else {
+                    buffer.push_str(rest.trim());
+                    buffer.push('\n');
+                }
+            } else {
+                cleaned.push_str(line);
+                cleaned.push('\n');
             }
-            None => {
-                let line = css[..start].chars().filter(|&c| c == '\n').count() + 1;
-                Err(ThemeParseError::new_with_line(
-                    "unclosed @theme metadata block",
-                    line,
-                ))
-            }
+        } else if let Some(end) = trimmed.find("*/") {
+            buffer.push_str(trimmed[..end].trim());
+            buffer.push('\n');
+            in_block = false;
+            cleaned.push_str(&trimmed[end + 2..]);
+            cleaned.push('\n');
+        } else {
+            buffer.push_str(line);
+            buffer.push('\n');
         }
-    } else {
-        Ok((ThemeMetadata::default(), css.to_string()))
     }
+
+    if in_block {
+        return Err(ThemeParseError::new_with_line(
+            "unclosed @theme metadata block",
+            block_start_line.unwrap_or(0),
+        ));
+    }
+
+    let metadata = parse_metadata_block(&buffer)?;
+    Ok((metadata, cleaned))
 }
 
 fn find_unclosed_comment(css: &str) -> Option<usize> {

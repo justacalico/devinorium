@@ -1951,7 +1951,7 @@ abstract class AppLocalizations {
   /// Hint text in the custom theme import dialog
   ///
   /// In en, this message translates to:
-  /// **'Paste a restricted CSS file below. Only :root and colour values are allowed.'**
+  /// **'Paste a restricted CSS file below. Only :root and color values are allowed.'**
   String get themeImportHint;
 
   /// Error shown when a custom theme file cannot be parsed

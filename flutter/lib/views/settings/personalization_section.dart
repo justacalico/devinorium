@@ -203,8 +203,10 @@ class _CustomThemeInfo extends StatelessWidget {
           l.themeCustom,
           style: textTheme.titleSmall,
         ),
-        const SizedBox(height: 8),
-        Text(theme.name ?? l.themeCustom, style: textTheme.bodyMedium),
+        if (theme.name != null) ...[
+          const SizedBox(height: 8),
+          Text(theme.name!, style: textTheme.bodyMedium),
+        ],
         if (theme.metadata.creator.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
