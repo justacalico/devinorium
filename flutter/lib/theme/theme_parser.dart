@@ -111,6 +111,7 @@ class ThemeParser {
 
   static final _comment = RegExp(r'/\*[\s\S]*?\*/');
   static final _metadataLinePrefix = RegExp(r'^\*+\s*');
+  static final _trailingSemicolons = RegExp(r';+$');
 
   /// Parses [css] and returns a [ColorTheme].
   static ColorTheme parse(String css, {String? name}) {
@@ -138,11 +139,14 @@ class ThemeParser {
   static ThemeMetadata _parseMetadata(List<String> lines) {
     final buffer = StringBuffer();
     var inBlock = false;
+    var blockStart = 0;
 
-    for (final line in lines) {
+    for (var index = 0; index < lines.length; index++) {
+      final line = lines[index];
       final trimmed = line.trim();
       if (trimmed.startsWith('/* @theme')) {
         inBlock = true;
+        blockStart = index;
         buffer.clear();
         final rest = trimmed.substring('/* @theme'.length);
         if (rest.contains('*/')) {
@@ -165,7 +169,10 @@ class ThemeParser {
     }
 
     if (inBlock) {
-      throw const ThemeParseException('unclosed @theme metadata block');
+      throw ThemeParseException(
+        'unclosed @theme metadata block',
+        line: blockStart + 1,
+      );
     }
 
     final raw = buffer.toString().trim();
@@ -251,7 +258,8 @@ class ThemeParser {
       }
 
       final name = decl.substring(0, colon).trim();
-      final value = decl.substring(colon + 1).trim().replaceFirst(';', '');
+      var value = decl.substring(colon + 1).trim();
+      value = value.replaceAll(_trailingSemicolons, '');
 
       if (name.isEmpty) {
         throw ThemeParseException('missing property name in :root: "$decl"');

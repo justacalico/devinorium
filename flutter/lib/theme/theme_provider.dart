@@ -158,8 +158,8 @@ class ThemeProvider extends ChangeNotifier {
     try {
       final prefs = _prefs ?? await SharedPreferences.getInstance();
       await prefs.setString(_key, jsonEncode(_choice.toJson()));
-    } catch (e, stack) {
-      debugPrint('Failed to save theme choice: $e\n$stack');
+    } catch (e) {
+      if (kDebugMode) debugPrint('Failed to save theme choice: $e');
     }
   }
 
@@ -167,8 +167,7 @@ class ThemeProvider extends ChangeNotifier {
     final custom = _choice as CustomThemeChoice;
     try {
       _customTheme = ThemeParser.parse(custom.css, name: custom.name);
-    } catch (e, stack) {
-      debugPrint('Failed to load custom theme: $e\n$stack');
+    } catch (_) {
       _customTheme = null;
     }
   }

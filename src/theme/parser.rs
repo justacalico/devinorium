@@ -49,12 +49,8 @@ impl std::error::Error for ThemeParseError {}
 /// rejected so users can only change theme colours.
 pub fn parse(css: &str, name: Option<&str>) -> Result<ColorTheme, ThemeParseError> {
     let (metadata, css_without_metadata) = extract_metadata(css)?;
-    if let Some(start) = find_unclosed_comment(&css_without_metadata) {
-        let line = css_without_metadata[..start]
-            .chars()
-            .filter(|&c| c == '\n')
-            .count()
-            + 1;
+    if let Some(start) = find_unclosed_comment(css) {
+        let line = css[..start].chars().filter(|&c| c == '\n').count() + 1;
         return Err(ThemeParseError::new_with_line(
             "unclosed comment block",
             line,
@@ -314,25 +310,8 @@ fn parse_root_block(block: &str) -> Result<HashMap<String, u32>, ThemeParseError
 fn split_declarations(block: &str) -> Vec<String> {
     let mut result = Vec::new();
     let mut current = String::new();
-    let mut in_comment = false;
-    let chars: Vec<char> = block.chars().collect();
 
-    for i in 0..chars.len() {
-        let c = chars[i];
-        let next = chars.get(i + 1);
-
-        if c == '/' && next == Some(&'*') {
-            in_comment = true;
-            continue;
-        }
-        if c == '*' && next == Some(&'/') {
-            in_comment = false;
-            continue;
-        }
-        if in_comment {
-            continue;
-        }
-
+    for c in block.chars() {
         if c == ';' {
             let trimmed = current.trim().to_string();
             if !trimmed.is_empty() {
