@@ -263,8 +263,7 @@ fn parse_root_block(block: &str) -> Result<HashMap<String, u32>, ThemeParseError
 
         let Some((name, value)) = decl.split_once(':') else {
             return Err(ThemeParseError::new(format!(
-                "invalid declaration in :root: \"{}\"",
-                decl
+                "invalid declaration in :root: \"{decl}\""
             )));
         };
 
@@ -273,36 +272,31 @@ fn parse_root_block(block: &str) -> Result<HashMap<String, u32>, ThemeParseError
 
         if name.is_empty() {
             return Err(ThemeParseError::new(format!(
-                "missing property name in :root: \"{}\"",
-                decl
+                "missing property name in :root: \"{decl}\""
             )));
         }
 
         let Some(token) = name.strip_prefix("--") else {
             return Err(ThemeParseError::new(format!(
-                "only custom properties are allowed inside :root; found \"{}\"",
-                name
+                "only custom properties are allowed inside :root; found \"{name}\""
             )));
         };
 
         if FORBIDDEN_PROPERTIES.contains(&token) {
             return Err(ThemeParseError::new(format!(
-                "layout or typography properties are not allowed: \"{}\"",
-                name
+                "layout or typography properties are not allowed: \"{name}\""
             )));
         }
 
         if !ALLOWED_TOKENS.contains(&token) {
             return Err(ThemeParseError::new(format!(
-                "unknown theme color token \"{}\"",
-                token
+                "unknown theme color token \"{token}\""
             )));
         }
 
         let color = parse_color(value).ok_or_else(|| {
             ThemeParseError::new(format!(
-                "value for \"{}\" must be a hex color, got \"{}\"",
-                token, value
+                "value for \"{token}\" must be a hex color, got \"{value}\""
             ))
         })?;
 
