@@ -544,5 +544,42 @@
   "switchServer": "Switch server",
   "@switchServer": {
     "description": "Tooltip for the quick server switcher"
+  },
+  "noServersConfigured": "No servers configured.",
+  "@noServersConfigured": {
+    "description": "Empty state shown when no servers are saved"
+  },
+  "serverSwitchNotAvailableWeb": "Server switching is not available in the web build.",
+  "@serverSwitchNotAvailableWeb": {
+    "description": "Message shown in settings when running as a web app"
+  },
+  "web": "web",
+  "@web": {
+    "description": "Fallback label for the implicit web server profile"
+  },
+  "addServer": "Add server",
+  "@addServer": {
+    "description": "Button and dialog title for adding a new server"
+  },
+  "switchServerLabel": "Switch",
+  "@switchServerLabel": {
+    "description": "Button text to activate a different server profile"
+  },
+  "deleteServerConfirm": "Remove \"{name}\" from Devinorium? This will delete the saved connection.",
+  "@deleteServerConfirm": {
+    "description": "Confirmation before removing a saved server profile",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUrlWithSchemeHint": "http://localhost:7878",
+  "@serverUrlWithSchemeHint": {
+    "description": "Hint for the add-server URL field, which requires a scheme"
+  },
+  "serverUrlMustIncludeScheme": "URL must start with http:// or https://",
+  "@serverUrlMustIncludeScheme": {
+    "description": "Validation error when the add-server URL is missing a scheme"
   }
 }

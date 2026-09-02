@@ -7,27 +7,26 @@ class _ServersSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
+    final l = l10n(context);
 
     if (kIsWeb) {
       return _SectionCard(
-        title: 'Servers',
+        title: l.servers,
         children: [
           Text(
-            'Server switching is not available in the web build.',
+            l.serverSwitchNotAvailableWeb,
             style: theme.textTheme.bodyMedium,
           ),
         ],
       );
     }
 
-    final l = l10n(context);
-
     return _SectionCard(
       title: l.servers,
       children: [
         if (state.serverProfiles.isEmpty)
           Text(
-            'No servers configured.',
+            l.noServersConfigured,
             style: theme.textTheme.bodyMedium,
           )
         else
@@ -47,21 +46,19 @@ class _ServersSection extends StatelessWidget {
                 leading: leading,
                 title: Text(profile.label),
                 subtitle:
-                    Text(profile.baseUrl.isEmpty ? 'web' : profile.baseUrl),
+                    Text(profile.baseUrl.isEmpty ? l.web : profile.baseUrl),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (!isActive)
                       TextButton(
-                        onPressed: () =>
-                            unawaited(state.switchServer(profile.id)),
-                        child: const Text('Switch'),
+                        onPressed: () => unawaited(state.switchServer(profile.id)),
+                        child: Text(l.switchServerLabel),
                       ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline),
-                      onPressed: () =>
-                          unawaited(state.removeServer(profile.id)),
-                      tooltip: 'Remove',
+                      tooltip: l.delete,
+                      onPressed: () => unawaited(_confirmAndRemove(context, state, profile)),
                     ),
                   ],
                 ),
@@ -70,11 +67,38 @@ class _ServersSection extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         FilledButton.tonal(
-          onPressed: () => _showAddServerDialog(context, state),
-          child: const Text('Add server'),
+          onPressed: () => unawaited(_showAddServerDialog(context, state)),
+          child: Text(l.addServer),
         ),
       ],
     );
+  }
+
+  Future<void> _confirmAndRemove(
+    BuildContext context,
+    AppState state,
+    ServerProfile profile,
+  ) async {
+    final l = l10n(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(l.deleteServerConfirm(profile.label)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await state.removeServer(profile.id);
+    }
   }
 
   Future<void> _showAddServerDialog(BuildContext context, AppState state) async {
@@ -120,43 +144,25 @@ class _AddServerDialogState extends State<_AddServerDialog> {
       _loading = true;
     });
     try {
-      final url = _url.text.trim();
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        throw FormatException('URL must start with http:// or https://');
-      }
-      await widget.state.addServer(
-        serverUrl: url,
+      final l = l10n(context);
+      final error = await widget.state.addServer(
+        serverUrl: _url.text.trim(),
         username: _username.text.trim(),
         password: _password.text,
         totp: _showTotp ? _totp.text.trim() : null,
       );
-      if (mounted) {
-        if (widget.state.globalError.isNotEmpty) {
-          setState(() {
-            _error = widget.state.globalError;
-            _loading = false;
-            // If the error hints at TOTP, show the field.
-            if (_error.contains('TOTP') || _error.contains('totp')) {
-              _showTotp = true;
-            }
-          });
-          return;
-        }
-        if (widget.state.serverProfiles.isNotEmpty) {
-          Navigator.of(context).pop();
-        }
-      }
-    } on FormatException catch (e) {
-      if (mounted) {
+      if (!mounted) return;
+      if (error != null) {
         setState(() {
-          _error = e.message;
+          _error = error;
+          _showTotp = error == l.totpPrompt;
         });
+        return;
       }
+      Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _error = '$e';
-        });
+        setState(() => _error = '$e');
       }
     } finally {
       if (mounted) {
@@ -167,8 +173,31 @@ class _AddServerDialogState extends State<_AddServerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l = l10n(context);
+
+    String? validateUrl(String? value) {
+      final trimmed = value?.trim() ?? '';
+      if (trimmed.isEmpty) return l.required;
+      final uri = Uri.tryParse(trimmed);
+      if (uri == null ||
+          (uri.scheme != 'http' && uri.scheme != 'https') ||
+          uri.host.isEmpty ||
+          trimmed.contains(' ')) {
+        return l.serverUrlMustIncludeScheme;
+      }
+      return null;
+    }
+
+    String? validateRequired(String? value) {
+      return value == null || value.trim().isEmpty ? l.required : null;
+    }
+
+    String? validatePassword(String? value) {
+      return value == null || value.isEmpty ? l.required : null;
+    }
+
     return AlertDialog(
-      title: const Text('Add server'),
+      title: Text(l.addServer),
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -177,37 +206,34 @@ class _AddServerDialogState extends State<_AddServerDialog> {
             children: [
               TextFormField(
                 controller: _url,
-                decoration: const InputDecoration(
-                  labelText: 'Server URL',
-                  hintText: 'http://localhost:7878',
+                decoration: InputDecoration(
+                  labelText: l.serverUrl,
+                  hintText: l.serverUrlWithSchemeHint,
                 ),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: validateUrl,
                 enabled: !_loading,
               ),
               TextFormField(
                 controller: _username,
-                decoration: const InputDecoration(labelText: 'Username'),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Required' : null,
+                decoration: InputDecoration(labelText: l.username),
+                validator: validateRequired,
                 enabled: !_loading,
               ),
               TextFormField(
                 controller: _password,
-                decoration: const InputDecoration(labelText: 'Password'),
+                decoration: InputDecoration(labelText: l.password),
                 obscureText: true,
-                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                validator: validatePassword,
                 enabled: !_loading,
               ),
               if (_showTotp)
                 TextFormField(
                   controller: _totp,
-                  decoration: const InputDecoration(
-                    labelText: 'TOTP code',
-                    hintText: '000000',
+                  decoration: InputDecoration(
+                    labelText: l.totpCode,
+                    hintText: l.totpHint,
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? 'Required' : null,
+                  validator: validateRequired,
                   enabled: !_loading,
                 ),
               if (_error.isNotEmpty) ...[
@@ -226,17 +252,17 @@ class _AddServerDialogState extends State<_AddServerDialog> {
       actions: [
         TextButton(
           onPressed: _loading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l.cancel),
         ),
         TextButton(
-          onPressed: _loading ? null : _submit,
+          onPressed: _loading ? null : () => unawaited(_submit()),
           child: _loading
               ? const SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Sign in'),
+              : Text(l.addServer),
         ),
       ],
     );

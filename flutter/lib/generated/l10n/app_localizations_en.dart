@@ -984,4 +984,32 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get switchServer => 'Switch server';
+
+  @override
+  String get noServersConfigured => 'No servers configured.';
+
+  @override
+  String get serverSwitchNotAvailableWeb =>
+      'Server switching is not available in the web build.';
+
+  @override
+  String get web => 'web';
+
+  @override
+  String get addServer => 'Add server';
+
+  @override
+  String get switchServerLabel => 'Switch';
+
+  @override
+  String deleteServerConfirm(String name) {
+    return 'Remove \"$name\" from Devinorium? This will delete the saved connection.';
+  }
+
+  @override
+  String get serverUrlWithSchemeHint => 'http://localhost:7878';
+
+  @override
+  String get serverUrlMustIncludeScheme =>
+      'URL must start with http:// or https://';
 }
