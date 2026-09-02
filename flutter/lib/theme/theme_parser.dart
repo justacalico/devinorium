@@ -109,12 +109,16 @@ class ThemeParser {
     'cursor',
   };
 
+  static final _comment = RegExp(r'/\*[\s\S]*?\*/');
+  static final _atRule = RegExp(r'@\w+');
+
   /// Parses [css] and returns a [ColorTheme].
   static ColorTheme parse(String css, {String? name}) {
     final lines = css.split('\n');
     final metadata = _parseMetadata(lines);
-    final rootBlock = _extractRootBlock(css);
-    final colors = _parseRootBlock(rootBlock, lines);
+    final stripped = css.replaceAll(_comment, '');
+    final rootBlock = _extractRootBlock(stripped);
+    final colors = _parseRootBlock(rootBlock);
 
     return ColorTheme(
       colors: colors,
@@ -174,9 +178,20 @@ class ThemeParser {
   }
 
   static String _extractRootBlock(String css) {
+    if (_atRule.hasMatch(css)) {
+      throw const ThemeParseException('at-rules are not allowed');
+    }
+
     final root = css.indexOf(':root');
     if (root == -1) {
       throw const ThemeParseException('missing :root block');
+    }
+
+    final before = css.substring(0, root).trim();
+    if (before.isNotEmpty) {
+      throw const ThemeParseException(
+          'only a single :root block is allowed; remove selectors before it',
+      );
     }
 
     final open = css.indexOf('{', root);
@@ -197,10 +212,17 @@ class ThemeParser {
       throw const ThemeParseException(':root block is missing a closing brace');
     }
 
+    final after = css.substring(close).trim();
+    if (after.isNotEmpty) {
+      throw const ThemeParseException(
+          'only a single :root block is allowed; remove trailing content',
+      );
+    }
+
     return css.substring(open + 1, close - 1);
   }
 
-  static Map<String, Color> _parseRootBlock(String block, List<String> lines) {
+  static Map<String, Color> _parseRootBlock(String block) {
     final colors = <String, Color>{};
     final declarations = _splitDeclarations(block);
 
