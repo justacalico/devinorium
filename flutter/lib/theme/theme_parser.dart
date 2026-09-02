@@ -25,7 +25,7 @@ class ThemeParseException implements Exception {
 ///   * custom properties (`--name`) whose values are hex colors
 ///
 /// Any standard selector, at-rule, layout property, or non-color value is
-/// rejected so users can only change theme colours.
+/// rejected so users can only change theme colors.
 class ThemeParser {
   ThemeParser._();
 

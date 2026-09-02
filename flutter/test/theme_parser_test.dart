@@ -102,7 +102,7 @@ body { color: red; }
       );
     });
 
-    test('rejects non-hex colour values', () {
+    test('rejects non-hex color values', () {
       const css = '''
 /* @theme */
 :root {
@@ -119,7 +119,7 @@ body { color: red; }
       );
     });
 
-    test('accepts eight-digit hex colours', () {
+    test('accepts eight-digit hex colors', () {
       const css = '''
 /* @theme */
 :root {

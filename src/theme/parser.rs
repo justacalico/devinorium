@@ -46,7 +46,7 @@ impl std::error::Error for ThemeParseError {}
 ///   * custom properties (`--name`) whose values are hex colors
 ///
 /// Any standard selector, at-rule, layout property, or non-color value is
-/// rejected so users can only change theme colours.
+/// rejected so users can only change theme colors.
 pub fn parse(css: &str, name: Option<&str>) -> Result<ColorTheme, ThemeParseError> {
     let (metadata, css_without_metadata) = extract_metadata(css)?;
     if let Some(start) = find_unclosed_comment(css) {
