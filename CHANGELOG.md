@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.27.0 - 2026-09-02
+#### Features
+- 添加取消自动合并按钮 - (6bbbdb1) - HttpAnimations
+
+- - -
+
 ## v0.26.0 - 2026-09-01
 #### Features
 - 在文件面板中显示 Git 状态 - (5e22677) - 珍惜
