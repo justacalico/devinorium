@@ -83,11 +83,10 @@ fn extract_metadata(css: &str) -> Result<(ThemeMetadata, String), ThemeParseErro
     for (index, line) in css.lines().enumerate() {
         let trimmed = line.trim_start();
         if !in_block {
-            if trimmed.starts_with("/* @theme") {
+            if let Some(rest) = trimmed.strip_prefix("/* @theme") {
                 in_block = true;
                 buffer.clear();
                 block_start_line = Some(index + 1);
-                let rest = &trimmed["/* @theme".len()..];
                 if let Some(end) = rest.find("*/") {
                     buffer.push_str(rest[..end].trim());
                     buffer.push('\n');
@@ -143,7 +142,11 @@ fn find_unclosed_comment(css: &str) -> Option<usize> {
         }
     }
 
-    if in_comment { Some(start) } else { None }
+    if in_comment {
+        Some(start)
+    } else {
+        None
+    }
 }
 
 fn strip_comments(css: &str) -> String {
@@ -181,15 +184,14 @@ fn parse_metadata_block(raw: &str) -> Result<ThemeMetadata, ThemeParseError> {
             continue;
         }
         if let Some((key, value)) = clean.split_once(':') {
-            fields.insert(
-                key.trim().to_lowercase(),
-                value.trim().to_string(),
-            );
+            fields.insert(key.trim().to_lowercase(), value.trim().to_string());
         }
     }
 
     Ok(ThemeMetadata {
-        version: fields.remove("version").unwrap_or_else(|| "1.0.0".to_string()),
+        version: fields
+            .remove("version")
+            .unwrap_or_else(|| "1.0.0".to_string()),
         creator: fields.remove("creator").unwrap_or_default(),
         description: fields.remove("description").unwrap_or_default(),
     })
@@ -200,7 +202,9 @@ fn extract_root_block(css: &str) -> Result<String, ThemeParseError> {
         return Err(ThemeParseError::new("at-rules are not allowed"));
     }
 
-    let root = css.find(":root").ok_or_else(|| ThemeParseError::new("missing :root block"))?;
+    let root = css
+        .find(":root")
+        .ok_or_else(|| ThemeParseError::new("missing :root block"))?;
 
     let before = css[..root].trim();
     if !before.is_empty() {
@@ -209,9 +213,10 @@ fn extract_root_block(css: &str) -> Result<String, ThemeParseError> {
         ));
     }
 
-    let open = css[root..].find('{').ok_or_else(|| {
-        ThemeParseError::new(":root block is missing an opening brace")
-    })? + root;
+    let open = css[root..]
+        .find('{')
+        .ok_or_else(|| ThemeParseError::new(":root block is missing an opening brace"))?
+        + root;
 
     let mut depth = 1;
     let mut close = open + 1;
@@ -226,7 +231,9 @@ fn extract_root_block(css: &str) -> Result<String, ThemeParseError> {
     }
 
     if depth != 0 {
-        return Err(ThemeParseError::new(":root block is missing a closing brace"));
+        return Err(ThemeParseError::new(
+            ":root block is missing a closing brace",
+        ));
     }
 
     let after = css[close..].trim();
@@ -271,14 +278,12 @@ fn parse_root_block(block: &str) -> Result<HashMap<String, u32>, ThemeParseError
             )));
         }
 
-        if !name.starts_with("--") {
+        let Some(token) = name.strip_prefix("--") else {
             return Err(ThemeParseError::new(format!(
                 "only custom properties are allowed inside :root; found \"{}\"",
                 name
             )));
-        }
-
-        let token = &name[2..];
+        };
 
         if FORBIDDEN_PROPERTIES.contains(&token) {
             return Err(ThemeParseError::new(format!(
@@ -333,10 +338,7 @@ fn split_declarations(block: &str) -> Vec<String> {
 
 fn parse_color(value: &str) -> Option<u32> {
     let trimmed = value.trim();
-    if !trimmed.starts_with('#') {
-        return None;
-    }
-    let hex = &trimmed[1..];
+    let hex = trimmed.strip_prefix('#')?;
 
     if hex.len() == 6 {
         return u32::from_str_radix(hex, 16).ok().map(|v| 0xFF00_0000 | v);
@@ -452,7 +454,10 @@ mod tests {
         assert_eq!(theme.name.as_deref(), Some("Light"));
         assert_eq!(theme.metadata.version, "1.0.0");
         assert_eq!(theme.metadata.creator, "Devinorium");
-        assert_eq!(theme.metadata.description, "The default Material 3 light theme.");
+        assert_eq!(
+            theme.metadata.description,
+            "The default Material 3 light theme."
+        );
         assert_eq!(theme.colors.get("primary"), Some(&0xFF6750A4));
         assert_eq!(theme.colors.get("on-primary"), Some(&0xFFFFFFFF));
     }
