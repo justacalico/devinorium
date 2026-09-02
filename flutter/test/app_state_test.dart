@@ -348,15 +348,99 @@ void main() {
         ),
       );
       state.setView(AppView.app);
+      final result = await state.addServer(
+        serverUrl: 'http://other',
+        username: 'owner',
+        password: 'pw',
+      );
+      expect(result, isNull);
+      expect(state.view, AppView.app);
+      expect(state.serverProfiles.length, 2);
+      expect(state.activeServerId, 'default');
+      expect(state.globalError, isEmpty);
+    });
+
+    test('addServer returns the TOTP prompt when required', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'ok': true,
+              'totp_required': true,
+              'username': 'owner',
+            }),
+          ]),
+        ),
+      );
+      final result = await state.addServer(
+        serverUrl: 'http://other',
+        username: 'owner',
+        password: 'pw',
+      );
+      expect(result, isNotNull);
+      expect(state.globalError, isNotEmpty);
+    });
+
+    test('switchServer goes to login when the server id is unknown', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([_json(200, {})]),
+        ),
+      );
+      state.setView(AppView.app);
+      await state.switchServer('missing');
+      expect(state.view, AppView.login);
+      expect(state.loginError, contains('server not found'));
+    });
+
+    test('removeServer removes an inactive profile without resetting state', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'ok': true,
+              'totp_required': false,
+              'username': 'owner',
+              'token': 'abc',
+            }),
+          ]),
+        ),
+      );
+      state.setView(AppView.app);
+      state.setComposerText('hello');
       await state.addServer(
         serverUrl: 'http://other',
         username: 'owner',
         password: 'pw',
       );
-      expect(state.view, AppView.app);
       expect(state.serverProfiles.length, 2);
+
+      final other = state.serverProfiles.firstWhere((p) => p.baseUrl == 'http://other');
+      await state.removeServer(other.id);
+      expect(state.serverProfiles.length, 1);
       expect(state.activeServerId, 'default');
-      expect(state.globalError, isEmpty);
+      expect(state.composerText, 'hello');
+      expect(state.view, AppView.app);
+    });
+
+    test('removeServer for the active profile goes to login when none remain', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([_json(200, {})]),
+        ),
+      );
+      state.setView(AppView.app);
+      state.setComposerText('hello');
+
+      await state.removeServer('default');
+      expect(state.activeServerId, isNull);
+      expect(state.serverProfiles, isEmpty);
+      expect(state.view, AppView.login);
+      expect(state.composerText, '');
     });
   });
 

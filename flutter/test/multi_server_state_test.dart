@@ -183,6 +183,35 @@ void main() {
     test('notifies listeners on active server change', () async {
       final registry = await freshRegistry();
       final state = MultiServerState(registry: registry);
+      final first = ServerProfile(
+        id: 'x',
+        label: 'x',
+        baseUrl: 'http://x',
+        token: 't',
+        username: 'u',
+        createdAt: DateTime(2024, 1, 1).toUtc(),
+      );
+      final second = ServerProfile(
+        id: 'y',
+        label: 'y',
+        baseUrl: 'http://y',
+        token: 't',
+        username: 'u',
+        createdAt: DateTime(2024, 1, 2).toUtc(),
+      );
+      await state.addProfile(first);
+      await state.addProfile(second, setActive: false);
+
+      var calls = 0;
+      state.addListener(() => calls++);
+      await state.setActiveServer('y');
+      expect(calls, greaterThan(0));
+      expect(state.activeServerId, 'y');
+    });
+
+    test('setActiveServer returns true for a known id and false otherwise', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
       final profile = ServerProfile(
         id: 'x',
         label: 'x',
@@ -193,10 +222,36 @@ void main() {
       );
       await state.addProfile(profile);
 
-      var calls = 0;
-      state.addListener(() => calls++);
-      await state.setActiveServer('x');
-      expect(calls, greaterThan(0));
+      expect(await state.setActiveServer('x'), isTrue);
+      expect(await state.setActiveServer('missing'), isFalse);
+    });
+
+    test('removeServer promotes the most recently created remaining profile', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+      final older = ServerProfile(
+        id: 'older',
+        label: 'older',
+        baseUrl: 'http://older',
+        token: 't1',
+        username: 'u',
+        createdAt: DateTime(2024, 1, 1).toUtc(),
+        isPrimary: true,
+      );
+      final newer = ServerProfile(
+        id: 'newer',
+        label: 'newer',
+        baseUrl: 'http://newer',
+        token: 't2',
+        username: 'u',
+        createdAt: DateTime(2024, 1, 2).toUtc(),
+      );
+      await state.addProfile(older);
+      await state.addProfile(newer, setActive: false);
+
+      await state.removeServer('older');
+      expect(state.activeServerId, 'newer');
+      expect(state.activeProfile?.isPrimary, isTrue);
     });
   });
 }

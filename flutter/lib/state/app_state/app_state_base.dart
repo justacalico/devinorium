@@ -335,7 +335,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadGitConnections();
   Future<void> connectGitLab({String? hostname});
   Future<void> disconnectGitLab({String? hostname});
-  Future<void> addServer({
+  Future<String?> addServer({
     required String serverUrl,
     required String username,
     required String password,

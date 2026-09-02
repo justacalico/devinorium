@@ -1869,6 +1869,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Switch server'**
   String get switchServer;
+
+  /// Empty state shown when no servers are saved
+  ///
+  /// In en, this message translates to:
+  /// **'No servers configured.'**
+  String get noServersConfigured;
+
+  /// Message shown in settings when running as a web app
+  ///
+  /// In en, this message translates to:
+  /// **'Server switching is not available in the web build.'**
+  String get serverSwitchNotAvailableWeb;
+
+  /// Fallback label for the implicit web server profile
+  ///
+  /// In en, this message translates to:
+  /// **'web'**
+  String get web;
+
+  /// Button and dialog title for adding a new server
+  ///
+  /// In en, this message translates to:
+  /// **'Add server'**
+  String get addServer;
+
+  /// Button text to activate a different server profile
+  ///
+  /// In en, this message translates to:
+  /// **'Switch'**
+  String get switchServerLabel;
+
+  /// Confirmation before removing a saved server profile
+  ///
+  /// In en, this message translates to:
+  /// **'Remove \"{name}\" from Devinorium? This will delete the saved connection.'**
+  String deleteServerConfirm(String name);
+
+  /// Hint for the add-server URL field, which requires a scheme
+  ///
+  /// In en, this message translates to:
+  /// **'http://localhost:7878'**
+  String get serverUrlWithSchemeHint;
+
+  /// Validation error when the add-server URL is missing a scheme
+  ///
+  /// In en, this message translates to:
+  /// **'URL must start with http:// or https://'**
+  String get serverUrlMustIncludeScheme;
 }
 
 class _AppLocalizationsDelegate

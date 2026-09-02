@@ -99,26 +99,29 @@ class MultiServerState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Set the active server by id.
-  Future<void> setActiveServer(String id) async {
-    if (!_profiles.containsKey(id)) return;
+  /// Set the active server by id. Returns `true` if the id existed.
+  Future<bool> setActiveServer(String id) async {
+    if (!_profiles.containsKey(id)) return false;
+    if (_activeServerId == id) return true;
     final updated = await _registry.setPrimary(id);
     for (final p in updated) {
       _profiles[p.id] = p;
     }
     _activeServerId = id;
     notifyListeners();
+    return true;
   }
 
-  /// Remove a server by id.
+  /// Remove a server by id. Promotes the most recently created remaining
+  /// profile when the active one is removed.
   Future<void> removeServer(String id) async {
-    final remaining = await _registry.remove(id);
-    if (_activeServerId == id) {
-      if (remaining.isNotEmpty) {
-        final promoted = await _registry.setPrimary(remaining.first.id);
-        for (final p in promoted) {
-          _profiles[p.id] = p;
-        }
+    var remaining = await _registry.remove(id);
+    if (_activeServerId == id && remaining.isNotEmpty) {
+      remaining = List<ServerProfile>.from(remaining)
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final promoted = await _registry.setPrimary(remaining.first.id);
+      for (final p in promoted) {
+        _profiles[p.id] = p;
       }
     }
     _apis.remove(id);

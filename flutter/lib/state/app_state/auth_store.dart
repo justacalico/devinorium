@@ -1,6 +1,8 @@
 part of 'package:devinorium_frontend/state/app_state.dart';
 
 mixin AuthStore on AppStateBase {
+  bool _switchingServer = false;
+
   @override
   User? _user;
   @override
@@ -87,7 +89,7 @@ mixin AuthStore on AppStateBase {
       await multiServerState.addProfile(
         profile.copyWith(isPrimary: true),
         setActive: true,
-        api: _isRealNativeClient(api.client) ? null : api,
+        api: _apiForNewProfile(),
       );
       await _loadUserAndData();
     } catch (e) {
@@ -98,7 +100,7 @@ mixin AuthStore on AppStateBase {
   }
 
   @override
-  Future<void> addServer({
+  Future<String?> addServer({
     required String serverUrl,
     required String username,
     required String password,
@@ -116,18 +118,20 @@ mixin AuthStore on AppStateBase {
       if (profile == null) {
         _globalError = appL10n.totpPrompt;
         notifyListeners();
-        return;
+        return _globalError;
       }
       await multiServerState.addProfile(
         profile.copyWith(isPrimary: false),
         setActive: false,
-        api: _isRealNativeClient(api.client) ? null : api,
+        api: _apiForNewProfile(),
       );
       _globalError = '';
       notifyListeners();
+      return null;
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+      return _globalError;
     }
   }
 
@@ -193,6 +197,12 @@ mixin AuthStore on AppStateBase {
     if (client is NativeApiClient) return true;
     if (client is PreloaderClient) return client.inner is NativeApiClient;
     return false;
+  }
+
+  ApiService? _apiForNewProfile() {
+    if (_isRealNativeClient(api.client)) return null;
+    if (kIsWeb) return ApiService(client: createApiClient());
+    return ApiService(client: api.client);
   }
 
   @override
@@ -263,30 +273,49 @@ mixin AuthStore on AppStateBase {
   }
   @override
   Future<void> switchServer(String serverId) async {
+    if (_switchingServer) return;
+    _switchingServer = true;
     stopHealthChecks();
     stopGitRefresh();
     _resetServerState();
     try {
-      await multiServerState.setActiveServer(serverId);
+      final ok = await multiServerState.setActiveServer(serverId);
+      if (!ok) throw StateError('server not found');
       await _loadUserAndData();
     } catch (e) {
       _view = AppView.login;
       _loginError = '$e';
       notifyListeners();
+    } finally {
+      _switchingServer = false;
     }
   }
   @override
   Future<void> removeServer(String serverId) async {
-    final wasActive = multiServerState.activeServerId == serverId;
-    stopHealthChecks();
-    stopGitRefresh();
-    _resetServerState();
-    await multiServerState.removeServer(serverId);
-    if (wasActive && multiServerState.activeApi != null) {
-      await _loadUserAndData();
-    } else if (multiServerState.activeApi == null) {
+    if (_switchingServer) return;
+    _switchingServer = true;
+    try {
+      final wasActive = multiServerState.activeServerId == serverId;
+      if (wasActive) {
+        stopHealthChecks();
+        stopGitRefresh();
+        _resetServerState();
+      }
+      await multiServerState.removeServer(serverId);
+      if (wasActive) {
+        if (multiServerState.activeApi != null) {
+          await _loadUserAndData();
+        } else {
+          _view = AppView.login;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
       _view = AppView.login;
+      _loginError = '$e';
       notifyListeners();
+    } finally {
+      _switchingServer = false;
     }
   }
   @override
