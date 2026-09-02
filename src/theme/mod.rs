@@ -17,7 +17,11 @@ impl Default for ThemeMetadata {
 }
 
 impl ThemeMetadata {
-    pub fn new(version: impl Into<String>, creator: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        version: impl Into<String>,
+        creator: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             version: version.into(),
             creator: creator.into(),
