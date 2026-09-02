@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.29.0 - 2026-09-02
+#### Features
+- 添加 GitLab CI/CD 任务实时日志 - (82acd59) - HttpAnimations
+
+- - -
+
 ## v0.28.2 - 2026-09-02
 #### Bug Fixes
 - 补充各平台网络访问权限 - (5f6bf8f) - HttpAnimations
