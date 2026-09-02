@@ -727,6 +727,64 @@ fn write_garbage_glab(dir: &std::path::Path) -> std::path::PathBuf {
     bin
 }
 
+/// Fake `glab` that serves a single job and its trace.
+fn write_fake_glab_with_job_logs(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"/trace")
+      printf 'line one\nline two\n'
+      exit 0
+      ;;
+    *"/jobs/"*)
+      printf '{"id":101,"name":"cargo test","status":"running","stage":"test","web_url":"https://gitlab.example.com/-/jobs/101","started_at":"2026-01-01T00:00:00Z","finished_at":"","duration":0}\n'
+      exit 0
+      ;;
+  esac
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+/// Fake `glab` that returns 404 for a job trace.
+fn write_fake_glab_with_missing_job_trace(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"/trace")
+      echo '404 Not Found' >&2
+      exit 1
+      ;;
+    *"/jobs/"*)
+      printf '{"id":101,"name":"cargo test","status":"running","stage":"test","web_url":"https://gitlab.example.com/-/jobs/101","started_at":"2026-01-01T00:00:00Z","finished_at":"","duration":0}\n'
+      exit 0
+      ;;
+  esac
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
 #[tokio::test]
 async fn git_remote_gitlab_api_forwards_path_and_host() {
     let tmp = TempDir::new().unwrap();
@@ -922,6 +980,102 @@ async fn git_remote_gitlab_pipelines_rejects_invalid_json() {
         .await
         .unwrap_err();
     assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_job_log_returns_job_and_trace() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_job_logs(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let log = svc
+        .gitlab_job_log(1, "gitlab.example.com", "group/project", 101)
+        .await
+        .unwrap();
+
+    assert_eq!(log.job.id, 101);
+    assert_eq!(log.job.name, "cargo test");
+    assert_eq!(log.job.status, "running");
+    assert_eq!(log.trace, "line one\nline two\n");
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_job_trace_treats_missing_trace_as_empty() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_missing_job_trace(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let log = svc
+        .gitlab_job_log(1, "gitlab.example.com", "group/project", 101)
+        .await
+        .unwrap();
+
+    assert_eq!(log.job.id, 101);
+    assert!(log.trace.is_empty());
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_job_log_rejects_invalid_job_id() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_job_logs(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let err = svc
+        .gitlab_job_log(1, "gitlab.example.com", "group/project", 0)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
+
+/// Fake `glab` that succeeds for a single job but returns 500 for the trace.
+fn write_fake_glab_with_trace_error(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"/trace")
+      echo '500 Internal Server Error' >&2
+      exit 1
+      ;;
+    *"/jobs/"*)
+      printf '{"id":101,"name":"cargo test","status":"running","stage":"test","web_url":"https://gitlab.example.com/-/jobs/101","started_at":"2026-01-01T00:00:00Z","finished_at":"","duration":0}\n'
+      exit 0
+      ;;
+  esac
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_remote_gitlab_job_trace_surfaces_non_404_errors() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_fake_glab_with_trace_error(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let err = svc
+        .gitlab_job_log(1, "gitlab.example.com", "group/project", 101)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+    assert!(err.to_string().contains("500"));
 }
 
 /// Fake `glab` for the merge action polling path. The first `PUT .../merge`

@@ -3,8 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../merge_request/gitlab_merge_request_provider.dart';
+import '../merge_request/merge_request_models.dart';
 import '../merge_request/merge_request_provider.dart';
 import '../state/app_state.dart';
+import '../utils/link_opener.dart';
+import 'job_log_dialog.dart';
 import 'merge_request_view.dart';
 
 /// A modal panel that loads and displays a merge request.
@@ -44,6 +47,23 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
   void dispose() {
     if (_ownsProvider) _provider?.dispose();
     super.dispose();
+  }
+
+  void _showJobLog(BuildContext context, MergeRequestPipelineJob job) {
+    final provider = _provider;
+    if (provider is! GitLabMergeRequestProvider) return;
+
+    final appState = context.read<AppState>();
+    showDialog(
+      context: context,
+      builder: (context) => JobLogDialog(
+        job: job,
+        onLoad: () => provider.loadJobLog(job),
+        onOpenInBrowser: job.webUrl.isNotEmpty && isOpenableLink(job.webUrl)
+            ? () => appState.openLink(job.webUrl)
+            : null,
+      ),
+    );
   }
 
   @override
@@ -103,6 +123,9 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
                               context.read<AppState>().openLink(url),
                           onLoadJobs: _provider! is GitLabMergeRequestProvider
                               ? _provider!.loadJobs
+                              : null,
+                          onJobTap: _provider! is GitLabMergeRequestProvider
+                              ? (job) => _showJobLog(context, job)
                               : null,
                           onAction: _provider!.perform,
                         ),

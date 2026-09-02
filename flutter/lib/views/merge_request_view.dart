@@ -25,6 +25,10 @@ class MergeRequestView extends StatelessWidget {
   /// expandable and only the open-in-browser action is available.
   final PipelineJobsLoader? onLoadJobs;
 
+  /// Called when a CI/CD job row is tapped. When null, tappable rows fall back
+  /// to opening the job in the browser.
+  final PipelineJobTap? onJobTap;
+
   /// Applies a state change to the merge request. When null, no action
   /// buttons are shown.
   final Future<void> Function(MergeRequestAction action)? onAction;
@@ -36,6 +40,7 @@ class MergeRequestView extends StatelessWidget {
     this.onRetry,
     this.onLinkTap,
     this.onLoadJobs,
+    this.onJobTap,
     this.onAction,
   });
 
@@ -47,6 +52,7 @@ class MergeRequestView extends StatelessWidget {
         url: url,
         onLinkTap: onLinkTap,
         onLoadJobs: onLoadJobs,
+        onJobTap: onJobTap,
         onAction: onAction,
       );
     }
@@ -65,6 +71,7 @@ class _MergeRequestBody extends StatefulWidget {
   final String? url;
   final ValueChanged<String>? onLinkTap;
   final PipelineJobsLoader? onLoadJobs;
+  final PipelineJobTap? onJobTap;
   final Future<void> Function(MergeRequestAction action)? onAction;
 
   const _MergeRequestBody({
@@ -72,6 +79,7 @@ class _MergeRequestBody extends StatefulWidget {
     this.url,
     this.onLinkTap,
     this.onLoadJobs,
+    this.onJobTap,
     this.onAction,
   });
 
@@ -125,6 +133,7 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
                 detail: detail,
                 onLinkTap: widget.onLinkTap,
                 onLoadJobs: widget.onLoadJobs,
+                onJobTap: widget.onJobTap,
               ),
               _ChangesTab(changes: detail.changes),
               _CommentsTab(
@@ -135,6 +144,7 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
                 pipelines: detail.pipelines,
                 onLinkTap: widget.onLinkTap,
                 onLoadJobs: widget.onLoadJobs,
+                onJobTap: widget.onJobTap,
               ),
             ],
           ),
@@ -242,8 +252,14 @@ class _OverviewTab extends StatelessWidget {
   final MergeRequestDetail detail;
   final ValueChanged<String>? onLinkTap;
   final PipelineJobsLoader? onLoadJobs;
+  final PipelineJobTap? onJobTap;
 
-  const _OverviewTab({required this.detail, this.onLinkTap, this.onLoadJobs});
+  const _OverviewTab({
+    required this.detail,
+    this.onLinkTap,
+    this.onLoadJobs,
+    this.onJobTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -277,6 +293,7 @@ class _OverviewTab extends StatelessWidget {
               pipeline: latestPipeline,
               onLinkTap: onLinkTap,
               onLoadJobs: onLoadJobs,
+              onJobTap: onJobTap,
               margin: EdgeInsets.zero,
             ),
             const SizedBox(height: 16),
@@ -309,6 +326,7 @@ class _PipelineTile extends StatefulWidget {
   final MergeRequestPipeline pipeline;
   final ValueChanged<String>? onLinkTap;
   final PipelineJobsLoader? onLoadJobs;
+  final PipelineJobTap? onJobTap;
   final EdgeInsetsGeometry margin;
 
   const _PipelineTile({
@@ -316,6 +334,7 @@ class _PipelineTile extends StatefulWidget {
     required this.pipeline,
     this.onLinkTap,
     this.onLoadJobs,
+    this.onJobTap,
     this.margin = const EdgeInsets.symmetric(vertical: 4),
   });
 
@@ -328,6 +347,7 @@ class _PipelineTileState extends State<_PipelineTile> {
   bool _loading = false;
   List<MergeRequestPipelineJob>? _jobs;
   Object? _error;
+  int _requestGeneration = 0;
 
   bool get _canExpand => widget.onLoadJobs != null && widget.pipeline.id > 0;
 
@@ -363,6 +383,8 @@ class _PipelineTileState extends State<_PipelineTile> {
   }
 
   Future<void> _loadJobs() async {
+    if (_loading) return;
+    final generation = ++_requestGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -371,13 +393,13 @@ class _PipelineTileState extends State<_PipelineTile> {
 
     try {
       final jobs = await widget.onLoadJobs!(widget.pipeline);
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _jobs = jobs;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _error = e;
         _loading = false;
@@ -389,6 +411,7 @@ class _PipelineTileState extends State<_PipelineTile> {
   void didUpdateWidget(covariant _PipelineTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.pipeline.id != oldWidget.pipeline.id) {
+      _requestGeneration++;
       _expanded = false;
       _loading = false;
       _jobs = null;
@@ -520,7 +543,11 @@ class _PipelineTileState extends State<_PipelineTile> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-      child: _PipelineJobsList(jobs: jobs, onLinkTap: widget.onLinkTap),
+      child: _PipelineJobsList(
+        jobs: jobs,
+        onLinkTap: widget.onLinkTap,
+        onJobTap: widget.onJobTap,
+      ),
     );
   }
 }
@@ -528,8 +555,9 @@ class _PipelineTileState extends State<_PipelineTile> {
 class _PipelineJobsList extends StatelessWidget {
   final List<MergeRequestPipelineJob> jobs;
   final ValueChanged<String>? onLinkTap;
+  final PipelineJobTap? onJobTap;
 
-  const _PipelineJobsList({required this.jobs, this.onLinkTap});
+  const _PipelineJobsList({required this.jobs, this.onLinkTap, this.onJobTap});
 
   @override
   Widget build(BuildContext context) {
@@ -538,10 +566,19 @@ class _PipelineJobsList extends StatelessWidget {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        children: jobs
-            .map((job) => _PipelineJobRow(job: job, onLinkTap: onLinkTap))
-            .toList(),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: jobs
+              .map(
+                (job) => _PipelineJobRow(
+                  job: job,
+                  onLinkTap: onLinkTap,
+                  onJobTap: onJobTap,
+                ),
+              )
+              .toList(),
+        ),
       ),
     );
   }
@@ -550,8 +587,9 @@ class _PipelineJobsList extends StatelessWidget {
 class _PipelineJobRow extends StatelessWidget {
   final MergeRequestPipelineJob job;
   final ValueChanged<String>? onLinkTap;
+  final PipelineJobTap? onJobTap;
 
-  const _PipelineJobRow({required this.job, this.onLinkTap});
+  const _PipelineJobRow({required this.job, this.onLinkTap, this.onJobTap});
 
   @override
   Widget build(BuildContext context) {
@@ -583,8 +621,18 @@ class _PipelineJobRow extends StatelessWidget {
               onPressed: () => onLinkTap?.call(job.webUrl),
             )
           : null,
-      onTap: openable ? () => onLinkTap?.call(job.webUrl) : null,
+      onTap: () => _onTap(context),
     );
+  }
+
+  void _onTap(BuildContext context) {
+    if (onJobTap != null && job.id > 0) {
+      onJobTap!(job);
+      return;
+    }
+    if (job.webUrl.isNotEmpty && isOpenableLink(job.webUrl)) {
+      onLinkTap?.call(job.webUrl);
+    }
   }
 }
 
@@ -615,11 +663,13 @@ class _PipelinesTab extends StatelessWidget {
   final List<MergeRequestPipeline> pipelines;
   final ValueChanged<String>? onLinkTap;
   final PipelineJobsLoader? onLoadJobs;
+  final PipelineJobTap? onJobTap;
 
   const _PipelinesTab({
     required this.pipelines,
     this.onLinkTap,
     this.onLoadJobs,
+    this.onJobTap,
   });
 
   @override
@@ -647,6 +697,7 @@ class _PipelinesTab extends StatelessWidget {
           pipeline: pipeline,
           onLinkTap: onLinkTap,
           onLoadJobs: onLoadJobs,
+          onJobTap: onJobTap,
         );
       },
     );

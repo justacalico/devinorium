@@ -4471,6 +4471,110 @@ async fn git_connections_gitlab_pipeline_jobs_rejects_empty_project() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Fake `glab` that serves a single job and its trace.
+fn write_fake_glab_with_job_logs(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let script = r#"#!/bin/sh
+if [ "$1" = "api" ]; then
+  path="$2"
+  case "$path" in
+    *"/trace")
+      printf 'line one\nline two\n'
+      exit 0
+      ;;
+    *"/jobs/"*)
+      printf '{"id":101,"name":"cargo test","status":"running","stage":"test","web_url":"https://gitlab.example.com/-/jobs/101","started_at":"2026-01-01T00:00:00Z","finished_at":"","duration":0}\n'
+      exit 0
+      ;;
+  esac
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#;
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_job_log_returns_trace_and_status() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_job_logs(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines/jobs/logs?project=group%2Fproject&job_id=101&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["job"]["id"], 101);
+    assert_eq!(v["job"]["status"], "running");
+    assert_eq!(v["trace"], "line one\nline two\n");
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_job_log_rejects_invalid_job_id() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_job_logs(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines/jobs/logs?project=group%2Fproject&job_id=0&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_connections_gitlab_job_log_rejects_empty_project() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab_with_job_logs(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/git-connections/gitlab/pipelines/jobs/logs?project=&job_id=101&hostname=gitlab.example.com",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 /// Fake `glab` that echoes the `api` invocation back so tests can assert on
 /// the method and fields the backend used.
 fn write_echoing_glab(dir: &std::path::Path) -> std::path::PathBuf {

@@ -857,6 +857,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noJobs => 'No jobs yet.';
 
   @override
+  String get noJobLog => 'No log output yet.';
+
+  @override
+  String get jobLogLive => 'LIVE';
+
+  @override
   String get openInBrowser => 'Open in browser';
 
   @override

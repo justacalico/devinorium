@@ -110,6 +110,30 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     return list;
   }
 
+  /// Load the live log for a single job.
+  ///
+  /// Throws [StateError] if no merge request is loaded, or forwards backend
+  /// errors as [ApiException].
+  @override
+  Future<JobLog> loadJobLog(MergeRequestPipelineJob job) async {
+    if (job.id <= 0) {
+      throw ArgumentError('job id must be positive');
+    }
+    final ref = _ref;
+    if (ref == null) {
+      throw StateError('No merge request loaded');
+    }
+
+    final query =
+        'project=${Uri.encodeQueryComponent(ref.projectPath)}'
+        '&job_id=${job.id}'
+        '&hostname=${Uri.encodeQueryComponent(ref.hostname)}';
+    final response = await _client.get(
+      '/api/git-connections/gitlab/pipelines/jobs/logs?$query',
+    );
+    return JobLog.fromJson(response);
+  }
+
   Future<void> _refresh(
     _MergeRequestRef ref,
     String url,

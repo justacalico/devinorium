@@ -488,6 +488,8 @@
   "noComments": "No comments yet.",
   "noPipelines": "No pipelines yet.",
   "noJobs": "No jobs yet.",
+  "noJobLog": "No log output yet.",
+  "jobLogLive": "LIVE",
   "openInBrowser": "Open in browser",
   "draft": "Draft",
   "retry": "Retry",

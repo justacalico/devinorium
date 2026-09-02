@@ -4,6 +4,24 @@ typedef PipelineJobsLoader =
       MergeRequestPipeline pipeline,
     );
 
+/// Opens the live log view for a single CI/CD job.
+typedef PipelineJobTap = void Function(MergeRequestPipelineJob job);
+
+/// The log output and latest status for a CI/CD job.
+class JobLog {
+  final MergeRequestPipelineJob job;
+  final String trace;
+
+  const JobLog({required this.job, required this.trace});
+
+  factory JobLog.fromJson(Map<String, dynamic> j) => JobLog(
+    job: MergeRequestPipelineJob.fromJson(
+      j['job'] as Map<String, dynamic>? ?? {},
+    ),
+    trace: j['trace'] as String? ?? '',
+  );
+}
+
 /// A state change that can be applied to a merge request.
 enum MergeRequestAction {
   close('close'),
@@ -153,6 +171,17 @@ class MergeRequestPipelineJob {
       );
 
   bool get isPresent => name.isNotEmpty || status.isNotEmpty;
+
+  /// Whether the job is still running or waiting to run, so the log view
+  /// should keep polling for updates.
+  bool get isLive => const {
+    'created',
+    'waiting_for_resource',
+    'preparing',
+    'pending',
+    'running',
+    'scheduled',
+  }.contains(status.toLowerCase());
 }
 
 /// A comment or note on a merge request.

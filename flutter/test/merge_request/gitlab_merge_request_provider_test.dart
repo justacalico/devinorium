@@ -701,6 +701,101 @@ void main() {
       );
     });
 
+    test('loads a job log', () async {
+      final mock = MockClient((req) async {
+        final query = req.url.queryParameters;
+
+        if (req.url.path ==
+            '/api/git-connections/gitlab/pipelines/jobs/logs') {
+          expect(query['project'], 'group/project');
+          expect(query['job_id'], '101');
+          expect(query['hostname'], 'gitlab.com');
+          return _json(200, {
+            'job': {
+              'id': 101,
+              'name': 'cargo test',
+              'status': 'running',
+              'stage': 'test',
+              'web_url': 'https://gitlab.com/-/jobs/101',
+              'started_at': '2026-01-01T00:00:00Z',
+              'finished_at': '',
+              'duration': 0,
+            },
+            'trace': 'line one\nline two',
+          });
+        }
+
+        final path = query['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      const job = MergeRequestPipelineJob(
+        id: 101,
+        name: 'cargo test',
+        status: 'running',
+      );
+      final log = await provider.loadJobLog(job);
+
+      expect(log.job.id, 101);
+      expect(log.job.status, 'running');
+      expect(log.trace, 'line one\nline two');
+    });
+
+    test('throws for loadJobLog with an invalid job id', () async {
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      await expectLater(
+        provider.loadJobLog(const MergeRequestPipelineJob(id: 0, status: 'running')),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('throws for loadJobLog when no merge request is loaded', () async {
+      final provider = GitLabMergeRequestProvider(
+        ApiClient.withClient(MockClient((_) async => _json(200, {}))),
+      );
+
+      await expectLater(
+        provider.loadJobLog(const MergeRequestPipelineJob(id: 1, status: 'running')),
+        throwsA(isA<StateError>()),
+      );
+    });
+
     test('rejects unsupported URLs', () async {
       final provider = GitLabMergeRequestProvider(
         ApiClient.withClient(MockClient((_) async => _json(404, {}))),

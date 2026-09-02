@@ -30,6 +30,13 @@ pub struct GitLabPipelineJob {
     pub duration: f64,
 }
 
+/// A job and its raw trace output.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitLabJobLog {
+    pub job: GitLabPipelineJob,
+    pub trace: String,
+}
+
 impl GitRemoteService {
     /// Fetch the CI/CD pipelines for a GitLab merge request.
     ///
@@ -43,8 +50,9 @@ impl GitRemoteService {
         project_path: &str,
         iid: i64,
     ) -> Result<Vec<GitLabPipeline>, RemoteError> {
-        if project_path.is_empty() {
-            return Err(RemoteError::StatusFailed("project is required".into()));
+        validate_project_path(project_path)?;
+        if iid <= 0 {
+            return Err(RemoteError::StatusFailed("iid must be positive".into()));
         }
 
         let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
@@ -79,9 +87,7 @@ impl GitRemoteService {
         project_path: &str,
         pipeline_id: i64,
     ) -> Result<Vec<GitLabPipelineJob>, RemoteError> {
-        if project_path.is_empty() {
-            return Err(RemoteError::StatusFailed("project is required".into()));
-        }
+        validate_project_path(project_path)?;
         if pipeline_id <= 0 {
             return Err(RemoteError::StatusFailed(
                 "pipeline id must be positive".into(),
@@ -100,6 +106,99 @@ impl GitRemoteService {
             .map(parse_pipeline_job)
             .collect::<Result<Vec<_>, _>>()
     }
+
+    /// Fetch a single CI/CD job for a GitLab project.
+    pub async fn gitlab_pipeline_job(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        job_id: i64,
+    ) -> Result<GitLabPipelineJob, RemoteError> {
+        validate_project_path(project_path)?;
+        if job_id <= 0 {
+            return Err(RemoteError::StatusFailed("job id must be positive".into()));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let path = format!("projects/{encoded_project}/jobs/{job_id}");
+
+        let output = self.gitlab_api(user_id, hostname, &path).await?;
+        let value: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid job json: {e}"))
+        })?;
+        parse_pipeline_job(value)
+    }
+
+    /// Fetch the raw trace log for a single GitLab CI/CD job.
+    ///
+    /// A missing trace is treated as an empty string so jobs that have not
+    /// started yet do not surface as an error.
+    pub async fn gitlab_job_trace(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        job_id: i64,
+    ) -> Result<String, RemoteError> {
+        validate_project_path(project_path)?;
+        if job_id <= 0 {
+            return Err(RemoteError::StatusFailed("job id must be positive".into()));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let path = format!("projects/{encoded_project}/jobs/{job_id}/trace");
+
+        match self.gitlab_api(user_id, hostname, &path).await {
+            Ok(trace) => Ok(trace),
+            Err(RemoteError::StatusFailed(ref msg)) if is_trace_not_found(msg) => Ok(String::new()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Fetch the trace and status for a single GitLab CI/CD job.
+    pub async fn gitlab_job_log(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        job_id: i64,
+    ) -> Result<GitLabJobLog, RemoteError> {
+        validate_project_path(project_path)?;
+        if job_id <= 0 {
+            return Err(RemoteError::StatusFailed("job id must be positive".into()));
+        }
+
+        let (job, trace) = futures::future::try_join(
+            self.gitlab_pipeline_job(user_id, hostname, project_path, job_id),
+            self.gitlab_job_trace(user_id, hostname, project_path, job_id),
+        )
+        .await?;
+        Ok(GitLabJobLog { job, trace })
+    }
+}
+
+fn validate_project_path(path: &str) -> Result<(), RemoteError> {
+    if path.is_empty() {
+        return Err(RemoteError::StatusFailed("project is required".into()));
+    }
+    if path.starts_with('/') || path.ends_with('/') {
+        return Err(RemoteError::StatusFailed("invalid project path".into()));
+    }
+    if path.contains("..") || path.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(RemoteError::StatusFailed("invalid project path".into()));
+    }
+    let mut parts = path.split('/');
+    let first = parts.next().unwrap_or("");
+    if first.is_empty() || parts.any(|s| s.is_empty()) {
+        return Err(RemoteError::StatusFailed("invalid project path".into()));
+    }
+    Ok(())
+}
+
+fn is_trace_not_found(msg: &str) -> bool {
+    let first = msg.trim().lines().next().unwrap_or(msg.trim());
+    first.starts_with("404 ") || first.contains(": 404 ") || first.contains(" 404 ")
 }
 
 fn parse_timestamp(s: &str) -> DateTime<Utc> {
@@ -113,6 +212,12 @@ fn parse_pipeline(value: serde_json::Value) -> Result<GitLabPipeline, RemoteErro
         .as_i64()
         .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
         .unwrap_or(0);
+
+    if id <= 0 {
+        return Err(RemoteError::StatusFailed(
+            "gitlab returned an invalid pipeline id".into(),
+        ));
+    }
 
     let status = value["status"]
         .as_str()
@@ -151,6 +256,12 @@ fn parse_pipeline_job(value: serde_json::Value) -> Result<GitLabPipelineJob, Rem
         .as_i64()
         .or_else(|| value["id"].as_str().and_then(|s| s.parse().ok()))
         .unwrap_or(0);
+
+    if id <= 0 {
+        return Err(RemoteError::StatusFailed(
+            "gitlab returned an invalid job id".into(),
+        ));
+    }
 
     let name = value["name"].as_str().unwrap_or("");
     let status = value["status"].as_str().unwrap_or("unknown");
@@ -235,14 +346,25 @@ mod tests {
     #[test]
     fn parse_pipeline_job_falls_back_to_defaults() {
         let value = serde_json::json!({
+            "id": 42,
             "name": "build",
         });
         let job = parse_pipeline_job(value).unwrap();
-        assert_eq!(job.id, 0);
+        assert_eq!(job.id, 42);
         assert_eq!(job.name, "build");
         assert_eq!(job.status, "unknown");
         assert_eq!(job.stage, "");
         assert_eq!(job.duration, 0.0);
+    }
+
+    #[test]
+    fn parse_pipeline_job_rejects_invalid_id() {
+        let value = serde_json::json!({
+            "id": 0,
+            "name": "build",
+        });
+        let err = parse_pipeline_job(value).unwrap_err();
+        assert!(matches!(err, RemoteError::StatusFailed(_)));
     }
 
     #[test]
