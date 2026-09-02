@@ -2,6 +2,26 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.30.0 - 2026-09-02
+#### Features
+- 添加 Rust 主题 CSS 解析器用于后端校验 - (2e1b4f1) - HttpAnimations
+- 添加主题提供者 - (37b6913) - HttpAnimations
+- 添加亮色、暗色和 OLED 内置主题 - (84dd883) - HttpAnimations
+- 添加 CSS 颜色主题解析器 - (aa20e47) - HttpAnimations
+- 添加主题数据模型 - (44400a6) - HttpAnimations
+#### Bug Fixes
+- 内联 theme 解析器 format 参数 - (35c1092) - HttpAnimations
+- 使用 strip_prefix 修复 clippy manual_strip 警告 - (eb56e09) - HttpAnimations
+- 修复主题选择器文字换行 - (87c17a5) - HttpAnimations
+- 修复解析器行号、元数据错误、分号处理及 UI 布局 - (0f25dbd) - HttpAnimations
+- 修正解析器行号、元数据提取和 UI 文案 - (cfec87b) - HttpAnimations
+- 完善自定义主题选择器、空名称回退和无效主题回退 - (ae347d5) - HttpAnimations
+- 统一 Dart 和 Rust 主题解析器的注释、at-rule 与空属性名处理 - (ffa3d5e) - HttpAnimations
+- 让未知内置主题 ID 默认回退到亮色模式 - (9415307) - HttpAnimations
+- 让主题解析器拒绝 :root 之外的 at-rules 和选择器 - (1bbf032) - HttpAnimations
+
+- - -
+
 ## v0.29.0 - 2026-09-02
 #### Features
 - 添加 GitLab CI/CD 任务实时日志 - (82acd59) - HttpAnimations
