@@ -132,25 +132,6 @@ class _ThemeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = l10n(context);
-    final items = [
-      DropdownMenuItem(
-        value: _ThemeMenuItem.system,
-        child: Text(l.system),
-      ),
-      DropdownMenuItem(
-        value: _ThemeMenuItem.light,
-        child: Text(l.light),
-      ),
-      DropdownMenuItem(
-        value: _ThemeMenuItem.dark,
-        child: Text(l.dark),
-      ),
-      DropdownMenuItem(
-        value: _ThemeMenuItem.oled,
-        child: Text(l.oledTheme),
-      ),
-    ];
-
     final value = switch (choice) {
       SystemThemeChoice() => _ThemeMenuItem.system,
       BuiltInThemeChoice(:final id) when id == BuiltInThemes.lightId =>
@@ -162,12 +143,32 @@ class _ThemeSelector extends StatelessWidget {
       _ => _ThemeMenuItem.system,
     };
 
-    return DropdownButton<_ThemeMenuItem>(
-      value: value,
-      isExpanded: true,
-      underline: const SizedBox.shrink(),
-      items: items,
-      onChanged: onSelected,
+    return SegmentedButton<_ThemeMenuItem>(
+      multiSelectionEnabled: false,
+      emptySelectionAllowed: false,
+      showSelectedIcon: false,
+      selected: {value},
+      onSelectionChanged: (selection) {
+        if (selection.isNotEmpty) onSelected(selection.first);
+      },
+      segments: [
+        ButtonSegment(
+          value: _ThemeMenuItem.system,
+          label: Text(l.system),
+        ),
+        ButtonSegment(
+          value: _ThemeMenuItem.light,
+          label: Text(l.light),
+        ),
+        ButtonSegment(
+          value: _ThemeMenuItem.dark,
+          label: Text(l.dark),
+        ),
+        ButtonSegment(
+          value: _ThemeMenuItem.oled,
+          label: Text(l.oledTheme),
+        ),
+      ],
     );
   }
 }
