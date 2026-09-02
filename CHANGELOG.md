@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.28.1 - 2026-09-02
+#### Bug Fixes
+- 修复服务器设置中的 URL 验证、国际化文案和删除确认 - (bfa1ad6) - HttpAnimations
+
+- - -
+
 ## v0.28.0 - 2026-09-02
 #### Features
 - 在侧边栏添加快速服务器切换器 - (7287d9a) - HttpAnimations
