@@ -15,6 +15,7 @@ pub mod projects;
 pub mod providers;
 pub mod security;
 pub mod terminal;
+pub mod theme;
 pub mod thread_runner;
 
 use std::collections::HashMap;
