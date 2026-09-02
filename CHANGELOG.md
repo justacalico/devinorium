@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.28.2 - 2026-09-02
+#### Bug Fixes
+- 补充各平台网络访问权限 - (5f6bf8f) - HttpAnimations
+
+- - -
+
 ## v0.28.1 - 2026-09-02
 #### Bug Fixes
 - 修复服务器设置中的 URL 验证、国际化文案和删除确认 - (bfa1ad6) - HttpAnimations
