@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.28.0 - 2026-09-02
+#### Features
+- 在侧边栏添加快速服务器切换器 - (7287d9a) - HttpAnimations
+
+- - -
+
 ## v0.27.0 - 2026-09-02
 #### Features
 - 添加取消自动合并按钮 - (6bbbdb1) - HttpAnimations
