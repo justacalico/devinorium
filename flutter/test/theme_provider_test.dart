@@ -21,7 +21,7 @@ void main() {
 }
 ''';
 
-    Future<SharedPreferences> _mockPrefs(Map<String, Object> values) async {
+    Future<SharedPreferences> mockPrefs(Map<String, Object> values) async {
       SharedPreferences.setMockInitialValues(values);
       return SharedPreferences.getInstance();
     }
@@ -55,7 +55,7 @@ void main() {
     });
 
     test('loads and saves a built-in choice to SharedPreferences', () async {
-      final prefs = await _mockPrefs({});
+      final prefs = await mockPrefs({});
       final provider = ThemeProvider(prefs: prefs);
       await provider.selectBuiltIn(BuiltInThemes.darkId);
 
@@ -72,7 +72,7 @@ void main() {
     });
 
     test('loadCustom parses and persists CSS', () async {
-      final prefs = await _mockPrefs({});
+      final prefs = await mockPrefs({});
       final provider = ThemeProvider(prefs: prefs);
       await provider.loadCustom(customCss, name: 'My Theme');
 
@@ -90,7 +90,7 @@ void main() {
     });
 
     test('restores a custom theme from SharedPreferences', () async {
-      final prefs = await _mockPrefs({
+      final prefs = await mockPrefs({
         'devinorium_theme_choice': jsonEncode({
           'type': 'custom',
           'css': customCss,
@@ -106,7 +106,7 @@ void main() {
     });
 
     test('migrates legacy theme mode to built-in choice', () async {
-      final prefs = await _mockPrefs({'devinorium_theme_mode': 'dark'});
+      final prefs = await mockPrefs({'devinorium_theme_mode': 'dark'});
       final provider = ThemeProvider(prefs: prefs);
       await provider.loadInitial();
 
@@ -136,7 +136,7 @@ void main() {
     });
 
     test('loadCustom throws ThemeParseException for invalid CSS', () async {
-      final prefs = await _mockPrefs({});
+      final prefs = await mockPrefs({});
       final provider = ThemeProvider(prefs: prefs);
       expect(
         () => provider.loadCustom(':root { --display: block; }'),
@@ -145,7 +145,7 @@ void main() {
     });
 
     test('clearCustom selects the light built-in theme', () async {
-      final prefs = await _mockPrefs({});
+      final prefs = await mockPrefs({});
       final provider = ThemeProvider(prefs: prefs);
       await provider.loadCustom(customCss, name: 'My Theme');
       await provider.clearCustom();
@@ -156,7 +156,7 @@ void main() {
     });
 
     test('restoring an invalid custom theme falls back to built-in', () async {
-      final prefs = await _mockPrefs({
+      final prefs = await mockPrefs({
         'devinorium_theme_choice': jsonEncode({
           'type': 'custom',
           'css': ':root { --display: block; }',
@@ -201,7 +201,7 @@ void main() {
     });
 
     test('migrates an unknown legacy theme mode to system', () async {
-      final prefs = await _mockPrefs({'devinorium_theme_mode': 'oled'});
+      final prefs = await mockPrefs({'devinorium_theme_mode': 'oled'});
       final provider = ThemeProvider(prefs: prefs);
       await provider.loadInitial();
 
