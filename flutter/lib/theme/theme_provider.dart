@@ -107,7 +107,10 @@ class ThemeProvider extends ChangeNotifier {
         SystemThemeChoice() => ThemeMode.system,
         BuiltInThemeChoice(:final id) when id == BuiltInThemes.lightId =>
           ThemeMode.light,
-        BuiltInThemeChoice() => ThemeMode.dark,
+        BuiltInThemeChoice(:final id)
+            when id == BuiltInThemes.darkId || id == BuiltInThemes.oledId =>
+          ThemeMode.dark,
+        BuiltInThemeChoice() => ThemeMode.light,
         CustomThemeChoice() => ThemeMode.system,
       };
 
@@ -119,7 +122,10 @@ class ThemeProvider extends ChangeNotifier {
         SystemThemeChoice() => _platformBrightness,
         BuiltInThemeChoice(:final id) when id == BuiltInThemes.lightId =>
           Brightness.light,
-        BuiltInThemeChoice() => Brightness.dark,
+        BuiltInThemeChoice(:final id)
+            when id == BuiltInThemes.darkId || id == BuiltInThemes.oledId =>
+          Brightness.dark,
+        BuiltInThemeChoice() => Brightness.light,
         CustomThemeChoice() => _platformBrightness,
       };
 
