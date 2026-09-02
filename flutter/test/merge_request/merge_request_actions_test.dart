@@ -100,18 +100,34 @@ void main() {
       expect(performed, [MergeRequestAction.mergeWhenPipelineSucceeds]);
     });
 
-    testWidgets('hides auto merge once it is already set', (tester) async {
+    testWidgets('hides merge and offers cancel once auto merge is set',
+        (tester) async {
       await tester.pumpWidget(wrap(_detail(
         mergeWhenPipelineSucceeds: true,
         pipelines: const [MergeRequestPipeline(status: 'running')],
       )));
       await tester.pumpAndSettle();
 
+      expect(find.text('Merge'), findsNothing);
       expect(find.text('Merge when pipeline succeeds'), findsNothing);
+      expect(find.text('Cancel auto merge'), findsOneWidget);
       expect(
         find.text('This merge request will merge once the pipeline succeeds.'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('cancels an auto merge', (tester) async {
+      await tester.pumpWidget(wrap(_detail(
+        mergeWhenPipelineSucceeds: true,
+        pipelines: const [MergeRequestPipeline(status: 'running')],
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Cancel auto merge'));
+      await tester.pumpAndSettle();
+
+      expect(performed, [MergeRequestAction.cancelAutoMerge]);
     });
 
     testWidgets('blocks merging drafts', (tester) async {

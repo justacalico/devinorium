@@ -57,6 +57,8 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
     final showAutoMerge = detail.canMerge &&
         !detail.mergeWhenPipelineSucceeds &&
         (latest?.isActive ?? false);
+    final showCancelAutoMerge =
+        detail.isOpen && detail.mergeWhenPipelineSucceeds;
 
     final primaryStyle = FilledButton.styleFrom(
       minimumSize: const Size(0, 30),
@@ -96,7 +98,7 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
     );
 
     final buttons = <Widget>[
-      if (detail.isOpen)
+      if (detail.isOpen && !detail.mergeWhenPipelineSucceeds)
         FilledButton.icon(
           style: primaryStyle,
           onPressed: busy || !detail.canMerge
@@ -112,6 +114,14 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
               busy ? null : () => _run(MergeRequestAction.mergeWhenPipelineSucceeds),
           icon: const Icon(Icons.schedule, size: 18),
           label: Text(l10n(context).mergeWhenPipelineSucceeds),
+        ),
+      if (showCancelAutoMerge)
+        OutlinedButton.icon(
+          style: secondaryStyle,
+          onPressed:
+              busy ? null : () => _run(MergeRequestAction.cancelAutoMerge),
+          icon: const Icon(Icons.cancel, size: 18),
+          label: Text(l10n(context).cancelAutoMerge),
         ),
       if (detail.isOpen)
         OutlinedButton.icon(
@@ -189,7 +199,7 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
     if (detail.isOpen && detail.hasConflicts) {
       return l10n(context).mergeRequestConflictsBlocked;
     }
-    if (detail.mergeWhenPipelineSucceeds) {
+    if (detail.isOpen && detail.mergeWhenPipelineSucceeds) {
       return l10n(context).mergeRequestAutoMergeSet;
     }
     return null;

@@ -872,6 +872,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mergeWhenPipelineSucceeds => 'Merge when pipeline succeeds';
 
   @override
+  String get cancelAutoMerge => 'Cancel auto merge';
+
+  @override
   String get closeMergeRequest => 'Close merge request';
 
   @override

@@ -493,6 +493,7 @@
   "retry": "Retry",
   "merge": "Merge",
   "mergeWhenPipelineSucceeds": "Merge when pipeline succeeds",
+  "cancelAutoMerge": "Cancel auto merge",
   "closeMergeRequest": "Close merge request",
   "reopenMergeRequest": "Reopen merge request",
   "mergeRequestDraftBlocked": "Mark the merge request ready before merging.",

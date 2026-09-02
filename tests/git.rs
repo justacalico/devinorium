@@ -1053,6 +1053,66 @@ async fn git_remote_merge_request_merge_when_pipeline_succeeds_sets_field() {
     assert!(args.contains("--field merge_when_pipeline_succeeds=true"));
 }
 
+/// Fake `glab` that returns a successful cancel response and logs every
+/// `api` invocation to `glab.log` in the temp directory.
+fn write_cancelling_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let log_file = dir.join("glab.log");
+    let script = format!(
+        r#"#!/bin/sh
+log_file="{}"
+if [ "$1" = "api" ]; then
+  echo "$*" >> "$log_file"
+  case "$2" in
+    *"cancel_merge_when_pipeline_succeeds"*)
+      printf '{{"status":"success"}}\n'
+      exit 0
+      ;;
+  esac
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#,
+        log_file.display()
+    );
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_remote_merge_request_cancel_auto_merge_posts_to_cancel_endpoint() {
+    let tmp = TempDir::new().unwrap();
+    let glab = write_cancelling_glab(tmp.path());
+    let config_root = tmp.path().join("config");
+    std::fs::create_dir_all(&config_root).unwrap();
+    let svc = GitRemoteService::with_glab_bin(config_root, Some(glab));
+
+    let value = svc
+        .gitlab_merge_request_action(
+            1,
+            "gitlab.example.com",
+            "group/project",
+            7,
+            MergeRequestAction::CancelAutoMerge,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(value["status"], "success");
+
+    let log = std::fs::read_to_string(tmp.path().join("glab.log")).unwrap();
+    let first = log.lines().next().unwrap();
+    assert!(first
+        .contains("projects/group%2Fproject/merge_requests/7/cancel_merge_when_pipeline_succeeds"));
+    assert!(first.contains("--method POST"));
+    assert!(first.contains("--hostname gitlab.example.com"));
+}
+
 #[tokio::test]
 async fn git_remote_merge_request_action_rejects_invalid_json() {
     let tmp = TempDir::new().unwrap();

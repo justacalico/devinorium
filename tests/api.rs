@@ -4587,6 +4587,72 @@ async fn git_connections_merge_request_action_reopens_merge_request() {
         .contains("--field state_event=reopen"));
 }
 
+/// Fake `glab` that returns a successful cancel response and logs every
+/// `api` invocation to `glab.log` in the temp directory.
+fn write_cancelling_glab(dir: &std::path::Path) -> std::path::PathBuf {
+    let bin_dir = dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let bin = bin_dir.join("glab");
+    let log_file = dir.join("glab.log");
+    let script = format!(
+        r#"#!/bin/sh
+log_file="{}"
+if [ "$1" = "api" ]; then
+  echo "$*" >> "$log_file"
+  case "$2" in
+    *"cancel_merge_when_pipeline_succeeds"*)
+      printf '{{"status":"success"}}\n'
+      exit 0
+      ;;
+  esac
+fi
+echo "unknown glab command: $*" >&2
+exit 1
+"#,
+        log_file.display()
+    );
+    std::fs::write(&bin, script).unwrap();
+    let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&bin, perms).unwrap();
+    bin
+}
+
+#[tokio::test]
+async fn git_connections_merge_request_action_cancels_auto_merge() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_cancelling_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home.clone(), Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let body = r#"{"project":"group/project","iid":7,"action":"cancel_auto_merge","hostname":"gitlab.example.com"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            &cookie,
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["status"], "success");
+
+    let log = std::fs::read_to_string(home.join("glab.log")).unwrap();
+    let first = log.lines().next().unwrap();
+    assert!(first
+        .contains("projects/group%2Fproject/merge_requests/7/cancel_merge_when_pipeline_succeeds"));
+    assert!(first.contains("--method POST"));
+    assert!(first.contains("--hostname gitlab.example.com"));
+}
+
 #[tokio::test]
 async fn git_connections_merge_request_action_rejects_empty_project() {
     let (mut state, _db) = app_state().await;

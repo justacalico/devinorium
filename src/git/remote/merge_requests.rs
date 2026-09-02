@@ -17,6 +17,7 @@ pub enum MergeRequestAction {
     Reopen,
     Merge,
     MergeWhenPipelineSucceeds,
+    CancelAutoMerge,
 }
 
 /// A lightweight merge request summary, used to surface the open MR linked
@@ -54,7 +55,7 @@ impl GitRemoteService {
 
         let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
         let base = format!("projects/{encoded_project}/merge_requests/{iid}");
-        let (path, fields) = merge_request_path_and_fields(&encoded_project, iid, action);
+        let (method, path, fields) = merge_request_action_request(&encoded_project, iid, action);
 
         let timeout = match action {
             MergeRequestAction::Merge => self.merge_timeout,
@@ -62,7 +63,7 @@ impl GitRemoteService {
         };
 
         match self
-            .gitlab_api_write(user_id, hostname, "PUT", &path, &fields, timeout)
+            .gitlab_api_write(user_id, hostname, method, &path, &fields, timeout)
             .await
         {
             Ok(output) => Self::parse_merge_request_json(&output),
@@ -147,19 +148,25 @@ impl GitRemoteService {
     }
 }
 
-pub(super) fn merge_request_path_and_fields(
+pub(super) fn merge_request_action_request(
     encoded_project: &str,
     iid: i64,
     action: MergeRequestAction,
-) -> (String, Vec<(&'static str, &'static str)>) {
+) -> (&'static str, String, Vec<(&'static str, &'static str)>) {
     let base = format!("projects/{encoded_project}/merge_requests/{iid}");
     match action {
-        MergeRequestAction::Close => (base, vec![("state_event", "close")]),
-        MergeRequestAction::Reopen => (base, vec![("state_event", "reopen")]),
-        MergeRequestAction::Merge => (format!("{base}/merge"), Vec::new()),
+        MergeRequestAction::Close => ("PUT", base, vec![("state_event", "close")]),
+        MergeRequestAction::Reopen => ("PUT", base, vec![("state_event", "reopen")]),
+        MergeRequestAction::Merge => ("PUT", format!("{base}/merge"), Vec::new()),
         MergeRequestAction::MergeWhenPipelineSucceeds => (
+            "PUT",
             format!("{base}/merge"),
             vec![("merge_when_pipeline_succeeds", "true")],
+        ),
+        MergeRequestAction::CancelAutoMerge => (
+            "POST",
+            format!("{base}/cancel_merge_when_pipeline_succeeds"),
+            Vec::new(),
         ),
     }
 }
@@ -185,38 +192,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_request_path_and_fields_for_each_action() {
+    fn merge_request_action_request_for_each_action() {
         let project = "group%2Fproject";
         assert_eq!(
-            merge_request_path_and_fields(project, 7, MergeRequestAction::Close),
+            merge_request_action_request(project, 7, MergeRequestAction::Close),
             (
+                "PUT",
                 "projects/group%2Fproject/merge_requests/7".to_string(),
                 vec![("state_event", "close")]
             )
         );
         assert_eq!(
-            merge_request_path_and_fields(project, 7, MergeRequestAction::Reopen),
+            merge_request_action_request(project, 7, MergeRequestAction::Reopen),
             (
+                "PUT",
                 "projects/group%2Fproject/merge_requests/7".to_string(),
                 vec![("state_event", "reopen")]
             )
         );
         assert_eq!(
-            merge_request_path_and_fields(project, 7, MergeRequestAction::Merge),
+            merge_request_action_request(project, 7, MergeRequestAction::Merge),
             (
+                "PUT",
                 "projects/group%2Fproject/merge_requests/7/merge".to_string(),
                 Vec::<(&str, &str)>::new()
             )
         );
         assert_eq!(
-            merge_request_path_and_fields(
-                project,
-                7,
-                MergeRequestAction::MergeWhenPipelineSucceeds
-            ),
+            merge_request_action_request(project, 7, MergeRequestAction::MergeWhenPipelineSucceeds),
             (
+                "PUT",
                 "projects/group%2Fproject/merge_requests/7/merge".to_string(),
                 vec![("merge_when_pipeline_succeeds", "true")]
+            )
+        );
+        assert_eq!(
+            merge_request_action_request(project, 7, MergeRequestAction::CancelAutoMerge),
+            (
+                "POST",
+                "projects/group%2Fproject/merge_requests/7/cancel_merge_when_pipeline_succeeds"
+                    .to_string(),
+                Vec::<(&str, &str)>::new()
             )
         );
     }
