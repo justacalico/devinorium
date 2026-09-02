@@ -409,5 +409,120 @@ void main() {
       expect(find.text('Compare with previous version'), findsOneWidget);
       expect(find.text('<ul>'), findsNothing);
     });
+
+    testWidgets('calls onJobTap when a job row is tapped', (tester) async {
+      MergeRequestPipelineJob? tappedJob;
+
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            id: 42,
+            status: 'running',
+            name: 'test-and-build',
+          ),
+        ],
+      );
+
+      Future<List<MergeRequestPipelineJob>> onLoadJobs(_) async => const [
+        MergeRequestPipelineJob(
+          id: 1,
+          name: 'cargo test',
+          status: 'running',
+          stage: 'test',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithPipeline),
+              url: '',
+              onLoadJobs: onLoadJobs,
+              onJobTap: (job) => tappedJob = job,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('test-and-build'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('cargo test'));
+      await tester.pump();
+
+      expect(tappedJob, isNotNull);
+      expect(tappedJob!.id, 1);
+      expect(tappedJob!.name, 'cargo test');
+    });
+
+    testWidgets('job row falls back to onLinkTap when onJobTap is null', (
+      tester,
+    ) async {
+      String? openedUrl;
+
+      const detailWithPipeline = MergeRequestDetail(
+        title: 'Add feature',
+        description: '## Summary',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        pipelines: [
+          MergeRequestPipeline(
+            id: 42,
+            status: 'running',
+            name: 'test-and-build',
+          ),
+        ],
+      );
+
+      Future<List<MergeRequestPipelineJob>> onLoadJobs(_) async => const [
+        MergeRequestPipelineJob(
+          id: 1,
+          name: 'cargo test',
+          status: 'running',
+          stage: 'test',
+          webUrl: 'https://gitlab.com/-/jobs/1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithPipeline),
+              url: '',
+              onLoadJobs: onLoadJobs,
+              onLinkTap: (url) => openedUrl = url,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Pipelines (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('test-and-build'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('cargo test'));
+      await tester.pump();
+
+      expect(openedUrl, 'https://gitlab.com/-/jobs/1');
+    });
   });
 }

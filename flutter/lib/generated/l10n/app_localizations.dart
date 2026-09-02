@@ -1624,6 +1624,18 @@ abstract class AppLocalizations {
   /// **'No jobs yet.'**
   String get noJobs;
 
+  /// No description provided for @noJobLog.
+  ///
+  /// In en, this message translates to:
+  /// **'No log output yet.'**
+  String get noJobLog;
+
+  /// No description provided for @jobLogLive.
+  ///
+  /// In en, this message translates to:
+  /// **'LIVE'**
+  String get jobLogLive;
+
   /// No description provided for @openInBrowser.
   ///
   /// In en, this message translates to:

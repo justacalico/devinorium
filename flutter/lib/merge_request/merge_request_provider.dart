@@ -31,4 +31,12 @@ abstract class MergeRequestProvider extends ChangeNotifier {
   ) {
     throw UnsupportedError('Pipeline jobs are not supported by this provider');
   }
+
+  /// Load the live log for a single CI/CD [job].
+  ///
+  /// Throws [UnsupportedError] by default; providers that support pipelines
+  /// (GitLab) should override this.
+  Future<JobLog> loadJobLog(MergeRequestPipelineJob job) {
+    throw UnsupportedError('Job logs are not supported by this provider');
+  }
 }

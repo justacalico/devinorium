@@ -23,6 +23,10 @@ pub fn router() -> Router<AppState> {
             get(gitlab_pipeline_jobs),
         )
         .route(
+            "/api/git-connections/gitlab/pipelines/jobs/logs",
+            get(gitlab_job_log),
+        )
+        .route(
             "/api/git-connections/gitlab/pipelines",
             get(gitlab_pipelines),
         )
@@ -157,6 +161,13 @@ pub struct GitLabPipelineJobsQuery {
     pub hostname: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GitLabJobLogQuery {
+    pub project: String,
+    pub job_id: i64,
+    pub hostname: Option<String>,
+}
+
 async fn gitlab_pipeline_jobs(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -189,6 +200,47 @@ async fn gitlab_pipeline_jobs(
         .await
     {
         Ok(jobs) => Json(jobs).into_response(),
+        Err(RemoteError::GitLabNotAvailable) => (
+            StatusCode::NOT_FOUND,
+            Json(ApiError::new("gitlab cli is not installed")),
+        )
+            .into_response(),
+        Err(e) => (e.status_code(), Json(ApiError::new(e.to_string()))).into_response(),
+    }
+}
+
+async fn gitlab_job_log(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Query(q): Query<GitLabJobLogQuery>,
+) -> Response {
+    let hostname = q
+        .hostname
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("gitlab.com");
+
+    if q.project.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("project is required")),
+        )
+            .into_response();
+    }
+    if q.job_id <= 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("job_id must be positive")),
+        )
+            .into_response();
+    }
+
+    match state
+        .git_remote
+        .gitlab_job_log(user.id, hostname, &q.project, q.job_id)
+        .await
+    {
+        Ok(log) => Json(log).into_response(),
         Err(RemoteError::GitLabNotAvailable) => (
             StatusCode::NOT_FOUND,
             Json(ApiError::new("gitlab cli is not installed")),
