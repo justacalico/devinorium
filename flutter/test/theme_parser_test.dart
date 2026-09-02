@@ -169,5 +169,89 @@ body { color: red; }
       expect(provider.darkTheme.colorScheme.surface, const Color(0xFF1C1B1F));
       expect(provider.lightTheme.colorScheme.surface, const Color(0xFFFFFBFE));
     });
+
+    test('rejects empty property names', () {
+      const css = '''
+/* @theme */
+:root {
+  : #6750A4;
+}
+''';
+      expect(
+        () => ThemeParser.parse(css),
+        throwsA(isA<ThemeParseException>().having(
+          (e) => e.message,
+          'message',
+          contains('missing property name'),
+        )),
+      );
+    });
+
+    test('rejects nested selectors inside :root', () {
+      const css = '''
+/* @theme */
+:root {
+  body {};
+  --primary: #6750A4;
+}
+''';
+      expect(
+        () => ThemeParser.parse(css),
+        throwsA(isA<ThemeParseException>()),
+      );
+    });
+
+    test('rejects a lone @ character', () {
+      const css = '''
+/* @theme */
+@ :root {
+  --primary: #6750A4;
+}
+''';
+      expect(
+        () => ThemeParser.parse(css),
+        throwsA(isA<ThemeParseException>().having(
+          (e) => e.message,
+          'message',
+          contains('at-rules'),
+        )),
+      );
+    });
+
+    test('rejects unclosed comments', () {
+      const css = '''
+/* @theme */
+/* unclosed
+:root {
+  --primary: #6750A4;
+}
+''';
+      expect(
+        () => ThemeParser.parse(css),
+        throwsA(isA<ThemeParseException>().having(
+          (e) => e.message,
+          'message',
+          contains('unclosed comment'),
+        )),
+      );
+    });
+
+    test('parses one-line metadata block', () {
+      const css = '/* @theme version: 2.0.0 */\n:root { --primary: #6750A4; }';
+      final theme = ThemeParser.parse(css);
+      expect(theme.metadata.version, '2.0.0');
+      expect(theme.colors['primary'], const Color(0xFF6750A4));
+    });
+
+    test('ignores empty name and empty creator', () {
+      const css = '''
+/* @theme
+ * creator:
+ */
+:root { --primary: #6750A4; }
+''';
+      final theme = ThemeParser.parse(css, name: '   ');
+      expect(theme.name, isNull);
+    });
   });
 }

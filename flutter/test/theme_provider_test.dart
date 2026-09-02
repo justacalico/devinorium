@@ -143,5 +143,70 @@ void main() {
         throwsA(isA<ThemeParseException>()),
       );
     });
+
+    test('clearCustom selects the light built-in theme', () async {
+      final prefs = await _mockPrefs({});
+      final provider = ThemeProvider(prefs: prefs);
+      await provider.loadCustom(customCss, name: 'My Theme');
+      await provider.clearCustom();
+
+      expect(provider.choice, const BuiltInThemeChoice(BuiltInThemes.lightId));
+      expect(provider.hasValidCustomTheme, isFalse);
+      expect(provider.themeMode, ThemeMode.light);
+    });
+
+    test('restoring an invalid custom theme falls back to built-in', () async {
+      final prefs = await _mockPrefs({
+        'devinorium_theme_choice': jsonEncode({
+          'type': 'custom',
+          'css': ':root { --display: block; }',
+          'name': 'Broken',
+        }),
+      });
+      final provider = ThemeProvider(prefs: prefs);
+      await provider.loadInitial();
+
+      expect(provider.choice, isA<CustomThemeChoice>());
+      expect(provider.hasValidCustomTheme, isFalse);
+      expect(
+        provider.activeTheme.toColorScheme(Brightness.light).surface,
+        const Color(0xFFFFFBFE),
+      );
+    });
+
+    test('setPlatformBrightness with a custom theme keeps system mode', () {
+      final provider = ThemeProvider(
+        platformBrightness: Brightness.light,
+        initialChoice: const CustomThemeChoice(
+          '''
+/* @theme */
+:root {
+  --primary: #FF0000;
+  --surface: #111111;
+  --on-surface: #FFFFFF;
+}
+''',
+          name: 'Red',
+        ),
+      );
+      expect(provider.themeMode, ThemeMode.system);
+      expect(provider.activeTheme.name, 'Red');
+
+      provider.setPlatformBrightness(Brightness.dark);
+      expect(provider.activeTheme.name, 'Red');
+      expect(
+        provider.activeTheme.toColorScheme(Brightness.dark).surface,
+        const Color(0xFF111111),
+      );
+    });
+
+    test('migrates an unknown legacy theme mode to system', () async {
+      final prefs = await _mockPrefs({'devinorium_theme_mode': 'oled'});
+      final provider = ThemeProvider(prefs: prefs);
+      await provider.loadInitial();
+
+      expect(provider.choice, const SystemThemeChoice());
+      expect(provider.themeMode, ThemeMode.system);
+    });
   });
 }
