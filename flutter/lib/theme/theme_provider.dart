@@ -18,7 +18,9 @@ class ThemeProvider extends ChangeNotifier {
     Brightness? platformBrightness,
     ThemeChoice? initialChoice,
   })  : _platformBrightness = platformBrightness ?? Brightness.light,
-        _choice = initialChoice ?? const SystemThemeChoice();
+        _choice = initialChoice ?? const SystemThemeChoice() {
+    if (_choice is CustomThemeChoice) _loadCustomTheme();
+  }
 
   final SharedPreferences? _prefs;
   Brightness _platformBrightness;
@@ -75,9 +77,11 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   Future<void> loadCustom(String css, {String? name}) async {
-    final parsed = ThemeParser.parse(css, name: name);
-    _customTheme = parsed;
-    _choice = CustomThemeChoice(css, name: name ?? parsed.metadata.creator);
+    final parsed = ThemeParser.parse(css, name: _nonEmptyName(name));
+    final resolvedName = _nonEmptyName(name) ??
+        _nonEmptyName(parsed.metadata.creator);
+    _customTheme = parsed.copyWith(name: resolvedName);
+    _choice = CustomThemeChoice(css, name: resolvedName);
     await _save();
     notifyListeners();
   }
@@ -146,6 +150,9 @@ class ThemeProvider extends ChangeNotifier {
     return brightness == Brightness.light ? _effectiveLightTheme : _effectiveDarkTheme;
   }
 
+  /// Whether the current [CustomThemeChoice] has been successfully parsed.
+  bool get hasValidCustomTheme => _choice is CustomThemeChoice && _customTheme != null;
+
   Future<void> _save() async {
     try {
       final prefs = _prefs ?? await SharedPreferences.getInstance();
@@ -158,8 +165,13 @@ class ThemeProvider extends ChangeNotifier {
     try {
       _customTheme = ThemeParser.parse(custom.css, name: custom.name);
     } catch (_) {
-      _customTheme = BuiltInThemes.light;
+      _customTheme = null;
     }
+  }
+
+  static String? _nonEmptyName(String? value) {
+    final trimmed = value?.trim();
+    return trimmed?.isNotEmpty == true ? trimmed : null;
   }
 
   static ThemeChoice _migrateLegacy(String? value) {

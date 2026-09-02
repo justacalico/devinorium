@@ -1026,9 +1026,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeCustom => 'Custom';
 
   @override
-  String get themeBuiltIn => 'Built-in';
-
-  @override
   String get themeImport => 'Import custom';
 
   @override

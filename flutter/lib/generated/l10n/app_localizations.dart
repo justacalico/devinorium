@@ -1942,12 +1942,6 @@ abstract class AppLocalizations {
   /// **'Custom'**
   String get themeCustom;
 
-  /// Label shown when a custom theme is active
-  ///
-  /// In en, this message translates to:
-  /// **'Built-in'**
-  String get themeBuiltIn;
-
   /// Button to open the custom theme import dialog
   ///
   /// In en, this message translates to:

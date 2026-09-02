@@ -26,7 +26,8 @@ class _PersonalizationSection extends StatelessWidget {
             Expanded(
               child: _ThemeSelector(
                 choice: choice,
-                onSelected: (value) => _onThemeSelected(value, themeProvider),
+                hasValidCustom: themeProvider.hasValidCustomTheme,
+                onSelected: (value) => _onThemeSelected(context, value, themeProvider),
               ),
             ),
             const SizedBox(width: 8),
@@ -37,7 +38,7 @@ class _PersonalizationSection extends StatelessWidget {
             ),
           ],
         ),
-        if (choice is CustomThemeChoice) ...[
+        if (choice is CustomThemeChoice && themeProvider.hasValidCustomTheme) ...[
           const SizedBox(height: 16),
           _CustomThemeInfo(theme: themeProvider.activeTheme),
         ],
@@ -82,6 +83,7 @@ class _PersonalizationSection extends StatelessWidget {
   }
 
   Future<void> _onThemeSelected(
+    BuildContext context,
     _ThemeMenuItem? item,
     ThemeProvider themeProvider,
   ) async {
@@ -95,6 +97,8 @@ class _PersonalizationSection extends StatelessWidget {
         await themeProvider.selectBuiltIn(BuiltInThemes.darkId);
       case _ThemeMenuItem.oled:
         await themeProvider.selectBuiltIn(BuiltInThemes.oledId);
+      case _ThemeMenuItem.custom:
+        await _showCustomThemeDialog(context, themeProvider);
     }
   }
 
@@ -118,14 +122,16 @@ class _PersonalizationSection extends StatelessWidget {
   }
 }
 
-enum _ThemeMenuItem { system, light, dark, oled }
+enum _ThemeMenuItem { system, light, dark, oled, custom }
 
 class _ThemeSelector extends StatelessWidget {
   final ThemeChoice choice;
+  final bool hasValidCustom;
   final ValueChanged<_ThemeMenuItem?> onSelected;
 
   const _ThemeSelector({
     required this.choice,
+    required this.hasValidCustom,
     required this.onSelected,
   });
 
@@ -140,16 +146,18 @@ class _ThemeSelector extends StatelessWidget {
         _ThemeMenuItem.dark,
       BuiltInThemeChoice(:final id) when id == BuiltInThemes.oledId =>
         _ThemeMenuItem.oled,
-      _ => _ThemeMenuItem.system,
+      CustomThemeChoice() when hasValidCustom => _ThemeMenuItem.custom,
+      _ => null,
     };
 
-    return SegmentedButton<_ThemeMenuItem>(
+    return SegmentedButton<_ThemeMenuItem?>(
       multiSelectionEnabled: false,
-      emptySelectionAllowed: false,
+      emptySelectionAllowed: true,
       showSelectedIcon: false,
-      selected: {value},
+      selected: value != null ? {value} : <_ThemeMenuItem?>{},
       onSelectionChanged: (selection) {
-        if (selection.isNotEmpty) onSelected(selection.first);
+        if (selection.isEmpty) return;
+        onSelected(selection.first);
       },
       segments: [
         ButtonSegment(
@@ -167,6 +175,10 @@ class _ThemeSelector extends StatelessWidget {
         ButtonSegment(
           value: _ThemeMenuItem.oled,
           label: Text(l.oledTheme),
+        ),
+        ButtonSegment(
+          value: _ThemeMenuItem.custom,
+          label: Text(l.themeCustom),
         ),
       ],
     );
@@ -188,7 +200,7 @@ class _CustomThemeInfo extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          l.themeBuiltIn,
+          l.themeCustom,
           style: textTheme.titleSmall,
         ),
         const SizedBox(height: 8),

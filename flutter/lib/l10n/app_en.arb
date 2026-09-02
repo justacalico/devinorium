@@ -592,10 +592,6 @@
   "@themeCustom": {
     "description": "Label for a user-supplied custom theme"
   },
-  "themeBuiltIn": "Built-in",
-  "@themeBuiltIn": {
-    "description": "Label shown when a custom theme is active"
-  },
   "themeImport": "Import custom",
   "@themeImport": {
     "description": "Button to open the custom theme import dialog"
