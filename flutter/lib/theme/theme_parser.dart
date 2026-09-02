@@ -110,20 +110,26 @@ class ThemeParser {
   };
 
   static final _comment = RegExp(r'/\*[\s\S]*?\*/');
-  static final _atRule = RegExp(r'@\w+');
 
   /// Parses [css] and returns a [ColorTheme].
   static ColorTheme parse(String css, {String? name}) {
+    final unclosed = _findUnclosedComment(css);
+    if (unclosed != null) {
+      final line = css.substring(0, unclosed).split('\n').length;
+      throw ThemeParseException('unclosed comment block', line: line);
+    }
+
     final lines = css.split('\n');
     final metadata = _parseMetadata(lines);
-    final stripped = css.replaceAll(_comment, '');
+    final stripped = css.replaceAll(_comment, '').trim();
     final rootBlock = _extractRootBlock(stripped);
     final colors = _parseRootBlock(rootBlock);
 
+    final resolvedName = name?.trim();
     return ColorTheme(
       colors: colors,
       metadata: metadata,
-      name: name,
+      name: resolvedName?.isNotEmpty == true ? resolvedName : null,
     );
   }
 
@@ -156,6 +162,10 @@ class ThemeParser {
       }
     }
 
+    if (inBlock) {
+      throw const ThemeParseException('unclosed @theme metadata block');
+    }
+
     final raw = buffer.toString().trim();
     if (raw.isEmpty) return const ThemeMetadata();
 
@@ -178,7 +188,7 @@ class ThemeParser {
   }
 
   static String _extractRootBlock(String css) {
-    if (_atRule.hasMatch(css)) {
+    if (css.contains('@')) {
       throw const ThemeParseException('at-rules are not allowed');
     }
 
@@ -227,13 +237,23 @@ class ThemeParser {
     final declarations = _splitDeclarations(block);
 
     for (final decl in declarations) {
+      if (decl.contains('{') || decl.contains('}')) {
+        throw const ThemeParseException(
+          'nested selectors or braces are not allowed inside :root',
+        );
+      }
+
       final colon = decl.indexOf(':');
-      if (colon == -1) continue;
+      if (colon == -1) {
+        throw ThemeParseException('invalid declaration in :root: "$decl"');
+      }
 
       final name = decl.substring(0, colon).trim();
       final value = decl.substring(colon + 1).trim().replaceFirst(';', '');
 
-      if (name.isEmpty) continue;
+      if (name.isEmpty) {
+        throw ThemeParseException('missing property name in :root: "$decl"');
+      }
 
       if (!name.startsWith('--')) {
         throw ThemeParseException(
@@ -271,24 +291,9 @@ class ThemeParser {
   static List<String> _splitDeclarations(String block) {
     final result = <String>[];
     final buffer = StringBuffer();
-    var inComment = false;
 
     for (var i = 0; i < block.length; i++) {
       final c = block[i];
-      final next = i + 1 < block.length ? block[i + 1] : '';
-
-      if (c == '/' && next == '*') {
-        inComment = true;
-        i++;
-        continue;
-      }
-      if (c == '*' && next == '/') {
-        inComment = false;
-        i++;
-        continue;
-      }
-      if (inComment) continue;
-
       if (c == ';') {
         result.add(buffer.toString().trim());
         buffer.clear();
@@ -321,5 +326,25 @@ class ThemeParser {
       return Color.fromARGB(a, r, g, b);
     }
     return null;
+  }
+
+  static int? _findUnclosedComment(String css) {
+    var inComment = false;
+    var start = 0;
+    for (var i = 0; i < css.length - 1; i++) {
+      if (!inComment) {
+        if (css[i] == '/' && css[i + 1] == '*') {
+          inComment = true;
+          start = i;
+          i++;
+        }
+      } else {
+        if (css[i] == '*' && css[i + 1] == '/') {
+          inComment = false;
+          i++;
+        }
+      }
+    }
+    return inComment ? start : null;
   }
 }

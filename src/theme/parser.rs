@@ -48,68 +48,96 @@ impl std::error::Error for ThemeParseError {}
 /// Any standard selector, at-rule, layout property, or non-color value is
 /// rejected so users can only change theme colours.
 pub fn parse(css: &str, name: Option<&str>) -> Result<ColorTheme, ThemeParseError> {
-    let (metadata, stripped) = strip_and_parse_metadata(css)?;
+    let (metadata, css_without_metadata) = extract_metadata(css)?;
+    if let Some(start) = find_unclosed_comment(&css_without_metadata) {
+        let line = css[..start].chars().filter(|&c| c == '\n').count() + 1;
+        return Err(ThemeParseError::new_with_line(
+            "unclosed comment block",
+            line,
+        ));
+    }
+    let stripped = strip_comments(&css_without_metadata);
     let root_block = extract_root_block(&stripped)?;
     let colors = parse_root_block(&root_block)?;
 
     Ok(ColorTheme {
         colors,
         metadata,
-        name: name.map(|s| s.to_string()),
+        name: name.and_then(|s| {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }),
     })
 }
 
-fn strip_and_parse_metadata(css: &str) -> Result<(ThemeMetadata, String), ThemeParseError> {
-    let mut in_block = false;
-    let mut buffer = String::new();
-    let mut cleaned_lines = Vec::new();
-    let mut block_start = None;
-
-    for (index, line) in css.lines().enumerate() {
-        let trimmed = line.trim();
-
-        if !in_block {
-            if trimmed.starts_with("/* @theme") {
-                in_block = true;
-                buffer.clear();
-                block_start = Some(index);
-                let rest = &trimmed["/* @theme".len()..];
-                if let Some(end) = rest.find("*/") {
-                    buffer.push_str(rest[..end].trim());
-                    buffer.push('\n');
-                    in_block = false;
-                    cleaned_lines.push(String::new());
-                    continue;
-                } else {
-                    buffer.push_str(rest.trim());
-                    buffer.push('\n');
-                    cleaned_lines.push(String::new());
-                    continue;
-                }
+fn extract_metadata(css: &str) -> Result<(ThemeMetadata, String), ThemeParseError> {
+    if let Some(start) = css.find("/* @theme") {
+        let content_start = start + "/* @theme".len();
+        match css[content_start..].find("*/") {
+            Some(end_offset) => {
+                let end = content_start + end_offset + 2;
+                let content = css[content_start..content_start + end_offset].to_string();
+                let remaining = format!("{}{}", &css[..start], &css[end..]);
+                let metadata = parse_metadata_block(&content)?;
+                Ok((metadata, remaining))
             }
-            cleaned_lines.push(line.to_string());
-        } else if let Some(end) = trimmed.find("*/") {
-            buffer.push_str(trimmed[..end].trim());
-            buffer.push('\n');
-            in_block = false;
-            cleaned_lines.push(String::new());
-        } else {
-            buffer.push_str(trimmed);
-            buffer.push('\n');
-            cleaned_lines.push(String::new());
+            None => {
+                let line = css[..start].chars().filter(|&c| c == '\n').count() + 1;
+                Err(ThemeParseError::new_with_line(
+                    "unclosed @theme metadata block",
+                    line,
+                ))
+            }
+        }
+    } else {
+        Ok((ThemeMetadata::default(), css.to_string()))
+    }
+}
+
+fn find_unclosed_comment(css: &str) -> Option<usize> {
+    let mut in_comment = false;
+    let mut start = 0;
+    let mut chars = css.char_indices().peekable();
+
+    while let Some((i, c)) = chars.next() {
+        if !in_comment {
+            if c == '/' && chars.peek().map(|(_, n)| *n) == Some('*') {
+                in_comment = true;
+                start = i;
+                chars.next(); // consume '*'
+            }
+        } else if c == '*' && chars.peek().map(|(_, n)| *n) == Some('/') {
+            in_comment = false;
+            chars.next(); // consume '/'
         }
     }
 
-    if in_block {
-        return Err(ThemeParseError::new_with_line(
-            "unclosed @theme metadata block",
-            block_start.unwrap_or(0) + 1,
-        ));
+    if in_comment { Some(start) } else { None }
+}
+
+fn strip_comments(css: &str) -> String {
+    let mut result = String::with_capacity(css.len());
+    let mut chars = css.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'*') {
+            chars.next(); // consume '*'
+            while let Some(ch) = chars.next() {
+                if ch == '*' && chars.peek() == Some(&'/') {
+                    chars.next(); // consume '/'
+                    break;
+                }
+            }
+        } else {
+            result.push(c);
+        }
     }
 
-    let stripped = cleaned_lines.join("\n");
-    let metadata = parse_metadata_block(&buffer)?;
-    Ok((metadata, stripped))
+    result
 }
 
 fn parse_metadata_block(raw: &str) -> Result<ThemeMetadata, ThemeParseError> {
@@ -193,15 +221,27 @@ fn parse_root_block(block: &str) -> Result<HashMap<String, u32>, ThemeParseError
             continue;
         }
 
+        if decl.contains('{') || decl.contains('}') {
+            return Err(ThemeParseError::new(
+                "nested selectors or braces are not allowed inside :root",
+            ));
+        }
+
         let Some((name, value)) = decl.split_once(':') else {
-            continue;
+            return Err(ThemeParseError::new(format!(
+                "invalid declaration in :root: \"{}\"",
+                decl
+            )));
         };
 
         let name = name.trim();
         let value = value.trim().trim_end_matches(';').trim();
 
         if name.is_empty() {
-            continue;
+            return Err(ThemeParseError::new(format!(
+                "missing property name in :root: \"{}\"",
+                decl
+            )));
         }
 
         if !name.starts_with("--") {
@@ -507,5 +547,88 @@ body { margin: 0; }
 "#;
         let err = parse(css, None).unwrap_err();
         assert!(err.message.contains("trailing content"));
+    }
+
+    #[test]
+    fn rejects_empty_property_names() {
+        let css = r#"
+/* @theme */
+:root {
+  : #6750A4;
+}
+"#;
+        let err = parse(css, None).unwrap_err();
+        assert!(err.message.contains("missing property name"));
+    }
+
+    #[test]
+    fn rejects_nested_selectors_inside_root() {
+        let css = r#"
+/* @theme */
+:root {
+  body {};
+  --primary: #6750A4;
+}
+"#;
+        let err = parse(css, None).unwrap_err();
+        assert!(err.message.contains("braces"));
+    }
+
+    #[test]
+    fn rejects_lone_at_character() {
+        let css = r#"
+/* @theme */
+@ :root {
+  --primary: #6750A4;
+}
+"#;
+        let err = parse(css, None).unwrap_err();
+        assert!(err.message.contains("at-rules"));
+    }
+
+    #[test]
+    fn rejects_unclosed_comments() {
+        let css = r#"
+/* @theme */
+/* unclosed
+:root {
+  --primary: #6750A4;
+}
+"#;
+        let err = parse(css, None).unwrap_err();
+        assert!(err.message.contains("unclosed comment"));
+    }
+
+    #[test]
+    fn parses_one_line_metadata_block() {
+        let css = "/* @theme version: 2.0.0 */\n:root { --primary: #6750A4; }";
+        let theme = parse(css, None).unwrap();
+        assert_eq!(theme.metadata.version, "2.0.0");
+        assert_eq!(theme.colors.get("primary"), Some(&0xFF6750A4));
+    }
+
+    #[test]
+    fn accepts_comments_before_root() {
+        let css = r#"
+/* @theme */
+/* harmless note */
+:root {
+  --primary: #6750A4;
+}
+"#;
+        let theme = parse(css, None).unwrap();
+        assert_eq!(theme.colors.get("primary"), Some(&0xFF6750A4));
+    }
+
+    #[test]
+    fn ignores_empty_name_and_creator() {
+        let css = r#"
+/* @theme
+ * creator:
+ */
+:root { --primary: #6750A4; }
+"#;
+        let theme = parse(css, Some("   ")).unwrap();
+        assert!(theme.name.is_none());
     }
 }
