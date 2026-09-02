@@ -1,5 +1,21 @@
 part of '../sidebar.dart';
 
+List<({IconData icon, String label})> _settingsTopics(
+  AppState state,
+  AppLocalizations l,
+) {
+  return [
+    (icon: Icons.person_outline, label: l.account),
+    (icon: Icons.cloud_outlined, label: l.providers),
+    (icon: Icons.palette_outlined, label: l.personalization),
+    (icon: Icons.code_outlined, label: l.git),
+    (icon: Icons.folder_outlined, label: l.cloneRoot),
+    if (state.isOwner)
+      (icon: Icons.manage_accounts_outlined, label: l.manage),
+    (icon: Icons.dns_outlined, label: l.servers),
+  ];
+}
+
 class _SettingsNav extends StatelessWidget {
   const _SettingsNav();
 
@@ -8,16 +24,7 @@ class _SettingsNav extends StatelessWidget {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
-    final topics = [
-      (icon: Icons.person_outline, label: l.account),
-      (icon: Icons.cloud_outlined, label: l.providers),
-      (icon: Icons.palette_outlined, label: l.personalization),
-      (icon: Icons.code_outlined, label: l.git),
-      (icon: Icons.folder_outlined, label: l.cloneRoot),
-      if (state.isOwner)
-        (icon: Icons.manage_accounts_outlined, label: l.manage),
-      (icon: Icons.dns_outlined, label: 'Servers'),
-    ];
+    final topics = _settingsTopics(state, l);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

@@ -975,4 +975,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get loadMore => 'Load more';
+
+  @override
+  String get servers => 'Servers';
+
+  @override
+  String get manageServers => 'Manage servers';
+
+  @override
+  String get switchServer => 'Switch server';
 }

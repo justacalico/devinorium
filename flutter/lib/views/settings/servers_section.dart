@@ -20,8 +20,10 @@ class _ServersSection extends StatelessWidget {
       );
     }
 
+    final l = l10n(context);
+
     return _SectionCard(
-      title: 'Servers',
+      title: l.servers,
       children: [
         if (state.serverProfiles.isEmpty)
           Text(
