@@ -8,6 +8,7 @@ import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../servers/server_profile.dart';
 import '../state/app_state.dart';
+import '../theme/theme.dart';
 import '../widgets/git_provider_icons.dart';
 import '../widgets/git_provider_tile.dart';
 import '../widgets/owner_badge.dart';

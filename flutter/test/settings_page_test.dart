@@ -2,6 +2,7 @@ import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/theme/theme.dart';
 import 'package:devinorium_frontend/views/settings_page.dart';
 import 'package:devinorium_frontend/widgets/git_provider_icons.dart';
 import 'package:devinorium_frontend/widgets/git_provider_tile.dart';
@@ -134,8 +135,13 @@ class _FakeApiService extends ApiService {
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
-      home: ChangeNotifierProvider<AppState>.value(
-        value: state,
+      home: MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AppState>.value(value: state),
+          ChangeNotifierProvider<ThemeProvider>(
+            create: (_) => ThemeProvider()..loadInitial(),
+          ),
+        ],
         child: const SettingsPage(),
       ),
     );

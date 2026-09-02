@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show Locale, ThemeMode;
+import 'package:flutter/material.dart' show Locale;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
@@ -118,7 +118,6 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     AskRequest? pendingAskRequest,
     List<String> filesPath = const [],
     String? globalError,
-    ThemeMode? themeMode,
     Locale? locale,
     int? settingsTopicIndex,
     bool sending = false,
@@ -151,7 +150,6 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
           );
     }
 
-    _themeMode = themeMode ?? ThemeMode.system;
     _locale = locale ?? const Locale('en');
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _gitConnections = List<GitConnection>.from(gitConnections);

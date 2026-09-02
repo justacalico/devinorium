@@ -1929,6 +1929,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'URL must start with http:// or https://'**
   String get serverUrlMustIncludeScheme;
+
+  /// OLED built-in theme option
+  ///
+  /// In en, this message translates to:
+  /// **'OLED'**
+  String get oledTheme;
+
+  /// Label for a user-supplied custom theme
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get themeCustom;
+
+  /// Button to open the custom theme import dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Import custom'**
+  String get themeImport;
+
+  /// Hint text in the custom theme import dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a restricted CSS file below. Only :root and color values are allowed.'**
+  String get themeImportHint;
+
+  /// Error shown when a custom theme file cannot be parsed
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to import theme'**
+  String get themeImportError;
+
+  /// Label for the theme creator metadata field
+  ///
+  /// In en, this message translates to:
+  /// **'Creator'**
+  String get themeCreator;
+
+  /// Label for the theme version metadata field
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get themeVersion;
+
+  /// Label for the theme description metadata field
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get themeDescription;
 }
 
 class _AppLocalizationsDelegate

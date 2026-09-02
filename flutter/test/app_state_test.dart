@@ -8,7 +8,7 @@ import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
-import 'package:flutter/material.dart' show Locale, ThemeMode;
+import 'package:flutter/material.dart' show Locale;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -147,15 +147,6 @@ void main() {
       expect(state.globalError, 'boom');
       state.clearGlobalError();
       expect(state.globalError, isEmpty);
-    });
-
-    test('theme mode defaults to system and can be changed', () async {
-      final state = AppState.test();
-      expect(state.themeMode, ThemeMode.system);
-      await state.setThemeMode(ThemeMode.dark);
-      expect(state.themeMode, ThemeMode.dark);
-      await state.setThemeMode(ThemeMode.light);
-      expect(state.themeMode, ThemeMode.light);
     });
 
     test('settings topic index can be changed', () {
@@ -2487,22 +2478,6 @@ void main() {
         ),
       );
       expect(regular.isOwner, isFalse);
-    });
-  });
-
-  group('Theme persistence', () {
-    setUpAll(() {
-      SharedPreferences.setMockInitialValues({});
-    });
-
-    test('setThemeMode saves and loadThemeMode restores the value', () async {
-      final state = AppState.test();
-      await state.setThemeMode(ThemeMode.dark);
-      expect(state.themeMode, ThemeMode.dark);
-
-      final restored = AppState.test();
-      await restored.bootstrap();
-      expect(restored.themeMode, ThemeMode.dark);
     });
   });
 

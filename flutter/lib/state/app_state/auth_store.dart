@@ -37,7 +37,6 @@ mixin AuthStore on AppStateBase {
   }
   @override
   Future<void> bootstrap() async {
-    await _loadThemeMode();
     await _loadLanguage();
     await _loadComposerMode();
     await _loadNotificationPrefs();

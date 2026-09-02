@@ -2,15 +2,11 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 
 mixin SettingsStore on AppStateBase {
   @override
-  ThemeMode _themeMode = ThemeMode.system;
-  @override
   Locale _locale = const Locale('en');
   @override
   int _settingsTopicIndex = 0;
   @override
   final _notifications = NotificationService();
-  @override
-  ThemeMode get themeMode => _themeMode;
   @override
   Locale get locale => _locale;
   @override
@@ -21,43 +17,6 @@ mixin SettingsStore on AppStateBase {
   void setSettingsTopicIndex(int index) {
     _settingsTopicIndex = index;
     notifyListeners();
-  }
-  @override
-  Future<void> setThemeMode(ThemeMode mode) async {
-    _themeMode = mode;
-    notifyListeners();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('devinorium_theme_mode', _themeModeToString(mode));
-    } catch (_) {}
-  }
-  static String _themeModeToString(ThemeMode mode) {
-    return switch (mode) {
-      ThemeMode.light => 'light',
-      ThemeMode.dark => 'dark',
-      _ => 'system',
-    };
-  }
-  @override
-  Future<void> _loadThemeMode() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final value = prefs.getString('devinorium_theme_mode') ?? 'system';
-      _themeMode = _parseThemeMode(value);
-    } catch (_) {
-      _themeMode = ThemeMode.system;
-    }
-    notifyListeners();
-  }
-  static ThemeMode _parseThemeMode(String value) {
-    switch (value) {
-      case 'light':
-        return ThemeMode.light;
-      case 'dark':
-        return ThemeMode.dark;
-      default:
-        return ThemeMode.system;
-    }
   }
   @override
   Future<void> setLanguage(String language) async {
