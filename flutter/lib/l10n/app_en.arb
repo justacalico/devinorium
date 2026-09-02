@@ -532,5 +532,17 @@
       }
     }
   },
-  "loadMore": "Load more"
+  "loadMore": "Load more",
+  "servers": "Servers",
+  "@servers": {
+    "description": "Servers section title in settings and the sidebar switcher"
+  },
+  "manageServers": "Manage servers",
+  "@manageServers": {
+    "description": "Menu item to open the server settings"
+  },
+  "switchServer": "Switch server",
+  "@switchServer": {
+    "description": "Tooltip for the quick server switcher"
+  }
 }

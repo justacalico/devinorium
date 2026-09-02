@@ -1851,6 +1851,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Load more'**
   String get loadMore;
+
+  /// Servers section title in settings and the sidebar switcher
+  ///
+  /// In en, this message translates to:
+  /// **'Servers'**
+  String get servers;
+
+  /// Menu item to open the server settings
+  ///
+  /// In en, this message translates to:
+  /// **'Manage servers'**
+  String get manageServers;
+
+  /// Tooltip for the quick server switcher
+  ///
+  /// In en, this message translates to:
+  /// **'Switch server'**
+  String get switchServer;
 }
 
 class _AppLocalizationsDelegate

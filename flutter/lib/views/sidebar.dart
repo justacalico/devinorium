@@ -24,6 +24,7 @@ part 'sidebar/no_threads.dart';
 part 'sidebar/thread_tile.dart';
 part 'sidebar/section_header.dart';
 part 'sidebar/settings_nav.dart';
+part 'sidebar/server_switcher.dart';
 
 Color _projectColor(String name) {
   final colors = [
@@ -199,9 +200,9 @@ class _SidebarState extends State<Sidebar> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isSettings) const _AppTitle(),
-          if (isSettings)
-            const _SettingsHeader()
-          else ...[
+          if (isSettings) const _SettingsHeader(),
+          const _ServerSwitcher(),
+          if (!isSettings) ...[
             _SearchField(
               controller: _searchController,
               focusNode: _searchFocus,
