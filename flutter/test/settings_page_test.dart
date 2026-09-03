@@ -11,6 +11,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeApiService extends ApiService {
@@ -426,9 +427,120 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Theme'), findsOneWidget);
+    // The dropdown shows the active choice (System by default) and exposes
+    // the rest of the built-in themes when opened.
+    expect(find.text('System'), findsOneWidget);
+    expect(find.text('Import custom'), findsOneWidget);
+
+    await tester.tap(find.text('System'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Light'), findsOneWidget);
     expect(find.text('Dark'), findsOneWidget);
-    expect(find.text('System'), findsOneWidget);
+    expect(find.text('OLED'), findsOneWidget);
+  });
+
+  testWidgets('Theme dropdown updates the active theme', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('System'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Light').last);
+    await tester.pumpAndSettle();
+
+    final provider = Provider.of<ThemeProvider>(
+      tester.element(find.byType(SettingsPage)),
+      listen: false,
+    );
+    expect(provider.choice, isA<BuiltInThemeChoice>());
+    expect((provider.choice as BuiltInThemeChoice).id, BuiltInThemes.lightId);
+    // The closed dropdown now reflects the newly selected theme.
+    expect(find.text('Light'), findsOneWidget);
+  });
+
+  testWidgets('Theme dropdown shows custom hint when a custom theme is loaded',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    const css = ':root { --primary: #ff0000; }';
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    final provider = Provider.of<ThemeProvider>(
+      tester.element(find.byType(SettingsPage)),
+      listen: false,
+    );
+    await provider.loadCustom(css, name: 'Sunset');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Custom: Sunset'), findsOneWidget);
+  });
+
+  testWidgets('Theme dropdown falls back to bare Custom label without a name',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    const css = ':root { --primary: #ff0000; }';
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    final provider = Provider.of<ThemeProvider>(
+      tester.element(find.byType(SettingsPage)),
+      listen: false,
+    );
+    await provider.loadCustom(css);
+    await tester.pumpAndSettle();
+
+    // No name was supplied, so the dropdown hint is just "Custom". The
+    // custom-theme info card also renders a "Custom" heading, so both the
+    // hint and the heading are present (i.e. the selector is not blank).
+    expect(find.text('Custom'), findsNWidgets(2));
   });
 
   testWidgets('Personalization tab has language selector', (tester) async {
