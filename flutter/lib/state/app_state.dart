@@ -132,6 +132,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     String? startedAt,
     bool threadLoading = false,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
+    String? serverVersion,
   }) : multiServerState = multiServerState ?? MultiServerState() {
     this.multiServerState.addListener(notifyListeners);
     if (api != null) {
@@ -184,6 +185,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     _globalError = globalError ?? '';
     _composerMode = composerMode;
     _connectionStatus = connectionStatus;
+    _serverVersion = serverVersion;
 
     final threadId = activeThreadId ?? activeThreadDetail?.thread.id;
     if (threadId != null) {

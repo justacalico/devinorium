@@ -208,6 +208,39 @@ void main() {
       expect(await service.checkHealth(), isFalse);
     });
 
+    test('serverVersion returns version on 200', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/server/version'));
+        return _json(200, {'version': '0.31.0'});
+      });
+      final service = _serviceFor(mock);
+      expect(await service.serverVersion(), '0.31.0');
+    });
+
+    test('serverVersion returns null on error', () async {
+      final mock = MockClient((req) async {
+        return http.Response('', 500);
+      });
+      final service = _serviceFor(mock);
+      expect(await service.serverVersion(), isNull);
+    });
+
+    test('serverVersion returns null when version field is missing', () async {
+      final mock = MockClient((req) async {
+        return _json(200, {'other': 'x'});
+      });
+      final service = _serviceFor(mock);
+      expect(await service.serverVersion(), isNull);
+    });
+
+    test('serverVersion returns null for non-string version', () async {
+      final mock = MockClient((req) async {
+        return _json(200, {'version': 123});
+      });
+      final service = _serviceFor(mock);
+      expect(await service.serverVersion(), isNull);
+    });
+
     test('reorderProjects patches project_ids', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('PATCH', '/api/projects/reorder'));

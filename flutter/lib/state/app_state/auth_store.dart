@@ -452,6 +452,7 @@ mixin AuthStore on AppStateBase {
     _selectedPermission = 'normal';
     _runningThreadIds.clear();
     _connectionStatus = ConnectionStatus.checking;
+    _serverVersion = null;
     _page = MainPage.threads;
     _dialog = DialogKind.none;
     _globalError = '';
