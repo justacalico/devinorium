@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.31.1 - 2026-09-03
+#### Bug Fixes
+- 修复深色模式偏灰问题 - (ceb38af) - HttpAnimations
+
+- - -
+
 ## v0.31.0 - 2026-09-03
 #### Features
 - 将文件面板改为展开的文件夹树 - (c07e548) - HttpAnimations
