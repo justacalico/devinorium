@@ -116,7 +116,6 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     String? issueUrl,
     PermissionRequest? pendingPermissionRequest,
     AskRequest? pendingAskRequest,
-    List<String> filesPath = const [],
     String? globalError,
     Locale? locale,
     int? settingsTopicIndex,
@@ -182,7 +181,6 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     _dialog = dialog ?? DialogKind.none;
     _mergeRequestUrl = mergeRequestUrl;
     _issueUrl = issueUrl;
-    _filesPath = filesPath;
     _globalError = globalError ?? '';
     _composerMode = composerMode;
     _connectionStatus = connectionStatus;

@@ -376,9 +376,7 @@ void main() {
     test('switchServer goes to login when the server id is unknown', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(
-        api: ApiService(
-          client: _clientFor([_json(200, {})]),
-        ),
+        api: ApiService(client: _clientFor([_json(200, {})])),
       );
       state.setView(AppView.app);
       await state.switchServer('missing');
@@ -386,53 +384,59 @@ void main() {
       expect(state.loginError, contains('server not found'));
     });
 
-    test('removeServer removes an inactive profile without resetting state', () async {
-      SharedPreferences.setMockInitialValues({});
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {
-              'ok': true,
-              'totp_required': false,
-              'username': 'owner',
-              'token': 'abc',
-            }),
-          ]),
-        ),
-      );
-      state.setView(AppView.app);
-      state.setComposerText('hello');
-      await state.addServer(
-        serverUrl: 'http://other',
-        username: 'owner',
-        password: 'pw',
-      );
-      expect(state.serverProfiles.length, 2);
+    test(
+      'removeServer removes an inactive profile without resetting state',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
+                'ok': true,
+                'totp_required': false,
+                'username': 'owner',
+                'token': 'abc',
+              }),
+            ]),
+          ),
+        );
+        state.setView(AppView.app);
+        state.setComposerText('hello');
+        await state.addServer(
+          serverUrl: 'http://other',
+          username: 'owner',
+          password: 'pw',
+        );
+        expect(state.serverProfiles.length, 2);
 
-      final other = state.serverProfiles.firstWhere((p) => p.baseUrl == 'http://other');
-      await state.removeServer(other.id);
-      expect(state.serverProfiles.length, 1);
-      expect(state.activeServerId, 'default');
-      expect(state.composerText, 'hello');
-      expect(state.view, AppView.app);
-    });
+        final other = state.serverProfiles.firstWhere(
+          (p) => p.baseUrl == 'http://other',
+        );
+        await state.removeServer(other.id);
+        expect(state.serverProfiles.length, 1);
+        expect(state.activeServerId, 'default');
+        expect(state.composerText, 'hello');
+        expect(state.view, AppView.app);
+      },
+    );
 
-    test('removeServer for the active profile goes to login when none remain', () async {
-      SharedPreferences.setMockInitialValues({});
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([_json(200, {})]),
-        ),
-      );
-      state.setView(AppView.app);
-      state.setComposerText('hello');
+    test(
+      'removeServer for the active profile goes to login when none remain',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final state = AppState(
+          api: ApiService(client: _clientFor([_json(200, {})])),
+        );
+        state.setView(AppView.app);
+        state.setComposerText('hello');
 
-      await state.removeServer('default');
-      expect(state.activeServerId, isNull);
-      expect(state.serverProfiles, isEmpty);
-      expect(state.view, AppView.login);
-      expect(state.composerText, '');
-    });
+        await state.removeServer('default');
+        expect(state.activeServerId, isNull);
+        expect(state.serverProfiles, isEmpty);
+        expect(state.view, AppView.login);
+        expect(state.composerText, '');
+      },
+    );
   });
 
   group('Projects and threads', () {
@@ -1169,7 +1173,11 @@ void main() {
 
       // A 500 response makes deleteThread throw, which the store catches.
       final state = AppState(
-        api: ApiService(client: _clientFor([_json(500, {'error': 'boom'})])),
+        api: ApiService(
+          client: _clientFor([
+            _json(500, {'error': 'boom'}),
+          ]),
+        ),
       );
       final base = AppState.test(api: state.api, activeThreadId: 'a');
 
@@ -1400,10 +1408,13 @@ void main() {
       expect(base.filesError, isEmpty);
     });
 
-    test('navigateFilesInto updates path and reloads', () async {
+    test('toggleFilesFolder expands a directory and loads children', () async {
       final state = AppState(
         api: ApiService(
           client: _clientFor([
+            _json(200, [
+              {'name': 'dir', 'is_dir': true, 'size': 0},
+            ]),
             _json(200, [
               {'name': 'b.txt', 'is_dir': false, 'size': 2},
             ]),
@@ -1413,11 +1424,18 @@ void main() {
       final base = AppState.test(
         api: state.api,
         activeProjectId: 1,
-        filesPath: [],
       );
-      await base.navigateFilesInto('dir');
-      expect(base.filesPath, ['dir']);
+      await base.openFilesPanel();
       expect(base.filesEntries, hasLength(1));
+      final dir = base.filesTreeRoot.children.first;
+      expect(dir.entry.isDir, isTrue);
+      await base.toggleFilesFolder(dir);
+      expect(dir.isExpanded, isTrue);
+      expect(dir.children, hasLength(1));
+      expect(
+        base.filesTreeRows.any((r) => r.node.entry.name == 'b.txt'),
+        isTrue,
+      );
     });
 
     test('mkdir creates directory and reloads', () async {
@@ -1450,6 +1468,40 @@ void main() {
       expect(base.hasMoreFiles, isTrue);
       await base.loadMoreFiles();
       expect(base.filesEntries, hasLength(101));
+      expect(base.hasMoreFiles, isFalse);
+    });
+
+    test('loadMoreFiles advances offset by chunk size and skips duplicates', () async {
+      final initial = List<Map<String, Object>>.generate(
+        100,
+        (i) => {'name': i == 0 ? 'a.txt' : 'new${i - 1}.txt', 'is_dir': false, 'size': i},
+      );
+      final more = [
+        {'name': 'a.txt', 'is_dir': false, 'size': 0},
+        for (var i = 0; i < 99; i++)
+          {'name': 'new${99 + i}.txt', 'is_dir': false, 'size': 100 + i},
+      ];
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, initial),
+            _json(200, more),
+            _json(200, []),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api, activeProjectId: 1);
+      await base.openFilesPanel();
+      expect(base.filesEntries, hasLength(100));
+      expect(base.hasMoreFiles, isTrue);
+
+      await base.loadMoreFiles();
+      expect(base.filesEntries, hasLength(199));
+      expect(base.filesTreeRoot.offset, 200);
+      expect(base.hasMoreFiles, isTrue);
+
+      await base.loadMoreFiles();
+      expect(base.filesEntries, hasLength(199));
       expect(base.hasMoreFiles, isFalse);
     });
 

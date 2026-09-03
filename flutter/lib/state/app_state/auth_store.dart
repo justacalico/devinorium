@@ -30,11 +30,13 @@ mixin AuthStore on AppStateBase {
     _loginError = e;
     notifyListeners();
   }
+
   @override
   void setShowTotpField(bool v) {
     _showTotpField = v;
     notifyListeners();
   }
+
   @override
   Future<void> bootstrap() async {
     await _loadLanguage();
@@ -180,7 +182,11 @@ mixin AuthStore on AppStateBase {
     return api;
   }
 
-  Future<void> _configureLoginClient(String serverUrl, String token, String username) async {
+  Future<void> _configureLoginClient(
+    String serverUrl,
+    String token,
+    String username,
+  ) async {
     final client = api.client;
     if (_isRealNativeClient(client)) {
       // Real native clients get a fresh service per profile; no need to mutate
@@ -214,17 +220,16 @@ mixin AuthStore on AppStateBase {
     }
     notifyListeners();
   }
+
   @override
   Future<void> loadSettingsData() async {
-    final futures = <Future<void>>[
-      loadGitConnections(),
-      loadCloneRoot(),
-    ];
+    final futures = <Future<void>>[loadGitConnections(), loadCloneRoot()];
     if (isOwner) {
       futures.add(loadUsers());
     }
     await Future.wait(futures);
   }
+
   @override
   Future<void> createUser({
     required String username,
@@ -239,6 +244,7 @@ mixin AuthStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> setUserDisabled(int id, bool disabled) async {
     try {
@@ -250,6 +256,7 @@ mixin AuthStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> logout() async {
     stopHealthChecks();
@@ -270,6 +277,7 @@ mixin AuthStore on AppStateBase {
     _view = AppView.login;
     notifyListeners();
   }
+
   @override
   Future<void> switchServer(String serverId) async {
     if (_switchingServer) return;
@@ -289,6 +297,7 @@ mixin AuthStore on AppStateBase {
       _switchingServer = false;
     }
   }
+
   @override
   Future<void> removeServer(String serverId) async {
     if (_switchingServer) return;
@@ -317,6 +326,7 @@ mixin AuthStore on AppStateBase {
       _switchingServer = false;
     }
   }
+
   @override
   Future<void> saveProvider({
     String? providerId,
@@ -335,6 +345,7 @@ mixin AuthStore on AppStateBase {
     }
     notifyListeners();
   }
+
   @override
   Future<void> testProvider({
     required String providerId,
@@ -350,6 +361,7 @@ mixin AuthStore on AppStateBase {
       rethrow;
     }
   }
+
   @override
   Future<void> openTotpSetup() async {
     try {
@@ -363,6 +375,7 @@ mixin AuthStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> verifyTotp(String code) async {
     try {
@@ -376,6 +389,7 @@ mixin AuthStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> disableTotp() async {
     try {
@@ -417,9 +431,9 @@ mixin AuthStore on AppStateBase {
     _projectThreadOffsets.clear();
     _projectThreadsHasMore.clear();
     _loadingMoreProjectThreads.clear();
-    _filesEntries = [];
-    _filesOffset = 0;
-    _filesHasMore = true;
+    _filesTreeRoot = FileTreeNode.root();
+    _filesPanelOpen = false;
+    _filesError = '';
     _activeProjectId = null;
     _activeThreadId = null;
     for (final store in _threadStores.values) {
