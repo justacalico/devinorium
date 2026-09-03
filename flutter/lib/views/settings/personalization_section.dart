@@ -27,7 +27,7 @@ class _PersonalizationSection extends StatelessWidget {
             Expanded(
               child: _ThemeSelector(
                 choice: choice,
-                hasValidCustom: themeProvider.hasValidCustomTheme,
+                customThemeName: themeProvider.activeTheme.name,
                 onSelected: (value) =>
                     _onThemeSelected(context, value, themeProvider),
               ),
@@ -106,8 +106,6 @@ class _PersonalizationSection extends StatelessWidget {
         await themeProvider.selectBuiltIn(BuiltInThemes.darkId);
       case _ThemeMenuItem.oled:
         await themeProvider.selectBuiltIn(BuiltInThemes.oledId);
-      case _ThemeMenuItem.custom:
-        await _showCustomThemeDialog(context, themeProvider);
     }
   }
 
@@ -131,32 +129,16 @@ class _PersonalizationSection extends StatelessWidget {
   }
 }
 
-enum _ThemeMenuItem { system, light, dark, oled, custom }
-
-class _SegmentLabel extends StatelessWidget {
-  final String text;
-
-  const _SegmentLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      maxLines: 1,
-      softWrap: false,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-}
+enum _ThemeMenuItem { system, light, dark, oled }
 
 class _ThemeSelector extends StatelessWidget {
   final ThemeChoice choice;
-  final bool hasValidCustom;
+  final String? customThemeName;
   final ValueChanged<_ThemeMenuItem?> onSelected;
 
   const _ThemeSelector({
     required this.choice,
-    required this.hasValidCustom,
+    required this.customThemeName,
     required this.onSelected,
   });
 
@@ -171,51 +153,39 @@ class _ThemeSelector extends StatelessWidget {
         _ThemeMenuItem.dark,
       BuiltInThemeChoice(:final id) when id == BuiltInThemes.oledId =>
         _ThemeMenuItem.oled,
-      CustomThemeChoice() when hasValidCustom => _ThemeMenuItem.custom,
       _ => null,
     };
 
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minWidth: constraints.maxWidth.isFinite ? constraints.maxWidth : 0,
-          ),
-          child: SegmentedButton<_ThemeMenuItem?>(
-            multiSelectionEnabled: false,
-            emptySelectionAllowed: true,
-            showSelectedIcon: false,
-            selected: value != null ? {value} : <_ThemeMenuItem?>{},
-            onSelectionChanged: (selection) {
-              if (selection.isEmpty) return;
-              onSelected(selection.first);
-            },
-            segments: [
-              ButtonSegment(
-                value: _ThemeMenuItem.system,
-                label: _SegmentLabel(l.system),
-              ),
-              ButtonSegment(
-                value: _ThemeMenuItem.light,
-                label: _SegmentLabel(l.light),
-              ),
-              ButtonSegment(
-                value: _ThemeMenuItem.dark,
-                label: _SegmentLabel(l.dark),
-              ),
-              ButtonSegment(
-                value: _ThemeMenuItem.oled,
-                label: _SegmentLabel(l.oledTheme),
-              ),
-              ButtonSegment(
-                value: _ThemeMenuItem.custom,
-                label: _SegmentLabel(l.themeCustom),
-              ),
-            ],
-          ),
-        ),
-      ),
+    // A custom choice (valid or not) has no matching dropdown item, so the
+    // hint keeps the selector from going blank and tells the user they are
+    // in custom mode. An invalid persisted custom theme still shows "Custom"
+    // so they can re-import or pick a built-in from the dropdown.
+    final isCustom = choice is CustomThemeChoice;
+    final customLabel = isCustom
+        ? (customThemeName != null && customThemeName!.isNotEmpty
+              ? '${l.themeCustom}: $customThemeName'
+              : l.themeCustom)
+        : null;
+
+    return DropdownButton<_ThemeMenuItem?>(
+      value: value,
+      isExpanded: true,
+      underline: const SizedBox.shrink(),
+      hint: customLabel != null
+          ? Text(
+              customLabel,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            )
+          : null,
+      items: [
+        DropdownMenuItem(value: _ThemeMenuItem.system, child: Text(l.system)),
+        DropdownMenuItem(value: _ThemeMenuItem.light, child: Text(l.light)),
+        DropdownMenuItem(value: _ThemeMenuItem.dark, child: Text(l.dark)),
+        DropdownMenuItem(value: _ThemeMenuItem.oled, child: Text(l.oledTheme)),
+      ],
+      onChanged: onSelected,
     );
   }
 }
