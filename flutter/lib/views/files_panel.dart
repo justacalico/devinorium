@@ -433,9 +433,9 @@ class FilesPanel extends StatelessWidget {
       'copied' => Colors.pink,
       'untracked' => Colors.blue,
       'conflict' => Colors.redAccent,
-      'ignored' => theme.colorScheme.outline,
+      'ignored' => theme.colorScheme.onSurfaceVariant,
       'descendant' => Colors.orange,
-      _ => theme.colorScheme.outline,
+      _ => theme.colorScheme.onSurfaceVariant,
     };
   }
 

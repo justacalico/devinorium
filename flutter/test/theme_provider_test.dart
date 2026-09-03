@@ -33,7 +33,7 @@ void main() {
       );
       expect(provider.themeMode, ThemeMode.system);
       expect(provider.lightTheme.colorScheme.surface, const Color(0xFFFFFBFE));
-      expect(provider.darkTheme.colorScheme.surface, const Color(0xFF1C1B1F));
+      expect(provider.darkTheme.colorScheme.surface, const Color(0xFF0A0A0A));
     });
 
     test('built-in dark theme is always dark', () async {
@@ -42,7 +42,7 @@ void main() {
         initialChoice: const BuiltInThemeChoice(BuiltInThemes.darkId),
       );
       expect(provider.themeMode, ThemeMode.dark);
-      expect(provider.lightTheme.colorScheme.surface, const Color(0xFF1C1B1F));
+      expect(provider.lightTheme.colorScheme.surface, const Color(0xFF0A0A0A));
     });
 
     test('built-in OLED uses pure black surfaces', () async {
@@ -131,7 +131,7 @@ void main() {
       expect(notified, isTrue);
       expect(
         provider.activeTheme.toColorScheme(Brightness.dark).surface,
-        const Color(0xFF1C1B1F),
+        const Color(0xFF0A0A0A),
       );
     });
 

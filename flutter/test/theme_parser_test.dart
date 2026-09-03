@@ -1,6 +1,26 @@
+import 'dart:math' as math;
+
 import 'package:devinorium_frontend/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+double _channelLuminance(double value) {
+  return value <= 0.03928
+      ? value / 12.92
+      : math.pow((value + 0.055) / 1.055, 2.4).toDouble();
+}
+
+double _relativeLuminance(Color color) {
+  return 0.2126 * _channelLuminance(color.r) +
+      0.7152 * _channelLuminance(color.g) +
+      0.0722 * _channelLuminance(color.b);
+}
+
+double _contrast(Color a, Color b) {
+  final la = _relativeLuminance(a) + 0.05;
+  final lb = _relativeLuminance(b) + 0.05;
+  return la > lb ? la / lb : lb / la;
+}
 
 void main() {
   group('ThemeParser', () {
@@ -150,9 +170,47 @@ body { color: red; }
       expect(BuiltInThemes.light.toColorScheme(Brightness.light).primary,
           const Color(0xFF6750A4));
       expect(BuiltInThemes.dark.toColorScheme(Brightness.dark).surface,
-          const Color(0xFF1C1B1F));
+          const Color(0xFF0A0A0A));
       expect(BuiltInThemes.oled.toColorScheme(Brightness.dark).surface,
           Colors.black);
+    });
+
+    test('dark theme uses deep black surfaces and progressively lighter containers', () {
+      final scheme = BuiltInThemes.dark.toColorScheme(Brightness.dark);
+
+      expect(scheme.surface, const Color(0xFF0A0A0A));
+      expect(scheme.surfaceDim, Colors.black);
+      expect(scheme.surfaceBright, const Color(0xFF161616));
+      expect(scheme.surfaceContainerLowest, Colors.black);
+      expect(scheme.surfaceContainerLow, const Color(0xFF0A0A0A));
+      expect(scheme.surfaceContainer, const Color(0xFF111111));
+      expect(scheme.surfaceContainerHigh, const Color(0xFF171717));
+      expect(scheme.surfaceContainerHighest, const Color(0xFF1E1E1E));
+      expect(scheme.onSurface, Colors.white);
+    });
+
+    test('dark theme greys remain visible on near-black surfaces', () {
+      final scheme = BuiltInThemes.dark.toColorScheme(Brightness.dark);
+
+      expect(scheme.onSurfaceVariant, const Color(0xFFCCCCCC));
+      expect(scheme.outline, const Color(0xFF7A7A7A));
+      expect(scheme.outlineVariant, const Color(0xFF6B6B6B));
+
+      expect(_contrast(scheme.outline, scheme.surface), greaterThan(3.0));
+      expect(
+        _contrast(scheme.outlineVariant, scheme.surfaceContainerHighest),
+        greaterThan(3.0),
+      );
+
+      final dimComment = scheme.onSurfaceVariant.withAlpha(153);
+      final blendedComment = Color.alphaBlend(
+        dimComment,
+        scheme.surfaceContainerHigh,
+      );
+      expect(
+        _contrast(blendedComment, scheme.surfaceContainerHigh),
+        greaterThan(4.5),
+      );
     });
 
     test('system theme choice resolves to light or dark', () {
@@ -166,7 +224,7 @@ body { color: red; }
         initialChoice: const SystemThemeChoice(),
       );
       expect(provider.themeMode, ThemeMode.system);
-      expect(provider.darkTheme.colorScheme.surface, const Color(0xFF1C1B1F));
+      expect(provider.darkTheme.colorScheme.surface, const Color(0xFF0A0A0A));
       expect(provider.lightTheme.colorScheme.surface, const Color(0xFFFFFBFE));
     });
 
