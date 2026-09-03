@@ -68,7 +68,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 5,
+          settingsTopicIndex: 6,
         );
 
     testWidgets('shows the add-server button and test profile', (tester) async {
@@ -235,7 +235,7 @@ void main() {
           providerId: 'devin-cli',
           providerCommand: 'devin',
         ),
-        settingsTopicIndex: 5,
+        settingsTopicIndex: 6,
       );
     }
 
