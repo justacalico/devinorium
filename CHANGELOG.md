@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.30.1 - 2026-09-03
+#### Bug Fixes
+- 替换示例应用 ID 为 gitlab.openlyst.devinorium - (b3a3048) - HttpAnimations
+
+- - -
+
 ## v0.30.0 - 2026-09-02
 #### Features
 - 添加 Rust 主题 CSS 解析器用于后端校验 - (2e1b4f1) - HttpAnimations
