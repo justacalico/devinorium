@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.31.0 - 2026-09-03
+#### Features
+- 将文件面板改为展开的文件夹树 - (c07e548) - HttpAnimations
+- 添加文件查看器和 Git diff 支持 - (3057bc6) - HttpAnimations
+
+- - -
+
 ## v0.30.1 - 2026-09-03
 #### Bug Fixes
 - 替换示例应用 ID 为 gitlab.openlyst.devinorium - (b3a3048) - HttpAnimations
