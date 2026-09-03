@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:devinorium_frontend/api/api_client.dart';
+import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/app_view.dart';
@@ -6,8 +10,28 @@ import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:devinorium_frontend/views/window_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+
+http.Response _json(int status, Object body) => http.Response(
+      jsonEncode(body),
+      status,
+      headers: {'content-type': 'application/json'},
+    );
+
+ApiClient _clientFor(List<http.Response> responses) {
+  var index = 0;
+  return ApiClient.withClient(
+    MockClient((req) async {
+      if (index >= responses.length) {
+        return _json(404, {'error': 'unexpected request to ${req.url.path}'});
+      }
+      return responses[index++];
+    }),
+  );
+}
 
 Widget _buildWithState(
   AppState state, {
@@ -26,7 +50,8 @@ Widget _buildWithState(
   );
 }
 
-AppState _baseState() => AppState.test(
+AppState _baseState({ApiClient? api}) => AppState.test(
+      api: api != null ? ApiService(client: api) : null,
       user: User(
         id: 1,
         username: 'owner',
@@ -72,7 +97,8 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      final state = _baseState();
+      final state = _baseState(api: _clientFor([_json(200, [])]));
+      addTearDown(state.dispose);
       await tester.pumpWidget(_buildWithState(state, size: const Size(600, 800)));
       await tester.pumpAndSettle();
 
@@ -80,7 +106,7 @@ void main() {
       expect(find.byType(Drawer), findsNothing);
 
       // Open the files panel.
-      state.openFilesPanel();
+      await state.openFilesPanel();
       await tester.pumpAndSettle();
 
       // The end drawer should be open with the FilesPanel.
@@ -93,11 +119,12 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      final state = _baseState();
+      final state = _baseState(api: _clientFor([_json(200, [])]));
+      addTearDown(state.dispose);
       await tester.pumpWidget(_buildWithState(state, size: const Size(600, 800)));
       await tester.pumpAndSettle();
 
-      state.openFilesPanel();
+      await state.openFilesPanel();
       await tester.pumpAndSettle();
 
       expect(state.filesPanelOpen, isTrue);
@@ -110,12 +137,13 @@ void main() {
     });
 
     testWidgets('files panel shows inline on wide screens', (tester) async {
-      final state = _baseState();
+      final state = _baseState(api: _clientFor([_json(200, [])]));
+      addTearDown(state.dispose);
       await tester.pumpWidget(_buildWithState(state, size: const Size(1200, 800)));
       await tester.pumpAndSettle();
 
       // Open the files panel — should show inline, not as a drawer.
-      state.openFilesPanel();
+      await state.openFilesPanel();
       await tester.pumpAndSettle();
 
       expect(find.byType(FilesPanel), findsOneWidget);

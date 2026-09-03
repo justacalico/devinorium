@@ -13,8 +13,7 @@ class FilesPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final entries = state.filesEntries;
-    final path = state.filesPath;
+    final rows = state.filesTreeRows;
     final error = state.filesError;
 
     return Material(
@@ -26,7 +25,10 @@ class FilesPanel extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(l10n(context).files, style: theme.textTheme.titleMedium),
+                  child: Text(
+                    l10n(context).files,
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ),
                 IconButton(
                   tooltip: l10n(context).newFolder,
@@ -41,130 +43,163 @@ class FilesPanel extends StatelessWidget {
               ],
             ),
           ),
-          // Breadcrumb
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                InkWell(
-                  onTap: () => state.navigateFilesTo(const []),
-                  child: Text(l10n(context).root,
-                      style: TextStyle(color: theme.colorScheme.primary)),
-                ),
-                for (final (i, p) in path.indexed) ...[
-                  Text(l10n(context).breadcrumbSeparator),
-                  InkWell(
-                    onTap: () => state.navigateFilesTo(path.sublist(0, i + 1)),
-                    child: Text(p,
-                        style: TextStyle(color: theme.colorScheme.primary)),
-                  ),
-                ],
-              ],
-            ),
-          ),
           const Divider(height: 1),
+          if (error.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                error,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
           Expanded(
-            child: error.isNotEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(error,
-                        style: TextStyle(color: theme.colorScheme.error)),
-                  )
-                : entries.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(l10n(context).emptyFolder,
+            child: rows.isEmpty
+                ? error.isNotEmpty
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            l10n(context).emptyFolder,
                             style: theme.textTheme.bodyMedium?.copyWith(
-                                color:
-                                    theme.colorScheme.onSurfaceVariant)),
-                      )
-                    : ListView.builder(
-                        itemCount: entries.length +
-                            (state.hasMoreFiles || state.isLoadingMoreFiles
-                                ? 1
-                                : 0),
-                        itemBuilder: (context, index) {
-                          if (index == entries.length) {
-                            return Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                              child: state.isLoadingMoreFiles
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : TextButton(
-                                      onPressed: () => state.loadMoreFiles(),
-                                      child: Text(l10n(context).loadMore),
-                                    ),
-                            );
-                          }
-                          final e = entries[index];
-                          return ListTile(
-                            leading: Icon(
-                              e.isDir
-                                  ? Icons.folder_outlined
-                                  : _fileIcon(e.name),
-                              size: 22,
-                              color: e.isDir
-                                  ? theme.colorScheme.primary
-                                  : _fileIconColor(e.name, theme),
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
-                            title: Text(
-                              e.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: e.gitStatus != null
-                                  ? TextStyle(
-                                      color: _gitStatusColor(e.gitStatus!, theme))
-                                  : null,
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (!e.isDir)
-                                  Text(_formatSize(e.size, l10n(context)),
-                                      style: theme.textTheme.labelSmall),
-                                IconButton(
-                                  tooltip: l10n(context).delete,
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.red, size: 18),
-                                  onPressed: () async {
-                                    if (await _confirm(
-                                        context, l10n(context).deleteName(e.name))) {
-                                      state.deleteFile(e.name);
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                            onTap: e.isDir
-                                ? () => state.navigateFilesInto(e.name)
-                                : () => _openFile(context, state, e),
-                          );
-                        },
-                      ),
+                          ),
+                        )
+                : ListView.builder(
+                    itemCount: rows.length,
+                    itemBuilder: (context, index) =>
+                        _buildRow(context, state, rows[index], theme),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  void _openFile(BuildContext context, AppState state, DirEntry e) {
-    final relative = state.filesPath.isEmpty
-        ? e.name
-        : '${state.filesPath.join('/')}/${e.name}';
+  void _openFile(BuildContext context, AppState state, FileTreeNode node) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FileViewerPage(
-          path: relative,
+          path: node.fullPathString,
           projectId: state.activeProjectId,
-          gitStatus: e.gitStatus,
+          gitStatus: node.entry.gitStatus,
         ),
       ),
+    );
+  }
+
+  Widget _buildRow(
+    BuildContext context,
+    AppState state,
+    FileTreeRow row,
+    ThemeData theme,
+  ) {
+    final leftPadding = 12.0 + row.indent * 20.0;
+
+    if (row.kind == FileTreeRowKind.loading) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(leftPadding, 12, 12, 12),
+        child: const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    if (row.kind == FileTreeRowKind.error) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(leftPadding, 4, 12, 4),
+        child: Text(
+          row.node.error,
+          style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
+        ),
+      );
+    }
+
+    if (row.kind == FileTreeRowKind.empty) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(leftPadding, 4, 12, 4),
+        child: Text(
+          l10n(context).emptyFolder,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    if (row.kind == FileTreeRowKind.loadMore) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(leftPadding, 4, 12, 12),
+        child: row.node.isLoadingMore
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : TextButton(
+                onPressed: () => state.loadMoreFiles(node: row.node),
+                child: Text(l10n(context).loadMore),
+              ),
+      );
+    }
+
+    final node = row.node;
+    final isDir = node.entry.isDir;
+    final icon = isDir
+        ? (node.isExpanded ? Icons.folder_open_outlined : Icons.folder_outlined)
+        : _fileIcon(node.entry.name);
+    final color = isDir
+        ? theme.colorScheme.primary
+        : _fileIconColor(node.entry.name, theme);
+    final titleColor = node.entry.gitStatus != null
+        ? _gitStatusColor(node.entry.gitStatus!, theme)
+        : null;
+
+    return ListTile(
+      contentPadding: EdgeInsets.only(left: leftPadding, right: 12),
+      leading: Icon(icon, size: 22, color: color),
+      title: Text(
+        node.entry.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: titleColor != null ? TextStyle(color: titleColor) : null,
+      ),
+      trailing: isDir
+          ? _deleteButton(context, state, node)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatSize(node.entry.size, l10n(context)),
+                  style: theme.textTheme.labelSmall,
+                ),
+                _deleteButton(context, state, node),
+              ],
+            ),
+      onTap: isDir
+          ? () => state.toggleFilesFolder(node)
+          : () => _openFile(context, state, node),
+    );
+  }
+
+  Widget _deleteButton(
+    BuildContext context,
+    AppState state,
+    FileTreeNode node,
+  ) {
+    return IconButton(
+      tooltip: l10n(context).delete,
+      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+      onPressed: () async {
+        if (await _confirm(
+          context,
+          l10n(context).deleteName(node.entry.name),
+        )) {
+          state.deleteFile(node.fullPathString);
+        }
+      },
     );
   }
 
@@ -193,7 +228,16 @@ class FilesPanel extends StatelessWidget {
     }
 
     // Image files.
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].contains(ext)) {
+    if ([
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'svg',
+      'bmp',
+      'ico',
+    ].contains(ext)) {
       return Icons.image_outlined;
     }
 
@@ -224,7 +268,9 @@ class FilesPanel extends StatelessWidget {
     }
     if (['pdf'].contains(ext)) return Icons.picture_as_pdf_outlined;
     if (['doc', 'docx'].contains(ext)) return Icons.article_outlined;
-    if (['xls', 'xlsx', 'csv'].contains(ext)) return Icons.table_chart_outlined;
+    if (['xls', 'xlsx', 'csv'].contains(ext)) {
+      return Icons.table_chart_outlined;
+    }
     if (['ppt', 'pptx'].contains(ext)) return Icons.slideshow_outlined;
 
     // Programming languages.
@@ -248,7 +294,16 @@ class FilesPanel extends StatelessWidget {
     if (['svelte'].contains(ext)) return Icons.layers_outlined;
 
     // Config / data.
-    if (['json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env'].contains(ext)) {
+    if ([
+      'json',
+      'yaml',
+      'yml',
+      'toml',
+      'ini',
+      'cfg',
+      'conf',
+      'env',
+    ].contains(ext)) {
       return Icons.settings_outlined;
     }
     if (['xml'].contains(ext)) return Icons.code;
@@ -290,7 +345,16 @@ class FilesPanel extends StatelessWidget {
       return Colors.purple;
     }
 
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].contains(ext)) {
+    if ([
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'svg',
+      'bmp',
+      'ico',
+    ].contains(ext)) {
       return Colors.pink;
     }
     if (['mp4', 'avi', 'mov', 'mkv', 'webm'].contains(ext)) {
@@ -303,7 +367,9 @@ class FilesPanel extends StatelessWidget {
       return Colors.brown;
     }
     if (['html', 'htm'].contains(ext)) return Colors.orange;
-    if (['css', 'scss', 'sass', 'less'].contains(ext)) return Colors.blue.shade400;
+    if (['css', 'scss', 'sass', 'less'].contains(ext)) {
+      return Colors.blue.shade400;
+    }
     if (['md', 'rst', 'txt', 'log'].contains(ext)) {
       return theme.colorScheme.onSurfaceVariant;
     }
@@ -326,7 +392,16 @@ class FilesPanel extends StatelessWidget {
     if (['sh', 'bash', 'zsh', 'fish'].contains(ext)) {
       return Colors.green.shade700;
     }
-    if (['json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env'].contains(ext)) {
+    if ([
+      'json',
+      'yaml',
+      'yml',
+      'toml',
+      'ini',
+      'cfg',
+      'conf',
+      'env',
+    ].contains(ext)) {
       return Colors.grey;
     }
     if (['lock'].contains(ext)) return Colors.amber;

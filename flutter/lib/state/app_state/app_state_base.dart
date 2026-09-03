@@ -32,12 +32,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Map<int, int> get _projectThreadOffsets;
   Map<int, bool> get _projectThreadsHasMore;
   Map<int, bool> get _loadingMoreProjectThreads;
-  int get _filesOffset;
-  set _filesOffset(int value);
-  bool get _filesHasMore;
-  set _filesHasMore(bool value);
-  bool get _loadingMoreFiles;
-  set _loadingMoreFiles(bool value);
+  FileTreeNode get _filesTreeRoot;
+  set _filesTreeRoot(FileTreeNode value);
   List<ThreadGroup> get _groups;
   set _groups(List<ThreadGroup> value);
   List<ModelInfo> get _models;
@@ -64,10 +60,6 @@ abstract class AppStateBase extends ChangeNotifier {
   set _planOverlayExpanded(bool value);
   bool get _planOverlayUserDismissed;
   set _planOverlayUserDismissed(bool value);
-  List<String> get _filesPath;
-  set _filesPath(List<String> value);
-  List<DirEntry> get _filesEntries;
-  set _filesEntries(List<DirEntry> value);
   String get _filesError;
   set _filesError(String value);
   DialogKind get _dialog;
@@ -161,8 +153,9 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get planOverlayExpanded;
   bool get planOverlayDismissed;
   Plan? get activePlan;
-  List<String> get filesPath;
   List<DirEntry> get filesEntries;
+  FileTreeNode get filesTreeRoot;
+  List<FileTreeRow> get filesTreeRows;
   String get filesError;
   DialogKind get dialog;
   String? get mergeRequestUrl;
@@ -207,7 +200,17 @@ abstract class AppStateBase extends ChangeNotifier {
   void _clearLinkedMergeRequest();
   void _onThreadStoreChanged();
   void _syncFromActiveStore();
-  ThreadStore _createStore(    String id, {    int? projectId,    ThreadDetail? detail,    StreamingSnapshot? streaming,    String? composerText,    List<({String filename, String mime, Uint8List bytes})>? attachments,    ComposerMode? composerMode,    String? selectedModel,    String? selectedPermission,  });
+  ThreadStore _createStore(
+    String id, {
+    int? projectId,
+    ThreadDetail? detail,
+    StreamingSnapshot? streaming,
+    String? composerText,
+    List<({String filename, String mime, Uint8List bytes})>? attachments,
+    ComposerMode? composerMode,
+    String? selectedModel,
+    String? selectedPermission,
+  });
   String? _threadTitle(String id);
   GitRepoInfo? gitRepoInfo(int projectId);
   List<GitBranch> gitBranches(int projectId);
@@ -220,7 +223,9 @@ abstract class AppStateBase extends ChangeNotifier {
   void toggleUserMenu();
   void setUserMenuOpen(bool v);
   void setComposerText(String t);
-  void addAttachments(    List<({String filename, String mime, Uint8List bytes})> files,  );
+  void addAttachments(
+    List<({String filename, String mime, Uint8List bytes})> files,
+  );
   void removeAttachment(int index);
   void clearAttachments();
   void setSelectedModel(String m);
@@ -246,13 +251,13 @@ abstract class AppStateBase extends ChangeNotifier {
   void expandPlanOverlay();
   void collapsePlanOverlay();
   void togglePlanOverlayExpanded();
-  Future<void> navigateFilesInto(String name);
-  Future<void> navigateFilesTo(List<String> path);
+  Future<void> toggleFilesFolder(FileTreeNode node);
   Future<void> reloadFiles();
-  Future<void> loadMoreFiles();
-  @visibleForTesting  void setFilesEntries(List<DirEntry> entries);
+  Future<void> loadMoreFiles({FileTreeNode? node});
+  @visibleForTesting
+  void setFilesEntries(List<DirEntry> entries);
   Future<void> mkdir(String name);
-  Future<void> deleteFile(String name, {bool skipConfirm = false});
+  Future<void> deleteFile(String path);
   Future<void> _loadModelsAndProviders();
   Future<void> bootstrap();
   void startHealthChecks();
@@ -265,21 +270,26 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadProjects();
   Future<void> loadMoreProjects();
   Future<void> _loadUserThreadsChunk({bool reset = false});
-  Future<void> _loadProjectThreadsChunk(    int projectId, {    bool reset = false,  });
+  Future<void> _loadProjectThreadsChunk(int projectId, {bool reset = false});
   void _mergeThreads(List<Thread> incoming);
   Future<void> refreshThreadsAndGroups();
   Future<void> loadMoreThreads();
   Future<void> loadMoreProjectThreads(int projectId);
   Future<void> refreshRunningThreads();
-  Future<void> doLogin({    required String serverUrl,    required String username,    required String password,    String? totp,  });
+  Future<void> doLogin({
+    required String serverUrl,
+    required String username,
+    required String password,
+    String? totp,
+  });
   Future<void> loadUsers();
   Future<void> loadSettingsData();
-  Future<void> createUser({    required String username,    required String password,  });
+  Future<void> createUser({required String username, required String password});
   Future<void> setUserDisabled(int id, bool disabled);
   Future<void> logout();
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
-  Future<void> createProject({    required String name,    required String path,  });
+  Future<void> createProject({required String name, required String path});
   void openCloneRepoDialog();
   Future<String?> cloneRepo(String url);
   Future<void> openClonedProjectByPath(String path);
@@ -294,8 +304,11 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> pinThread(String id, bool pinned);
   Future<void> createNewThread({int? projectId});
   Future<void> openThread(String id);
-  Future<void> saveProvider({    String? providerId,    String? providerCommand,  });
-  Future<void> testProvider({    required String providerId,    required String command,  });
+  Future<void> saveProvider({String? providerId, String? providerCommand});
+  Future<void> testProvider({
+    required String providerId,
+    required String command,
+  });
   Future<void> saveThreadSettings();
   Future<void> deleteThread(String id);
   Future<void> deleteThreadGroup(int id);
@@ -310,18 +323,36 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> respondToAskRequest(Map<String, dynamic>? answers);
   Future<void> loadGitRepoInfo(int projectId, {bool force = false});
   void _syncProjectBranch(int projectId, GitRepoInfo info);
-  Future<void> loadGitBranches(    int projectId, {    String? query,    bool force = false,  });
+  Future<void> loadGitBranches(
+    int projectId, {
+    String? query,
+    bool force = false,
+  });
   Future<void> loadGitWorktrees(int projectId, {bool force = false});
   Future<void> loadGitBranchData(int projectId);
   Future<void> _loadGitBranchesAndWorktrees(int projectId);
-  Future<bool> gitCreateBranch(    int projectId,    String name, {    String? base,    bool switchBranch = false,  });
-  Future<bool> gitCheckout(    int projectId,    String refName, {    bool track = false,  });
+  Future<bool> gitCreateBranch(
+    int projectId,
+    String name, {
+    String? base,
+    bool switchBranch = false,
+  });
+  Future<bool> gitCheckout(int projectId, String refName, {bool track = false});
   Future<bool> gitPull(int projectId);
   Future<bool> gitPullBranch(int projectId, String name);
   Future<bool> gitPush(int projectId);
-  Future<GitWorktree?> gitCreateWorktree(    int projectId,    String name,    String base, {    bool newBranch = false,  });
+  Future<GitWorktree?> gitCreateWorktree(
+    int projectId,
+    String name,
+    String base, {
+    bool newBranch = false,
+  });
   Future<void> gitDeleteWorktree(int projectId, String worktreePath);
-  Future<void> setThreadGit(    String threadId, {    String? branch,    String? worktreePath,  });
+  Future<void> setThreadGit(
+    String threadId, {
+    String? branch,
+    String? worktreePath,
+  });
   String? get _linkedMrEffectiveBranch;
   Future<void> refreshLinkedMergeRequest();
   Future<void> loadLinkedMergeRequest(int projectId, String branch);

@@ -184,7 +184,6 @@ void main() {
       addTearDown(state.dispose);
 
       expect(state.filesPanelOpen, false);
-      expect(state.filesPath, isEmpty);
       expect(state.filesEntries, isEmpty);
       expect(state.hasMoreFiles, true);
       expect(state.isLoadingMoreFiles, false);
