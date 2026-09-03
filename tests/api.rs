@@ -2540,7 +2540,11 @@ async fn file_manager_read_returns_git_diff_when_requested() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
-    assert_eq!(v["text"], serde_json::Value::Null, "text should be omitted when diff is present");
+    assert_eq!(
+        v["text"],
+        serde_json::Value::Null,
+        "text should be omitted when diff is present"
+    );
     assert_eq!(v["diff"]["old_text"], "hello\n");
     assert_eq!(v["diff"]["new_text"], "world\n");
 

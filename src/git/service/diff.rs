@@ -66,9 +66,10 @@ impl GitService {
             Err(e) => return Err(e),
         };
 
-        if old_text.as_ref().is_some_and(|o| {
-            o.len() > MAX_DIFF_BYTES || o.lines().count() > MAX_DIFF_LINES
-        }) {
+        if old_text
+            .as_ref()
+            .is_some_and(|o| o.len() > MAX_DIFF_BYTES || o.lines().count() > MAX_DIFF_LINES)
+        {
             return Ok(None);
         }
         if old_text.as_deref() == Some(new_text) {
@@ -112,7 +113,12 @@ mod tests {
             .output()
             .await
             .expect("git command");
-        assert!(out.status.success(), "git {:?} failed: {:?}", args, out.stderr);
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {:?}",
+            args,
+            out.stderr
+        );
         String::from_utf8_lossy(&out.stdout).to_string()
     }
 
@@ -130,7 +136,9 @@ mod tests {
         tokio::fs::write(&file, "fn main() {}\n").await.unwrap();
         commit_all(tmp.path(), "initial").await;
 
-        tokio::fs::write(&file, "fn main() { println!(\"hi\"); }\n").await.unwrap();
+        tokio::fs::write(&file, "fn main() { println!(\"hi\"); }\n")
+            .await
+            .unwrap();
 
         let git = GitService::new();
         let diff = git
@@ -174,7 +182,10 @@ mod tests {
         commit_all(tmp.path(), "initial").await;
 
         let git = GitService::new();
-        let diff = git.text_diff(&file, tmp.path(), "fn main() {}\n").await.unwrap();
+        let diff = git
+            .text_diff(&file, tmp.path(), "fn main() {}\n")
+            .await
+            .unwrap();
 
         assert!(diff.is_none());
     }
@@ -242,7 +253,9 @@ mod tests {
         commit_all(tmp.path(), "initial").await;
 
         let file = tmp.path().join("huge.txt");
-        let body = (0..super::MAX_DIFF_BYTES + 1).map(|_| 'x').collect::<String>();
+        let body = (0..super::MAX_DIFF_BYTES + 1)
+            .map(|_| 'x')
+            .collect::<String>();
         tokio::fs::write(&file, &body).await.unwrap();
 
         let git = GitService::new();
@@ -265,7 +278,10 @@ mod tests {
         tokio::fs::write(&file, "pub mod b;\n").await.unwrap();
 
         let git = GitService::new();
-        let diff = git.text_diff(&file, tmp.path(), "pub mod b;\n").await.unwrap();
+        let diff = git
+            .text_diff(&file, tmp.path(), "pub mod b;\n")
+            .await
+            .unwrap();
 
         assert!(diff.is_some());
         assert_eq!(diff.unwrap().old_text.as_deref(), Some("pub mod a;\n"));
