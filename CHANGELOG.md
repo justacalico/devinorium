@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.32.1 - 2026-09-03
+#### Bug Fixes
+- 服务器列表 URL 过长时省略显示 - (7884688) - HttpAnimations
+
+- - -
+
 ## v0.32.0 - 2026-09-03
 #### Features
 - 前端拉取并显示服务器版本 - (dcdbfca) - HttpAnimations
