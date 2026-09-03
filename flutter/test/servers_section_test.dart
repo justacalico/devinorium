@@ -2,6 +2,8 @@ import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 import 'package:devinorium_frontend/models/models.dart';
+import 'package:devinorium_frontend/servers/multi_server_state.dart';
+import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/settings_page.dart';
 import 'package:flutter/material.dart';
@@ -201,6 +203,68 @@ void main() {
 
       expect(find.text('other'), findsNothing);
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+    });
+
+    AppState buildLongState() {
+      final longLabel = 'lo${'o' * 40}ng';
+      final longUrl =
+          'http://${'a' * 50}.local:7878/very/long/path/that/should/be/ellipsized';
+
+      final multi = MultiServerState();
+      multi.addTestConnection(
+        ServerProfile(
+          id: 'long',
+          label: longLabel,
+          baseUrl: longUrl,
+          token: 't',
+          username: 'owner',
+          createdAt: DateTime(2026, 1, 1).toUtc(),
+          isPrimary: true,
+        ),
+        _FakeApiService(),
+      );
+
+      return AppState.test(
+        multiServerState: multi,
+        user: User(
+          id: 2,
+          username: 'alice',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: false,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        settingsTopicIndex: 5,
+      );
+    }
+
+    testWidgets('long server labels and URLs are ellipsized', (tester) async {
+      final longLabel = 'lo${'o' * 40}ng';
+      final longUrl =
+          'http://${'a' * 50}.local:7878/very/long/path/that/should/be/ellipsized';
+
+      await tester.pumpWidget(_buildWithState(buildLongState()));
+      await tester.pumpAndSettle();
+
+      final labelFinder = find.text(longLabel);
+      expect(labelFinder, findsOneWidget);
+      final labelText = tester.widget<Text>(labelFinder);
+      expect(labelText.maxLines, 1);
+      expect(labelText.overflow, TextOverflow.ellipsis);
+      expect(labelText.softWrap, false);
+
+      final urlFinder = find.text(longUrl);
+      expect(urlFinder, findsOneWidget);
+      final urlText = tester.widget<Text>(urlFinder);
+      expect(urlText.maxLines, 1);
+      expect(urlText.overflow, TextOverflow.ellipsis);
+      expect(urlText.softWrap, false);
+
+      final tooltip = tester.widget<Tooltip>(
+        find.ancestor(of: urlFinder, matching: find.byType(Tooltip)),
+      );
+      expect(tooltip.message, longUrl);
     });
   });
 }
