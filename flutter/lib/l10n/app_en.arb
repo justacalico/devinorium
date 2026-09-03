@@ -4,6 +4,34 @@
   "@appTitle": {
     "description": "Application title shown in the sidebar"
   },
+  "about": "About",
+  "@about": {
+    "description": "About section title in settings"
+  },
+  "aboutDescription": "A self-hosted web UI for AI coding agents.",
+  "@aboutDescription": {
+    "description": "Short description shown on the About page"
+  },
+  "aboutVersion": "Version",
+  "@aboutVersion": {
+    "description": "Version label on the About page"
+  },
+  "aboutLicense": "License",
+  "@aboutLicense": {
+    "description": "License label on the About page"
+  },
+  "aboutLicenseText": "AGPL-3.0-only",
+  "@aboutLicenseText": {
+    "description": "License name shown on the About page"
+  },
+  "aboutSourceCode": "Source code",
+  "@aboutSourceCode": {
+    "description": "Source code link label on the About page"
+  },
+  "aboutSupport": "Support",
+  "@aboutSupport": {
+    "description": "Support link label on the About page"
+  },
   "connectionFailed": "connection failed",
   "importFailed": "import failed",
   "totpPrompt": "Enter your 6-digit TOTP code.",
