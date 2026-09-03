@@ -708,6 +708,47 @@ void main() {
     });
   });
 
+  group('FileContent', () {
+    test('parses content with diff', () {
+      final c = FileContent.fromJson({
+        'path': '/x.rs',
+        'mime': 'text/x-rust',
+        'size': 12,
+        'base64': 'Zm4gbWFpbigpIHt9',
+        'text': null,
+        'diff': {
+          'path': '/x.rs',
+          'old_text': 'old',
+          'new_text': 'new',
+        },
+      });
+      expect(c.path, '/x.rs');
+      expect(c.text, 'new');
+      expect(c.diff?.oldText, 'old');
+      expect(c.diff?.newText, 'new');
+    });
+
+    test('falls back to text when diff is absent', () {
+      final c = FileContent.fromJson({
+        'path': '/x.rs',
+        'mime': 'text/plain',
+        'size': 4,
+        'base64': 'aGVsbA==',
+        'text': 'hello',
+      });
+      expect(c.text, 'hello');
+      expect(c.diff, isNull);
+    });
+
+    test('defaults missing fields', () {
+      final c = FileContent.fromJson({'path': '/bin'});
+      expect(c.mime, 'application/octet-stream');
+      expect(c.size, 0);
+      expect(c.base64, '');
+      expect(c.text, isNull);
+    });
+  });
+
   group('DirEntry', () {
     test('parses entry', () {
       final e = DirEntry.fromJson({

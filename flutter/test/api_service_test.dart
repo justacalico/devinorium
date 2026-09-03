@@ -761,6 +761,38 @@ void main() {
       expect(files, isEmpty);
     });
 
+    test('readFile encodes query parameters and diff flag', () async {
+      final mock = MockClient((req) async {
+        expect(req.method, 'GET');
+        expect(req.url.path, '/api/files/content');
+        expect(req.url.queryParameters['path'], 'foo.rs');
+        expect(req.url.queryParameters['project_id'], '1');
+        expect(req.url.queryParameters['diff'], 'true');
+        return _json(200, {
+          'path': '/projects/1/foo.rs',
+          'mime': 'text/x-rust',
+          'size': 12,
+          'base64': 'Zm4gbWFpbigpIHt9',
+          'text': null,
+          'diff': {
+            'path': '/projects/1/foo.rs',
+            'old_text': null,
+            'new_text': 'fn main() {}',
+          },
+        });
+      });
+      final service = _serviceFor(mock);
+      final content = await service.readFile(
+        path: 'foo.rs',
+        projectId: 1,
+        includeDiff: true,
+      );
+      expect(content.path, '/projects/1/foo.rs');
+      expect(content.text, 'fn main() {}');
+      expect(content.diff?.newText, 'fn main() {}');
+      expect(content.diff?.oldText, isNull);
+    });
+
     test('mkdir sends path and project_id', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('POST', '/api/files/dir'));

@@ -2488,6 +2488,80 @@ async fn file_manager_includes_git_status() {
 }
 
 #[tokio::test]
+async fn file_manager_read_returns_git_diff_when_requested() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &cookie,
+            r#"{"name":"git-diff","path":"git-diff"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap();
+
+    std::fs::create_dir_all(path).unwrap();
+    std::fs::write(format!("{path}/hello.txt"), "hello\n").unwrap();
+
+    let run_git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .current_dir(path)
+            .args(args)
+            .output()
+            .expect("git command");
+        assert!(out.status.success(), "git {args:?} failed: {out:?}");
+    };
+    run_git(&["init", "-q"]);
+    run_git(&["config", "user.email", "test@example.com"]);
+    run_git(&["config", "user.name", "Test"]);
+    run_git(&["add", "."]);
+    run_git(&["commit", "-q", "-m", "init"]);
+
+    std::fs::write(format!("{path}/hello.txt"), "world\n").unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?project_id={pid}&path=hello.txt&diff=true"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["text"], serde_json::Value::Null, "text should be omitted when diff is present");
+    assert_eq!(v["diff"]["old_text"], "hello\n");
+    assert_eq!(v["diff"]["new_text"], "world\n");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?project_id={pid}&path=hello.txt"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v.get("diff").is_none() || v["diff"].is_null());
+    assert_eq!(v["text"], "world\n");
+}
+
+#[tokio::test]
 async fn file_manager_omits_git_status_outside_git_repo() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
