@@ -1,4 +1,4 @@
-package com.example.devinorium_frontend
+package gitlab.openlyst.devinorium
 
 import io.flutter.embedding.android.FlutterActivity
 
