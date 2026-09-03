@@ -40,7 +40,10 @@ class _ServerSwitcher extends StatelessWidget {
               onPressed: profile.id == activeId
                   ? null
                   : () => unawaited(state.switchServer(profile.id)),
-              child: Text(profile.label),
+              child: Text(profile.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false),
             ),
           const Divider(height: 1),
           MenuItemButton(

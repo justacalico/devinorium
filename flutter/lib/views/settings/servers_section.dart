@@ -42,11 +42,21 @@ class _ServersSection extends StatelessWidget {
                   ? Icon(Icons.check_circle,
                       color: theme.colorScheme.primary)
                   : const Icon(Icons.circle_outlined);
+              final displayUrl =
+                  profile.baseUrl.isEmpty ? l.web : profile.baseUrl;
               return ListTile(
                 leading: leading,
-                title: Text(profile.label),
-                subtitle:
-                    Text(profile.baseUrl.isEmpty ? l.web : profile.baseUrl),
+                title: Text(profile.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false),
+                subtitle: Tooltip(
+                  message: displayUrl,
+                  child: Text(displayUrl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false),
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
