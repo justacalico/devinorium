@@ -488,6 +488,19 @@ class ApiService {
 
   // ---- Files ----
 
+  Future<FileContent> readFile({
+    required String path,
+    int? projectId,
+    bool includeDiff = false,
+  }) async {
+    final params = <String, String>{'path': path};
+    if (projectId != null) params['project_id'] = projectId.toString();
+    if (includeDiff) params['diff'] = 'true';
+    final uri = _buildPath('/api/files/content', params);
+    final j = await _client.get(uri);
+    return FileContent.fromJson(j);
+  }
+
   Future<List<DirEntry>> listFiles({
     String? path,
     int? projectId,

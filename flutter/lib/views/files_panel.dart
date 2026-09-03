@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
+import '../models/models.dart';
 import '../state/app_state.dart';
+import 'file_viewer.dart';
 
 class FilesPanel extends StatelessWidget {
   const FilesPanel({super.key});
@@ -141,12 +143,27 @@ class FilesPanel extends StatelessWidget {
                             ),
                             onTap: e.isDir
                                 ? () => state.navigateFilesInto(e.name)
-                                : null,
+                                : () => _openFile(context, state, e),
                           );
                         },
                       ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openFile(BuildContext context, AppState state, DirEntry e) {
+    final relative = state.filesPath.isEmpty
+        ? e.name
+        : '${state.filesPath.join('/')}/${e.name}';
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FileViewerPage(
+          path: relative,
+          projectId: state.activeProjectId,
+          gitStatus: e.gitStatus,
+        ),
       ),
     );
   }

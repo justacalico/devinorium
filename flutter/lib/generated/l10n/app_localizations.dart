@@ -1977,6 +1977,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Description'**
   String get themeDescription;
+
+  /// Label for the content tab in the file viewer
+  ///
+  /// In en, this message translates to:
+  /// **'Content'**
+  String get fileViewerContent;
+
+  /// Label for the diff tab in the file viewer
+  ///
+  /// In en, this message translates to:
+  /// **'Diff'**
+  String get fileViewerDiff;
+
+  /// Label shown when a file cannot be previewed as text
+  ///
+  /// In en, this message translates to:
+  /// **'Binary file'**
+  String get fileViewerBinaryFile;
+
+  /// Error shown when the file viewer fails to load a file
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load file'**
+  String get fileViewerLoadError;
+
+  /// Note shown when a diff is truncated
+  ///
+  /// In en, this message translates to:
+  /// **'… {count} more lines not shown'**
+  String diffViewMoreLines(int count);
+
+  /// Note shown when a file's content is truncated
+  ///
+  /// In en, this message translates to:
+  /// **'… {count} more lines not shown'**
+  String contentViewMoreLines(int count);
+
+  /// Button label to show the rest of a truncated file
+  ///
+  /// In en, this message translates to:
+  /// **'Show all'**
+  String get contentViewShowAll;
 }
 
 class _AppLocalizationsDelegate
