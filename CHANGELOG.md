@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.32.0 - 2026-09-03
+#### Features
+- 前端拉取并显示服务器版本 - (dcdbfca) - HttpAnimations
+- 添加后端服务器版本接口 - (0162fc4) - HttpAnimations
+
+- - -
+
 ## v0.31.1 - 2026-09-03
 #### Bug Fixes
 - 修复深色模式偏灰问题 - (ceb38af) - HttpAnimations
