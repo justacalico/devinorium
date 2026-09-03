@@ -659,6 +659,17 @@ class ApiService {
     }
   }
 
+  /// Fetch the backend version from `/api/server/version`.
+  /// Returns `null` if the request fails.
+  Future<String?> serverVersion() async {
+    try {
+      final j = await _client.get('/api/server/version');
+      return j['version'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ---- Clone ----
 
   /// Clone a remote repository into the configured clone root.

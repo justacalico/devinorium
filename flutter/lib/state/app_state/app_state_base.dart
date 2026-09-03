@@ -124,6 +124,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _cloneRepoResult(String? value);
   ConnectionStatus get _connectionStatus;
   set _connectionStatus(ConnectionStatus value);
+  String? get _serverVersion;
+  set _serverVersion(String? value);
   Timer? get _healthTimer;
   set _healthTimer(Timer? value);
   Timer? get _gitRefreshTimer;
@@ -178,6 +180,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get startedAt;
   String get globalError;
   ConnectionStatus get connectionStatus;
+  String? get serverVersion;
   Locale get locale;
   int get settingsTopicIndex;
   bool get notificationsEnabled;

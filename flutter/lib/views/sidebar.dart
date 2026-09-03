@@ -245,6 +245,7 @@ class _AppTitleState extends State<_AppTitle> {
     final theme = Theme.of(context);
     final l = l10n(context);
     final isDesktop = _isDesktop(context);
+    final serverVersion = context.select<AppState, String?>((s) => s.serverVersion);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -294,6 +295,29 @@ class _AppTitleState extends State<_AppTitle> {
                             style: theme.textTheme.labelSmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (serverVersion != null && serverVersion.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Tooltip(
+                          message: l.serverVersionTooltip(serverVersion),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              serverVersion,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ),

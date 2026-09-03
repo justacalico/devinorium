@@ -109,7 +109,7 @@ pub fn build_app(state: AppState) -> Router {
     let limiter = security::RateLimiter::new(500, 2.0);
 
     // Public routes (no auth).
-    let public = api::auth::router();
+    let public = api::auth::router().merge(api::server::router());
 
     // Protected routes (require auth + role=user).
     let protected = api::threads::router()

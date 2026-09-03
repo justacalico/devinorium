@@ -1006,6 +1006,12 @@ abstract class AppLocalizations {
   /// **'Checking connection…'**
   String get checkingConnection;
 
+  /// Tooltip for the server version chip in the sidebar
+  ///
+  /// In en, this message translates to:
+  /// **'Server v{version}'**
+  String serverVersionTooltip(String version);
+
   /// No description provided for @topics.
   ///
   /// In en, this message translates to:

@@ -755,11 +755,12 @@ void main() {
       },
     );
 
-    test('checkConnection sets connected on success', () async {
+    test('checkConnection sets connected and serverVersion on success', () async {
       final state = AppState(
         api: ApiService(
           client: _clientFor([
             _json(200, {'status': 'ok'}),
+            _json(200, {'version': '0.31.0'}),
           ]),
         ),
       );
@@ -767,6 +768,7 @@ void main() {
       base.setView(AppView.app);
       await base.checkConnection();
       expect(base.connectionStatus, ConnectionStatus.connected);
+      expect(base.serverVersion, '0.31.0');
     });
 
     test('checkConnection sets disconnected on failure', () async {
@@ -777,6 +779,36 @@ void main() {
       base.setView(AppView.app);
       await base.checkConnection();
       expect(base.connectionStatus, ConnectionStatus.disconnected);
+    });
+
+    test('checkConnection keeps connected when version endpoint fails', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'status': 'ok'}),
+            http.Response('', 500),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api);
+      base.setView(AppView.app);
+      await base.checkConnection();
+      expect(base.connectionStatus, ConnectionStatus.connected);
+      expect(base.serverVersion, isNull);
+    });
+
+    test('checkConnection clears serverVersion when server becomes unreachable', () async {
+      final state = AppState(
+        api: ApiService(client: _clientFor([http.Response('', 500)])),
+      );
+      final base = AppState.test(
+        api: state.api,
+        serverVersion: '0.31.0',
+      );
+      base.setView(AppView.app);
+      await base.checkConnection();
+      expect(base.connectionStatus, ConnectionStatus.disconnected);
+      expect(base.serverVersion, isNull);
     });
 
     test('reorderProjects reorders list and calls API', () async {
