@@ -615,5 +615,43 @@
   "themeDescription": "Description",
   "@themeDescription": {
     "description": "Label for the theme description metadata field"
+  },
+  "fileViewerContent": "Content",
+  "@fileViewerContent": {
+    "description": "Label for the content tab in the file viewer"
+  },
+  "fileViewerDiff": "Diff",
+  "@fileViewerDiff": {
+    "description": "Label for the diff tab in the file viewer"
+  },
+  "fileViewerBinaryFile": "Binary file",
+  "@fileViewerBinaryFile": {
+    "description": "Label shown when a file cannot be previewed as text"
+  },
+  "fileViewerLoadError": "Failed to load file",
+  "@fileViewerLoadError": {
+    "description": "Error shown when the file viewer fails to load a file"
+  },
+  "diffViewMoreLines": "… {count} more lines not shown",
+  "@diffViewMoreLines": {
+    "description": "Note shown when a diff is truncated",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "contentViewMoreLines": "… {count} more lines not shown",
+  "@contentViewMoreLines": {
+    "description": "Note shown when a file's content is truncated",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "contentViewShowAll": "Show all",
+  "@contentViewShowAll": {
+    "description": "Button label to show the rest of a truncated file"
   }
 }

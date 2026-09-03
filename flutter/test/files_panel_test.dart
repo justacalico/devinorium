@@ -1,14 +1,21 @@
+import 'dart:convert';
+
+import 'package:devinorium_frontend/api/api_client.dart';
+import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/views/file_viewer.dart';
 import 'package:devinorium_frontend/views/files_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 
-Widget _buildWithState(AppState state) => MaterialApp(
-      home: ChangeNotifierProvider<AppState>.value(
-        value: state,
-        child: Scaffold(
+Widget _buildWithState(AppState state) => ChangeNotifierProvider<AppState>.value(
+      value: state,
+      child: MaterialApp(
+        home: Scaffold(
           body: Material(
             type: MaterialType.transparency,
             child: FilesPanel(),
@@ -170,6 +177,39 @@ void main() {
 
       final text = tester.widget<Text>(find.text('src'));
       expect(text.style?.color, Colors.orange);
+    });
+
+    testWidgets('tapping a file opens the file viewer', (tester) async {
+      final mock = MockClient((req) async => http.Response(
+            jsonEncode({
+              'path': '/x/main.dart',
+              'mime': 'text/x-dart',
+              'size': 16,
+              'base64': 'cHJpbnQoJ2hleScp',
+              'text': "print('hey')",
+              'diff': null,
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ));
+      final state = AppState.test(
+        projects: [Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: '')],
+        activeProjectId: 1,
+        api: ApiService(client: ApiClient.withClient(mock)),
+      );
+      state.setFilesEntries([
+        DirEntry(name: 'main.dart', isDir: false, size: 16, gitStatus: 'modified'),
+      ]);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('main.dart'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FileViewerPage), findsOneWidget);
+      expect(find.text('main.dart'), findsOneWidget);
+      expect(find.textContaining("print('hey')"), findsOneWidget);
     });
   });
 }

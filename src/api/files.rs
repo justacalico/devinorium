@@ -112,6 +112,15 @@ struct ListQuery {
     offset: Option<i64>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct ReadQuery {
+    path: Option<String>,
+    project_id: Option<i64>,
+    #[serde(default)]
+    diff: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct DirEntry {
     name: String,
@@ -183,9 +192,9 @@ async fn list_dir(
 async fn read_file(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
-    Query(q): Query<ListQuery>,
+    Query(q): Query<ReadQuery>,
 ) -> Response {
-    let (target, _root) = match resolve(&state, user.id, q.path.as_deref(), q.project_id).await {
+    let (target, root) = match resolve(&state, user.id, q.path.as_deref(), q.project_id).await {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -208,11 +217,32 @@ async fn read_file(
     let mime = mime_guess::from_path(&target)
         .first_or_octet_stream()
         .to_string();
+    let text = std::str::from_utf8(&bytes).ok().map(|s| s.to_string());
+    let diff = if q.diff && state.git.is_enabled() {
+        if let Some(ref text) = text {
+            match state.git.text_diff(&target, &root, text).await {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!(error = %e, "file diff failed");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    // When a diff is present, the content text is duplicated inside the diff,
+    // so omit the top-level text to keep the response compact.
+    let response_text = if diff.is_some() { None } else { text };
     Json(serde_json::json!({
         "path": target.to_string_lossy(),
         "mime": mime,
         "size": bytes.len(),
         "base64": b64,
+        "text": response_text,
+        "diff": diff,
     }))
     .into_response()
 }

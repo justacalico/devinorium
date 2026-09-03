@@ -6,6 +6,7 @@ use std::time::Duration;
 use mini_moka::sync::Cache;
 
 pub mod branch;
+pub mod diff;
 pub mod runner;
 pub mod status;
 pub mod sync;

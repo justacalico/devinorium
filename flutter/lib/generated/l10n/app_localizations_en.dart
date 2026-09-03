@@ -1043,4 +1043,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themeDescription => 'Description';
+
+  @override
+  String get fileViewerContent => 'Content';
+
+  @override
+  String get fileViewerDiff => 'Diff';
+
+  @override
+  String get fileViewerBinaryFile => 'Binary file';
+
+  @override
+  String get fileViewerLoadError => 'Failed to load file';
+
+  @override
+  String diffViewMoreLines(int count) {
+    return '… $count more lines not shown';
+  }
+
+  @override
+  String contentViewMoreLines(int count) {
+    return '… $count more lines not shown';
+  }
+
+  @override
+  String get contentViewShowAll => 'Show all';
 }
