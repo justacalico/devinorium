@@ -68,7 +68,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 5,
+          settingsTopicIndex: 6,
           serverVersion: serverVersion,
         );
 
@@ -256,7 +256,7 @@ void main() {
           providerId: 'devin-cli',
           providerCommand: 'devin',
         ),
-        settingsTopicIndex: 5,
+        settingsTopicIndex: 6,
       );
     }
 

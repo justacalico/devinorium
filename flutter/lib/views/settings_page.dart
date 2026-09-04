@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -9,6 +10,7 @@ import '../models/models.dart';
 import '../servers/server_profile.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
+import '../utils/link_opener.dart';
 import '../widgets/git_provider_icons.dart';
 import '../widgets/git_provider_tile.dart';
 import '../widgets/owner_badge.dart';
@@ -20,6 +22,7 @@ part 'settings/account_section.dart';
 part 'settings/provider_card.dart';
 part 'settings/personalization_section.dart';
 part 'settings/accounts_section.dart';
+part 'settings/about_section.dart';
 part 'settings/git_section.dart';
 part 'settings/clone_root_section.dart';
 part 'settings/servers_section.dart';
@@ -55,6 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _GitSection(state: state),
       _CloneRootSection(state: state),
       if (state.isOwner) _AccountsSection(state: state),
+      _AboutSection(state: state),
       const _ServersSection(),
     ];
     final index = state.settingsTopicIndex.clamp(0, sections.length - 1);

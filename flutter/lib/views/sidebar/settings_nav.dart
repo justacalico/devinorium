@@ -12,6 +12,7 @@ List<({IconData icon, String label})> _settingsTopics(
     (icon: Icons.folder_outlined, label: l.cloneRoot),
     if (state.isOwner)
       (icon: Icons.manage_accounts_outlined, label: l.manage),
+    (icon: Icons.info_outlined, label: l.about),
     (icon: Icons.dns_outlined, label: l.servers),
   ];
 }

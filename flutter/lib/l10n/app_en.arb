@@ -4,6 +4,43 @@
   "@appTitle": {
     "description": "Application title shown in the sidebar"
   },
+  "appName": "App name",
+  "@appName": {
+    "description": "Label for the application name on the About page"
+  },
+  "about": "About",
+  "@about": {
+    "description": "About section title in settings"
+  },
+  "aboutDescription": "A self-hosted web UI for AI coding agents.",
+  "@aboutDescription": {
+    "description": "Short description shown on the About page"
+  },
+  "aboutVersion": "Version",
+  "@aboutVersion": {
+    "description": "Version label on the About page"
+  },
+  "aboutLicense": "License",
+  "@aboutLicense": {
+    "description": "License label on the About page"
+  },
+  "aboutSourceCode": "Source code",
+  "@aboutSourceCode": {
+    "description": "Source code link label on the About page"
+  },
+  "aboutSupport": "Support",
+  "@aboutSupport": {
+    "description": "Support link label on the About page"
+  },
+  "aboutOpenLinkFailed": "Could not open {url}",
+  "@aboutOpenLinkFailed": {
+    "description": "Error shown when an About page link cannot be opened",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
   "connectionFailed": "connection failed",
   "importFailed": "import failed",
   "totpPrompt": "Enter your 6-digit TOTP code.",
