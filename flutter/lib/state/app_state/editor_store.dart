@@ -49,6 +49,11 @@ mixin EditorStore on AppStateBase {
   String? _activeEditorPath;
   bool _agentPanelOpen = true;
   bool _editorFileTreeOpen = true;
+  double _editorTreeWidth = 320;
+  double _editorAgentPanelWidth = 320;
+
+  static const double _minPanelWidth = 240;
+  static const double _maxPanelWidth = 600;
 
   @override
   List<EditorTab> get editorTabs => List.unmodifiable(_editorTabs);
@@ -77,6 +82,12 @@ mixin EditorStore on AppStateBase {
   bool get editorFileTreeOpen => _editorFileTreeOpen;
 
   @override
+  double get editorTreeWidth => _editorTreeWidth;
+
+  @override
+  double get editorAgentPanelWidth => _editorAgentPanelWidth;
+
+  @override
   bool get hasDirtyEditorTabs => _editorTabs.any((t) => t.dirty);
 
   @override
@@ -88,6 +99,18 @@ mixin EditorStore on AppStateBase {
   @override
   void setEditorFileTreeOpen(bool v) {
     _editorFileTreeOpen = v;
+    notifyListeners();
+  }
+
+  @override
+  void setEditorTreeWidth(double v) {
+    _editorTreeWidth = v.clamp(_minPanelWidth, _maxPanelWidth);
+    notifyListeners();
+  }
+
+  @override
+  void setEditorAgentPanelWidth(double v) {
+    _editorAgentPanelWidth = v.clamp(_minPanelWidth, _maxPanelWidth);
     notifyListeners();
   }
 

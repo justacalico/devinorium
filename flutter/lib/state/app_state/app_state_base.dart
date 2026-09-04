@@ -390,7 +390,11 @@ abstract class AppStateBase extends ChangeNotifier {
   EditorTab? get activeEditorTab;
   bool get agentPanelOpen;
   bool get editorFileTreeOpen;
+  double get editorTreeWidth;
+  double get editorAgentPanelWidth;
   bool get hasDirtyEditorTabs;
+  void setEditorTreeWidth(double v);
+  void setEditorAgentPanelWidth(double v);
   Future<void> openEditorFile(String path);
   void closeEditorTab(String path);
   void closeAllEditorTabs();

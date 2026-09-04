@@ -9,7 +9,6 @@ import 'editor_tab_bar.dart';
 import 'file_editor.dart';
 
 const _wideThreshold = 960.0;
-const _panelWidth = 320.0;
 
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key});
@@ -24,7 +23,7 @@ class _EditorPageState extends State<EditorPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = context.read<AppState>();
-      if (state.filesTreeRoot.children.isEmpty) {
+      if (state.filesTreeRoot.children.isEmpty && state.activeProjectId != null) {
         state.reloadFiles();
       }
     });
@@ -51,8 +50,11 @@ class _WideEditor extends StatelessWidget {
     return Row(
       children: [
         if (state.editorFileTreeOpen) ...[
-          const SizedBox(width: _panelWidth, child: FilesPanel()),
-          const VerticalDivider(width: 1),
+          SizedBox(width: state.editorTreeWidth, child: const FilesPanel()),
+          _ResizeHandle(
+            onDrag: (delta) =>
+                state.setEditorTreeWidth(state.editorTreeWidth + delta),
+          ),
         ],
         Expanded(
           child: Column(
@@ -65,8 +67,11 @@ class _WideEditor extends StatelessWidget {
           ),
         ),
         if (state.agentPanelOpen) ...[
-          const VerticalDivider(width: 1),
-          const SizedBox(width: _panelWidth, child: AgentPanel()),
+          _ResizeHandle(
+            onDrag: (delta) =>
+                state.setEditorAgentPanelWidth(state.editorAgentPanelWidth + delta),
+          ),
+          SizedBox(width: state.editorAgentPanelWidth, child: const AgentPanel()),
         ],
       ],
     );
@@ -81,6 +86,7 @@ class _NarrowEditor extends StatelessWidget {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final showPanels = state.editorFileTreeOpen || state.agentPanelOpen;
+    final maxWidth = MediaQuery.of(context).size.width;
 
     return Stack(
       children: [
@@ -134,7 +140,7 @@ class _NarrowEditor extends StatelessWidget {
             left: 0,
             top: 0,
             bottom: 0,
-            width: _panelWidth.clamp(0, MediaQuery.of(context).size.width * 0.85),
+            width: state.editorTreeWidth.clamp(0, maxWidth * 0.85),
             child: Material(
               elevation: 4,
               color: theme.colorScheme.surface,
@@ -148,7 +154,7 @@ class _NarrowEditor extends StatelessWidget {
             right: 0,
             top: 0,
             bottom: 0,
-            width: _panelWidth.clamp(0, MediaQuery.of(context).size.width * 0.9),
+            width: state.editorAgentPanelWidth.clamp(0, maxWidth * 0.9),
             child: Material(
               elevation: 4,
               color: theme.colorScheme.surface,
@@ -183,6 +189,33 @@ class _FloatingToggle extends StatelessWidget {
         tooltip: tooltip,
         icon: Icon(icon),
         onPressed: onPressed,
+      ),
+    );
+  }
+}
+
+class _ResizeHandle extends StatelessWidget {
+  final ValueChanged<double> onDrag;
+
+  const _ResizeHandle({required this.onDrag});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
+        child: Container(
+          width: 8,
+          color: theme.colorScheme.outlineVariant.withAlpha(0),
+          child: VerticalDivider(
+            width: 1,
+            color: theme.colorScheme.outlineVariant,
+          ),
+        ),
       ),
     );
   }
