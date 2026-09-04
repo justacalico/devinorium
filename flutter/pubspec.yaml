@@ -35,7 +35,26 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   async: ^2.13.0
   stream_channel: ^2.1.4
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   generate: true
   uses-material-design: true
+  assets:
+    - assets/icon.png
+
+flutter_launcher_icons:
+  image_path: "assets/icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#0F172A"
+  web:
+    generate: true
+    background_color: "#0F172A"
+    theme_color: "#22D3EE"
+  windows:
+    generate: true
+    icon_size: 256
+  macos:
+    generate: true
