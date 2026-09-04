@@ -778,6 +778,41 @@ void main() {
       final providers = await service.listProviders();
       expect(providers.first.name, 'Devin CLI');
     });
+
+    test('providerVersion returns version info', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/providers/version'));
+        return _json(200, {
+          'provider_id': 'devin-cli',
+          'provider_name': 'Devin CLI',
+          'installed_version': '3000.6.13',
+          'latest_version': '3000.6.14',
+          'update_available': true,
+        });
+      });
+      final service = _serviceFor(mock);
+      final v = await service.providerVersion();
+      expect(v.providerId, 'devin-cli');
+      expect(v.installedVersion, '3000.6.13');
+      expect(v.latestVersion, '3000.6.14');
+      expect(v.updateAvailable, isTrue);
+    });
+
+    test('providerVersion tolerates null versions', () async {
+      final mock = MockClient((req) async {
+        return _json(200, {
+          'provider_id': 'devin-cli',
+          'provider_name': 'Devin CLI',
+          'installed_version': null,
+          'latest_version': null,
+          'update_available': false,
+        });
+      });
+      final service = _serviceFor(mock);
+      final v = await service.providerVersion();
+      expect(v.installedVersion, isNull);
+      expect(v.updateAvailable, isFalse);
+    });
   });
 
   group('Files', () {
