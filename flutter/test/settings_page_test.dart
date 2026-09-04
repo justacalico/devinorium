@@ -975,7 +975,7 @@ void main() {
     expect(find.text('Support'), findsOneWidget);
     expect(find.text('https://gitlab.com/HttpAnimations/devinorium'), findsOneWidget);
     expect(
-      find.text('https://gitlab.com/HttpAnimations/devinorium/-/issues'),
+      find.text('https://gitlab.com/HttpAnimations/devinorium/-/work_items'),
       findsOneWidget,
     );
   });
@@ -1151,7 +1151,7 @@ void main() {
 
     expect(
       launched,
-      contains('https://gitlab.com/HttpAnimations/devinorium/-/issues'),
+      contains('https://gitlab.com/HttpAnimations/devinorium/-/work_items'),
     );
   });
 

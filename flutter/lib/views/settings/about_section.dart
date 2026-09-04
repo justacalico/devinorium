@@ -4,7 +4,8 @@ const _license = 'AGPL-3.0-only';
 
 class _AboutLinks {
   static const repository = 'https://gitlab.com/HttpAnimations/devinorium';
-  static const support = 'https://gitlab.com/HttpAnimations/devinorium/-/issues';
+  static const support =
+      'https://gitlab.com/HttpAnimations/devinorium/-/work_items';
 }
 
 class _AboutSection extends StatefulWidget {
@@ -17,12 +18,20 @@ class _AboutSection extends StatefulWidget {
 }
 
 class _AboutSectionState extends State<_AboutSection> {
-  late final Future<PackageInfo> _packageInfo;
+  late Future<PackageInfo> _packageInfo;
 
   @override
   void initState() {
     super.initState();
     _packageInfo = widget.state.packageInfo();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AboutSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state != widget.state) {
+      _packageInfo = widget.state.packageInfo();
+    }
   }
 
   @override
@@ -40,46 +49,49 @@ class _AboutSectionState extends State<_AboutSection> {
           ),
         ),
         const SizedBox(height: 16),
-        const Divider(),
-        _SettingsRow(
-          label: l.appName,
-          value: l.appTitle,
+        _AboutTile(
+          icon: Icons.apps,
+          title: l.appTitle,
+          subtitle: l.appName,
         ),
-        const Divider(),
         FutureBuilder<PackageInfo>(
           future: _packageInfo,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return _SettingsRow(
-                label: l.aboutVersion,
-                value: l.loading,
+              return _AboutTile(
+                icon: Icons.tag,
+                title: l.loading,
+                subtitle: l.aboutVersion,
               );
             }
             if (snapshot.hasError) {
-              return _SettingsRow(
-                label: l.aboutVersion,
-                value: l.error,
+              return _AboutTile(
+                icon: Icons.tag,
+                title: l.error,
+                subtitle: l.aboutVersion,
               );
             }
             final version = snapshot.data?.version ?? '';
-            return _SettingsRow(
-              label: l.aboutVersion,
-              value: version.isEmpty ? l.noValue : version,
+            return _AboutTile(
+              icon: Icons.tag,
+              title: version.isEmpty ? l.noValue : version,
+              subtitle: l.aboutVersion,
             );
           },
         ),
-        const Divider(),
-        _SettingsRow(
-          label: l.aboutLicense,
-          value: _license,
+        _AboutTile(
+          icon: Icons.gavel,
+          title: _license,
+          subtitle: l.aboutLicense,
         ),
         const Divider(),
-        _AboutLink(
+        _AboutLinkTile(
+          icon: Icons.code,
           label: l.aboutSourceCode,
           url: _AboutLinks.repository,
         ),
-        const Divider(),
-        _AboutLink(
+        _AboutLinkTile(
+          icon: Icons.support,
           label: l.aboutSupport,
           url: _AboutLinks.support,
         ),
@@ -88,23 +100,80 @@ class _AboutSectionState extends State<_AboutSection> {
   }
 }
 
-class _AboutLink extends StatefulWidget {
+class _AboutTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? tooltip;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  const _AboutTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.tooltip,
+    this.trailing,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    Widget subtitleWidget = Text(
+      subtitle,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    if (tooltip != null) {
+      subtitleWidget = Tooltip(
+        message: tooltip,
+        child: subtitleWidget,
+      );
+    }
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: ExcludeSemantics(
+        child: Icon(
+          icon,
+          size: 22,
+          color: colors.onSurfaceVariant,
+        ),
+      ),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: subtitleWidget,
+      trailing: trailing,
+      onTap: onTap,
+    );
+  }
+}
+
+class _AboutLinkTile extends StatefulWidget {
+  final IconData icon;
   final String label;
   final String url;
 
-  const _AboutLink({
+  const _AboutLinkTile({
+    required this.icon,
     required this.label,
     required this.url,
   });
 
   @override
-  State<_AboutLink> createState() => _AboutLinkState();
+  State<_AboutLinkTile> createState() => _AboutLinkTileState();
 }
 
-class _AboutLinkState extends State<_AboutLink> {
+class _AboutLinkTileState extends State<_AboutLinkTile> {
   bool _opening = false;
 
   Future<void> _open() async {
+    if (_opening) return;
     setState(() => _opening = true);
     try {
       await openLink(widget.url);
@@ -121,34 +190,29 @@ class _AboutLinkState extends State<_AboutLink> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final l = l10n(context);
+    final colors = Theme.of(context).colorScheme;
 
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      dense: true,
-      title: Text(widget.label),
-      subtitle: Tooltip(
-        message: widget.url,
-        child: Text(
-          widget.url,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.primary,
-            decoration: TextDecoration.underline,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          softWrap: false,
-        ),
-      ),
-      trailing: Tooltip(
-        message: l.openInBrowser,
-        child: Icon(
-          Icons.open_in_new,
-          size: 18,
-          color: _opening ? theme.colorScheme.outline : null,
-        ),
-      ),
+    final trailing = _opening
+        ? SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: colors.onSurfaceVariant,
+            ),
+          )
+        : Icon(
+            Icons.open_in_new,
+            size: 18,
+            color: colors.onSurfaceVariant,
+          );
+
+    return _AboutTile(
+      icon: widget.icon,
+      title: widget.label,
+      subtitle: widget.url,
+      tooltip: widget.url,
+      trailing: ExcludeSemantics(child: trailing),
       onTap: _opening ? null : _open,
     );
   }
