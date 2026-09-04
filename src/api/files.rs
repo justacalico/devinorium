@@ -12,7 +12,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, Router};
 use axum::Json;
+use chrono::DateTime;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::auth::session::CurrentUser;
 use crate::security::paths;
@@ -21,7 +23,7 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/files", get(list_dir).post(upload))
-        .route("/api/files/content", get(read_file))
+        .route("/api/files/content", get(read_file).put(write_file))
         .route("/api/files/dir", post(mkdir))
         .route("/api/files/move", post(mv))
         .route("/api/files/delete", axum::routing::delete(delete))
@@ -189,6 +191,17 @@ async fn list_dir(
     Json(out).into_response()
 }
 
+fn hex_sha256(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
+fn mtime_rfc3339(meta: &std::fs::Metadata) -> Option<String> {
+    let modified = meta.modified().ok()?;
+    let duration = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+    DateTime::from_timestamp(duration.as_secs() as i64, duration.subsec_nanos())
+        .map(|dt| dt.to_rfc3339())
+}
+
 async fn read_file(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -198,12 +211,17 @@ async fn read_file(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let bytes = match tokio::fs::read(&target).await {
-        Ok(b) => b,
+    let meta = match tokio::fs::metadata(&target).await {
+        Ok(m) => m,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
-    // Limit to 4 MiB for inline read.
-    if bytes.len() > 4 * 1024 * 1024 {
+    // Only regular files are editable/viewable inline; directories are listed,
+    // not read, but guard against odd paths.
+    if meta.is_dir() {
+        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path is a directory")))
+            .into_response();
+    }
+    if meta.len() > 4 * 1024 * 1024 {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(crate::api::ApiError::new(
@@ -212,8 +230,14 @@ async fn read_file(
         )
             .into_response();
     }
+    let bytes = match tokio::fs::read(&target).await {
+        Ok(b) => b,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let sha256 = hex_sha256(&bytes);
+    let last_modified = mtime_rfc3339(&meta);
     let mime = mime_guess::from_path(&target)
         .first_or_octet_stream()
         .to_string();
@@ -241,8 +265,123 @@ async fn read_file(
         "mime": mime,
         "size": bytes.len(),
         "base64": b64,
+        "sha256": sha256,
+        "last_modified": last_modified,
         "text": response_text,
         "diff": diff,
+    }))
+    .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct WriteReq {
+    path: String,
+    #[serde(default)]
+    project_id: Option<i64>,
+    content: String,
+    #[serde(default)]
+    expected_sha256: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct WriteConflict {
+    error: String,
+    current: serde_json::Value,
+}
+
+async fn write_file(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<WriteReq>,
+) -> Response {
+    let (target, _root) = match resolve(&state, user.id, Some(&req.path), req.project_id).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+
+    let content_bytes = req.content.as_bytes();
+    let exists = tokio::fs::try_exists(&target).await.unwrap_or(false);
+
+    if exists {
+        if tokio::fs::metadata(&target).await.map(|m| m.is_dir()).unwrap_or(false) {
+            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path is a directory")))
+                .into_response();
+        }
+
+        // Verify the expected sha256 before overwriting. Returning the current
+        // content on conflict lets the editor prompt the user to reload.
+        if let Some(expected) = req.expected_sha256.as_deref() {
+            if !expected.is_empty() {
+                let current = match tokio::fs::read(&target).await {
+                    Ok(b) => b,
+                    Err(e) => return crate::api::map_err_internal(e).into_response(),
+                };
+                let current_hash = hex_sha256(&current);
+                if current_hash != expected {
+                    let current_text = String::from_utf8_lossy(&current).to_string();
+                    let conflict = serde_json::json!({
+                        "path": target.to_string_lossy(),
+                        "mime": mime_guess::from_path(&target).first_or_octet_stream().to_string(),
+                        "size": current.len(),
+                        "base64": base64::engine::general_purpose::STANDARD.encode(&current),
+                        "sha256": current_hash,
+                        "last_modified": mtime_rfc3339(&match tokio::fs::metadata(&target).await {
+                            Ok(m) => m,
+                            Err(_) => return (StatusCode::CONFLICT, Json(WriteConflict {
+                                error: "file changed on disk".into(),
+                                current: serde_json::Value::Null,
+                            })).into_response(),
+                        }),
+                        "text": current_text,
+                        "diff": null,
+                    });
+                    return (StatusCode::CONFLICT, Json(WriteConflict {
+                        error: "file changed on disk".into(),
+                        current: conflict,
+                    })).into_response();
+                }
+            }
+        }
+    }
+
+    // Ensure the parent directory exists before writing.
+    if let Some(parent) = target.parent() {
+        if let Err(e) = tokio::fs::create_dir_all(parent).await {
+            return crate::api::map_err_internal(e).into_response();
+        }
+    }
+
+    if let Err(e) = tokio::fs::write(&target, content_bytes).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+
+    // Re-read so the response matches the on-disk state (mtime, size, hash).
+    let bytes = match tokio::fs::read(&target).await {
+        Ok(b) => b,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+    let meta = match tokio::fs::metadata(&target).await {
+        Ok(m) => m,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let sha256 = hex_sha256(&bytes);
+    let last_modified = mtime_rfc3339(&meta);
+    let mime = mime_guess::from_path(&target)
+        .first_or_octet_stream()
+        .to_string();
+    let text = std::str::from_utf8(&bytes).ok().map(|s| s.to_string());
+
+    Json(serde_json::json!({
+        "path": target.to_string_lossy(),
+        "mime": mime,
+        "size": bytes.len(),
+        "base64": b64,
+        "sha256": sha256,
+        "last_modified": last_modified,
+        "text": text,
+        "diff": null,
     }))
     .into_response()
 }
