@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.36.0 - 2026-09-04
+#### Features
+- 设置 Flutter 全平台应用图标 - (3e00894) - HttpAnimations
+
+- - -
+
 ## v0.35.0 - 2026-09-04
 #### Features
 - 添加侧边栏搜索 Ctrl+H 快捷键并补充测试 - (b9d11ed) - HttpAnimations
