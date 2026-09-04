@@ -125,6 +125,11 @@ mixin FilesPanelStore on AppStateBase {
   Future<void> deleteFile(String path) async {
     try {
       await api.deleteFile(path, projectId: _activeProjectId);
+      for (final tab in editorTabs.toList().reversed) {
+        if (tab.path == path || tab.path.startsWith('$path/')) {
+          closeEditorTab(tab.path);
+        }
+      }
       _filesError = '';
       notifyListeners();
       await _refreshParentForPath(path);

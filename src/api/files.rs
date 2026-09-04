@@ -6,6 +6,21 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex as StdMutex};
+
+use once_cell::sync::Lazy;
+use tokio::sync::Mutex;
+
+static FILE_WRITE_LOCKS: Lazy<StdMutex<HashMap<String, Arc<Mutex<()>>>>> =
+    Lazy::new(|| StdMutex::new(HashMap::new()));
+
+fn file_write_lock(target: &Path) -> Arc<Mutex<()>> {
+    let key = target.to_string_lossy().to_string();
+    let mut map = FILE_WRITE_LOCKS.lock().unwrap();
+    map.entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
 
 use axum::extract::{Multipart, Query, State};
 use axum::http::StatusCode;
@@ -299,8 +314,22 @@ async fn write_file(
         Err(r) => return r,
     };
 
+    let file_lock = file_write_lock(&target);
+    let _lock = file_lock.lock().await;
+
     let content_bytes = req.content.as_bytes();
     let exists = tokio::fs::try_exists(&target).await.unwrap_or(false);
+
+    // If the client expected an existing file (non-empty sha256) and it is gone,
+    // treat it as a conflict so the user can reload rather than silently recreate.
+    if let Some(expected) = req.expected_sha256.as_deref() {
+        if !expected.is_empty() && !exists {
+            return (StatusCode::CONFLICT, Json(WriteConflict {
+                error: "file was deleted".into(),
+                current: serde_json::Value::Null,
+            })).into_response();
+        }
+    }
 
     if exists {
         if tokio::fs::metadata(&target).await.map(|m| m.is_dir()).unwrap_or(false) {
@@ -316,22 +345,18 @@ async fn write_file(
                     Ok(b) => b,
                     Err(e) => return crate::api::map_err_internal(e).into_response(),
                 };
+                let meta = tokio::fs::metadata(&target).await.ok();
                 let current_hash = hex_sha256(&current);
                 if current_hash != expected {
                     let current_text = String::from_utf8_lossy(&current).to_string();
+                    let last_modified = meta.as_ref().and_then(mtime_rfc3339);
                     let conflict = serde_json::json!({
                         "path": target.to_string_lossy(),
                         "mime": mime_guess::from_path(&target).first_or_octet_stream().to_string(),
                         "size": current.len(),
                         "base64": base64::engine::general_purpose::STANDARD.encode(&current),
                         "sha256": current_hash,
-                        "last_modified": mtime_rfc3339(&match tokio::fs::metadata(&target).await {
-                            Ok(m) => m,
-                            Err(_) => return (StatusCode::CONFLICT, Json(WriteConflict {
-                                error: "file changed on disk".into(),
-                                current: serde_json::Value::Null,
-                            })).into_response(),
-                        }),
+                        "last_modified": last_modified,
                         "text": current_text,
                         "diff": null,
                     });

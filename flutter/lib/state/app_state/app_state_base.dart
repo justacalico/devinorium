@@ -8,6 +8,8 @@ abstract class AppStateBase extends ChangeNotifier {
   ApiService get api;
   AppView get _view;
   set _view(AppView value);
+  AppMode get _appMode;
+  set _appMode(AppMode value);
   MainPage get _page;
   set _page(MainPage value);
   User? get _user;
@@ -135,6 +137,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get _refreshingGit;
   set _refreshingGit(bool value);
   AppView get view;
+  AppMode get appMode;
   MainPage get page;
   User? get user;
   List<Project> get projects;
@@ -224,6 +227,7 @@ abstract class AppStateBase extends ChangeNotifier {
   List<GitConnection> get gitConnections;
   bool get loadingGitConnections;
   void setView(AppView v);
+  void setAppMode(AppMode m);
   void setPage(MainPage p);
   void setSettingsTopicIndex(int index);
   void toggleUserMenu();
@@ -379,4 +383,21 @@ abstract class AppStateBase extends ChangeNotifier {
   void closeDialog();
   Future<void> openLink(String url);
   Future<PackageInfo> packageInfo() => PackageInfo.fromPlatform();
+
+  // Editor
+  List<EditorTab> get editorTabs;
+  String? get activeEditorPath;
+  EditorTab? get activeEditorTab;
+  bool get agentPanelOpen;
+  bool get editorFileTreeOpen;
+  bool get hasDirtyEditorTabs;
+  Future<void> openEditorFile(String path);
+  void closeEditorTab(String path);
+  void closeAllEditorTabs();
+  void setActiveEditorPath(String? path);
+  void setEditorTabText(String path, String text);
+  Future<void> saveEditorTab(String path);
+  Future<void> reloadEditorTab(String path);
+  void setAgentPanelOpen(bool v);
+  void setEditorFileTreeOpen(bool v);
 }

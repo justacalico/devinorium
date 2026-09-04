@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import 'drop_zone.dart';
+import 'editor/editor_page.dart';
 import 'files_panel.dart';
 import 'settings_page.dart';
 import 'sidebar.dart';
@@ -33,30 +34,32 @@ class _AppShellState extends State<AppShell> {
     // switches between narrow and wide, instead of rebuilding it.
     final main = DropZone(key: _mainKey, child: _MainArea());
 
+    final isEditor = state.appMode == AppMode.editor;
+
     if (isNarrow) {
-      if (state.filesPanelOpen && !_wasFilesPanelOpen) {
+      if (state.filesPanelOpen && !_wasFilesPanelOpen && !isEditor) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scaffoldKey.currentState?.openEndDrawer();
         });
       }
-      _wasFilesPanelOpen = state.filesPanelOpen;
+      _wasFilesPanelOpen = isEditor ? false : state.filesPanelOpen;
 
       return Scaffold(
         key: _scaffoldKey,
         drawer: const Drawer(width: 300, child: Sidebar()),
         body: main,
-        endDrawer: state.filesPanelOpen
+        endDrawer: !isEditor && state.filesPanelOpen
             ? const Drawer(width: 360, child: FilesPanel())
             : null,
         onEndDrawerChanged: (opened) {
-          if (!opened && state.filesPanelOpen) {
+          if (!opened && state.filesPanelOpen && !isEditor) {
             state.closeFilesPanel();
           }
         },
       );
     }
 
-    _wasFilesPanelOpen = state.filesPanelOpen;
+    _wasFilesPanelOpen = isEditor ? false : state.filesPanelOpen;
 
     return Scaffold(
       body: Row(
@@ -64,7 +67,7 @@ class _AppShellState extends State<AppShell> {
           const SizedBox(width: 300, child: Sidebar()),
           const VerticalDivider(width: 1),
           Expanded(child: main),
-          if (state.filesPanelOpen) ...[
+          if (!isEditor && state.filesPanelOpen) ...[
             const VerticalDivider(width: 1),
             const SizedBox(width: 360, child: FilesPanel()),
           ],
@@ -78,6 +81,9 @@ class _MainArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    if (state.appMode == AppMode.editor) {
+      return const EditorPage();
+    }
     switch (state.page) {
       case MainPage.threads:
         return const ThreadPage();

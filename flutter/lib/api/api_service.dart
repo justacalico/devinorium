@@ -507,6 +507,34 @@ class ApiService {
     return FileContent.fromJson(j);
   }
 
+  Future<FileContent> writeFile({
+    required String path,
+    int? projectId,
+    required String content,
+    String? expectedSha256,
+  }) async {
+    final body = <String, dynamic>{
+      'path': path,
+      'content': content,
+    };
+    if (projectId != null) body['project_id'] = projectId;
+    if (expectedSha256 != null && expectedSha256.isNotEmpty) {
+      body['expected_sha256'] = expectedSha256;
+    }
+    try {
+      final j = await _client.put('/api/files/content', body);
+      return FileContent.fromJson(j);
+    } on ApiException catch (e) {
+      if (e.statusCode == 409 && e.data != null) {
+        final current = e.data!['current'];
+        if (current is Map<String, dynamic>) {
+          throw FileConflictException(FileContent.fromJson(current));
+        }
+      }
+      rethrow;
+    }
+  }
+
   Future<List<DirEntry>> listFiles({
     String? path,
     int? projectId,

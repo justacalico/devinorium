@@ -683,6 +683,29 @@
   "@fileViewerLoadError": {
     "description": "Error shown when the file viewer fails to load a file"
   },
+  "agentsMode": "Agents",
+  "editorMode": "Editor",
+  "chat": "Chat",
+  "editorSelectFile": "Select a file from the tree to edit",
+  "editorUnsavedChanges": "Unsaved changes",
+  "editorSaveBeforeClose": "Save changes to {name}?",
+  "editorReload": "Reload",
+  "binaryFileNotEditable": "{name} is a binary file and cannot be edited",
+  "@binaryFileNotEditable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@editorSaveBeforeClose": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "editorDiscard": "Discard",
   "diffViewMoreLines": "… {count} more lines not shown",
   "@diffViewMoreLines": {
     "description": "Note shown when a diff is truncated",

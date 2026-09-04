@@ -212,6 +212,7 @@ class _SidebarState extends State<Sidebar> {
         children: [
           if (!isSettings) const _AppTitle(),
           if (isSettings) const _SettingsHeader(),
+          if (!isSettings) const _ModeSwitch(),
           const _ServerSwitcher(),
           if (!isSettings) ...[
             _SearchField(
@@ -313,6 +314,56 @@ class _AppTitleState extends State<_AppTitle> {
                   );
                 },
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeSwitch extends StatelessWidget {
+  const _ModeSwitch();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final l = l10n(context);
+
+    final isAgents = state.appMode == AppMode.agents;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: isAgents
+                    ? theme.colorScheme.surfaceContainerHigh
+                    : Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+              label: Text(l.agentsMode),
+              onPressed: () => state.setAppMode(AppMode.agents),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: !isAgents
+                    ? theme.colorScheme.surfaceContainerHigh
+                    : Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.code, size: 18),
+              label: Text(l.editorMode),
+              onPressed: () => state.setAppMode(AppMode.editor),
             ),
           ),
         ],

@@ -2074,6 +2074,60 @@ abstract class AppLocalizations {
   /// **'Failed to load file'**
   String get fileViewerLoadError;
 
+  /// No description provided for @agentsMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Agents'**
+  String get agentsMode;
+
+  /// No description provided for @editorMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Editor'**
+  String get editorMode;
+
+  /// No description provided for @chat.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get chat;
+
+  /// No description provided for @editorSelectFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a file from the tree to edit'**
+  String get editorSelectFile;
+
+  /// No description provided for @editorUnsavedChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsaved changes'**
+  String get editorUnsavedChanges;
+
+  /// No description provided for @editorSaveBeforeClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes to {name}?'**
+  String editorSaveBeforeClose(String name);
+
+  /// No description provided for @editorReload.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload'**
+  String get editorReload;
+
+  /// No description provided for @binaryFileNotEditable.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is a binary file and cannot be edited'**
+  String binaryFileNotEditable(String name);
+
+  /// No description provided for @editorDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get editorDiscard;
+
   /// Note shown when a diff is truncated
   ///
   /// In en, this message translates to:

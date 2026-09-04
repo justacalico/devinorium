@@ -38,7 +38,13 @@ class FilesPanel extends StatelessWidget {
                 IconButton(
                   tooltip: l10n(context).close,
                   icon: const Icon(Icons.close),
-                  onPressed: state.closeFilesPanel,
+                  onPressed: () {
+                    if (state.appMode == AppMode.editor) {
+                      state.setEditorFileTreeOpen(false);
+                    } else {
+                      state.closeFilesPanel();
+                    }
+                  },
                 ),
               ],
             ),
@@ -77,6 +83,10 @@ class FilesPanel extends StatelessWidget {
   }
 
   void _openFile(BuildContext context, AppState state, FileTreeNode node) {
+    if (state.appMode == AppMode.editor) {
+      state.openEditorFile(node.fullPathString);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FileViewerPage(

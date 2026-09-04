@@ -783,6 +783,33 @@ void main() {
       expect(c.base64, '');
       expect(c.text, isNull);
     });
+
+    test('parses sha256 and lastModified', () {
+      final c = FileContent.fromJson({
+        'path': '/x.txt',
+        'mime': 'text/plain',
+        'size': 0,
+        'base64': '',
+        'text': 'hi',
+        'sha256': 'abcd',
+        'last_modified': '2026-08-29T12:00:00Z',
+      });
+      expect(c.sha256, 'abcd');
+      expect(c.lastModified, DateTime.utc(2026, 8, 29, 12, 0, 0));
+    });
+
+    test('copyWith updates sha256 and lastModified', () {
+      final c = FileContent(
+        path: '/x.txt',
+        mime: 'text/plain',
+        size: 0,
+        base64: '',
+        text: 'hi',
+      );
+      final updated = c.copyWith(sha256: 'xyz', lastModified: DateTime.utc(2026));
+      expect(updated.sha256, 'xyz');
+      expect(updated.lastModified, DateTime.utc(2026));
+    });
   });
 
   group('DirEntry', () {

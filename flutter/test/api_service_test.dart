@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/models/models.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -859,6 +860,60 @@ void main() {
       expect(content.text, 'fn main() {}');
       expect(content.diff?.newText, 'fn main() {}');
       expect(content.diff?.oldText, isNull);
+    });
+
+    test('writeFile sends body and returns content', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('PUT', '/api/files/content'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['path'], 'foo.rs');
+        expect(body['content'], 'new text');
+        expect(body['project_id'], 1);
+        expect(body['expected_sha256'], 'sha');
+        return _json(200, {
+          'path': '/projects/1/foo.rs',
+          'mime': 'text/x-rust',
+          'size': 8,
+          'base64': '',
+          'text': 'new text',
+          'sha256': 'sha2',
+        });
+      });
+      final service = _serviceFor(mock);
+      final content = await service.writeFile(
+        path: 'foo.rs',
+        projectId: 1,
+        content: 'new text',
+        expectedSha256: 'sha',
+      );
+      expect(content.text, 'new text');
+      expect(content.sha256, 'sha2');
+    });
+
+    test('writeFile throws FileConflictException on 409', () async {
+      final mock = MockClient((req) async {
+        return _json(409, {
+          'error': 'conflict',
+          'current': {
+            'path': '/projects/1/foo.rs',
+            'mime': 'text/x-rust',
+            'size': 4,
+            'base64': '',
+            'text': 'disk',
+            'sha256': 'sha3',
+          },
+        });
+      });
+      final service = _serviceFor(mock);
+      expect(
+        () => service.writeFile(
+          path: 'foo.rs',
+          projectId: 1,
+          content: 'new text',
+          expectedSha256: 'sha',
+        ),
+        throwsA(isA<FileConflictException>()),
+      );
     });
 
     test('mkdir sends path and project_id', () async {
