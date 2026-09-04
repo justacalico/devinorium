@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,8 +8,40 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import 'file_viewer.dart';
 
-class FilesPanel extends StatelessWidget {
+class FilesPanel extends StatefulWidget {
   const FilesPanel({super.key});
+
+  @override
+  State<FilesPanel> createState() => _FilesPanelState();
+}
+
+class _FilesPanelState extends State<FilesPanel> {
+  @override
+  void initState() {
+    super.initState();
+    _loadIfNeeded(context.read<AppState>());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadIfNeeded(context.read<AppState>());
+  }
+
+  void _loadIfNeeded(AppState state) {
+    if (state.filesProjectId == state.activeProjectId) return;
+    unawaited(state.reloadFiles());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    context.watch<AppState>();
+    return const _FilesPanelBody();
+  }
+}
+
+class _FilesPanelBody extends StatelessWidget {
+  const _FilesPanelBody();
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +64,12 @@ class FilesPanel extends StatelessWidget {
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
-                IconButton(
-                  tooltip: l10n(context).newFolder,
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                  onPressed: () => _promptMkdir(context, state),
-                ),
+                if (state.activeProjectId != null)
+                  IconButton(
+                    tooltip: l10n(context).newFolder,
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    onPressed: () => _promptMkdir(context, state),
+                  ),
                 IconButton(
                   tooltip: l10n(context).close,
                   icon: const Icon(Icons.close),
@@ -59,23 +94,21 @@ class FilesPanel extends StatelessWidget {
               ),
             ),
           Expanded(
-            child: rows.isEmpty
-                ? error.isNotEmpty
-                      ? const SizedBox.shrink()
-                      : Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            l10n(context).emptyFolder,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                : ListView.builder(
-                    itemCount: rows.length,
-                    itemBuilder: (context, index) =>
-                        _buildRow(context, state, rows[index], theme),
-                  ),
+            child: state.activeProjectId == null
+                ? _EmptyPlaceholder(
+                    text: l10n(context).selectProjectFirst,
+                  )
+                : rows.isEmpty
+                    ? error.isNotEmpty
+                        ? const SizedBox.shrink()
+                        : _EmptyPlaceholder(
+                            text: l10n(context).emptyFolder,
+                          )
+                    : ListView.builder(
+                        itemCount: rows.length,
+                        itemBuilder: (context, index) =>
+                            _buildRow(context, state, rows[index], theme),
+                      ),
           ),
         ],
       ),
@@ -498,5 +531,25 @@ class FilesPanel extends StatelessWidget {
       ),
     );
     return result ?? false;
+  }
+}
+
+class _EmptyPlaceholder extends StatelessWidget {
+  final String text;
+
+  const _EmptyPlaceholder({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        text,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
   }
 }

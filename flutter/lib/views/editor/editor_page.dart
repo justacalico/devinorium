@@ -19,17 +19,6 @@ class EditorPage extends StatefulWidget {
 
 class _EditorPageState extends State<EditorPage> {
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final state = context.read<AppState>();
-      if (state.filesTreeRoot.children.isEmpty && state.activeProjectId != null) {
-        state.reloadFiles();
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {

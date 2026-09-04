@@ -36,6 +36,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Map<int, bool> get _loadingMoreProjectThreads;
   FileTreeNode get _filesTreeRoot;
   set _filesTreeRoot(FileTreeNode value);
+  int? get _filesProjectId;
+  set _filesProjectId(int? value);
   List<ThreadGroup> get _groups;
   set _groups(List<ThreadGroup> value);
   List<ModelInfo> get _models;
@@ -163,6 +165,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Plan? get activePlan;
   List<DirEntry> get filesEntries;
   FileTreeNode get filesTreeRoot;
+  int? get filesProjectId;
   List<FileTreeRow> get filesTreeRows;
   String get filesError;
   DialogKind get dialog;
