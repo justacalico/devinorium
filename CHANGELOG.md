@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.34.0 - 2026-09-04
+#### Features
+- 把服务器版本号从侧边栏标题移到设置页 - (706c023) - HttpAnimations
+- 在设置中添加“关于”页面 - (ce42b9d) - HttpAnimations
+#### Bug Fixes
+- 关于页面改成图标列表，支持链接改为 work items - (ca73d83) - HttpAnimations
+- 修复关于页面的版本加载、链接打开反馈和无障碍问题 - (4137831) - HttpAnimations
+
+- - -
+
 ## v0.33.0 - 2026-09-03
 #### Features
 - 主题选择器改为下拉菜单 - (28821fe) - HttpAnimations
