@@ -168,15 +168,17 @@ class _FakeApiService extends ApiService {
   Future<List<String>> getThreadRuns() => Future.value([]);
 }
 
-Widget _buildWithState(AppState state) => MaterialApp(
-  home: ChangeNotifierProvider<AppState>.value(
-    value: state,
-    child: const Scaffold(
-      drawer: Drawer(child: Sidebar()),
-      body: SizedBox.shrink(),
-    ),
-  ),
-);
+Widget _buildWithState(AppState state, {TargetPlatform? platform}) =>
+    MaterialApp(
+      theme: platform == null ? null : ThemeData(platform: platform),
+      home: ChangeNotifierProvider<AppState>.value(
+        value: state,
+        child: const Scaffold(
+          drawer: Drawer(child: Sidebar()),
+          body: SizedBox.shrink(),
+        ),
+      ),
+    );
 
 Future<void> _openDrawer(WidgetTester tester) async {
   final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold));
@@ -2077,7 +2079,7 @@ void main() {
     },
   );
 
-  testWidgets('Ctrl+K focuses the sidebar search', (tester) async {
+  testWidgets('Ctrl+H focuses the sidebar search', (tester) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -2109,6 +2111,46 @@ void main() {
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyH);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyH);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isTrue,
+    );
+  });
+
+  testWidgets('Ctrl+K no longer focuses the sidebar search', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final searchField = find.byKey(const Key('sidebar_search'));
+    final editableFinder = find.descendant(
+      of: searchField,
+      matching: find.byType(EditableText),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.keyK);
     await tester.pump();
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyK);
@@ -2118,7 +2160,192 @@ void main() {
 
     expect(
       tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isFalse,
+    );
+  });
+
+  testWidgets('⌘K focuses the sidebar search on macOS', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(
+      _buildWithState(state, platform: TargetPlatform.macOS),
+    );
+    await _openDrawer(tester);
+
+    final searchField = find.byKey(const Key('sidebar_search'));
+    final editableFinder = find.descendant(
+      of: searchField,
+      matching: find.byType(EditableText),
+    );
+
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isFalse,
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
       isTrue,
+    );
+  });
+
+  testWidgets('Ctrl+H does not focus the sidebar search on macOS', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(
+      _buildWithState(state, platform: TargetPlatform.macOS),
+    );
+    await _openDrawer(tester);
+
+    final searchField = find.byKey(const Key('sidebar_search'));
+    final editableFinder = find.descendant(
+      of: searchField,
+      matching: find.byType(EditableText),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyH);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyH);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isFalse,
+    );
+  });
+
+  testWidgets('Ctrl+Shift+H does not focus the sidebar search', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final searchField = find.byKey(const Key('sidebar_search'));
+    final editableFinder = find.descendant(
+      of: searchField,
+      matching: find.byType(EditableText),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyH);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyH);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isFalse,
+    );
+  });
+
+  testWidgets('⌘+Shift+K does not focus the sidebar search on macOS', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(
+      _buildWithState(state, platform: TargetPlatform.macOS),
+    );
+    await _openDrawer(tester);
+
+    final searchField = find.byKey(const Key('sidebar_search'));
+    final editableFinder = find.descendant(
+      of: searchField,
+      matching: find.byType(EditableText),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(editableFinder).widget.focusNode.hasFocus,
+      isFalse,
     );
   });
 
