@@ -83,7 +83,7 @@ class _AppShellState extends State<AppShell> {
             _ResizeHandle(
               onDrag: (delta) => setState(() {
                 _filesPanelWidth =
-                    (_filesPanelWidth + delta).clamp(_minFilesPanelWidth, _maxFilesPanelWidth);
+                    (_filesPanelWidth - delta).clamp(_minFilesPanelWidth, _maxFilesPanelWidth);
               }),
             ),
             SizedBox(width: _filesPanelWidth, child: const FilesPanel()),

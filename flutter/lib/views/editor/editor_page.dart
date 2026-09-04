@@ -58,7 +58,7 @@ class _WideEditor extends StatelessWidget {
         if (state.agentPanelOpen) ...[
           _ResizeHandle(
             onDrag: (delta) =>
-                state.setEditorAgentPanelWidth(state.editorAgentPanelWidth + delta),
+                state.setEditorAgentPanelWidth(state.editorAgentPanelWidth - delta),
           ),
           SizedBox(width: state.editorAgentPanelWidth, child: const AgentPanel()),
         ],
