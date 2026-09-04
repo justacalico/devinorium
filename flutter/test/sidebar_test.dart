@@ -2700,7 +2700,7 @@ void main() {
     },
   );
 
-  testWidgets('Sidebar title shows server version when available', (
+  testWidgets('Sidebar title no longer shows the server version chip', (
     tester,
   ) async {
     final state = AppState.test(
@@ -2714,28 +2714,6 @@ void main() {
         providerCommand: 'devin',
       ),
       serverVersion: '0.31.0',
-    );
-
-    await tester.pumpWidget(_buildWithState(state));
-    await _openDrawer(tester);
-    await tester.pumpAndSettle();
-
-    expect(find.text('0.31.0'), findsOneWidget);
-  });
-
-  testWidgets('Sidebar title hides server version chip when null', (
-    tester,
-  ) async {
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
     );
 
     await tester.pumpWidget(_buildWithState(state));

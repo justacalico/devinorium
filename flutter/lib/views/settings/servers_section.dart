@@ -8,11 +8,22 @@ class _ServersSection extends StatelessWidget {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
+    final version = state.serverVersion;
+    final versionWidgets = version != null && version.isNotEmpty
+        ? <Widget>[
+            _SettingsRow(
+              label: l.serverVersion,
+              value: version,
+            ),
+            const Divider(),
+          ]
+        : <Widget>[];
 
     if (kIsWeb) {
       return _SectionCard(
         title: l.servers,
         children: [
+          ...versionWidgets,
           Text(
             l.serverSwitchNotAvailableWeb,
             style: theme.textTheme.bodyMedium,
@@ -24,6 +35,7 @@ class _ServersSection extends StatelessWidget {
     return _SectionCard(
       title: l.servers,
       children: [
+        ...versionWidgets,
         if (state.serverProfiles.isEmpty)
           Text(
             l.noServersConfigured,
