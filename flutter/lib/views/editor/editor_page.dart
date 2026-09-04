@@ -200,11 +200,12 @@ class _ResizeHandle extends StatelessWidget {
         behavior: HitTestBehavior.translucent,
         onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
         child: Container(
-          width: 8,
-          color: theme.colorScheme.outlineVariant.withAlpha(0),
+          width: 10,
+          color: theme.colorScheme.outlineVariant.withAlpha(40),
+          alignment: Alignment.center,
           child: VerticalDivider(
-            width: 1,
-            color: theme.colorScheme.outlineVariant,
+            width: 2,
+            color: theme.colorScheme.outline,
           ),
         ),
       ),
