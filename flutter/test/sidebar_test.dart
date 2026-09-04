@@ -215,8 +215,11 @@ void main() {
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Providers'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
+    expect(find.text('Git'), findsOneWidget);
     expect(find.text('Clone root'), findsOneWidget);
     expect(find.text('Manage'), findsOneWidget);
+    expect(find.text('About'), findsOneWidget);
+    expect(find.text('Servers'), findsOneWidget);
     expect(find.text('Owner'), findsOneWidget);
   });
 
@@ -317,6 +320,117 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.settingsTopicIndex, 4);
+  });
+
+  testWidgets('About nav topic is shown for owners and non-owners', (
+    tester,
+  ) async {
+    final owner = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    owner.setPage(MainPage.settings);
+    await tester.pumpWidget(_buildWithState(owner));
+    await _openDrawer(tester);
+
+    expect(find.text('About'), findsOneWidget);
+
+    final nonOwner = AppState.test(
+      user: User(
+        id: 2,
+        username: 'alice',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    nonOwner.setPage(MainPage.settings);
+    await tester.pumpWidget(_buildWithState(nonOwner));
+    await _openDrawer(tester);
+
+    expect(find.text('About'), findsOneWidget);
+  });
+
+  testWidgets('Tapping About nav topic selects the about section', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    state.setPage(MainPage.settings);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.tap(find.text('About'));
+    await tester.pumpAndSettle();
+
+    expect(state.settingsTopicIndex, 6);
+  });
+
+  testWidgets('Tapping Git nav topic selects the git section', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    state.setPage(MainPage.settings);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.tap(find.text('Git'));
+    await tester.pumpAndSettle();
+
+    expect(state.settingsTopicIndex, 3);
+  });
+
+  testWidgets('Tapping Servers nav topic selects the servers section', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 2,
+        username: 'alice',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    state.setPage(MainPage.settings);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    await tester.tap(find.text('Servers'));
+    await tester.pumpAndSettle();
+
+    expect(state.settingsTopicIndex, 6);
   });
 
   testWidgets('Sidebar thread tiles do not show status tags', (tester) async {

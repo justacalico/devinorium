@@ -51,6 +51,10 @@ mixin DialogStore on AppStateBase {
       notifyListeners();
       return;
     }
-    await link_opener.openLink(url);
+    try {
+      await link_opener.openLink(url);
+    } catch (e) {
+      debugLogFailure('openLink', e);
+    }
   }
 }

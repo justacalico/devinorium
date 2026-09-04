@@ -49,4 +49,22 @@ void main() {
     await openLink('ftp://example.com');
     expect(launched, isEmpty);
   });
+
+  test('openLink throws when the launcher cannot open the url', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          return false;
+      }
+      return null;
+    });
+
+    expect(
+      openLink('https://example.com'),
+      throwsA(isA<StateError>()),
+    );
+  });
 }

@@ -100,6 +100,54 @@ abstract class AppLocalizations {
   /// **'Devinorium'**
   String get appTitle;
 
+  /// Label for the application name on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'App name'**
+  String get appName;
+
+  /// About section title in settings
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get about;
+
+  /// Short description shown on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'A self-hosted web UI for AI coding agents.'**
+  String get aboutDescription;
+
+  /// Version label on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get aboutVersion;
+
+  /// License label on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'License'**
+  String get aboutLicense;
+
+  /// Source code link label on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'Source code'**
+  String get aboutSourceCode;
+
+  /// Support link label on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'Support'**
+  String get aboutSupport;
+
+  /// Error shown when an About page link cannot be opened
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open {url}'**
+  String aboutOpenLinkFailed(String url);
+
   /// No description provided for @connectionFailed.
   ///
   /// In en, this message translates to:

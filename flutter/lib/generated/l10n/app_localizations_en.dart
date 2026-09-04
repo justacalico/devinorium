@@ -12,6 +12,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'Devinorium';
 
   @override
+  String get appName => 'App name';
+
+  @override
+  String get about => 'About';
+
+  @override
+  String get aboutDescription => 'A self-hosted web UI for AI coding agents.';
+
+  @override
+  String get aboutVersion => 'Version';
+
+  @override
+  String get aboutLicense => 'License';
+
+  @override
+  String get aboutSourceCode => 'Source code';
+
+  @override
+  String get aboutSupport => 'Support';
+
+  @override
+  String aboutOpenLinkFailed(String url) {
+    return 'Could not open $url';
+  }
+
+  @override
   String get connectionFailed => 'connection failed';
 
   @override
