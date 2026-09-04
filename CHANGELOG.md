@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.35.0 - 2026-09-04
+#### Features
+- 添加侧边栏搜索 Ctrl+H 快捷键并补充测试 - (b9d11ed) - HttpAnimations
+
+- - -
+
 ## v0.34.0 - 2026-09-04
 #### Features
 - 把服务器版本号从侧边栏标题移到设置页 - (706c023) - HttpAnimations
