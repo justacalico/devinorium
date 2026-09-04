@@ -525,9 +525,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get checkingConnection => 'Checking connection…';
 
   @override
-  String serverVersionTooltip(String version) {
-    return 'Server v$version';
-  }
+  String get serverVersion => 'Server version';
 
   @override
   String get topics => 'Topics';

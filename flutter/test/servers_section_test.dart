@@ -57,7 +57,7 @@ void main() {
   });
 
   group('Servers section', () {
-    AppState buildState() => AppState.test(
+    AppState buildState({String? serverVersion}) => AppState.test(
           api: _FakeApiService(),
           user: User(
             id: 2,
@@ -69,6 +69,7 @@ void main() {
             providerCommand: 'devin',
           ),
           settingsTopicIndex: 6,
+          serverVersion: serverVersion,
         );
 
     testWidgets('shows the add-server button and test profile', (tester) async {
@@ -78,6 +79,26 @@ void main() {
       expect(find.text('Servers'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Add server'), findsOneWidget);
       expect(find.text('test'), findsOneWidget);
+    });
+
+    testWidgets('shows the connected server version when available', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildWithState(buildState(serverVersion: '0.31.0')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Server version'), findsOneWidget);
+      expect(find.text('0.31.0'), findsOneWidget);
+    });
+
+    testWidgets('hides the server version row when it is unknown', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildWithState(buildState()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Server version'), findsNothing);
+      expect(find.text('Servers'), findsOneWidget);
     });
 
     testWidgets('add-server dialog requires a URL scheme', (tester) async {

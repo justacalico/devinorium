@@ -1054,11 +1054,11 @@ abstract class AppLocalizations {
   /// **'Checking connection…'**
   String get checkingConnection;
 
-  /// Tooltip for the server version chip in the sidebar
+  /// Label for the connected server version row in settings
   ///
   /// In en, this message translates to:
-  /// **'Server v{version}'**
-  String serverVersionTooltip(String version);
+  /// **'Server version'**
+  String get serverVersion;
 
   /// No description provided for @topics.
   ///
