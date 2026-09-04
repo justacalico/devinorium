@@ -27,7 +27,45 @@ class _ProviderCard extends StatelessWidget {
         ),
         const Divider(),
         _ProviderCommandField(state: state),
+        const Divider(),
+        _ProviderVersionRow(state: state),
       ],
+    );
+  }
+}
+
+class _ProviderVersionRow extends StatelessWidget {
+  final AppState state;
+  const _ProviderVersionRow({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = l10n(context);
+    final theme = Theme.of(context);
+    final version = state.providerVersion;
+    final installed = version?.installedVersion;
+    final latest = version?.latestVersion;
+
+    Widget trailing;
+    if (version != null && version.updateAvailable && latest != null) {
+      trailing = Chip(
+        label: Text(l.providerUpdateAvailable(latest)),
+        visualDensity: VisualDensity.compact,
+      );
+    } else if (installed != null && latest != null) {
+      trailing = Text(
+        l.providerUpToDate,
+        style: theme.textTheme.bodySmall
+            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      );
+    } else {
+      trailing = const SizedBox.shrink();
+    }
+
+    return _SettingsRow(
+      label: l.providerVersion,
+      value: installed ?? l.noValue,
+      trailing: trailing,
     );
   }
 }

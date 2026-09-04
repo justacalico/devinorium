@@ -102,6 +102,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     List<ThreadGroup> groups = const [],
     List<ModelInfo> models = const [],
     List<ProviderInfo> providers = const [],
+    ProviderVersion? providerVersion,
     List<GitConnection> gitConnections = const [],
     bool loadingGitConnections = false,
     String? cloneRoot,
@@ -179,6 +180,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     _groups = groups;
     _models = models;
     _providers = providers;
+    _providerVersion = providerVersion;
     _activeProjectId = activeProjectId;
     _dialog = dialog ?? DialogKind.none;
     _mergeRequestUrl = mergeRequestUrl;

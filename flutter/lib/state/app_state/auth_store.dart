@@ -223,7 +223,11 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> loadSettingsData() async {
-    final futures = <Future<void>>[loadGitConnections(), loadCloneRoot()];
+    final futures = <Future<void>>[
+      loadGitConnections(),
+      loadCloneRoot(),
+      refreshProviderVersion(),
+    ];
     if (isOwner) {
       futures.add(loadUsers());
     }
@@ -340,6 +344,9 @@ mixin AuthStore on AppStateBase {
         providerCommand: providerCommand ?? user.providerCommand,
       );
       _globalError = '';
+      // The installed version depends on the provider command, so re-check
+      // it whenever the saved provider config changes.
+      unawaited(refreshProviderVersion());
     } catch (e) {
       _globalError = '$e';
     }
@@ -450,6 +457,7 @@ mixin AuthStore on AppStateBase {
     _attachments.clear();
     _selectedModel = '';
     _selectedPermission = 'normal';
+    _providerVersion = null;
     _runningThreadIds.clear();
     _connectionStatus = ConnectionStatus.checking;
     _serverVersion = null;

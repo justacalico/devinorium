@@ -8,6 +8,7 @@
 //! - `tool_calls`: tool-call and diff merging
 //! - `content`: content block and text helpers
 //! - `models`: static fallback model catalog
+//! - `version`: installed-version detection and update checks
 
 pub mod content;
 pub mod elicitation;
@@ -16,6 +17,7 @@ pub mod permissions;
 pub mod provider;
 pub mod session_config;
 pub mod tool_calls;
+pub mod version;
 
 pub use models::{static_models, MODELS};
 pub use provider::{DevinAcpProvider, PROVIDER_ID, PROVIDER_NAME};

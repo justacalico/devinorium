@@ -964,6 +964,24 @@ abstract class AppLocalizations {
   /// **'Command'**
   String get command;
 
+  /// No description provided for @providerVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get providerVersion;
+
+  /// No description provided for @providerUpToDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date'**
+  String get providerUpToDate;
+
+  /// No description provided for @providerUpdateAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Update available: {version}'**
+  String providerUpdateAvailable(String version);
+
   /// No description provided for @providerIsReachable.
   ///
   /// In en, this message translates to:

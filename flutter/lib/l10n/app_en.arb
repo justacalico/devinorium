@@ -250,6 +250,16 @@
   "active": "Active",
   "noUsersYet": "No users yet.",
   "command": "Command",
+  "providerVersion": "Version",
+  "providerUpToDate": "Up to date",
+  "providerUpdateAvailable": "Update available: {version}",
+  "@providerUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "providerIsReachable": "Provider is reachable",
   "providerCommandHint": "devin",
   "providerTestFailed": "Provider test failed: {error}",
