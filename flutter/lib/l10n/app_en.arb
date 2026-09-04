@@ -4,6 +4,10 @@
   "@appTitle": {
     "description": "Application title shown in the sidebar"
   },
+  "appName": "App name",
+  "@appName": {
+    "description": "Label for the application name on the About page"
+  },
   "about": "About",
   "@about": {
     "description": "About section title in settings"
@@ -20,10 +24,6 @@
   "@aboutLicense": {
     "description": "License label on the About page"
   },
-  "aboutLicenseText": "AGPL-3.0-only",
-  "@aboutLicenseText": {
-    "description": "License name shown on the About page"
-  },
   "aboutSourceCode": "Source code",
   "@aboutSourceCode": {
     "description": "Source code link label on the About page"
@@ -31,6 +31,15 @@
   "aboutSupport": "Support",
   "@aboutSupport": {
     "description": "Support link label on the About page"
+  },
+  "aboutOpenLinkFailed": "Could not open {url}",
+  "@aboutOpenLinkFailed": {
+    "description": "Error shown when an About page link cannot be opened",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
   },
   "connectionFailed": "connection failed",
   "importFailed": "import failed",

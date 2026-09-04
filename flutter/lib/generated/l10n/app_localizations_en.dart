@@ -12,6 +12,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'Devinorium';
 
   @override
+  String get appName => 'App name';
+
+  @override
   String get about => 'About';
 
   @override
@@ -24,13 +27,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aboutLicense => 'License';
 
   @override
-  String get aboutLicenseText => 'AGPL-3.0-only';
-
-  @override
   String get aboutSourceCode => 'Source code';
 
   @override
   String get aboutSupport => 'Support';
+
+  @override
+  String aboutOpenLinkFailed(String url) {
+    return 'Could not open $url';
+  }
 
   @override
   String get connectionFailed => 'connection failed';

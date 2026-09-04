@@ -1,5 +1,7 @@
 part of '../settings_page.dart';
 
+const _license = 'AGPL-3.0-only';
+
 class _AboutLinks {
   static const repository = 'https://gitlab.com/HttpAnimations/devinorium';
   static const support = 'https://gitlab.com/HttpAnimations/devinorium/-/issues';
@@ -20,7 +22,7 @@ class _AboutSectionState extends State<_AboutSection> {
   @override
   void initState() {
     super.initState();
-    _packageInfo = PackageInfo.fromPlatform();
+    _packageInfo = widget.state.packageInfo();
   }
 
   @override
@@ -31,8 +33,16 @@ class _AboutSectionState extends State<_AboutSection> {
     return _SectionCard(
       title: l.about,
       children: [
+        Text(
+          l.aboutDescription,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Divider(),
         _SettingsRow(
-          label: l.name,
+          label: l.appName,
           value: l.appTitle,
         ),
         const Divider(),
@@ -48,55 +58,66 @@ class _AboutSectionState extends State<_AboutSection> {
             if (snapshot.hasError) {
               return _SettingsRow(
                 label: l.aboutVersion,
-                value: '—',
+                value: l.error,
               );
             }
             final version = snapshot.data?.version ?? '';
             return _SettingsRow(
               label: l.aboutVersion,
-              value: version.isEmpty ? '—' : version,
+              value: version.isEmpty ? l.noValue : version,
             );
           },
         ),
         const Divider(),
-        Text(
-          l.aboutDescription,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 16),
         _SettingsRow(
           label: l.aboutLicense,
-          value: l.aboutLicenseText,
+          value: _license,
         ),
         const Divider(),
         _AboutLink(
           label: l.aboutSourceCode,
           url: _AboutLinks.repository,
-          onOpen: widget.state.openLink,
         ),
         const Divider(),
         _AboutLink(
           label: l.aboutSupport,
           url: _AboutLinks.support,
-          onOpen: widget.state.openLink,
         ),
       ],
     );
   }
 }
 
-class _AboutLink extends StatelessWidget {
+class _AboutLink extends StatefulWidget {
   final String label;
   final String url;
-  final Future<void> Function(String) onOpen;
 
   const _AboutLink({
     required this.label,
     required this.url,
-    required this.onOpen,
   });
+
+  @override
+  State<_AboutLink> createState() => _AboutLinkState();
+}
+
+class _AboutLinkState extends State<_AboutLink> {
+  bool _opening = false;
+
+  Future<void> _open() async {
+    setState(() => _opening = true);
+    try {
+      await openLink(widget.url);
+    } catch (e) {
+      if (!mounted) return;
+      final l = l10n(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.aboutOpenLinkFailed(widget.url))),
+      );
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,27 +127,29 @@ class _AboutLink extends StatelessWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
-      title: Text(label),
-      subtitle: Text(
-        url,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.primary,
+      title: Text(widget.label),
+      subtitle: Tooltip(
+        message: widget.url,
+        child: Text(
+          widget.url,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.primary,
+            decoration: TextDecoration.underline,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        softWrap: false,
       ),
-      trailing: const Icon(Icons.open_in_new, size: 18),
-      onTap: () async {
-        try {
-          await onOpen(url);
-        } catch (e) {
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${l.error}: $e')),
-          );
-        }
-      },
+      trailing: Tooltip(
+        message: l.openInBrowser,
+        child: Icon(
+          Icons.open_in_new,
+          size: 18,
+          color: _opening ? theme.colorScheme.outline : null,
+        ),
+      ),
+      onTap: _opening ? null : _open,
     );
   }
 }

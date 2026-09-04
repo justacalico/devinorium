@@ -374,4 +374,5 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> removeServer(String serverId);
   void closeDialog();
   Future<void> openLink(String url);
+  Future<PackageInfo> packageInfo() => PackageInfo.fromPlatform();
 }

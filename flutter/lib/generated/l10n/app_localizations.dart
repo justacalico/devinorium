@@ -100,6 +100,12 @@ abstract class AppLocalizations {
   /// **'Devinorium'**
   String get appTitle;
 
+  /// Label for the application name on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'App name'**
+  String get appName;
+
   /// About section title in settings
   ///
   /// In en, this message translates to:
@@ -124,12 +130,6 @@ abstract class AppLocalizations {
   /// **'License'**
   String get aboutLicense;
 
-  /// License name shown on the About page
-  ///
-  /// In en, this message translates to:
-  /// **'AGPL-3.0-only'**
-  String get aboutLicenseText;
-
   /// Source code link label on the About page
   ///
   /// In en, this message translates to:
@@ -141,6 +141,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Support'**
   String get aboutSupport;
+
+  /// Error shown when an About page link cannot be opened
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open {url}'**
+  String aboutOpenLinkFailed(String url);
 
   /// No description provided for @connectionFailed.
   ///
