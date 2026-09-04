@@ -57,7 +57,7 @@ mixin EditorStore on AppStateBase {
   double _editorAgentPanelWidth = 320;
 
   static const double _minPanelWidth = 240;
-  static const double _maxPanelWidth = 600;
+  static const double _maxPanelWidth = 1200;
 
   @override
   List<EditorTab> get editorTabs => List.unmodifiable(_editorTabs);

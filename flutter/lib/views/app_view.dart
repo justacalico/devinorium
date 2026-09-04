@@ -29,7 +29,7 @@ class _AppShellState extends State<AppShell> {
   static const double _minSidebarWidth = 240;
   static const double _maxSidebarWidth = 420;
   static const double _minFilesPanelWidth = 240;
-  static const double _maxFilesPanelWidth = 600;
+  static const double _maxFilesPanelWidth = 1200;
 
   @override
   Widget build(BuildContext context) {
