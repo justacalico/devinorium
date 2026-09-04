@@ -10,6 +10,32 @@ class ProviderInfo {
   );
 }
 
+/// Installed and latest versions for the user's configured provider.
+/// Either version is null when it could not be determined.
+class ProviderVersion {
+  final String providerId;
+  final String providerName;
+  final String? installedVersion;
+  final String? latestVersion;
+  final bool updateAvailable;
+
+  const ProviderVersion({
+    this.providerId = '',
+    this.providerName = '',
+    this.installedVersion,
+    this.latestVersion,
+    this.updateAvailable = false,
+  });
+
+  factory ProviderVersion.fromJson(Map<String, dynamic> j) => ProviderVersion(
+    providerId: j['provider_id'] as String? ?? '',
+    providerName: j['provider_name'] as String? ?? '',
+    installedVersion: j['installed_version'] as String?,
+    latestVersion: j['latest_version'] as String?,
+    updateAvailable: j['update_available'] as bool? ?? false,
+  );
+}
+
 class ModelInfo {
   final String id;
   final String label;

@@ -6,6 +6,8 @@ mixin ModelStore on AppStateBase {
   @override
   List<ProviderInfo> _providers = [];
   @override
+  ProviderVersion? _providerVersion;
+  @override
   String _selectedModel = '';
   @override
   String _selectedPermission = 'normal';
@@ -13,6 +15,18 @@ mixin ModelStore on AppStateBase {
   List<ModelInfo> get models => _models;
   @override
   List<ProviderInfo> get providers => _providers;
+  @override
+  ProviderVersion? get providerVersion => _providerVersion;
+  @override
+  Future<void> refreshProviderVersion() async {
+    try {
+      _providerVersion = await api.providerVersion();
+      notifyListeners();
+    } catch (_) {
+      // Keep the last known value on failure; the row stays unchanged
+      // rather than flashing to an unknown state.
+    }
+  }
   @override
   String get selectedModel => _activeStore?.selectedModel ?? _selectedModel;
   @override

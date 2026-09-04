@@ -42,7 +42,7 @@ pub const PROVIDER_ID: &str = "devin-cli";
 pub const PROVIDER_NAME: &str = "Devin CLI";
 
 pub struct DevinAcpProvider {
-    bin: String,
+    pub(crate) bin: String,
     default_model: String,
 }
 
@@ -468,6 +468,10 @@ impl Provider for DevinAcpProvider {
 
     async fn health_check(&self) -> anyhow::Result<()> {
         self.do_health_check().await
+    }
+
+    async fn version_info(&self) -> crate::providers::ProviderVersion {
+        self.check_version().await
     }
 }
 

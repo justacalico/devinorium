@@ -486,6 +486,12 @@ class ApiService {
     });
   }
 
+  /// Version info for the current user's configured provider.
+  Future<ProviderVersion> providerVersion() async {
+    final j = await _client.get('/api/providers/version');
+    return ProviderVersion.fromJson(j);
+  }
+
   // ---- Files ----
 
   Future<FileContent> readFile({

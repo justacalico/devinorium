@@ -1,10 +1,11 @@
-//! Provider API routes: list configured providers and test a command.
+//! Provider API routes: list configured providers, test a command, and
+//! report version information for the current user's provider.
 
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, Router};
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::auth::session::CurrentUser;
 use crate::providers;
@@ -13,11 +14,38 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/providers", get(list))
+        .route("/api/providers/version", get(version))
         .route("/api/providers/health", post(health))
 }
 
 async fn list(CurrentUser(_user): CurrentUser) -> Response {
     axum::Json(providers::available_providers()).into_response()
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProviderVersionResponse {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub installed_version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+}
+
+/// Report the installed and latest versions for the current user's
+/// configured provider. Best effort: when the binary or the update
+/// manifest is unreachable the corresponding fields are null.
+async fn version(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
+    let provider = state.provider_for_user(&user);
+    let info = provider.version_info().await;
+    let update_available = info.update_available();
+    Json(ProviderVersionResponse {
+        provider_id: provider.id().to_string(),
+        provider_name: provider.name().to_string(),
+        installed_version: info.installed,
+        latest_version: info.latest,
+        update_available,
+    })
+    .into_response()
 }
 
 #[derive(Debug, Deserialize)]

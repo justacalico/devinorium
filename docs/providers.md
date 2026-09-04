@@ -13,6 +13,9 @@ pub trait Provider: Send + Sync {
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse>;
     async fn export(&self, session_id: &str, working_dir: &Path) -> anyhow::Result<serde_json::Value>;
     async fn health_check(&self) -> anyhow::Result<()>;
+    // Optional: report installed/latest versions for the Settings card.
+    // The default implementation reports nothing.
+    async fn version_info(&self) -> ProviderVersion { ProviderVersion::default() }
 }
 ```
 
@@ -77,3 +80,9 @@ Settings. The command is stored in `users.provider_command` and is passed to
 `POST /api/providers/health`, which opens the ACP connection and sends
 `InitializeRequest`, then immediately closes. It does not create a session or
 run a prompt.
+
+The Settings card also shows the provider's installed and latest versions via
+`GET /api/providers/version`, which calls the optional `Provider::version_info`
+(default: reports nothing). `devin-cli` implements it by running
+`<command> --version` for the installed version and reading the published
+release manifest for the latest.

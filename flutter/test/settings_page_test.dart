@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 class _FakeApiService extends ApiService {
   int updateMeCalls = 0;
   int testProviderCalls = 0;
+  int providerVersionCalls = 0;
   int createUserCalls = 0;
   int getCloneRootCalls = 0;
   int setCloneRootCalls = 0;
@@ -26,6 +27,7 @@ class _FakeApiService extends ApiService {
   String? testedCommand;
   String? savedCloneRoot;
   String? cloneRootToReturn;
+  ProviderVersion? providerVersionToReturn;
   bool throwOnTest = false;
   Exception? cloneRootError;
   List<DirEntry> listFilesToReturn = const [];
@@ -79,6 +81,12 @@ class _FakeApiService extends ApiService {
     testProviderCalls++;
     testedCommand = command;
     if (throwOnTest) throw Exception('not reachable');
+  }
+
+  @override
+  Future<ProviderVersion> providerVersion() async {
+    providerVersionCalls++;
+    return providerVersionToReturn ?? const ProviderVersion();
   }
 
   @override
@@ -317,6 +325,160 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Provider test failed'), findsOneWidget);
+  });
+
+  testWidgets('Provider card shows installed version', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
+      providerVersion: const ProviderVersion(
+        providerId: 'devin-cli',
+        providerName: 'Devin CLI',
+        installedVersion: '3000.6.14',
+        latestVersion: '3000.6.14',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Version'), findsOneWidget);
+    expect(find.text('3000.6.14'), findsOneWidget);
+    expect(find.text('Up to date'), findsOneWidget);
+  });
+
+  testWidgets('Provider card flags an available update', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
+      providerVersion: const ProviderVersion(
+        providerId: 'devin-cli',
+        providerName: 'Devin CLI',
+        installedVersion: '3000.6.13',
+        latestVersion: '3000.6.14',
+        updateAvailable: true,
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
+    expect(find.text('3000.6.13'), findsOneWidget);
+    expect(find.text('Update available: 3000.6.14'), findsOneWidget);
+    expect(find.text('Up to date'), findsNothing);
+  });
+
+  testWidgets('Provider card shows placeholder when version is unknown',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
+      providerVersion: const ProviderVersion(),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Version'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+    expect(find.text('Up to date'), findsNothing);
+    expect(find.textContaining('Update available'), findsNothing);
+  });
+
+  testWidgets('Opening settings refreshes the provider version',
+      (tester) async {
+    final fake = _FakeApiService()
+      ..providerVersionToReturn = const ProviderVersion(
+        providerId: 'devin-cli',
+        installedVersion: '3000.6.13',
+        latestVersion: '3000.6.14',
+        updateAvailable: true,
+      );
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(fake.providerVersionCalls, 1);
+    expect(state.providerVersion?.installedVersion, '3000.6.13');
+    expect(state.providerVersion?.updateAvailable, isTrue);
+  });
+
+  testWidgets('Saving the provider command re-checks the version',
+      (tester) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+    expect(fake.providerVersionCalls, 1);
+
+    state.setSettingsTopicIndex(1);
+    await tester.pumpAndSettle();
+
+    final field = find.widgetWithText(TextField, 'Command');
+    await tester.enterText(field, 'devin-cli');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(fake.providerVersionCalls, 2);
   });
 
   testWidgets('Manage section appears for owners', (tester) async {

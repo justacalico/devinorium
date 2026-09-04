@@ -15,12 +15,14 @@
 pub mod ask;
 pub mod devin_acp;
 pub mod parts;
+pub mod version;
 
 pub use ask::{AskCallback, AskOption, AskOutcome, AskQuestion, AskRequest, AskResponse};
 pub use parts::{
     collect_text, collect_thinking, strip_plan_markup_from_parts, MessagePart, PartCallback,
     PartEvent,
 };
+pub use version::ProviderVersion;
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -246,6 +248,14 @@ pub trait Provider: Send + Sync {
     /// For the Devin CLI this opens an ACP session, sends `Initialize`,
     /// and immediately closes.
     async fn health_check(&self) -> anyhow::Result<()>;
+
+    /// Best-effort version info for the provider's backing binary: the
+    /// installed version and the latest published version, when the
+    /// provider can report them. The default implementation reports
+    /// nothing; providers that can check for updates override it.
+    async fn version_info(&self) -> ProviderVersion {
+        ProviderVersion::default()
+    }
 }
 
 /// Derive a short title from the first line of a prompt.

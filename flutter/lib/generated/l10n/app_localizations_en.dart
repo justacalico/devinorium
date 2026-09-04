@@ -472,6 +472,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get command => 'Command';
 
   @override
+  String get providerVersion => 'Version';
+
+  @override
+  String get providerUpToDate => 'Up to date';
+
+  @override
+  String providerUpdateAvailable(String version) {
+    return 'Update available: $version';
+  }
+
+  @override
   String get providerIsReachable => 'Provider is reachable';
 
   @override

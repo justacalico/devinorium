@@ -73,6 +73,42 @@ void main() {
     });
   });
 
+  group('ProviderVersion', () {
+    test('parses a full version response', () {
+      final v = ProviderVersion.fromJson({
+        'provider_id': 'devin-cli',
+        'provider_name': 'Devin CLI',
+        'installed_version': '3000.6.13',
+        'latest_version': '3000.6.14',
+        'update_available': true,
+      });
+      expect(v.providerId, 'devin-cli');
+      expect(v.providerName, 'Devin CLI');
+      expect(v.installedVersion, '3000.6.13');
+      expect(v.latestVersion, '3000.6.14');
+      expect(v.updateAvailable, isTrue);
+    });
+
+    test('tolerates null and missing fields', () {
+      final v = ProviderVersion.fromJson({
+        'provider_id': 'devin-cli',
+        'installed_version': null,
+        'latest_version': null,
+      });
+      expect(v.providerId, 'devin-cli');
+      expect(v.installedVersion, isNull);
+      expect(v.latestVersion, isNull);
+      expect(v.updateAvailable, isFalse);
+    });
+
+    test('empty json yields defaults', () {
+      final v = ProviderVersion.fromJson(const {});
+      expect(v.providerId, '');
+      expect(v.installedVersion, isNull);
+      expect(v.updateAvailable, isFalse);
+    });
+  });
+
   group('Plan', () {
     test('parses plan with steps and explanation', () {
       final plan = Plan.fromJson({
