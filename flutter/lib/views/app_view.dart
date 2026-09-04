@@ -23,6 +23,13 @@ class _AppShellState extends State<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _mainKey = GlobalKey();
   bool _wasFilesPanelOpen = false;
+  double _sidebarWidth = 300;
+  double _filesPanelWidth = 360;
+
+  static const double _minSidebarWidth = 240;
+  static const double _maxSidebarWidth = 420;
+  static const double _minFilesPanelWidth = 240;
+  static const double _maxFilesPanelWidth = 600;
 
   @override
   Widget build(BuildContext context) {
@@ -64,12 +71,22 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       body: Row(
         children: [
-          const SizedBox(width: 300, child: Sidebar()),
-          const VerticalDivider(width: 1),
+          SizedBox(width: _sidebarWidth, child: const Sidebar()),
+          _ResizeHandle(
+            onDrag: (delta) => setState(() {
+              _sidebarWidth =
+                  (_sidebarWidth + delta).clamp(_minSidebarWidth, _maxSidebarWidth);
+            }),
+          ),
           Expanded(child: main),
           if (!isEditor && state.filesPanelOpen) ...[
-            const VerticalDivider(width: 1),
-            const SizedBox(width: 360, child: FilesPanel()),
+            _ResizeHandle(
+              onDrag: (delta) => setState(() {
+                _filesPanelWidth =
+                    (_filesPanelWidth + delta).clamp(_minFilesPanelWidth, _maxFilesPanelWidth);
+              }),
+            ),
+            SizedBox(width: _filesPanelWidth, child: const FilesPanel()),
           ],
         ],
       ),
@@ -90,5 +107,32 @@ class _MainArea extends StatelessWidget {
       case MainPage.settings:
         return const SettingsPage();
     }
+  }
+}
+
+class _ResizeHandle extends StatelessWidget {
+  final ValueChanged<double> onDrag;
+
+  const _ResizeHandle({required this.onDrag});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
+        child: Container(
+          width: 8,
+          color: theme.colorScheme.outlineVariant.withAlpha(0),
+          child: VerticalDivider(
+            width: 1,
+            color: theme.colorScheme.outlineVariant,
+          ),
+        ),
+      ),
+    );
   }
 }
