@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <glib/gstdio.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -22,6 +23,11 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+
+  g_autoptr(FlDartProject) project = fl_dart_project_new();
+  fl_dart_project_set_dart_entrypoint_arguments(
+      project, self->dart_entrypoint_arguments);
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -29,11 +35,16 @@ static void my_application_activate(GApplication* application) {
   // bar on any desktop environment.
   gtk_window_set_title(window, "Devinorium");
 
-  gtk_window_set_default_size(window, 1280, 720);
+  const gchar* assets_path = fl_dart_project_get_assets_path(project);
+  g_autofree gchar* icon_path =
+      g_build_filename(assets_path, "assets", "icon.png", nullptr);
+  g_autoptr(GError) error = nullptr;
+  if (!gtk_window_set_icon_from_file(GTK_WINDOW(window), icon_path, &error)) {
+    g_warning("Failed to load window icon: %s",
+              error ? error->message : "unknown error");
+  }
 
-  g_autoptr(FlDartProject) project = fl_dart_project_new();
-  fl_dart_project_set_dart_entrypoint_arguments(
-      project, self->dart_entrypoint_arguments);
+  gtk_window_set_default_size(window, 1280, 720);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
