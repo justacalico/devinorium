@@ -9,6 +9,7 @@ class EditorTab {
   bool saving;
   String? error;
   bool showDiff;
+  bool preview;
 
   EditorTab({
     required this.path,
@@ -19,6 +20,7 @@ class EditorTab {
     this.saving = false,
     this.error,
     this.showDiff = false,
+    this.preview = true,
   });
 
   String get name => p.basename(path);
@@ -31,6 +33,7 @@ class EditorTab {
     bool? saving,
     String? error,
     bool? showDiff,
+    bool? preview,
   }) =>
       EditorTab(
         path: path,
@@ -41,6 +44,7 @@ class EditorTab {
         saving: saving ?? this.saving,
         error: error ?? this.error,
         showDiff: showDiff ?? this.showDiff,
+        preview: preview ?? this.preview,
       );
 }
 
@@ -127,7 +131,12 @@ mixin EditorStore on AppStateBase {
       return;
     }
 
-    final tab = EditorTab(path: path, loading: true);
+    final active = activeEditorTab;
+    if (active != null && !active.dirty && active.preview) {
+      closeEditorTab(active.path);
+    }
+
+    final tab = EditorTab(path: path, loading: true, preview: true);
     _editorTabs.add(tab);
     _activeEditorPath = path;
     notifyListeners();
@@ -181,7 +190,12 @@ mixin EditorStore on AppStateBase {
     if (idx < 0) return;
     final tab = _editorTabs[idx];
     final dirty = text != (tab.content?.text ?? '');
-    _editorTabs[idx] = tab.copyWith(text: text, dirty: dirty, error: null);
+    _editorTabs[idx] = tab.copyWith(
+      text: text,
+      dirty: dirty,
+      error: null,
+      preview: dirty ? false : tab.preview,
+    );
     notifyListeners();
   }
 
@@ -220,6 +234,7 @@ mixin EditorStore on AppStateBase {
         content: content,
         dirty: _editorTabs[newIdx].text != (content.text ?? ''),
         saving: false,
+        preview: false,
       );
       notifyListeners();
     } on FileConflictException catch (e) {
