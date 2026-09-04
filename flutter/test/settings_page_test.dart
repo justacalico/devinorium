@@ -7,6 +7,7 @@ import 'package:devinorium_frontend/views/settings_page.dart';
 import 'package:devinorium_frontend/widgets/git_provider_icons.dart';
 import 'package:devinorium_frontend/widgets/git_provider_tile.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -137,14 +138,13 @@ class _FakeApiService extends ApiService {
 }
 
 class _FakeAppState extends AppState {
-  final List<String> openedLinks = [];
+  final Future<PackageInfo>? packageInfoFuture;
 
-  _FakeAppState.test({super.user}) : super.test();
+  _FakeAppState.test({super.user, super.settingsTopicIndex, this.packageInfoFuture})
+      : super.test(api: _FakeApiService());
 
   @override
-  Future<void> openLink(String url) async {
-    openedLinks.add(url);
-  }
+  Future<PackageInfo> packageInfo() => packageInfoFuture ?? super.packageInfo();
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
@@ -948,6 +948,8 @@ void main() {
     tester,
   ) async {
     final state = AppState.test(
+      api: _FakeApiService(),
+      settingsTopicIndex: 6,
       user: User(
         id: 1,
         username: 'owner',
@@ -962,10 +964,8 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(6);
-    await tester.pumpAndSettle();
-
     expect(find.text('About'), findsOneWidget);
+    expect(find.text('App name'), findsOneWidget);
     expect(find.text('Devinorium'), findsOneWidget);
     expect(find.text('Version'), findsOneWidget);
     expect(find.text('0.21.0'), findsOneWidget);
@@ -982,6 +982,8 @@ void main() {
 
   testWidgets('About section is available for non-owners', (tester) async {
     final state = AppState.test(
+      api: _FakeApiService(),
+      settingsTopicIndex: 5,
       user: User(
         id: 2,
         username: 'alice',
@@ -996,17 +998,132 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(5);
-    await tester.pumpAndSettle();
-
     expect(find.text('About'), findsOneWidget);
     expect(find.text('AGPL-3.0-only'), findsOneWidget);
+  });
+
+  testWidgets('About section shows loading while package info loads', (
+    tester,
+  ) async {
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      packageInfoFuture: Future.delayed(
+        const Duration(seconds: 1),
+        () => PackageInfo(
+          appName: 'Devinorium',
+          packageName: 'devinorium_frontend',
+          version: '0.21.0',
+          buildNumber: '25',
+          buildSignature: '',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pump();
+
+    expect(find.text('Loading…'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('0.21.0'), findsOneWidget);
+  });
+
+  testWidgets('About section falls back when version is empty', (
+    tester,
+  ) async {
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      packageInfoFuture: Future.value(
+        PackageInfo(
+          appName: 'Devinorium',
+          packageName: 'devinorium_frontend',
+          version: '',
+          buildNumber: '25',
+          buildSignature: '',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('—'), findsOneWidget);
+  });
+
+  testWidgets('About section shows error when package info fails', (
+    tester,
+  ) async {
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      packageInfoFuture: Future<PackageInfo>.delayed(
+        const Duration(seconds: 1),
+        () => throw Exception('package info failed'),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pump();
+
+    expect(find.text('Loading…'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('Error'), findsOneWidget);
   });
 
   testWidgets('About section opens source code and support links', (
     tester,
   ) async {
+    final launched = <String>[];
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          final args = call.arguments as Map<dynamic, dynamic>;
+          launched.add(args['url'] as String);
+          return true;
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+      launched.clear();
+    });
+
     final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
       user: User(
         id: 1,
         username: 'owner',
@@ -1021,14 +1138,11 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(6);
-    await tester.pumpAndSettle();
-
     await tester.tap(find.text('Source code'));
     await tester.pumpAndSettle();
 
     expect(
-      state.openedLinks,
+      launched,
       contains('https://gitlab.com/HttpAnimations/devinorium'),
     );
 
@@ -1036,8 +1150,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      state.openedLinks,
+      launched,
       contains('https://gitlab.com/HttpAnimations/devinorium/-/issues'),
+    );
+  });
+
+  testWidgets('About section shows a snackbar when a link fails to open', (
+    tester,
+  ) async {
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          return false;
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Source code'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Could not open https://gitlab.com/HttpAnimations/devinorium'),
+      findsOneWidget,
     );
   });
 }
