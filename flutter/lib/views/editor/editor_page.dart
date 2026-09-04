@@ -104,10 +104,10 @@ class _NarrowEditor extends StatelessWidget {
           top: 48,
           left: 8,
           child: _FloatingToggle(
-            icon: state.editorFileTreeOpen
-                ? Icons.folder_open
-                : Icons.folder_outlined,
-            tooltip: l10n(context).files,
+            icon: state.editorFileTreeOpen ? Icons.close : Icons.folder_outlined,
+            tooltip: state.editorFileTreeOpen
+                ? l10n(context).close
+                : l10n(context).files,
             onPressed: () => state.setEditorFileTreeOpen(
               !state.editorFileTreeOpen,
             ),
@@ -117,8 +117,10 @@ class _NarrowEditor extends StatelessWidget {
           top: 48,
           right: 8,
           child: _FloatingToggle(
-            icon: state.agentPanelOpen ? Icons.chat : Icons.chat_outlined,
-            tooltip: l10n(context).chat,
+            icon: state.agentPanelOpen ? Icons.close : Icons.chat_outlined,
+            tooltip: state.agentPanelOpen
+                ? l10n(context).close
+                : l10n(context).chat,
             onPressed: () => state.setAgentPanelOpen(!state.agentPanelOpen),
           ),
         ),
