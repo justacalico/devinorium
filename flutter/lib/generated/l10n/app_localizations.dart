@@ -1867,7 +1867,7 @@ abstract class AppLocalizations {
   /// No description provided for @searchKeyboardShortcutNonMac.
   ///
   /// In en, this message translates to:
-  /// **'Ctrl+K'**
+  /// **'Ctrl+H'**
   String get searchKeyboardShortcutNonMac;
 
   /// No description provided for @noSearchResults.

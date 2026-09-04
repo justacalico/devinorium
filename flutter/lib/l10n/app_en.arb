@@ -560,7 +560,7 @@
   "search": "Search",
   "searchHint": "Search threads...",
   "searchKeyboardShortcut": "⌘K",
-  "searchKeyboardShortcutNonMac": "Ctrl+K",
+  "searchKeyboardShortcutNonMac": "Ctrl+H",
   "noSearchResults": "No threads found.",
   "threadStatusWorking": "Working",
   "threadStatusDone": "Done",

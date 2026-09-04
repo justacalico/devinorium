@@ -161,9 +161,20 @@ class _SidebarState extends State<Sidebar> {
     final appState = context.read<AppState>();
     if (appState.page == MainPage.settings) return false;
 
-    final shortcut = (HardwareKeyboard.instance.isMetaPressed ||
-            HardwareKeyboard.instance.isControlPressed) &&
-        event.logicalKey == LogicalKeyboardKey.keyK;
+    // macOS keeps ⌘K because ⌘H collides with the system Hide shortcut.
+    final platform = Theme.of(context).platform;
+    final isApple = platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.iOS;
+
+    final isShift = HardwareKeyboard.instance.isShiftPressed;
+    final isAlt = HardwareKeyboard.instance.isAltPressed;
+    if (isShift || isAlt) return false;
+
+    final isControl = HardwareKeyboard.instance.isControlPressed;
+    final isMeta = HardwareKeyboard.instance.isMetaPressed;
+    final shortcut = isApple
+        ? isMeta && !isControl && event.logicalKey == LogicalKeyboardKey.keyK
+        : isControl && !isMeta && event.logicalKey == LogicalKeyboardKey.keyH;
     if (!shortcut) return false;
 
     if (_searchFocus.hasFocus) {

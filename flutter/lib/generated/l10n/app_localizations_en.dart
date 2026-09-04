@@ -983,7 +983,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchKeyboardShortcut => '⌘K';
 
   @override
-  String get searchKeyboardShortcutNonMac => 'Ctrl+K';
+  String get searchKeyboardShortcutNonMac => 'Ctrl+H';
 
   @override
   String get noSearchResults => 'No threads found.';
