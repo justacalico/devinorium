@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Locale;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
@@ -40,8 +41,11 @@ part 'app_state/git_store.dart';
 part 'app_state/git_refresh_store.dart';
 part 'app_state/dialog_store.dart';
 part 'app_state/settings_store.dart';
+part 'app_state/editor_store.dart';
 
 enum AppView { loading, login, app }
+
+enum AppMode { agents, editor }
 
 enum MainPage { threads, settings }
 
@@ -59,7 +63,7 @@ enum DialogKind {
   issue,
 }
 
-class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, ProjectStore, ThreadListStore, ComposerStore, AttachmentStore, ModelStore, PlanOverlayStore, FilesPanelStore, HealthCheckStore, GitStore, GitRefreshStore, DialogStore, SettingsStore {
+class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, ProjectStore, ThreadListStore, ComposerStore, AttachmentStore, ModelStore, PlanOverlayStore, FilesPanelStore, HealthCheckStore, GitStore, GitRefreshStore, DialogStore, SettingsStore, EditorStore {
   @override
   final MultiServerState multiServerState;
 

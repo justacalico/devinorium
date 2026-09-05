@@ -90,8 +90,8 @@ void main() {
     );
   });
 
-  group('AppShell files panel on narrow screens', () {
-    testWidgets('openFilesPanel opens end drawer on narrow screens',
+  group('AppShell files view on narrow screens', () {
+    testWidgets('openFilesPanel opens the sidebar drawer on narrow screens',
         (tester) async {
       tester.view.physicalSize = const Size(600, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -105,15 +105,14 @@ void main() {
       // No files panel visible initially.
       expect(find.byType(Drawer), findsNothing);
 
-      // Open the files panel.
+      // Open the files view — the sidebar drawer shows it.
       await state.openFilesPanel();
       await tester.pumpAndSettle();
 
-      // The end drawer should be open with the FilesPanel.
       expect(find.byType(FilesPanel), findsOneWidget);
     });
 
-    testWidgets('closing the end drawer sets filesPanelOpen to false',
+    testWidgets('closing the drawer switches the sidebar back to threads',
         (tester) async {
       tester.view.physicalSize = const Size(600, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -130,24 +129,30 @@ void main() {
       expect(state.filesPanelOpen, isTrue);
 
       // Close the drawer by tapping outside (scrim).
-      await tester.tapAt(const Offset(10, 10));
+      await tester.tapAt(const Offset(500, 400));
       await tester.pumpAndSettle();
 
       expect(state.filesPanelOpen, isFalse);
     });
 
-    testWidgets('files panel shows inline on wide screens', (tester) async {
+    testWidgets('files view shows inside the sidebar on wide screens',
+        (tester) async {
       final state = _baseState(api: _clientFor([_json(200, [])]));
       addTearDown(state.dispose);
       await tester.pumpWidget(_buildWithState(state, size: const Size(1200, 800)));
       await tester.pumpAndSettle();
 
-      // Open the files panel — should show inline, not as a drawer.
+      // The files view lives inside the sidebar, not as a separate panel.
       await state.openFilesPanel();
       await tester.pumpAndSettle();
 
-      expect(find.byType(FilesPanel), findsOneWidget);
-      // On wide screens there should be no Drawer widget for the files panel.
+      expect(
+        find.descendant(
+          of: find.byType(Sidebar),
+          matching: find.byType(FilesPanel),
+        ),
+        findsOneWidget,
+      );
       expect(find.byType(Drawer), findsNothing);
     });
   });

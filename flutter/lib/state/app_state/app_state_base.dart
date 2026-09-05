@@ -8,6 +8,8 @@ abstract class AppStateBase extends ChangeNotifier {
   ApiService get api;
   AppView get _view;
   set _view(AppView value);
+  AppMode get _appMode;
+  set _appMode(AppMode value);
   MainPage get _page;
   set _page(MainPage value);
   User? get _user;
@@ -34,6 +36,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Map<int, bool> get _loadingMoreProjectThreads;
   FileTreeNode get _filesTreeRoot;
   set _filesTreeRoot(FileTreeNode value);
+  int? get _filesProjectId;
+  set _filesProjectId(int? value);
   List<ThreadGroup> get _groups;
   set _groups(List<ThreadGroup> value);
   List<ModelInfo> get _models;
@@ -135,6 +139,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get _refreshingGit;
   set _refreshingGit(bool value);
   AppView get view;
+  AppMode get appMode;
   MainPage get page;
   User? get user;
   List<Project> get projects;
@@ -160,6 +165,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Plan? get activePlan;
   List<DirEntry> get filesEntries;
   FileTreeNode get filesTreeRoot;
+  int? get filesProjectId;
   List<FileTreeRow> get filesTreeRows;
   String get filesError;
   DialogKind get dialog;
@@ -224,6 +230,7 @@ abstract class AppStateBase extends ChangeNotifier {
   List<GitConnection> get gitConnections;
   bool get loadingGitConnections;
   void setView(AppView v);
+  void setAppMode(AppMode m);
   void setPage(MainPage p);
   void setSettingsTopicIndex(int index);
   void toggleUserMenu();
@@ -379,4 +386,26 @@ abstract class AppStateBase extends ChangeNotifier {
   void closeDialog();
   Future<void> openLink(String url);
   Future<PackageInfo> packageInfo() => PackageInfo.fromPlatform();
+
+  // Editor
+  List<EditorTab> get editorTabs;
+  String? get activeEditorPath;
+  EditorTab? get activeEditorTab;
+  bool get agentPanelOpen;
+  bool get editorTerminalOpen;
+  double get editorAgentPanelWidth;
+  double get editorTerminalHeight;
+  bool get hasDirtyEditorTabs;
+  void setEditorAgentPanelWidth(double v);
+  void setEditorTerminalHeight(double v);
+  Future<void> openEditorFile(String path);
+  Future<void> openEditorFileNewTab(String path);
+  void closeEditorTab(String path);
+  void closeAllEditorTabs();
+  void setActiveEditorPath(String? path);
+  void setEditorTabText(String path, String text);
+  Future<void> saveEditorTab(String path);
+  Future<void> reloadEditorTab(String path);
+  void setAgentPanelOpen(bool v);
+  void setEditorTerminalOpen(bool v);
 }

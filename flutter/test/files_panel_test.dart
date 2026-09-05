@@ -371,4 +371,96 @@ void main() {
       expect(find.text('Empty folder'), findsOneWidget);
     });
   });
+
+  group('FilesPanel editor thread gate', () {
+    testWidgets('shows select thread placeholder when no thread in editor', (
+      tester,
+    ) async {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+      );
+      state.setFilesEntries([
+        DirEntry(name: 'main.dart', isDir: false, size: 200),
+      ]);
+      state.setAppMode(AppMode.editor);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select or create a thread'), findsOneWidget);
+      expect(find.text('main.dart'), findsNothing);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsNothing);
+    });
+
+    testWidgets('shows files in editor when a thread is active', (
+      tester,
+    ) async {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 'a',
+      );
+      state.setFilesEntries([
+        DirEntry(name: 'main.dart', isDir: false, size: 200),
+      ]);
+      state.setAppMode(AppMode.editor);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('main.dart'), findsOneWidget);
+      expect(find.text('Select or create a thread'), findsNothing);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
+    });
+
+    testWidgets('shows project placeholder in editor without project', (
+      tester,
+    ) async {
+      final state = AppState.test();
+      state.setAppMode(AppMode.editor);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select a project first'), findsOneWidget);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsNothing);
+    });
+
+    testWidgets('shows files in agents mode without active thread', (
+      tester,
+    ) async {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+      );
+      state.setFilesEntries([
+        DirEntry(name: 'main.dart', isDir: false, size: 200),
+      ]);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('main.dart'), findsOneWidget);
+      expect(find.text('Select or create a thread'), findsNothing);
+    });
+
+    testWidgets('shows project placeholder in agents mode without project', (
+      tester,
+    ) async {
+      final state = AppState.test();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select a project first'), findsOneWidget);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsNothing);
+    });
+  });
 }

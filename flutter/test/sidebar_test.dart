@@ -2456,6 +2456,8 @@ void main() {
     expect(find.text('t6'), findsNothing);
     expect(find.text('Show 1 more'), findsOneWidget);
 
+    await tester.drag(find.text('t5'), const Offset(0, -200));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Show 1 more'));
     await tester.pumpAndSettle();
 
@@ -2558,6 +2560,8 @@ void main() {
     expect(find.text('t7'), findsNothing);
     expect(find.text('Show 2 more'), findsOneWidget);
 
+    await tester.drag(find.text('t5'), const Offset(0, -200));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Show 2 more'));
     await tester.pumpAndSettle();
 

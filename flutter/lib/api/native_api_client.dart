@@ -115,7 +115,11 @@ class NativeApiClient implements BaseApiClient {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final err = tryDecodeJson(text);
       if (err != null && err['error'] is String) {
-        throw ApiException(err['error'] as String, resp.statusCode);
+        throw ApiException(
+          err['error'] as String,
+          resp.statusCode,
+          data: err,
+        );
       }
       if (text.isNotEmpty) {
         throw ApiException(text, resp.statusCode);

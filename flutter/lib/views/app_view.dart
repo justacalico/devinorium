@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import 'drop_zone.dart';
-import 'files_panel.dart';
+import 'editor/editor_page.dart';
 import 'settings_page.dart';
 import 'sidebar.dart';
 import 'thread_page.dart';
@@ -22,6 +22,10 @@ class _AppShellState extends State<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _mainKey = GlobalKey();
   bool _wasFilesPanelOpen = false;
+  double _sidebarWidth = 300;
+
+  static const double _minSidebarWidth = 240;
+  static const double _maxSidebarWidth = 420;
 
   @override
   Widget build(BuildContext context) {
@@ -34,9 +38,11 @@ class _AppShellState extends State<AppShell> {
     final main = DropZone(key: _mainKey, child: _MainArea());
 
     if (isNarrow) {
+      // The files view lives inside the unified sidebar, so opening it on a
+      // narrow screen opens the sidebar drawer instead of a second panel.
       if (state.filesPanelOpen && !_wasFilesPanelOpen) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scaffoldKey.currentState?.openEndDrawer();
+          _scaffoldKey.currentState?.openDrawer();
         });
       }
       _wasFilesPanelOpen = state.filesPanelOpen;
@@ -45,10 +51,7 @@ class _AppShellState extends State<AppShell> {
         key: _scaffoldKey,
         drawer: const Drawer(width: 300, child: Sidebar()),
         body: main,
-        endDrawer: state.filesPanelOpen
-            ? const Drawer(width: 360, child: FilesPanel())
-            : null,
-        onEndDrawerChanged: (opened) {
+        onDrawerChanged: (opened) {
           if (!opened && state.filesPanelOpen) {
             state.closeFilesPanel();
           }
@@ -61,13 +64,14 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       body: Row(
         children: [
-          const SizedBox(width: 300, child: Sidebar()),
-          const VerticalDivider(width: 1),
+          SizedBox(width: _sidebarWidth, child: const Sidebar()),
+          _ResizeHandle(
+            onDrag: (delta) => setState(() {
+              _sidebarWidth =
+                  (_sidebarWidth + delta).clamp(_minSidebarWidth, _maxSidebarWidth);
+            }),
+          ),
           Expanded(child: main),
-          if (state.filesPanelOpen) ...[
-            const VerticalDivider(width: 1),
-            const SizedBox(width: 360, child: FilesPanel()),
-          ],
         ],
       ),
     );
@@ -78,11 +82,42 @@ class _MainArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    if (state.appMode == AppMode.editor) {
+      return const EditorPage();
+    }
     switch (state.page) {
       case MainPage.threads:
         return const ThreadPage();
       case MainPage.settings:
         return const SettingsPage();
     }
+  }
+}
+
+class _ResizeHandle extends StatelessWidget {
+  final ValueChanged<double> onDrag;
+
+  const _ResizeHandle({required this.onDrag});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
+        child: Container(
+          width: 10,
+          color: theme.colorScheme.outlineVariant.withAlpha(40),
+          alignment: Alignment.center,
+          child: VerticalDivider(
+            width: 2,
+            color: theme.colorScheme.outline,
+          ),
+        ),
+      ),
+    );
   }
 }

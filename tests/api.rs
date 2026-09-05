@@ -2566,6 +2566,115 @@ async fn file_manager_read_returns_git_diff_when_requested() {
 }
 
 #[tokio::test]
+async fn file_manager_write_replaces_and_detects_conflicts() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &cookie,
+            r#"{"name":"write","path":"write"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap();
+    std::fs::create_dir_all(path).unwrap();
+    std::fs::write(format!("{path}/hello.txt"), "hello\n").unwrap();
+
+    // Read the initial content and capture its hash.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?project_id={pid}&path=hello.txt"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let initial = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let original_hash = initial["sha256"].as_str().unwrap();
+    assert!(!original_hash.is_empty());
+    assert_eq!(initial["text"], "hello\n");
+
+    // Write with the correct expected hash.
+    let write_body = format!(
+        r#"{{"path":"hello.txt","project_id":{pid},"content":"world\n","expected_sha256":"{original_hash}"}}"#,
+    );
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/files/content", &cookie, &write_body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let updated = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(updated["text"], "world\n");
+    assert_ne!(updated["sha256"].as_str().unwrap(), original_hash);
+
+    // Re-read to confirm the file changed.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?project_id={pid}&path=hello.txt"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["text"], "world\n");
+
+    // Write with the stale hash; should conflict.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/files/content",
+            &cookie,
+            &format!(
+                r#"{{"path":"hello.txt","project_id":{pid},"content":"stale\n","expected_sha256":"{original_hash}"}}"#
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_str(resp.into_body()).await;
+    let conflict = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(conflict["error"], "file changed on disk");
+    assert_eq!(conflict["current"]["text"], "world\n");
+
+    // Write a new file without an expected hash.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/files/content",
+            &cookie,
+            &format!(r#"{{"path":"new.txt","project_id":{pid},"content":"new file\n"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["text"], "new file\n");
+    assert!(std::path::Path::new(&format!("{path}/new.txt")).exists());
+}
+
+#[tokio::test]
 async fn file_manager_omits_git_status_outside_git_repo() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

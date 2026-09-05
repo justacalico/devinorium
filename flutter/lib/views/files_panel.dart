@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart'
+    show kMiddleMouseButton, PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,77 +10,129 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import 'file_viewer.dart';
 
-class FilesPanel extends StatelessWidget {
+class FilesPanel extends StatefulWidget {
   const FilesPanel({super.key});
+
+  @override
+  State<FilesPanel> createState() => _FilesPanelState();
+}
+
+class _FilesPanelState extends State<FilesPanel> {
+  @override
+  void initState() {
+    super.initState();
+    _loadIfNeeded(context.read<AppState>());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadIfNeeded(context.read<AppState>());
+  }
+
+  void _loadIfNeeded(AppState state) {
+    if (state.filesProjectId == state.activeProjectId) return;
+    if (state.appMode == AppMode.editor && state.activeThreadId == null) return;
+    unawaited(state.reloadFiles());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    context.watch<AppState>();
+    return const _FilesPanelBody();
+  }
+}
+
+class _FilesPanelBody extends StatelessWidget {
+  const _FilesPanelBody();
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
+    final l = l10n(context);
     final rows = state.filesTreeRows;
     final error = state.filesError;
 
-    return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    l10n(context).files,
-                    style: theme.textTheme.titleMedium,
+    final showTree = state.activeProjectId != null &&
+        (state.appMode != AppMode.editor || state.activeThreadId != null);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 8, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l.files.toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                IconButton(
-                  tooltip: l10n(context).newFolder,
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                  onPressed: () => _promptMkdir(context, state),
-                ),
-                IconButton(
-                  tooltip: l10n(context).close,
-                  icon: const Icon(Icons.close),
-                  onPressed: state.closeFilesPanel,
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          if (error.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                error,
-                style: TextStyle(color: theme.colorScheme.error),
               ),
-            ),
-          Expanded(
-            child: rows.isEmpty
-                ? error.isNotEmpty
-                      ? const SizedBox.shrink()
-                      : Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            l10n(context).emptyFolder,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                : ListView.builder(
-                    itemCount: rows.length,
-                    itemBuilder: (context, index) =>
-                        _buildRow(context, state, rows[index], theme),
-                  ),
+              if (showTree)
+                IconButton(
+                  tooltip: l.newFolder,
+                  icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                  onPressed: () => _promptMkdir(context, state),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(4),
+                ),
+            ],
           ),
-        ],
-      ),
+        ),
+        const Divider(height: 1),
+        if (error.isNotEmpty && showTree)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              error,
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ),
+        Expanded(
+          child: !showTree
+              ? _EmptyPlaceholder(
+                  text: state.activeProjectId == null
+                      ? l.selectProjectFirst
+                      : l.selectOrCreateThread,
+                )
+              : rows.isEmpty
+                  ? error.isNotEmpty
+                      ? const SizedBox.shrink()
+                      : _EmptyPlaceholder(
+                          text: l.emptyFolder,
+                        )
+                  : ListView.builder(
+                      itemCount: rows.length,
+                      itemBuilder: (context, index) =>
+                          _buildRow(context, state, rows[index], theme),
+                    ),
+        ),
+      ],
     );
   }
 
-  void _openFile(BuildContext context, AppState state, FileTreeNode node) {
+  void _openFile(
+    BuildContext context,
+    AppState state,
+    FileTreeNode node, {
+    bool newTab = false,
+  }) {
+    if (state.appMode == AppMode.editor) {
+      if (newTab) {
+        state.openEditorFileNewTab(node.fullPathString);
+      } else {
+        state.openEditorFile(node.fullPathString);
+      }
+      final scaffold = Scaffold.maybeOf(context);
+      if (scaffold?.isDrawerOpen ?? false) {
+        scaffold!.closeDrawer();
+      }
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FileViewerPage(
@@ -157,30 +213,39 @@ class FilesPanel extends StatelessWidget {
         ? _gitStatusColor(node.entry.gitStatus!, theme)
         : null;
 
-    return ListTile(
-      contentPadding: EdgeInsets.only(left: leftPadding, right: 12),
-      leading: Icon(icon, size: 22, color: color),
-      title: Text(
-        node.entry.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: titleColor != null ? TextStyle(color: titleColor) : null,
+    return Listener(
+      onPointerDown: (event) {
+        if (!isDir &&
+            event.kind == PointerDeviceKind.mouse &&
+            event.buttons == kMiddleMouseButton) {
+          _openFile(context, state, node, newTab: true);
+        }
+      },
+      child: ListTile(
+        contentPadding: EdgeInsets.only(left: leftPadding, right: 12),
+        leading: Icon(icon, size: 22, color: color),
+        title: Text(
+          node.entry.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: titleColor != null ? TextStyle(color: titleColor) : null,
+        ),
+        trailing: isDir
+            ? _deleteButton(context, state, node)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatSize(node.entry.size, l10n(context)),
+                    style: theme.textTheme.labelSmall,
+                  ),
+                  _deleteButton(context, state, node),
+                ],
+              ),
+        onTap: isDir
+            ? () => state.toggleFilesFolder(node)
+            : () => _openFile(context, state, node),
       ),
-      trailing: isDir
-          ? _deleteButton(context, state, node)
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _formatSize(node.entry.size, l10n(context)),
-                  style: theme.textTheme.labelSmall,
-                ),
-                _deleteButton(context, state, node),
-              ],
-            ),
-      onTap: isDir
-          ? () => state.toggleFilesFolder(node)
-          : () => _openFile(context, state, node),
     );
   }
 
@@ -488,5 +553,25 @@ class FilesPanel extends StatelessWidget {
       ),
     );
     return result ?? false;
+  }
+}
+
+class _EmptyPlaceholder extends StatelessWidget {
+  final String text;
+
+  const _EmptyPlaceholder({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        text,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
   }
 }

@@ -1097,6 +1097,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileViewerLoadError => 'Failed to load file';
 
   @override
+  String get agentsMode => 'Agents';
+
+  @override
+  String get editorMode => 'Editor';
+
+  @override
+  String get chat => 'Chat';
+
+  @override
+  String get editorSelectFile => 'Select a file from the tree to edit';
+
+  @override
+  String get editorUnsavedChanges => 'Unsaved changes';
+
+  @override
+  String editorSaveBeforeClose(String name) {
+    return 'Save changes to $name?';
+  }
+
+  @override
+  String get editorReload => 'Reload';
+
+  @override
+  String binaryFileNotEditable(String name) {
+    return '$name is a binary file and cannot be edited';
+  }
+
+  @override
+  String get editorDiscard => 'Discard';
+
+  @override
   String diffViewMoreLines(int count) {
     return '… $count more lines not shown';
   }

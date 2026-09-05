@@ -9,9 +9,13 @@ mixin FilesPanelStore on AppStateBase {
   bool _filesPanelOpen = false;
   @override
   String _filesError = '';
+  @override
+  int? _filesProjectId;
 
   @override
   bool get filesPanelOpen => _filesPanelOpen;
+  @override
+  int? get filesProjectId => _filesProjectId;
   @override
   List<DirEntry> get filesEntries =>
       _filesTreeRoot.children.map((n) => n.entry).toList();
@@ -32,7 +36,14 @@ mixin FilesPanelStore on AppStateBase {
     _filesPanelOpen = true;
     _filesError = '';
     _filesTreeRoot = FileTreeNode.root()..isLoading = true;
+    _filesProjectId = _activeProjectId;
     notifyListeners();
+    if (_activeProjectId == null) {
+      _filesTreeRoot.isLoading = false;
+      _filesTreeRoot.children = [];
+      notifyListeners();
+      return;
+    }
     await _loadChildren(_filesTreeRoot);
     _filesError = _filesTreeRoot.error;
     notifyListeners();
@@ -48,6 +59,13 @@ mixin FilesPanelStore on AppStateBase {
   Future<void> reloadFiles() async {
     if (_filesTreeRoot.isLoading) return;
     _filesTreeRoot = FileTreeNode.root()..hasMore = true;
+    _filesProjectId = _activeProjectId;
+    if (_activeProjectId == null) {
+      _filesTreeRoot.children = [];
+      _filesError = '';
+      notifyListeners();
+      return;
+    }
     await _loadChildren(_filesTreeRoot);
     _filesError = _filesTreeRoot.error;
     notifyListeners();
@@ -65,6 +83,7 @@ mixin FilesPanelStore on AppStateBase {
 
   @override
   Future<void> loadMoreFiles({FileTreeNode? node}) async {
+    if (_activeProjectId == null) return;
     final target = node ?? _filesTreeRoot;
     if (target.isLoading || target.isLoadingMore || !target.hasMore) return;
     target.isLoadingMore = true;
@@ -103,12 +122,14 @@ mixin FilesPanelStore on AppStateBase {
           entries.map((e) => FileTreeNode(path: const [], entry: e)).toList()
       ..offset = entries.length
       ..hasMore = false;
+    _filesProjectId = _activeProjectId;
     _filesError = '';
     notifyListeners();
   }
 
   @override
   Future<void> mkdir(String name) async {
+    if (_activeProjectId == null) return;
     final full = name.trim();
     try {
       await api.mkdir(full, projectId: _activeProjectId);
@@ -123,8 +144,14 @@ mixin FilesPanelStore on AppStateBase {
 
   @override
   Future<void> deleteFile(String path) async {
+    if (_activeProjectId == null) return;
     try {
       await api.deleteFile(path, projectId: _activeProjectId);
+      for (final tab in editorTabs.toList().reversed) {
+        if (tab.path == path || tab.path.startsWith('$path/')) {
+          closeEditorTab(tab.path);
+        }
+      }
       _filesError = '';
       notifyListeners();
       await _refreshParentForPath(path);
@@ -135,6 +162,12 @@ mixin FilesPanelStore on AppStateBase {
   }
 
   Future<void> _loadChildren(FileTreeNode node) async {
+    if (_activeProjectId == null) {
+      node.isLoading = false;
+      node.children = [];
+      notifyListeners();
+      return;
+    }
     node.isLoading = true;
     node.error = '';
     node.children = [];
@@ -151,6 +184,9 @@ mixin FilesPanelStore on AppStateBase {
           .toList();
       node.offset = chunk.length;
       node.hasMore = chunk.length == _fileChunkSize;
+      if (node.fullPath.isEmpty) {
+        _filesProjectId = _activeProjectId;
+      }
     } catch (e) {
       node.error = '$e';
       node.hasMore = false;

@@ -12,6 +12,7 @@ import '../services/window_actions.dart';
 import '../state/app_state.dart';
 import '../utils/thread_status.dart';
 import '../widgets/owner_badge.dart';
+import 'files_panel.dart';
 import 'project_icon.dart';
 import 'window_controls.dart';
 
@@ -204,6 +205,7 @@ class _SidebarState extends State<Sidebar> {
     final username = user?.username ?? '';
     final avatar = username.isNotEmpty ? username[0].toUpperCase() : '?';
     final isSettings = state.page == MainPage.settings;
+    final filesOpen = !isSettings && state.filesPanelOpen;
 
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
@@ -212,8 +214,9 @@ class _SidebarState extends State<Sidebar> {
         children: [
           if (!isSettings) const _AppTitle(),
           if (isSettings) const _SettingsHeader(),
+          if (!isSettings) const _ModeSwitch(),
           const _ServerSwitcher(),
-          if (!isSettings) ...[
+          if (!isSettings && !filesOpen) ...[
             _SearchField(
               controller: _searchController,
               focusNode: _searchFocus,
@@ -223,14 +226,92 @@ class _SidebarState extends State<Sidebar> {
           Expanded(
             child: isSettings
                 ? const _SettingsNav()
-                : _ProjectThreadList(searchQuery: _searchController.text),
+                : filesOpen
+                    ? const FilesPanel()
+                    : _ProjectThreadList(searchQuery: _searchController.text),
           ),
           _UserChip(
             username: username,
             avatar: avatar,
           ),
+          const _ActivityBar(),
         ],
       ),
+    );
+  }
+}
+
+class _ActivityBar extends StatelessWidget {
+  const _ActivityBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final l = l10n(context);
+    final isSettings = state.page == MainPage.settings;
+    final filesOpen = !isSettings && state.filesPanelOpen;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: Row(
+        children: [
+          _ActivityIcon(
+            icon: Icons.chat_bubble_outline,
+            tooltip: l.chat,
+            active: !isSettings && !filesOpen,
+            onPressed: () {
+              state.closeFilesPanel();
+              state.setPage(MainPage.threads);
+            },
+          ),
+          _ActivityIcon(
+            icon: Icons.folder_outlined,
+            tooltip: l.files,
+            active: filesOpen,
+            onPressed: () => unawaited(state.openFilesPanel()),
+          ),
+          const Spacer(),
+          _ActivityIcon(
+            icon: Icons.settings_outlined,
+            tooltip: l.settings,
+            active: isSettings,
+            onPressed: () => state.setPage(MainPage.settings),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityIcon extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool active;
+  final VoidCallback onPressed;
+
+  const _ActivityIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.active,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      visualDensity: VisualDensity.compact,
+      style: IconButton.styleFrom(
+        backgroundColor:
+            active ? theme.colorScheme.surfaceContainerHigh : null,
+        foregroundColor: active
+            ? theme.colorScheme.onSurface
+            : theme.colorScheme.onSurfaceVariant,
+      ),
+      icon: Icon(icon, size: 20),
     );
   }
 }
@@ -313,6 +394,56 @@ class _AppTitleState extends State<_AppTitle> {
                   );
                 },
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeSwitch extends StatelessWidget {
+  const _ModeSwitch();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final l = l10n(context);
+
+    final isAgents = state.appMode == AppMode.agents;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: isAgents
+                    ? theme.colorScheme.surfaceContainerHigh
+                    : Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+              label: Text(l.agentsMode),
+              onPressed: () => state.setAppMode(AppMode.agents),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: !isAgents
+                    ? theme.colorScheme.surfaceContainerHigh
+                    : Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.code, size: 18),
+              label: Text(l.editorMode),
+              onPressed: () => state.setAppMode(AppMode.editor),
             ),
           ),
         ],
