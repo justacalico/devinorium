@@ -52,7 +52,7 @@ mixin EditorStore on AppStateBase {
   final List<EditorTab> _editorTabs = [];
   String? _activeEditorPath;
   bool _agentPanelOpen = true;
-  bool _editorTerminalOpen = true;
+  bool _editorTerminalOpen = false;
   double _editorAgentPanelWidth = 320;
   double _editorTerminalHeight = 280;
 
