@@ -201,16 +201,34 @@ class _Header extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Text(
-              detail.branches,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.primary,
+            Expanded(
+              child: Row(
+                children: [
+                  Flexible(
+                    flex: 3,
+                    child: Text(
+                      detail.branches,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (author != null) ...[
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        '@${author.username}',
+                        style: theme.textTheme.labelMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(width: 12),
-            if (author != null)
-              Text('@${author.username}', style: theme.textTheme.labelMedium),
-            const Spacer(),
             if (url != null && isOpenableLink(url))
               IconButton(
                 tooltip: l10n(context).openInBrowser,

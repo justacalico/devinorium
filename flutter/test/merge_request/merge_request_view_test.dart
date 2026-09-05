@@ -37,13 +37,17 @@ void main() {
       ],
     );
 
-    Widget wrap(AsyncValue<MergeRequestDetail> value) => MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(
-        body: MergeRequestView(detail: value, url: detail.webUrl),
-      ),
-    );
+    Widget wrap(AsyncValue<MergeRequestDetail> value, {String? url}) =>
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: value,
+              url: url ?? value.valueOrNull?.webUrl,
+            ),
+          ),
+        );
 
     testWidgets('shows loading state', (tester) async {
       await tester.pumpWidget(wrap(const AsyncValue.loading()));
@@ -57,6 +61,62 @@ void main() {
       expect(find.text('Add feature'), findsOneWidget);
       expect(find.text('MR !1'), findsOneWidget);
       expect(find.text('feature → main'), findsOneWidget);
+    });
+
+    testWidgets('ellipsizes long branch names without overflowing', (
+      tester,
+    ) async {
+      const detailWithLongBranches = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'merged',
+        sourceBranch: 'fix/composer-mobile-autofocus-with-a-long-name',
+        targetBranch: 'fix/composer-mobile-dropdowns-with-more-text',
+        iid: 222,
+        webUrl: 'https://gitlab.com/group/project/-/merge_requests/222',
+        author: MergeRequestAuthor(name: 'Http', username: 'Http'),
+      );
+
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        wrap(const AsyncValue.ready(detailWithLongBranches)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('MR !222'), findsOneWidget);
+      expect(find.text(detailWithLongBranches.branches), findsOneWidget);
+      expect(find.text('@Http'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('ellipsizes long branch names without author or icon', (
+      tester,
+    ) async {
+      const detailWithLongBranches = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'merged',
+        sourceBranch: 'fix/composer-mobile-autofocus-with-a-long-name',
+        targetBranch: 'fix/composer-mobile-dropdowns-with-more-text',
+        iid: 222,
+        webUrl: '',
+      );
+
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        wrap(const AsyncValue.ready(detailWithLongBranches), url: ''),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('MR !222'), findsOneWidget);
+      expect(find.text(detailWithLongBranches.branches), findsOneWidget);
+      expect(find.textContaining('@'), findsNothing);
+      expect(find.byIcon(Icons.open_in_new), findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('switches to changes tab and expands a file', (tester) async {
