@@ -51,6 +51,21 @@ void main() {
       expect(result, isA<PathFallback>());
     });
 
+    test('falls back to paste for a Windows-style path with forward slashes',
+        () async {
+      const path = r'C:/Users/foo/bar.txt';
+
+      final result = await maybeAttachPath(path);
+
+      expect(result, isA<PathFallback>());
+    });
+
+    test('falls back to paste for text with multiple lines', () async {
+      final result = await maybeAttachPath('/tmp/file.txt\nmore text');
+
+      expect(result, isA<PathFallback>());
+    });
+
     test('falls back to paste for a directory path', () async {
       final dir = Directory('${tempDir.path}/a_dir');
       await dir.create();

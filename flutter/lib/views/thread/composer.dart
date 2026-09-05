@@ -10,36 +10,54 @@ class _Composer extends StatefulWidget {
 
 class _ComposerState extends State<_Composer> {
   final _focusNode = FocusNode();
-  final _keyFocusNode = FocusNode();
   bool _wasSending = false;
   ComposerMode? _preAskMode;
   bool _promptDrivenAsk = false;
   String? _lastThreadId;
 
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    final state = context.read<AppState>();
-    final shift = HardwareKeyboard.instance.isShiftPressed;
-    if (event.logicalKey == LogicalKeyboardKey.enter && !shift) {
-      _submit(state);
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.tab && shift) {
-      _cycleComposerMode(state);
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.keyV &&
-        (HardwareKeyboard.instance.isControlPressed ||
-            HardwareKeyboard.instance.isMetaPressed)) {
-      _handlePaste();
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
-  }
+  static const _pasteShortcut = SingleActivator(
+    LogicalKeyboardKey.keyV,
+    control: true,
+  );
+  static const _macPasteShortcut = SingleActivator(
+    LogicalKeyboardKey.keyV,
+    meta: true,
+  );
+  static const _sendShortcut = SingleActivator(LogicalKeyboardKey.enter);
+  static const _cycleModeShortcut = SingleActivator(
+    LogicalKeyboardKey.tab,
+    shift: true,
+  );
 
   Future<void> _handlePaste() async {
     final state = context.read<AppState>();
     final l = l10n(context);
+
+    final imageBytes = await getClipboardImage();
+    if (!mounted) return;
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      final result = await readAttachment(
+        InMemoryAttachmentSource('pasted-image', imageBytes),
+      );
+      if (!mounted) return;
+      switch (result) {
+        case AttachmentSuccess():
+          final attachment = result.attachment;
+          state.addAttachments([
+            (
+              filename: _pastedImageName(attachment.mime),
+              mime: attachment.mime,
+              bytes: attachment.bytes,
+            ),
+          ]);
+        case AttachmentTooLarge():
+          state.setGlobalError(l.dropZoneFileTooLarge(result.filename));
+        case AttachmentReadError():
+          state.setGlobalError(l.dropZoneReadFileFailed('${result.error}'));
+      }
+      return;
+    }
+
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (!mounted) return;
     final text = data?.text;
@@ -59,6 +77,19 @@ class _ComposerState extends State<_Composer> {
     }
   }
 
+  static String _pastedImageName(String mime) {
+    final ext = switch (mime) {
+      'image/png' => 'png',
+      'image/jpeg' => 'jpg',
+      'image/gif' => 'gif',
+      'image/webp' => 'webp',
+      'image/bmp' => 'bmp',
+      'image/svg+xml' => 'svg',
+      _ => 'bin',
+    };
+    return 'pasted-image.$ext';
+  }
+
   void _insertText(String text) {
     final state = context.read<AppState>();
     final value = widget.controller.value;
@@ -66,7 +97,7 @@ class _ComposerState extends State<_Composer> {
     late final String newText;
     late final TextSelection newSelection;
 
-    if (selection.isValid && selection.isCollapsed) {
+    if (selection.isValid) {
       newText = value.text.replaceRange(selection.start, selection.end, text);
       newSelection = TextSelection.collapsed(
         offset: selection.start + text.length,
@@ -115,7 +146,6 @@ class _ComposerState extends State<_Composer> {
   @override
   void dispose() {
     _focusNode.dispose();
-    _keyFocusNode.dispose();
     super.dispose();
   }
 
@@ -240,9 +270,17 @@ class _ComposerState extends State<_Composer> {
                           ],
                         ),
                       ),
-                    Focus(
-                      focusNode: _keyFocusNode,
-                      onKeyEvent: _handleKeyEvent,
+                    CallbackShortcuts(
+                      bindings: {
+                        _pasteShortcut: () {
+                          _handlePaste();
+                        },
+                        _macPasteShortcut: () {
+                          _handlePaste();
+                        },
+                        _sendShortcut: () => _submit(state),
+                        _cycleModeShortcut: () => _cycleComposerMode(state),
+                      },
                       child: TextField(
                         key: const Key('composer_input'),
                         controller: widget.controller,
@@ -262,6 +300,7 @@ class _ComposerState extends State<_Composer> {
                               .map((item) {
                                 if (item.type == ContextMenuButtonType.paste) {
                                   return ContextMenuButtonItem(
+                                    type: item.type,
                                     label: item.label,
                                     onPressed: _handlePaste,
                                   );
