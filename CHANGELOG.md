@@ -2,6 +2,20 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.39.0 - 2026-09-05
+#### Features
+- 合并请求变更页显示增删行数 - (583c1ad) - HttpAnimations
+- 实现桌面端文件附件（拖放、粘贴、文件选择） - (733954c) - HttpAnimations
+#### Bug Fixes
+- 根布局添加 SafeArea 避免 Android 状态栏遮挡内容 - (3579cc1) - HttpAnimations
+- 修复前端休眠后连接恢复 - (ad493fe) - HttpAnimations
+- 修复模型选择器打开时搜索框自动聚焦弹出键盘的问题 - (f7ecee2) - HttpAnimations
+- 终端支持 Ctrl+Shift+C/V 复制粘贴 - (f7afd4b) - HttpAnimations
+#### Performance
+- 全面优化前端加载与渲染性能 - (118eb3e) - HttpAnimations
+
+- - -
+
 ## v0.38.0 - 2026-09-05
 #### Features
 - 切换模式时自动同步侧边栏文件标签 - (799f188) - HttpAnimations
