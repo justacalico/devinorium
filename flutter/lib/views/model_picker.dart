@@ -11,6 +11,7 @@ class ModelPicker extends StatelessWidget {
   final List<ModelInfo> models;
   final ValueChanged<String> onChanged;
   final bool enabled;
+  final bool compact;
 
   const ModelPicker({
     super.key,
@@ -18,6 +19,7 @@ class ModelPicker extends StatelessWidget {
     required this.models,
     required this.onChanged,
     this.enabled = true,
+    this.compact = false,
   });
 
   @override
@@ -25,9 +27,9 @@ class ModelPicker extends StatelessWidget {
     final theme = Theme.of(context);
     final selected = _findSelected(models, value, l10n(context));
     final disabledColor = theme.colorScheme.onSurface.withValues(alpha: 0.38);
-    final contentColor = enabled
-        ? theme.colorScheme.onSurface
-        : disabledColor;
+    final contentColor = enabled ? theme.colorScheme.onSurface : disabledColor;
+
+    final label = compact ? _shortLabel(selected) : _triggerLabel(selected);
 
     return InkWell(
       onTap: enabled ? () => _showPicker(context) : null,
@@ -37,7 +39,9 @@ class ModelPicker extends StatelessWidget {
           color: theme.colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(20),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: compact
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+            : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -47,7 +51,10 @@ class ModelPicker extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              _triggerLabel(selected),
+              label,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: contentColor,
                 fontWeight: FontWeight.w500,
@@ -138,35 +145,24 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
             children: [
               Expanded(child: modelList),
               const SizedBox(height: 8),
-              SizedBox(
-                height: 180,
-                child: modelDetails,
-              ),
+              SizedBox(height: 180, child: modelDetails),
             ],
           )
         : Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                flex: 3,
-                child: modelList,
-              ),
+              Expanded(flex: 3, child: modelList),
               VerticalDivider(
                 color: theme.colorScheme.outline.withValues(alpha: 0.25),
                 width: 16,
               ),
-              Expanded(
-                flex: 2,
-                child: modelDetails,
-              ),
+              Expanded(flex: 2, child: modelDetails),
             ],
           );
 
     return Dialog(
       backgroundColor: theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: isNarrow ? media.size.width * 0.95 : 760,
         height: isNarrow ? media.size.height * 0.85 : 520,
@@ -189,10 +185,7 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
 class _SearchField extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
-  const _SearchField({
-    required this.value,
-    required this.onChanged,
-  });
+  const _SearchField({required this.value, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -370,7 +363,9 @@ class _ModelRow extends StatelessWidget {
     final theme = Theme.of(context);
     final l = l10n(context);
     final isFree = _isFree(model);
-    final contextText = l.contextWithTokens(_formatTokens(model.maxContextTokens, l));
+    final contextText = l.contextWithTokens(
+      _formatTokens(model.maxContextTokens, l),
+    );
 
     return InkWell(
       onTap: onSelect,
@@ -448,11 +443,7 @@ class _ModelRow extends StatelessWidget {
               ),
             ),
             if (isSelected)
-              Icon(
-                Icons.check,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
+              Icon(Icons.check, size: 18, color: theme.colorScheme.primary),
           ],
         ),
       ),
@@ -512,35 +503,20 @@ class _ModelDetails extends StatelessWidget {
             value: model.costTier.isEmpty ? l.noValue : model.costTier,
           ),
           if (model.costSummary.isNotEmpty)
-            _DetailRow(
-              label: l.pricingLabel,
-              value: model.costSummary,
-            ),
+            _DetailRow(label: l.pricingLabel, value: model.costSummary),
           const SizedBox(height: 16),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
               if (_isFree(model))
-                _Badge(
-                  text: l.free,
-                  color: theme.colorScheme.tertiary,
-                ),
+                _Badge(text: l.free, color: theme.colorScheme.tertiary),
               if (_isPromo(model))
-                _Badge(
-                  text: l.promo,
-                  color: theme.colorScheme.primary,
-                ),
+                _Badge(text: l.promo, color: theme.colorScheme.primary),
               if (model.isNew)
-                _Badge(
-                  text: l.newLabel,
-                  color: theme.colorScheme.primary,
-                ),
+                _Badge(text: l.newLabel, color: theme.colorScheme.primary),
               if (model.isBeta)
-                _Badge(
-                  text: l.beta,
-                  color: theme.colorScheme.error,
-                ),
+                _Badge(text: l.beta, color: theme.colorScheme.error),
             ],
           ),
           const SizedBox(height: 24),
@@ -700,7 +676,8 @@ String _shortLabel(ModelInfo m) {
   final l = m.label.trim();
   if (f.isEmpty) return l;
   if (l.toLowerCase().startsWith(f)) {
-    final rest = l.substring(f.length).trim();
+    var rest = l.substring(f.length).trim();
+    rest = rest.replaceFirst(RegExp(r'^[-_\s]+'), '');
     return rest.isEmpty ? l : rest;
   }
   return l;
@@ -720,12 +697,12 @@ String _formatTokens(int tokens, AppLocalizations l) {
   if (tokens <= 0) return l.noValue;
   if (tokens >= 1_000_000) {
     final count = (tokens / 1_000_000).toStringAsFixed(
-        tokens % 1_000_000 == 0 ? 0 : 1);
+      tokens % 1_000_000 == 0 ? 0 : 1,
+    );
     return l.tokensMillionSuffix(count);
   }
   if (tokens >= 1_000) {
-    final count = (tokens / 1_000).toStringAsFixed(
-        tokens % 1_000 == 0 ? 0 : 1);
+    final count = (tokens / 1_000).toStringAsFixed(tokens % 1_000 == 0 ? 0 : 1);
     return l.tokensThousandSuffix(count);
   }
   return l.tokensCount('$tokens');
@@ -786,7 +763,10 @@ double _tierBarWidth(String tier) {
   return (base: f, sub: '');
 }
 
-Map<String, Map<String, List<ModelInfo>>> _groupModels(List<ModelInfo> models, AppLocalizations l) {
+Map<String, Map<String, List<ModelInfo>>> _groupModels(
+  List<ModelInfo> models,
+  AppLocalizations l,
+) {
   final groups = <String, Map<String, List<ModelInfo>>>{};
   for (final m in models) {
     final split = _splitFamily(m.family, l);
@@ -813,29 +793,18 @@ List<ModelInfo> _filter(List<ModelInfo> models, String query) {
   }).toList();
 }
 
-ModelInfo _findSelected(List<ModelInfo> models, String value, AppLocalizations l) {
+ModelInfo _findSelected(
+  List<ModelInfo> models,
+  String value,
+  AppLocalizations l,
+) {
   if (models.isEmpty) {
-    return ModelInfo(
-      id: '',
-      label: l.model,
-      costTier: '',
-      family: '',
-    );
+    return ModelInfo(id: '', label: l.model, costTier: '', family: '');
   }
   return models.firstWhere(
     (m) => m.id == value,
     orElse: () => value.isNotEmpty
-        ? ModelInfo(
-            id: value,
-            label: value,
-            costTier: '',
-            family: '',
-          )
-        : ModelInfo(
-            id: '',
-            label: l.model,
-            costTier: '',
-            family: '',
-          ),
+        ? ModelInfo(id: value, label: value, costTier: '', family: '')
+        : ModelInfo(id: '', label: l.model, costTier: '', family: ''),
   );
 }

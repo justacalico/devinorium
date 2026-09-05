@@ -4,10 +4,12 @@ class _ModeDropdown extends StatelessWidget {
   final ComposerMode value;
   final ValueChanged<ComposerMode> onChanged;
   final bool enabled;
+  final bool compact;
   const _ModeDropdown({
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    this.compact = false,
   });
 
   @override
@@ -31,6 +33,20 @@ class _ModeDropdown extends StatelessWidget {
       value: value,
       underline: const SizedBox(),
       isDense: true,
+      iconSize: 16,
+      padding: compact ? const EdgeInsets.symmetric(horizontal: 4) : null,
+      style: Theme.of(context).textTheme.bodyMedium,
+      selectedItemBuilder: compact
+          ? (_) => [
+              for (final mode in ComposerMode.values)
+                Text(
+                  mode.label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ]
+          : null,
       items: items,
       onChanged: enabled
           ? (v) {
