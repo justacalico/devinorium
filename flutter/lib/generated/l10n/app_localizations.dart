@@ -1126,12 +1126,6 @@ abstract class AppLocalizations {
   /// **'Select or create a thread'**
   String get selectOrCreateThread;
 
-  /// No description provided for @fileManager.
-  ///
-  /// In en, this message translates to:
-  /// **'File manager'**
-  String get fileManager;
-
   /// No description provided for @terminal.
   ///
   /// In en, this message translates to:

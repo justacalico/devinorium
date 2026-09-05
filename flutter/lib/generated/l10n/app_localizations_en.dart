@@ -573,9 +573,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get selectOrCreateThread => 'Select or create a thread';
 
   @override
-  String get fileManager => 'File manager';
-
-  @override
   String get terminal => 'Terminal';
 
   @override
