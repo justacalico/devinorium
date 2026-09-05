@@ -134,6 +134,18 @@ abstract class AppStateBase extends ChangeNotifier {
   set _serverVersion(String? value);
   Timer? get _healthTimer;
   set _healthTimer(Timer? value);
+  Timer? get _reconnectTimer;
+  set _reconnectTimer(Timer? value);
+  Timer? get _resumeDebounceTimer;
+  set _resumeDebounceTimer(Timer? value);
+  Future<void>? get _resumeThreadFuture;
+  set _resumeThreadFuture(Future<void>? value);
+  Future<void>? get _ongoingCheck;
+  set _ongoingCheck(Future<void>? value);
+  bool get _wantsResume;
+  set _wantsResume(bool value);
+  bool get _isResuming;
+  set _isResuming(bool value);
   Timer? get _gitRefreshTimer;
   set _gitRefreshTimer(Timer? value);
   bool get _refreshingGit;
@@ -281,6 +293,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _refreshGitState();
   Future<void> _refreshGitForProject(int projectId);
   Future<void> checkConnection();
+  void handleAppResumed();
+  void _onConnectionRestored();
   Future<void> loadProjects();
   Future<void> loadMoreProjects();
   Future<void> _loadUserThreadsChunk({bool reset = false});

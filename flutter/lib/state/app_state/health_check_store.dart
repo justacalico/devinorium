@@ -8,24 +8,42 @@ mixin HealthCheckStore on AppStateBase {
   @override
   Timer? _healthTimer;
   @override
+  Timer? _reconnectTimer;
+  @override
+  Future<void>? _ongoingCheck;
+
+  @override
   ConnectionStatus get connectionStatus => _connectionStatus;
   @override
   String? get serverVersion => _serverVersion;
   @override
   void startHealthChecks() {
     _healthTimer?.cancel();
-    checkConnection();
+    _reconnectTimer?.cancel();
     _healthTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       checkConnection();
     });
+    _reconnectTimer = null;
+    checkConnection();
   }
   @override
   void stopHealthChecks() {
     _healthTimer?.cancel();
+    _reconnectTimer?.cancel();
     _healthTimer = null;
+    _reconnectTimer = null;
   }
   @override
-  Future<void> checkConnection() async {
+  Future<void> checkConnection() {
+    final existing = _ongoingCheck;
+    if (existing != null) return existing;
+    _ongoingCheck = _doCheck().whenComplete(() => _ongoingCheck = null);
+    return _ongoingCheck!;
+  }
+
+  Future<void> _doCheck() async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     final ok = await api.checkHealth();
     final version = ok ? await api.serverVersion() : null;
 
@@ -41,6 +59,12 @@ mixin HealthCheckStore on AppStateBase {
     }
     if (changed) {
       notifyListeners();
+    }
+    if (!ok && _healthTimer != null) {
+      _reconnectTimer = Timer(const Duration(seconds: 2), checkConnection);
+    }
+    if (_connectionStatus == ConnectionStatus.connected) {
+      _onConnectionRestored();
     }
   }
 }
