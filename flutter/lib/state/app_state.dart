@@ -37,6 +37,7 @@ part 'app_state/model_store.dart';
 part 'app_state/plan_overlay_store.dart';
 part 'app_state/files_panel_store.dart';
 part 'app_state/health_check_store.dart';
+part 'app_state/lifecycle_store.dart';
 part 'app_state/git_store.dart';
 part 'app_state/git_refresh_store.dart';
 part 'app_state/dialog_store.dart';
@@ -63,7 +64,7 @@ enum DialogKind {
   issue,
 }
 
-class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, ProjectStore, ThreadListStore, ComposerStore, AttachmentStore, ModelStore, PlanOverlayStore, FilesPanelStore, HealthCheckStore, GitStore, GitRefreshStore, DialogStore, SettingsStore, EditorStore {
+class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, ProjectStore, ThreadListStore, ComposerStore, AttachmentStore, ModelStore, PlanOverlayStore, FilesPanelStore, HealthCheckStore, LifecycleStore, GitStore, GitRefreshStore, DialogStore, SettingsStore, EditorStore {
   @override
   final MultiServerState multiServerState;
 
@@ -235,7 +236,11 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
 
   @override
   void dispose() {
-    _healthTimer?.cancel();
+    stopHealthChecks();
+    _resumeDebounceTimer?.cancel();
+    _wantsResume = false;
+    _isResuming = false;
+    _resumeThreadFuture = null;
     _gitRefreshTimer?.cancel();
     for (final store in _threadStores.values) {
       store.dispose();

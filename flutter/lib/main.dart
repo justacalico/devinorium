@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n/l10n.dart';
+import 'utils/debug_log.dart';
 import 'services/window_service.dart';
 import 'state/app_state.dart';
 import 'theme/theme.dart';
@@ -17,7 +18,9 @@ Future<void> main() async {
   await themeProvider.loadInitial();
 
   final appState = AppState();
-  appState.bootstrap();
+  appState.bootstrap().catchError((Object e, StackTrace _) {
+    debugLogFailure('main.bootstrap', e);
+  });
 
   runApp(DevinoriumApp(
     appState: appState,
@@ -41,6 +44,8 @@ class DevinoriumApp extends StatefulWidget {
 
 class _DevinoriumAppState extends State<DevinoriumApp>
     with WidgetsBindingObserver {
+  AppLifecycleState? _lastLifecycleState;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +57,17 @@ class _DevinoriumAppState extends State<DevinoriumApp>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final previous = _lastLifecycleState;
+    _lastLifecycleState = state;
+    if (state == AppLifecycleState.resumed &&
+        previous != null &&
+        previous != AppLifecycleState.resumed) {
+      widget.appState.handleAppResumed();
+    }
   }
 
   @override
