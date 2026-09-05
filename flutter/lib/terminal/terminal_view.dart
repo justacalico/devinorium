@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:xterm/ui.dart';
 import 'package:xterm/xterm.dart';
 
@@ -10,22 +13,110 @@ class TerminalViewWidget extends StatefulWidget {
     super.key,
     required this.session,
     this.autofocus = true,
+    this.controller,
   });
 
   final TerminalSession session;
   final bool autofocus;
+  final TerminalController? controller;
 
   @override
   State<TerminalViewWidget> createState() => _TerminalViewWidgetState();
 }
 
 class _TerminalViewWidgetState extends State<TerminalViewWidget> {
-  late final _controller = TerminalController();
+  late TerminalController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.controller ?? TerminalController();
+  }
+
+  @override
+  void didUpdateWidget(TerminalViewWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      if (oldWidget.controller == null) {
+        _controller.dispose();
+      }
+      _controller = widget.controller ?? TerminalController();
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    if (widget.controller == null) {
+      _controller.dispose();
+    }
     super.dispose();
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final keyboard = HardwareKeyboard.instance;
+    if (!keyboard.isControlPressed ||
+        !keyboard.isShiftPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.keyC) {
+      unawaited(_copySelection());
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.keyV) {
+      unawaited(_pasteFromClipboard());
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _copySelection() async {
+    try {
+      final selection = _controller.selection;
+      if (selection == null) {
+        return;
+      }
+
+      final text = widget.session.terminal.buffer.getText(selection);
+      if (text.isEmpty) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      await Clipboard.setData(ClipboardData(text: text));
+    } on Exception {
+      // Ignore clipboard failures (e.g., permission denied on web).
+    }
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text;
+      if (text == null || text.isEmpty) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      widget.session.terminal.paste(text);
+      _controller.clearSelection();
+    } on Exception {
+      // Ignore clipboard failures (e.g., permission denied on web).
+    }
   }
 
   @override
@@ -45,6 +136,7 @@ class _TerminalViewWidgetState extends State<TerminalViewWidget> {
               autofocus: widget.autofocus,
               padding: const EdgeInsets.all(4),
               backgroundOpacity: 1,
+              onKeyEvent: _handleKeyEvent,
             ),
           ),
         ],
