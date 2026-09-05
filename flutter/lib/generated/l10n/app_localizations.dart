@@ -1678,6 +1678,12 @@ abstract class AppLocalizations {
   /// **'No changed files.'**
   String get noChanges;
 
+  /// No description provided for @changesFileCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file} other{{count} files}}'**
+  String changesFileCount(int count);
+
   /// No description provided for @noComments.
   ///
   /// In en, this message translates to:

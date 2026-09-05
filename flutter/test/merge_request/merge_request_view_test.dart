@@ -75,6 +75,57 @@ void main() {
       expect(find.text('+hello'), findsOneWidget);
     });
 
+    testWidgets('shows line counts on the changes tab', (tester) async {
+      const detailWithDiffs = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        changes: [
+          MergeRequestChange(
+            oldPath: 'a.txt',
+            newPath: 'a.txt',
+            diff: '@@ -1,2 +1,3 @@\n ctx\n-old\n+new\n+more\n',
+          ),
+          MergeRequestChange(
+            oldPath: 'b.txt',
+            newPath: 'b.txt',
+            diff: '@@ -1 +1 @@\n-x\n+y\n',
+          ),
+          MergeRequestChange(
+            oldPath: 'bin.png',
+            newPath: 'bin.png',
+            diff: 'Binary files a/bin.png and b/bin.png differ',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(
+            body: MergeRequestView(
+              detail: AsyncValue.ready(detailWithDiffs),
+              url: '',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Changes (3)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('3 files'), findsOneWidget);
+      expect(find.text('+3 -2', findRichText: true), findsOneWidget);
+      expect(find.text('+2 -1', findRichText: true), findsOneWidget);
+      expect(find.text('+1 -1', findRichText: true), findsOneWidget);
+      expect(find.text('+0 -0', findRichText: true), findsNothing);
+    });
+
     testWidgets('switches to comments tab', (tester) async {
       await tester.pumpWidget(wrap(const AsyncValue.ready(detail)));
       await tester.pumpAndSettle();
