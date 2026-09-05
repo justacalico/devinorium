@@ -32,6 +32,7 @@ class _FilesPanelState extends State<FilesPanel> {
 
   void _loadIfNeeded(AppState state) {
     if (state.filesProjectId == state.activeProjectId) return;
+    if (state.appMode == AppMode.editor && state.activeThreadId == null) return;
     unawaited(state.reloadFiles());
   }
 
@@ -53,6 +54,9 @@ class _FilesPanelBody extends StatelessWidget {
     final rows = state.filesTreeRows;
     final error = state.filesError;
 
+    final showTree = state.activeProjectId != null &&
+        (state.appMode != AppMode.editor || state.activeThreadId != null);
+
     return Column(
       children: [
         Padding(
@@ -68,7 +72,7 @@ class _FilesPanelBody extends StatelessWidget {
                   ),
                 ),
               ),
-              if (state.activeProjectId != null)
+              if (showTree)
                 IconButton(
                   tooltip: l.newFolder,
                   icon: const Icon(Icons.create_new_folder_outlined, size: 18),
@@ -80,33 +84,35 @@ class _FilesPanelBody extends StatelessWidget {
           ),
         ),
         const Divider(height: 1),
-          if (error.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                error,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
+        if (error.isNotEmpty && showTree)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              error,
+              style: TextStyle(color: theme.colorScheme.error),
             ),
-          Expanded(
-            child: state.activeProjectId == null
-                ? _EmptyPlaceholder(
-                    text: l10n(context).selectProjectFirst,
-                  )
-                : rows.isEmpty
-                    ? error.isNotEmpty
-                        ? const SizedBox.shrink()
-                        : _EmptyPlaceholder(
-                            text: l10n(context).emptyFolder,
-                          )
-                    : ListView.builder(
-                        itemCount: rows.length,
-                        itemBuilder: (context, index) =>
-                            _buildRow(context, state, rows[index], theme),
-                      ),
           ),
-        ],
-      );
+        Expanded(
+          child: !showTree
+              ? _EmptyPlaceholder(
+                  text: state.activeProjectId == null
+                      ? l.selectProjectFirst
+                      : l.selectOrCreateThread,
+                )
+              : rows.isEmpty
+                  ? error.isNotEmpty
+                      ? const SizedBox.shrink()
+                      : _EmptyPlaceholder(
+                          text: l.emptyFolder,
+                        )
+                  : ListView.builder(
+                      itemCount: rows.length,
+                      itemBuilder: (context, index) =>
+                          _buildRow(context, state, rows[index], theme),
+                    ),
+        ),
+      ],
+    );
   }
 
   void _openFile(
