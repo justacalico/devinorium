@@ -47,38 +47,37 @@ class _FilesPanelBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
+    final l = l10n(context);
     final rows = state.filesTreeRows;
     final error = state.filesError;
 
-    return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    l10n(context).files,
-                    style: theme.textTheme.titleMedium,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 8, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l.files.toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (state.activeProjectId != null)
-                  IconButton(
-                    tooltip: l10n(context).newFolder,
-                    icon: const Icon(Icons.create_new_folder_outlined),
-                    onPressed: () => _promptMkdir(context, state),
-                  ),
+              ),
+              if (state.activeProjectId != null)
                 IconButton(
-                  tooltip: l10n(context).close,
-                  icon: const Icon(Icons.close),
-                  onPressed: state.closeFilesPanel,
+                  tooltip: l.newFolder,
+                  icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                  onPressed: () => _promptMkdir(context, state),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(4),
                 ),
-              ],
-            ),
+            ],
           ),
-          const Divider(height: 1),
+        ),
+        const Divider(height: 1),
           if (error.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(16),
@@ -105,8 +104,7 @@ class _FilesPanelBody extends StatelessWidget {
                       ),
           ),
         ],
-      ),
-    );
+      );
   }
 
   void _openFile(BuildContext context, AppState state, FileTreeNode node) {
