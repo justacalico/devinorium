@@ -101,6 +101,7 @@ class _Tab extends StatelessWidget {
     return GestureDetector(
       onTap: () => state.setActiveEditorPath(tab.path),
       onSecondaryTap: () => _maybeClose(context, state, tab),
+      onTertiaryTapUp: (_) => _maybeClose(context, state, tab),
       child: Container(
         constraints: const BoxConstraints(minWidth: 80, maxWidth: 180),
         padding: const EdgeInsets.symmetric(horizontal: 12),
