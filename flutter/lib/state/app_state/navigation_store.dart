@@ -24,7 +24,10 @@ mixin NavigationStore on AppStateBase {
   }
   @override
   void setAppMode(AppMode m) {
+    if (_appMode == m) return;
     _appMode = m;
+    _page = MainPage.threads;
+    _filesPanelOpen = m == AppMode.editor;
     notifyListeners();
   }
   @override

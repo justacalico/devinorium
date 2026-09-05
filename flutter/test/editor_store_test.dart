@@ -42,6 +42,50 @@ void main() {
       state.setAppMode(AppMode.editor);
       expect(state.appMode, AppMode.editor);
     });
+
+    test('switching to editor opens files panel and shows threads page', () {
+      final state = AppState.test();
+      state.setPage(MainPage.settings);
+      state.setAppMode(AppMode.editor);
+
+      expect(state.appMode, AppMode.editor);
+      expect(state.page, MainPage.threads);
+      expect(state.filesPanelOpen, isTrue);
+    });
+
+    test('switching to agents closes files panel and shows threads page', () {
+      final state = AppState.test();
+      state.setAppMode(AppMode.editor);
+      expect(state.filesPanelOpen, isTrue);
+
+      state.setPage(MainPage.settings);
+      state.setAppMode(AppMode.agents);
+
+      expect(state.appMode, AppMode.agents);
+      expect(state.page, MainPage.threads);
+      expect(state.filesPanelOpen, isFalse);
+    });
+
+    test('switching to the same mode is a no-op', () {
+      final state = AppState.test();
+      state.setAppMode(AppMode.editor);
+      expect(state.filesPanelOpen, isTrue);
+
+      state.setAppMode(AppMode.editor);
+      expect(state.filesPanelOpen, isTrue);
+    });
+
+    test('no-op mode switch preserves page and panel state', () {
+      final state = AppState.test();
+      state.setAppMode(AppMode.editor);
+      state.setPage(MainPage.settings);
+
+      state.setAppMode(AppMode.editor);
+
+      expect(state.appMode, AppMode.editor);
+      expect(state.page, MainPage.settings);
+      expect(state.filesPanelOpen, isTrue);
+    });
   });
 
   group('Editor store', () {
