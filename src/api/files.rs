@@ -233,7 +233,10 @@ async fn read_file(
     // Only regular files are editable/viewable inline; directories are listed,
     // not read, but guard against odd paths.
     if meta.is_dir() {
-        return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path is a directory")))
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("path is a directory")),
+        )
             .into_response();
     }
     if meta.len() > 4 * 1024 * 1024 {
@@ -324,16 +327,27 @@ async fn write_file(
     // treat it as a conflict so the user can reload rather than silently recreate.
     if let Some(expected) = req.expected_sha256.as_deref() {
         if !expected.is_empty() && !exists {
-            return (StatusCode::CONFLICT, Json(WriteConflict {
-                error: "file was deleted".into(),
-                current: serde_json::Value::Null,
-            })).into_response();
+            return (
+                StatusCode::CONFLICT,
+                Json(WriteConflict {
+                    error: "file was deleted".into(),
+                    current: serde_json::Value::Null,
+                }),
+            )
+                .into_response();
         }
     }
 
     if exists {
-        if tokio::fs::metadata(&target).await.map(|m| m.is_dir()).unwrap_or(false) {
-            return (StatusCode::BAD_REQUEST, Json(crate::api::ApiError::new("path is a directory")))
+        if tokio::fs::metadata(&target)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false)
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("path is a directory")),
+            )
                 .into_response();
         }
 
@@ -360,10 +374,14 @@ async fn write_file(
                         "text": current_text,
                         "diff": null,
                     });
-                    return (StatusCode::CONFLICT, Json(WriteConflict {
-                        error: "file changed on disk".into(),
-                        current: conflict,
-                    })).into_response();
+                    return (
+                        StatusCode::CONFLICT,
+                        Json(WriteConflict {
+                            error: "file changed on disk".into(),
+                            current: conflict,
+                        }),
+                    )
+                        .into_response();
                 }
             }
         }

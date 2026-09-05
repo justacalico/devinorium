@@ -2612,12 +2612,7 @@ async fn file_manager_write_replaces_and_detects_conflicts() {
     );
     let resp = app
         .clone()
-        .oneshot(authed(
-            "PUT",
-            "/api/files/content",
-            &cookie,
-            &write_body,
-        ))
+        .oneshot(authed("PUT", "/api/files/content", &cookie, &write_body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -2668,9 +2663,7 @@ async fn file_manager_write_replaces_and_detects_conflicts() {
             "PUT",
             "/api/files/content",
             &cookie,
-            &format!(
-                r#"{{"path":"new.txt","project_id":{pid},"content":"new file\n"}}"#
-            ),
+            &format!(r#"{{"path":"new.txt","project_id":{pid},"content":"new file\n"}}"#),
         ))
         .await
         .unwrap();
