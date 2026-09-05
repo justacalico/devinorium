@@ -43,11 +43,14 @@ class _WideEditor extends StatelessWidget {
       selector: (_, s) => (
         tabSaving: s.activeEditorTab?.saving == true,
         agentPanelOpen: s.agentPanelOpen,
+        agentPanelUserSet: s.agentPanelUserSet,
         agentPanelWidth: s.editorAgentPanelWidth,
         terminalOpen: s.editorTerminalOpen && s.activeThreadId != null,
         activeThreadId: s.activeThreadId,
       ),
       builder: (context, model, _) {
+        final agentPanelOpen =
+            model.agentPanelUserSet ? model.agentPanelOpen : true;
         return Row(
           children: [
             Expanded(
@@ -61,7 +64,7 @@ class _WideEditor extends StatelessWidget {
                 ],
               ),
             ),
-            if (model.agentPanelOpen) ...[
+            if (agentPanelOpen) ...[
               _ResizeHandle(
                 onDrag: (delta) => state.setEditorAgentPanelWidth(
                     model.agentPanelWidth - delta),
@@ -79,6 +82,7 @@ class _WideEditor extends StatelessWidget {
 typedef _EditorLayoutModel = ({
   bool tabSaving,
   bool agentPanelOpen,
+  bool agentPanelUserSet,
   double agentPanelWidth,
   bool terminalOpen,
   String? activeThreadId,
@@ -130,11 +134,16 @@ class _NarrowEditor extends StatelessWidget {
       selector: (_, s) => (
         tabSaving: s.activeEditorTab?.saving == true,
         agentPanelOpen: s.agentPanelOpen,
+        agentPanelUserSet: s.agentPanelUserSet,
         agentPanelWidth: s.editorAgentPanelWidth,
         terminalOpen: s.editorTerminalOpen && s.activeThreadId != null,
         activeThreadId: s.activeThreadId,
       ),
       builder: (context, model, _) {
+        // Until the user opens or closes the panel explicitly, let it follow
+        // the layout: open in the wide layout, closed in the narrow one.
+        final agentPanelOpen =
+            model.agentPanelUserSet ? model.agentPanelOpen : false;
         return Stack(
           children: [
             Column(
@@ -146,7 +155,7 @@ class _NarrowEditor extends StatelessWidget {
                 if (model.terminalOpen) const _EditorTerminal(),
               ],
             ),
-            if (model.agentPanelOpen)
+            if (agentPanelOpen)
               Positioned.fill(
                 child: GestureDetector(
                   onTap: () => state.setAgentPanelOpen(false),
@@ -172,15 +181,14 @@ class _NarrowEditor extends StatelessWidget {
               top: 48,
               right: 8,
               child: _FloatingToggle(
-                icon: model.agentPanelOpen ? Icons.close : Icons.chat_outlined,
-                tooltip: model.agentPanelOpen
-                    ? l10n(context).close
-                    : l10n(context).chat,
+                icon: agentPanelOpen ? Icons.close : Icons.chat_outlined,
+                tooltip:
+                    agentPanelOpen ? l10n(context).close : l10n(context).chat,
                 onPressed: () =>
-                    state.setAgentPanelOpen(!model.agentPanelOpen),
+                    state.setAgentPanelOpen(!agentPanelOpen),
               ),
             ),
-            if (model.agentPanelOpen)
+            if (agentPanelOpen)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,

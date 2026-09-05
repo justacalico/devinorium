@@ -53,6 +53,7 @@ mixin EditorStore on AppStateBase {
   List<EditorTab>? _editorTabsView;
   String? _activeEditorPath;
   bool _agentPanelOpen = true;
+  bool _agentPanelUserSet = false;
   bool _editorTerminalOpen = false;
   double _editorAgentPanelWidth = 320;
   double _editorTerminalHeight = 280;
@@ -92,6 +93,9 @@ mixin EditorStore on AppStateBase {
   bool get agentPanelOpen => _agentPanelOpen;
 
   @override
+  bool get agentPanelUserSet => _agentPanelUserSet;
+
+  @override
   bool get editorTerminalOpen => _editorTerminalOpen;
 
   @override
@@ -105,6 +109,7 @@ mixin EditorStore on AppStateBase {
 
   @override
   void setAgentPanelOpen(bool v) {
+    _agentPanelUserSet = true;
     _agentPanelOpen = v;
     notifyListeners();
   }
