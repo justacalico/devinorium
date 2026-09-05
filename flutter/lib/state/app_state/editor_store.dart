@@ -53,8 +53,10 @@ mixin EditorStore on AppStateBase {
   String? _activeEditorPath;
   bool _agentPanelOpen = true;
   bool _editorFileTreeOpen = true;
+  bool _editorTerminalOpen = true;
   double _editorTreeWidth = 320;
   double _editorAgentPanelWidth = 320;
+  double _editorTerminalHeight = 280;
 
   static const double _minPanelWidth = 240;
   static const double _maxPanelWidth = 1200;
@@ -86,10 +88,16 @@ mixin EditorStore on AppStateBase {
   bool get editorFileTreeOpen => _editorFileTreeOpen;
 
   @override
+  bool get editorTerminalOpen => _editorTerminalOpen;
+
+  @override
   double get editorTreeWidth => _editorTreeWidth;
 
   @override
   double get editorAgentPanelWidth => _editorAgentPanelWidth;
+
+  @override
+  double get editorTerminalHeight => _editorTerminalHeight;
 
   @override
   bool get hasDirtyEditorTabs => _editorTabs.any((t) => t.dirty);
@@ -107,6 +115,12 @@ mixin EditorStore on AppStateBase {
   }
 
   @override
+  void setEditorTerminalOpen(bool v) {
+    _editorTerminalOpen = v;
+    notifyListeners();
+  }
+
+  @override
   void setEditorTreeWidth(double v) {
     _editorTreeWidth = v.clamp(_minPanelWidth, _maxPanelWidth);
     notifyListeners();
@@ -115,6 +129,12 @@ mixin EditorStore on AppStateBase {
   @override
   void setEditorAgentPanelWidth(double v) {
     _editorAgentPanelWidth = v.clamp(_minPanelWidth, _maxPanelWidth);
+    notifyListeners();
+  }
+
+  @override
+  void setEditorTerminalHeight(double v) {
+    _editorTerminalHeight = v;
     notifyListeners();
   }
 

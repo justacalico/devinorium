@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_state.dart';
+import '../../terminal/thread_terminal_panel.dart';
 import '../files_panel.dart';
 import 'agent_panel.dart';
 import 'editor_tab_bar.dart';
@@ -38,8 +39,11 @@ class _WideEditor extends StatelessWidget {
 
     return Row(
       children: [
-        if (state.editorFileTreeOpen) ...[
-          SizedBox(width: state.editorTreeWidth, child: const FilesPanel()),
+        if (state.editorFileTreeOpen || _terminalVisible(state)) ...[
+          SizedBox(
+            width: state.editorTreeWidth,
+            child: const _FilesSidePanel(),
+          ),
           _ResizeHandle(
             onDrag: (delta) =>
                 state.setEditorTreeWidth(state.editorTreeWidth + delta),
@@ -67,6 +71,37 @@ class _WideEditor extends StatelessWidget {
   }
 }
 
+bool _terminalVisible(AppState state) =>
+    state.editorTerminalOpen && state.activeThreadId != null;
+
+class _FilesSidePanel extends StatelessWidget {
+  const _FilesSidePanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final threadId = state.activeThreadId;
+    final terminalVisible = _terminalVisible(state);
+
+    return Column(
+      children: [
+        if (state.editorFileTreeOpen)
+          const Expanded(child: FilesPanel())
+        else
+          const Spacer(),
+        if (terminalVisible)
+          ThreadTerminalPanel(
+            api: state.api,
+            threadId: threadId!,
+            initialHeight: state.editorTerminalHeight,
+            onHeightChanged: state.setEditorTerminalHeight,
+            onClose: () => state.setEditorTerminalOpen(false),
+          ),
+      ],
+    );
+  }
+}
+
 class _NarrowEditor extends StatelessWidget {
   const _NarrowEditor();
 
@@ -74,7 +109,9 @@ class _NarrowEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final showPanels = state.editorFileTreeOpen || state.agentPanelOpen;
+    final showPanels = state.editorFileTreeOpen ||
+        state.agentPanelOpen ||
+        _terminalVisible(state);
     final maxWidth = MediaQuery.of(context).size.width;
 
     return Stack(
@@ -93,6 +130,7 @@ class _NarrowEditor extends StatelessWidget {
               onTap: () {
                 state.setEditorFileTreeOpen(false);
                 state.setAgentPanelOpen(false);
+                state.setEditorTerminalOpen(false);
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -124,7 +162,7 @@ class _NarrowEditor extends StatelessWidget {
             onPressed: () => state.setAgentPanelOpen(!state.agentPanelOpen),
           ),
         ),
-        if (state.editorFileTreeOpen)
+        if (state.editorFileTreeOpen || _terminalVisible(state))
           AnimatedPositioned(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
@@ -135,7 +173,7 @@ class _NarrowEditor extends StatelessWidget {
             child: Material(
               elevation: 4,
               color: theme.colorScheme.surface,
-              child: const FilesPanel(),
+              child: const _FilesSidePanel(),
             ),
           ),
         if (state.agentPanelOpen)

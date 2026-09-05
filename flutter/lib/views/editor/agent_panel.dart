@@ -3,24 +3,15 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_state.dart';
-import '../../terminal/thread_terminal_panel.dart';
 import '../thread_page.dart';
 
-class AgentPanel extends StatefulWidget {
+class AgentPanel extends StatelessWidget {
   const AgentPanel({super.key});
-
-  @override
-  State<AgentPanel> createState() => _AgentPanelState();
-}
-
-class _AgentPanelState extends State<AgentPanel> {
-  bool _terminalOpen = true;
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final threadId = state.activeThreadId;
 
     return Material(
       color: theme.colorScheme.surfaceContainerLow,
@@ -29,17 +20,11 @@ class _AgentPanelState extends State<AgentPanel> {
           _Header(
             onClose: () => state.setAgentPanelOpen(false),
             onToggleTerminal: () =>
-                setState(() => _terminalOpen = !_terminalOpen),
-            terminalOpen: _terminalOpen,
+                state.setEditorTerminalOpen(!state.editorTerminalOpen),
+            terminalOpen: state.editorTerminalOpen,
           ),
           const Divider(height: 1),
           const Expanded(child: ChatView()),
-          if (threadId != null && _terminalOpen)
-            ThreadTerminalPanel(
-              api: state.api,
-              threadId: threadId,
-              onClose: () => setState(() => _terminalOpen = false),
-            ),
         ],
       ),
     );
