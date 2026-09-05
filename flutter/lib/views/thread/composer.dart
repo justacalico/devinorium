@@ -24,10 +24,11 @@ class _Composer extends StatefulWidget {
 
 class _ComposerState extends State<_Composer> {
   final _focusNode = FocusNode();
-  bool _wasSending = false;
   ComposerMode? _preAskMode;
   bool _promptDrivenAsk = false;
   String? _lastThreadId;
+  AppState? _appState;
+  bool _wasSending = false;
 
   static const _pasteShortcut = SingleActivator(
     LogicalKeyboardKey.keyV,
@@ -159,8 +160,19 @@ class _ComposerState extends State<_Composer> {
 
   @override
   void dispose() {
+    _appState?.removeListener(_onAppStateChanged);
     _focusNode.dispose();
     super.dispose();
+  }
+
+  bool get _isMobile {
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.linux ||
+      TargetPlatform.macOS ||
+      TargetPlatform.windows =>
+        false,
+      _ => true,
+    };
   }
 
   void _submit(AppState state) {
@@ -184,22 +196,33 @@ class _ComposerState extends State<_Composer> {
     state.setComposerMode(state.composerMode.next);
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final state = context.read<AppState>();
-    if (_wasSending && !state.sending) {
+  void _onAppStateChanged() {
+    if (!mounted) return;
+    final state = _appState!;
+    if (_wasSending && !state.sending && !_isMobile) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _focusNode.requestFocus();
       });
     }
     _wasSending = state.sending;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = context.read<AppState>();
+    if (_appState == null) {
+      _appState = state;
+      _wasSending = state.sending;
+      state.addListener(_onAppStateChanged);
+    }
 
     final threadId = state.activeThreadId;
     if (threadId != _lastThreadId) {
       _lastThreadId = threadId;
       _preAskMode = null;
       _promptDrivenAsk = false;
+      _wasSending = state.sending;
       _applySlashCommandMode(state.composerText, state);
       if (state.composerMode == ComposerMode.ask &&
           hasAskPrefix(state.composerText)) {

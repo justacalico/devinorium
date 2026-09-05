@@ -1249,56 +1249,119 @@ void main() {
     expect(launched, ['https://example.com']);
   });
 
-  testWidgets('input is refocused after sending a message', (tester) async {
-    final state = AppState.test(
-      api: _FakeApiService(),
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      activeThreadId: 't1',
-      activeThreadDetail: ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test thread',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
+  testWidgets(
+    'input is refocused after sending a message on desktop',
+    (tester) async {
+      final state = AppState.test(
+        api: _FakeApiService(),
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
         ),
-        messages: [],
-      ),
-    );
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    final textField = find.byType(TextField);
-    expect(textField, findsOneWidget);
+      final textField = find.byType(TextField);
+      expect(textField, findsOneWidget);
 
-    await tester.tap(textField);
-    await tester.pump();
-    final focusNode = tester.widget<TextField>(textField).focusNode;
-    expect(focusNode?.hasFocus, isTrue);
+      await tester.tap(textField);
+      await tester.pump();
+      final focusNode = tester.widget<TextField>(textField).focusNode;
+      expect(focusNode?.hasFocus, isTrue);
 
-    await tester.enterText(textField, 'hello');
-    await tester.pump();
+      state.setComposerText('hello');
+      await tester.pump();
+      FocusScope.of(tester.element(textField)).unfocus();
+      await tester.pump();
 
-    final send = find.widgetWithIcon(IconButton, Icons.send);
-    expect(send, findsOneWidget);
-    await tester.tap(send);
-    await tester.pumpAndSettle();
+      final send = find.widgetWithIcon(IconButton, Icons.send);
+      expect(send, findsOneWidget);
+      await tester.tap(send);
+      await tester.pumpAndSettle();
 
-    final focusNodeAfter = tester.widget<TextField>(textField).focusNode;
-    expect(state.sending, isFalse);
-    expect(focusNodeAfter?.hasFocus, isTrue);
-  });
+      final focusNodeAfter = tester.widget<TextField>(textField).focusNode;
+      expect(state.sending, isFalse);
+      expect(focusNodeAfter?.hasFocus, isTrue);
+    },
+    variant: TargetPlatformVariant.desktop(),
+  );
+
+  testWidgets(
+    'input is not refocused after sending a message on mobile',
+    (tester) async {
+      final state = AppState.test(
+        api: _FakeApiService(),
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      final textField = find.byType(TextField);
+      expect(textField, findsOneWidget);
+
+      await tester.tap(textField);
+      await tester.pump();
+      final focusNode = tester.widget<TextField>(textField).focusNode;
+      expect(focusNode?.hasFocus, isTrue);
+
+      state.setComposerText('hello');
+      await tester.pump();
+      FocusScope.of(tester.element(textField)).unfocus();
+      await tester.pump();
+
+      final send = find.widgetWithIcon(IconButton, Icons.send);
+      expect(send, findsOneWidget);
+      await tester.tap(send);
+      await tester.pumpAndSettle();
+
+      final focusNodeAfter = tester.widget<TextField>(textField).focusNode;
+      expect(state.sending, isFalse);
+      expect(focusNodeAfter?.hasFocus, isFalse);
+    },
+    variant: TargetPlatformVariant.mobile(),
+  );
 
   testWidgets('enter sends message and clears composer', (tester) async {
     final state = AppState.test(
