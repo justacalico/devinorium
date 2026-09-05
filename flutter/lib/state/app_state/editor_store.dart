@@ -136,6 +136,20 @@ mixin EditorStore on AppStateBase {
       closeEditorTab(active.path);
     }
 
+    await _openEditorFileImpl(path);
+  }
+
+  @override
+  Future<void> openEditorFileNewTab(String path) async {
+    if (_tabFor(path) != null) {
+      setActiveEditorPath(path);
+      return;
+    }
+
+    await _openEditorFileImpl(path);
+  }
+
+  Future<void> _openEditorFileImpl(String path) async {
     final tab = EditorTab(path: path, loading: true, preview: true);
     _editorTabs.add(tab);
     _activeEditorPath = path;

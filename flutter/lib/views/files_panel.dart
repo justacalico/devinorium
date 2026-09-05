@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart'
+    show kMiddleMouseButton, PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -107,9 +109,18 @@ class _FilesPanelBody extends StatelessWidget {
       );
   }
 
-  void _openFile(BuildContext context, AppState state, FileTreeNode node) {
+  void _openFile(
+    BuildContext context,
+    AppState state,
+    FileTreeNode node, {
+    bool newTab = false,
+  }) {
     if (state.appMode == AppMode.editor) {
-      state.openEditorFile(node.fullPathString);
+      if (newTab) {
+        state.openEditorFileNewTab(node.fullPathString);
+      } else {
+        state.openEditorFile(node.fullPathString);
+      }
       final scaffold = Scaffold.maybeOf(context);
       if (scaffold?.isDrawerOpen ?? false) {
         scaffold!.closeDrawer();
@@ -196,30 +207,39 @@ class _FilesPanelBody extends StatelessWidget {
         ? _gitStatusColor(node.entry.gitStatus!, theme)
         : null;
 
-    return ListTile(
-      contentPadding: EdgeInsets.only(left: leftPadding, right: 12),
-      leading: Icon(icon, size: 22, color: color),
-      title: Text(
-        node.entry.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: titleColor != null ? TextStyle(color: titleColor) : null,
+    return Listener(
+      onPointerDown: (event) {
+        if (!isDir &&
+            event.kind == PointerDeviceKind.mouse &&
+            event.buttons == kMiddleMouseButton) {
+          _openFile(context, state, node, newTab: true);
+        }
+      },
+      child: ListTile(
+        contentPadding: EdgeInsets.only(left: leftPadding, right: 12),
+        leading: Icon(icon, size: 22, color: color),
+        title: Text(
+          node.entry.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: titleColor != null ? TextStyle(color: titleColor) : null,
+        ),
+        trailing: isDir
+            ? _deleteButton(context, state, node)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatSize(node.entry.size, l10n(context)),
+                    style: theme.textTheme.labelSmall,
+                  ),
+                  _deleteButton(context, state, node),
+                ],
+              ),
+        onTap: isDir
+            ? () => state.toggleFilesFolder(node)
+            : () => _openFile(context, state, node),
       ),
-      trailing: isDir
-          ? _deleteButton(context, state, node)
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _formatSize(node.entry.size, l10n(context)),
-                  style: theme.textTheme.labelSmall,
-                ),
-                _deleteButton(context, state, node),
-              ],
-            ),
-      onTap: isDir
-          ? () => state.toggleFilesFolder(node)
-          : () => _openFile(context, state, node),
     );
   }
 

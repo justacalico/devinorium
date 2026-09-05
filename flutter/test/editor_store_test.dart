@@ -325,6 +325,37 @@ void main() {
       expect(state.activeEditorPath, '/x/b.txt');
     });
 
+    test('openEditorFileNewTab keeps an unmodified preview tab', () async {
+      final client = _clientFor([
+        _json(200, {
+          'path': '/x/a.txt',
+          'mime': 'text/plain',
+          'size': 1,
+          'base64': '',
+          'text': 'a',
+          'sha256': 'a',
+        }),
+        _json(200, {
+          'path': '/x/b.txt',
+          'mime': 'text/plain',
+          'size': 1,
+          'base64': '',
+          'text': 'b',
+          'sha256': 'b',
+        }),
+      ]);
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+      );
+      await state.openEditorFile('/x/a.txt');
+      await state.openEditorFileNewTab('/x/b.txt');
+
+      expect(state.editorTabs.length, 2);
+      expect(state.activeEditorPath, '/x/b.txt');
+    });
+
     test('toggle panels updates state', () {
       final state = AppState.test();
       expect(state.agentPanelOpen, isTrue);
