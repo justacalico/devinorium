@@ -52,9 +52,7 @@ mixin EditorStore on AppStateBase {
   final List<EditorTab> _editorTabs = [];
   String? _activeEditorPath;
   bool _agentPanelOpen = true;
-  bool _editorFileTreeOpen = true;
   bool _editorTerminalOpen = true;
-  double _editorTreeWidth = 320;
   double _editorAgentPanelWidth = 320;
   double _editorTerminalHeight = 280;
 
@@ -85,13 +83,7 @@ mixin EditorStore on AppStateBase {
   bool get agentPanelOpen => _agentPanelOpen;
 
   @override
-  bool get editorFileTreeOpen => _editorFileTreeOpen;
-
-  @override
   bool get editorTerminalOpen => _editorTerminalOpen;
-
-  @override
-  double get editorTreeWidth => _editorTreeWidth;
 
   @override
   double get editorAgentPanelWidth => _editorAgentPanelWidth;
@@ -109,20 +101,8 @@ mixin EditorStore on AppStateBase {
   }
 
   @override
-  void setEditorFileTreeOpen(bool v) {
-    _editorFileTreeOpen = v;
-    notifyListeners();
-  }
-
-  @override
   void setEditorTerminalOpen(bool v) {
     _editorTerminalOpen = v;
-    notifyListeners();
-  }
-
-  @override
-  void setEditorTreeWidth(double v) {
-    _editorTreeWidth = v.clamp(_minPanelWidth, _maxPanelWidth);
     notifyListeners();
   }
 

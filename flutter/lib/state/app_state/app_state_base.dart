@@ -392,13 +392,10 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get activeEditorPath;
   EditorTab? get activeEditorTab;
   bool get agentPanelOpen;
-  bool get editorFileTreeOpen;
   bool get editorTerminalOpen;
-  double get editorTreeWidth;
   double get editorAgentPanelWidth;
   double get editorTerminalHeight;
   bool get hasDirtyEditorTabs;
-  void setEditorTreeWidth(double v);
   void setEditorAgentPanelWidth(double v);
   void setEditorTerminalHeight(double v);
   Future<void> openEditorFile(String path);
@@ -409,6 +406,5 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> saveEditorTab(String path);
   Future<void> reloadEditorTab(String path);
   void setAgentPanelOpen(bool v);
-  void setEditorFileTreeOpen(bool v);
   void setEditorTerminalOpen(bool v);
 }

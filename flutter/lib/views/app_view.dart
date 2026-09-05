@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import 'drop_zone.dart';
 import 'editor/editor_page.dart';
-import 'files_panel.dart';
 import 'settings_page.dart';
 import 'sidebar.dart';
 import 'thread_page.dart';
@@ -24,12 +23,9 @@ class _AppShellState extends State<AppShell> {
   final _mainKey = GlobalKey();
   bool _wasFilesPanelOpen = false;
   double _sidebarWidth = 300;
-  double _filesPanelWidth = 360;
 
   static const double _minSidebarWidth = 240;
   static const double _maxSidebarWidth = 420;
-  static const double _minFilesPanelWidth = 240;
-  static const double _maxFilesPanelWidth = 1200;
 
   @override
   Widget build(BuildContext context) {
@@ -41,32 +37,29 @@ class _AppShellState extends State<AppShell> {
     // switches between narrow and wide, instead of rebuilding it.
     final main = DropZone(key: _mainKey, child: _MainArea());
 
-    final isEditor = state.appMode == AppMode.editor;
-
     if (isNarrow) {
-      if (state.filesPanelOpen && !_wasFilesPanelOpen && !isEditor) {
+      // The files view lives inside the unified sidebar, so opening it on a
+      // narrow screen opens the sidebar drawer instead of a second panel.
+      if (state.filesPanelOpen && !_wasFilesPanelOpen) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scaffoldKey.currentState?.openEndDrawer();
+          _scaffoldKey.currentState?.openDrawer();
         });
       }
-      _wasFilesPanelOpen = isEditor ? false : state.filesPanelOpen;
+      _wasFilesPanelOpen = state.filesPanelOpen;
 
       return Scaffold(
         key: _scaffoldKey,
         drawer: const Drawer(width: 300, child: Sidebar()),
         body: main,
-        endDrawer: !isEditor && state.filesPanelOpen
-            ? const Drawer(width: 360, child: FilesPanel())
-            : null,
-        onEndDrawerChanged: (opened) {
-          if (!opened && state.filesPanelOpen && !isEditor) {
+        onDrawerChanged: (opened) {
+          if (!opened && state.filesPanelOpen) {
             state.closeFilesPanel();
           }
         },
       );
     }
 
-    _wasFilesPanelOpen = isEditor ? false : state.filesPanelOpen;
+    _wasFilesPanelOpen = state.filesPanelOpen;
 
     return Scaffold(
       body: Row(
@@ -79,15 +72,6 @@ class _AppShellState extends State<AppShell> {
             }),
           ),
           Expanded(child: main),
-          if (!isEditor && state.filesPanelOpen) ...[
-            _ResizeHandle(
-              onDrag: (delta) => setState(() {
-                _filesPanelWidth =
-                    (_filesPanelWidth - delta).clamp(_minFilesPanelWidth, _maxFilesPanelWidth);
-              }),
-            ),
-            SizedBox(width: _filesPanelWidth, child: const FilesPanel()),
-          ],
         ],
       ),
     );

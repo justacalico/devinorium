@@ -73,13 +73,7 @@ class _FilesPanelBody extends StatelessWidget {
                 IconButton(
                   tooltip: l10n(context).close,
                   icon: const Icon(Icons.close),
-                  onPressed: () {
-                    if (state.appMode == AppMode.editor) {
-                      state.setEditorFileTreeOpen(false);
-                    } else {
-                      state.closeFilesPanel();
-                    }
-                  },
+                  onPressed: state.closeFilesPanel,
                 ),
               ],
             ),
@@ -118,6 +112,10 @@ class _FilesPanelBody extends StatelessWidget {
   void _openFile(BuildContext context, AppState state, FileTreeNode node) {
     if (state.appMode == AppMode.editor) {
       state.openEditorFile(node.fullPathString);
+      final scaffold = Scaffold.maybeOf(context);
+      if (scaffold?.isDrawerOpen ?? false) {
+        scaffold!.closeDrawer();
+      }
       return;
     }
     Navigator.of(context).push(

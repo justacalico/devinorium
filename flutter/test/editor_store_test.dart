@@ -328,13 +328,10 @@ void main() {
     test('toggle panels updates state', () {
       final state = AppState.test();
       expect(state.agentPanelOpen, isTrue);
-      expect(state.editorFileTreeOpen, isTrue);
       expect(state.editorTerminalOpen, isTrue);
       state.setAgentPanelOpen(false);
-      state.setEditorFileTreeOpen(false);
       state.setEditorTerminalOpen(false);
       expect(state.agentPanelOpen, isFalse);
-      expect(state.editorFileTreeOpen, isFalse);
       expect(state.editorTerminalOpen, isFalse);
     });
   });

@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_state.dart';
 import '../../terminal/thread_terminal_panel.dart';
-import '../files_panel.dart';
 import 'agent_panel.dart';
 import 'editor_tab_bar.dart';
 import 'file_editor.dart';
@@ -39,13 +40,6 @@ class _WideEditor extends StatelessWidget {
 
     return Row(
       children: [
-        if (state.editorFileTreeOpen) ...[
-          SizedBox(width: state.editorTreeWidth, child: const FilesPanel()),
-          _ResizeHandle(
-            onDrag: (delta) =>
-                state.setEditorTreeWidth(state.editorTreeWidth + delta),
-          ),
-        ],
         Expanded(
           child: Column(
             children: [
@@ -98,7 +92,7 @@ class _NarrowEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final showPanels = state.editorFileTreeOpen || state.agentPanelOpen;
+    final showPanels = state.agentPanelOpen;
     final maxWidth = MediaQuery.of(context).size.width;
 
     return Stack(
@@ -116,7 +110,6 @@ class _NarrowEditor extends StatelessWidget {
           Positioned.fill(
             child: GestureDetector(
               onTap: () {
-                state.setEditorFileTreeOpen(false);
                 state.setAgentPanelOpen(false);
               },
               child: AnimatedContainer(
@@ -129,13 +122,12 @@ class _NarrowEditor extends StatelessWidget {
           top: 48,
           left: 8,
           child: _FloatingToggle(
-            icon: state.editorFileTreeOpen ? Icons.close : Icons.folder_outlined,
-            tooltip: state.editorFileTreeOpen
-                ? l10n(context).close
-                : l10n(context).files,
-            onPressed: () => state.setEditorFileTreeOpen(
-              !state.editorFileTreeOpen,
-            ),
+            icon: Icons.folder_outlined,
+            tooltip: l10n(context).files,
+            onPressed: () {
+              unawaited(state.openFilesPanel());
+              Scaffold.maybeOf(context)?.openDrawer();
+            },
           ),
         ),
         Positioned(
@@ -149,20 +141,6 @@ class _NarrowEditor extends StatelessWidget {
             onPressed: () => state.setAgentPanelOpen(!state.agentPanelOpen),
           ),
         ),
-        if (state.editorFileTreeOpen)
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: state.editorTreeWidth.clamp(0, maxWidth * 0.85),
-            child: Material(
-              elevation: 4,
-              color: theme.colorScheme.surface,
-              child: const FilesPanel(),
-            ),
-          ),
         if (state.agentPanelOpen)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 200),
