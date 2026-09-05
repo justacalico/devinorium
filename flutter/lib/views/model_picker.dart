@@ -175,7 +175,6 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
           children: [
             _SearchField(
               value: _search,
-              autofocus: true,
               onChanged: (v) => setState(() => _search = v),
             ),
             const SizedBox(height: 12),
@@ -189,11 +188,9 @@ class _ModelPickerDialogState extends State<_ModelPickerDialog> {
 
 class _SearchField extends StatelessWidget {
   final String value;
-  final bool autofocus;
   final ValueChanged<String> onChanged;
   const _SearchField({
     required this.value,
-    this.autofocus = false,
     required this.onChanged,
   });
 
@@ -201,7 +198,6 @@ class _SearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return TextField(
-      autofocus: autofocus,
       onChanged: onChanged,
       decoration: InputDecoration(
         hintText: l10n(context).searchModels,
