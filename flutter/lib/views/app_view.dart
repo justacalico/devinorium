@@ -29,51 +29,55 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final isNarrow = MediaQuery.of(context).size.width < 768;
+    return Selector<AppState, bool>(
+      selector: (_, state) => state.filesPanelOpen,
+      builder: (context, filesPanelOpen, _) {
+        final isNarrow = MediaQuery.of(context).size.width < 768;
 
-    // A stable key lets Flutter reparent this subtree (and preserve all
-    // stateful descendants such as text controllers) when the layout
-    // switches between narrow and wide, instead of rebuilding it.
-    final main = DropZone(key: _mainKey, child: _MainArea());
+        // A stable key lets Flutter reparent this subtree (and preserve all
+        // stateful descendants such as text controllers) when the layout
+        // switches between narrow and wide, instead of rebuilding it.
+        final main = DropZone(key: _mainKey, child: _MainArea());
 
-    if (isNarrow) {
-      // The files view lives inside the unified sidebar, so opening it on a
-      // narrow screen opens the sidebar drawer instead of a second panel.
-      if (state.filesPanelOpen && !_wasFilesPanelOpen) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scaffoldKey.currentState?.openDrawer();
-        });
-      }
-      _wasFilesPanelOpen = state.filesPanelOpen;
-
-      return Scaffold(
-        key: _scaffoldKey,
-        drawer: const Drawer(width: 300, child: Sidebar()),
-        body: main,
-        onDrawerChanged: (opened) {
-          if (!opened && state.filesPanelOpen) {
-            state.closeFilesPanel();
+        if (isNarrow) {
+          // The files view lives inside the unified sidebar, so opening it on a
+          // narrow screen opens the sidebar drawer instead of a second panel.
+          if (filesPanelOpen && !_wasFilesPanelOpen) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _scaffoldKey.currentState?.openDrawer();
+            });
           }
-        },
-      );
-    }
+          _wasFilesPanelOpen = filesPanelOpen;
 
-    _wasFilesPanelOpen = state.filesPanelOpen;
+          return Scaffold(
+            key: _scaffoldKey,
+            drawer: const Drawer(width: 300, child: Sidebar()),
+            body: main,
+            onDrawerChanged: (opened) {
+              if (!opened && filesPanelOpen) {
+                context.read<AppState>().closeFilesPanel();
+              }
+            },
+          );
+        }
 
-    return Scaffold(
-      body: Row(
-        children: [
-          SizedBox(width: _sidebarWidth, child: const Sidebar()),
-          _ResizeHandle(
-            onDrag: (delta) => setState(() {
-              _sidebarWidth =
-                  (_sidebarWidth + delta).clamp(_minSidebarWidth, _maxSidebarWidth);
-            }),
+        _wasFilesPanelOpen = filesPanelOpen;
+
+        return Scaffold(
+          body: Row(
+            children: [
+              SizedBox(width: _sidebarWidth, child: const Sidebar()),
+              _ResizeHandle(
+                onDrag: (delta) => setState(() {
+                  _sidebarWidth = (_sidebarWidth + delta)
+                      .clamp(_minSidebarWidth, _maxSidebarWidth);
+                }),
+              ),
+              Expanded(child: main),
+            ],
           ),
-          Expanded(child: main),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -81,16 +85,18 @@ class _AppShellState extends State<AppShell> {
 class _MainArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    if (state.appMode == AppMode.editor) {
-      return const EditorPage();
-    }
-    switch (state.page) {
-      case MainPage.threads:
-        return const ThreadPage();
-      case MainPage.settings:
-        return const SettingsPage();
-    }
+    return Selector<AppState, ({AppMode appMode, MainPage page})>(
+      selector: (_, state) => (appMode: state.appMode, page: state.page),
+      builder: (context, model, _) {
+        if (model.appMode == AppMode.editor) {
+          return const EditorPage();
+        }
+        return switch (model.page) {
+          MainPage.threads => const ThreadPage(),
+          MainPage.settings => const SettingsPage(),
+        };
+      },
+    );
   }
 }
 

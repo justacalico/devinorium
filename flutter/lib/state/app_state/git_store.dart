@@ -17,6 +17,7 @@ mixin GitStore on AppStateBase {
   String? _linkedMrBranch;
   @override
   List<GitConnection> _gitConnections = [];
+  List<GitConnection>? _gitConnectionsView;
   @override
   bool _loadingGitConnections = false;
   @override
@@ -39,6 +40,11 @@ mixin GitStore on AppStateBase {
   bool get cloningRepo => _cloningRepo;
   @override
   String? get cloneRepoResult => _cloneRepoResult;
+
+  void _bumpGitConnections() {
+    _gitConnections = List.of(_gitConnections);
+    _gitConnectionsView = null;
+  }
   @override
   void _clearLinkedMergeRequest() {
     _linkedMergeRequest = null;
@@ -49,12 +55,16 @@ mixin GitStore on AppStateBase {
   @override
   GitRepoInfo? gitRepoInfo(int projectId) => _gitRepoInfo[projectId];
   @override
-  List<GitBranch> gitBranches(int projectId) => _gitBranches[projectId] ?? [];
+  List<GitBranch> gitBranches(int projectId) =>
+      _gitBranches[projectId] ?? const <GitBranch>[];
   @override
   List<GitWorktree> gitWorktrees(int projectId) =>
-      _gitWorktrees[projectId] ?? [];
+      _gitWorktrees[projectId] ?? const <GitWorktree>[];
   @override
-  List<GitConnection> get gitConnections => _gitConnections;
+  List<GitConnection> get gitConnections {
+    _gitConnectionsView ??= List.unmodifiable(_gitConnections);
+    return _gitConnectionsView!;
+  }
   @override
   bool get loadingGitConnections => _loadingGitConnections;
   @override
@@ -386,6 +396,7 @@ mixin GitStore on AppStateBase {
     notifyListeners();
     try {
       _gitConnections = await api.listGitConnections();
+      _bumpGitConnections();
       _globalError = '';
     } catch (e) {
       _globalError = '$e';
@@ -404,6 +415,7 @@ mixin GitStore on AppStateBase {
       } else {
         _gitConnections.add(updated);
       }
+      _bumpGitConnections();
       _globalError = '';
       notifyListeners();
     } catch (e) {

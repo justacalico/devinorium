@@ -47,23 +47,29 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final isNarrow = MediaQuery.of(context).size.width < 768;
+    final state = context.read<AppState>();
 
-    final sections = [
-      _AccountSection(state: state),
-      _ProviderCard(state: state),
-      _PersonalizationSection(state: state),
-      _GitSection(state: state),
-      _CloneRootSection(state: state),
-      if (state.isOwner) _AccountsSection(state: state),
-      _AboutSection(state: state),
-      const _ServersSection(),
-    ];
-    final index = state.settingsTopicIndex.clamp(0, sections.length - 1);
+    return Selector<AppState, ({bool isOwner, int settingsTopicIndex})>(
+      selector: (_, s) => (
+        isOwner: s.isOwner,
+        settingsTopicIndex: s.settingsTopicIndex,
+      ),
+      builder: (context, model, _) {
+        final sections = [
+          _AccountSection(state: state),
+          _ProviderCard(state: state),
+          _PersonalizationSection(state: state),
+          _GitSection(state: state),
+          _CloneRootSection(state: state),
+          if (model.isOwner) _AccountsSection(state: state),
+          _AboutSection(state: state),
+          const _ServersSection(),
+        ];
+        final index = model.settingsTopicIndex.clamp(0, sections.length - 1);
 
-    return Scaffold(
+        return Scaffold(
       appBar: AppBar(
         leading: isNarrow
             ? IconButton(
@@ -87,5 +93,6 @@ class _SettingsPageState extends State<SettingsPage> {
         child: sections[index],
       ),
     );
+  });
   }
 }

@@ -28,7 +28,6 @@ class _ProjectExpandableTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
 
@@ -131,17 +130,14 @@ class _ProjectExpandableTile extends StatelessWidget {
             child: isExpanded
                 ? Padding(
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                    child: threads.isEmpty &&
-                            !state.hasMoreProjectThreads(project.id)
-                        ? const _NoThreads()
-                        : _ThreadList(
-                            project: project,
-                            threads: threads,
-                            activeThreadId: activeThreadId,
-                            showAll: showAll,
-                            onThreadTap: onThreadTap,
-                            onShowMore: onShowMore,
-                          ),
+                    child: _ProjectThreadTree(
+                      project: project,
+                      threads: threads,
+                      activeThreadId: activeThreadId,
+                      showAll: showAll,
+                      onThreadTap: onThreadTap,
+                      onShowMore: onShowMore,
+                    ),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -151,11 +147,54 @@ class _ProjectExpandableTile extends StatelessWidget {
   }
 }
 
+class _ProjectThreadTree extends StatelessWidget {
+  final Project project;
+  final List<Thread> threads;
+  final bool showAll;
+  final String? activeThreadId;
+  final ValueChanged<String> onThreadTap;
+  final VoidCallback onShowMore;
+
+  const _ProjectThreadTree({
+    required this.project,
+    required this.threads,
+    required this.showAll,
+    this.activeThreadId,
+    required this.onThreadTap,
+    required this.onShowMore,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<AppState, ({bool hasMore, bool isLoading})>(
+      selector: (_, state) => (
+        hasMore: state.hasMoreProjectThreads(project.id),
+        isLoading: state.isLoadingMoreProjectThreads(project.id),
+      ),
+      builder: (context, status, _) {
+        if (threads.isEmpty && !status.hasMore) {
+          return const _NoThreads();
+        }
+        return _ThreadList(
+          project: project,
+          threads: threads,
+          activeThreadId: activeThreadId,
+          showAll: showAll,
+          status: status,
+          onThreadTap: onThreadTap,
+          onShowMore: onShowMore,
+        );
+      },
+    );
+  }
+}
+
 class _ThreadList extends StatelessWidget {
   final Project project;
   final List<Thread> threads;
   final bool showAll;
   final String? activeThreadId;
+  final ({bool hasMore, bool isLoading}) status;
   final ValueChanged<String> onThreadTap;
   final VoidCallback onShowMore;
 
@@ -164,6 +203,7 @@ class _ThreadList extends StatelessWidget {
     required this.threads,
     required this.showAll,
     this.activeThreadId,
+    required this.status,
     required this.onThreadTap,
     required this.onShowMore,
   });
@@ -177,7 +217,7 @@ class _ThreadList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.read<AppState>();
     final visible = _visibleThreads();
     final hiddenCount = threads.length - visible.length;
 
@@ -198,12 +238,12 @@ class _ThreadList extends StatelessWidget {
             onPressed: onShowMore,
             child: Text(l10n(context).showMoreThreads(hiddenCount)),
           ),
-        if (hiddenCount == 0 && state.hasMoreProjectThreads(project.id))
+        if (hiddenCount == 0 && status.hasMore)
           TextButton(
-            onPressed: state.isLoadingMoreProjectThreads(project.id)
+            onPressed: status.isLoading
                 ? null
                 : () => state.loadMoreProjectThreads(project.id),
-            child: state.isLoadingMoreProjectThreads(project.id)
+            child: status.isLoading
                 ? const SizedBox(
                     width: 16,
                     height: 16,
@@ -223,7 +263,7 @@ class _ProjectOptionsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.read<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
 

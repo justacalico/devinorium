@@ -65,69 +65,84 @@ class _ThreadTileState extends State<_ThreadTile>
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
-    final status = _threadStatus(context, state, widget.thread);
     final time = _timeAgo(widget.thread.updatedAt, l);
 
-    return SlideTransition(
-      position: _slide,
-      transformHitTests: false,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 1),
-        decoration: BoxDecoration(
-          color: widget.isActive
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
-              : theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
-          border: widget.isActive
-              ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-              : (widget.thread.pinned
-                  ? Border(
-                      left: BorderSide(
-                          color: theme.colorScheme.primary, width: 3))
-                  : null),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+    return Selector<AppState, ({Color? dotColor, String? dotLabel, bool isRunning})>(
+      selector: (_, state) {
+        final s = _threadStatus(context, state, widget.thread);
+        return (
+          dotColor: s?.color,
+          dotLabel: s?.label,
+          isRunning: state.runningThreadIds.contains(widget.thread.id),
+        );
+      },
+      builder: (context, model, _) {
+        final status = model.dotColor != null && model.dotLabel != null
+            ? (color: model.dotColor!, label: model.dotLabel!)
+            : null;
+
+        return SlideTransition(
+          position: _slide,
+          transformHitTests: false,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 1),
+            decoration: BoxDecoration(
+              color: widget.isActive
+                  ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+                  : theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
+              border: widget.isActive
+                  ? Border.all(color: theme.colorScheme.primary, width: 1.5)
+                  : (widget.thread.pinned
+                      ? Border(
+                          left: BorderSide(
+                              color: theme.colorScheme.primary, width: 3))
+                      : null),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                leading: _StatusDot(status: status),
+                title: _ThreadTitle(
+                  thread: widget.thread,
+                  status: status,
+                  isActive: widget.isActive,
+                ),
+                trailing: _ThreadActions(
+                  status: status,
+                  time: time,
+                  isDeleting: _deleting,
+                  thread: widget.thread,
+                  isRunning: model.isRunning,
+                  onDelete: _delete,
+                ),
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 2,
+                ),
+                horizontalTitleGap: 8,
+                minLeadingWidth: 0,
+                minVerticalPadding: 0,
+                onTap: _deleting
+                    ? null
+                    : () {
+                        Scaffold.of(context).closeDrawer();
+                        widget.onTap();
+                      },
+              ),
+            ),
           ),
-          clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            leading: _StatusDot(status: status),
-            title: _ThreadTitle(
-              thread: widget.thread,
-              status: status,
-              isActive: widget.isActive,
-            ),
-            trailing: _ThreadActions(
-              status: status,
-              time: time,
-              isDeleting: _deleting,
-              thread: widget.thread,
-              onDelete: _delete,
-            ),
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 2,
-            ),
-            horizontalTitleGap: 8,
-            minLeadingWidth: 0,
-            minVerticalPadding: 0,
-            onTap: _deleting
-                ? null
-                : () {
-                    Scaffold.of(context).closeDrawer();
-                    widget.onTap();
-                  },
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -210,6 +225,7 @@ class _ThreadActions extends StatelessWidget {
   final String time;
   final bool isDeleting;
   final Thread thread;
+  final bool isRunning;
   final VoidCallback onDelete;
 
   const _ThreadActions({
@@ -217,19 +233,19 @@ class _ThreadActions extends StatelessWidget {
     required this.time,
     required this.isDeleting,
     required this.thread,
+    required this.isRunning,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (state.runningThreadIds.contains(thread.id))
+        if (isRunning)
           Padding(
             padding: const EdgeInsets.only(right: 6),
             child: SizedBox(
@@ -285,7 +301,7 @@ class _ThreadOptionsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.read<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
 

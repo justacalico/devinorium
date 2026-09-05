@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
+import '../models/models.dart';
 import '../state/app_state.dart';
 import 'folder_picker.dart';
 import 'issue_panel.dart';
@@ -12,30 +13,44 @@ class DialogLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    switch (state.dialog) {
-      case DialogKind.none:
-        return const SizedBox.shrink();
-      case DialogKind.totpSetup:
-        return const _TotpSetupDialog();
-      case DialogKind.newProject:
-        return const _NewProjectDialog();
-      case DialogKind.cloneRepo:
-        return const _CloneRepoDialog();
-      case DialogKind.permissionRequest:
-        return const _PermissionRequestDialog();
-      case DialogKind.mergeRequest:
-        final url = state.mergeRequestUrl;
-        if (url == null || url.isEmpty) return const SizedBox.shrink();
-        return MergeRequestPanel(url: url);
-      case DialogKind.issue:
-        final issueUrl = state.issueUrl;
-        if (issueUrl == null || issueUrl.isEmpty) return const SizedBox.shrink();
-        return IssuePanel(url: issueUrl);
-      case DialogKind.renameProject:
-      case DialogKind.renameThread:
-        return const _RenameDialog();
-    }
+    return Selector<AppState, ({
+      DialogKind dialog,
+      String? mergeRequestUrl,
+      String? issueUrl,
+    })>(
+      selector: (_, s) => (
+        dialog: s.dialog,
+        mergeRequestUrl: s.mergeRequestUrl,
+        issueUrl: s.issueUrl,
+      ),
+      builder: (context, model, _) {
+        switch (model.dialog) {
+          case DialogKind.none:
+            return const SizedBox.shrink();
+          case DialogKind.totpSetup:
+            return const _TotpSetupDialog();
+          case DialogKind.newProject:
+            return const _NewProjectDialog();
+          case DialogKind.cloneRepo:
+            return const _CloneRepoDialog();
+          case DialogKind.permissionRequest:
+            return const _PermissionRequestDialog();
+          case DialogKind.mergeRequest:
+            final url = model.mergeRequestUrl;
+            if (url == null || url.isEmpty) return const SizedBox.shrink();
+            return MergeRequestPanel(url: url);
+          case DialogKind.issue:
+            final issueUrl = model.issueUrl;
+            if (issueUrl == null || issueUrl.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return IssuePanel(url: issueUrl);
+          case DialogKind.renameProject:
+          case DialogKind.renameThread:
+            return const _RenameDialog();
+        }
+      },
+    );
   }
 }
 
@@ -57,9 +72,13 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    return Stack(
+    final state = context.read<AppState>();
+
+    return Selector<AppState, String>(
+      selector: (_, s) => s.totpSecret,
+      builder: (context, totpSecret, _) {
+        return Stack(
       children: [
         ModalBarrier(color: Colors.black.withValues(alpha: 0.5), dismissible: false),
         Center(
@@ -87,7 +106,7 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: SelectableText(
-                        state.totpSecret,
+                        totpSecret,
                         style: theme.textTheme.bodySmall
                             ?.copyWith(fontFamily: 'monospace'),
                       ),
@@ -127,6 +146,7 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
         ),
       ],
     );
+  });
   }
 }
 
@@ -191,7 +211,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
   @override
   Widget build(BuildContext context) {
     final globalError = context.select((AppState s) => s.globalError);
-    final closeDialog = context.select((AppState s) => s.closeDialog);
+    final state = context.read<AppState>();
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
     final name = _nameController.text.trim();
@@ -258,7 +278,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
-                          onPressed: closeDialog,
+                          onPressed: state.closeDialog,
                           child: Text(l10n(context).cancel),
                         ),
                         const SizedBox(width: 8),
@@ -290,16 +310,18 @@ class _PermissionRequestDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final req = state.pendingPermissionRequest;
-    if (req == null) return const SizedBox.shrink();
-
-    if (req.options.isEmpty) {
-      state.respondToPermissionRequest(null);
-      return const SizedBox.shrink();
-    }
-
+    final state = context.read<AppState>();
     final theme = Theme.of(context);
+
+    return Selector<AppState, PermissionRequest?>(
+      selector: (_, s) => s.pendingPermissionRequest,
+      builder: (context, req, _) {
+        if (req == null) return const SizedBox.shrink();
+
+        if (req.options.isEmpty) {
+          state.respondToPermissionRequest(null);
+          return const SizedBox.shrink();
+        }
     final allowOnce = req.options.firstWhere(
       (o) => o.kind == 'AllowOnce',
       orElse: () => req.options.first,
@@ -390,6 +412,7 @@ class _PermissionRequestDialog extends StatelessWidget {
         ),
       ],
     );
+  });
   }
 
   String _displayKind(BuildContext context, String kind) {
@@ -446,17 +469,29 @@ class _RenameDialogState extends State<_RenameDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
-    final isProject = state.dialog == DialogKind.renameProject;
-    final title = isProject ? l.renameProject : l.renameThread;
-    final value = _controller.text.trim();
-    final canSubmit = value.isNotEmpty &&
-        value != state.renameInitialName &&
-        !_submitting;
+    final state = context.read<AppState>();
 
-    return Stack(
+    return Selector<AppState, ({
+      DialogKind dialog,
+      String renameInitialName,
+      String globalError,
+    })>(
+      selector: (_, s) => (
+        dialog: s.dialog,
+        renameInitialName: s.renameInitialName,
+        globalError: s.globalError,
+      ),
+      builder: (context, model, _) {
+        final isProject = model.dialog == DialogKind.renameProject;
+        final title = isProject ? l.renameProject : l.renameThread;
+        final value = _controller.text.trim();
+        final canSubmit = value.isNotEmpty &&
+            value != model.renameInitialName &&
+            !_submitting;
+
+        return Stack(
       children: [
         ModalBarrier(
           color: theme.colorScheme.scrim.withValues(alpha: 0.4),
@@ -482,17 +517,17 @@ class _RenameDialogState extends State<_RenameDialog> {
                       enabled: !_submitting,
                       decoration: InputDecoration(
                         labelText: l.newName,
-                        hintText: state.renameInitialName,
+                        hintText: model.renameInitialName,
                         border: const OutlineInputBorder(),
                       ),
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _submit(state),
                       onChanged: (_) => setState(() {}),
                     ),
-                    if (state.globalError.isNotEmpty) ...[
+                    if (model.globalError.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Text(
-                        state.globalError,
+                        model.globalError,
                         style: TextStyle(color: theme.colorScheme.error),
                       ),
                     ],
@@ -525,6 +560,7 @@ class _RenameDialogState extends State<_RenameDialog> {
         ),
       ],
     );
+  });
   }
 }
 
@@ -546,13 +582,25 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
-    final result = state.cloneRepoResult;
-    final hasResult = result != null && result.isNotEmpty;
+    final state = context.read<AppState>();
 
-    return Stack(
+    return Selector<AppState, ({
+      String? cloneRepoResult,
+      bool cloningRepo,
+      String globalError,
+    })>(
+      selector: (_, s) => (
+        cloneRepoResult: s.cloneRepoResult,
+        cloningRepo: s.cloningRepo,
+        globalError: s.globalError,
+      ),
+      builder: (context, model, _) {
+        final result = model.cloneRepoResult;
+        final hasResult = result != null && result.isNotEmpty;
+
+        return Stack(
       children: [
         ModalBarrier(
           color: theme.colorScheme.scrim.withValues(alpha: 0.4),
@@ -578,7 +626,7 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
                       TextField(
                         controller: _urlController,
                         autofocus: true,
-                        enabled: !state.cloningRepo,
+                        enabled: !model.cloningRepo,
                         decoration: InputDecoration(
                           labelText: l.cloneRepoUrlLabel,
                           hintText: 'https://gitlab.com/owner/repo.git',
@@ -592,10 +640,10 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
                       const SizedBox(height: 8),
                       SelectableText(result),
                     ],
-                    if (state.globalError.isNotEmpty) ...[
+                    if (model.globalError.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Text(
-                        state.globalError,
+                        model.globalError,
                         style: TextStyle(color: theme.colorScheme.error),
                       ),
                     ],
@@ -617,8 +665,8 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
                         else
                           FilledButton(
                             onPressed:
-                                state.cloningRepo ? null : () => _clone(state),
-                            child: state.cloningRepo
+                                model.cloningRepo ? null : () => _clone(state),
+                            child: model.cloningRepo
                                 ? const SizedBox(
                                     width: 16,
                                     height: 16,
@@ -637,6 +685,7 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
         ),
       ],
     );
+  });
   }
 
   Future<void> _clone(AppState state) async {

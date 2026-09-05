@@ -84,91 +84,110 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final projects = state.projects;
-    final threads = state.threads;
-    final activeThreadId = state.activeThreadId;
     final query = widget.searchQuery.trim().toLowerCase();
+    final state = context.read<AppState>();
 
-    if (projects.isEmpty) {
-      return const _NoProjects();
-    }
+    return Selector<AppState, ({
+      List<Project> projects,
+      List<Thread> threads,
+      String? activeThreadId,
+      bool hasMoreProjects,
+      bool isLoadingMoreProjects,
+    })>(
+      selector: (_, s) => (
+        projects: s.projects,
+        threads: s.threads,
+        activeThreadId: s.activeThreadId,
+        hasMoreProjects: s.hasMoreProjects,
+        isLoadingMoreProjects: s.isLoadingMoreProjects,
+      ),
+      builder: (context, model, _) {
+        final projects = model.projects;
+        final threads = model.threads;
+        final activeThreadId = model.activeThreadId;
 
-    final threadsByProject = <int, List<Thread>>{};
-    for (final t in threads) {
-      if (t.projectId != 0) {
-        threadsByProject.putIfAbsent(t.projectId, () => []).add(t);
-      }
-    }
-    for (final list in threadsByProject.values) {
-      list.sort((a, b) {
-        if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-        return b.updatedAt.compareTo(a.updatedAt);
-      });
-    }
+        if (projects.isEmpty) {
+          return const _NoProjects();
+        }
 
-    final visibleProjects = _filterProjects(projects, threadsByProject, query);
-    final visibleThreadsByProject = _filterThreads(
-      visibleProjects,
-      threadsByProject,
-      query,
-    );
+        final threadsByProject = <int, List<Thread>>{};
+        for (final t in threads) {
+          if (t.projectId != 0) {
+            threadsByProject.putIfAbsent(t.projectId, () => []).add(t);
+          }
+        }
+        for (final list in threadsByProject.values) {
+          list.sort((a, b) {
+            if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+            return b.updatedAt.compareTo(a.updatedAt);
+          });
+        }
 
-    if (visibleProjects.isEmpty) {
-      return const _NoSearchResults();
-    }
+        final visibleProjects = _filterProjects(projects, threadsByProject, query);
+        final visibleThreadsByProject = _filterThreads(
+          visibleProjects,
+          threadsByProject,
+          query,
+        );
 
-    return Column(
-      children: [
-        Expanded(
-          child: ReorderableListView.builder(
-            scrollController: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            buildDefaultDragHandles: false,
-            onReorderItem: _onReorder,
-            itemCount: visibleProjects.length,
-            itemBuilder: (context, index) {
-              final p = visibleProjects[index];
-              final projectThreads = visibleThreadsByProject[p.id] ?? [];
-              final isExpanded = query.isNotEmpty ||
-                  _expandedIds.contains(p.id);
-              final showAll = query.isNotEmpty ||
-                  _showAllProjectIds.contains(p.id);
+        if (visibleProjects.isEmpty) {
+          return const _NoSearchResults();
+        }
 
-              return _ProjectExpandableTile(
-                key: ValueKey(p.id),
-                index: index,
-                project: p,
-                threads: projectThreads,
-                isExpanded: isExpanded,
-                showAll: showAll,
-                activeThreadId: activeThreadId,
-                onToggle: () => _onToggle(p.id),
-                onNewThread: () {
-                  Scaffold.of(context).closeDrawer();
-                  state.createNewThread(projectId: p.id);
+        return Column(
+          children: [
+            Expanded(
+              child: ReorderableListView.builder(
+                scrollController: _scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                buildDefaultDragHandles: false,
+                onReorderItem: _onReorder,
+                itemCount: visibleProjects.length,
+                itemBuilder: (context, index) {
+                  final p = visibleProjects[index];
+                  final projectThreads = visibleThreadsByProject[p.id] ?? [];
+                  final isExpanded = query.isNotEmpty ||
+                      _expandedIds.contains(p.id);
+                  final showAll = query.isNotEmpty ||
+                      _showAllProjectIds.contains(p.id);
+
+                  return _ProjectExpandableTile(
+                    key: ValueKey(p.id),
+                    index: index,
+                    project: p,
+                    threads: projectThreads,
+                    isExpanded: isExpanded,
+                    showAll: showAll,
+                    activeThreadId: activeThreadId,
+                    onToggle: () => _onToggle(p.id),
+                    onNewThread: () {
+                      Scaffold.of(context).closeDrawer();
+                      state.createNewThread(projectId: p.id);
+                    },
+                    onThreadTap: (id) => state.openThread(id),
+                    onShowMore: () => _onShowMore(p.id),
+                  );
                 },
-                onThreadTap: (id) => state.openThread(id),
-                onShowMore: () => _onShowMore(p.id),
-              );
-            },
-          ),
-        ),
-        if (query.isEmpty && (state.hasMoreProjects || state.isLoadingMoreProjects))
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: state.isLoadingMoreProjects
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : TextButton(
-                    onPressed: () => state.loadMoreProjects(),
-                    child: Text(l10n(context).loadMore),
-                  ),
-          ),
-      ],
+              ),
+            ),
+            if (query.isEmpty &&
+                (model.hasMoreProjects || model.isLoadingMoreProjects))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                child: model.isLoadingMoreProjects
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : TextButton(
+                        onPressed: () => state.loadMoreProjects(),
+                        child: Text(l10n(context).loadMore),
+                      ),
+              ),
+          ],
+        );
+      },
     );
   }
 
