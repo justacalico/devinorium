@@ -33,6 +33,15 @@ class EditorTabBar extends StatelessWidget {
               ],
             ),
           ),
+          if (state.activeThreadId != null)
+            _ToolbarButton(
+              icon: state.editorTerminalOpen
+                  ? Icons.terminal
+                  : Icons.terminal_outlined,
+              tooltip: l10n(context).terminal,
+              onPressed: () =>
+                  state.setEditorTerminalOpen(!state.editorTerminalOpen),
+            ),
           if (activeTab != null) ...[
             _ToolbarButton(
               icon: Icons.refresh,

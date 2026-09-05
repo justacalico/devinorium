@@ -70,19 +70,6 @@ class _FilesPanelBody extends StatelessWidget {
                     icon: const Icon(Icons.create_new_folder_outlined),
                     onPressed: () => _promptMkdir(context, state),
                   ),
-                if (state.appMode == AppMode.editor &&
-                    state.activeThreadId != null)
-                  IconButton(
-                    tooltip: l10n(context).terminal,
-                    icon: Icon(
-                      state.editorTerminalOpen
-                          ? Icons.terminal
-                          : Icons.terminal_outlined,
-                    ),
-                    onPressed: () => state.setEditorTerminalOpen(
-                      !state.editorTerminalOpen,
-                    ),
-                  ),
                 IconButton(
                   tooltip: l10n(context).close,
                   icon: const Icon(Icons.close),

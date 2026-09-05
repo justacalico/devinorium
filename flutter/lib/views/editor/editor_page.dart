@@ -39,11 +39,8 @@ class _WideEditor extends StatelessWidget {
 
     return Row(
       children: [
-        if (state.editorFileTreeOpen || _terminalVisible(state)) ...[
-          SizedBox(
-            width: state.editorTreeWidth,
-            child: const _FilesSidePanel(),
-          ),
+        if (state.editorFileTreeOpen) ...[
+          SizedBox(width: state.editorTreeWidth, child: const FilesPanel()),
           _ResizeHandle(
             onDrag: (delta) =>
                 state.setEditorTreeWidth(state.editorTreeWidth + delta),
@@ -56,6 +53,7 @@ class _WideEditor extends StatelessWidget {
               const Expanded(child: FileEditor()),
               if (state.activeEditorTab?.saving == true)
                 const LinearProgressIndicator(minHeight: 2),
+              if (_terminalVisible(state)) const _EditorTerminal(),
             ],
           ),
         ),
@@ -74,30 +72,21 @@ class _WideEditor extends StatelessWidget {
 bool _terminalVisible(AppState state) =>
     state.editorTerminalOpen && state.activeThreadId != null;
 
-class _FilesSidePanel extends StatelessWidget {
-  const _FilesSidePanel();
+class _EditorTerminal extends StatelessWidget {
+  const _EditorTerminal();
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final threadId = state.activeThreadId;
-    final terminalVisible = _terminalVisible(state);
+    if (threadId == null) return const SizedBox.shrink();
 
-    return Column(
-      children: [
-        if (state.editorFileTreeOpen)
-          const Expanded(child: FilesPanel())
-        else
-          const Spacer(),
-        if (terminalVisible)
-          ThreadTerminalPanel(
-            api: state.api,
-            threadId: threadId!,
-            initialHeight: state.editorTerminalHeight,
-            onHeightChanged: state.setEditorTerminalHeight,
-            onClose: () => state.setEditorTerminalOpen(false),
-          ),
-      ],
+    return ThreadTerminalPanel(
+      api: state.api,
+      threadId: threadId,
+      initialHeight: state.editorTerminalHeight,
+      onHeightChanged: state.setEditorTerminalHeight,
+      onClose: () => state.setEditorTerminalOpen(false),
     );
   }
 }
@@ -109,9 +98,7 @@ class _NarrowEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final showPanels = state.editorFileTreeOpen ||
-        state.agentPanelOpen ||
-        _terminalVisible(state);
+    final showPanels = state.editorFileTreeOpen || state.agentPanelOpen;
     final maxWidth = MediaQuery.of(context).size.width;
 
     return Stack(
@@ -122,6 +109,7 @@ class _NarrowEditor extends StatelessWidget {
             const Expanded(child: FileEditor()),
             if (state.activeEditorTab?.saving == true)
               const LinearProgressIndicator(minHeight: 2),
+            if (_terminalVisible(state)) const _EditorTerminal(),
           ],
         ),
         if (showPanels)
@@ -130,7 +118,6 @@ class _NarrowEditor extends StatelessWidget {
               onTap: () {
                 state.setEditorFileTreeOpen(false);
                 state.setAgentPanelOpen(false);
-                state.setEditorTerminalOpen(false);
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -162,7 +149,7 @@ class _NarrowEditor extends StatelessWidget {
             onPressed: () => state.setAgentPanelOpen(!state.agentPanelOpen),
           ),
         ),
-        if (state.editorFileTreeOpen || _terminalVisible(state))
+        if (state.editorFileTreeOpen)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
@@ -173,7 +160,7 @@ class _NarrowEditor extends StatelessWidget {
             child: Material(
               elevation: 4,
               color: theme.colorScheme.surface,
-              child: const _FilesSidePanel(),
+              child: const FilesPanel(),
             ),
           ),
         if (state.agentPanelOpen)
