@@ -10,6 +10,10 @@ typedef _ComposerModel = ({
   List<ModelInfo> models,
 });
 
+/// The available width for the composer dropdowns below which they switch to
+/// compact labels and a horizontally scrolling row.
+const _compactDropdownsBreakpoint = 360.0;
+
 class _Composer extends StatefulWidget {
   final TextEditingController controller;
   const _Composer({required this.controller});
@@ -250,199 +254,245 @@ class _ComposerState extends State<_Composer> {
             : BorderSide(color: modeColor, width: 2);
 
         return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Material(
-              color: theme.colorScheme.surfaceContainer,
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-                side: borderSide,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (model.attachments.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (var i = 0; i < model.attachments.length; i++)
-                              Chip(
-                                avatar: const Icon(Icons.attach_file, size: 14),
-                                label: Text(model.attachments[i].filename),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 0,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                                backgroundColor:
-                                    theme.colorScheme.surfaceContainerHigh,
-                                onDeleted: () => state.removeAttachment(i),
-                              ),
-                          ],
-                        ),
-                      ),
-                    CallbackShortcuts(
-                      bindings: {
-                        _pasteShortcut: () {
-                          _handlePaste();
-                        },
-                        _macPasteShortcut: () {
-                          _handlePaste();
-                        },
-                        _sendShortcut: () => _submit(state),
-                        _cycleModeShortcut: () => _cycleComposerMode(state),
-                      },
-                      child: TextField(
-                        key: const Key('composer_input'),
-                        controller: widget.controller,
-                        focusNode: _focusNode,
-                        minLines: 1,
-                        maxLines: 6,
-                        enabled: hasActiveThread && !isSending,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          isCollapsed: true,
-                          hintText: l10n(context).composerHint,
-                        ),
-                        style: theme.textTheme.bodyLarge,
-                        onChanged: _onTextChanged,
-                        contextMenuBuilder: (context, editableTextState) {
-                          final items = editableTextState.contextMenuButtonItems
-                              .map((item) {
-                                if (item.type == ContextMenuButtonType.paste) {
-                                  return ContextMenuButtonItem(
-                                    type: item.type,
-                                    label: item.label,
-                                    onPressed: _handlePaste,
-                                  );
-                                }
-                                return item;
-                              })
-                              .toList();
-                          return AdaptiveTextSelectionToolbar.buttonItems(
-                            buttonItems: items,
-                            anchors: editableTextState.contextMenuAnchors,
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Material(
+                  color: theme.colorScheme.surfaceContainer,
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                    side: borderSide,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.attach_file, size: 20),
-                          onPressed: hasActiveThread && !isSending
-                              ? () async {
-                                  final dz = DropZone.of(context);
-                                  if (dz == null) return;
-                                  final files = await dz.pick(multiple: true);
-                                  if (files.isNotEmpty) {
-                                    state.addAttachments(files);
-                                  }
-                                }
-                              : null,
-                        ),
-                        Expanded(
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 0,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              ModelPicker(
-                                value: model.selectedModel,
-                                models: model.models,
-                                enabled: hasActiveThread && !isSending,
-                                onChanged: (selected) {
-                                  state.setSelectedModel(selected);
-                                  state.saveThreadSettings();
-                                },
-                              ),
-                              _PermissionDropdown(
-                                value: model.selectedPermission,
-                                enabled: hasActiveThread && !isSending,
-                                onChanged: (mode) {
-                                  state.setSelectedPermission(mode);
-                                  state.saveThreadSettings();
-                                },
-                              ),
-                              _ModeDropdown(
-                                value: model.composerMode,
-                                enabled: hasActiveThread && !isSending,
-                                onChanged: state.setComposerMode,
-                              ),
-                            ],
+                        if (model.attachments.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                for (
+                                  var i = 0;
+                                  i < model.attachments.length;
+                                  i++
+                                )
+                                  Chip(
+                                    avatar: const Icon(
+                                      Icons.attach_file,
+                                      size: 14,
+                                    ),
+                                    label: Text(model.attachments[i].filename),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 0,
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                    backgroundColor:
+                                        theme.colorScheme.surfaceContainerHigh,
+                                    onDeleted: () => state.removeAttachment(i),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        CallbackShortcuts(
+                          bindings: {
+                            _pasteShortcut: () {
+                              _handlePaste();
+                            },
+                            _macPasteShortcut: () {
+                              _handlePaste();
+                            },
+                            _sendShortcut: () => _submit(state),
+                            _cycleModeShortcut: () => _cycleComposerMode(state),
+                          },
+                          child: TextField(
+                            key: const Key('composer_input'),
+                            controller: widget.controller,
+                            focusNode: _focusNode,
+                            minLines: 1,
+                            maxLines: 6,
+                            enabled: hasActiveThread && !isSending,
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              isCollapsed: true,
+                              hintText: l10n(context).composerHint,
+                            ),
+                            style: theme.textTheme.bodyLarge,
+                            onChanged: _onTextChanged,
+                            contextMenuBuilder: (context, editableTextState) {
+                              final items = editableTextState
+                                  .contextMenuButtonItems
+                                  .map((item) {
+                                    if (item.type ==
+                                        ContextMenuButtonType.paste) {
+                                      return ContextMenuButtonItem(
+                                        type: item.type,
+                                        label: item.label,
+                                        onPressed: _handlePaste,
+                                      );
+                                    }
+                                    return item;
+                                  })
+                                  .toList();
+                              return AdaptiveTextSelectionToolbar.buttonItems(
+                                buttonItems: items,
+                                anchors: editableTextState.contextMenuAnchors,
+                              );
+                            },
                           ),
                         ),
-                        IconButton.filled(
-                          style: isSending
-                              ? IconButton.styleFrom(
-                                  backgroundColor: theme.colorScheme.error,
-                                  foregroundColor: theme.colorScheme.onError,
-                                )
-                              : null,
-                          tooltip: isSending
-                              ? l10n(context).stopGenerating
-                              : l10n(context).send,
-                          icon: isSending
-                              ? const Icon(Icons.stop, size: 18)
-                              : const Icon(Icons.send, size: 18),
-                          onPressed: hasActiveThread
-                              ? () {
-                                  if (isSending) {
-                                    state.stopThread();
-                                  } else if (_effectivePrompt(state)
-                                      .isNotEmpty) {
-                                    widget.controller.clear();
-                                    state.sendMessage();
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.attach_file, size: 20),
+                              onPressed: hasActiveThread && !isSending
+                                  ? () async {
+                                      final dz = DropZone.of(context);
+                                      if (dz == null) return;
+                                      final files = await dz.pick(
+                                        multiple: true,
+                                      );
+                                      if (files.isNotEmpty) {
+                                        state.addAttachments(files);
+                                      }
+                                    }
+                                  : null,
+                            ),
+                            Expanded(
+                              child: LayoutBuilder(
+                                key: const Key('composer_dropdowns'),
+                                builder: (context, constraints) {
+                                  final compact =
+                                      constraints.maxWidth <
+                                      _compactDropdownsBreakpoint;
+                                  final dropdowns = [
+                                    ModelPicker(
+                                      value: model.selectedModel,
+                                      models: model.models,
+                                      compact: compact,
+                                      enabled: hasActiveThread && !isSending,
+                                      onChanged: (selected) {
+                                        state.setSelectedModel(selected);
+                                        state.saveThreadSettings();
+                                      },
+                                    ),
+                                    _PermissionDropdown(
+                                      value: model.selectedPermission,
+                                      compact: compact,
+                                      enabled: hasActiveThread && !isSending,
+                                      onChanged: (mode) {
+                                        state.setSelectedPermission(mode);
+                                        state.saveThreadSettings();
+                                      },
+                                    ),
+                                    _ModeDropdown(
+                                      value: model.composerMode,
+                                      compact: compact,
+                                      enabled: hasActiveThread && !isSending,
+                                      onChanged: state.setComposerMode,
+                                    ),
+                                  ];
+
+                                  if (compact) {
+                                    return SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          dropdowns[0],
+                                          const SizedBox(width: 8),
+                                          dropdowns[1],
+                                          const SizedBox(width: 8),
+                                          dropdowns[2],
+                                        ],
+                                      ),
+                                    );
                                   }
-                                }
-                              : null,
+
+                                  return Wrap(
+                                    spacing: 8,
+                                    runSpacing: 0,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: dropdowns,
+                                  );
+                                },
+                              ),
+                            ),
+                            IconButton.filled(
+                              style: isSending
+                                  ? IconButton.styleFrom(
+                                      backgroundColor: theme.colorScheme.error,
+                                      foregroundColor:
+                                          theme.colorScheme.onError,
+                                    )
+                                  : null,
+                              tooltip: isSending
+                                  ? l10n(context).stopGenerating
+                                  : l10n(context).send,
+                              icon: isSending
+                                  ? const Icon(Icons.stop, size: 18)
+                                  : const Icon(Icons.send, size: 18),
+                              onPressed: hasActiveThread
+                                  ? () {
+                                      if (isSending) {
+                                        state.stopThread();
+                                      } else if (_effectivePrompt(
+                                        state,
+                                      ).isNotEmpty) {
+                                        widget.controller.clear();
+                                        state.sendMessage();
+                                      }
+                                    }
+                                  : null,
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            if (showBadge)
-              Positioned(
-                top: -10,
-                left: 20,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _badgeBackground(mode),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: modeColor),
-                  ),
-                  child: Text(
-                    mode.label,
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                if (showBadge)
+                  Positioned(
+                    top: -10,
+                    left: 20,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _badgeBackground(mode),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: modeColor),
+                      ),
+                      child: Text(
+                        mode.label,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-          ],
-        ),
-      ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-  });
   }
 }
