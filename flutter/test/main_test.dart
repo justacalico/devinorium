@@ -3,6 +3,7 @@ import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _TrackingAppState extends AppState {
@@ -15,6 +16,58 @@ class _TrackingAppState extends AppState {
 }
 
 void main() {
+  testWidgets('RootScaffold insets content within the system safe area', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'Devinorium',
+      packageName: 'devinorium_frontend',
+      version: '0.21.0',
+      buildNumber: '25',
+      buildSignature: '',
+    );
+
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.padding = const FakeViewPadding(top: 48, bottom: 32);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final appState = AppState()..setView(AppView.login);
+    final themeProvider = ThemeProvider();
+    await themeProvider.loadInitial();
+    addTearDown(appState.dispose);
+    addTearDown(themeProvider.dispose);
+    addTearDown(() async {
+      await tester.pumpWidget(Container());
+    });
+
+    await tester.pumpWidget(
+      DevinoriumApp(appState: appState, themeProvider: themeProvider),
+    );
+    await tester.pumpAndSettle();
+
+    final loginScaffold = find.byType(Scaffold);
+    expect(loginScaffold, findsOneWidget);
+    final loginBox = tester.getRect(loginScaffold);
+    expect(loginBox.top, 48.0);
+    expect(loginBox.bottom, 768.0);
+
+    appState.setView(AppView.app);
+    await tester.pump(const Duration(milliseconds: 100));
+    final appShellBox = tester.getRect(find.byType(Scaffold).first);
+    expect(appShellBox.top, 48.0);
+    expect(appShellBox.bottom, 768.0);
+
+    appState.setView(AppView.loading);
+    await tester.pump();
+    final loadingBox = tester.getRect(find.byType(Scaffold));
+    expect(loadingBox.top, 48.0);
+    expect(loadingBox.bottom, 768.0);
+  });
+
   testWidgets('resumed lifecycle state triggers handleAppResumed', (
     tester,
   ) async {

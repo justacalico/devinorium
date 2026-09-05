@@ -22,10 +22,7 @@ Future<void> main() async {
     debugLogFailure('main.bootstrap', e);
   });
 
-  runApp(DevinoriumApp(
-    appState: appState,
-    themeProvider: themeProvider,
-  ));
+  runApp(DevinoriumApp(appState: appState, themeProvider: themeProvider));
 }
 
 class DevinoriumApp extends StatefulWidget {
@@ -86,7 +83,9 @@ class _DevinoriumAppState extends State<DevinoriumApp>
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<AppState>.value(value: widget.appState),
-        ChangeNotifierProvider<ThemeProvider>.value(value: widget.themeProvider),
+        ChangeNotifierProvider<ThemeProvider>.value(
+          value: widget.themeProvider,
+        ),
       ],
       child: Builder(
         builder: (context) {
@@ -121,18 +120,21 @@ class RootScaffold extends StatelessWidget {
       builder: (context, view, _) {
         final Widget body = switch (view) {
           AppView.loading => const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            ),
+            body: Center(child: CircularProgressIndicator()),
+          ),
           AppView.login => const LoginView(),
           AppView.app => const AppShell(),
         };
 
-        return Stack(
-          children: [
-            body,
-            const _DialogOverlay(),
-            const _GlobalErrorBanner(),
-          ],
+        return SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              body,
+              const _DialogOverlay(),
+              const _GlobalErrorBanner(),
+            ],
+          ),
         );
       },
     );
