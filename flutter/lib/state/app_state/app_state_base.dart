@@ -406,6 +406,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get activeEditorPath;
   EditorTab? get activeEditorTab;
   bool get agentPanelOpen;
+  bool get agentPanelUserSet;
   bool get editorTerminalOpen;
   double get editorAgentPanelWidth;
   double get editorTerminalHeight;
