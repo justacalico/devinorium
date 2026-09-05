@@ -14,6 +14,8 @@ import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/attachment_reader.dart';
+import '../utils/clipboard_image.dart';
 import '../utils/path_attachment.dart';
 import '../utils/plan_markup.dart';
 import '../utils/thread_status.dart';

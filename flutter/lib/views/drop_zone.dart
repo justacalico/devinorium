@@ -1,3 +1,5 @@
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dropzone/flutter_dropzone.dart';
@@ -5,8 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../state/app_state.dart';
-
-typedef Attachment = ({String filename, String mime, Uint8List bytes});
+import '../utils/attachment_reader.dart';
 
 class DropZone extends StatefulWidget {
   final Widget child;
@@ -22,7 +23,7 @@ class DropZone extends StatefulWidget {
 }
 
 class DropZoneController {
-  final Future<List<Attachment>> Function({required bool multiple}) pick;
+  final Future<List<FileAttachment>> Function({required bool multiple}) pick;
   DropZoneController({required this.pick});
 }
 
@@ -35,94 +36,303 @@ class _DropZoneScope extends InheritedWidget {
 }
 
 class _DropZoneState extends State<DropZone> {
-  DropzoneViewController? _ctrl;
+  DropzoneViewController? _webCtrl;
   bool _hovering = false;
+  late final DropZoneController _controller;
 
   static const _maxSize = 8 * 1024 * 1024;
 
-  Future<List<Attachment>> _processFiles(List<DropzoneFileInterface> files) async {
-    if (_ctrl == null) return [];
-    final attachments = <Attachment>[];
-    final errors = <String>[];
-    final l = l10n(context);
-    for (final f in files) {
-      try {
-        final name = await _ctrl!.getFilename(f);
-        final mime = await _ctrl!.getFileMIME(f);
-        final size = await _ctrl!.getFileSize(f);
-        if (size > _maxSize) {
-          errors.add(l.dropZoneFileTooLarge(name));
-          continue;
-        }
-        final bytes = await _ctrl!.getFileData(f);
-        attachments.add((filename: name, mime: mime, bytes: bytes));
-      } catch (e) {
-        errors.add(l.dropZoneReadFileFailed('$e'));
-      }
-    }
-    if (errors.isNotEmpty && mounted) {
-      final appState = context.read<AppState>();
-      appState.setGlobalError(errors.join('\n'));
-    }
-    return attachments;
+  @override
+  void initState() {
+    super.initState();
+    _controller = DropZoneController(pick: _pickFiles);
   }
 
-  Future<void> _handleFiles(List<DropzoneFileInterface>? files) async {
-    if (files == null || files.isEmpty) {
-      if (mounted) setState(() => _hovering = false);
-      return;
-    }
-    try {
-      final attachments = await _processFiles(files);
-      if (attachments.isNotEmpty && mounted) {
-        final appState = context.read<AppState>();
-        appState.addAttachments(attachments);
-      }
-    } catch (e) {
-      if (mounted) {
-        final appState = context.read<AppState>();
-        appState.setGlobalError(l10n(context).dropZoneAttachFilesFailed('$e'));
-      }
-    }
-    if (mounted) setState(() => _hovering = false);
+  Future<List<FileAttachment>> _pickFiles({required bool multiple}) async {
+    if (kIsWeb) return _pickWebFiles(multiple: multiple);
+    return _pickNativeFiles(multiple: multiple);
   }
 
-  Future<List<Attachment>> _pickFiles({required bool multiple}) async {
-    if (_ctrl == null) return [];
+  Future<List<FileAttachment>> _pickWebFiles({required bool multiple}) async {
+    if (_webCtrl == null) return [];
     try {
-      final files = await _ctrl!.pickFiles(multiple: multiple);
-      return _processFiles(files);
+      final files = await _webCtrl!.pickFiles(multiple: multiple);
+      final results = await Future.wait(
+        files.map((f) => _readWebFile(f)),
+      );
+      return _collect(results);
     } catch (e) {
       if (mounted) {
-        final appState = context.read<AppState>();
-        appState.setGlobalError(l10n(context).dropZonePickFilesFailed('$e'));
+        context
+            .read<AppState>()
+            .setGlobalError(l10n(context).dropZonePickFilesFailed('$e'));
       }
       return [];
     }
   }
 
+  Future<List<FileAttachment>> _pickNativeFiles({
+    required bool multiple,
+  }) async {
+    try {
+      final List<PlatformFile> files;
+      const windowsOptions = WindowsOptions(lockParentWindow: true);
+      const linuxOptions = LinuxOptions(lockParentWindow: true);
+      if (multiple) {
+        files = await FilePicker.pickFiles(
+          windowsOptions: windowsOptions,
+          linuxOptions: linuxOptions,
+        );
+      } else {
+        final file = await FilePicker.pickFile(
+          windowsOptions: windowsOptions,
+          linuxOptions: linuxOptions,
+        );
+        files = file != null ? [file] : [];
+      }
+      if (files.isEmpty) return [];
+      final results = await Future.wait(
+        files.map((f) => readAttachment(_PlatformFileSource(f), maxSize: _maxSize)),
+      );
+      return _collect(results);
+    } catch (e) {
+      if (mounted) {
+        context
+            .read<AppState>()
+            .setGlobalError(l10n(context).dropZonePickFilesFailed('$e'));
+      }
+      return [];
+    }
+  }
+
+  Future<AttachmentResult> _readWebFile(DropzoneFileInterface file) async {
+    final name = await _webCtrl!.getFilename(file);
+    final mime = await _webCtrl!.getFileMIME(file);
+    final size = await _webCtrl!.getFileSize(file);
+    return readAttachment(
+      _WebAttachmentSource(
+        controller: _webCtrl!,
+        file: file,
+        filename: name,
+        mime: mime,
+        size: size,
+      ),
+      maxSize: _maxSize,
+    );
+  }
+
+  Future<List<FileAttachment>> _collect(List<AttachmentResult> results) async {
+    if (!mounted) return [];
+    final attachments = <FileAttachment>[];
+    final errors = <String>[];
+    for (final result in results) {
+      switch (result) {
+        case AttachmentSuccess():
+          attachments.add(result.attachment);
+        case AttachmentTooLarge():
+          errors.add(l10n(context).dropZoneFileTooLarge(result.filename));
+        case AttachmentReadError():
+          errors.add(l10n(context).dropZoneReadFileFailed('${result.error}'));
+      }
+    }
+    if (errors.isNotEmpty && mounted) {
+      context.read<AppState>().setGlobalError(errors.join('\n'));
+    }
+    return attachments;
+  }
+
+  Future<void> _handleWebDrop(List<DropzoneFileInterface>? files) async {
+    if (files == null || files.isEmpty) {
+      if (mounted) setState(() => _hovering = false);
+      return;
+    }
+    try {
+      final results = await Future.wait(files.map(_readWebFile));
+      final attachments = await _collect(results);
+      if (attachments.isNotEmpty && mounted) {
+        context.read<AppState>().addAttachments(attachments);
+      }
+    } catch (e) {
+      if (mounted) {
+        context
+            .read<AppState>()
+            .setGlobalError(l10n(context).dropZoneAttachFilesFailed('$e'));
+      }
+    }
+    if (mounted) setState(() => _hovering = false);
+  }
+
+  Future<void> _handleDesktopDrop(DropDoneDetails detail) async {
+    final results = <AttachmentResult>[];
+    for (final item in detail.files) {
+      if (item is DropItemDirectory) continue;
+      results.add(
+        await readAttachment(
+          _DropItemSource(item),
+          maxSize: _maxSize,
+        ),
+      );
+    }
+    try {
+      final attachments = await _collect(results);
+      if (attachments.isNotEmpty && mounted) {
+        context.read<AppState>().addAttachments(attachments);
+      }
+    } catch (e) {
+      if (mounted) {
+        context
+            .read<AppState>()
+            .setGlobalError(l10n(context).dropZoneAttachFilesFailed('$e'));
+      }
+    }
+    if (mounted) setState(() => _hovering = false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!kIsWeb) return widget.child;
-
-    final controller = DropZoneController(pick: _pickFiles);
-
     return _DropZoneScope(
-      controller: controller,
+      controller: _controller,
+      child: kIsWeb ? _buildWeb() : _buildForPlatform(context),
+    );
+  }
+
+  bool _isDesktop(BuildContext context) {
+    return switch (Theme.of(context).platform) {
+      TargetPlatform.linux ||
+      TargetPlatform.macOS ||
+      TargetPlatform.windows =>
+        true,
+      _ => false,
+    };
+  }
+
+  Widget _buildForPlatform(BuildContext context) {
+    if (_isDesktop(context)) {
+      return _buildDesktop();
+    }
+    return widget.child;
+  }
+
+  Widget _buildWeb() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DropzoneView(
+          operation: DragOperation.copy,
+          onCreated: (c) => _webCtrl = c,
+          onHover: () => setState(() => _hovering = true),
+          onLeave: () => setState(() => _hovering = false),
+          onDropFile: (file) => _handleWebDrop([file]),
+          onDropFiles: (fs) => _handleWebDrop(fs),
+          onError: (err) {
+            if (mounted) {
+              context
+                  .read<AppState>()
+                  .setGlobalError(l10n(context).dropZoneAttachFilesFailed(err ?? ''));
+            }
+          },
+        ),
+        widget.child,
+        if (_hovering) const _DropOverlay(),
+      ],
+    );
+  }
+
+  Widget _buildDesktop() {
+    return DropTarget(
+      onDragEntered: (_) => setState(() => _hovering = true),
+      onDragExited: (_) => setState(() => _hovering = false),
+      onDragDone: (detail) => _handleDesktopDrop(detail),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          DropzoneView(
-            onCreated: (c) => _ctrl = c,
-            onHover: () => setState(() => _hovering = true),
-            onLeave: () => setState(() => _hovering = false),
-            onDropFiles: (fs) => _handleFiles(fs),
-          ),
           widget.child,
           if (_hovering) const _DropOverlay(),
         ],
       ),
     );
+  }
+}
+
+class _WebAttachmentSource implements AttachmentSource {
+  final DropzoneViewController controller;
+  final DropzoneFileInterface file;
+
+  @override
+  final String name;
+
+  final String? mime;
+  final int size;
+
+  _WebAttachmentSource({
+    required this.controller,
+    required this.file,
+    required this.filename,
+    required this.mime,
+    required this.size,
+  }) : name = filename;
+
+  final String filename;
+
+  @override
+  String? get mimeType => mime?.isNotEmpty == true ? mime : null;
+
+  @override
+  Future<int> length() => Future.value(size);
+
+  @override
+  Future<Uint8List> readAsBytes() => controller.getFileData(file);
+}
+
+class _PlatformFileSource implements AttachmentSource {
+  final PlatformFile file;
+
+  _PlatformFileSource(this.file);
+
+  @override
+  String get name => file.name;
+
+  @override
+  String? get mimeType => null;
+
+  @override
+  Future<int> length() => file.length();
+
+  @override
+  Future<Uint8List> readAsBytes() => file.readAsBytes();
+}
+
+class _DropItemSource implements AttachmentSource {
+  final DropItem item;
+
+  _DropItemSource(this.item);
+
+  @override
+  String get name => item.name;
+
+  @override
+  String? get mimeType =>
+      item.mimeType?.isNotEmpty == true ? item.mimeType : null;
+
+  @override
+  Future<int> length() => item.length();
+
+  @override
+  Future<Uint8List> readAsBytes() async {
+    final bookmark = item.extraAppleBookmark;
+    if (bookmark != null && bookmark.isNotEmpty) {
+      final ok = await DesktopDrop.instance
+          .startAccessingSecurityScopedResource(bookmark: bookmark);
+      try {
+        return await item.readAsBytes();
+      } finally {
+        if (ok) {
+          await DesktopDrop.instance
+              .stopAccessingSecurityScopedResource(bookmark: bookmark);
+        }
+      }
+    }
+    return item.readAsBytes();
   }
 }
 
