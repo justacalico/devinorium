@@ -2,6 +2,32 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.38.0 - 2026-09-05
+#### Features
+- 切换模式时自动同步侧边栏文件标签 - (799f188) - HttpAnimations
+- 编辑器添加语法高亮 - (7f848a2) - HttpAnimations
+- 添加 Lystcode 编辑器模式 - (4c33750) - HttpAnimations
+- 添加文件写入接口与校验 - (ae22fca) - HttpAnimations
+#### Bug Fixes
+- 编辑器无活跃线程时不显示文件列表 - (6c37f29) - HttpAnimations
+- 文件树中键单击在新标签页打开文件 - (37b30b8) - HttpAnimations
+- 编辑器标签页支持中键关闭 - (0af1356) - HttpAnimations
+- 编辑器默认不展开终端 - (31a6035) - HttpAnimations
+- 移除文件面板关闭按钮并统一侧边栏样式 - (dcf639e) - HttpAnimations
+- 文件面板合并进统一侧边栏 - (f5a5fef) - HttpAnimations
+- 终端移动到编辑器内容区底部 - (dfe6b57) - HttpAnimations
+- 编辑器终端移到文件面板一侧 - (f003d8c) - HttpAnimations
+- 修复右侧面板拖拽方向与预期相反 - (2292242) - HttpAnimations
+- 让面板拖拽分隔条更明显、更易命中 - (3aadb9d) - HttpAnimations
+- 增宽编辑器右侧面板和主界面文件面板的最大宽度 - (44fbdb0) - HttpAnimations
+- 编辑器新打开的文件使用预览标签页 - (d73c370) - HttpAnimations
+- 编辑器窄屏浮动切换按钮在面板打开时显示关闭图标 - (182b033) - HttpAnimations
+- 文件树随线程/项目切换更新，无项目时显示空状态 - (4891a9e) - HttpAnimations
+- 主界面侧边栏和文件面板支持拖拽调整宽度 - (fba69af) - HttpAnimations
+- 编辑器左右面板支持拖拽调整宽度 - (7943c5b) - HttpAnimations
+
+- - -
+
 ## v0.37.0 - 2026-09-04
 #### Features
 - 在设置中显示提供程序版本并提示可用更新 - (9e55a86) - HttpAnimations
