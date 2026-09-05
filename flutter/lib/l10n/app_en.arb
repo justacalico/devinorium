@@ -536,6 +536,14 @@
   "pipelines": "Pipelines",
   "noDescription": "No description provided.",
   "noChanges": "No changed files.",
+  "changesFileCount": "{count, plural, =1{1 file} other{{count} files}}",
+  "@changesFileCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noComments": "No comments yet.",
   "noPipelines": "No pipelines yet.",
   "noJobs": "No jobs yet.",

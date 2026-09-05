@@ -4,6 +4,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
 import 'package:markdown/markdown.dart' as markdown;
 
 import '../l10n/l10n.dart';
+import '../merge_request/diff_stats.dart';
 import '../merge_request/merge_request_models.dart';
 import '../state/async_value.dart';
 import '../utils/link_opener.dart';
@@ -715,6 +716,33 @@ class _ChangesTab extends StatefulWidget {
 
 class _ChangesTabState extends State<_ChangesTab> {
   int? _expanded;
+  late List<DiffStats> _changeStats;
+
+  @override
+  void initState() {
+    super.initState();
+    _changeStats = _computeStats();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChangesTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_sameChanges(oldWidget.changes, widget.changes)) {
+      _changeStats = _computeStats();
+    }
+  }
+
+  bool _sameChanges(List<MergeRequestChange> a, List<MergeRequestChange> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  List<DiffStats> _computeStats() => [
+    for (final change in widget.changes) DiffStats.parse(change.diff),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -731,53 +759,87 @@ class _ChangesTabState extends State<_ChangesTab> {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 8, bottom: 24),
-      itemCount: widget.changes.length,
-      itemBuilder: (context, index) {
-        final change = widget.changes[index];
-        final isExpanded = _expanded == index;
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          child: InkWell(
-            onTap: () => setState(() => _expanded = isExpanded ? null : index),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _changeIcon(change),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          change.displayPath,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Icon(
-                        isExpanded ? Icons.expand_less : Icons.expand_more,
-                        size: 18,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
-                  if (isExpanded && change.diff.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    _DiffView(diff: change.diff),
-                  ],
-                ],
+    final total = DiffStats.total(_changeStats);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              Text(
+                l10n(context).changesFileCount(widget.changes.length),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
+              if (!total.isZero) ...[
+                const SizedBox(width: 8),
+                _DiffStatsText(stats: total),
+              ],
+            ],
           ),
-        );
-      },
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.only(top: 8, bottom: 24),
+            itemCount: widget.changes.length,
+            itemBuilder: (context, index) {
+              final change = widget.changes[index];
+              final isExpanded = _expanded == index;
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: InkWell(
+                  onTap: () =>
+                      setState(() => _expanded = isExpanded ? null : index),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            _changeIcon(change),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                change.displayPath,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (!_changeStats[index].isZero) ...[
+                              const SizedBox(width: 8),
+                              _DiffStatsText(stats: _changeStats[index]),
+                              const SizedBox(width: 8),
+                            ],
+                            Icon(
+                              isExpanded
+                                  ? Icons.expand_less
+                                  : Icons.expand_more,
+                              size: 18,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                        if (isExpanded && change.diff.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _DiffView(diff: change.diff),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -876,6 +938,35 @@ class _CommentsTab extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _DiffStatsText extends StatelessWidget {
+  final DiffStats stats;
+
+  const _DiffStatsText({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    if (stats.isZero) {
+      return const SizedBox.shrink();
+    }
+    final base = Theme.of(context).textTheme.labelMedium;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '+${stats.additions}',
+            style: base?.copyWith(color: Colors.green),
+          ),
+          TextSpan(text: ' ', style: base),
+          TextSpan(
+            text: '-${stats.deletions}',
+            style: base?.copyWith(color: Colors.red),
+          ),
+        ],
+      ),
     );
   }
 }

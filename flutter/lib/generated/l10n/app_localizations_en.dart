@@ -888,6 +888,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noChanges => 'No changed files.';
 
   @override
+  String changesFileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files',
+      one: '1 file',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get noComments => 'No comments yet.';
 
   @override
