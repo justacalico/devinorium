@@ -4,6 +4,12 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../state/app_state.dart';
 
+typedef _LoginModel = ({
+  bool isNative,
+  bool showTotpField,
+  String loginError,
+});
+
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
@@ -66,36 +72,43 @@ class _LoginViewState extends State<LoginView> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Card(
-            margin: const EdgeInsets.all(24),
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Icon(Icons.smart_toy_outlined,
-                        size: 56, color: theme.colorScheme.primary),
-                    const SizedBox(height: 12),
-                    Text(l10n(context).appTitle,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineSmall),
-                    const SizedBox(height: 4),
-                    Text(l10n(context).signInToYourAccount,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant)),
-                    const SizedBox(height: 24),
-                    if (state.api.client.isNative) ...[
+
+    return Selector<AppState, _LoginModel>(
+      selector: (_, s) => (
+        isNative: s.api.client.isNative,
+        showTotpField: s.showTotpField,
+        loginError: s.loginError,
+      ),
+      builder: (context, model, _) {
+        return Scaffold(
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Card(
+                margin: const EdgeInsets.all(24),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Icon(Icons.smart_toy_outlined,
+                            size: 56, color: theme.colorScheme.primary),
+                        const SizedBox(height: 12),
+                        Text(l10n(context).appTitle,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.headlineSmall),
+                        const SizedBox(height: 4),
+                        Text(l10n(context).signInToYourAccount,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant)),
+                        const SizedBox(height: 24),
+                        if (model.isNative) ...[
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -183,7 +196,7 @@ class _LoginViewState extends State<LoginView> {
                           v == null || v.isEmpty ? l10n(context).required : null,
                       onFieldSubmitted: (_) => _submit(),
                     ),
-                    if (state.showTotpField) ...[
+                    if (model.showTotpField) ...[
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _totp,
@@ -200,9 +213,9 @@ class _LoginViewState extends State<LoginView> {
                       onPressed: _submit,
                       child: Text(l10n(context).signIn),
                     ),
-                    if (state.loginError.isNotEmpty) ...[
+                    if (model.loginError.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      Text(state.loginError,
+                      Text(model.loginError,
                           style: TextStyle(color: theme.colorScheme.error)),
                     ],
                   ],
@@ -213,5 +226,6 @@ class _LoginViewState extends State<LoginView> {
         ),
       ),
     );
+  });
   }
 }

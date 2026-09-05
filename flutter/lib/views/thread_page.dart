@@ -9,6 +9,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
+import '../api/api_service.dart';
 import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
@@ -60,98 +61,126 @@ class _ThreadPageState extends State<ThreadPage> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final isNarrow = MediaQuery.of(context).size.width < 768;
-    final thread = state.activeThreadDetail?.thread;
-    final title = thread?.title ?? l10n(context).selectOrCreateThread;
-    final tag = thread != null
-        ? activeThreadTag(
-            sending: state.sending,
-            messages: state.activeThreadDetail?.messages ?? const [],
-            pendingPermissionRequest: state.pendingPermissionRequest,
-            pendingAskRequest: state.pendingAskRequest,
-            runStatus: state.lastRunStatus,
-          )
-        : null;
-    final activeThreadId = state.activeThreadId;
-    final terminalOpen = activeThreadId != null &&
-        (_terminalOpenByThread[activeThreadId] ?? false);
-    final terminalHeight = activeThreadId != null
-        ? (_terminalHeightByThread[activeThreadId] ?? _defaultTerminalHeight)
-        : _defaultTerminalHeight;
+    final state = context.read<AppState>();
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: isNarrow
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              )
-            : null,
-        title: WindowTitleDrag(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (tag != null) ...[ThreadTag(tag), const SizedBox(width: 8)],
-              Flexible(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+    return Selector<AppState, ({
+      Thread? thread,
+      String? tag,
+      String? activeThreadId,
+      MergeRequestLink? linkedMergeRequest,
+      Plan? activePlan,
+      bool planOverlayVisible,
+      ApiService api,
+    })>(
+      selector: (_, s) {
+        final detail = s.activeThreadDetail;
+        final thread = detail?.thread;
+        final messages = detail?.messages ?? const [];
+        return (
+          thread: thread,
+          tag: thread != null
+              ? activeThreadTag(
+                  sending: s.sending,
+                  messages: messages,
+                  pendingPermissionRequest: s.pendingPermissionRequest,
+                  pendingAskRequest: s.pendingAskRequest,
+                  runStatus: s.lastRunStatus,
+                )
+              : null,
+          activeThreadId: s.activeThreadId,
+          linkedMergeRequest: s.linkedMergeRequest,
+          activePlan: s.activePlan,
+          planOverlayVisible: s.planOverlayVisible,
+          api: s.api,
+        );
+      },
+      builder: (context, model, _) {
+        final title = model.thread?.title ?? l10n(context).selectOrCreateThread;
+        final activeThreadId = model.activeThreadId;
+        final terminalOpen = activeThreadId != null &&
+            (_terminalOpenByThread[activeThreadId] ?? false);
+        final terminalHeight = activeThreadId != null
+            ? (_terminalHeightByThread[activeThreadId] ?? _defaultTerminalHeight)
+            : _defaultTerminalHeight;
+
+        return Scaffold(
+          appBar: AppBar(
+            leading: isNarrow
+                ? IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                  )
+                : null,
+            title: WindowTitleDrag(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (model.tag != null) ...[
+                    ThreadTag(model.tag!),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (model.linkedMergeRequest != null)
+                LinkedMergeRequestChip(mr: model.linkedMergeRequest!),
+              if (model.activePlan != null)
+                IconButton(
+                  tooltip: model.planOverlayVisible ? 'Hide plan' : 'Show plan',
+                  icon: Icon(
+                    model.planOverlayVisible
+                        ? Icons.playlist_add_check
+                        : Icons.playlist_add_check_outlined,
+                  ),
+                  onPressed: state.togglePlanOverlay,
                 ),
+              IconButton(
+                tooltip: l10n(context).fileManager,
+                icon: const Icon(Icons.folder_outlined),
+                onPressed: state.openFilesPanel,
+              ),
+              if (activeThreadId != null)
+                IconButton(
+                  tooltip: l10n(context).terminal,
+                  icon: const Icon(Icons.terminal),
+                  onPressed: () => _toggleTerminal(activeThreadId),
+                ),
+            ],
+            centerTitle: false,
+            backgroundColor: theme.colorScheme.surface,
+            scrolledUnderElevation: 0,
+          ),
+          body: Column(
+            children: [
+              const Expanded(child: ChatView()),
+              ThreadTerminalPanel(
+                api: model.api,
+                threadId: activeThreadId ?? '',
+                open: terminalOpen,
+                initialHeight: terminalHeight,
+                onHeightChanged: (height) {
+                  if (activeThreadId != null) {
+                    _setTerminalHeight(activeThreadId, height);
+                  }
+                },
+                onClose: activeThreadId != null
+                    ? () => _toggleTerminal(activeThreadId)
+                    : null,
               ),
             ],
           ),
-        ),
-        actions: [
-          if (state.linkedMergeRequest != null)
-            LinkedMergeRequestChip(mr: state.linkedMergeRequest!),
-          if (state.activePlan != null)
-            IconButton(
-              tooltip: state.planOverlayVisible ? 'Hide plan' : 'Show plan',
-              icon: Icon(
-                state.planOverlayVisible
-                    ? Icons.playlist_add_check
-                    : Icons.playlist_add_check_outlined,
-              ),
-              onPressed: state.togglePlanOverlay,
-            ),
-          IconButton(
-            tooltip: l10n(context).fileManager,
-            icon: const Icon(Icons.folder_outlined),
-            onPressed: state.openFilesPanel,
-          ),
-          if (activeThreadId != null)
-            IconButton(
-              tooltip: l10n(context).terminal,
-              icon: const Icon(Icons.terminal),
-              onPressed: () => _toggleTerminal(activeThreadId),
-            ),
-        ],
-        centerTitle: false,
-        backgroundColor: theme.colorScheme.surface,
-        scrolledUnderElevation: 0,
-      ),
-      body: Column(
-        children: [
-          const Expanded(child: ChatView()),
-          ThreadTerminalPanel(
-            api: state.api,
-            threadId: activeThreadId ?? '',
-            open: terminalOpen,
-            initialHeight: terminalHeight,
-            onHeightChanged: (height) {
-              if (activeThreadId != null) {
-                _setTerminalHeight(activeThreadId, height);
-              }
-            },
-            onClose: activeThreadId != null
-                ? () => _toggleTerminal(activeThreadId)
-                : null,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

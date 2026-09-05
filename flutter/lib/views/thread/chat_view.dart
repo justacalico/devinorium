@@ -19,6 +19,8 @@ class _ChatModel {
   final int streamingDigest;
   final bool streamingThinkingActive;
   final String? pendingAskRequestId;
+  final bool sending;
+  final String? startedAt;
 
   const _ChatModel({
     required this.activeThreadId,
@@ -28,6 +30,8 @@ class _ChatModel {
     required this.streamingDigest,
     required this.streamingThinkingActive,
     required this.pendingAskRequestId,
+    required this.sending,
+    required this.startedAt,
   });
 
   @override
@@ -40,7 +44,9 @@ class _ChatModel {
         messageCount == other.messageCount &&
         streamingDigest == other.streamingDigest &&
         streamingThinkingActive == other.streamingThinkingActive &&
-        pendingAskRequestId == other.pendingAskRequestId;
+        pendingAskRequestId == other.pendingAskRequestId &&
+        sending == other.sending &&
+        startedAt == other.startedAt;
   }
 
   @override
@@ -52,6 +58,8 @@ class _ChatModel {
     streamingDigest,
     streamingThinkingActive,
     pendingAskRequestId,
+    sending,
+    startedAt,
   );
 }
 
@@ -206,6 +214,8 @@ class _ChatViewState extends State<ChatView> {
         streamingDigest: _streamingDigest(state.streamingParts),
         streamingThinkingActive: state.streamingThinkingActive,
         pendingAskRequestId: state.pendingAskRequest?.requestId,
+        sending: state.sending,
+        startedAt: state.startedAt,
       ),
       shouldRebuild: (prev, next) => prev != next,
       builder: (context, model, child) {
@@ -254,15 +264,15 @@ class _ChatViewState extends State<ChatView> {
             if (model.pendingAskRequestId != null)
               AskRequestPanel(key: ValueKey(model.pendingAskRequestId))
             else if (!model.loading) ...[
-              if (state.sending)
+              if (model.sending)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(32, 0, 24, 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: ElapsedTimeIndicator(
-                      key: ValueKey(state.startedAt),
-                      startedAt: state.startedAt,
-                      active: state.sending,
+                      key: ValueKey(model.startedAt),
+                      startedAt: model.startedAt,
+                      active: model.sending,
                     ),
                   ),
                 ),

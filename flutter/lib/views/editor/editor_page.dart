@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../api/api_service.dart';
 import '../../l10n/l10n.dart';
 import '../../state/app_state.dart';
 import '../../terminal/thread_terminal_panel.dart';
@@ -36,51 +37,82 @@ class _WideEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.read<AppState>();
 
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            children: [
-              const EditorTabBar(),
-              const Expanded(child: FileEditor()),
-              if (state.activeEditorTab?.saving == true)
-                const LinearProgressIndicator(minHeight: 2),
-              if (_terminalVisible(state)) const _EditorTerminal(),
+    return Selector<AppState, _EditorLayoutModel>(
+      selector: (_, s) => (
+        tabSaving: s.activeEditorTab?.saving == true,
+        agentPanelOpen: s.agentPanelOpen,
+        agentPanelWidth: s.editorAgentPanelWidth,
+        terminalOpen: s.editorTerminalOpen && s.activeThreadId != null,
+        activeThreadId: s.activeThreadId,
+      ),
+      builder: (context, model, _) {
+        return Row(
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  const EditorTabBar(),
+                  const Expanded(child: FileEditor()),
+                  if (model.tabSaving)
+                    const LinearProgressIndicator(minHeight: 2),
+                  if (model.terminalOpen) const _EditorTerminal(),
+                ],
+              ),
+            ),
+            if (model.agentPanelOpen) ...[
+              _ResizeHandle(
+                onDrag: (delta) => state.setEditorAgentPanelWidth(
+                    model.agentPanelWidth - delta),
+              ),
+              SizedBox(
+                  width: model.agentPanelWidth, child: const AgentPanel()),
             ],
-          ),
-        ),
-        if (state.agentPanelOpen) ...[
-          _ResizeHandle(
-            onDrag: (delta) =>
-                state.setEditorAgentPanelWidth(state.editorAgentPanelWidth - delta),
-          ),
-          SizedBox(width: state.editorAgentPanelWidth, child: const AgentPanel()),
-        ],
-      ],
+          ],
+        );
+      },
     );
   }
 }
 
-bool _terminalVisible(AppState state) =>
-    state.editorTerminalOpen && state.activeThreadId != null;
+typedef _EditorLayoutModel = ({
+  bool tabSaving,
+  bool agentPanelOpen,
+  double agentPanelWidth,
+  bool terminalOpen,
+  String? activeThreadId,
+});
 
 class _EditorTerminal extends StatelessWidget {
   const _EditorTerminal();
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final threadId = state.activeThreadId;
-    if (threadId == null) return const SizedBox.shrink();
+    final state = context.read<AppState>();
 
-    return ThreadTerminalPanel(
-      api: state.api,
-      threadId: threadId,
-      initialHeight: state.editorTerminalHeight,
-      onHeightChanged: state.setEditorTerminalHeight,
-      onClose: () => state.setEditorTerminalOpen(false),
+    return Selector<AppState, ({
+      String? activeThreadId,
+      double editorTerminalHeight,
+      ApiService api,
+    })>(
+      selector: (_, s) => (
+        activeThreadId: s.activeThreadId,
+        editorTerminalHeight: s.editorTerminalHeight,
+        api: s.api,
+      ),
+      builder: (context, model, _) {
+        final threadId = model.activeThreadId;
+        if (threadId == null) return const SizedBox.shrink();
+
+        return ThreadTerminalPanel(
+          api: model.api,
+          threadId: threadId,
+          initialHeight: model.editorTerminalHeight,
+          onHeightChanged: state.setEditorTerminalHeight,
+          onClose: () => state.setEditorTerminalOpen(false),
+        );
+      },
     );
   }
 }
@@ -90,72 +122,81 @@ class _NarrowEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final showPanels = state.agentPanelOpen;
+    final state = context.read<AppState>();
     final maxWidth = MediaQuery.of(context).size.width;
 
-    return Stack(
-      children: [
-        Column(
+    return Selector<AppState, _EditorLayoutModel>(
+      selector: (_, s) => (
+        tabSaving: s.activeEditorTab?.saving == true,
+        agentPanelOpen: s.agentPanelOpen,
+        agentPanelWidth: s.editorAgentPanelWidth,
+        terminalOpen: s.editorTerminalOpen && s.activeThreadId != null,
+        activeThreadId: s.activeThreadId,
+      ),
+      builder: (context, model, _) {
+        return Stack(
           children: [
-            const EditorTabBar(),
-            const Expanded(child: FileEditor()),
-            if (state.activeEditorTab?.saving == true)
-              const LinearProgressIndicator(minHeight: 2),
-            if (_terminalVisible(state)) const _EditorTerminal(),
-          ],
-        ),
-        if (showPanels)
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () {
-                state.setAgentPanelOpen(false);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                color: Colors.black38,
+            Column(
+              children: [
+                const EditorTabBar(),
+                const Expanded(child: FileEditor()),
+                if (model.tabSaving)
+                  const LinearProgressIndicator(minHeight: 2),
+                if (model.terminalOpen) const _EditorTerminal(),
+              ],
+            ),
+            if (model.agentPanelOpen)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => state.setAgentPanelOpen(false),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    color: Colors.black38,
+                  ),
+                ),
+              ),
+            Positioned(
+              top: 48,
+              left: 8,
+              child: _FloatingToggle(
+                icon: Icons.folder_outlined,
+                tooltip: l10n(context).files,
+                onPressed: () {
+                  unawaited(state.openFilesPanel());
+                  Scaffold.maybeOf(context)?.openDrawer();
+                },
               ),
             ),
-          ),
-        Positioned(
-          top: 48,
-          left: 8,
-          child: _FloatingToggle(
-            icon: Icons.folder_outlined,
-            tooltip: l10n(context).files,
-            onPressed: () {
-              unawaited(state.openFilesPanel());
-              Scaffold.maybeOf(context)?.openDrawer();
-            },
-          ),
-        ),
-        Positioned(
-          top: 48,
-          right: 8,
-          child: _FloatingToggle(
-            icon: state.agentPanelOpen ? Icons.close : Icons.chat_outlined,
-            tooltip: state.agentPanelOpen
-                ? l10n(context).close
-                : l10n(context).chat,
-            onPressed: () => state.setAgentPanelOpen(!state.agentPanelOpen),
-          ),
-        ),
-        if (state.agentPanelOpen)
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: state.editorAgentPanelWidth.clamp(0, maxWidth * 0.9),
-            child: Material(
-              elevation: 4,
-              color: theme.colorScheme.surface,
-              child: const AgentPanel(),
+            Positioned(
+              top: 48,
+              right: 8,
+              child: _FloatingToggle(
+                icon: model.agentPanelOpen ? Icons.close : Icons.chat_outlined,
+                tooltip: model.agentPanelOpen
+                    ? l10n(context).close
+                    : l10n(context).chat,
+                onPressed: () =>
+                    state.setAgentPanelOpen(!model.agentPanelOpen),
+              ),
             ),
-          ),
-      ],
+            if (model.agentPanelOpen)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: model.agentPanelWidth.clamp(0, maxWidth * 0.9),
+                child: Material(
+                  elevation: 4,
+                  color: theme.colorScheme.surface,
+                  child: const AgentPanel(),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

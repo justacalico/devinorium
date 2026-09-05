@@ -41,6 +41,8 @@ class _MessageItemState extends State<_MessageItem> {
 
   late Message _message;
   late Message _previewMessage;
+  List<_PartGroup> _partGroups = [];
+  SyntaxHighlighter? _syntaxHighlighter;
   bool _expanded = false;
   bool _isFull = false;
   bool _loadingMore = false;
@@ -59,11 +61,14 @@ class _MessageItemState extends State<_MessageItem> {
     _previewMessage = widget.message;
     _message = widget.message;
     _isFull = !_message.truncated;
+    _partGroups = _buildGroups(_effectiveMessage.allParts);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final theme = Theme.of(context);
+    _syntaxHighlighter = SyntaxHighlighter(theme);
     final position = Scrollable.maybeOf(context)?.position;
     if (position != _scrollPosition) {
       _scrollPosition?.isScrollingNotifier.removeListener(_onScrollActivity);
@@ -77,16 +82,20 @@ class _MessageItemState extends State<_MessageItem> {
   void didUpdateWidget(covariant _MessageItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     final incoming = widget.message;
-    if (incoming.id != _previewMessage.id ||
+    final idChanged = incoming.id != _previewMessage.id;
+    if (idChanged ||
         incoming.truncated != _previewMessage.truncated ||
         incoming != _previewMessage) {
       _loadToken++;
       _previewMessage = incoming;
       _message = incoming;
-      _expanded = false;
+      if (idChanged) {
+        _expanded = false;
+      }
       _isFull = !incoming.truncated;
       _loadingMore = false;
       _error = '';
+      _partGroups = _buildGroups(_effectiveMessage.allParts);
       _maybeScheduleVisibilityCheck();
     }
   }
@@ -204,9 +213,11 @@ class _MessageItemState extends State<_MessageItem> {
     _loadToken++;
     setState(() {
       _message = _previewMessage;
+      _expanded = false;
       _isFull = !_previewMessage.truncated;
       _error = '';
       _loadingMore = false;
+      _partGroups = _buildGroups(_effectiveMessage.allParts);
     });
   }
 
@@ -273,6 +284,7 @@ class _MessageItemState extends State<_MessageItem> {
           _loadingMore = false;
           _error = '';
           _isFull = _message.content.runes.length >= (_message.totalChars ?? total);
+          _partGroups = _buildGroups(_effectiveMessage.allParts);
         });
       } catch (e) {
         if (!mounted) return;
@@ -356,7 +368,7 @@ class _MessageItemState extends State<_MessageItem> {
     final theme = Theme.of(context);
     final displayText = stripPlanMarkup(text);
     if (role == 'assistant') {
-      final highlighter = SyntaxHighlighter(theme);
+      final highlighter = _syntaxHighlighter ?? SyntaxHighlighter(theme);
       return MarkdownBody(
         data: displayText,
         selectable: false,
@@ -469,7 +481,7 @@ class _MessageItemState extends State<_MessageItem> {
       ),
     };
 
-    final groups = _buildGroups(_effectiveMessage.allParts);
+    final groups = _partGroups;
     final showLoading =
         message.role == 'assistant' &&
         message.content.isEmpty &&
@@ -518,7 +530,10 @@ class _MessageItemState extends State<_MessageItem> {
                 if (showShowMore) ...[
                   const SizedBox(height: 4),
                   TextButton(
-                    onPressed: () => setState(() => _expanded = true),
+                    onPressed: () => setState(() {
+                      _expanded = true;
+                      _partGroups = _buildGroups(_effectiveMessage.allParts);
+                    }),
                     child: const Text('Show more'),
                   ),
                 ],

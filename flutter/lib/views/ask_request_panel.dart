@@ -233,20 +233,23 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final req = state.pendingAskRequest;
-    if (req == null || req.questions.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
     final l = l10n(context);
-    final question = _currentQuestion!;
-    final isFirst = _currentIndex == 0;
-    final isLast = _currentIndex == _questions.length - 1;
+    final state = context.read<AppState>();
 
-    return SafeArea(
+    return Selector<AppState, AskRequest?>(
+      selector: (_, s) => s.pendingAskRequest,
+      builder: (context, req, _) {
+        if (req == null || req.questions.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final question = _currentQuestion!;
+        final isFirst = _currentIndex == 0;
+        final isLast = _currentIndex == _questions.length - 1;
+
+        return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
@@ -315,6 +318,7 @@ class _AskRequestPanelState extends State<AskRequestPanel> {
         ),
       ),
     );
+  });
   }
 
   Widget _buildHeader(BuildContext context, AskRequest req, ThemeData theme) {

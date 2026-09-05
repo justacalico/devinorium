@@ -49,7 +49,8 @@ class EditorTab {
 }
 
 mixin EditorStore on AppStateBase {
-  final List<EditorTab> _editorTabs = [];
+  List<EditorTab> _editorTabs = [];
+  List<EditorTab>? _editorTabsView;
   String? _activeEditorPath;
   bool _agentPanelOpen = true;
   bool _editorTerminalOpen = false;
@@ -59,8 +60,16 @@ mixin EditorStore on AppStateBase {
   static const double _minPanelWidth = 240;
   static const double _maxPanelWidth = 1200;
 
+  void _bumpEditorTabs() {
+    _editorTabs = List.of(_editorTabs);
+    _editorTabsView = null;
+  }
+
   @override
-  List<EditorTab> get editorTabs => List.unmodifiable(_editorTabs);
+  List<EditorTab> get editorTabs {
+    _editorTabsView ??= List.unmodifiable(_editorTabs);
+    return _editorTabsView!;
+  }
 
   @override
   String? get activeEditorPath => _activeEditorPath;
@@ -152,6 +161,7 @@ mixin EditorStore on AppStateBase {
   Future<void> _openEditorFileImpl(String path) async {
     final tab = EditorTab(path: path, loading: true, preview: true);
     _editorTabs.add(tab);
+    _bumpEditorTabs();
     _activeEditorPath = path;
     notifyListeners();
 
@@ -169,6 +179,7 @@ mixin EditorStore on AppStateBase {
         dirty: false,
         loading: false,
       );
+      _bumpEditorTabs();
       notifyListeners();
     } catch (e) {
       final idx = _editorTabs.indexWhere((t) => t.path == path);
@@ -177,6 +188,7 @@ mixin EditorStore on AppStateBase {
           loading: false,
           error: e.toString(),
         );
+        _bumpEditorTabs();
         notifyListeners();
       }
     }
@@ -185,6 +197,7 @@ mixin EditorStore on AppStateBase {
   @override
   void closeEditorTab(String path) {
     _editorTabs.removeWhere((t) => t.path == path);
+    _bumpEditorTabs();
     if (_activeEditorPath == path) {
       _activeEditorPath = _editorTabs.isEmpty ? null : _editorTabs.last.path;
     }
@@ -194,6 +207,7 @@ mixin EditorStore on AppStateBase {
   @override
   void closeAllEditorTabs() {
     _editorTabs.clear();
+    _bumpEditorTabs();
     _activeEditorPath = null;
     notifyListeners();
   }
@@ -210,6 +224,7 @@ mixin EditorStore on AppStateBase {
       error: null,
       preview: dirty ? false : tab.preview,
     );
+    _bumpEditorTabs();
     notifyListeners();
   }
 
@@ -227,6 +242,7 @@ mixin EditorStore on AppStateBase {
     }
 
     _editorTabs[idx] = tab.copyWith(saving: true, error: null);
+    _bumpEditorTabs();
     notifyListeners();
 
     // Capture the text and hash at the moment of the request so we send what
@@ -250,6 +266,7 @@ mixin EditorStore on AppStateBase {
         saving: false,
         preview: false,
       );
+      _bumpEditorTabs();
       notifyListeners();
     } on FileConflictException catch (e) {
       final newIdx = _editorTabs.indexWhere((t) => t.path == path);
@@ -259,6 +276,7 @@ mixin EditorStore on AppStateBase {
         error: 'file changed on disk',
         content: e.current,
       );
+      _bumpEditorTabs();
       notifyListeners();
     } catch (e) {
       final newIdx = _editorTabs.indexWhere((t) => t.path == path);
@@ -267,6 +285,7 @@ mixin EditorStore on AppStateBase {
         saving: false,
         error: e.toString(),
       );
+      _bumpEditorTabs();
       notifyListeners();
     }
   }
@@ -279,6 +298,7 @@ mixin EditorStore on AppStateBase {
     if (tab.loading || tab.saving) return;
 
     _editorTabs[idx] = tab.copyWith(loading: true, error: null);
+    _bumpEditorTabs();
     notifyListeners();
 
     try {
@@ -294,6 +314,7 @@ mixin EditorStore on AppStateBase {
         dirty: false,
         loading: false,
       );
+      _bumpEditorTabs();
       notifyListeners();
     } catch (e) {
       final newIdx = _editorTabs.indexWhere((t) => t.path == path);
@@ -302,6 +323,7 @@ mixin EditorStore on AppStateBase {
         loading: false,
         error: e.toString(),
       );
+      _bumpEditorTabs();
       notifyListeners();
     }
   }

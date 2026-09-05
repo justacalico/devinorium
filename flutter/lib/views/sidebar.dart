@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../models/models.dart';
+import '../servers/server_profile.dart';
 import '../services/window_actions.dart';
 import '../state/app_state.dart';
 import '../utils/thread_status.dart';
@@ -199,43 +200,52 @@ class _SidebarState extends State<Sidebar> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final user = state.user;
-    final username = user?.username ?? '';
-    final avatar = username.isNotEmpty ? username[0].toUpperCase() : '?';
-    final isSettings = state.page == MainPage.settings;
-    final filesOpen = !isSettings && state.filesPanelOpen;
 
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isSettings) const _AppTitle(),
-          if (isSettings) const _SettingsHeader(),
-          if (!isSettings) const _ModeSwitch(),
-          const _ServerSwitcher(),
-          if (!isSettings && !filesOpen) ...[
-            _SearchField(
-              controller: _searchController,
-              focusNode: _searchFocus,
-            ),
-            _ProjectsHeader(),
-          ],
-          Expanded(
-            child: isSettings
-                ? const _SettingsNav()
-                : filesOpen
-                    ? const FilesPanel()
-                    : _ProjectThreadList(searchQuery: _searchController.text),
-          ),
-          _UserChip(
-            username: username,
-            avatar: avatar,
-          ),
-          const _ActivityBar(),
-        ],
+      child: Selector<AppState, ({MainPage page, bool filesPanelOpen, User? user})>(
+        selector: (_, state) => (
+          page: state.page,
+          filesPanelOpen: state.filesPanelOpen,
+          user: state.user,
+        ),
+        builder: (context, model, _) {
+          final user = model.user;
+          final username = user?.username ?? '';
+          final avatar = username.isNotEmpty ? username[0].toUpperCase() : '?';
+          final isSettings = model.page == MainPage.settings;
+          final filesOpen = !isSettings && model.filesPanelOpen;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!isSettings) const _AppTitle(),
+              if (isSettings) const _SettingsHeader(),
+              if (!isSettings) const _ModeSwitch(),
+              const _ServerSwitcher(),
+              if (!isSettings && !filesOpen) ...[
+                _SearchField(
+                  controller: _searchController,
+                  focusNode: _searchFocus,
+                ),
+                _ProjectsHeader(),
+              ],
+              Expanded(
+                child: isSettings
+                    ? const _SettingsNav()
+                    : filesOpen
+                        ? const FilesPanel()
+                        : _ProjectThreadList(searchQuery: _searchController.text),
+              ),
+              _UserChip(
+                username: username,
+                avatar: avatar,
+              ),
+              const _ActivityBar(),
+            ],
+          );
+        },
       ),
     );
   }
@@ -246,39 +256,45 @@ class _ActivityBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final l = l10n(context);
-    final isSettings = state.page == MainPage.settings;
-    final filesOpen = !isSettings && state.filesPanelOpen;
+    final state = context.read<AppState>();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-      child: Row(
-        children: [
-          _ActivityIcon(
-            icon: Icons.chat_bubble_outline,
-            tooltip: l.chat,
-            active: !isSettings && !filesOpen,
-            onPressed: () {
-              state.closeFilesPanel();
-              state.setPage(MainPage.threads);
-            },
+    return Selector<AppState, ({MainPage page, bool filesPanelOpen})>(
+      selector: (_, s) => (page: s.page, filesPanelOpen: s.filesPanelOpen),
+      builder: (context, model, _) {
+        final isSettings = model.page == MainPage.settings;
+        final filesOpen = !isSettings && model.filesPanelOpen;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          child: Row(
+            children: [
+              _ActivityIcon(
+                icon: Icons.chat_bubble_outline,
+                tooltip: l.chat,
+                active: !isSettings && !filesOpen,
+                onPressed: () {
+                  state.closeFilesPanel();
+                  state.setPage(MainPage.threads);
+                },
+              ),
+              _ActivityIcon(
+                icon: Icons.folder_outlined,
+                tooltip: l.files,
+                active: filesOpen,
+                onPressed: () => unawaited(state.openFilesPanel()),
+              ),
+              const Spacer(),
+              _ActivityIcon(
+                icon: Icons.settings_outlined,
+                tooltip: l.settings,
+                active: isSettings,
+                onPressed: () => state.setPage(MainPage.settings),
+              ),
+            ],
           ),
-          _ActivityIcon(
-            icon: Icons.folder_outlined,
-            tooltip: l.files,
-            active: filesOpen,
-            onPressed: () => unawaited(state.openFilesPanel()),
-          ),
-          const Spacer(),
-          _ActivityIcon(
-            icon: Icons.settings_outlined,
-            tooltip: l.settings,
-            active: isSettings,
-            onPressed: () => state.setPage(MainPage.settings),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -407,47 +423,52 @@ class _ModeSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
+    final state = context.read<AppState>();
 
-    final isAgents = state.appMode == AppMode.agents;
+    return Selector<AppState, AppMode>(
+      selector: (_, s) => s.appMode,
+      builder: (context, appMode, _) {
+        final isAgents = appMode == AppMode.agents;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextButton.icon(
-              style: TextButton.styleFrom(
-                backgroundColor: isAgents
-                    ? theme.colorScheme.surfaceContainerHigh
-                    : Colors.transparent,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                visualDensity: VisualDensity.compact,
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    backgroundColor: isAgents
+                        ? theme.colorScheme.surfaceContainerHigh
+                        : Colors.transparent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                  label: Text(l.agentsMode),
+                  onPressed: () => state.setAppMode(AppMode.agents),
+                ),
               ),
-              icon: const Icon(Icons.chat_bubble_outline, size: 18),
-              label: Text(l.agentsMode),
-              onPressed: () => state.setAppMode(AppMode.agents),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextButton.icon(
-              style: TextButton.styleFrom(
-                backgroundColor: !isAgents
-                    ? theme.colorScheme.surfaceContainerHigh
-                    : Colors.transparent,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                visualDensity: VisualDensity.compact,
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    backgroundColor: !isAgents
+                        ? theme.colorScheme.surfaceContainerHigh
+                        : Colors.transparent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(Icons.code, size: 18),
+                  label: Text(l.editorMode),
+                  onPressed: () => state.setAppMode(AppMode.editor),
+                ),
               ),
-              icon: const Icon(Icons.code, size: 18),
-              label: Text(l.editorMode),
-              onPressed: () => state.setAppMode(AppMode.editor),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -635,8 +656,8 @@ class _UserChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
+    final state = context.read<AppState>();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),

@@ -10,23 +10,28 @@ class AgentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
+    final state = context.read<AppState>();
 
-    return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      child: Column(
-        children: [
-          _Header(
-            onClose: () => state.setAgentPanelOpen(false),
-            onToggleTerminal: () =>
-                state.setEditorTerminalOpen(!state.editorTerminalOpen),
-            terminalOpen: state.editorTerminalOpen,
+    return Selector<AppState, bool>(
+      selector: (_, s) => s.editorTerminalOpen,
+      builder: (context, terminalOpen, _) {
+        return Material(
+          color: theme.colorScheme.surfaceContainerLow,
+          child: Column(
+            children: [
+              _Header(
+                onClose: () => state.setAgentPanelOpen(false),
+                onToggleTerminal: () =>
+                    state.setEditorTerminalOpen(!terminalOpen),
+                terminalOpen: terminalOpen,
+              ),
+              const Divider(height: 1),
+              const Expanded(child: ChatView()),
+            ],
           ),
-          const Divider(height: 1),
-          const Expanded(child: ChatView()),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -44,38 +49,42 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final thread = state.activeThreadDetail;
-    final title = thread?.thread.title ?? l10n(context).selectOrCreateThread;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall,
-            ),
+    return Selector<AppState, String?>(
+      selector: (_, s) => s.activeThreadDetail?.thread.title,
+      builder: (context, title, _) {
+        final displayTitle = title ?? l10n(context).selectOrCreateThread;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              IconButton(
+                tooltip: l10n(context).terminal,
+                icon: Icon(
+                  terminalOpen ? Icons.terminal : Icons.terminal_outlined,
+                  size: 20,
+                ),
+                onPressed: onToggleTerminal,
+              ),
+              IconButton(
+                tooltip: l10n(context).close,
+                icon: const Icon(Icons.close, size: 20),
+                onPressed: onClose,
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: l10n(context).terminal,
-            icon: Icon(
-              terminalOpen ? Icons.terminal : Icons.terminal_outlined,
-              size: 20,
-            ),
-            onPressed: onToggleTerminal,
-          ),
-          IconButton(
-            tooltip: l10n(context).close,
-            icon: const Icon(Icons.close, size: 20),
-            onPressed: onClose,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

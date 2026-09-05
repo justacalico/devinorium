@@ -1,5 +1,15 @@
 part of '../thread_page.dart';
 
+typedef _ComposerModel = ({
+  String? activeThreadId,
+  bool sending,
+  ComposerMode composerMode,
+  List<({String filename, String mime, Uint8List bytes})> attachments,
+  String selectedModel,
+  String selectedPermission,
+  List<ModelInfo> models,
+});
+
 class _Composer extends StatefulWidget {
   final TextEditingController controller;
   const _Composer({required this.controller});
@@ -185,19 +195,31 @@ class _ComposerState extends State<_Composer> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final isSending = state.sending;
-    final hasActiveThread = state.activeThreadId != null;
-    final mode = state.composerMode;
-    final modeColor = _modeColor(mode);
-    final showBadge = mode != ComposerMode.code;
+    final state = context.read<AppState>();
 
-    final borderSide = mode == ComposerMode.code
-        ? BorderSide.none
-        : BorderSide(color: modeColor, width: 2);
+    return Selector<AppState, _ComposerModel>(
+      selector: (_, s) => (
+        activeThreadId: s.activeThreadId,
+        sending: s.sending,
+        composerMode: s.composerMode,
+        attachments: s.attachments,
+        selectedModel: s.selectedModel,
+        selectedPermission: s.selectedPermission,
+        models: s.models,
+      ),
+      builder: (context, model, _) {
+        final isSending = model.sending;
+        final hasActiveThread = model.activeThreadId != null;
+        final mode = model.composerMode;
+        final modeColor = _modeColor(mode);
+        final showBadge = mode != ComposerMode.code;
 
-    return SafeArea(
+        final borderSide = mode == ComposerMode.code
+            ? BorderSide.none
+            : BorderSide(color: modeColor, width: 2);
+
+        return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
@@ -217,17 +239,17 @@ class _ComposerState extends State<_Composer> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (state.attachments.isNotEmpty)
+                    if (model.attachments.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Wrap(
                           spacing: 6,
                           runSpacing: 6,
                           children: [
-                            for (var i = 0; i < state.attachments.length; i++)
+                            for (var i = 0; i < model.attachments.length; i++)
                               Chip(
                                 avatar: const Icon(Icons.attach_file, size: 14),
-                                label: Text(state.attachments[i].filename),
+                                label: Text(model.attachments[i].filename),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 4,
                                   vertical: 0,
@@ -299,16 +321,16 @@ class _ComposerState extends State<_Composer> {
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               ModelPicker(
-                                value: state.selectedModel,
-                                models: state.models,
+                                value: model.selectedModel,
+                                models: model.models,
                                 enabled: hasActiveThread && !isSending,
-                                onChanged: (model) {
-                                  state.setSelectedModel(model);
+                                onChanged: (selected) {
+                                  state.setSelectedModel(selected);
                                   state.saveThreadSettings();
                                 },
                               ),
                               _PermissionDropdown(
-                                value: state.selectedPermission,
+                                value: model.selectedPermission,
                                 enabled: hasActiveThread && !isSending,
                                 onChanged: (mode) {
                                   state.setSelectedPermission(mode);
@@ -316,7 +338,7 @@ class _ComposerState extends State<_Composer> {
                                 },
                               ),
                               _ModeDropdown(
-                                value: state.composerMode,
+                                value: model.composerMode,
                                 enabled: hasActiveThread && !isSending,
                                 onChanged: state.setComposerMode,
                               ),
@@ -382,5 +404,6 @@ class _ComposerState extends State<_Composer> {
         ),
       ),
     );
+  });
   }
 }

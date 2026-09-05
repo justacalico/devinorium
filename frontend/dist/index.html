@@ -33,11 +33,21 @@
   <title>Devinorium</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Hint the browser to set up the connection for CanvasKit/SKWasm. -->
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.gstatic.com">
+
   <!-- Preload the Flutter bootstrap and main script so the browser can start
        fetching them before the inline script in the body runs. -->
-  <link rel="preload" href="flutter_bootstrap.js" as="script">
-  <link rel="preload" href="flutter.js" as="script">
-  <link rel="preload" href="main.dart.js" as="script">
+  <link rel="preload" href="flutter_bootstrap.js" as="script" fetchpriority="high">
+  <link rel="preload" href="flutter.js" as="script" fetchpriority="high">
+  <link rel="preload" href="main.dart.js" as="script" fetchpriority="high">
+  <link rel="preload" href="main.dart.mjs" as="script" fetchpriority="high">
+  <link rel="preload" href="main.dart.wasm" as="fetch" crossorigin fetchpriority="high">
+
+  <!-- Fonts and icons are large enough that starting them early helps first paint. -->
+  <link rel="preload" href="assets/fonts/MaterialIcons-Regular.otf" as="font" type="font/otf" crossorigin>
+  <link rel="preload" href="assets/packages/cupertino_icons/assets/CupertinoIcons.ttf" as="font" type="font/ttf" crossorigin>
 </head>
 <body>
   <!--

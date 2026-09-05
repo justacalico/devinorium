@@ -12,6 +12,10 @@ mixin FilesPanelStore on AppStateBase {
   @override
   int? _filesProjectId;
 
+  int _filesTreeVersion = 0;
+  List<FileTreeRow>? _filesTreeRowsCache;
+  int _filesTreeRowsCacheVersion = -1;
+
   @override
   bool get filesPanelOpen => _filesPanelOpen;
   @override
@@ -22,8 +26,17 @@ mixin FilesPanelStore on AppStateBase {
   @override
   FileTreeNode get filesTreeRoot => _filesTreeRoot;
   @override
-  List<FileTreeRow> get filesTreeRows =>
-      buildFileTreeRows(_filesTreeRoot, indent: 0);
+  List<FileTreeRow> get filesTreeRows {
+    if (_filesTreeRowsCache == null ||
+        _filesTreeRowsCacheVersion != _filesTreeVersion) {
+      _filesTreeRowsCache = buildFileTreeRows(_filesTreeRoot, indent: 0);
+      _filesTreeRowsCacheVersion = _filesTreeVersion;
+    }
+    return _filesTreeRowsCache!;
+  }
+
+  void _bumpFilesTreeVersion() => _filesTreeVersion++;
+
   @override
   String get filesError => _filesError;
   @override
@@ -37,10 +50,12 @@ mixin FilesPanelStore on AppStateBase {
     _filesError = '';
     _filesTreeRoot = FileTreeNode.root()..isLoading = true;
     _filesProjectId = _activeProjectId;
+    _bumpFilesTreeVersion();
     notifyListeners();
     if (_activeProjectId == null) {
       _filesTreeRoot.isLoading = false;
       _filesTreeRoot.children = [];
+      _bumpFilesTreeVersion();
       notifyListeners();
       return;
     }
@@ -60,6 +75,7 @@ mixin FilesPanelStore on AppStateBase {
     if (_filesTreeRoot.isLoading) return;
     _filesTreeRoot = FileTreeNode.root()..hasMore = true;
     _filesProjectId = _activeProjectId;
+    _bumpFilesTreeVersion();
     if (_activeProjectId == null) {
       _filesTreeRoot.children = [];
       _filesError = '';
@@ -75,10 +91,12 @@ mixin FilesPanelStore on AppStateBase {
   Future<void> toggleFilesFolder(FileTreeNode node) async {
     if (!node.entry.isDir || node.isLoading) return;
     node.isExpanded = !node.isExpanded;
+    _bumpFilesTreeVersion();
     if (node.isExpanded && node.children.isEmpty) {
       await _loadChildren(node);
+    } else {
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   @override
@@ -105,10 +123,12 @@ mixin FilesPanelStore on AppStateBase {
       ];
       target.offset += chunk.length;
       target.hasMore = chunk.length == _fileChunkSize;
+      _bumpFilesTreeVersion();
     } catch (e) {
       target.error = '$e';
       target.hasMore = false;
       if (target == _filesTreeRoot) _filesError = '$e';
+      _bumpFilesTreeVersion();
     }
     target.isLoadingMore = false;
     notifyListeners();
@@ -124,6 +144,7 @@ mixin FilesPanelStore on AppStateBase {
       ..hasMore = false;
     _filesProjectId = _activeProjectId;
     _filesError = '';
+    _bumpFilesTreeVersion();
     notifyListeners();
   }
 
@@ -165,12 +186,14 @@ mixin FilesPanelStore on AppStateBase {
     if (_activeProjectId == null) {
       node.isLoading = false;
       node.children = [];
+      _bumpFilesTreeVersion();
       notifyListeners();
       return;
     }
     node.isLoading = true;
     node.error = '';
     node.children = [];
+    _bumpFilesTreeVersion();
     notifyListeners();
     try {
       final chunk = await api.listFiles(
@@ -191,6 +214,7 @@ mixin FilesPanelStore on AppStateBase {
       node.error = '$e';
       node.hasMore = false;
     }
+    _bumpFilesTreeVersion();
     node.isLoading = false;
     notifyListeners();
   }

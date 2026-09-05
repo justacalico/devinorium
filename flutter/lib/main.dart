@@ -100,64 +100,88 @@ class RootScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final view = state.view;
+    return Selector<AppState, AppView>(
+      selector: (_, state) => state.view,
+      builder: (context, view, _) {
+        final Widget body = switch (view) {
+          AppView.loading => const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            ),
+          AppView.login => const LoginView(),
+          AppView.app => const AppShell(),
+        };
 
-    Widget body;
-    switch (view) {
-      case AppView.loading:
-        body = const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
+        return Stack(
+          children: [
+            body,
+            const _DialogOverlay(),
+            const _GlobalErrorBanner(),
+          ],
         );
-        break;
-      case AppView.login:
-        body = const LoginView();
-        break;
-      case AppView.app:
-        body = const AppShell();
-        break;
-    }
+      },
+    );
+  }
+}
 
-    return Stack(
-      children: [
-        body,
-        // Global dialogs rendered above the layout.
-        if (state.dialog != DialogKind.none) const DialogLayer(),
-        // Global error snackbar-ish banner.
-        if (state.globalError.isNotEmpty)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Material(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline,
-                        color: Theme.of(context).colorScheme.onErrorContainer),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        state.globalError,
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer),
+class _DialogOverlay extends StatelessWidget {
+  const _DialogOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<AppState, DialogKind>(
+      selector: (_, state) => state.dialog,
+      builder: (context, dialog, _) {
+        if (dialog == DialogKind.none) return const SizedBox.shrink();
+        return const DialogLayer();
+      },
+    );
+  }
+}
+
+class _GlobalErrorBanner extends StatelessWidget {
+  const _GlobalErrorBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<AppState, String>(
+      selector: (_, state) => state.globalError,
+      builder: (context, globalError, _) {
+        if (globalError.isEmpty) return const SizedBox.shrink();
+        final state = context.read<AppState>();
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Material(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      globalError,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: state.clearGlobalError,
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                    ),
-                  ],
-                ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: state.clearGlobalError,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ],
               ),
             ),
           ),
-      ],
+        );
+      },
     );
   }
 }

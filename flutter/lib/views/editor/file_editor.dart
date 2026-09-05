@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/l10n.dart';
+import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../file_viewer.dart';
 import '../syntax_highlighter.dart';
@@ -19,6 +20,16 @@ class FileEditor extends StatefulWidget {
 class _FileEditorState extends State<FileEditor> {
   final _controllers = <String, _HighlightController>{};
   final _focusNode = FocusNode();
+  SyntaxHighlighter? _syntaxHighlighter;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syntaxHighlighter = SyntaxHighlighter(Theme.of(context));
+    for (final c in _controllers.values) {
+      c.highlighter = _syntaxHighlighter!;
+    }
+  }
 
   @override
   void dispose() {
@@ -65,63 +76,81 @@ class _FileEditorState extends State<FileEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final tab = state.activeEditorTab;
-
-    if (tab == null) {
-      return _EmptyBody(text: l10n(context).editorSelectFile);
-    }
-
-    if (tab.loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (tab.error != null) {
-      return _ErrorBody(
-        error: tab.error!,
-        tab: tab,
-        hasContent: tab.content != null,
-      );
-    }
-
-    if (tab.content == null) {
-      return const SizedBox.shrink();
-    }
-
-    if (tab.showDiff) {
-      return FileViewer(content: tab.content!, initialShowDiff: true);
-    }
-
-    if (tab.content!.text == null) {
-      return _EmptyBody(text: l10n(context).binaryFileNotEditable(tab.name));
-    }
-
     final theme = Theme.of(context);
-    final language = _languageFor(tab.name);
-    final highlighter = SyntaxHighlighter(theme);
-    final controller = _controllerFor(tab.path, tab.text, language, highlighter);
-    return Focus(
-      focusNode: _focusNode,
-      onKeyEvent: _onKeyEvent,
-      child: TextField(
-        key: ValueKey('editor-${tab.path}'),
-        controller: controller,
-        maxLines: null,
-        expands: true,
-        keyboardType: TextInputType.multiline,
-        textAlignVertical: TextAlignVertical.top,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontFamilyFallback: const ['Consolas', 'Monaco', 'Courier New'],
-          fontSize: 14,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-        decoration: const InputDecoration(
-          contentPadding: EdgeInsets.all(12),
-          border: InputBorder.none,
-        ),
-        onChanged: (value) => state.setEditorTabText(tab.path, value),
-      ),
+
+    return Selector<AppState, _FileEditorModel>(
+      selector: (_, s) {
+        final tab = s.activeEditorTab;
+        return (
+          path: tab?.path,
+          name: tab?.name,
+          loading: tab?.loading ?? false,
+          error: tab?.error,
+          content: tab?.content,
+          showDiff: tab?.showDiff ?? false,
+        );
+      },
+      builder: (context, model, _) {
+        if (model.path == null) {
+          return _EmptyBody(text: l10n(context).editorSelectFile);
+        }
+
+        if (model.loading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (model.error != null) {
+          return _ErrorBody(
+            error: model.error!,
+            name: model.name ?? '',
+            path: model.path!,
+            content: model.content,
+          );
+        }
+
+        if (model.content == null) {
+          return const SizedBox.shrink();
+        }
+
+        if (model.showDiff) {
+          return FileViewer(content: model.content!, initialShowDiff: true);
+        }
+
+        if (model.content!.text == null) {
+          return _EmptyBody(
+              text: l10n(context).binaryFileNotEditable(model.name ?? ''));
+        }
+
+        final state = context.read<AppState>();
+        final tab = state.activeEditorTab!;
+        final language = _languageFor(model.name ?? '');
+        final highlighter = _syntaxHighlighter ?? SyntaxHighlighter(theme);
+        final controller =
+            _controllerFor(model.path!, tab.text, language, highlighter);
+        return Focus(
+          focusNode: _focusNode,
+          onKeyEvent: _onKeyEvent,
+          child: TextField(
+            key: ValueKey('editor-${model.path!}'),
+            controller: controller,
+            maxLines: null,
+            expands: true,
+            keyboardType: TextInputType.multiline,
+            textAlignVertical: TextAlignVertical.top,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontFamilyFallback: const ['Consolas', 'Monaco', 'Courier New'],
+              fontSize: 14,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            decoration: const InputDecoration(
+              contentPadding: EdgeInsets.all(12),
+              border: InputBorder.none,
+            ),
+            onChanged: (value) => state.setEditorTabText(model.path!, value),
+          ),
+        );
+      },
     );
   }
 
@@ -223,13 +252,17 @@ class _EmptyBody extends StatelessWidget {
 
 class _ErrorBody extends StatelessWidget {
   final String error;
-  final EditorTab tab;
-  final bool hasContent;
+  final String path;
+  final String name;
+  final FileContent? content;
+
+  bool get hasContent => content != null;
 
   const _ErrorBody({
     required this.error,
-    required this.tab,
-    required this.hasContent,
+    required this.path,
+    required this.name,
+    this.content,
   });
 
   @override
@@ -254,12 +287,12 @@ class _ErrorBody extends StatelessWidget {
                   ),
                 ),
                 TextButton(
-                  onPressed: () => state.reloadEditorTab(tab.path),
+                  onPressed: () => state.reloadEditorTab(path),
                   child: Text(l10n(context).retry),
                 ),
                 if (hasContent)
                   TextButton(
-                    onPressed: () => state.setEditorTabText(tab.path, tab.content!.text ?? ''),
+                    onPressed: () => state.setEditorTabText(path, content!.text ?? ''),
                     child: Text(l10n(context).editorDiscard),
                   ),
               ],
@@ -268,7 +301,7 @@ class _ErrorBody extends StatelessWidget {
         ),
         if (hasContent)
           Expanded(
-            child: FileViewer(content: tab.content!, initialShowDiff: false),
+            child: FileViewer(content: content!, initialShowDiff: false),
           )
         else
           const Expanded(child: SizedBox.shrink()),
@@ -276,3 +309,12 @@ class _ErrorBody extends StatelessWidget {
     );
   }
 }
+
+typedef _FileEditorModel = ({
+  String? path,
+  String? name,
+  bool loading,
+  String? error,
+  FileContent? content,
+  bool showDiff,
+});

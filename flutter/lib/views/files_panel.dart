@@ -38,7 +38,6 @@ class _FilesPanelState extends State<FilesPanel> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<AppState>();
     return const _FilesPanelBody();
   }
 }
@@ -48,70 +47,85 @@ class _FilesPanelBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
-    final rows = state.filesTreeRows;
-    final error = state.filesError;
+    final state = context.read<AppState>();
 
-    final showTree = state.activeProjectId != null &&
-        (state.appMode != AppMode.editor || state.activeThreadId != null);
+    return Selector<AppState, ({
+      int? activeProjectId,
+      String? activeThreadId,
+      AppMode appMode,
+      List<FileTreeRow> rows,
+      String error,
+    })>(
+      selector: (_, s) => (
+        activeProjectId: s.activeProjectId,
+        activeThreadId: s.activeThreadId,
+        appMode: s.appMode,
+        rows: s.filesTreeRows,
+        error: s.filesError,
+      ),
+      builder: (context, model, _) {
+        final showTree = model.activeProjectId != null &&
+            (model.appMode != AppMode.editor || model.activeThreadId != null);
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 8, 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  l.files.toUpperCase(),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurfaceVariant,
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 8, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      l.files.toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
+                  if (showTree)
+                    IconButton(
+                      tooltip: l.newFolder,
+                      icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                      onPressed: () => _promptMkdir(context, state),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.all(4),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            if (model.error.isNotEmpty && showTree)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  model.error,
+                  style: TextStyle(color: theme.colorScheme.error),
                 ),
               ),
-              if (showTree)
-                IconButton(
-                  tooltip: l.newFolder,
-                  icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                  onPressed: () => _promptMkdir(context, state),
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(4),
-                ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        if (error.isNotEmpty && showTree)
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              error,
-              style: TextStyle(color: theme.colorScheme.error),
+            Expanded(
+              child: !showTree
+                  ? _EmptyPlaceholder(
+                      text: model.activeProjectId == null
+                          ? l.selectProjectFirst
+                          : l.selectOrCreateThread,
+                    )
+                  : model.rows.isEmpty
+                      ? model.error.isNotEmpty
+                          ? const SizedBox.shrink()
+                          : _EmptyPlaceholder(
+                              text: l.emptyFolder,
+                            )
+                      : ListView.builder(
+                          itemCount: model.rows.length,
+                          itemBuilder: (context, index) =>
+                              _buildRow(context, state, model.rows[index], theme),
+                        ),
             ),
-          ),
-        Expanded(
-          child: !showTree
-              ? _EmptyPlaceholder(
-                  text: state.activeProjectId == null
-                      ? l.selectProjectFirst
-                      : l.selectOrCreateThread,
-                )
-              : rows.isEmpty
-                  ? error.isNotEmpty
-                      ? const SizedBox.shrink()
-                      : _EmptyPlaceholder(
-                          text: l.emptyFolder,
-                        )
-                  : ListView.builder(
-                      itemCount: rows.length,
-                      itemBuilder: (context, index) =>
-                          _buildRow(context, state, rows[index], theme),
-                    ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 

@@ -5,94 +5,111 @@ class _ServersSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
     final l = l10n(context);
-    final version = state.serverVersion;
-    final versionWidgets = version != null && version.isNotEmpty
-        ? <Widget>[
-            _SettingsRow(
-              label: l.serverVersion,
-              value: version,
-            ),
-            const Divider(),
-          ]
-        : <Widget>[];
+    final state = context.read<AppState>();
 
-    if (kIsWeb) {
-      return _SectionCard(
-        title: l.servers,
-        children: [
-          ...versionWidgets,
-          Text(
-            l.serverSwitchNotAvailableWeb,
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-      );
-    }
-
-    return _SectionCard(
-      title: l.servers,
-      children: [
-        ...versionWidgets,
-        if (state.serverProfiles.isEmpty)
-          Text(
-            l.noServersConfigured,
-            style: theme.textTheme.bodyMedium,
-          )
-        else
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: state.serverProfiles.length,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final profile = state.serverProfiles[index];
-              final isActive = profile.id == state.activeServerId;
-              final leading = isActive
-                  ? Icon(Icons.check_circle,
-                      color: theme.colorScheme.primary)
-                  : const Icon(Icons.circle_outlined);
-              final displayUrl =
-                  profile.baseUrl.isEmpty ? l.web : profile.baseUrl;
-              return ListTile(
-                leading: leading,
-                title: Text(profile.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false),
-                subtitle: Tooltip(
-                  message: displayUrl,
-                  child: Text(displayUrl,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: false),
+    return Selector<AppState, ({
+      String? serverVersion,
+      List<ServerProfile> serverProfiles,
+      String? activeServerId,
+    })>(
+      selector: (_, s) => (
+        serverVersion: s.serverVersion,
+        serverProfiles: s.serverProfiles,
+        activeServerId: s.activeServerId,
+      ),
+      builder: (context, model, _) {
+        final version = model.serverVersion;
+        final versionWidgets = version != null && version.isNotEmpty
+            ? <Widget>[
+                _SettingsRow(
+                  label: l.serverVersion,
+                  value: version,
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!isActive)
-                      TextButton(
-                        onPressed: () => unawaited(state.switchServer(profile.id)),
-                        child: Text(l.switchServerLabel),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: l.delete,
-                      onPressed: () => unawaited(_confirmAndRemove(context, state, profile)),
+                const Divider(),
+              ]
+            : <Widget>[];
+
+        if (kIsWeb) {
+          return _SectionCard(
+            title: l.servers,
+            children: [
+              ...versionWidgets,
+              Text(
+                l.serverSwitchNotAvailableWeb,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ],
+          );
+        }
+
+        return _SectionCard(
+          title: l.servers,
+          children: [
+            ...versionWidgets,
+            if (model.serverProfiles.isEmpty)
+              Text(
+                l.noServersConfigured,
+                style: theme.textTheme.bodyMedium,
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: model.serverProfiles.length,
+                separatorBuilder: (context, index) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final profile = model.serverProfiles[index];
+                  final isActive = profile.id == model.activeServerId;
+                  final leading = isActive
+                      ? Icon(Icons.check_circle,
+                          color: theme.colorScheme.primary)
+                      : const Icon(Icons.circle_outlined);
+                  final displayUrl =
+                      profile.baseUrl.isEmpty ? l.web : profile.baseUrl;
+                  return ListTile(
+                    leading: leading,
+                    title: Text(profile.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false),
+                    subtitle: Tooltip(
+                      message: displayUrl,
+                      child: Text(displayUrl,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false),
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-        const SizedBox(height: 16),
-        FilledButton.tonal(
-          onPressed: () => unawaited(_showAddServerDialog(context, state)),
-          child: Text(l.addServer),
-        ),
-      ],
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!isActive)
+                          TextButton(
+                            onPressed: () =>
+                                unawaited(state.switchServer(profile.id)),
+                            child: Text(l.switchServerLabel),
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: l.delete,
+                          onPressed: () =>
+                              unawaited(_confirmAndRemove(context, state, profile)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 16),
+            FilledButton.tonal(
+              onPressed: () =>
+                  unawaited(_showAddServerDialog(context, state)),
+              child: Text(l.addServer),
+            ),
+          ],
+        );
+      },
     );
   }
 

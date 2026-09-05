@@ -45,43 +45,56 @@ class _GitSectionState extends State<_GitSection> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = l10n(context);
-    final state = context.watch<AppState>();
-    final connections = state.gitConnections;
-    final isLoading = state.loadingGitConnections;
 
-    List<Widget> children = [];
+    return Selector<AppState, ({
+      List<GitConnection> connections,
+      bool loading,
+      String globalError,
+    })>(
+      selector: (_, s) => (
+        connections: s.gitConnections,
+        loading: s.loadingGitConnections,
+        globalError: s.globalError,
+      ),
+      builder: (context, model, _) {
+        final connections = model.connections;
+        final isLoading = model.loading;
 
-    if (state.globalError.isNotEmpty && !state.loadingGitConnections) {
-      children.add(
-        Text(
-          state.globalError,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.colorScheme.error),
-        ),
-      );
-      children.add(const SizedBox(height: 16));
-    }
+        List<Widget> children = [];
 
-    if (isLoading && connections.isEmpty) {
-      children.add(Text(l.loading));
-    } else if (connections.isEmpty) {
-      children.add(Text(l.gitConnections));
-    } else {
-      for (final conn in connections) {
-        if (conn.id == _gitlabId) {
-          children.add(_buildGitLabRow(context, theme, l, conn));
-        } else if (conn.id == _githubId) {
-          children.add(_buildGitHubRow(context, theme, l, conn));
-        } else {
-          children.add(_buildGenericRow(context, theme, l, conn));
+        if (model.globalError.isNotEmpty && !model.loading) {
+          children.add(
+            Text(
+              model.globalError,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.error),
+            ),
+          );
+          children.add(const SizedBox(height: 16));
         }
-        children.add(const SizedBox(height: 16));
-      }
-    }
 
-    return _SectionCard(
-      title: l.git,
-      children: children,
+        if (isLoading && connections.isEmpty) {
+          children.add(Text(l.loading));
+        } else if (connections.isEmpty) {
+          children.add(Text(l.gitConnections));
+        } else {
+          for (final conn in connections) {
+            if (conn.id == _gitlabId) {
+              children.add(_buildGitLabRow(context, theme, l, conn));
+            } else if (conn.id == _githubId) {
+              children.add(_buildGitHubRow(context, theme, l, conn));
+            } else {
+              children.add(_buildGenericRow(context, theme, l, conn));
+            }
+            children.add(const SizedBox(height: 16));
+          }
+        }
+
+        return _SectionCard(
+          title: l.git,
+          children: children,
+        );
+      },
     );
   }
 

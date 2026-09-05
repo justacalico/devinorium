@@ -10,56 +10,82 @@ class EditorTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     final theme = Theme.of(context);
-    final tabs = state.editorTabs;
-    final active = state.activeEditorPath;
-    final activeTab = state.activeEditorTab;
+    final state = context.read<AppState>();
 
-    return Container(
-      color: theme.colorScheme.surfaceContainerLow,
-      height: 40,
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (final tab in tabs)
-                  _Tab(
-                    tab: tab,
-                    active: active == tab.path,
-                  ),
+    return Selector<AppState, ({
+      List<EditorTab> tabs,
+      String? activePath,
+      bool activeTabLoading,
+      bool activeTabSaving,
+      bool activeTabDirty,
+      String? activeThreadId,
+      bool editorTerminalOpen,
+    })>(
+      selector: (_, s) {
+        final activeTab = s.activeEditorTab;
+        return (
+          tabs: s.editorTabs,
+          activePath: s.activeEditorPath,
+          activeTabLoading: activeTab?.loading ?? false,
+          activeTabSaving: activeTab?.saving ?? false,
+          activeTabDirty: activeTab?.dirty ?? false,
+          activeThreadId: s.activeThreadId,
+          editorTerminalOpen: s.editorTerminalOpen,
+        );
+      },
+      builder: (context, model, _) {
+        final activePath = model.activePath;
+        return Container(
+          color: theme.colorScheme.surfaceContainerLow,
+          height: 40,
+          child: Row(
+            children: [
+              Expanded(
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final tab in model.tabs)
+                      _Tab(
+                        tab: tab,
+                        active: activePath == tab.path,
+                      ),
+                  ],
+                ),
+              ),
+              if (model.activeThreadId != null)
+                _ToolbarButton(
+                  icon: model.editorTerminalOpen
+                      ? Icons.terminal
+                      : Icons.terminal_outlined,
+                  tooltip: l10n(context).terminal,
+                  onPressed: () =>
+                      state.setEditorTerminalOpen(!model.editorTerminalOpen),
+                ),
+              if (activePath != null) ...[
+                _ToolbarButton(
+                  icon: Icons.refresh,
+                  tooltip: l10n(context).editorReload,
+                  onPressed: model.activeTabLoading ||
+                          model.activeTabSaving ||
+                          model.activeTabDirty
+                      ? null
+                      : () => state.reloadEditorTab(activePath),
+                ),
+                _ToolbarButton(
+                  icon: model.activeTabSaving
+                      ? Icons.pending_outlined
+                      : Icons.save_outlined,
+                  tooltip: l10n(context).save,
+                  onPressed: model.activeTabDirty && !model.activeTabSaving
+                      ? () => state.saveEditorTab(activePath)
+                      : null,
+                ),
               ],
-            ),
+            ],
           ),
-          if (state.activeThreadId != null)
-            _ToolbarButton(
-              icon: state.editorTerminalOpen
-                  ? Icons.terminal
-                  : Icons.terminal_outlined,
-              tooltip: l10n(context).terminal,
-              onPressed: () =>
-                  state.setEditorTerminalOpen(!state.editorTerminalOpen),
-            ),
-          if (activeTab != null) ...[
-            _ToolbarButton(
-              icon: Icons.refresh,
-              tooltip: l10n(context).editorReload,
-              onPressed: activeTab.loading || activeTab.saving || activeTab.dirty
-                  ? null
-                  : () => state.reloadEditorTab(activeTab.path),
-            ),
-            _ToolbarButton(
-              icon: activeTab.saving ? Icons.pending_outlined : Icons.save_outlined,
-              tooltip: l10n(context).save,
-              onPressed: activeTab.dirty && !activeTab.saving
-                  ? () => state.saveEditorTab(activeTab.path)
-                  : null,
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -24,13 +24,59 @@ class CodeBlock extends StatefulWidget {
 
 class _CodeBlockState extends State<CodeBlock> {
   bool _copied = false;
+  TextSpan? _span;
+  SyntaxHighlighter? _highlighter;
+  ThemeData? _lastTheme;
+
+  String get _language => widget.language.isNotEmpty ? widget.language : 'text';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensureHighlighter();
+    _span ??= _highlighter?.highlight(widget.code, _language);
+  }
+
+  @override
+  void didUpdateWidget(covariant CodeBlock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _ensureHighlighter();
+    if (oldWidget.code != widget.code ||
+        oldWidget.language != widget.language ||
+        oldWidget.highlighter != widget.highlighter ||
+        _span == null) {
+      _span = null;
+      _span = _highlighter?.highlight(widget.code, _language);
+    }
+  }
+
+  void _ensureHighlighter() {
+    final provided = widget.highlighter;
+    if (provided != null) {
+      if (_highlighter != provided) {
+        _highlighter = provided;
+        _span = null;
+      }
+      return;
+    }
+    final theme = Theme.of(context);
+    if (theme != _lastTheme) {
+      _lastTheme = theme;
+      _highlighter = SyntaxHighlighter(theme);
+      _span = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = l10n(context);
-    final hl = widget.highlighter ?? SyntaxHighlighter(theme);
-    final lang = widget.language.isNotEmpty ? widget.language : 'text';
+    final span = _span ??
+        (_highlighter ?? SyntaxHighlighter(theme)).highlight(
+          widget.code,
+          _language,
+        );
+    final lang = _language;
 
     return Container(
       decoration: BoxDecoration(
@@ -106,7 +152,7 @@ class _CodeBlockState extends State<CodeBlock> {
             padding: const EdgeInsets.all(12),
             child: SelectionContainer.disabled(
               child: Text.rich(
-                hl.highlight(widget.code, lang),
+                span,
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,

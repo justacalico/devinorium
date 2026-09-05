@@ -12,6 +12,16 @@ part 'branch_toolbar_items.dart';
 const _kCreateBranch = '__create_branch__';
 const _kCreateWorktree = '__create_worktree__';
 
+typedef _BranchToolbarModel = ({
+  int? projectId,
+  String? threadId,
+  bool sending,
+  Thread? thread,
+  GitRepoInfo? repo,
+  List<GitBranch>? branches,
+  List<GitWorktree>? worktrees,
+});
+
 /// Compact Git branch and worktree controls that live beneath the chat
 /// composer, similar to t3code. Branch display tracks the repo's current
 /// checkout (or the checked-out branch of the selected worktree) so the UI
@@ -42,113 +52,133 @@ class _BranchToolbarState extends State<BranchToolbar> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final projectId = state.activeProjectId;
-    final threadId = state.activeThreadId;
-    if (projectId == null || threadId == null || threadId.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final repo = state.gitRepoInfo(projectId);
-    if (repo == null || !repo.isRepo || repo.branch.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final thread = state.activeThreadDetail?.thread;
-    final branches = state.gitBranches(projectId);
-    final worktrees = state.gitWorktrees(projectId);
-    final mainWorktreePath =
-        repo.worktreePath.isNotEmpty ? repo.worktreePath : repo.toplevel;
-    final activeWorktreePath = thread?.worktreePath;
-    final activeWorktree = activeWorktreePath != null
-        ? _findWorktree(worktrees, activeWorktreePath)
-        : null;
-    final isOnMainWorktree = activeWorktreePath == null ||
-        activeWorktreePath == mainWorktreePath ||
-        (activeWorktree != null && activeWorktree.isMain);
-    final worktreeBranch = activeWorktree?.branch;
-    final effectiveBranch = isOnMainWorktree
-        ? repo.branch
-        : (worktreeBranch?.isNotEmpty == true
-            ? worktreeBranch!
-            : (activeWorktree?.head ?? repo.branch));
-
     final theme = Theme.of(context);
     final l = l10n(context);
-    final sending = state.sending;
+    final state = context.read<AppState>();
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxWidth < 420;
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _buildBranchButton(
-                      state: state,
-                      projectId: projectId,
-                      threadId: threadId,
-                      repo: repo,
-                      branches: branches,
-                      effectiveBranch: effectiveBranch,
-                      isOnMainWorktree: isOnMainWorktree,
-                      sending: sending,
-                      compact: compact,
-                      theme: theme,
-                      l: l,
-                    ),
-                    if (repo.behind > 0) ...[
-                      const SizedBox(width: 2),
-                      _HeaderAction(
-                        label: '↓${repo.behind}',
-                        tooltip: l.pull,
-                        loading: _pulling,
-                        onPressed: isOnMainWorktree && !sending
-                            ? () => _pull(state, projectId)
-                            : null,
-                      ),
-                    ],
-                    if (repo.ahead > 0) ...[
-                      const SizedBox(width: 2),
-                      _HeaderAction(
-                        label: '↑${repo.ahead}',
-                        tooltip: l.push,
-                        loading: _pushing,
-                        onPressed: isOnMainWorktree && !sending
-                            ? () => _push(state, projectId)
-                            : null,
-                      ),
-                    ],
-                    const SizedBox(width: 8),
-                    _buildWorktreeButton(
-                      state: state,
-                      projectId: projectId,
-                      threadId: threadId,
-                      repo: repo,
-                      worktrees: worktrees,
-                      mainWorktreePath: mainWorktreePath,
-                      activeWorktree: activeWorktree,
-                      activeWorktreePath: activeWorktreePath,
-                      sending: sending,
-                      compact: compact,
-                      theme: theme,
-                      l: l,
-                    ),
-                  ],
-                );
-              },
+    return Selector<AppState, _BranchToolbarModel>(
+      selector: (_, s) {
+        final projectId = s.activeProjectId;
+        final threadId = s.activeThreadId;
+        final thread = s.activeThreadDetail?.thread;
+        final repo = projectId != null ? s.gitRepoInfo(projectId) : null;
+        final branches = projectId != null ? s.gitBranches(projectId) : null;
+        final worktrees = projectId != null ? s.gitWorktrees(projectId) : null;
+        return (
+          projectId: projectId,
+          threadId: threadId,
+          sending: s.sending,
+          thread: thread,
+          repo: repo,
+          branches: branches,
+          worktrees: worktrees,
+        );
+      },
+      builder: (context, model, _) {
+        final projectId = model.projectId;
+        final threadId = model.threadId;
+        if (projectId == null || threadId == null || threadId.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final repo = model.repo;
+        if (repo == null || !repo.isRepo || repo.branch.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final thread = model.thread;
+        final branches = model.branches ?? const [];
+        final worktrees = model.worktrees ?? const [];
+        final mainWorktreePath =
+            repo.worktreePath.isNotEmpty ? repo.worktreePath : repo.toplevel;
+        final activeWorktreePath = thread?.worktreePath;
+        final activeWorktree = activeWorktreePath != null
+            ? _findWorktree(worktrees, activeWorktreePath)
+            : null;
+        final isOnMainWorktree = activeWorktreePath == null ||
+            activeWorktreePath == mainWorktreePath ||
+            (activeWorktree != null && activeWorktree.isMain);
+        final worktreeBranch = activeWorktree?.branch;
+        final effectiveBranch = isOnMainWorktree
+            ? repo.branch
+            : (worktreeBranch?.isNotEmpty == true
+                ? worktreeBranch!
+                : (activeWorktree?.head ?? repo.branch));
+
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 420;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _buildBranchButton(
+                          state: state,
+                          projectId: projectId,
+                          threadId: threadId,
+                          repo: repo,
+                          branches: branches,
+                          effectiveBranch: effectiveBranch,
+                          isOnMainWorktree: isOnMainWorktree,
+                          sending: model.sending,
+                          compact: compact,
+                          theme: theme,
+                          l: l,
+                        ),
+                        if (repo.behind > 0) ...[
+                          const SizedBox(width: 2),
+                          _HeaderAction(
+                            label: '↓${repo.behind}',
+                            tooltip: l.pull,
+                            loading: _pulling,
+                            onPressed: isOnMainWorktree && !model.sending
+                                ? () => _pull(state, projectId)
+                                : null,
+                          ),
+                        ],
+                        if (repo.ahead > 0) ...[
+                          const SizedBox(width: 2),
+                          _HeaderAction(
+                            label: '↑${repo.ahead}',
+                            tooltip: l.push,
+                            loading: _pushing,
+                            onPressed: isOnMainWorktree && !model.sending
+                                ? () => _push(state, projectId)
+                                : null,
+                          ),
+                        ],
+                        const SizedBox(width: 8),
+                        _buildWorktreeButton(
+                          state: state,
+                          projectId: projectId,
+                          threadId: threadId,
+                          repo: repo,
+                          worktrees: worktrees,
+                          mainWorktreePath: mainWorktreePath,
+                          activeWorktree: activeWorktree,
+                          activeWorktreePath: activeWorktreePath,
+                          sending: model.sending,
+                          compact: compact,
+                          theme: theme,
+                          l: l,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

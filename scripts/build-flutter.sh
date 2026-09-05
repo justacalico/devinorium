@@ -19,6 +19,11 @@ flutter build web --release --wasm
 BUILD_OUTPUT="$FLUTTER_DIR/build/web"
 DIST_DIR="$PROJECT_DIR/frontend/dist"
 
+# The default build fetches CanvasKit/SKWasm from the Google CDN at runtime,
+# so the local canvaskit/ folder is unused and only bloats the embedded binary.
+echo "Removing unused local CanvasKit copy..."
+rm -rf "$BUILD_OUTPUT/canvaskit"
+
 echo "Copying build output to $DIST_DIR..."
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
