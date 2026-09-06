@@ -25,8 +25,10 @@ class _ProviderCard extends StatelessWidget {
           value: _providerName(providers, user?.providerId ?? ''),
           trailing: _ProviderDropdown(state: state),
         ),
-        const Divider(),
-        _ProviderCommandField(state: state),
+        for (final p in providers) ...[
+          const Divider(),
+          _ProviderCommandRow(state: state, provider: p),
+        ],
         const Divider(),
         _ProviderVersionRow(state: state),
       ],
@@ -99,7 +101,7 @@ class _ProviderDropdown extends StatelessWidget {
             if (user != null) {
               state.saveProvider(
                 providerId: id,
-                providerCommand: user.providerCommand,
+                providerCommand: providerCommandFor(user, id),
               );
             }
           }
@@ -109,9 +111,28 @@ class _ProviderDropdown extends StatelessWidget {
   }
 }
 
+class _ProviderCommandRow extends StatelessWidget {
+  final AppState state;
+  final ProviderInfo provider;
+  const _ProviderCommandRow({required this.state, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(provider.name, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        _ProviderCommandField(state: state, providerId: provider.id),
+      ],
+    );
+  }
+}
+
 class _ProviderCommandField extends StatefulWidget {
   final AppState state;
-  const _ProviderCommandField({required this.state});
+  final String providerId;
+  const _ProviderCommandField({required this.state, required this.providerId});
 
   @override
   State<_ProviderCommandField> createState() => _ProviderCommandFieldState();
@@ -124,8 +145,10 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
   @override
   void initState() {
     super.initState();
-    final saved = (widget.state.user?.providerCommand ?? 'devin').trim();
-    _controller.text = saved.isEmpty ? 'devin' : saved;
+    final user = widget.state.user;
+    _controller.text = user == null
+        ? defaultProviderCommand(widget.providerId)
+        : providerCommandFor(user, widget.providerId);
   }
 
   @override
@@ -136,7 +159,7 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
 
   String get _effectiveCommand {
     final command = _controller.text.trim();
-    return command.isEmpty ? 'devin' : command;
+    return command.isEmpty ? defaultProviderCommand(widget.providerId) : command;
   }
 
   Future<void> _save() async {
@@ -144,10 +167,7 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
     if (user == null) return;
     final command = _effectiveCommand;
     _controller.text = command;
-    await widget.state.saveProvider(
-      providerId: user.providerId,
-      providerCommand: command,
-    );
+    await widget.state.saveProviderCommand(widget.providerId, command);
   }
 
   Future<void> _test() async {
@@ -160,7 +180,7 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
     setState(() => _testing = true);
     try {
       await widget.state.testProvider(
-        providerId: user.providerId,
+        providerId: widget.providerId,
         command: command,
       );
       if (mounted) {

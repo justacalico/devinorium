@@ -54,7 +54,8 @@ In `src/providers/mod.rs`:
 
 ```rust
 match cfg.id.as_str() {
-    "devin-cli" => Ok(Box::new(devin_acp::DevinAcpProvider::new(...))),
+    "devin-cli" => Ok(Box::new(acp::AcpProvider::new(AgentKind::Devin, cfg))),
+    "opencode" => Ok(Box::new(acp::AcpProvider::new(AgentKind::Opencode, cfg))),
     "my-provider" => Ok(Box::new(my_provider::MyProvider)),   // <- one line
     other => anyhow::bail!("unknown provider: {other}"),
 }
@@ -68,16 +69,22 @@ trait.
 
 ## Selecting a provider at runtime
 
-Users can pick their default provider from **Settings**. The list is exposed
-through the `GET /api/providers` endpoint and the active provider is stored on
-the user record. Today only `devin-cli` is available, so the dropdown is a
-single entry; as more providers are implemented the selection will be wired
-directly into the request path.
+Users can pick their default provider from **Settings**, and each thread can
+pick its own provider from the composer dropdown. The list is exposed through
+the `GET /api/providers` endpoint, the user's default is stored on the user
+record, and a thread's provider is stored in `threads.provider_id`. Once a
+thread has started a provider session the provider is locked, because the
+stored session id only means something to the provider that created it.
 
-Each user also sets the provider **command** (e.g. `devin` or `devin-cli`) in
-Settings. The command is stored in `users.provider_command` and is passed to
-`build_provider` along with `provider_id`. The **Test** button calls
-`POST /api/providers/health`, which opens the ACP connection and sends
+`GET /api/models?provider=<id>` returns the model catalog for a specific
+provider. When the provider is omitted the user's default provider is used.
+
+Each user also sets the provider **command** (e.g. `devin` or `opencode`) in
+Settings. `users.provider_command` holds the command for the default provider
+and `users.provider_commands` is a JSON map of per-provider overrides; the
+effective command is resolved by `UserRow::command_for_provider`, falling back
+to `providers::default_command` when no override exists. The **Test** button
+calls `POST /api/providers/health`, which opens the ACP connection and sends
 `InitializeRequest`, then immediately closes. It does not create a session or
 run a prompt.
 

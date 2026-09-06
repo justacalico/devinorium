@@ -149,10 +149,14 @@ pub struct MeResponse {
     pub totp_enabled: bool,
     pub provider_id: String,
     pub provider_command: String,
+    /// CLI command configured per provider id. Providers absent from the map
+    /// use their built-in default command.
+    pub provider_commands: std::collections::HashMap<String, String>,
 }
 
-pub async fn me(CurrentUser(user): CurrentUser) -> Response {
-    Json(MeResponse {
+fn me_response(user: crate::db::UserRow) -> MeResponse {
+    let provider_commands = user.provider_commands_map();
+    MeResponse {
         id: user.id,
         username: user.username,
         role: user.role,
@@ -160,14 +164,24 @@ pub async fn me(CurrentUser(user): CurrentUser) -> Response {
         totp_enabled: user.totp_enabled,
         provider_id: user.provider_id,
         provider_command: user.provider_command,
-    })
-    .into_response()
+        provider_commands,
+    }
+}
+
+pub async fn me(CurrentUser(user): CurrentUser) -> Response {
+    Json(me_response(user)).into_response()
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateMeRequest {
-    pub provider_id: String,
-    pub provider_command: String,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub provider_command: Option<String>,
+    /// Optional per-provider command overrides, applied on top of the stored
+    /// map. An empty command removes the override.
+    #[serde(default)]
+    pub provider_commands: Option<std::collections::HashMap<String, String>>,
 }
 
 pub async fn update_me(
@@ -175,8 +189,12 @@ pub async fn update_me(
     CurrentUser(user): CurrentUser,
     Json(req): Json<UpdateMeRequest>,
 ) -> Response {
-    let provider_id = req.provider_id.trim();
-    if provider_id.is_empty() {
+    let provider_id = req
+        .provider_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if req.provider_id.is_some() && provider_id.is_none() {
         return (
             StatusCode::BAD_REQUEST,
             Json(auth_json_err("provider_id is required")),
@@ -188,16 +206,22 @@ pub async fn update_me(
         .into_iter()
         .map(|p| p.id)
         .collect();
-    if !valid_ids.contains(provider_id) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(auth_json_err("unknown provider")),
-        )
-            .into_response();
+    if let Some(pid) = provider_id {
+        if !valid_ids.contains(pid) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("unknown provider")),
+            )
+                .into_response();
+        }
     }
 
-    let provider_command = req.provider_command.trim();
-    if provider_command.is_empty() {
+    let provider_command = req
+        .provider_command
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if req.provider_command.is_some() && provider_command.is_none() {
         return (
             StatusCode::BAD_REQUEST,
             Json(auth_json_err("provider_command is required")),
@@ -205,24 +229,98 @@ pub async fn update_me(
             .into_response();
     }
 
-    if let Err(e) = state
-        .db
-        .set_provider(user.id, provider_id, provider_command)
-        .await
-    {
-        return crate::api::map_err_internal(e).into_response();
+    // The provider the command applies to: the requested one, or the current
+    // default when only a command update was sent.
+    let effective_id = provider_id.unwrap_or(&user.provider_id);
+
+    // Build the command-map patch. Explicit entries win; an empty command
+    // removes the override (json_patch treats null as key removal).
+    let mut patch = serde_json::Map::new();
+    if let Some(commands) = &req.provider_commands {
+        for (pid, command) in commands {
+            let pid = pid.trim();
+            if !valid_ids.contains(pid) {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(auth_json_err("unknown provider in provider_commands")),
+                )
+                    .into_response();
+            }
+            let command = command.trim();
+            patch.insert(
+                pid.to_string(),
+                if command.is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::String(command.to_string())
+                },
+            );
+        }
     }
 
-    Json(MeResponse {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        is_owner: user.is_owner,
-        totp_enabled: user.totp_enabled,
-        provider_id: provider_id.to_string(),
-        provider_command: provider_command.to_string(),
-    })
-    .into_response()
+    // When the default provider changes without an explicit command, prefer
+    // the stored (or newly patched) override for it and fall back to the
+    // built-in default command.
+    let provider_command = match provider_command {
+        Some(c) => Some(c.to_string()),
+        None if provider_id.is_some() => {
+            let resolved = patch
+                .get(effective_id)
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .unwrap_or_else(|| {
+                    let stored = user.command_for_provider(effective_id);
+                    if stored.is_empty() {
+                        crate::providers::default_command(effective_id).to_string()
+                    } else {
+                        stored
+                    }
+                });
+            Some(resolved)
+        }
+        None => None,
+    };
+
+    if let Some(command) = &provider_command {
+        // Keep the map in sync with the legacy column so the default
+        // provider's command is recorded under its own id.
+        patch.insert(
+            effective_id.to_string(),
+            serde_json::Value::String(command.clone()),
+        );
+        // Preserve the outgoing provider's command under its own id so a
+        // custom binary path is not lost when the default provider changes.
+        if provider_id.is_some() && effective_id != user.provider_id {
+            let outgoing = user.provider_command.trim();
+            if !outgoing.is_empty() {
+                patch.insert(
+                    user.provider_id.clone(),
+                    serde_json::Value::String(outgoing.to_string()),
+                );
+            }
+        }
+    }
+
+    if provider_id.is_some() || provider_command.is_some() || !patch.is_empty() {
+        if let Err(e) = state
+            .db
+            .update_provider_settings(user.id, provider_id, provider_command.as_deref(), &patch)
+            .await
+        {
+            return crate::api::map_err_internal(e).into_response();
+        }
+    }
+
+    let user = match state.db.get_user_by_id(user.id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, Json(auth_json_err("user not found"))).into_response();
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+    Json(me_response(user)).into_response()
 }
 
 #[derive(Debug, Serialize)]

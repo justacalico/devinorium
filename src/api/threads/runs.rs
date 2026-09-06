@@ -280,7 +280,7 @@ pub(crate) async fn run_thread(
         if let Some(ref sid) = new_session_id {
             let _ = state
                 .db
-                .update_thread_session(&thread.id, sid, new_title.as_deref())
+                .update_thread_session(&thread.id, &thread.provider_id, sid, new_title.as_deref())
                 .await;
         }
         if !parts.is_empty() {

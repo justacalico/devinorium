@@ -1,3 +1,5 @@
+import 'auth.dart';
+
 class ProviderInfo {
   final String id;
   final String name;
@@ -8,6 +10,24 @@ class ProviderInfo {
     id: j['id'] as String,
     name: j['name'] as String? ?? j['id'] as String,
   );
+}
+
+/// The command a provider defaults to when the user has not configured one.
+/// Mirrors `providers::default_command` in the backend.
+String defaultProviderCommand(String providerId) => switch (providerId) {
+  'opencode' => 'opencode',
+  _ => 'devin',
+};
+
+/// The effective command for a provider: the per-provider override first,
+/// then the user's default-provider command, then the built-in default.
+String providerCommandFor(User user, String providerId) {
+  final override = user.providerCommands[providerId]?.trim() ?? '';
+  if (override.isNotEmpty) return override;
+  if (providerId == user.providerId && user.providerCommand.trim().isNotEmpty) {
+    return user.providerCommand;
+  }
+  return defaultProviderCommand(providerId);
 }
 
 /// Installed and latest versions for the user's configured provider.

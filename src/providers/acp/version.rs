@@ -1,14 +1,10 @@
-//! Version detection and update checks for the Devin CLI provider.
+//! Version detection and update checks for ACP providers.
 
 use once_cell::sync::Lazy;
 use tokio::process::Command;
 
-use super::provider::DevinAcpProvider;
+use super::provider::AcpProvider;
 use crate::providers::version::{fetch_latest_version, parse_version_output, ProviderVersion};
-
-/// Manifest published by the Devin CLI installer; its top-level `version`
-/// field names the latest promoted release.
-const MANIFEST_URL: &str = "https://static.devin.ai/cli/current/manifest.json";
 
 /// `--version` results keyed by command, so revisiting Settings does not
 /// spawn a process every time.
@@ -19,19 +15,24 @@ static INSTALLED_CACHE: Lazy<mini_moka::sync::Cache<String, String>> = Lazy::new
         .build()
 });
 
-impl DevinAcpProvider {
+impl AcpProvider {
     /// Report the installed binary version and the latest published
     /// version. Both are best effort: a missing binary or an unreachable
     /// manifest leaves the field empty rather than failing.
     pub async fn check_version(&self) -> ProviderVersion {
-        self.check_version_at(MANIFEST_URL).await
+        self.check_version_at(self.kind.version_manifest_url())
+            .await
     }
 
     /// Same as [`check_version`] but against an explicit manifest URL, so
     /// tests can point the check at a local server.
-    async fn check_version_at(&self, manifest_url: &str) -> ProviderVersion {
-        let (installed, latest) =
-            tokio::join!(self.installed_version(), fetch_latest_version(manifest_url));
+    async fn check_version_at(&self, manifest_url: Option<&str>) -> ProviderVersion {
+        let (installed, latest) = match manifest_url {
+            Some(url) => {
+                tokio::join!(self.installed_version(), fetch_latest_version(url))
+            }
+            None => (self.installed_version().await, None),
+        };
         ProviderVersion { installed, latest }
     }
 
@@ -70,12 +71,13 @@ impl DevinAcpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::acp::AgentKind;
     use std::fs;
     use std::future::IntoFuture;
 
-    fn fake_devin(version_line: &str) -> (tempfile::TempDir, String) {
+    fn fake_cli(version_line: &str) -> (tempfile::TempDir, String) {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("fake-devin");
+        let path = dir.path().join("fake-cli");
         fs::write(&path, format!("#!/bin/sh\necho '{version_line}'\n")).unwrap();
         #[cfg(unix)]
         {
@@ -103,11 +105,11 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn check_version_reports_installed_and_update() {
-        let (_dir, bin) = fake_devin("devin 1.0.0 (abc)");
-        let provider = DevinAcpProvider::new(bin, "stub".into());
+        let (_dir, bin) = fake_cli("devin 1.0.0 (abc)");
+        let provider = AcpProvider::new(AgentKind::Devin, bin, "stub".into());
         let url = manifest_server("1.2.3").await;
 
-        let info = provider.check_version_at(&url).await;
+        let info = provider.check_version_at(Some(&url)).await;
         assert_eq!(info.installed.as_deref(), Some("1.0.0"));
         assert_eq!(info.latest.as_deref(), Some("1.2.3"));
         assert!(info.update_available());
@@ -116,21 +118,38 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn check_version_reports_up_to_date() {
-        let (_dir, bin) = fake_devin("devin 3000.6.14 (abc)");
-        let provider = DevinAcpProvider::new(bin, "stub".into());
+        let (_dir, bin) = fake_cli("devin 3000.6.14 (abc)");
+        let provider = AcpProvider::new(AgentKind::Devin, bin, "stub".into());
         let url = manifest_server("3000.6.14").await;
 
-        let info = provider.check_version_at(&url).await;
+        let info = provider.check_version_at(Some(&url)).await;
         assert_eq!(info.installed.as_deref(), Some("3000.6.14"));
         assert!(!info.update_available());
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn check_version_parses_opencode_version_output() {
+        let (_dir, bin) = fake_cli("1.18.27");
+        let provider = AcpProvider::new(AgentKind::Opencode, bin, "stub".into());
+        let url = manifest_server("1.19.0").await;
+
+        let info = provider.check_version_at(Some(&url)).await;
+        assert_eq!(info.installed.as_deref(), Some("1.18.27"));
+        assert_eq!(info.latest.as_deref(), Some("1.19.0"));
+        assert!(info.update_available());
+    }
+
     #[tokio::test]
     async fn missing_binary_reports_no_installed_version() {
-        let provider = DevinAcpProvider::new("/nonexistent/devin-cli".into(), "stub".into());
+        let provider = AcpProvider::new(
+            AgentKind::Devin,
+            "/nonexistent/devin-cli".into(),
+            "stub".into(),
+        );
         let url = manifest_server("9.9.9").await;
 
-        let info = provider.check_version_at(&url).await;
+        let info = provider.check_version_at(Some(&url)).await;
         assert_eq!(info.installed, None);
         assert_eq!(info.latest.as_deref(), Some("9.9.9"));
         assert!(!info.update_available());

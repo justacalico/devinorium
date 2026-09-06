@@ -81,7 +81,7 @@ pub(crate) async fn persist_assistant_reply(
         }
         let _ = state
             .db
-            .update_thread_session(&thread.id, &sid, new_title.as_deref())
+            .update_thread_session(&thread.id, &thread.provider_id, &sid, new_title.as_deref())
             .await;
     }
 

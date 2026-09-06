@@ -115,6 +115,7 @@ void main() {
         final body = jsonDecode(_readBody(req)!);
         expect(body['provider_id'], 'devin-cli');
         expect(body['provider_command'], 'devin-cli');
+        expect(body['provider_commands'], {'opencode': '/opt/oc'});
         return _json(200, {
           'id': 1,
           'username': 'owner',
@@ -122,11 +123,17 @@ void main() {
           'totp_enabled': false,
           'provider_id': 'devin-cli',
           'provider_command': 'devin-cli',
+          'provider_commands': {'opencode': '/opt/oc'},
         });
       });
       final service = _serviceFor(mock);
-      final user = await service.updateMe(providerId: 'devin-cli', providerCommand: 'devin-cli');
+      final user = await service.updateMe(
+        providerId: 'devin-cli',
+        providerCommand: 'devin-cli',
+        providerCommands: {'opencode': '/opt/oc'},
+      );
       expect(user.providerCommand, 'devin-cli');
+      expect(user.providerCommands['opencode'], '/opt/oc');
     });
 
     test('testProvider posts health', () async {
@@ -332,6 +339,7 @@ void main() {
         expect(body['project_id'], 1);
         expect(body['title'], 't');
         expect(body['thread_group_id'], 2);
+        expect(body['provider'], 'opencode');
         expect(body['model'], 'm');
         expect(body['permission_mode'], 'normal');
         expect(body['permissions'], 'perm');
@@ -350,6 +358,7 @@ void main() {
         projectId: 1,
         title: 't',
         threadGroupId: 2,
+        provider: 'opencode',
         model: 'm',
         permissionMode: 'normal',
         permissions: 'perm',
@@ -662,10 +671,16 @@ void main() {
         final body = jsonDecode(_readBody(req)!);
         expect(body['model'], 'm');
         expect(body['permission_mode'], 'normal');
+        expect(body['provider'], 'opencode');
         return _json(200, {});
       });
       final service = _serviceFor(mock);
-      await service.updateThreadSettings('a', model: 'm', permissionMode: 'normal');
+      await service.updateThreadSettings(
+        'a',
+        provider: 'opencode',
+        model: 'm',
+        permissionMode: 'normal',
+      );
     });
 
     test('updateThreadSettings clears permissions when empty', () async {
@@ -778,6 +793,34 @@ void main() {
       final service = _serviceFor(mock);
       final providers = await service.listProviders();
       expect(providers.first.name, 'Devin CLI');
+    });
+
+    test('listModels sends provider query param', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/models'));
+        expect(req.url.queryParameters['provider'], 'opencode');
+        return _json(200, [
+          {'id': 'opencode/big-pickle', 'label': 'Big Pickle'},
+        ]);
+      });
+      final service = _serviceFor(mock);
+      final models = await service.listModels(provider: 'opencode');
+      expect(models.first.id, 'opencode/big-pickle');
+    });
+
+    test('providerVersion sends provider query param', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/providers/version'));
+        expect(req.url.queryParameters['provider'], 'opencode');
+        return _json(200, {
+          'provider_id': 'opencode',
+          'provider_name': 'OpenCode',
+          'installed_version': '1.18.27',
+        });
+      });
+      final service = _serviceFor(mock);
+      final v = await service.providerVersion(provider: 'opencode');
+      expect(v.providerId, 'opencode');
     });
 
     test('providerVersion returns version info', () async {

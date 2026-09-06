@@ -56,24 +56,35 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Build a provider for the given user, falling back to the configured
-    /// default provider when the user has not set a custom command.
+    /// Build a provider for the given user's default provider.
     pub fn provider_for_user(&self, user: &db::UserRow) -> Arc<dyn providers::Provider> {
-        let command = user.provider_command.trim();
+        self.provider_for(user, &user.provider_id)
+    }
+
+    /// Build the provider `provider_id` using the command the user configured
+    /// for it (see [`db::UserRow::command_for_provider`]). Falls back to the
+    /// configured default provider when no command is set, which only happens
+    /// in tests that inject a stub provider.
+    pub fn provider_for(
+        &self,
+        user: &db::UserRow,
+        provider_id: &str,
+    ) -> Arc<dyn providers::Provider> {
+        let command = user.command_for_provider(provider_id);
         if command.is_empty() {
             return self.provider.clone();
         }
 
         match providers::build_provider(providers::ProviderConfig {
-            id: user.provider_id.clone(),
-            command: command.to_string(),
+            id: provider_id.to_string(),
+            command: command.clone(),
             default_model: self.config.default_model.clone(),
         }) {
             Ok(p) => Arc::from(p),
             Err(e) => {
                 tracing::warn!(
                     user_id = %user.id,
-                    provider_id = %user.provider_id,
+                    provider_id = %provider_id,
                     command = %command,
                     error = %e,
                     "failed to build user provider; falling back to default"

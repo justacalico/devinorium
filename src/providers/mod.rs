@@ -1,19 +1,19 @@
 //! AI provider abstraction.
 //!
 //! Devinorium talks to AI backends through a single [`Provider`] trait. The
-//! current implementation drives the `devin` CLI through the Agent Client
-//! Protocol ([`devin_acp`]). Adding a new provider is a two-step change:
+//! built-in providers drive CLIs through the Agent Client Protocol ([`acp`]):
+//! the Devin CLI (`devin acp`) and OpenCode (`opencode acp`). Adding a new
+//! provider is a two-step change:
 //!
-//! 1. **Create one new file** `src/providers/<name>.rs` implementing [`Provider`].
-//! 2. **Edit one line** in the registry below — add a match arm in
-//!    [`build_provider`] (and the id to [`available_providers`]).
-//!
-//! That's it. No other file needs to change.
+//! 1. **Create one new file** `src/providers/<name>.rs` implementing [`Provider`]
+//!    (or a new [`acp::AgentKind`] variant when the agent speaks ACP).
+//! 2. **Edit the registry** below — add a match arm in [`build_provider`]
+//!    (and the id to [`available_providers`]).
 //!
 //! See [`docs/providers.md`] for a walkthrough.
 
+pub mod acp;
 pub mod ask;
-pub mod devin_acp;
 pub mod parts;
 pub mod version;
 
@@ -289,10 +289,24 @@ pub struct ProviderConfig {
 ///
 /// **When adding a provider, append its entry here.**
 pub fn available_providers() -> Vec<ProviderInfo> {
-    vec![ProviderInfo {
-        id: "devin-cli",
-        name: "Devin CLI",
-    }]
+    vec![
+        ProviderInfo {
+            id: "devin-cli",
+            name: "Devin CLI",
+        },
+        ProviderInfo {
+            id: "opencode",
+            name: "OpenCode",
+        },
+    ]
+}
+
+/// The binary a provider defaults to when the user has not configured one.
+pub fn default_command(provider_id: &str) -> &'static str {
+    match provider_id {
+        "opencode" => acp::AgentKind::Opencode.default_command(),
+        _ => acp::AgentKind::Devin.default_command(),
+    }
 }
 
 /// Find a registered provider by id.
@@ -305,16 +319,18 @@ pub fn provider_name(id: &str) -> Option<&'static str> {
 
 /// Construct a provider by id.
 ///
-/// **When adding a provider, add one match arm here.** This is the single
-/// line you edit in this file.
+/// **When adding a provider, add one match arm here.**
 pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> {
-    match cfg.id.as_str() {
-        "devin-cli" => Ok(Box::new(devin_acp::DevinAcpProvider::new(
-            cfg.command.clone(),
-            cfg.default_model.clone(),
-        ))),
+    let kind = match cfg.id.as_str() {
+        "devin-cli" => acp::AgentKind::Devin,
+        "opencode" => acp::AgentKind::Opencode,
         other => anyhow::bail!("unknown provider: {other}"),
-    }
+    };
+    Ok(Box::new(acp::AcpProvider::new(
+        kind,
+        cfg.command.clone(),
+        cfg.default_model.clone(),
+    )))
 }
 
 #[cfg(test)]

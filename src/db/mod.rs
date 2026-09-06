@@ -94,6 +94,35 @@ pub struct UserRow {
     pub clone_root: Option<String>,
     pub provider_id: String,
     pub provider_command: String,
+    /// JSON object mapping provider id -> CLI command, e.g.
+    /// `{"devin-cli": "devin", "opencode": "opencode"}`.
+    pub provider_commands: String,
+}
+
+impl UserRow {
+    /// Parse the per-provider command map. A corrupt value behaves as empty.
+    pub fn provider_commands_map(&self) -> std::collections::HashMap<String, String> {
+        serde_json::from_str(&self.provider_commands).unwrap_or_default()
+    }
+
+    /// The command configured for `provider_id`: the per-provider map first,
+    /// then the legacy single-provider command for the default provider, then
+    /// the built-in default. An empty result means "use the app-level
+    /// provider" (only reachable in tests that inject a stub).
+    pub fn command_for_provider(&self, provider_id: &str) -> String {
+        if let Some(command) = self
+            .provider_commands_map()
+            .get(provider_id)
+            .map(|c| c.trim())
+            .filter(|c| !c.is_empty())
+        {
+            return command.to_string();
+        }
+        if provider_id == self.provider_id {
+            return self.provider_command.trim().to_string();
+        }
+        crate::providers::default_command(provider_id).to_string()
+    }
 }
 
 /// A row from the `sessions` table.
@@ -115,7 +144,11 @@ pub struct ThreadRow {
     pub id: String,
     pub user_id: i64,
     pub title: String,
+    /// Provider-owned session id (named `devin_session_id` for historical
+    /// reasons; it holds whatever the thread's provider returned).
     pub devin_session_id: Option<String>,
+    /// The provider this thread runs on. Locked once a session exists.
+    pub provider_id: String,
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,

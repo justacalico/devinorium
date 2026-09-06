@@ -384,18 +384,24 @@ pub(crate) async fn call_provider(
     part_callback: Option<PartCallback>,
     cancel_signal: Arc<std::sync::atomic::AtomicBool>,
 ) -> anyhow::Result<(Option<String>, Option<String>, Vec<MessagePart>)> {
-    let provider = state.provider_for_user(user);
+    let provider = state.provider_for(user, &thread.provider_id);
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
     let session_callback: Option<SessionCallback> = if thread.devin_session_id.is_none() {
         let thread_id = thread.id.clone();
+        let provider_id = thread.provider_id.clone();
         let state_for_session = state.clone();
         Some({
             let cb: SessionCallback = Arc::new(move |sid: String| {
                 let state = state_for_session.clone();
                 let thread_id = thread_id.clone();
+                let provider_id = provider_id.clone();
                 Box::pin(async move {
-                    if let Err(err) = state.db.update_thread_session(&thread_id, &sid, None).await {
+                    if let Err(err) = state
+                        .db
+                        .update_thread_session(&thread_id, &provider_id, &sid, None)
+                        .await
+                    {
                         tracing::error!(error = %err, "failed to persist session id");
                     }
                 })

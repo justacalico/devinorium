@@ -7038,3 +7038,307 @@ async fn thread_title_preserves_custom_creation_title() {
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["thread"]["title"].as_str().unwrap(), "Custom");
 }
+
+// ---------- per-thread provider selection ----------
+
+#[tokio::test]
+async fn thread_create_accepts_provider() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"oc","provider":"opencode"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["provider_id"].as_str().unwrap(), "opencode");
+}
+
+#[tokio::test]
+async fn thread_create_defaults_to_user_provider() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let id = make_thread(&app, &cookie, pid, "default").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{id}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["thread"]["provider_id"].as_str().unwrap(), "devin-cli");
+}
+
+#[tokio::test]
+async fn thread_create_rejects_unknown_provider() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"provider":"not-real"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_provider_can_change_before_session() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let id = make_thread(&app, &cookie, pid, "switch").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{id}"),
+            &cookie,
+            r#"{"provider":"opencode"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{id}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["thread"]["provider_id"].as_str().unwrap(), "opencode");
+}
+
+#[tokio::test]
+async fn thread_provider_rejects_unknown_id() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let id = make_thread(&app, &cookie, pid, "switch").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{id}"),
+            &cookie,
+            r#"{"provider":"not-real"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_provider_is_locked_once_session_exists() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let id = make_thread(&app, &cookie, pid, "locked").await;
+
+    // Simulate a thread that already started a provider session.
+    sqlx::query("UPDATE threads SET devin_session_id = 'ses_x' WHERE id = ?")
+        .bind(&id)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{id}"),
+            &cookie,
+            r#"{"provider":"opencode"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Re-asserting the same provider is still allowed.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{id}"),
+            &cookie,
+            r#"{"provider":"devin-cli"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn models_list_honors_provider_param() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/models?provider=opencode", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    // When the opencode binary is missing the static fallback list still
+    // reports the OpenCode Zen model.
+    assert!(body.contains("opencode/"), "body: {body}");
+}
+
+#[tokio::test]
+async fn models_list_rejects_unknown_provider() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/models?provider=not-real", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn provider_version_honors_provider_param() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/providers/version?provider=opencode",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""provider_id":"opencode""#), "body: {body}");
+    assert!(body.contains("OpenCode"), "body: {body}");
+}
+
+#[tokio::test]
+async fn provider_commands_round_trip_through_me() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &cookie,
+            r#"{"provider_id":"devin-cli","provider_command":"devin","provider_commands":{"opencode":"/opt/opencode"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains(r#""opencode":"/opt/opencode""#),
+        "body: {body}"
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/auth/me", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains(r#""opencode":"/opt/opencode""#),
+        "body: {body}"
+    );
+
+    // Unknown provider ids inside the map are rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &cookie,
+            r#"{"provider_id":"devin-cli","provider_command":"devin","provider_commands":{"bogus":"x"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_send_uses_thread_provider_command() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    // Give opencode a command that cannot run. The default provider keeps the
+    // stub fallback via its empty command, so only the opencode thread fails.
+    sqlx::query(
+        "UPDATE users SET provider_commands = '{\"opencode\":\"/nonexistent/opencode\"}' WHERE username = 'owner'",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"provider":"opencode"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let id = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let boundary = "----testboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{id}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}

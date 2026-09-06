@@ -136,6 +136,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
         const [],
     String? selectedModel,
     String? selectedPermission,
+    String? selectedProvider,
     String? startedAt,
     bool threadLoading = false,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
@@ -221,6 +222,8 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
         composerMode: composerMode,
         selectedModel: selectedModel ?? '',
         selectedPermission: selectedPermission ?? 'normal',
+        selectedProvider:
+            selectedProvider ?? detail?.thread.providerId ?? '',
         lastRunStatus: lastRunStatus,
       );
       _threadStores[threadId] = store;
@@ -232,6 +235,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
       _attachments.addAll(attachments);
       _selectedModel = selectedModel ?? '';
       _selectedPermission = selectedPermission ?? 'normal';
+      _selectedProvider = selectedProvider ?? user?.providerId ?? '';
     }
   }
 
@@ -360,6 +364,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedPermission,
+    String? selectedProvider,
   }) {
     final store = ThreadStore(
       api: api,
@@ -372,6 +377,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
       composerMode: composerMode,
       selectedModel: selectedModel,
       selectedPermission: selectedPermission,
+      selectedProvider: selectedProvider,
     );
     _configureStore(store);
     return store;

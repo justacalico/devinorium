@@ -1,3 +1,5 @@
+import 'provider.dart';
+
 class User {
   final int id;
   final String username;
@@ -8,6 +10,8 @@ class User {
   final String createdAt;
   final String providerId;
   final String providerCommand;
+  /// CLI command configured per provider id.
+  final Map<String, String> providerCommands;
 
   User({
     required this.id,
@@ -19,6 +23,7 @@ class User {
     this.createdAt = '',
     required this.providerId,
     required this.providerCommand,
+    this.providerCommands = const {},
   });
 
   factory User.fromJson(Map<String, dynamic> j) => User(
@@ -31,13 +36,19 @@ class User {
     createdAt: j['created_at'] as String? ?? '',
     providerId: j['provider_id'] as String? ?? 'devin-cli',
     providerCommand: (j['provider_command'] as String? ?? '').trim().isEmpty
-        ? 'devin'
+        ? defaultProviderCommand(j['provider_id'] as String? ?? 'devin-cli')
         : j['provider_command'] as String,
+    providerCommands:
+        (j['provider_commands'] as Map<String, dynamic>?)?.map(
+          (k, v) => MapEntry(k, v as String),
+        ) ??
+        const {},
   );
 
   User copyWith({
     String? providerId,
     String? providerCommand,
+    Map<String, String>? providerCommands,
     bool? isOwner,
     bool? disabled,
     String? createdAt,
@@ -51,6 +62,7 @@ class User {
     createdAt: createdAt ?? this.createdAt,
     providerId: providerId ?? this.providerId,
     providerCommand: providerCommand ?? this.providerCommand,
+    providerCommands: providerCommands ?? this.providerCommands,
   );
 }
 

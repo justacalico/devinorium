@@ -85,6 +85,12 @@ abstract class AppStateBase extends ChangeNotifier {
   set _selectedModel(String value);
   String get _selectedPermission;
   set _selectedPermission(String value);
+  String get _selectedProvider;
+  set _selectedProvider(String value);
+  String get _modelsProvider;
+  set _modelsProvider(String value);
+  int get _modelsRequestSeq;
+  set _modelsRequestSeq(int value);
   ComposerMode get _composerMode;
   set _composerMode(ComposerMode value);
   Map<String, ThreadStore> get _threadStores;
@@ -192,6 +198,7 @@ abstract class AppStateBase extends ChangeNotifier {
   List<({String filename, String mime, Uint8List bytes})> get attachments;
   String get selectedModel;
   String get selectedPermission;
+  String get selectedProvider;
   ComposerMode get composerMode;
   ComposerMode get defaultComposerMode;
   List<MessagePart> get streamingParts;
@@ -234,6 +241,7 @@ abstract class AppStateBase extends ChangeNotifier {
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedPermission,
+    String? selectedProvider,
   });
   String? _threadTitle(String id);
   GitRepoInfo? gitRepoInfo(int projectId);
@@ -255,6 +263,8 @@ abstract class AppStateBase extends ChangeNotifier {
   void clearAttachments();
   void setSelectedModel(String m);
   void setSelectedPermission(String p);
+  Future<void> setSelectedProvider(String id);
+  Future<void> ensureModelsFor(String providerId);
   void setComposerMode(ComposerMode m, {bool persist});
   Future<void> _saveComposerMode(ComposerMode m);
   Future<void> _loadComposerMode();
@@ -332,7 +342,12 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> pinThread(String id, bool pinned);
   Future<void> createNewThread({int? projectId});
   Future<void> openThread(String id);
-  Future<void> saveProvider({String? providerId, String? providerCommand});
+  Future<void> saveProvider({
+    String? providerId,
+    String? providerCommand,
+    Map<String, String>? providerCommands,
+  });
+  Future<void> saveProviderCommand(String providerId, String command);
   Future<void> testProvider({
     required String providerId,
     required String command,

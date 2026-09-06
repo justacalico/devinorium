@@ -274,6 +274,7 @@ class ApiService {
     required int projectId,
     String? title,
     int? threadGroupId,
+    String? provider,
     String? model,
     String? permissionMode,
     String? permissions,
@@ -283,6 +284,7 @@ class ApiService {
     final body = <String, dynamic>{'project_id': projectId};
     if (title != null) body['title'] = title;
     if (threadGroupId != null) body['thread_group_id'] = threadGroupId;
+    if (provider != null && provider.isNotEmpty) body['provider'] = provider;
     if (model != null) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
     if (permissions != null) body['permissions'] = permissions;
@@ -363,11 +365,13 @@ class ApiService {
 
   Future<void> updateThreadSettings(
     String id, {
+    String? provider,
     String? model,
     String? permissionMode,
     String? permissions,
   }) async {
     final body = <String, dynamic>{};
+    if (provider != null && provider.isNotEmpty) body['provider'] = provider;
     if (model != null && model.isNotEmpty) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
     // An empty permissions string is sent as JSON null, which clears the field.
@@ -453,8 +457,13 @@ class ApiService {
 
   // ---- Models ----
 
-  Future<List<ModelInfo>> listModels() async {
-    final list = await _client.getList('/api/models');
+  Future<List<ModelInfo>> listModels({String? provider}) async {
+    final params = <String, String>{};
+    if (provider != null && provider.isNotEmpty) {
+      params['provider'] = provider;
+    }
+    final uri = _buildPath('/api/models', params);
+    final list = await _client.getList(uri);
     return list.map(ModelInfo.fromJson).toList();
   }
 
@@ -468,11 +477,16 @@ class ApiService {
   Future<User> updateMe({
     required String providerId,
     required String providerCommand,
+    Map<String, String>? providerCommands,
   }) async {
-    final j = await _client.patch('/api/auth/me', {
+    final body = <String, dynamic>{
       'provider_id': providerId,
       'provider_command': providerCommand,
-    });
+    };
+    if (providerCommands != null) {
+      body['provider_commands'] = providerCommands;
+    }
+    final j = await _client.patch('/api/auth/me', body);
     return User.fromJson(j);
   }
 
@@ -486,9 +500,13 @@ class ApiService {
     });
   }
 
-  /// Version info for the current user's configured provider.
-  Future<ProviderVersion> providerVersion() async {
-    final j = await _client.get('/api/providers/version');
+  /// Version info for a provider, defaulting to the user's configured one.
+  Future<ProviderVersion> providerVersion({String? provider}) async {
+    final params = <String, String>{};
+    if (provider != null && provider.isNotEmpty) {
+      params['provider'] = provider;
+    }
+    final j = await _client.get(_buildPath('/api/providers/version', params));
     return ProviderVersion.fromJson(j);
   }
 
