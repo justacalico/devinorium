@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       build_all:
-        description: 'Build all targets (server, android, linux)'
+        description: 'Build all targets (server, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
         type: boolean
         default: true
       create_release:
@@ -58,9 +58,9 @@ jobs:
             BUILD_ALL="true"
           fi
           if [ "$BUILD_ALL" = "true" ]; then
-            TARGETS='["server","android","linux"]'
+            TARGETS='[{"target":"server","os":"ubuntu-latest"},{"target":"android","os":"ubuntu-latest"},{"target":"linux","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"windows","os":"windows-latest"},{"target":"windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"ios","os":"macos-latest","flutter_arch":"arm64"}]'
           else
-            TARGETS='["server"]'
+            TARGETS='[{"target":"server","os":"ubuntu-latest"}]'
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
@@ -142,12 +142,12 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     needs: [setup, verify-backend, verify-frontend]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.setup.outputs.targets) }}
+        include: ${{ fromJSON(needs.setup.outputs.targets) }}
     env:
       VERSION: ${{ needs.setup.outputs.version }}
       BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
@@ -166,10 +166,25 @@ jobs:
           java-version: '17'
 
       - name: Install Flutter
+        if: matrix.flutter != 'git'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+          architecture: ${{ matrix.flutter_arch || 'x64' }}
           cache: true
+
+      - name: Install Flutter from source (arm64)
+        if: matrix.flutter == 'git'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${{ env.FLUTTER_VERSION }}" https://github.com/flutter/flutter.git "$HOME/flutter-sdk"
+          echo "$HOME/flutter-sdk/bin" >> "$GITHUB_PATH"
+          if [ "${{ matrix.target }}" = "linux-arm64" ]; then
+            "$HOME/flutter-sdk/bin/flutter" precache --linux
+          else
+            "$HOME/flutter-sdk/bin/flutter" precache --windows
+          fi
 
       - name: Install Rust
         if: matrix.target == 'server'
@@ -180,7 +195,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install Linux build dependencies
-        if: matrix.target == 'linux'
+        if: startsWith(matrix.target, 'linux')
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev zip dpkg-dev
@@ -281,7 +296,7 @@ jobs:
           fi
 
       - name: Build Linux desktop packages
-        if: matrix.target == 'linux'
+        if: startsWith(matrix.target, 'linux')
         run: |
           set -euo pipefail
           ARTIFACTS_DIR="$GITHUB_WORKSPACE/artifacts"
@@ -291,10 +306,19 @@ jobs:
           flutter pub get
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
-          BUNDLE="build/linux/x64/release/bundle"
-          tar -czf "$ARTIFACTS_DIR/devinorium-linux-x86_64.tar.gz" -C "$BUNDLE" .
-          (cd "$BUNDLE" && zip -r "$ARTIFACTS_DIR/devinorium-linux-x86_64.zip" . >/dev/null)
-          pkgdir="$GITHUB_WORKSPACE/devinorium-linux-x86_64-deb"
+          if [ "${{ matrix.target }}" = "linux-arm64" ]; then
+            LINUX_ARCH=arm64
+            DEB_ARCH=arm64
+            OUT_ARCH=arm64
+          else
+            LINUX_ARCH=x64
+            DEB_ARCH=amd64
+            OUT_ARCH=x86_64
+          fi
+          BUNDLE="build/linux/$LINUX_ARCH/release/bundle"
+          tar -czf "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.tar.gz" -C "$BUNDLE" .
+          (cd "$BUNDLE" && zip -r "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.zip" . >/dev/null)
+          pkgdir="$GITHUB_WORKSPACE/devinorium-linux-$OUT_ARCH-deb"
           rm -rf "$pkgdir"
           mkdir -p "$pkgdir/opt/devinorium" "$pkgdir/usr/bin" "$pkgdir/DEBIAN"
           cp -r "$BUNDLE/." "$pkgdir/opt/devinorium/"
@@ -304,12 +328,69 @@ jobs:
             echo "Version: $VERSION"
             echo "Section: misc"
             echo "Priority: optional"
-            echo "Architecture: amd64"
+            echo "Architecture: $DEB_ARCH"
             echo "Maintainer: Devinorium CI <ci@gitlab.com>"
             echo "Description: Devinorium desktop client"
           } > "$pkgdir/DEBIAN/control"
-          dpkg-deb --build "$pkgdir" "$ARTIFACTS_DIR/devinorium-linux-x86_64.deb" >/dev/null
+          dpkg-deb --build "$pkgdir" "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.deb" >/dev/null
           rm -rf "$pkgdir"
+
+      - name: Build Windows package
+        if: startsWith(matrix.target, 'windows')
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARTIFACTS_DIR="$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$ARTIFACTS_DIR"
+          cd flutter
+          flutter config --no-analytics >/dev/null
+          flutter pub get
+          flutter config --enable-windows-desktop
+          flutter build windows --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          if [ "${{ matrix.target }}" = "windows-arm64" ]; then
+            WIN_ARCH=arm64
+            OUT_ARCH=arm64
+          else
+            WIN_ARCH=x64
+            OUT_ARCH=x86_64
+          fi
+          RELEASE_DIR="build/windows/$WIN_ARCH/runner/Release"
+          if [ ! -d "$RELEASE_DIR" ]; then
+            echo "Expected Windows build output at $RELEASE_DIR is missing" >&2
+            exit 1
+          fi
+          powershell -NoProfile -Command \
+            "Compress-Archive -Path '$(cygpath -w "$RELEASE_DIR")\\*' -DestinationPath '$(cygpath -w "$ARTIFACTS_DIR/devinorium-windows-$OUT_ARCH.zip")' -Force"
+
+      - name: Build macOS package
+        if: matrix.target == 'macos'
+        run: |
+          set -euo pipefail
+          ARTIFACTS_DIR="$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$ARTIFACTS_DIR"
+          cd flutter
+          flutter config --no-analytics >/dev/null
+          flutter pub get
+          flutter config --enable-macos-desktop
+          flutter build macos --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          APP="build/macos/Build/Products/Release/Devinorium.app"
+          (cd "$(dirname "$APP")" && zip -r "$ARTIFACTS_DIR/devinorium-macos-arm64.zip" "Devinorium.app" >/dev/null)
+          hdiutil create -volname "Devinorium" -srcfolder "$APP" -ov -format UDZO "$ARTIFACTS_DIR/devinorium-macos-arm64.dmg" >/dev/null
+
+      - name: Build iOS package (unsigned)
+        if: matrix.target == 'ios'
+        run: |
+          set -euo pipefail
+          ARTIFACTS_DIR="$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$ARTIFACTS_DIR"
+          cd flutter
+          flutter config --no-analytics >/dev/null
+          flutter pub get
+          flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r "$ARTIFACTS_DIR/devinorium-ios-arm64-unsigned.ipa" Payload >/dev/null
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -354,15 +435,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          for src in artifacts/server/devinorium \
-                     artifacts/android/devinorium-android.apk \
-                     artifacts/android/devinorium-android.aab \
-                     artifacts/linux/devinorium-linux-x86_64.tar.gz \
-                     artifacts/linux/devinorium-linux-x86_64.zip \
-                     artifacts/linux/devinorium-linux-x86_64.deb; do
-            [ -f "$src" ] && cp "$src" release-assets/ || true
-          done
+          find artifacts -type f -name 'devinorium*' -exec cp {} release-assets/ \;
           if [ -f release-assets/devinorium ]; then
+            chmod +x release-assets/devinorium
             mv release-assets/devinorium "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-x86_64"
           fi
           ls -la release-assets/
@@ -456,15 +531,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          for src in artifacts/server/devinorium \
-                     artifacts/android/devinorium-android.apk \
-                     artifacts/android/devinorium-android.aab \
-                     artifacts/linux/devinorium-linux-x86_64.tar.gz \
-                     artifacts/linux/devinorium-linux-x86_64.zip \
-                     artifacts/linux/devinorium-linux-x86_64.deb; do
-            [ -f "$src" ] && cp "$src" release-assets/ || true
-          done
+          find artifacts -type f -name 'devinorium*' -exec cp {} release-assets/ \;
           if [ -f release-assets/devinorium ]; then
+            chmod +x release-assets/devinorium
             mv release-assets/devinorium "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-x86_64"
           fi
           ls -la release-assets/
@@ -488,9 +557,12 @@ jobs:
             **Commit:** ${{ github.sha }}
 
             ### Artifacts
-            - Linux server binary
+            - Linux server binary (x86_64)
             - Android APK + AAB
-            - Linux desktop bundle (tar.gz, zip, deb)
+            - Linux desktop bundle (x86_64 + arm64: tar.gz, zip, deb)
+            - Windows package (x86_64 + arm64: zip)
+            - macOS app (arm64: dmg, zip)
+            - iOS app (arm64: unsigned ipa)
 
             ### Verification
             SHA256 checksums are in `SHA256SUMS.txt`.

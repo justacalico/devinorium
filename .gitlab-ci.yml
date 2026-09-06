@@ -3,7 +3,7 @@ spec:
     build_all:
       type: boolean
       default: true
-      description: 'Build all targets (server, android, linux)'
+      description: 'Build all targets (server, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
     create_release:
       type: boolean
       default: false
