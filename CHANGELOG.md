@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.40.1 - 2026-09-06
+#### Bug Fixes
+- 捕获桌面通知命令缺失时的异常 - (7f1477c) - HttpAnimations
+- 发送消息后即时同步会话标题 - (e320248) - HttpAnimations
+
+- - -
+
 ## v0.40.0 - 2026-09-06
 #### Features
 - 在自动运行模式下为提示框添加红色渐变边框 - (c08857f) - HttpAnimations
