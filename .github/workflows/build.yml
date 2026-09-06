@@ -236,6 +236,8 @@ jobs:
         if: matrix.target == 'android'
         run: |
           set -euo pipefail
+          ARTIFACTS_DIR="$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$ARTIFACTS_DIR"
           cd flutter
           flutter config --no-analytics >/dev/null
           flutter pub get
@@ -247,33 +249,32 @@ jobs:
             flutter build apk --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER"
             flutter build appbundle --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER"
           fi
-          mkdir -p artifacts
           if [ "${{ steps.signing.outputs.signing }}" = "release" ]; then
-            cp build/app/outputs/flutter-apk/app-release.apk artifacts/devinorium-android.apk
-            cp build/app/outputs/bundle/release/app-release.aab artifacts/devinorium-android.aab
+            cp build/app/outputs/flutter-apk/app-release.apk "$ARTIFACTS_DIR/devinorium-android.apk"
+            cp build/app/outputs/bundle/release/app-release.aab "$ARTIFACTS_DIR/devinorium-android.aab"
           else
-            cp build/app/outputs/flutter-apk/app-debug.apk artifacts/devinorium-android.apk
-            cp build/app/outputs/bundle/debug/app-debug.aab artifacts/devinorium-android.aab
+            cp build/app/outputs/flutter-apk/app-debug.apk "$ARTIFACTS_DIR/devinorium-android.apk"
+            cp build/app/outputs/bundle/debug/app-debug.aab "$ARTIFACTS_DIR/devinorium-android.aab"
           fi
 
       - name: Build Linux desktop packages
         if: matrix.target == 'linux'
         run: |
           set -euo pipefail
+          ARTIFACTS_DIR="$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$ARTIFACTS_DIR"
           cd flutter
           flutter config --no-analytics >/dev/null
           flutter pub get
           flutter config --enable-linux-desktop
           flutter build linux --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
-          mkdir -p artifacts
-          cd build/linux/x64/release/bundle
-          tar -czf "$GITHUB_WORKSPACE/artifacts/devinorium-linux-x86_64.tar.gz" .
-          cd "$GITHUB_WORKSPACE"
-          (cd flutter/build/linux/x64/release/bundle && zip -r "$GITHUB_WORKSPACE/artifacts/devinorium-linux-x86_64.zip" . >/dev/null)
+          BUNDLE="build/linux/x64/release/bundle"
+          tar -czf "$ARTIFACTS_DIR/devinorium-linux-x86_64.tar.gz" -C "$BUNDLE" .
+          (cd "$BUNDLE" && zip -r "$ARTIFACTS_DIR/devinorium-linux-x86_64.zip" . >/dev/null)
           pkgdir="$GITHUB_WORKSPACE/devinorium-linux-x86_64-deb"
           rm -rf "$pkgdir"
           mkdir -p "$pkgdir/opt/devinorium" "$pkgdir/usr/bin" "$pkgdir/DEBIAN"
-          cp -r flutter/build/linux/x64/release/bundle/. "$pkgdir/opt/devinorium/"
+          cp -r "$BUNDLE/." "$pkgdir/opt/devinorium/"
           ln -sf /opt/devinorium/devinorium_frontend "$pkgdir/usr/bin/devinorium"
           {
             echo "Package: devinorium"
@@ -284,7 +285,7 @@ jobs:
             echo "Maintainer: Devinorium CI <ci@gitlab.com>"
             echo "Description: Devinorium desktop client"
           } > "$pkgdir/DEBIAN/control"
-          dpkg-deb --build "$pkgdir" "$GITHUB_WORKSPACE/artifacts/devinorium-linux-x86_64.deb" >/dev/null
+          dpkg-deb --build "$pkgdir" "$ARTIFACTS_DIR/devinorium-linux-x86_64.deb" >/dev/null
           rm -rf "$pkgdir"
 
       - name: Upload artifacts
