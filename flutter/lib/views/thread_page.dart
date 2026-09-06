@@ -147,11 +147,6 @@ class _ThreadPageState extends State<ThreadPage> {
                   ),
                   onPressed: state.togglePlanOverlay,
                 ),
-              IconButton(
-                tooltip: l10n(context).fileManager,
-                icon: const Icon(Icons.folder_outlined),
-                onPressed: state.openFilesPanel,
-              ),
               if (activeThreadId != null)
                 IconButton(
                   tooltip: l10n(context).terminal,

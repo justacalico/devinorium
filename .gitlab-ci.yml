@@ -9,6 +9,8 @@ variables:
   GLAB_ENABLE_CI_AUTOLOGIN: "true"
   FLUTTER_VERSION: "3.44.9"
   GIT_DEPTH: "0"
+  GIT_STRATEGY: "fetch"
+  GIT_CLEAN_FLAGS: "-ffdx -e .ci-tools/ -e target/"
   TOOLS_DIR: "$CI_PROJECT_DIR/.ci-tools"
   CARGO_HOME: "$CI_PROJECT_DIR/.ci-tools/cargo"
   PUB_CACHE: "$CI_PROJECT_DIR/.ci-tools/pub-cache"
@@ -31,28 +33,33 @@ default:
 .install: &install
   - export PATH="$TOOLS_DIR/bin:$FLUTTER_HOME/bin:$PATH"
   - |
-    if ! command -v flutter >/dev/null 2>&1; then
+    if [ "$(cat "$FLUTTER_HOME/.ci-version" 2>/dev/null)" != "$FLUTTER_VERSION" ]; then
+      rm -rf "$FLUTTER_HOME"
       mkdir -p "$TOOLS_DIR"
       git clone -b "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$FLUTTER_HOME"
+      echo "$FLUTTER_VERSION" > "$FLUTTER_HOME/.ci-version"
     fi
     flutter config --no-analytics >/dev/null
   - |
-    if ! command -v cog >/dev/null 2>&1; then
+    if [ "$(cat "$TOOLS_DIR/.cog-version" 2>/dev/null)" != "$COCO_GITTO_VERSION" ]; then
       apt-get update -qq
       apt-get install -y -qq libgit2-dev cmake
       cargo install cocogitto --version "$COCO_GITTO_VERSION" --root "$TOOLS_DIR"
+      echo "$COCO_GITTO_VERSION" > "$TOOLS_DIR/.cog-version"
     fi
   - |
-    if ! command -v glab >/dev/null 2>&1; then
+    if [ "$(cat "$TOOLS_DIR/.glab-version" 2>/dev/null)" != "$GLAB_VERSION" ]; then
       mkdir -p "$TOOLS_DIR"
       curl -fsSL --retry 3 -o /tmp/glab.tar.gz "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_amd64.tar.gz"
       tar -xzf /tmp/glab.tar.gz -C "$TOOLS_DIR"
       chmod +x "$TOOLS_DIR/bin/glab"
+      echo "$GLAB_VERSION" > "$TOOLS_DIR/.glab-version"
     fi
 
 verify-cog:
   stage: verify
   tags: [linux-truenas]
+  timeout: 2h
   cache:
     <<: *tool-cache
     policy: pull
@@ -67,6 +74,7 @@ verify-cog:
 verify-frontend:
   stage: verify
   tags: [linux-truenas]
+  timeout: 2h
   cache:
     <<: *tool-cache
     policy: pull
@@ -81,6 +89,7 @@ verify-frontend:
 verify-backend:
   stage: verify
   tags: [linux-truenas]
+  timeout: 2h
   cache:
     <<: *tool-cache
     policy: pull
