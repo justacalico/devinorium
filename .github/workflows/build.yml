@@ -38,6 +38,8 @@ jobs:
       build_all: ${{ steps.meta.outputs.build_all }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Read version and build metadata
         id: meta
@@ -60,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.88.0
@@ -94,6 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -139,6 +145,8 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java 17
         if: matrix.target == 'android'
@@ -293,6 +301,8 @@ jobs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Determine release tag
         id: meta
@@ -371,6 +381,8 @@ jobs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
         with:
           fetch-depth: 0
 
