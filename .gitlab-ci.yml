@@ -46,6 +46,7 @@ github-sync:
         printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
       fi
     - chmod 600 ~/.ssh/id_ed25519
+    - if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not an SSH private key" >&2; exit 1; fi
     - ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
   script:
     - git remote add github git@github.com:justacalico/devinorium.git || true
@@ -97,6 +98,7 @@ github-mr-build:
         printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
       fi
     - chmod 600 ~/.ssh/id_ed25519
+    - if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not an SSH private key" >&2; exit 1; fi
     - ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
   script:
     - bash scripts/trigger-github-build.sh "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" true false "$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA"
@@ -126,6 +128,10 @@ github-release-sync:
           printf '%s\n' "$GITLAB_RELEASE_SSH_KEY" > ~/.ssh/id_ed25519
         fi
         chmod 600 ~/.ssh/id_ed25519
+        if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then
+          echo "ERROR: GITLAB_RELEASE_SSH_KEY does not appear to be an SSH private key" >&2
+          exit 1
+        fi
         ssh-keyscan -t ed25519 gitlab.com > ~/.ssh/known_hosts
       fi
   script:

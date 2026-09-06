@@ -20,8 +20,8 @@ echo "Syncing GitHub release: $RELEASE_TAG"
 
 # Resolve the commit that the release tag points to on GitHub.
 # The GitLab pipeline may run on main, but the actual release tag may be a
-# different commit (e.g. a version bump), so we use GitHub's tag SHA.
-RELEASE_COMMIT=$(gh api "repos/$GITHUB_REPO/git/ref/tags/$RELEASE_TAG" -q '.object.sha' 2>/dev/null || true)
+# different commit (e.g. a version bump), so we use the tag's target commit.
+RELEASE_COMMIT=$(gh api "repos/$GITHUB_REPO/commits?sha=$RELEASE_TAG&per_page=1" -q '.[0].sha' 2>/dev/null || true)
 if [ -z "$RELEASE_COMMIT" ]; then
   echo "Warning: could not resolve tag $RELEASE_TAG on GitHub, falling back to $CI_COMMIT_SHA" >&2
   RELEASE_COMMIT="$CI_COMMIT_SHA"
