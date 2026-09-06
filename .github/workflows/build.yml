@@ -40,6 +40,7 @@ jobs:
       build_number: ${{ steps.meta.outputs.build_number }}
       build_date: ${{ steps.meta.outputs.build_date }}
       build_all: ${{ steps.meta.outputs.build_all }}
+      targets: ${{ steps.meta.outputs.targets }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,10 +58,16 @@ jobs:
           else
             BUILD_ALL="true"
           fi
+          if [ "$BUILD_ALL" = "true" ]; then
+            TARGETS='["server","android","linux"]'
+          else
+            TARGETS='["server"]'
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
           echo "build_all=$BUILD_ALL" >> "$GITHUB_OUTPUT"
+          echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
 
   verify-backend:
     name: Verify backend
@@ -138,11 +145,10 @@ jobs:
     needs: [setup, verify-backend, verify-frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    if: ${{ needs.setup.outputs.build_all == 'true' || matrix.target == 'server' }}
     strategy:
       fail-fast: false
       matrix:
-        target: [server, android, linux]
+        target: ${{ fromJSON(needs.setup.outputs.targets) }}
     env:
       VERSION: ${{ needs.setup.outputs.version }}
       BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
