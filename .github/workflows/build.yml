@@ -521,7 +521,7 @@ jobs:
         run: |
           curl -fsSL --max-time 30 --retry 2 -X POST \
             -F token="${{ secrets.GITLAB_TRIGGER_TOKEN }}" \
-            -F ref=main \
+            -F "ref=${{ steps.meta.outputs.release_tag }}" \
             -F "variables[GITHUB_RUN_ID]=${{ github.run_id }}" \
             -F "variables[RELEASE_TAG]=${{ steps.meta.outputs.release_tag }}" \
             "https://gitlab.com/api/v4/projects/${{ secrets.GITLAB_PROJECT_ID }}/trigger/pipeline"

@@ -14,6 +14,15 @@ CREATE_RELEASE="${3:-false}"
 PUSH_REF="${4:-}"
 
 if [ -n "$PUSH_REF" ]; then
+  if [ "$PUSH_REF" = "HEAD" ] && [ -n "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}" ]; then
+    if [ -n "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-}" ]; then
+      PUSH_REF="$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA"
+    else
+      git remote add origin "https://gitlab.com/${CI_PROJECT_PATH}.git" 2>/dev/null || true
+      git remote update origin 2>/dev/null || true
+      PUSH_REF=$(git rev-parse --verify "refs/remotes/origin/$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" 2>/dev/null || git rev-parse HEAD)
+    fi
+  fi
   echo "Pushing $PUSH_REF to GitHub branch $REF..."
   git remote add github "git@github.com:$REPO.git" 2>/dev/null || true
   git remote update github
