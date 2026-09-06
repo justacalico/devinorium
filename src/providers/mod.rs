@@ -258,10 +258,16 @@ pub trait Provider: Send + Sync {
     }
 }
 
-/// Derive a short title from the first line of a prompt.
+/// Derive a short title from the first non-empty line of a prompt.
 pub fn title_from_prompt(prompt: &str) -> String {
-    let line = prompt.lines().next().unwrap_or(prompt);
-    let title = line.trim();
+    let title = prompt
+        .lines()
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .unwrap_or_else(|| prompt.trim());
+    if title.is_empty() {
+        return "New thread".into();
+    }
     let mut chars = title.chars();
     let truncated: String = chars.by_ref().take(77).collect();
     if chars.next().is_some() {
@@ -308,5 +314,33 @@ pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> 
             cfg.default_model.clone(),
         ))),
         other => anyhow::bail!("unknown provider: {other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::title_from_prompt;
+
+    #[test]
+    fn title_from_prompt_uses_first_line() {
+        assert_eq!(title_from_prompt("Hello world"), "Hello world");
+    }
+
+    #[test]
+    fn title_from_prompt_skips_leading_blank_lines() {
+        assert_eq!(title_from_prompt("\n\nHello"), "Hello");
+    }
+
+    #[test]
+    fn title_from_prompt_truncates_long_first_lines() {
+        let prompt = "a".repeat(100);
+        let title = title_from_prompt(&prompt);
+        assert_eq!(title.len(), 80, "expected 77 chars + '...'");
+        assert!(title.ends_with("..."));
+    }
+
+    #[test]
+    fn title_from_prompt_falls_back_for_whitespace_only() {
+        assert_eq!(title_from_prompt("   \n   \n"), "New thread");
     }
 }

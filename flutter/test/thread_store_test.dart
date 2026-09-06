@@ -630,6 +630,112 @@ void main() {
     );
   });
 
+  group('thread_update event', () {
+    test('updates detail thread and invokes onThreadTitleChanged', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+            messages: [],
+          ),
+        ),
+      );
+
+      String? newTitle;
+      String? newUpdatedAt;
+      store.onStateChanged = () {};
+      store.onThreadTitleChanged = (title, updatedAt) {
+        newTitle = title;
+        newUpdatedAt = updatedAt;
+      };
+
+      await store.sendMessage();
+      api.controller.add(
+        SseEvent(
+          'thread_update',
+          '{"title":"New title","updated_at":"2024-01-02T00:00:00.000Z"}',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(store.detail.valueOrNull?.thread.title, 'New title');
+      expect(
+        store.detail.valueOrNull?.thread.updatedAt,
+        '2024-01-02T00:00:00.000Z',
+      );
+      expect(newTitle, 'New title');
+      expect(newUpdatedAt, '2024-01-02T00:00:00.000Z');
+    });
+
+    test('does not invoke callback when title is unchanged', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Same',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+            messages: [],
+          ),
+        ),
+      );
+
+      var called = false;
+      store.onStateChanged = () {};
+      store.onThreadTitleChanged = (_, __) => called = true;
+
+      await store.sendMessage();
+      api.controller.add(
+        SseEvent(
+          'thread_update',
+          '{"title":"Same","updated_at":"2024-01-01T00:00:00.000Z"}',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(called, isFalse);
+    });
+
+    test('nully onThreadTitleChanged and onRunFinished on dispose', () {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+      );
+
+      store.onThreadTitleChanged = (_, __) {};
+      store.onRunFinished = (_) {};
+      store.dispose();
+
+      expect(store.onThreadTitleChanged, isNull);
+      expect(store.onRunFinished, isNull);
+    });
+  });
+
   group('turn-windowed pagination', () {
     test('load fetches initial page and stores cursors', () async {
       final api = _CursorApiService();

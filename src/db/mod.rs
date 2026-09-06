@@ -126,6 +126,7 @@ pub struct ThreadRow {
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
     pub pinned: bool,
+    pub title_user_set: bool,
 }
 
 /// A row from the `projects` table.

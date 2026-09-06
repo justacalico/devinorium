@@ -8,6 +8,7 @@ pub struct NewThread {
     pub project_id: i64,
     pub thread_group_id: Option<i64>,
     pub title: String,
+    pub title_user_set: bool,
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,
@@ -18,8 +19,8 @@ pub struct NewThread {
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, model, permission_mode, permissions, branch, worktree_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, model, permission_mode, permissions, branch, worktree_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
@@ -27,6 +28,7 @@ impl super::Db {
         .bind(new.project_id)
         .bind(new.thread_group_id)
         .bind(&new.title)
+        .bind(new.title_user_set)
         .bind(&new.model)
         .bind(&new.permission_mode)
         .bind(&new.permissions)
@@ -72,9 +74,19 @@ impl super::Db {
         title: Option<&str>,
     ) -> anyhow::Result<()> {
         if let Some(title) = title {
-            sqlx::query("UPDATE threads SET devin_session_id = ?, title = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
-                .bind(devin_session_id).bind(title).bind(id)
-                .execute(self.pool()).await?;
+            sqlx::query(
+                "UPDATE threads
+                 SET devin_session_id = ?,
+                     title = CASE WHEN title_user_set = 0 THEN ? ELSE title END,
+                     title_user_set = CASE WHEN title_user_set = 0 THEN 1 ELSE title_user_set END,
+                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE id = ?",
+            )
+            .bind(devin_session_id)
+            .bind(title)
+            .bind(id)
+            .execute(self.pool())
+            .await?;
         } else {
             sqlx::query("UPDATE threads SET devin_session_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
                 .bind(devin_session_id).bind(id)
@@ -94,13 +106,35 @@ impl super::Db {
     }
 
     pub async fn rename_thread(&self, id: &str, user_id: i64, title: &str) -> anyhow::Result<()> {
-        sqlx::query("UPDATE threads SET title = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+        sqlx::query("UPDATE threads SET title = ?, title_user_set = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
             .bind(title)
             .bind(id)
             .bind(user_id)
             .execute(self.pool())
             .await?;
         Ok(())
+    }
+
+    /// Update the title from the first user message if it has not already been
+    /// set by the user. Returns the new `updated_at` when the title changes.
+    pub async fn update_title_from_send(
+        &self,
+        id: &str,
+        user_id: i64,
+        title: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let updated_at: Option<String> = sqlx::query_scalar(
+            "UPDATE threads
+             SET title = ?, title_user_set = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE id = ? AND user_id = ? AND title_user_set = 0
+             RETURNING updated_at",
+        )
+        .bind(title)
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(updated_at)
     }
 
     pub async fn set_thread_pinned(

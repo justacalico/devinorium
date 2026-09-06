@@ -226,6 +226,25 @@ StreamingReduceResult reduceStreamingEvent({
         return StreamingReduceResult(detail: detail, snapshot: snapshot);
       }
 
+    case 'thread_update':
+      final decoded = tryDecodeJson(event.data);
+      if (decoded == null || detail == null) {
+        return StreamingReduceResult(detail: detail, snapshot: snapshot);
+      }
+      final title = decoded['title']?.toString();
+      final updatedAt = decoded['updated_at']?.toString();
+      if (title == null || title.isEmpty) {
+        return StreamingReduceResult(detail: detail, snapshot: snapshot);
+      }
+      final nextThread = detail.thread.copyWith(
+        title: title,
+        updatedAt: updatedAt,
+      );
+      return StreamingReduceResult(
+        detail: detail.copyWith(thread: nextThread),
+        snapshot: snapshot.copyWith(lastSeq: seq ?? snapshot.lastSeq),
+      );
+
     case 'stopped':
       // Keep streaming parts visible so the user doesn't see the partial
       // output vanish while the backend persists it. refreshTail() will

@@ -7,7 +7,9 @@ use axum::response::{IntoResponse, Response};
 use crate::api::map_err_internal;
 use crate::db::{MessageRow, NewMessage, ThreadRow};
 use crate::plan::Plan;
-use crate::providers::{collect_text, collect_thinking, strip_plan_markup_from_parts, MessagePart};
+use crate::providers::{
+    collect_text, collect_thinking, strip_plan_markup_from_parts, title_from_prompt, MessagePart,
+};
 use crate::thread_runner::{RunState, ThreadRunner};
 use crate::AppState;
 
@@ -33,6 +35,30 @@ pub(crate) async fn persist_user_message(
             client_message_id: input.client_message_id.clone(),
         })
         .await
+}
+
+/// Derive a title from the first user message and persist it, but only if the
+/// user has not already set a title manually. Returns `true` when the title
+/// was updated.
+pub(crate) async fn update_thread_title_from_send(
+    state: &AppState,
+    user_id: i64,
+    thread: &mut ThreadRow,
+    input: &SendInput,
+) -> anyhow::Result<bool> {
+    let title = title_from_prompt(&input.prompt);
+    if let Some(updated_at) = state
+        .db
+        .update_title_from_send(&thread.id, user_id, &title)
+        .await?
+    {
+        thread.title = title;
+        thread.updated_at = updated_at;
+        thread.title_user_set = true;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 pub(crate) async fn persist_assistant_reply(

@@ -85,12 +85,15 @@ pub(super) async fn create(
         )
             .into_response();
     }
+    let title = req.title.unwrap_or_else(|| "New thread".into());
+    let title_user_set = title != "New thread";
     let new = NewThread {
         id: Uuid::new_v4().to_string(),
         user_id: user.id,
         project_id: req.project_id,
         thread_group_id: req.thread_group_id,
-        title: req.title.unwrap_or_else(|| "New thread".into()),
+        title,
+        title_user_set,
         model,
         permission_mode,
         permissions: req.permissions,

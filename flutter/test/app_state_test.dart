@@ -2363,6 +2363,69 @@ void main() {
         await controller.close();
       },
     );
+
+    test('sendMessage updates thread title in active thread and sidebar', () async {
+      final completer = Completer<void>();
+      final client = _clientFor([
+        _json(200, {}),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 'Old',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          ),
+          messages: [],
+        ),
+        threads: [
+          Thread(
+            id: 'a',
+            title: 'Old',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          ),
+        ],
+      );
+      state.setSelectedModel('m1');
+      state.setSelectedPermission('normal');
+      state.setComposerText('new title');
+
+      state.addListener(() {
+        if (state.threads.isNotEmpty && state.threads.first.title == 'new title') {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      controller.add(
+        SseEvent(
+          'thread_update',
+          '{"title":"new title","updated_at":"2024-01-02T00:00:00.000Z"}',
+        ),
+      );
+      await controller.close();
+
+      await completer.future.timeout(const Duration(seconds: 2));
+
+      expect(state.activeThreadDetail?.thread.title, 'new title');
+      expect(state.threads.first.title, 'new title');
+      expect(state.threads.first.updatedAt, '2024-01-02T00:00:00.000Z');
+    });
   });
 
   group('TOTP, dialog and accounts', () {

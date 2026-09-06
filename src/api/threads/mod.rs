@@ -313,6 +313,7 @@ mod tests {
             branch: None,
             worktree_path: None,
             pinned: true,
+            title_user_set: true,
         };
         let out = ThreadOut::from(row);
         assert_eq!(out.id, "th-1");

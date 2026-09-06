@@ -6778,3 +6778,266 @@ async fn thread_messages_stream_reconnect_skips_past_gap() {
     assert!(text.contains("event: snapshot"), "body: {text}");
     assert!(text.contains("watermark"), "body: {text}");
 }
+
+#[tokio::test]
+async fn thread_title_derived_from_first_send() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "New thread").await;
+
+    let boundary = "----titleboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello world\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["thread"]["title"].as_str().unwrap(), "Hello world");
+}
+
+#[tokio::test]
+async fn thread_title_does_not_overwrite_user_rename() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "New thread").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"title":"Keep this"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let boundary = "----titleboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello world\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["thread"]["title"].as_str().unwrap(), "Keep this");
+}
+
+#[tokio::test]
+async fn thread_send_stream_emits_thread_update() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "New thread").await;
+
+    let boundary = "----titlestreamboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello world\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let bytes = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("event: thread_update"), "body: {text}");
+
+    let update_block = text
+        .split("\n\n")
+        .find(|b| b.contains("event: thread_update"))
+        .expect("thread_update block");
+    let data = update_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("thread_update data");
+    let json: serde_json::Value =
+        serde_json::from_str(&data[6..]).expect("valid thread_update json");
+    assert_eq!(json["title"].as_str().unwrap(), "Hello world");
+}
+
+#[tokio::test]
+async fn thread_title_only_changes_on_first_send() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "New thread").await;
+
+    // First send sets the title.
+    let boundary = "----titleboundary";
+    let send = |prompt: &str| {
+        let body = format!(
+            "--{boundary}\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            {prompt}\r\n\
+            --{boundary}--\r\n"
+        );
+        app.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+    };
+
+    let resp = send("First message").await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = send("Second message").await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["thread"]["title"].as_str().unwrap(), "First message");
+}
+
+#[tokio::test]
+async fn thread_title_preserves_custom_creation_title() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"Custom"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid: String = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let boundary = "----titleboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello world\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["thread"]["title"].as_str().unwrap(), "Custom");
+}

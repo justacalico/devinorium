@@ -103,6 +103,10 @@ class ThreadStore {
   /// Called whenever any piece of thread state changes.
   VoidCallback? onStateChanged;
 
+  /// Called when the thread title is updated by the server, so the global
+  /// thread list can be kept in sync without waiting for a full refresh.
+  void Function(String title, String updatedAt)? onThreadTitleChanged;
+
   /// Called when a run finishes (completed or failed). The [failed] flag
   /// indicates whether the run ended with an error.
   void Function(bool failed)? onRunFinished;
@@ -508,6 +512,8 @@ class ThreadStore {
     _cancelStream();
     _scheduler.dispose();
     onStateChanged = null;
+    onThreadTitleChanged = null;
+    onRunFinished = null;
     _emit();
   }
 
@@ -566,6 +572,14 @@ class ThreadStore {
     _lastRunStatus = _statusFromPhase(result.snapshot.phase);
     if (result.detail != null && result.detail != d) {
       _detail = AsyncValue.ready(result.detail!);
+    }
+
+    if (ev.event == 'thread_update') {
+      final updated = _detail.valueOrNull?.thread;
+      final previous = d?.thread;
+      if (updated != null && updated != previous) {
+        onThreadTitleChanged?.call(updated.title, updated.updatedAt);
+      }
     }
 
     if (ev.event == 'user_message') {
@@ -822,6 +836,7 @@ class ThreadStore {
 
   String? _statusFromPhase(StreamPhase phase) {
     return switch (phase) {
+      StreamPhase.sending => 'running',
       StreamPhase.running => 'running',
       StreamPhase.completed => 'completed',
       StreamPhase.stopped => 'stopped',
