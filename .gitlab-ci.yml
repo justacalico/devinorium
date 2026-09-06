@@ -43,15 +43,15 @@ github-sync:
       if [ -f "$GITHUB_SSH_PRIVATE_KEY" ]; then
         cp "$GITHUB_SSH_PRIVATE_KEY" ~/.ssh/id_ed25519
       else
-        printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        printf '%b\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
       fi
-    - chmod 600 ~/.ssh/id_ed25519
-    - |
-      if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then
-        echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not an SSH private key" >&2
+      printf '\n' >> ~/.ssh/id_ed25519
+      chmod 600 ~/.ssh/id_ed25519
+      if ! ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1; then
+        echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not a loadable SSH private key" >&2
         exit 1
       fi
-    - ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
+      ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
   script:
     - git remote add github git@github.com:justacalico/devinorium.git || true
     - git remote update github
@@ -99,15 +99,15 @@ github-mr-build:
       if [ -f "$GITHUB_SSH_PRIVATE_KEY" ]; then
         cp "$GITHUB_SSH_PRIVATE_KEY" ~/.ssh/id_ed25519
       else
-        printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        printf '%b\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
       fi
-    - chmod 600 ~/.ssh/id_ed25519
-    - |
-      if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then
-        echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not an SSH private key" >&2
+      printf '\n' >> ~/.ssh/id_ed25519
+      chmod 600 ~/.ssh/id_ed25519
+      if ! ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1; then
+        echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not a loadable SSH private key" >&2
         exit 1
       fi
-    - ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
+      ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
   script:
     - bash scripts/trigger-github-build.sh "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" true false "$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA"
 
@@ -133,11 +133,12 @@ github-release-sync:
         if [ -f "$GITLAB_RELEASE_SSH_KEY" ]; then
           cp "$GITLAB_RELEASE_SSH_KEY" ~/.ssh/id_ed25519
         else
-          printf '%s\n' "$GITLAB_RELEASE_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%b\n' "$GITLAB_RELEASE_SSH_KEY" > ~/.ssh/id_ed25519
         fi
+        printf '\n' >> ~/.ssh/id_ed25519
         chmod 600 ~/.ssh/id_ed25519
-        if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then
-          echo "ERROR: GITLAB_RELEASE_SSH_KEY does not appear to be an SSH private key" >&2
+        if ! ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1; then
+          echo "ERROR: GITLAB_RELEASE_SSH_KEY is not a loadable SSH private key" >&2
           exit 1
         fi
         ssh-keyscan -t ed25519 gitlab.com > ~/.ssh/known_hosts
