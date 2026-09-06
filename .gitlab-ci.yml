@@ -37,17 +37,7 @@ github-sync:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG
   before_script:
     - apk add --no-cache git openssh-client
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - |
-      if [ -f "$GITHUB_SSH_PRIVATE_KEY" ]; then
-        cp "$GITHUB_SSH_PRIVATE_KEY" ~/.ssh/id_ed25519
-      else
-        printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-      fi
-    - chmod 600 ~/.ssh/id_ed25519
-    - if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not an SSH private key" >&2; exit 1; fi
-    - ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
+    - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
   script:
     - git remote add github git@github.com:justacalico/devinorium.git || true
     - git remote update github
@@ -89,17 +79,7 @@ github-mr-build:
     GH_TOKEN: $GH_TOKEN
   before_script:
     - apk add --no-cache bash curl jq git github-cli openssh-client
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - |
-      if [ -f "$GITHUB_SSH_PRIVATE_KEY" ]; then
-        cp "$GITHUB_SSH_PRIVATE_KEY" ~/.ssh/id_ed25519
-      else
-        printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-      fi
-    - chmod 600 ~/.ssh/id_ed25519
-    - if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then echo "ERROR: GITHUB_SSH_PRIVATE_KEY is not an SSH private key" >&2; exit 1; fi
-    - ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
+    - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
   script:
     - bash scripts/trigger-github-build.sh "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" true false "$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA"
 
@@ -118,21 +98,6 @@ github-release-sync:
   before_script:
     - apk add --no-cache bash curl jq git github-cli openssh-client
     - bash scripts/install-glab.sh
-    - |
-      if [ -n "${GITLAB_RELEASE_SSH_KEY:-}" ]; then
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        if [ -f "$GITLAB_RELEASE_SSH_KEY" ]; then
-          cp "$GITLAB_RELEASE_SSH_KEY" ~/.ssh/id_ed25519
-        else
-          printf '%s\n' "$GITLAB_RELEASE_SSH_KEY" > ~/.ssh/id_ed25519
-        fi
-        chmod 600 ~/.ssh/id_ed25519
-        if ! head -n1 ~/.ssh/id_ed25519 | grep -qE '^-----BEGIN (OPENSSH|EC|RSA|DSA|SSH2)? PRIVATE KEY-----'; then
-          echo "ERROR: GITLAB_RELEASE_SSH_KEY does not appear to be an SSH private key" >&2
-          exit 1
-        fi
-        ssh-keyscan -t ed25519 gitlab.com > ~/.ssh/known_hosts
-      fi
+    - sh scripts/setup-ssh-key.sh GITLAB_RELEASE_SSH_KEY gitlab.com
   script:
     - bash scripts/sync-from-github.sh
