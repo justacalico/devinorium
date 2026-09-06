@@ -519,9 +519,10 @@ jobs:
 
       - name: Trigger GitLab sync pipeline
         run: |
+          RELEASE_TAG="${{ steps.meta.outputs.release_tag }}"
           curl -fsSL --max-time 30 --retry 2 -X POST \
             -F token="${{ secrets.GITLAB_TRIGGER_TOKEN }}" \
-            -F "ref=${{ steps.meta.outputs.release_tag }}" \
+            -F "ref=main" \
             -F "variables[GITHUB_RUN_ID]=${{ github.run_id }}" \
-            -F "variables[RELEASE_TAG]=${{ steps.meta.outputs.release_tag }}" \
+            -F "variables[RELEASE_TAG]=${RELEASE_TAG}" \
             "https://gitlab.com/api/v4/projects/${{ secrets.GITLAB_PROJECT_ID }}/trigger/pipeline"

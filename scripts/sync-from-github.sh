@@ -18,6 +18,15 @@ fi
 
 echo "Syncing GitHub release: $RELEASE_TAG"
 
+# Resolve the commit that the release tag points to on GitHub.
+# The GitLab pipeline may run on main, but the actual release tag may be a
+# different commit (e.g. a version bump), so we use GitHub's tag SHA.
+RELEASE_COMMIT=$(gh api "repos/$GITHUB_REPO/git/ref/tags/$RELEASE_TAG" -q '.object.sha' 2>/dev/null || true)
+if [ -z "$RELEASE_COMMIT" ]; then
+  echo "Warning: could not resolve tag $RELEASE_TAG on GitHub, falling back to $CI_COMMIT_SHA" >&2
+  RELEASE_COMMIT="$CI_COMMIT_SHA"
+fi
+
 # Download assets from the GitHub release.
 rm -rf release-assets SHA256SUMS.txt
 mkdir -p release-assets
@@ -48,12 +57,11 @@ if [ -n "$PKG_ID" ] && [ "$PKG_ID" != "null" ]; then
   glab api --method DELETE "projects/$CI_PROJECT_ID/packages/$PKG_ID" 2>/dev/null || true
 fi
 
-# Move the release tag to the current commit using an SSH deploy key.
+# Move the release tag to the same commit as GitHub using an SSH deploy key.
 # The CI job token cannot modify tags, but a deploy key with write access can.
 if [ -n "${GITLAB_RELEASE_SSH_KEY:-}" ]; then
   git remote add gitlab-ssh "git@gitlab.com:${CI_PROJECT_PATH}.git" 2>/dev/null || true
-  git fetch --depth=1 gitlab-ssh "$RELEASE_TAG" 2>/dev/null || true
-  git tag -f "$RELEASE_TAG" "$CI_COMMIT_SHA"
+  git tag -f "$RELEASE_TAG" "$RELEASE_COMMIT"
   git push -f gitlab-ssh "$RELEASE_TAG"
 fi
 
@@ -62,6 +70,6 @@ fi
 glab release create "$RELEASE_TAG" \
   --name "Devinorium $RELEASE_TAG" \
   --notes "Mirrored from the GitHub release." \
-  --ref "$CI_COMMIT_SHA" \
+  --ref "$RELEASE_COMMIT" \
   --use-package-registry \
   "$PROJECT_DIR/release-assets"/*
