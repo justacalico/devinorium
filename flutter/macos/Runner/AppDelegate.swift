@@ -7,6 +7,16 @@ class AppDelegate: FlutterAppDelegate {
     return true
   }
 
+  override func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag {
+      for window in sender.windows {
+        window.deminiaturize(self)
+        window.makeKeyAndOrderFront(self)
+      }
+    }
+    return true
+  }
+
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
   }
