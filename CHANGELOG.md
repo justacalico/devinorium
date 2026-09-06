@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.40.2 - 2026-09-06
+#### Bug Fixes
+- 为 GitHub Actions 获取标签 - (3c4d214) - HttpAnimations
+- 移除 GitHub Actions 工作流中重复的 with 块 - (e0c1f28) - HttpAnimations
+- 为 GitHub Actions 检出步骤启用完整历史 - (9e1381e) - HttpAnimations
+
+- - -
+
 ## v0.40.1 - 2026-09-06
 #### Bug Fixes
 - 捕获桌面通知命令缺失时的异常 - (7f1477c) - HttpAnimations
