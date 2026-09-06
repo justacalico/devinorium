@@ -7,7 +7,10 @@ typedef _ComposerModel = ({
   List<({String filename, String mime, Uint8List bytes})> attachments,
   String selectedModel,
   String selectedPermission,
+  String selectedProvider,
+  bool providerLocked,
   List<ModelInfo> models,
+  List<ProviderInfo> providers,
 });
 
 /// The available width for the composer dropdowns below which they switch to
@@ -335,7 +338,10 @@ class _ComposerState extends State<_Composer> {
         attachments: s.attachments,
         selectedModel: s.selectedModel,
         selectedPermission: s.selectedPermission,
+        selectedProvider: s.selectedProvider,
+        providerLocked: s.activeThreadDetail?.thread.devinSessionId != null,
         models: s.models,
+        providers: s.providers,
       ),
       builder: (context, model, _) {
         final isSending = model.sending;
@@ -483,6 +489,21 @@ class _ComposerState extends State<_Composer> {
                                         constraints.maxWidth <
                                         _compactDropdownsBreakpoint;
                                     final dropdowns = [
+                                      _ProviderDropdown(
+                                        value: model.selectedProvider,
+                                        providers: model.providers,
+                                        compact: compact,
+                                        // Once a provider session exists it
+                                        // cannot be resumed by another
+                                        // provider, so the picker locks.
+                                        enabled: hasActiveThread &&
+                                            !isSending &&
+                                            !model.providerLocked,
+                                        onChanged: (id) async {
+                                          await state.setSelectedProvider(id);
+                                          await state.saveThreadSettings();
+                                        },
+                                      ),
                                       ModelPicker(
                                         value: model.selectedModel,
                                         models: model.models,
@@ -518,11 +539,13 @@ class _ComposerState extends State<_Composer> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.center,
                                           children: [
-                                            dropdowns[0],
-                                            const SizedBox(width: 8),
-                                            dropdowns[1],
-                                            const SizedBox(width: 8),
-                                            dropdowns[2],
+                                            for (var i = 0;
+                                                i < dropdowns.length;
+                                                i++) ...[
+                                              if (i > 0)
+                                                const SizedBox(width: 8),
+                                              dropdowns[i],
+                                            ],
                                           ],
                                         ),
                                       );

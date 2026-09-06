@@ -63,6 +63,22 @@ pub(super) async fn create(
             }
         }
     }
+    // The thread's provider defaults to the user's configured provider.
+    let provider_id = req
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&user.provider_id);
+    if crate::providers::provider_name(provider_id).is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("unknown provider")),
+        )
+            .into_response();
+    }
+    let provider_id = provider_id.to_string();
+
     let permission_mode = req.permission_mode.unwrap_or_else(|| "normal".into());
     if !is_valid_permission_mode(&permission_mode) {
         return (
@@ -71,14 +87,23 @@ pub(super) async fn create(
         )
             .into_response();
     }
+    // The configured default model belongs to the user's default provider;
+    // threads on another provider leave it empty so the provider picks from
+    // its own catalog when the first message is sent.
     let model = req
         .model
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from)
-        .unwrap_or_else(|| state.config.default_model.clone());
-    if model.is_empty() || model.len() > 100 {
+        .unwrap_or_else(|| {
+            if provider_id == user.provider_id {
+                state.config.default_model.clone()
+            } else {
+                String::new()
+            }
+        });
+    if model.len() > 100 {
         return (
             StatusCode::BAD_REQUEST,
             Json(crate::api::ApiError::new("model must be 1-100 chars")),
@@ -94,6 +119,7 @@ pub(super) async fn create(
         thread_group_id: req.thread_group_id,
         title,
         title_user_set,
+        provider_id,
         model,
         permission_mode,
         permissions: req.permissions,
@@ -188,8 +214,8 @@ pub(super) async fn rename(
 ) -> Response {
     // Verify ownership up front so every field update is gated on the
     // thread actually belonging to the caller.
-    match state.db.get_thread(&id, user.id).await {
-        Ok(Some(_)) => {}
+    let thread = match state.db.get_thread(&id, user.id).await {
+        Ok(Some(t)) => t,
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
@@ -198,9 +224,31 @@ pub(super) async fn rename(
                 .into_response();
         }
         Err(e) => return map_err_internal(e).into_response(),
-    }
+    };
 
     // Validate all inputs before touching the database.
+    if let Some(provider) = &req.provider {
+        let provider = provider.trim();
+        if crate::providers::provider_name(provider).is_none() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("unknown provider")),
+            )
+                .into_response();
+        }
+        // A stored session id only means something to the provider that
+        // created it, so the provider is locked once the conversation has
+        // started. Start a new thread to switch providers.
+        if provider != thread.provider_id && thread.devin_session_id.is_some() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(
+                    "provider cannot be changed once the conversation has started",
+                )),
+            )
+                .into_response();
+        }
+    }
     if let Some(title) = &req.title {
         if title.trim().is_empty() || title.len() > 200 {
             return (
@@ -244,7 +292,18 @@ pub(super) async fn rename(
                 .into_response();
         }
     }
-    if req.model.is_some() || req.permission_mode.is_some() || req.permissions.is_some() {
+    // A redundant provider write would trip the no-session guard needlessly.
+    let provider_update = req
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| *p != thread.provider_id);
+
+    if provider_update.is_some()
+        || req.model.is_some()
+        || req.permission_mode.is_some()
+        || req.permissions.is_some()
+    {
         // Treat an empty permissions string as a request to clear the field.
         let permissions = req
             .permissions
@@ -260,6 +319,7 @@ pub(super) async fn rename(
             .update_thread_settings(
                 &id,
                 user.id,
+                provider_update,
                 model,
                 req.permission_mode.as_deref(),
                 permissions,

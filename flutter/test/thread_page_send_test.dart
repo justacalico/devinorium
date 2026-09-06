@@ -22,6 +22,7 @@ class _SendApiService extends ApiService {
   @override
   Future<void> updateThreadSettings(
     String id, {
+    String? provider,
     String? model,
     String? permissionMode,
     String? permissions,

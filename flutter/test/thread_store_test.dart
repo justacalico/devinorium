@@ -23,15 +23,19 @@ class _TestApiService extends ApiService {
   var getThreadCalls = 0;
   var throwOnUpdateThreadSettings = false;
   var throwOnGetThread = false;
+  String? lastProvider;
+  String threadProviderId = 'devin-cli';
 
   @override
   Future<void> updateThreadSettings(
     String id, {
+    String? provider,
     String? model,
     String? permissionMode,
     String? permissions,
   }) {
     updateThreadSettingsCalls++;
+    lastProvider = provider;
     if (throwOnUpdateThreadSettings) {
       return Future.error(Exception('updateThreadSettings failed'));
     }
@@ -54,6 +58,7 @@ class _TestApiService extends ApiService {
           id: id,
           title: 'Test',
           projectId: 1,
+          providerId: threadProviderId,
           model: 'm1',
           permissionMode: 'normal',
           createdAt: '',
@@ -140,6 +145,7 @@ class _ControlledApiService extends _TestApiService {
 }
 
 void main() {
+  providerSelectionTests();
   test('saveSettings reloads detail when none is loaded', () async {
     final api = _TestApiService();
     final store = ThreadStore(
@@ -958,6 +964,7 @@ class _CursorApiService extends ApiService {
   @override
   Future<void> updateThreadSettings(
     String id, {
+    String? provider,
     String? model,
     String? permissionMode,
     String? permissions,
@@ -1000,4 +1007,45 @@ class _StopFailingApiService extends _TestApiService {
   @override
   Future<void> stopThread(String id) =>
       Future.error(Exception('stopThread failed'));
+}
+
+void providerSelectionTests() {
+  test('saveSettings sends the selected provider', () async {
+    final api = _TestApiService();
+    final store = ThreadStore(
+      api: api,
+      threadId: 't1',
+      projectId: 1,
+      selectedProvider: 'opencode',
+      composerText: 'hello',
+    );
+
+    await store.saveSettings();
+
+    expect(api.updateThreadSettingsCalls, 1);
+    expect(api.lastProvider, 'opencode');
+  });
+
+  test('saveSettings omits provider when unset', () async {
+    final api = _TestApiService();
+    final store = ThreadStore(
+      api: api,
+      threadId: 't1',
+      projectId: 1,
+      composerText: 'hello',
+    );
+
+    await store.saveSettings();
+
+    expect(api.lastProvider, isNull);
+  });
+
+  test('load seeds the provider from the thread', () async {
+    final api = _TestApiService()..threadProviderId = 'opencode';
+    final store = ThreadStore(api: api, threadId: 't1', projectId: 1);
+
+    await store.load();
+
+    expect(store.selectedProvider, 'opencode');
+  });
 }

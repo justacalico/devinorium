@@ -1080,6 +1080,7 @@ void main() {
         _json(200, {'project_id': 1, 'path': '/x'}),
         _json(200, []),
         _json(200, []),
+        _json(200, []),
         _json(200, {
           'thread': {
             'id': 'a',
@@ -2026,6 +2027,7 @@ void main() {
         _json(200, {'project_id': 1, 'path': '/'}),
         _json(200, []),
         _json(200, []),
+        _json(200, []),
         _json(200, {
           'thread': {
             'id': 'a',
@@ -2093,6 +2095,7 @@ void main() {
           ],
         }),
         _json(200, {'project_id': 1, 'path': '/'}),
+        _json(200, []),
         _json(200, []),
         _json(200, []),
         _json(200, {

@@ -58,6 +58,7 @@ class ThreadStore {
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedPermission,
+    String? selectedProvider,
     String? lastRunStatus,
   }) : _status = status ?? ThreadStoreStatus.empty,
        _detail = detail ?? const AsyncValue.empty(),
@@ -66,7 +67,8 @@ class ThreadStore {
        attachments = attachments == null ? [] : List.of(attachments),
        composerMode = composerMode ?? ComposerMode.code,
        selectedModel = selectedModel ?? '',
-       selectedPermission = selectedPermission ?? 'normal' {
+       selectedPermission = selectedPermission ?? 'normal',
+       selectedProvider = selectedProvider ?? '' {
     _lastRunStatus = lastRunStatus;
   }
 
@@ -83,6 +85,7 @@ class ThreadStore {
   ComposerMode composerMode;
   String selectedModel;
   String selectedPermission;
+  String selectedProvider;
 
   // Optimistic messages that have been cleared from the composer but not yet
   // echoed back by the server. Kept separate from the persisted detail so paging
@@ -169,6 +172,7 @@ class ThreadStore {
       _detail = AsyncValue.ready(d);
       selectedModel = d.thread.model;
       selectedPermission = d.thread.permissionMode;
+      selectedProvider = d.thread.providerId;
       _status = ThreadStoreStatus.ready;
       _globalError = '';
       _emit();
@@ -217,6 +221,7 @@ class ThreadStore {
             _detail = AsyncValue.ready(d);
             selectedModel = d.thread.model;
             selectedPermission = d.thread.permissionMode;
+            selectedProvider = d.thread.providerId;
             _status = ThreadStoreStatus.ready;
             _globalError = '';
             _emit();
@@ -329,6 +334,7 @@ class ThreadStore {
     try {
       await api.updateThreadSettings(
         threadId,
+        provider: selectedProvider.isEmpty ? null : selectedProvider,
         model: selectedModel.isEmpty ? null : selectedModel,
         permissionMode: selectedPermission,
       );

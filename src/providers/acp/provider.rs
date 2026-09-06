@@ -1,9 +1,10 @@
-//! Devin CLI ACP (Agent Client Protocol) provider.
+//! ACP (Agent Client Protocol) provider.
 //!
-//! Spawns `devin acp` and communicates over JSON-RPC stdio using the
-//! `agent-client-protocol` crate. Permission requests can be forwarded to the
-//! API layer through the optional [`SendOptions::permission_callback`]; if no
-//! callback is configured, permission requests are rejected.
+//! Spawns `<bin> acp` and communicates over JSON-RPC stdio using the
+//! `agent-client-protocol` crate. The per-agent differences (Devin CLI,
+//! OpenCode) live in [`super::spec`]. Permission requests can be forwarded to
+//! the API layer through the optional [`SendOptions::permission_callback`]; if
+//! no callback is configured, permission requests are rejected.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,8 +30,8 @@ use agent_client_protocol::{
 };
 
 use super::{
-    content::sanitize, elicitation::handle_ask_request, models::static_models,
-    permissions::handle_permission_request, session_config::apply_session_config,
+    content::sanitize, elicitation::handle_ask_request, models,
+    permissions::handle_permission_request, session_config::apply_session_config, spec::AgentKind,
     tool_calls::apply_notification,
 };
 use crate::providers::{
@@ -38,17 +39,19 @@ use crate::providers::{
     PartCallback, Provider, SendOptions, SendRequest, SendResponse, StartRequest, StartResponse,
 };
 
-pub const PROVIDER_ID: &str = "devin-cli";
-pub const PROVIDER_NAME: &str = "Devin CLI";
-
-pub struct DevinAcpProvider {
+pub struct AcpProvider {
+    pub(crate) kind: AgentKind,
     pub(crate) bin: String,
     default_model: String,
 }
 
-impl DevinAcpProvider {
-    pub fn new(bin: String, default_model: String) -> Self {
-        Self { bin, default_model }
+impl AcpProvider {
+    pub fn new(kind: AgentKind, bin: String, default_model: String) -> Self {
+        Self {
+            kind,
+            bin,
+            default_model,
+        }
     }
 
     /// Verify the binary is on PATH and the ACP handshake succeeds
@@ -99,7 +102,7 @@ async fn cancel_wait(flag: Arc<AtomicBool>) {
     }
 }
 
-impl DevinAcpProvider {
+impl AcpProvider {
     async fn run_prompt(
         &self,
         options: &SendOptions,
@@ -214,13 +217,14 @@ impl DevinAcpProvider {
                     apply_session_config(
                         &connection,
                         &session_id,
+                        self.kind,
                         &self.default_model,
                         options,
                         config_options.as_deref(),
                     )
                     .await?;
 
-                    if let Some(mode_id) = Self::devin_mode_id(&options.interaction_mode) {
+                    if let Some(mode_id) = self.kind.session_mode_id(&options.interaction_mode) {
                         if let Err(e) = connection
                             .send_request(SetSessionModeRequest::new(
                                 SessionId::new(session_id.clone()),
@@ -231,8 +235,9 @@ impl DevinAcpProvider {
                         {
                             tracing::warn!(
                                 session_id = %session_id,
+                                provider = %self.kind.id(),
                                 error = %e,
-                                "failed to set devin acp session mode"
+                                "failed to set acp session mode"
                             );
                         }
                     }
@@ -326,12 +331,24 @@ impl DevinAcpProvider {
         Ok(blocks)
     }
 
+    async fn fetch_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        match self.kind {
+            AgentKind::Devin => self.fetch_devin_models().await,
+            AgentKind::Opencode => models::fetch_opencode_models(&self.bin).await,
+        }
+    }
+
     async fn fetch_devin_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
-        let output = Command::new(&self.bin)
-            .args(["models", "list", "--format", "json"])
-            .current_dir(".")
-            .output()
-            .await?;
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            Command::new(&self.bin)
+                .args(["models", "list", "--format", "json"])
+                .current_dir(".")
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("devin models list timed out"))??;
 
         if !output.status.success() {
             anyhow::bail!(
@@ -417,19 +434,19 @@ fn client_capabilities() -> ClientCapabilities {
 }
 
 #[async_trait]
-impl Provider for DevinAcpProvider {
+impl Provider for AcpProvider {
     fn id(&self) -> &str {
-        PROVIDER_ID
+        self.kind.id()
     }
 
     fn name(&self) -> &str {
-        PROVIDER_NAME
+        self.kind.name()
     }
 
     async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
-        match self.fetch_devin_models().await {
+        match self.fetch_models().await {
             Ok(models) if !models.is_empty() => Ok(models),
-            Ok(_) | Err(_) => Ok(static_models()),
+            Ok(_) | Err(_) => Ok(models::static_models(self.kind)),
         }
     }
 
@@ -460,10 +477,35 @@ impl Provider for DevinAcpProvider {
 
     async fn export(
         &self,
-        _session_id: &str,
-        _working_dir: &Path,
+        session_id: &str,
+        working_dir: &Path,
     ) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
+        if self.kind != AgentKind::Opencode {
+            return Ok(serde_json::json!({}));
+        }
+        // `opencode export` prints an "Exporting session: ..." banner before
+        // the JSON document, so parse from the first '{'.
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            Command::new(&self.bin)
+                .args(["export", session_id])
+                .current_dir(working_dir)
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("opencode export timed out"))??;
+        if !output.status.success() {
+            anyhow::bail!(
+                "opencode export failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let start = stdout
+            .find('{')
+            .ok_or_else(|| anyhow::anyhow!("opencode export produced no JSON"))?;
+        Ok(serde_json::from_str(&stdout[start..])?)
     }
 
     async fn health_check(&self) -> anyhow::Result<()> {
@@ -482,8 +524,8 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
-    fn provider() -> DevinAcpProvider {
-        DevinAcpProvider::new("devin".into(), "swe-1-7".into())
+    fn provider() -> AcpProvider {
+        AcpProvider::new(AgentKind::Devin, "devin".into(), "swe-1-7".into())
     }
 
     #[tokio::test]

@@ -1260,4 +1260,67 @@ void main() {
       expect(mr.isOpen, isTrue);
     });
   });
+
+  group('Thread providerId', () {
+    test('parses provider_id and defaults to devin-cli', () {
+      final withProvider = Thread.fromJson({
+        'id': 't1',
+        'title': 't',
+        'project_id': 1,
+        'provider_id': 'opencode',
+        'model': 'm',
+        'permission_mode': 'normal',
+        'created_at': '',
+        'updated_at': '',
+      });
+      expect(withProvider.providerId, 'opencode');
+
+      final withoutProvider = Thread.fromJson({
+        'id': 't2',
+        'title': 't',
+        'project_id': 1,
+        'model': 'm',
+        'permission_mode': 'normal',
+        'created_at': '',
+        'updated_at': '',
+      });
+      expect(withoutProvider.providerId, 'devin-cli');
+    });
+  });
+
+  group('provider commands', () {
+    test('User parses provider_commands map', () {
+      final user = User.fromJson({
+        'id': 1,
+        'username': 'o',
+        'role': 'user',
+        'totp_enabled': false,
+        'provider_commands': {'opencode': '/opt/oc'},
+      });
+      expect(user.providerCommands['opencode'], '/opt/oc');
+    });
+
+    test('providerCommandFor prefers override then legacy then default', () {
+      final user = User(
+        id: 1,
+        username: 'o',
+        role: 'user',
+        totpEnabled: false,
+        providerId: 'devin-cli',
+        providerCommand: '/usr/bin/devin',
+        providerCommands: const {'opencode': '/opt/oc'},
+      );
+      expect(providerCommandFor(user, 'opencode'), '/opt/oc');
+      expect(providerCommandFor(user, 'devin-cli'), '/usr/bin/devin');
+      expect(
+        providerCommandFor(
+          user.copyWith(providerCommands: const {}),
+          'opencode',
+        ),
+        'opencode',
+      );
+      expect(defaultProviderCommand('opencode'), 'opencode');
+      expect(defaultProviderCommand('devin-cli'), 'devin');
+    });
+  });
 }

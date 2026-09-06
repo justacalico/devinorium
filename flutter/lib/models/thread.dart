@@ -107,6 +107,7 @@ class Thread {
   final int? threadGroupId;
   final int projectId;
   final String? devinSessionId;
+  final String providerId;
   final String model;
   final String permissionMode;
   final String? permissions;
@@ -122,6 +123,7 @@ class Thread {
     this.threadGroupId,
     required this.projectId,
     this.devinSessionId,
+    this.providerId = 'devin-cli',
     required this.model,
     required this.permissionMode,
     this.permissions,
@@ -138,6 +140,7 @@ class Thread {
     threadGroupId: j['thread_group_id'] as int?,
     projectId: (j['project_id'] as num?)?.toInt() ?? 0,
     devinSessionId: j['devin_session_id'] as String?,
+    providerId: j['provider_id'] as String? ?? 'devin-cli',
     model: j['model'] as String? ?? '',
     permissionMode: j['permission_mode'] as String? ?? 'normal',
     permissions: j['permissions'] as String?,
@@ -154,6 +157,7 @@ class Thread {
     threadGroupId: threadGroupId,
     projectId: projectId,
     devinSessionId: devinSessionId,
+    providerId: providerId,
     model: model,
     permissionMode: permissionMode,
     permissions: permissions,
@@ -173,6 +177,7 @@ class Thread {
         threadGroupId == other.threadGroupId &&
         projectId == other.projectId &&
         devinSessionId == other.devinSessionId &&
+        providerId == other.providerId &&
         model == other.model &&
         permissionMode == other.permissionMode &&
         permissions == other.permissions &&
@@ -190,6 +195,7 @@ class Thread {
     threadGroupId,
     projectId,
     devinSessionId,
+    providerId,
     model,
     permissionMode,
     permissions,

@@ -14,11 +14,12 @@ Devinorium lets you use coding agents from a browser. The Rust backend handles a
 ## Supported providers
 
 - [Devin CLI](https://devin.ai)
+- [OpenCode](https://opencode.ai)
 
 ## Quick start
 
 Prerequisites: Rust, the CLI for your chosen provider on PATH, and the Flutter SDK.
-For the Devin provider, authenticate with `devin login`.
+For the Devin provider, authenticate with `devin login`; for OpenCode, authenticate with `opencode auth login`.
 
 ```bash
 git clone https://gitlab.com/HttpAnimations/devinorium.git

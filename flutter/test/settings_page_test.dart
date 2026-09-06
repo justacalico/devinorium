@@ -59,6 +59,7 @@ class _FakeApiService extends ApiService {
   Future<User> updateMe({
     required String providerId,
     required String providerCommand,
+    Map<String, String>? providerCommands,
   }) async {
     updateMeCalls++;
     savedProviderCommand = providerCommand;
@@ -84,7 +85,7 @@ class _FakeApiService extends ApiService {
   }
 
   @override
-  Future<ProviderVersion> providerVersion() async {
+  Future<ProviderVersion> providerVersion({String? provider}) async {
     providerVersionCalls++;
     return providerVersionToReturn ?? const ProviderVersion();
   }

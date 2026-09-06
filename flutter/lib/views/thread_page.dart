@@ -42,6 +42,7 @@ part 'thread/thinking_block.dart';
 part 'thread/thinking_dots.dart';
 part 'thread/composer.dart';
 part 'thread/permission_dropdown.dart';
+part 'thread/provider_dropdown.dart';
 part 'thread/mode_dropdown.dart';
 part 'thread/tool_call_item.dart';
 part 'thread/tool_detail_row.dart';

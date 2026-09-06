@@ -335,6 +335,7 @@ mixin AuthStore on AppStateBase {
   Future<void> saveProvider({
     String? providerId,
     String? providerCommand,
+    Map<String, String>? providerCommands,
   }) async {
     final user = _user;
     if (user == null) return;
@@ -342,7 +343,17 @@ mixin AuthStore on AppStateBase {
       _user = await api.updateMe(
         providerId: providerId ?? user.providerId,
         providerCommand: providerCommand ?? user.providerCommand,
+        providerCommands: providerCommands,
       );
+      if (providerId != null && providerId != user.providerId) {
+        // The global composer selection followed the old default provider;
+        // reset it so new threads start on the new provider's catalog.
+        _selectedProvider = '';
+        _selectedModel = '';
+        _modelsProvider = '';
+        _models = [];
+        unawaited(ensureModelsFor(_user!.providerId));
+      }
       _globalError = '';
       // The installed version depends on the provider command, so re-check
       // it whenever the saved provider config changes.
@@ -351,6 +362,20 @@ mixin AuthStore on AppStateBase {
       _globalError = '$e';
     }
     notifyListeners();
+  }
+
+  /// Save the CLI command for a single provider without changing the
+  /// user's default provider.
+  @override
+  Future<void> saveProviderCommand(String providerId, String command) async {
+    final user = _user;
+    if (user == null) return;
+    await saveProvider(
+      providerId: user.providerId,
+      providerCommand:
+          providerId == user.providerId ? command : user.providerCommand,
+      providerCommands: {providerId: command},
+    );
   }
 
   @override
@@ -457,6 +482,10 @@ mixin AuthStore on AppStateBase {
     _attachments.clear();
     _selectedModel = '';
     _selectedPermission = 'normal';
+    _selectedProvider = '';
+    _modelsProvider = '';
+    _models = [];
+    _providers = [];
     _providerVersion = null;
     _runningThreadIds.clear();
     _connectionStatus = ConnectionStatus.checking;

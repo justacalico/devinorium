@@ -8,7 +8,11 @@
 
 use std::path::PathBuf;
 
-use devinorium::providers::{self, devin_acp, Provider, SendOptions, StartRequest};
+use devinorium::providers::{
+    self,
+    acp::{AcpProvider, AgentKind},
+    Provider, SendOptions, StartRequest,
+};
 
 fn devin_available() -> bool {
     std::process::Command::new("devin")
@@ -180,9 +184,12 @@ fn registry_rejects_unknown() {
 }
 
 #[tokio::test]
-async fn devin_acp_health_check_fails_for_missing_binary() {
-    let p =
-        devin_acp::DevinAcpProvider::new("/nonexistent/devin".to_string(), "glm-5-2".to_string());
+async fn acp_health_check_fails_for_missing_binary() {
+    let p = AcpProvider::new(
+        AgentKind::Devin,
+        "/nonexistent/devin".to_string(),
+        "glm-5-2".to_string(),
+    );
     let res = p.health_check().await;
     assert!(res.is_err(), "missing binary should fail health check");
 }
@@ -194,7 +201,11 @@ async fn provider_acp_start() {
         eprintln!("skipping: devin not on PATH");
         return;
     }
-    let p = providers::devin_acp::DevinAcpProvider::new("devin".to_string(), "glm-5-2".to_string());
+    let p = providers::acp::AcpProvider::new(
+        AgentKind::Devin,
+        "devin".to_string(),
+        "glm-5-2".to_string(),
+    );
     let dir = tmp_workdir();
 
     let start = p

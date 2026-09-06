@@ -31,11 +31,35 @@ pub struct ProviderVersionResponse {
     pub update_available: bool,
 }
 
-/// Report the installed and latest versions for the current user's
-/// configured provider. Best effort: when the binary or the update
-/// manifest is unreachable the corresponding fields are null.
-async fn version(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
-    let provider = state.provider_for_user(&user);
+#[derive(Debug, Deserialize)]
+pub struct VersionQuery {
+    /// Provider to report versions for. Defaults to the user's configured
+    /// provider.
+    pub provider: Option<String>,
+}
+
+/// Report the installed and latest versions for a provider. Best effort:
+/// when the binary or the update manifest is unreachable the corresponding
+/// fields are null.
+async fn version(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    axum::extract::Query(query): axum::extract::Query<VersionQuery>,
+) -> Response {
+    let provider_id = query
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&user.provider_id);
+    if providers::provider_name(provider_id).is_none() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("unknown provider")),
+        )
+            .into_response();
+    }
+    let provider = state.provider_for(&user, provider_id);
     let info = provider.version_info().await;
     let update_available = info.update_available();
     Json(ProviderVersionResponse {

@@ -276,18 +276,25 @@ mixin ThreadListStore on AppStateBase {
     _attachments.clear();
     notifyListeners();
     try {
+      final provider = selectedProvider;
+      // Switch the catalog before creating so the stored model is one the
+      // provider actually offers.
+      await ensureModelsFor(provider);
+      final model = _selectedModel;
       final t = await api.createThread(
         projectId: targetId,
         title: appL10n.newThread,
-        model: _selectedModel.isEmpty ? null : _selectedModel,
+        provider: provider,
+        model: model.isEmpty ? null : model,
         permissionMode: _selectedPermission,
       );
       final store = _createStore(
         t.id,
         projectId: targetId,
         composerMode: _composerMode,
-        selectedModel: _selectedModel,
+        selectedModel: model,
         selectedPermission: _selectedPermission,
+        selectedProvider: t.providerId,
       );
       _threadStores[t.id] = store;
       _setActiveStore(store);
@@ -346,9 +353,11 @@ mixin ThreadListStore on AppStateBase {
         composerMode: previous?.composerMode ?? _composerMode,
         selectedModel: detail.thread.model,
         selectedPermission: detail.thread.permissionMode,
+        selectedProvider: detail.thread.providerId,
       );
       _threadStores[id] = store;
       _setActiveStore(store);
+      unawaited(ensureModelsFor(detail.thread.providerId));
       _threadOpening = false;
       previous?.dispose();
 
@@ -434,6 +443,7 @@ mixin ThreadListStore on AppStateBase {
     _setActiveStore(store);
     try {
       await store.resume();
+      unawaited(ensureModelsFor(store.selectedProvider));
     } catch (e) {
       debugLogFailure('threadList.resumeThread', e, threadId: id);
       _globalError = '$e';

@@ -33,18 +33,30 @@ impl super::Db {
         Ok(())
     }
 
-    pub async fn set_provider(
+    /// Apply provider settings in a single statement so the default provider,
+    /// its legacy command column, and the per-provider command map can never
+    /// end up half-updated. `commands_patch` is merged into
+    /// `provider_commands` with `json_patch`; null values remove keys.
+    pub async fn update_provider_settings(
         &self,
         user_id: i64,
-        provider_id: &str,
-        provider_command: &str,
+        provider_id: Option<&str>,
+        provider_command: Option<&str>,
+        commands_patch: &serde_json::Map<String, serde_json::Value>,
     ) -> anyhow::Result<()> {
-        sqlx::query("UPDATE users SET provider_id = ?, provider_command = ? WHERE id = ?")
-            .bind(provider_id)
-            .bind(provider_command)
-            .bind(user_id)
-            .execute(self.pool())
-            .await?;
+        sqlx::query(
+            "UPDATE users
+             SET provider_id = COALESCE(?, provider_id),
+                 provider_command = COALESCE(?, provider_command),
+                 provider_commands = json_patch(provider_commands, ?)
+             WHERE id = ?",
+        )
+        .bind(provider_id)
+        .bind(provider_command)
+        .bind(serde_json::Value::Object(commands_patch.clone()).to_string())
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
         Ok(())
     }
 

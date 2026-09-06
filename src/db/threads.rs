@@ -9,6 +9,7 @@ pub struct NewThread {
     pub thread_group_id: Option<i64>,
     pub title: String,
     pub title_user_set: bool,
+    pub provider_id: String,
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,
@@ -19,8 +20,8 @@ pub struct NewThread {
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, model, permission_mode, permissions, branch, worktree_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, provider_id, model, permission_mode, permissions, branch, worktree_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
@@ -29,6 +30,7 @@ impl super::Db {
         .bind(new.thread_group_id)
         .bind(&new.title)
         .bind(new.title_user_set)
+        .bind(&new.provider_id)
         .bind(&new.model)
         .bind(&new.permission_mode)
         .bind(&new.permissions)
@@ -67,30 +69,38 @@ impl super::Db {
             .map_err(Into::into)
     }
 
+    /// Persist the provider session id. `provider_id` must match the thread's
+    /// current provider, so a session created just before a provider change
+    /// cannot be stored under the wrong provider.
     pub async fn update_thread_session(
         &self,
         id: &str,
+        provider_id: &str,
         devin_session_id: &str,
         title: Option<&str>,
     ) -> anyhow::Result<()> {
-        if let Some(title) = title {
+        let changed = if let Some(title) = title {
             sqlx::query(
                 "UPDATE threads
                  SET devin_session_id = ?,
                      title = CASE WHEN title_user_set = 0 THEN ? ELSE title END,
                      title_user_set = CASE WHEN title_user_set = 0 THEN 1 ELSE title_user_set END,
                      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                 WHERE id = ?",
+                 WHERE id = ? AND provider_id = ?",
             )
             .bind(devin_session_id)
             .bind(title)
             .bind(id)
+            .bind(provider_id)
             .execute(self.pool())
-            .await?;
+            .await?
         } else {
-            sqlx::query("UPDATE threads SET devin_session_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
-                .bind(devin_session_id).bind(id)
-                .execute(self.pool()).await?;
+            sqlx::query("UPDATE threads SET devin_session_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND provider_id = ?")
+                .bind(devin_session_id).bind(id).bind(provider_id)
+                .execute(self.pool()).await?
+        };
+        if changed.rows_affected() == 0 {
+            anyhow::bail!("thread provider changed while the session was starting");
         }
         Ok(())
     }
@@ -159,11 +169,29 @@ impl super::Db {
         &self,
         id: &str,
         user_id: i64,
+        provider: Option<&str>,
         model: Option<&str>,
         permission_mode: Option<&str>,
         permissions: Option<Option<&str>>,
     ) -> anyhow::Result<()> {
         let mut tx = self.pool().begin().await?;
+        if let Some(provider) = provider {
+            // A session id only means something to the provider that created
+            // it, so the provider can only change while no session exists.
+            // Guard at the database level so a concurrent send cannot slip a
+            // session write between the API check and this update.
+            let changed = sqlx::query(
+                "UPDATE threads SET provider_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND devin_session_id IS NULL",
+            )
+            .bind(provider)
+            .bind(id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+            if changed.rows_affected() == 0 {
+                anyhow::bail!("provider cannot be changed once the conversation has started");
+            }
+        }
         if let Some(model) = model {
             sqlx::query("UPDATE threads SET model = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                 .bind(model)

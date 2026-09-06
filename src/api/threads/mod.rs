@@ -68,6 +68,7 @@ pub struct ThreadOut {
     pub project_id: i64,
     pub thread_group_id: Option<i64>,
     pub devin_session_id: Option<String>,
+    pub provider_id: String,
     pub model: String,
     pub permission_mode: String,
     pub permissions: Option<String>,
@@ -86,6 +87,7 @@ impl From<ThreadRow> for ThreadOut {
             project_id: t.project_id.unwrap_or(0),
             thread_group_id: t.thread_group_id,
             devin_session_id: t.devin_session_id,
+            provider_id: t.provider_id,
             model: t.model,
             permission_mode: t.permission_mode,
             permissions: t.permissions,
@@ -178,6 +180,8 @@ pub struct CreateThread {
     pub project_id: i64,
     pub title: Option<String>,
     pub thread_group_id: Option<i64>,
+    /// Provider the thread runs on. Defaults to the user's configured provider.
+    pub provider: Option<String>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
     pub permissions: Option<String>,
@@ -257,6 +261,9 @@ pub struct UpdateThread {
     ///   - field is a number: move to that group
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub thread_group_id: Option<Option<i64>>,
+    /// Move the thread to another provider. Only allowed before the thread
+    /// has started a provider session.
+    pub provider: Option<String>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
     /// Distinguish between:
@@ -303,6 +310,7 @@ mod tests {
             user_id: 1,
             title: "My thread".into(),
             devin_session_id: None,
+            provider_id: "devin-cli".into(),
             model: "glm-5-2".into(),
             permission_mode: "normal".into(),
             permissions: None,
