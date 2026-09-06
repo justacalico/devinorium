@@ -537,6 +537,39 @@ async fn make_thread(app: &Router, cookie: &str, project_id: i64, title: &str) -
         .to_string()
 }
 
+/// Poll `GET /api/threads/{tid}/run` until `pred` matches the response body.
+/// Runs are registered asynchronously once the send request reaches the
+/// runner, so fixed sleeps can lose the race on a slow or loaded machine.
+/// Panics after ~10s with the last observed body instead of letting a later
+/// assertion fail on a stale state.
+async fn wait_for_run(
+    app: &Router,
+    cookie: &str,
+    tid: &str,
+    pred: impl Fn(&str) -> bool,
+) -> String {
+    let mut body = String::new();
+    for _ in 0..200 {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/run"),
+                cookie,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        body = body_str(resp.into_body()).await;
+        if pred(&body) {
+            return body;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("run for thread {tid} never reached the expected state; last body: {body}");
+}
+
 #[tokio::test]
 async fn models_list() {
     let (app, _db) = make_app().await;
@@ -1411,8 +1444,8 @@ async fn thread_send_stream_rejects_duplicate_client_message_id() {
         .unwrap();
     assert_eq!(first.status(), StatusCode::OK);
 
-    // Give the first run a moment to start.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // Wait for the first run to be registered so the duplicate is rejected.
+    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
 
     let (boundary, body) = send_body("cm-stream-dup-1");
     let resp = app
@@ -1475,7 +1508,7 @@ async fn thread_send_rolls_back_user_message_on_already_running() {
     });
 
     // Wait for the first run to start and persist its user message.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
 
     let boundary = "----secondboundary";
     let body = format!(
@@ -1551,7 +1584,7 @@ async fn thread_send_stream_rolls_back_user_message_on_already_running() {
     });
 
     // Wait for the first stream to start and persist its user message.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
 
     let boundary = "----secondstreamboundary";
     let body = format!(
@@ -1628,25 +1661,7 @@ async fn thread_stop_ends_active_run() {
     });
 
     // Wait for the run to start.
-    for _ in 0..50 {
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        let resp = app
-            .clone()
-            .oneshot(authed(
-                "GET",
-                &format!("/api/threads/{tid}/run"),
-                &cookie,
-                "",
-            ))
-            .await
-            .unwrap();
-        if resp.status() == StatusCode::OK {
-            let body = body_str(resp.into_body()).await;
-            if body.contains(r#""status":"running""#) {
-                break;
-            }
-        }
-    }
+    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
 
     let resp = app
         .clone()
@@ -1741,25 +1756,7 @@ async fn thread_stop_persists_partial_output() {
     });
 
     // Wait for parts to appear in the run state.
-    for _ in 0..50 {
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        let resp = app
-            .clone()
-            .oneshot(authed(
-                "GET",
-                &format!("/api/threads/{tid}/run"),
-                &cookie,
-                "",
-            ))
-            .await
-            .unwrap();
-        if resp.status() == StatusCode::OK {
-            let body = body_str(resp.into_body()).await;
-            if body.contains("partial reply") {
-                break;
-            }
-        }
-    }
+    wait_for_run(&app, &cookie, &tid, |b| b.contains("partial reply")).await;
 
     let resp = app
         .clone()
