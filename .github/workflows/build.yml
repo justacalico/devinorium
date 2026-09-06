@@ -27,6 +27,10 @@ env:
   FLUTTER_VERSION: "3.44.9"
   RUST_VERSION: "1.88.0"
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   setup:
     name: Setup build metadata
