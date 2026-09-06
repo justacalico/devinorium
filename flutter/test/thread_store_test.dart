@@ -705,7 +705,7 @@ void main() {
 
       var called = false;
       store.onStateChanged = () {};
-      store.onThreadTitleChanged = (_, __) => called = true;
+      store.onThreadTitleChanged = (_, _) => called = true;
 
       await store.sendMessage();
       api.controller.add(
@@ -727,7 +727,7 @@ void main() {
         projectId: 1,
       );
 
-      store.onThreadTitleChanged = (_, __) {};
+      store.onThreadTitleChanged = (_, _) {};
       store.onRunFinished = (_) {};
       store.dispose();
 
