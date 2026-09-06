@@ -225,6 +225,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
       );
       _threadStores[threadId] = store;
       _setActiveStore(store);
+      _configureStore(store);
     } else {
       _activeThreadId = activeThreadId;
       _composerText = composerText ?? '';
@@ -255,6 +256,8 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
   void _setActiveStore(ThreadStore? store) {
     if (_activeStore == store) return;
     _activeStore?.onStateChanged = null;
+    _activeStore?.onThreadTitleChanged = null;
+    _activeStore?.onRunFinished = null;
     _activeStore?.cancelStream();
     _activeStore?.clearStreamingState();
     _activeStore = store;
@@ -314,6 +317,38 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     }
   }
 
+  void _configureStore(ThreadStore store) {
+    final id = store.threadId;
+    store.onRunFinished = (failed) {
+      final title = _threadTitle(id) ?? 'Thread';
+      _notifications.notifyThreadCompleted(title: title, failed: failed);
+      final projectId = store.projectId;
+      if (projectId > 0) {
+        unawaited(_refreshGitForProject(projectId));
+      }
+      unawaited(loadProjects());
+    };
+    store.onThreadTitleChanged = (title, updatedAt) {
+      final index = _threads.indexWhere((t) => t.id == id);
+      if (index < 0) return;
+      final updated = _threads[index].copyWith(
+        title: title,
+        updatedAt: updatedAt,
+      );
+      final next = [..._threads];
+      next[index] = updated;
+      // Keep the list sorted by pinned status, recency, and id desc, matching
+      // the backend ordering used by listThreads.
+      next.sort((a, b) {
+        if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+        final byUpdated = b.updatedAt.compareTo(a.updatedAt);
+        if (byUpdated != 0) return byUpdated;
+        return b.id.compareTo(a.id);
+      });
+      _threads = next;
+    };
+  }
+
   @override
   ThreadStore _createStore(
     String id, {
@@ -338,15 +373,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
       selectedModel: selectedModel,
       selectedPermission: selectedPermission,
     );
-    store.onRunFinished = (failed) {
-      final title = _threadTitle(id) ?? 'Thread';
-      _notifications.notifyThreadCompleted(title: title, failed: failed);
-      final projectId = store.projectId;
-      if (projectId > 0) {
-        unawaited(_refreshGitForProject(projectId));
-      }
-      unawaited(loadProjects());
-    };
+    _configureStore(store);
     return store;
   }
 }

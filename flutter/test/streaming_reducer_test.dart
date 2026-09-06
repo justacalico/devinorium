@@ -399,4 +399,121 @@ void main() {
       },
     );
   });
+
+  group('reduceStreamingEvent thread_update', () {
+    test('updates thread title and updated_at', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"title":"New title","updated_at":"2024-01-02T00:00:00.000Z"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail, isNotNull);
+      expect(res.detail!.thread.title, 'New title');
+      expect(res.detail!.thread.updatedAt, '2024-01-02T00:00:00.000Z');
+      expect(res.snapshot.lastSeq, 1);
+    });
+
+    test('ignores malformed thread_update', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent('thread_update', 'not json', id: '1'),
+      );
+      expect(res.detail!.thread.title, 'Old');
+    });
+
+    test('ignores thread_update when detail is null', () {
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"title":"New"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail, isNull);
+    });
+
+    test('ignores thread_update with missing or empty title', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      );
+      var res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"updated_at":"2024-01-02"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail!.thread.title, 'Old');
+
+      res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent('thread_update', '{"title":""}', id: '2'),
+      );
+      expect(res.detail!.thread.title, 'Old');
+    });
+
+    test('tolerates non-string title fields', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent('thread_update', '{"title":123}', id: '1'),
+      );
+      expect(res.detail!.thread.title, '123');
+    });
+  });
 }

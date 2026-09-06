@@ -27,6 +27,7 @@ use crate::AppState;
 use super::permissions::{build_ask_callback, build_permission_callback};
 use super::persistence::{
     persist_assistant_reply, persist_run_plan, save_partial_assistant_message,
+    update_thread_title_from_send,
 };
 use super::send::{call_provider, SendInput};
 use super::MessageOut;
@@ -166,10 +167,25 @@ pub(crate) async fn run_thread(
     state: AppState,
     run: Arc<RunState>,
     user: UserRow,
-    thread: ThreadRow,
+    mut thread: ThreadRow,
     input: SendInput,
     user_msg: MessageRow,
 ) -> anyhow::Result<()> {
+    match update_thread_title_from_send(&state, user.id, &mut thread, &input).await {
+        Ok(true) => {
+            if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                "title": thread.title,
+                "updated_at": thread.updated_at,
+            })) {
+                run.emit("thread_update", &json);
+            }
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::error!(error = %e, "failed to update thread title from send");
+        }
+    }
+
     run.emit(
         "user_message",
         &serde_json::to_string(&MessageOut::from(user_msg)).unwrap_or_else(|_| "{}".into()),

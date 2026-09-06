@@ -24,11 +24,17 @@ class NotificationService {
   void _showNotification(String title, String body) {
     try {
       if (Platform.isLinux) {
-        Process.run('notify-send', ['--app-name=Devinorium', title, body]);
+        Process.run(
+          'notify-send',
+          ['--app-name=Devinorium', title, body],
+        ).catchError((_) => ProcessResult(-1, 0, '', ''));
       } else if (Platform.isMacOS) {
         final script =
             'display notification "$body" with title "Devinorium" subtitle "$title"';
-        Process.run('osascript', ['-e', script]);
+        Process.run(
+          'osascript',
+          ['-e', script],
+        ).catchError((_) => ProcessResult(-1, 0, '', ''));
       } else if (Platform.isWindows) {
         final psScript =
             'Add-Type -AssemblyName System.Windows.Forms;'
@@ -39,7 +45,10 @@ class NotificationService {
             ' [System.Windows.Forms.ToolTipIcon]::Info);'
             'Start-Sleep -Seconds 6;'
             '\$n.Dispose()';
-        Process.run('powershell', ['-NoProfile', '-Command', psScript]);
+        Process.run(
+          'powershell',
+          ['-NoProfile', '-Command', psScript],
+        ).catchError((_) => ProcessResult(-1, 0, '', ''));
       }
     } catch (_) {}
   }
