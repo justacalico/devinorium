@@ -138,6 +138,7 @@ jobs:
     needs: [setup, verify-backend, verify-frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    if: ${{ needs.setup.outputs.build_all == 'true' || matrix.target == 'server' }}
     strategy:
       fail-fast: false
       matrix:
@@ -146,10 +147,6 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
       BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
       BUILD_DATE: ${{ needs.setup.outputs.build_date }}
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -202,6 +199,11 @@ jobs:
       - name: Setup Android signing
         id: signing
         if: matrix.target == 'android'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -euo pipefail
 
@@ -211,9 +213,9 @@ jobs:
             exit 0
           fi
 
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_STORE_PASSWORD" ] || [ -z "$ANDROID_KEY_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; then
             echo "signing=debug" >> "$GITHUB_OUTPUT"
-            echo "No keystore configured, using debug signing"
+            echo "Missing Android signing configuration, using debug signing"
             exit 0
           fi
 
@@ -223,8 +225,14 @@ jobs:
             exit 0
           fi
 
+          if ! keytool -list -keystore flutter/android/app/upload-keystore.jks -storepass "$ANDROID_STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "signing=debug" >> "$GITHUB_OUTPUT"
+            echo "Keystore does not validate with the provided credentials, using debug signing"
+            exit 0
+          fi
+
           printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
-            "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
+            "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
           echo "signing=release" >> "$GITHUB_OUTPUT"
 
       - name: Build server binary
@@ -335,7 +343,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          find artifacts -type f -not -name '.*' -exec cp {} release-assets/ \;
+          for src in artifacts/server/devinorium \
+                     artifacts/android/devinorium-android.apk \
+                     artifacts/android/devinorium-android.aab \
+                     artifacts/linux/devinorium-linux-x86_64.tar.gz \
+                     artifacts/linux/devinorium-linux-x86_64.zip \
+                     artifacts/linux/devinorium-linux-x86_64.deb; do
+            [ -f "$src" ] && cp "$src" release-assets/ || true
+          done
           if [ -f release-assets/devinorium ]; then
             mv release-assets/devinorium "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-x86_64"
           fi
@@ -430,7 +445,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          find artifacts -type f -not -name '.*' -exec cp {} release-assets/ \;
+          for src in artifacts/server/devinorium \
+                     artifacts/android/devinorium-android.apk \
+                     artifacts/android/devinorium-android.aab \
+                     artifacts/linux/devinorium-linux-x86_64.tar.gz \
+                     artifacts/linux/devinorium-linux-x86_64.zip \
+                     artifacts/linux/devinorium-linux-x86_64.deb; do
+            [ -f "$src" ] && cp "$src" release-assets/ || true
+          done
           if [ -f release-assets/devinorium ]; then
             mv release-assets/devinorium "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-x86_64"
           fi

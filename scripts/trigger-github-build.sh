@@ -34,9 +34,13 @@ update_comment() {
 update_comment start
 
 echo "Triggering GitHub workflow: $WORKFLOW @ $REF (build_all=$BUILD_ALL, create_release=$CREATE_RELEASE)"
-gh workflow run "$WORKFLOW" -R "$REPO" --ref "$REF" \
+if ! gh workflow run "$WORKFLOW" -R "$REPO" --ref "$REF" \
   -f build_all="$BUILD_ALL" \
-  -f create_release="$CREATE_RELEASE"
+  -f create_release="$CREATE_RELEASE"; then
+  echo "Failed to trigger GitHub workflow" >&2
+  update_comment finish failure
+  exit 1
+fi
 
 echo "Looking for run ID..."
 RUN_ID=""
@@ -59,9 +63,10 @@ export RUN_ID
 update_comment update
 
 echo "Watching GitHub run $RUN_ID..."
-FINAL_CONCLUSION="success"
+FINAL_CONCLUSION="unknown"
 for attempt in 1 2 3; do
   if gh run watch "$RUN_ID" -R "$REPO" --exit-status 2>&1; then
+    FINAL_CONCLUSION="success"
     break
   fi
 
@@ -69,6 +74,7 @@ for attempt in 1 2 3; do
   CONCLUSION=$(gh api "repos/$REPO/actions/runs/$RUN_ID" -q '.conclusion' 2>/dev/null || true)
   case "$CONCLUSION" in
     success)
+      FINAL_CONCLUSION="success"
       break
       ;;
     failure|cancelled|timed_out|startup_failure|action_required|stale)
@@ -83,6 +89,7 @@ for attempt in 1 2 3; do
 done
 
 if [ "$FINAL_CONCLUSION" != "success" ]; then
+  [ "$FINAL_CONCLUSION" = "unknown" ] && FINAL_CONCLUSION="failure"
   update_comment finish "$FINAL_CONCLUSION"
   exit 1
 fi
