@@ -26,12 +26,12 @@ PIPELINE_URL="${SERVER_URL}/${PROJECT_PATH}/-/pipelines/${PIPELINE_ID}"
 RUN_URL="https://github.com/justacalico/devinorium/actions/runs/${RUN_ID}"
 
 # CI job tokens can only read the Notes API, so an MR comment token is needed.
-# If GITLAB_MR_COMMENT_TOKEN is set (PAT or OAuth token) we use it as a Bearer token.
-# Otherwise we fall back to CI_JOB_TOKEN with the JOB-TOKEN header, which will fail to post.
+# If GITLAB_MR_COMMENT_TOKEN is set (PAT) we use PRIVATE-TOKEN.
+# Otherwise we fall back to CI_JOB_TOKEN with the JOB-TOKEN header, which can only read.
 AUTH_HEADER_FILE="$(mktemp)"
 trap 'rm -f "$AUTH_HEADER_FILE"' EXIT
 if [ -n "${GITLAB_MR_COMMENT_TOKEN:-}" ]; then
-  printf 'Authorization: Bearer %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
+  printf 'PRIVATE-TOKEN: %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
 else
   printf 'JOB-TOKEN: %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
 fi
