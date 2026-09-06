@@ -1,242 +1,110 @@
+spec:
+  inputs:
+    build_all:
+      type: boolean
+      default: true
+      description: 'Build all targets (server, android, linux)'
+    create_release:
+      type: boolean
+      default: false
+      description: 'Create a versioned release'
+
+---
+
 stages:
-  - verify
-  - build
+  - sync
   - release
 
 variables:
-  COCO_GITTO_VERSION: "7.0.0"
-  GLAB_VERSION: "1.53.0"
+  GH_TOKEN: $GH_TOKEN
   GLAB_ENABLE_CI_AUTOLOGIN: "true"
-  FLUTTER_VERSION: "3.44.9"
+  GLAB_VERSION: "1.113.0"
   GIT_DEPTH: "0"
   GIT_STRATEGY: "fetch"
   GIT_CLEAN_FLAGS: "-ffdx -e .ci-tools/ -e target/"
-  TOOLS_DIR: "$CI_PROJECT_DIR/.ci-tools"
-  CARGO_HOME: "$CI_PROJECT_DIR/.ci-tools/cargo"
-  PUB_CACHE: "$CI_PROJECT_DIR/.ci-tools/pub-cache"
-  ANDROID_HOME: "$CI_PROJECT_DIR/.ci-tools/android-sdk"
-  FLUTTER_HOME: "$CI_PROJECT_DIR/.ci-tools/flutter"
 
-.tool-cache: &tool-cache
-  key:
-    files:
-      - Cargo.lock
-      - flutter/pubspec.yaml
-  paths:
-    - .ci-tools
-
-default:
-  image: rust:1.88.0
-  cache:
-    <<: *tool-cache
-
-.install: &install
-  - export PATH="$TOOLS_DIR/bin:$FLUTTER_HOME/bin:$PATH"
-  - |
-    if [ "$(cat "$FLUTTER_HOME/.ci-version" 2>/dev/null)" != "$FLUTTER_VERSION" ]; then
-      rm -rf "$FLUTTER_HOME"
-      mkdir -p "$TOOLS_DIR"
-      git clone -b "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$FLUTTER_HOME"
-      echo "$FLUTTER_VERSION" > "$FLUTTER_HOME/.ci-version"
-    fi
-    flutter config --no-analytics >/dev/null
-  - |
-    if [ "$(cat "$TOOLS_DIR/.cog-version" 2>/dev/null)" != "$COCO_GITTO_VERSION" ]; then
-      apt-get update -qq
-      apt-get install -y -qq libgit2-dev cmake
-      cargo install cocogitto --version "$COCO_GITTO_VERSION" --root "$TOOLS_DIR"
-      echo "$COCO_GITTO_VERSION" > "$TOOLS_DIR/.cog-version"
-    fi
-  - |
-    if [ "$(cat "$TOOLS_DIR/.glab-version" 2>/dev/null)" != "$GLAB_VERSION" ]; then
-      mkdir -p "$TOOLS_DIR"
-      curl -fsSL --retry 3 -o /tmp/glab.tar.gz "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_amd64.tar.gz"
-      tar -xzf /tmp/glab.tar.gz -C "$TOOLS_DIR"
-      chmod +x "$TOOLS_DIR/bin/glab"
-      echo "$GLAB_VERSION" > "$TOOLS_DIR/.glab-version"
-    fi
-
-verify-cog:
-  stage: verify
+.github-common: &github-common
   tags: [linux-truenas]
-  timeout: 2h
-  cache:
-    <<: *tool-cache
-    policy: pull
+  image: alpine:3.19
   before_script:
-    - *install
-  script:
-    - cog check
+    - apk add --no-cache bash curl jq git github-cli openssh-client
+
+github-sync:
+  stage: sync
+  <<: *github-common
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-verify-frontend:
-  stage: verify
-  tags: [linux-truenas]
-  timeout: 2h
-  cache:
-    <<: *tool-cache
-    policy: pull
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG
   before_script:
-    - *install
+    - apk add --no-cache git openssh-client
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - cp "$GITHUB_SSH_PRIVATE_KEY" ~/.ssh/id_ed25519
+    - echo "" >> ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
   script:
-    - cd flutter && flutter pub get && flutter analyze --no-pub && flutter test --no-pub
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-verify-backend:
-  stage: verify
-  tags: [linux-truenas]
-  timeout: 2h
-  cache:
-    <<: *tool-cache
-    policy: pull
-  before_script:
-    - *install
-    - rustup component add rustfmt clippy
-  script:
-    - cargo fmt -- --check
-    - cargo clippy --all-targets -- -D warnings
-    - cargo test
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-.install-android-sdk: &install-android-sdk
-  - export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-  - apt-get update -qq
-  - apt-get install -y -qq openjdk-17-jdk-headless unzip
-  - |
-    if [ ! -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-      curl -fsSL --retry 3 -o /tmp/cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-      mkdir -p "$ANDROID_HOME/cmdline-tools"
-      unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
-      mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
-      rm -f /tmp/cmdline-tools.zip
-      for _ in $(seq 1 50); do echo y; done | sdkmanager --licenses >/dev/null
-      sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;26.1.10909125" >/dev/null
-    fi
-
-build-android:
-  stage: build
-  tags: [linux-truenas]
-  needs: []
-  before_script:
-    - *install
-    - *install-android-sdk
+    - git remote add github git@github.com:justacalico/devinorium.git || true
+    - git remote update github
     - |
-      if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-        echo "Error: ANDROID_KEYSTORE_BASE64 is required for release builds" >&2
-        exit 1
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        git push -f github "$CI_COMMIT_TAG"
+      else
+        git push github HEAD:main
       fi
-      printf '%s\n' "$ANDROID_KEYSTORE_BASE64" | base64 -d > flutter/android/app/upload-keystore.jks
-      printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
-        "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
-    - (cd flutter && flutter pub get && flutter config --enable-android)
-  script:
-    - cd flutter
-    - flutter build apk --release
-    - cp build/app/outputs/flutter-apk/app-release.apk "$CI_PROJECT_DIR/devinorium-android.apk"
-    - flutter build appbundle --release
-    - cp build/app/outputs/bundle/release/app-release.aab "$CI_PROJECT_DIR/devinorium-android.aab"
-  artifacts:
-    paths:
-      - devinorium-android.apk
-      - devinorium-android.aab
-    expire_in: 3 days
-  after_script:
-    - rm -f flutter/android/app/upload-keystore.jks flutter/android/app/key.properties
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  timeout: 2h
 
-build-linux:
-  stage: build
-  tags: [linux-truenas]
-  needs: []
-  before_script:
-    - *install
-    - apt-get update -qq
-    - apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev zip dpkg-dev
-    - (cd flutter && flutter pub get && flutter config --enable-linux-desktop)
+github-dispatch:
+  stage: sync
+  <<: *github-common
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  variables:
+    GH_TOKEN: $GH_TOKEN
   script:
-    - cd flutter
-    - flutter build linux --release
-    - cd build/linux/x64/release/bundle
-    - tar -czf "$CI_PROJECT_DIR/devinorium-linux-x86_64.tar.gz" .
-    - zip -r "$CI_PROJECT_DIR/devinorium-linux-x86_64.zip" . >/dev/null
     - |
-      pkgdir="$CI_PROJECT_DIR/devinorium-linux-x86_64-deb"
-      rm -rf "$pkgdir"
-      mkdir -p "$pkgdir/opt/devinorium" "$pkgdir/usr/bin" "$pkgdir/DEBIAN"
-      cp -r . "$pkgdir/opt/devinorium/"
-      ln -sf /opt/devinorium/devinorium_frontend "$pkgdir/usr/bin/devinorium"
-      version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$CI_PROJECT_DIR/Cargo.toml" | head -1)
-      {
-        echo "Package: devinorium"
-        echo "Version: $version"
-        echo "Section: misc"
-        echo "Priority: optional"
-        echo "Architecture: amd64"
-        echo "Maintainer: Devinorium CI <ci@gitlab.com>"
-        echo "Description: Devinorium desktop client"
-      } > "$pkgdir/DEBIAN/control"
-      dpkg-deb --build "$pkgdir" "$CI_PROJECT_DIR/devinorium-linux-x86_64.deb" >/dev/null
-  artifacts:
-    paths:
-      - devinorium-linux-x86_64.tar.gz
-      - devinorium-linux-x86_64.zip
-      - devinorium-linux-x86_64.deb
-    expire_in: 3 days
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  timeout: 2h
+      BUILD_ALL="$[[ inputs.build_all ]]"
+      CREATE_RELEASE="$[[ inputs.create_release ]]"
+      if [ "$CREATE_RELEASE" = "true" ]; then
+        BUILD_ALL="true"
+      fi
+      bash scripts/trigger-github-build.sh main "$BUILD_ALL" "$CREATE_RELEASE"
 
-release:
+github-mr-build:
+  stage: sync
+  <<: *github-common
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    GH_TOKEN: $GH_TOKEN
+  script:
+    - bash scripts/trigger-github-build.sh "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" true false HEAD
+
+github-release-sync:
   stage: release
   tags: [linux-truenas]
-  resource_group: release
-  needs:
-    - job: verify-cog
-      artifacts: false
-    - job: verify-frontend
-      artifacts: false
-    - job: verify-backend
-      artifacts: false
-    - job: build-android
-      artifacts: true
-    - job: build-linux
-      artifacts: true
-  cache:
-    <<: *tool-cache
-    policy: pull
-  retry:
-    max: 2
-    when: script_failure
-  before_script:
-    - *install
-    - git config user.name "GitLab CI"
-    - git config user.email "ci@gitlab.com"
-    - |
-      if [ -z "${GITLAB_TOKEN:-}" ]; then
-        echo "Error: GITLAB_TOKEN is required for release" >&2
-        exit 1
-      fi
-      git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-    - git fetch origin +refs/heads/main:refs/remotes/origin/main
-    - git checkout -B main origin/main
-    - git branch --set-upstream-to=origin/main main
-    - git fetch origin --tags
-  script:
-    - git clean -fd
-    - |
-      if ! version=$(cog bump --dry-run --auto); then
-        echo "No version bump required, skipping release"
-        exit 0
-      fi
-      echo "Bumping to $version"
-    - cog bump --auto --skip-ci
+  image: alpine:3.19
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: $CI_PIPELINE_SOURCE == "api"
+  variables:
+    GH_TOKEN: $GH_TOKEN
+    GLAB_ENABLE_CI_AUTOLOGIN: "true"
+    GLAB_VERSION: "1.113.0"
+  before_script:
+    - apk add --no-cache bash curl jq git github-cli openssh-client
+    - bash scripts/install-glab.sh
+    - |
+      if [ -n "${CI_SERVER_FQDN:-}" ]; then
+        glab auth login --job-token "$CI_JOB_TOKEN" --hostname "$CI_SERVER_FQDN" --api-protocol "https" --insecure-storage || true
+      fi
+    - |
+      if [ -n "${GITLAB_RELEASE_SSH_KEY:-}" ]; then
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        cp "$GITLAB_RELEASE_SSH_KEY" ~/.ssh/id_ed25519
+        echo "" >> ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan -t ed25519 gitlab.com > ~/.ssh/known_hosts
+      fi
+  script:
+    - bash scripts/sync-from-github.sh

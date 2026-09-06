@@ -1,0 +1,472 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      build_all:
+        description: 'Build all targets (server, android, linux)'
+        type: boolean
+        default: true
+      create_release:
+        description: 'Create a versioned release from this build'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  FLUTTER_VERSION: "3.44.9"
+  RUST_VERSION: "1.88.0"
+
+jobs:
+  setup:
+    name: Setup build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      build_number: ${{ steps.meta.outputs.build_number }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+      build_all: ${{ steps.meta.outputs.build_all }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version and build metadata
+        id: meta
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          BUILD_NUMBER=$(date +%s | cut -c4-10)
+          BUILD_DATE=$(date +%Y-%m-%d)
+          if [ -n "${{ inputs.build_all }}" ]; then
+            BUILD_ALL="${{ inputs.build_all }}"
+          else
+            BUILD_ALL="true"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
+          echo "build_all=$BUILD_ALL" >> "$GITHUB_OUTPUT"
+
+  verify-backend:
+    name: Verify backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsqlite3-dev pkg-config libgit2-dev cmake
+
+      - name: Install cocogitto
+        run: cargo install cocogitto --version 7.0.0
+
+      - name: Check commits
+        run: cog check
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+  verify-frontend:
+    name: Verify frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+
+      - name: Analyze and test frontend
+        run: |
+          cd flutter
+          flutter config --no-analytics >/dev/null
+          flutter pub get
+          flutter analyze --no-pub
+          xvfb-run -a flutter test --no-pub
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: [setup, verify-backend, verify-frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [server, android, linux]
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+      BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
+      BUILD_DATE: ${{ needs.setup.outputs.build_date }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        if: matrix.target == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Rust
+        if: matrix.target == 'server'
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Cache Rust
+        if: matrix.target == 'server'
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux build dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev zip dpkg-dev
+
+      - name: Install Android SDK
+        if: matrix.target == 'android'
+        run: |
+          set -euo pipefail
+          ANDROID_HOME="$HOME/android-sdk"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -fsSL --retry 3 -o /tmp/cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          rm -f /tmp/cmdline-tools.zip
+          for _ in $(seq 1 50); do echo y; done | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "ndk;26.1.10909125" >/dev/null
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Setup Android signing
+        id: signing
+        if: matrix.target == 'android'
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.ref }}" != "refs/heads/main" ] && [[ ! "${{ github.ref }}" =~ ^refs/tags/ ]]; then
+            echo "signing=debug" >> "$GITHUB_OUTPUT"
+            echo "Non-main branch, using debug signing only"
+            exit 0
+          fi
+
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "signing=debug" >> "$GITHUB_OUTPUT"
+            echo "No keystore configured, using debug signing"
+            exit 0
+          fi
+
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 --decode > flutter/android/app/upload-keystore.jks 2>/dev/null; then
+            echo "signing=debug" >> "$GITHUB_OUTPUT"
+            echo "Keystore base64 is invalid, using debug signing"
+            exit 0
+          fi
+
+          printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' \
+            "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > flutter/android/app/key.properties
+          echo "signing=release" >> "$GITHUB_OUTPUT"
+
+      - name: Build server binary
+        if: matrix.target == 'server'
+        run: |
+          set -euo pipefail
+          ./scripts/build-flutter.sh
+          cargo build --release
+          mkdir -p artifacts
+          cp target/release/devinorium artifacts/devinorium
+
+      - name: Build Android packages
+        if: matrix.target == 'android'
+        run: |
+          set -euo pipefail
+          cd flutter
+          flutter config --no-analytics >/dev/null
+          flutter pub get
+          flutter config --enable-android
+          if [ "${{ steps.signing.outputs.signing }}" = "release" ]; then
+            flutter build apk --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+            flutter build appbundle --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          else
+            flutter build apk --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+            flutter build appbundle --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          fi
+          mkdir -p artifacts
+          if [ "${{ steps.signing.outputs.signing }}" = "release" ]; then
+            cp build/app/outputs/flutter-apk/app-release.apk artifacts/devinorium-android.apk
+            cp build/app/outputs/bundle/release/app-release.aab artifacts/devinorium-android.aab
+          else
+            cp build/app/outputs/flutter-apk/app-debug.apk artifacts/devinorium-android.apk
+            cp build/app/outputs/bundle/debug/app-debug.aab artifacts/devinorium-android.aab
+          fi
+
+      - name: Build Linux desktop packages
+        if: matrix.target == 'linux'
+        run: |
+          set -euo pipefail
+          cd flutter
+          flutter config --no-analytics >/dev/null
+          flutter pub get
+          flutter config --enable-linux-desktop
+          flutter build linux --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          mkdir -p artifacts
+          cd build/linux/x64/release/bundle
+          tar -czf "$GITHUB_WORKSPACE/artifacts/devinorium-linux-x86_64.tar.gz" .
+          cd "$GITHUB_WORKSPACE"
+          (cd flutter/build/linux/x64/release/bundle && zip -r "$GITHUB_WORKSPACE/artifacts/devinorium-linux-x86_64.zip" . >/dev/null)
+          pkgdir="$GITHUB_WORKSPACE/devinorium-linux-x86_64-deb"
+          rm -rf "$pkgdir"
+          mkdir -p "$pkgdir/opt/devinorium" "$pkgdir/usr/bin" "$pkgdir/DEBIAN"
+          cp -r flutter/build/linux/x64/release/bundle/. "$pkgdir/opt/devinorium/"
+          ln -sf /opt/devinorium/devinorium_frontend "$pkgdir/usr/bin/devinorium"
+          {
+            echo "Package: devinorium"
+            echo "Version: $VERSION"
+            echo "Section: misc"
+            echo "Priority: optional"
+            echo "Architecture: amd64"
+            echo "Maintainer: Devinorium CI <ci@gitlab.com>"
+            echo "Description: Devinorium desktop client"
+          } > "$pkgdir/DEBIAN/control"
+          dpkg-deb --build "$pkgdir" "$GITHUB_WORKSPACE/artifacts/devinorium-linux-x86_64.deb" >/dev/null
+          rm -rf "$pkgdir"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  nightly:
+    name: Nightly release
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    if: ${{ !cancelled() && contains(needs.build.result, 'success') && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.create_release == false)) }}
+    permissions:
+      contents: write
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine release tag
+        id: meta
+        run: echo "release_tag=nightly" >> "$GITHUB_OUTPUT"
+
+      - name: Move nightly tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force
+          git tag -f nightly "$GITHUB_SHA"
+          git push -f origin nightly
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -type f -not -name '.*' -exec cp {} release-assets/ \;
+          if [ -f release-assets/devinorium ]; then
+            mv release-assets/devinorium "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-x86_64"
+          fi
+          ls -la release-assets/
+
+      - name: Generate checksums
+        working-directory: release-assets
+        run: |
+          sha256sum * > ../SHA256SUMS.txt
+          cat ../SHA256SUMS.txt
+
+      - name: Delete existing nightly assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view nightly -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release view nightly -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null | while read -r asset; do
+              [ -n "$asset" ] && gh release delete-asset nightly -R "$GITHUB_REPOSITORY" "$asset" --yes 2>/dev/null || true
+            done
+          fi
+
+      - name: Update nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          body: |
+            Automated nightly build from commit ${{ github.sha }}
+
+            **Branch:** ${{ github.ref_name }}
+            **Version:** ${{ needs.setup.outputs.version }}
+            **Build:** #${{ github.run_number }}
+            **Date:** ${{ needs.setup.outputs.build_date }}
+            **Commit:** ${{ github.sha }}
+
+            > This release is automatically updated on every push. Artifacts are untested nightly builds.
+          files: |
+            release-assets/*
+            SHA256SUMS.txt
+          prerelease: true
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    if: ${{ !cancelled() && contains(needs.build.result, 'success') && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.create_release == true)) }}
+    permissions:
+      contents: write
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine release tag
+        id: meta
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "release_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=v${{ needs.setup.outputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create version tag
+        if: github.event_name == 'workflow_dispatch' && inputs.create_release == true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force
+          TAG="${{ steps.meta.outputs.release_tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            if [ "$(git rev-parse "$TAG")" != "$GITHUB_SHA" ]; then
+              echo "Tag $TAG exists on a different commit" >&2
+              exit 1
+            fi
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+          fi
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -type f -not -name '.*' -exec cp {} release-assets/ \;
+          if [ -f release-assets/devinorium ]; then
+            mv release-assets/devinorium "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-x86_64"
+          fi
+          ls -la release-assets/
+
+      - name: Generate checksums
+        working-directory: release-assets
+        run: |
+          sha256sum * > ../SHA256SUMS.txt
+          cat ../SHA256SUMS.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          name: Devinorium ${{ steps.meta.outputs.release_tag }}
+          generate_release_notes: true
+          body: |
+            **Version:** ${{ needs.setup.outputs.version }}
+            **Build:** #${{ github.run_number }}
+            **Date:** ${{ needs.setup.outputs.build_date }}
+            **Commit:** ${{ github.sha }}
+
+            ### Artifacts
+            - Linux server binary
+            - Android APK + AAB
+            - Linux desktop bundle (tar.gz, zip, deb)
+
+            ### Verification
+            SHA256 checksums are in `SHA256SUMS.txt`.
+          files: |
+            release-assets/*
+            SHA256SUMS.txt
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  gitlab-sync:
+    name: Trigger GitLab sync
+    runs-on: ubuntu-latest
+    needs: [nightly, release]
+    if: always() && (needs.nightly.result == 'success' || needs.release.result == 'success')
+    steps:
+      - name: Determine release tag
+        id: meta
+        run: |
+          if [ "${{ needs.release.result }}" = "success" ]; then
+            echo "release_tag=${{ needs.release.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=${{ needs.nightly.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger GitLab sync pipeline
+        run: |
+          curl -fsSL --max-time 30 --retry 2 -X POST \
+            -F token="${{ secrets.GITLAB_TRIGGER_TOKEN }}" \
+            -F ref=main \
+            -F "variables[GITHUB_RUN_ID]=${{ github.run_id }}" \
+            -F "variables[RELEASE_TAG]=${{ steps.meta.outputs.release_tag }}" \
+            "https://gitlab.com/api/v4/projects/${{ secrets.GITLAB_PROJECT_ID }}/trigger/pipeline"
