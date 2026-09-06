@@ -31,7 +31,7 @@ class _ServerSwitcher extends StatelessWidget {
         final scaffold = Scaffold.maybeOf(context);
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: MenuAnchor(
             menuChildren: [
               for (final profile in profiles)
