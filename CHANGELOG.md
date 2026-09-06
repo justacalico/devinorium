@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.40.0 - 2026-09-06
+#### Features
+- 在自动运行模式下为提示框添加红色渐变边框 - (c08857f) - HttpAnimations
+#### Bug Fixes
+- 增加服务器下拉框与代理/编辑器标签按钮的间距 - (85e95fe) - 珍惜/Zhenxi
+- 小屏下默认关闭编辑器 agents 面板 - (48c9a94) - HttpAnimations
+- 修复合并请求标题栏分支名过长导致的溢出问题 - (9b44e1f) - HttpAnimations
+- 修复消息结束后输入框在移动端自动聚焦的问题 - (a45a833) - HttpAnimations
+- 修复移动端 composer 下拉控件堆叠问题 - (3699a8d) - HttpAnimations
+
+- - -
+
 ## v0.39.0 - 2026-09-05
 #### Features
 - 合并请求变更页显示增删行数 - (583c1ad) - HttpAnimations
