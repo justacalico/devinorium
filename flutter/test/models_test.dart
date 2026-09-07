@@ -1,6 +1,8 @@
 import 'package:devinorium_frontend/api/sse_parser.dart';
+import 'package:devinorium_frontend/l10n/l10n.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -752,11 +754,7 @@ void main() {
         'size': 12,
         'base64': 'Zm4gbWFpbigpIHt9',
         'text': null,
-        'diff': {
-          'path': '/x.rs',
-          'old_text': 'old',
-          'new_text': 'new',
-        },
+        'diff': {'path': '/x.rs', 'old_text': 'old', 'new_text': 'new'},
       });
       expect(c.path, '/x.rs');
       expect(c.text, 'new');
@@ -806,7 +804,10 @@ void main() {
         base64: '',
         text: 'hi',
       );
-      final updated = c.copyWith(sha256: 'xyz', lastModified: DateTime.utc(2026));
+      final updated = c.copyWith(
+        sha256: 'xyz',
+        lastModified: DateTime.utc(2026),
+      );
       expect(updated.sha256, 'xyz');
       expect(updated.lastModified, DateTime.utc(2026));
     });
@@ -1113,10 +1114,11 @@ void main() {
       expect(ComposerMode.ask.name, 'ask');
     });
 
-    test('label returns display label', () {
-      expect(ComposerMode.code.label, 'Code');
-      expect(ComposerMode.plan.label, 'Plan');
-      expect(ComposerMode.ask.label, 'Ask');
+    test('label returns localized display label', () {
+      final l10n = lookupAppLocalizations(const Locale('en'));
+      expect(ComposerMode.code.label(l10n), 'Code');
+      expect(ComposerMode.plan.label(l10n), 'Plan');
+      expect(ComposerMode.ask.label(l10n), 'Ask');
     });
 
     test('fromString defaults to code for null, empty or unknown values', () {

@@ -23,7 +23,7 @@ class _ModeDropdown extends StatelessWidget {
             children: [
               Icon(_modeIcon(mode), size: 14),
               const SizedBox(width: 6),
-              Text(mode.label),
+              Text(mode.label(l10n(context))),
             ],
           ),
         ),
@@ -40,7 +40,7 @@ class _ModeDropdown extends StatelessWidget {
           ? (_) => [
               for (final mode in ComposerMode.values)
                 Text(
-                  mode.label,
+                  mode.label(l10n(context)),
                   maxLines: 1,
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,

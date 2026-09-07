@@ -624,7 +624,7 @@ class _ComposerState extends State<_Composer> {
                         border: Border.all(color: modeColor),
                       ),
                       child: Text(
-                        mode.label,
+                        mode.label(l10n(context)),
                         style: TextStyle(
                           color: _badgeForeground(mode, semantic),
                           fontSize: 12,

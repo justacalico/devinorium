@@ -2199,6 +2199,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show all'**
   String get contentViewShowAll;
+
+  /// Button that expands a truncated message
+  ///
+  /// In en, this message translates to:
+  /// **'Show more'**
+  String get showMore;
+
+  /// Label shown while additional message content is loading
+  ///
+  /// In en, this message translates to:
+  /// **'Loading more…'**
+  String get loadingMore;
+
+  /// Empty state shown when no terminal sessions exist
+  ///
+  /// In en, this message translates to:
+  /// **'No terminal sessions'**
+  String get terminalNoSessions;
+
+  /// Label for a terminal tab
+  ///
+  /// In en, this message translates to:
+  /// **'Tab {index}'**
+  String terminalTab(int index);
+
+  /// Tooltip for the button that opens a new terminal tab
+  ///
+  /// In en, this message translates to:
+  /// **'New tab'**
+  String get terminalNewTab;
+
+  /// Tooltip for closing a terminal tab
+  ///
+  /// In en, this message translates to:
+  /// **'Close tab'**
+  String get terminalCloseTab;
+
+  /// Tooltip for closing a terminal session
+  ///
+  /// In en, this message translates to:
+  /// **'Close terminal'**
+  String get terminalClose;
+
+  /// Tooltip for adding a local terminal
+  ///
+  /// In en, this message translates to:
+  /// **'Local terminal'**
+  String get terminalLocal;
+
+  /// Tooltip for adding a remote terminal
+  ///
+  /// In en, this message translates to:
+  /// **'Remote terminal'**
+  String get terminalRemote;
+
+  /// Tooltip for hiding the terminal panel
+  ///
+  /// In en, this message translates to:
+  /// **'Hide terminal'**
+  String get terminalHide;
+
+  /// Error shown when a terminal session cannot be started
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to start terminal: {error}'**
+  String terminalStartFailed(String error);
+
+  /// Title of the confirmation dialog before closing a terminal
+  ///
+  /// In en, this message translates to:
+  /// **'Close terminal?'**
+  String get terminalCloseTitle;
+
+  /// Body of the confirmation dialog before closing a terminal
+  ///
+  /// In en, this message translates to:
+  /// **'This terminal has running processes or output. Close it anyway?'**
+  String get terminalCloseBody;
+
+  /// Title of the confirmation dialog before closing a terminal tab
+  ///
+  /// In en, this message translates to:
+  /// **'Close tab?'**
+  String get terminalTabCloseTitle;
+
+  /// Body of the confirmation dialog before closing a terminal tab
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{This tab contains 1 active terminal. Close it anyway?} other{This tab contains {count} active terminals. Close it anyway?}}'**
+  String terminalTabCloseBody(int count);
+
+  /// Tooltip for hiding the plan overlay
+  ///
+  /// In en, this message translates to:
+  /// **'Hide plan'**
+  String get planHide;
+
+  /// Tooltip for showing the plan overlay
+  ///
+  /// In en, this message translates to:
+  /// **'Show plan'**
+  String get planShow;
+
+  /// Tooltip for collapsing the plan overlay
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse plan'**
+  String get planCollapse;
+
+  /// Tooltip for expanding the plan overlay
+  ///
+  /// In en, this message translates to:
+  /// **'Expand plan'**
+  String get planExpand;
+
+  /// Fallback title for the plan overlay
+  ///
+  /// In en, this message translates to:
+  /// **'Plan'**
+  String get planTitle;
+
+  /// Progress line in the plan overlay
+  ///
+  /// In en, this message translates to:
+  /// **'{completed} / {total} {total, plural, =1{step} other{steps}} · {percent}%'**
+  String planProgress(int completed, int total, int percent);
+
+  /// Label for the code composer mode
+  ///
+  /// In en, this message translates to:
+  /// **'Code'**
+  String get composerModeCode;
+
+  /// Label for the plan composer mode
+  ///
+  /// In en, this message translates to:
+  /// **'Plan'**
+  String get composerModePlan;
+
+  /// Label for the ask composer mode
+  ///
+  /// In en, this message translates to:
+  /// **'Ask'**
+  String get composerModeAsk;
+
+  /// Message written to a terminal when the local backend is unavailable
+  ///
+  /// In en, this message translates to:
+  /// **'Local terminal is only available on desktop.'**
+  String get terminalLocalOnlyDesktop;
+
+  /// Message written to a terminal when the connection fails
+  ///
+  /// In en, this message translates to:
+  /// **'[connection error: {error}]'**
+  String terminalConnectionError(String error);
+
+  /// Message written to a terminal when the remote session exits
+  ///
+  /// In en, this message translates to:
+  /// **'[session exited with code {code}]'**
+  String terminalSessionExited(String code);
+
+  /// Message written to a terminal when the local PTY errors
+  ///
+  /// In en, this message translates to:
+  /// **'[pty error: {error}]'**
+  String terminalPtyError(String error);
+
+  /// Message written to a terminal when the local PTY closes
+  ///
+  /// In en, this message translates to:
+  /// **'[pty closed]'**
+  String get terminalPtyClosed;
+
+  /// Message written to a terminal when the local process exits
+  ///
+  /// In en, this message translates to:
+  /// **'[process exited with code {code}]'**
+  String terminalProcessExited(String code);
+
+  /// Message written to a terminal when the local shell cannot start
+  ///
+  /// In en, this message translates to:
+  /// **'[failed to start {shell}: {error}]'**
+  String terminalShellStartFailed(String shell, String error);
 }
 
 class _AppLocalizationsDelegate

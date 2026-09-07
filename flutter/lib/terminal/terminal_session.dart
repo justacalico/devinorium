@@ -7,22 +7,16 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xterm/xterm.dart';
 
 import '../api/api_service.dart';
-import 'local_pty_stub.dart'
-    if (dart.library.io) 'local_pty_io.dart';
+import '../l10n/global_l10n.dart';
+import 'local_pty_stub.dart' if (dart.library.io) 'local_pty_io.dart';
 import 'web_socket_factory.dart';
 
-enum TerminalStatus {
-  idle,
-  connecting,
-  connected,
-  disconnected,
-  exited,
-}
+enum TerminalStatus { idle, connecting, connected, disconnected, exited }
 
 /// Controller for one terminal (local PTY or remote backend session).
 class TerminalSession extends ChangeNotifier {
   TerminalSession({required this.id, required this.isLocal})
-      : terminal = Terminal(maxLines: 10000) {
+    : terminal = Terminal(maxLines: 10000) {
     _attach();
   }
 
@@ -100,8 +94,8 @@ class RemoteTerminalSession extends TerminalSession {
     this.token,
     this.reconnect = true,
     WebSocketChannel Function(Uri, {String? token})? connector,
-  })  : _connector = connector ?? connectTerminalWebSocket,
-        super(isLocal: false) {
+  }) : _connector = connector ?? connectTerminalWebSocket,
+       super(isLocal: false) {
     _connect();
   }
 
@@ -135,7 +129,7 @@ class RemoteTerminalSession extends TerminalSession {
       _reconnectAttempts = 0;
       _sendResize(terminal.viewWidth, terminal.viewHeight);
     } catch (e) {
-      terminal.write('[connection error: $e]\r\n');
+      terminal.write('${appL10n.terminalConnectionError('$e')}\r\n');
       _onError(e);
     }
   }
@@ -149,7 +143,7 @@ class RemoteTerminalSession extends TerminalSession {
         final data = jsonDecode(message) as Map<String, dynamic>;
         if (data['type'] == 'exited') {
           final code = data['code'];
-          terminal.write('\r\n[session exited with code $code]\r\n');
+          terminal.write('\r\n${appL10n.terminalSessionExited('$code')}\r\n');
           _setStatus(TerminalStatus.exited);
           _complete();
         }
@@ -211,11 +205,12 @@ class RemoteTerminalSession extends TerminalSession {
 ///
 /// Non-test callers should pass [createTerminalSession] and let it handle the
 /// actual local/remote backend.
-typedef TerminalSessionFactory = Future<TerminalSession> Function({
-  required ApiService api,
-  required String threadId,
-  required bool local,
-});
+typedef TerminalSessionFactory =
+    Future<TerminalSession> Function({
+      required ApiService api,
+      required String threadId,
+      required bool local,
+    });
 
 /// Create a local or remote terminal session for [threadId].
 Future<TerminalSession> createTerminalSession({
@@ -224,7 +219,9 @@ Future<TerminalSession> createTerminalSession({
   required bool local,
 }) async {
   if (local) {
-    return LocalTerminalSession(id: 'local-${DateTime.now().millisecondsSinceEpoch}');
+    return LocalTerminalSession(
+      id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+    );
   }
   final sessionId = await api.createTerminalSession(threadId);
   final uri = await api.terminalWebSocketUri(sessionId);

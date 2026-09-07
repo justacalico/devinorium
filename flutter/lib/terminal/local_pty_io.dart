@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:pty2/pty2.dart';
 import 'package:xterm/xterm.dart';
 
+import '../l10n/global_l10n.dart';
+
 /// Desktop PTY backend using the `pty2` package.
 class LocalPtyBackend {
   LocalPtyBackend(this.terminal);
@@ -21,14 +23,17 @@ class LocalPtyBackend {
       );
       _pty!.out.listen(
         terminal.write,
-        onError: (Object e) => terminal.write('\r\n[pty error: $e]\r\n'),
-        onDone: () => terminal.write('\r\n[pty closed]\r\n'),
+        onError: (Object e) =>
+            terminal.write('\r\n${appL10n.terminalPtyError('$e')}\r\n'),
+        onDone: () => terminal.write('\r\n${appL10n.terminalPtyClosed}\r\n'),
       );
       _pty!.exitCode.then((code) {
-        terminal.write('\r\n[process exited with code $code]\r\n');
+        terminal.write('\r\n${appL10n.terminalProcessExited('$code')}\r\n');
       });
     } catch (e) {
-      terminal.write('\r\n[failed to start $shell: $e]\r\n');
+      terminal.write(
+        '\r\n${appL10n.terminalShellStartFailed(shell, '$e')}\r\n',
+      );
     }
   }
 

@@ -119,7 +119,7 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start terminal: $e')),
+          SnackBar(content: Text(l10n(context).terminalStartFailed('$e'))),
         );
       }
     } finally {
@@ -183,18 +183,16 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Close terminal?'),
-        content: const Text(
-          'This terminal has running processes or output. Close it anyway?',
-        ),
+        title: Text(l10n(context).terminalCloseTitle),
+        content: Text(l10n(context).terminalCloseBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n(context).cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Close'),
+            child: Text(l10n(context).close),
           ),
         ],
       ),
@@ -213,18 +211,16 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Close tab?'),
-        content: Text(
-          'This tab contains $nonBlankCount active terminal(s). Close it anyway?',
-        ),
+        title: Text(l10n(context).terminalTabCloseTitle),
+        content: Text(l10n(context).terminalTabCloseBody(nonBlankCount)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n(context).cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Close'),
+            child: Text(l10n(context).close),
           ),
         ],
       ),
@@ -242,11 +238,13 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final data = _dataFor(widget.threadId);
-          final maxHeight = (constraints.maxHeight * _maxHeightRatio)
-              .clamp(_minHeight, constraints.maxHeight);
-          final height = (_heights[widget.threadId] ??
-                  ThreadTerminalPanel._defaultHeight)
-              .clamp(_minHeight, maxHeight);
+          final maxHeight = (constraints.maxHeight * _maxHeightRatio).clamp(
+            _minHeight,
+            constraints.maxHeight,
+          );
+          final height =
+              (_heights[widget.threadId] ?? ThreadTerminalPanel._defaultHeight)
+                  .clamp(_minHeight, maxHeight);
 
           return SizedBox(
             height: height,
@@ -261,9 +259,8 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
                                   ThreadTerminalPanel._defaultHeight)
                               .clamp(_minHeight, maxHeight) -
                           delta;
-                      _heights[widget.threadId] =
-                          _heights[widget.threadId]!
-                              .clamp(_minHeight, maxHeight);
+                      _heights[widget.threadId] = _heights[widget.threadId]!
+                          .clamp(_minHeight, maxHeight);
                     });
                   },
                   onDragEnd: () {
@@ -370,28 +367,25 @@ class _Header extends StatelessWidget {
       color: Theme.of(context).colorScheme.surface,
       child: Row(
         children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          Text(title, style: Theme.of(context).textTheme.titleSmall),
           const Spacer(),
           if (local)
             IconButton(
               key: const ValueKey('addLocalTerminal'),
               icon: const Icon(Icons.computer, size: 20),
-              tooltip: 'Local terminal',
+              tooltip: l10n(context).terminalLocal,
               onPressed: busy ? null : onAddLocal,
             ),
           IconButton(
             key: const ValueKey('addRemoteTerminal'),
             icon: const Icon(Icons.cloud, size: 20),
-            tooltip: 'Remote terminal',
+            tooltip: l10n(context).terminalRemote,
             onPressed: busy ? null : onAddRemote,
           ),
           if (onClose != null)
             IconButton(
               icon: const Icon(Icons.keyboard_arrow_down, size: 20),
-              tooltip: 'Hide terminal',
+              tooltip: l10n(context).terminalHide,
               onPressed: onClose,
             ),
         ],

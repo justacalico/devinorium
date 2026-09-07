@@ -1,3 +1,5 @@
+import '../l10n/l10n.dart';
+
 /// The composer interaction mode. Providers that support it can change how
 /// they interpret the user's prompt (e.g. plan before coding, answer questions
 /// without editing files, or build directly).
@@ -19,10 +21,10 @@ extension ComposerModeX on ComposerMode {
     ComposerMode.ask => 'ask',
   };
 
-  String get label => switch (this) {
-    ComposerMode.code => 'Code',
-    ComposerMode.plan => 'Plan',
-    ComposerMode.ask => 'Ask',
+  String label(AppLocalizations l10n) => switch (this) {
+    ComposerMode.code => l10n.composerModeCode,
+    ComposerMode.plan => l10n.composerModePlan,
+    ComposerMode.ask => l10n.composerModeAsk,
   };
 
   ComposerMode get next => switch (this) {

@@ -1177,4 +1177,129 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contentViewShowAll => 'Show all';
+
+  @override
+  String get showMore => 'Show more';
+
+  @override
+  String get loadingMore => 'Loading more…';
+
+  @override
+  String get terminalNoSessions => 'No terminal sessions';
+
+  @override
+  String terminalTab(int index) {
+    return 'Tab $index';
+  }
+
+  @override
+  String get terminalNewTab => 'New tab';
+
+  @override
+  String get terminalCloseTab => 'Close tab';
+
+  @override
+  String get terminalClose => 'Close terminal';
+
+  @override
+  String get terminalLocal => 'Local terminal';
+
+  @override
+  String get terminalRemote => 'Remote terminal';
+
+  @override
+  String get terminalHide => 'Hide terminal';
+
+  @override
+  String terminalStartFailed(String error) {
+    return 'Failed to start terminal: $error';
+  }
+
+  @override
+  String get terminalCloseTitle => 'Close terminal?';
+
+  @override
+  String get terminalCloseBody =>
+      'This terminal has running processes or output. Close it anyway?';
+
+  @override
+  String get terminalTabCloseTitle => 'Close tab?';
+
+  @override
+  String terminalTabCloseBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'This tab contains $count active terminals. Close it anyway?',
+      one: 'This tab contains 1 active terminal. Close it anyway?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get planHide => 'Hide plan';
+
+  @override
+  String get planShow => 'Show plan';
+
+  @override
+  String get planCollapse => 'Collapse plan';
+
+  @override
+  String get planExpand => 'Expand plan';
+
+  @override
+  String get planTitle => 'Plan';
+
+  @override
+  String planProgress(int completed, int total, int percent) {
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: 'steps',
+      one: 'step',
+    );
+    return '$completed / $total $_temp0 · $percent%';
+  }
+
+  @override
+  String get composerModeCode => 'Code';
+
+  @override
+  String get composerModePlan => 'Plan';
+
+  @override
+  String get composerModeAsk => 'Ask';
+
+  @override
+  String get terminalLocalOnlyDesktop =>
+      'Local terminal is only available on desktop.';
+
+  @override
+  String terminalConnectionError(String error) {
+    return '[connection error: $error]';
+  }
+
+  @override
+  String terminalSessionExited(String code) {
+    return '[session exited with code $code]';
+  }
+
+  @override
+  String terminalPtyError(String error) {
+    return '[pty error: $error]';
+  }
+
+  @override
+  String get terminalPtyClosed => '[pty closed]';
+
+  @override
+  String terminalProcessExited(String code) {
+    return '[process exited with code $code]';
+  }
+
+  @override
+  String terminalShellStartFailed(String shell, String error) {
+    return '[failed to start $shell: $error]';
+  }
 }

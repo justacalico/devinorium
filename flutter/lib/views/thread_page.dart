@@ -146,7 +146,9 @@ class _ThreadPageState extends State<ThreadPage> {
                 LinkedMergeRequestChip(mr: model.linkedMergeRequest!),
               if (model.activePlan != null)
                 IconButton(
-                  tooltip: model.planOverlayVisible ? 'Hide plan' : 'Show plan',
+                  tooltip: model.planOverlayVisible
+                      ? l10n(context).planHide
+                      : l10n(context).planShow,
                   icon: Icon(
                     model.planOverlayVisible
                         ? Icons.playlist_add_check
