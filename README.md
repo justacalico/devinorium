@@ -7,6 +7,8 @@ A self-hosted web UI for AI coding agents.
 
 ![Devinorium running](docs/images/running.png)
 
+<img src="docs/images/mobile-3.png" width="240" alt="Devinorium sidebar on mobile"> <img src="docs/images/mobile-2.png" width="240" alt="Devinorium thread view on mobile"> <img src="docs/images/mobile-1.png" width="240" alt="Devinorium code editor on mobile">
+
 ## What it is
 
 Devinorium lets you use coding agents from a browser. The Rust backend handles authentication, sessions, files, and provider calls; the provider layer is pluggable, so new backends can be added without touching the rest of the app.
