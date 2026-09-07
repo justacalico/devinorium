@@ -24,6 +24,15 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
 
+  // Single instance: when a second launch forwards activation to the
+  // primary process, raise the existing window instead of creating a new
+  // one.
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
+  if (windows != nullptr) {
+    gtk_window_present(GTK_WINDOW(windows->data));
+    return;
+  }
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
@@ -130,7 +139,15 @@ MyApplication* my_application_new() {
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
 
+  // G_APPLICATION_FLAGS_NONE is deprecated since GLib 2.74 and the build
+  // uses -Werror, so use its replacement when the headers provide it.
+#if GLIB_CHECK_VERSION(2, 74, 0)
+  const GApplicationFlags app_flags = G_APPLICATION_DEFAULT_FLAGS;
+#else
+  const GApplicationFlags app_flags = G_APPLICATION_FLAGS_NONE;
+#endif
+
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+                                     app_flags, nullptr));
 }
