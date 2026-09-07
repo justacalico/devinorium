@@ -21,6 +21,7 @@ import '../utils/link_opener.dart' as link_opener;
 import '../utils/debug_log.dart';
 import '../models/models.dart';
 import '../services/notification_service.dart';
+import '../services/version_checker.dart';
 import 'async_value.dart';
 import 'streaming_state.dart';
 import 'thread_store.dart';
@@ -42,6 +43,7 @@ part 'app_state/git_store.dart';
 part 'app_state/git_refresh_store.dart';
 part 'app_state/dialog_store.dart';
 part 'app_state/settings_store.dart';
+part 'app_state/version_store.dart';
 part 'app_state/editor_store.dart';
 
 enum AppView { loading, login, app }
@@ -64,13 +66,33 @@ enum DialogKind {
   issue,
 }
 
-class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, ProjectStore, ThreadListStore, ComposerStore, AttachmentStore, ModelStore, PlanOverlayStore, FilesPanelStore, HealthCheckStore, LifecycleStore, GitStore, GitRefreshStore, DialogStore, SettingsStore, EditorStore {
+class AppState extends AppStateBase
+    with
+        NavigationStore,
+        CoreStore,
+        AuthStore,
+        ProjectStore,
+        ThreadListStore,
+        ComposerStore,
+        AttachmentStore,
+        ModelStore,
+        PlanOverlayStore,
+        FilesPanelStore,
+        HealthCheckStore,
+        LifecycleStore,
+        GitStore,
+        GitRefreshStore,
+        DialogStore,
+        SettingsStore,
+        VersionStore,
+        EditorStore {
   @override
   final MultiServerState multiServerState;
 
   ApiService? _defaultApi;
   @override
-  ApiService get api => multiServerState.activeApi ?? (_defaultApi ??= ApiService());
+  ApiService get api =>
+      multiServerState.activeApi ?? (_defaultApi ??= ApiService());
 
   /// The list of configured servers, for the UI switcher and settings.
   List<ServerProfile> get serverProfiles => multiServerState.profiles;
@@ -78,28 +100,33 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
   /// The id of the currently active server, or `null`.
   String? get activeServerId => multiServerState.activeServerId;
 
-  AppState({MultiServerState? multiServerState, ApiService? api})
-      : multiServerState = multiServerState ?? MultiServerState() {
+  AppState({
+    MultiServerState? multiServerState,
+    ApiService? api,
+    VersionChecker? versionChecker,
+  }) : multiServerState = multiServerState ?? MultiServerState() {
+    _versionChecker = versionChecker;
     this.multiServerState.addListener(notifyListeners);
     if (api != null) {
       this.multiServerState.addTestConnection(
-            ServerProfile(
-              id: 'default',
-              label: 'default',
-              baseUrl: 'http://localhost',
-              token: 'token',
-              username: 'user',
-              createdAt: DateTime.now().toUtc(),
-              isPrimary: true,
-            ),
-            api,
-          );
+        ServerProfile(
+          id: 'default',
+          label: 'default',
+          baseUrl: 'http://localhost',
+          token: 'token',
+          username: 'user',
+          createdAt: DateTime.now().toUtc(),
+          isPrimary: true,
+        ),
+        api,
+      );
     }
   }
 
   AppState.test({
     MultiServerState? multiServerState,
     ApiService? api,
+    VersionChecker? versionChecker,
     User? user,
     List<User> users = const [],
     List<Project> projects = const [],
@@ -143,19 +170,20 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
     String? serverVersion,
   }) : multiServerState = multiServerState ?? MultiServerState() {
     this.multiServerState.addListener(notifyListeners);
+    _versionChecker = versionChecker ?? _NoNetworkVersionChecker();
     if (api != null) {
       this.multiServerState.addTestConnection(
-            ServerProfile(
-              id: 'test',
-              label: 'test',
-              baseUrl: 'http://test',
-              token: 'token',
-              username: user?.username ?? 'test',
-              createdAt: DateTime.now().toUtc(),
-              isPrimary: true,
-            ),
-            api,
-          );
+        ServerProfile(
+          id: 'test',
+          label: 'test',
+          baseUrl: 'http://test',
+          token: 'token',
+          username: user?.username ?? 'test',
+          createdAt: DateTime.now().toUtc(),
+          isPrimary: true,
+        ),
+        api,
+      );
     }
 
     _locale = locale ?? const Locale('en');
@@ -181,7 +209,8 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
           .length;
       _projectThreadOffsets[activeProjectId] = projectThreadCount;
       _projectThreadsHasMore[activeProjectId] =
-          projectThreadCount == 0 || projectThreadCount >= ThreadListStore._threadChunkSize;
+          projectThreadCount == 0 ||
+          projectThreadCount >= ThreadListStore._threadChunkSize;
     }
     _groups = groups;
     _models = models;
@@ -222,8 +251,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
         composerMode: composerMode,
         selectedModel: selectedModel ?? '',
         selectedPermission: selectedPermission ?? 'normal',
-        selectedProvider:
-            selectedProvider ?? detail?.thread.providerId ?? '',
+        selectedProvider: selectedProvider ?? detail?.thread.providerId ?? '',
         lastRunStatus: lastRunStatus,
       );
       _threadStores[threadId] = store;
@@ -241,6 +269,7 @@ class AppState extends AppStateBase with NavigationStore, CoreStore, AuthStore, 
 
   @override
   void dispose() {
+    _versionChecker?.close();
     stopHealthChecks();
     _resumeDebounceTimer?.cancel();
     _wantsResume = false;

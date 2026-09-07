@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../servers/server_profile.dart';
+import '../services/version_checker.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../utils/link_opener.dart';
@@ -52,10 +53,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final state = context.read<AppState>();
 
     return Selector<AppState, ({bool isOwner, int settingsTopicIndex})>(
-      selector: (_, s) => (
-        isOwner: s.isOwner,
-        settingsTopicIndex: s.settingsTopicIndex,
-      ),
+      selector: (_, s) =>
+          (isOwner: s.isOwner, settingsTopicIndex: s.settingsTopicIndex),
       builder: (context, model, _) {
         final sections = [
           _AccountSection(state: state),
@@ -70,29 +69,30 @@ class _SettingsPageState extends State<SettingsPage> {
         final index = model.settingsTopicIndex.clamp(0, sections.length - 1);
 
         return Scaffold(
-      appBar: AppBar(
-        leading: isNarrow
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              )
-            : null,
-        title: WindowTitleDrag(
-          child: Text(
-            l10n(context).settings,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          appBar: AppBar(
+            leading: isNarrow
+                ? IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                  )
+                : null,
+            title: WindowTitleDrag(
+              child: Text(
+                l10n(context).settings,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            centerTitle: false,
+            backgroundColor: theme.colorScheme.surface,
+            scrolledUnderElevation: 0,
           ),
-        ),
-        centerTitle: false,
-        backgroundColor: theme.colorScheme.surface,
-        scrolledUnderElevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: sections[index],
-      ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: sections[index],
+          ),
+        );
+      },
     );
-  });
   }
 }

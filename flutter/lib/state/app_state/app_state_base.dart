@@ -209,6 +209,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String get globalError;
   ConnectionStatus get connectionStatus;
   String? get serverVersion;
+  AppUpdate? get appUpdate;
   Locale get locale;
   int get settingsTopicIndex;
   bool get notificationsEnabled;
@@ -419,6 +420,7 @@ abstract class AppStateBase extends ChangeNotifier {
   void closeDialog();
   Future<void> openLink(String url);
   Future<PackageInfo> packageInfo() => PackageInfo.fromPlatform();
+  Future<AppUpdate?> checkForAppUpdate();
 
   // Editor
   List<EditorTab> get editorTabs;

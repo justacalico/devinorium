@@ -148,6 +148,42 @@ abstract class AppLocalizations {
   /// **'Could not open {url}'**
   String aboutOpenLinkFailed(String url);
 
+  /// Releases link label on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'Releases'**
+  String get aboutReleases;
+
+  /// Button on the About page that checks for a newer release
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates'**
+  String get aboutCheckForUpdates;
+
+  /// Subtitle under the check-for-updates button on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'Check GitLab for a newer release'**
+  String get aboutCheckForUpdatesSubtitle;
+
+  /// Message shown when an update check finds no newer release
+  ///
+  /// In en, this message translates to:
+  /// **'You are on the latest version'**
+  String get aboutUpToDate;
+
+  /// Message shown when the update check itself fails
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check for updates'**
+  String get aboutUpdateCheckFailed;
+
+  /// Chip shown on the About page when a newer release exists
+  ///
+  /// In en, this message translates to:
+  /// **'Update available: {version}'**
+  String appUpdateAvailable(String version);
+
   /// No description provided for @connectionFailed.
   ///
   /// In en, this message translates to:
