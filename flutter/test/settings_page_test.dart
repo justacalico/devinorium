@@ -36,11 +36,11 @@ class _FakeApiService extends ApiService {
   final List<User> _users;
   final List<GitConnection> _gitConnections;
 
-  _FakeApiService({List<User>? users, List<GitConnection>? gitConnections})
-    : _users =
-          users ??
-          [
-            User(
+  _FakeApiService({
+    List<User>? users,
+    List<GitConnection>? gitConnections,
+  })  : _users = users ??
+            [User(
               id: 1,
               username: 'owner',
               role: 'user',
@@ -48,19 +48,13 @@ class _FakeApiService extends ApiService {
               isOwner: true,
               providerId: 'devin-cli',
               providerCommand: 'devin',
-            ),
-          ],
-      _gitConnections =
-          gitConnections ??
-          const [
-            GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
-            GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
-          ],
-      super(
-        client: ApiClient.withClient(
-          MockClient((_) async => http.Response('{}', 200)),
-        ),
-      );
+            )],
+        _gitConnections = gitConnections ??
+            const [
+              GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
+              GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+            ],
+        super(client: ApiClient.withClient(MockClient((_) async => http.Response('{}', 200))));
 
   @override
   Future<User> updateMe({
@@ -106,16 +100,14 @@ class _FakeApiService extends ApiService {
     required String password,
   }) async {
     createUserCalls++;
-    _users.add(
-      User(
-        id: _users.length + 1,
-        username: username,
-        role: 'user',
-        totpEnabled: false,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-    );
+    _users.add(User(
+      id: _users.length + 1,
+      username: username,
+      role: 'user',
+      totpEnabled: false,
+      providerId: 'devin-cli',
+      providerCommand: 'devin',
+    ));
   }
 
   @override
@@ -124,13 +116,7 @@ class _FakeApiService extends ApiService {
 
   @override
   Future<GitConnection> connectGitLab({String? hostname}) async =>
-      const GitConnection(
-        id: 'gitlab',
-        name: 'GitLab',
-        enabled: true,
-        authed: true,
-        account: 'owner',
-      );
+      const GitConnection(id: 'gitlab', name: 'GitLab', enabled: true, authed: true, account: 'owner');
 
   @override
   Future<void> disconnectGitLab({String? hostname}) async {}
@@ -189,16 +175,16 @@ class _FakeVersionChecker extends VersionChecker {
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
-  home: MultiProvider(
-    providers: [
-      ChangeNotifierProvider<AppState>.value(value: state),
-      ChangeNotifierProvider<ThemeProvider>(
-        create: (_) => ThemeProvider()..loadInitial(),
+      home: MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AppState>.value(value: state),
+          ChangeNotifierProvider<ThemeProvider>(
+            create: (_) => ThemeProvider()..loadInitial(),
+          ),
+        ],
+        child: const SettingsPage(),
       ),
-    ],
-    child: const SettingsPage(),
-  ),
-);
+    );
 
 void main() {
   setUpAll(() {
@@ -271,9 +257,7 @@ void main() {
     expect(state.user?.providerCommand, 'devin-cli');
   });
 
-  testWidgets('Provider test button normalizes empty command to devin', (
-    tester,
-  ) async {
+  testWidgets('Provider test button normalizes empty command to devin', (tester) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -334,9 +318,7 @@ void main() {
     expect(find.text('Provider is reachable'), findsOneWidget);
   });
 
-  testWidgets('Provider test button shows error snackbar on failure', (
-    tester,
-  ) async {
+  testWidgets('Provider test button shows error snackbar on failure', (tester) async {
     final fake = _FakeApiService()..throwOnTest = true;
     final state = AppState.test(
       api: fake,
@@ -427,9 +409,8 @@ void main() {
     expect(find.text('Up to date'), findsNothing);
   });
 
-  testWidgets('Provider card shows placeholder when version is unknown', (
-    tester,
-  ) async {
+  testWidgets('Provider card shows placeholder when version is unknown',
+      (tester) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -456,9 +437,8 @@ void main() {
     expect(find.textContaining('Update available'), findsNothing);
   });
 
-  testWidgets('Opening settings refreshes the provider version', (
-    tester,
-  ) async {
+  testWidgets('Opening settings refreshes the provider version',
+      (tester) async {
     final fake = _FakeApiService()
       ..providerVersionToReturn = const ProviderVersion(
         providerId: 'devin-cli',
@@ -488,9 +468,8 @@ void main() {
     expect(state.providerVersion?.updateAvailable, isTrue);
   });
 
-  testWidgets('Saving the provider command re-checks the version', (
-    tester,
-  ) async {
+  testWidgets('Saving the provider command re-checks the version',
+      (tester) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -700,43 +679,40 @@ void main() {
     expect(find.text('Light'), findsOneWidget);
   });
 
-  testWidgets(
-    'Theme dropdown shows custom hint when a custom theme is loaded',
-    (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      const css = ':root { --primary: #ff0000; }';
-      final state = AppState.test(
-        user: User(
-          id: 1,
-          username: 'owner',
-          role: 'user',
-          totpEnabled: false,
-          isOwner: true,
-          providerId: 'devin-cli',
-          providerCommand: 'devin',
-        ),
-      );
+  testWidgets('Theme dropdown shows custom hint when a custom theme is loaded',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    const css = ':root { --primary: #ff0000; }';
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
 
-      await tester.pumpWidget(_buildWithState(state));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
 
-      state.setSettingsTopicIndex(2);
-      await tester.pumpAndSettle();
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
 
-      final provider = Provider.of<ThemeProvider>(
-        tester.element(find.byType(SettingsPage)),
-        listen: false,
-      );
-      await provider.loadCustom(css, name: 'Sunset');
-      await tester.pumpAndSettle();
+    final provider = Provider.of<ThemeProvider>(
+      tester.element(find.byType(SettingsPage)),
+      listen: false,
+    );
+    await provider.loadCustom(css, name: 'Sunset');
+    await tester.pumpAndSettle();
 
-      expect(find.text('Custom: Sunset'), findsOneWidget);
-    },
-  );
+    expect(find.text('Custom: Sunset'), findsOneWidget);
+  });
 
-  testWidgets('Theme dropdown falls back to bare Custom label without a name', (
-    tester,
-  ) async {
+  testWidgets('Theme dropdown falls back to bare Custom label without a name',
+      (tester) async {
     SharedPreferences.setMockInitialValues({});
     const css = ':root { --primary: #ff0000; }';
     final state = AppState.test(
@@ -875,9 +851,7 @@ void main() {
     expect(find.byType(GitProviderTile), findsNWidgets(2));
   });
 
-  testWidgets('Git section shows Disconnect when GitLab is connected', (
-    tester,
-  ) async {
+  testWidgets('Git section shows Disconnect when GitLab is connected', (tester) async {
     final fake = _FakeApiService(
       gitConnections: const [
         GitConnection(
@@ -914,44 +888,41 @@ void main() {
     expect(find.text('Connected as owner'), findsOneWidget);
   });
 
-  testWidgets(
-    'Git section shows not installed hint when GitLab is unavailable',
-    (tester) async {
-      final fake = _FakeApiService(
-        gitConnections: const [
-          GitConnection(id: 'gitlab', name: 'GitLab'),
-          GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
-        ],
-      );
-      final state = AppState.test(
-        api: fake,
-        user: User(
-          id: 1,
-          username: 'owner',
-          role: 'user',
-          totpEnabled: false,
-          isOwner: true,
-          providerId: 'devin-cli',
-          providerCommand: 'devin',
-        ),
-      );
-
-      await tester.pumpWidget(_buildWithState(state));
-      await tester.pumpAndSettle();
-
-      state.setSettingsTopicIndex(3);
-      await tester.pumpAndSettle();
-
-      expect(find.text('GitLab CLI (glab) is not installed'), findsOneWidget);
-      expect(find.text('Connect'), findsNothing);
-    },
-  );
-
-  testWidgets('Git section falls back to a generic row for unknown providers', (
-    tester,
-  ) async {
+  testWidgets('Git section shows not installed hint when GitLab is unavailable', (tester) async {
     final fake = _FakeApiService(
-      gitConnections: const [GitConnection(id: 'bitbucket', name: 'Bitbucket')],
+      gitConnections: const [
+        GitConnection(id: 'gitlab', name: 'GitLab'),
+        GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+      ],
+    );
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(3);
+    await tester.pumpAndSettle();
+
+    expect(find.text('GitLab CLI (glab) is not installed'), findsOneWidget);
+    expect(find.text('Connect'), findsNothing);
+  });
+
+  testWidgets('Git section falls back to a generic row for unknown providers', (tester) async {
+    final fake = _FakeApiService(
+      gitConnections: const [
+        GitConnection(id: 'bitbucket', name: 'Bitbucket'),
+      ],
     );
     final state = AppState.test(
       api: fake,
@@ -977,9 +948,7 @@ void main() {
     expect(find.byType(GitProviderTile), findsOneWidget);
   });
 
-  testWidgets('Clone root section loads current value for owners', (
-    tester,
-  ) async {
+  testWidgets('Clone root section loads current value for owners', (tester) async {
     final fake = _FakeApiService()..cloneRootToReturn = '/srv/clones';
     final state = AppState.test(
       api: fake,
@@ -1002,10 +971,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Clone root'), findsOneWidget);
-    expect(
-      find.text('Directory where cloned repositories are placed.'),
-      findsOneWidget,
-    );
+    expect(find.text('Directory where cloned repositories are placed.'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     expect(state.cloneRoot, '/srv/clones');
     expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
@@ -1035,17 +1001,12 @@ void main() {
 
     expect(find.text('Clone root'), findsOneWidget);
     expect(find.text('/srv/clones'), findsOneWidget);
-    expect(
-      find.text('Only the owner can change the clone root.'),
-      findsOneWidget,
-    );
+    expect(find.text('Only the owner can change the clone root.'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
   });
 
-  testWidgets('Clone root save propagates to the API and updates state', (
-    tester,
-  ) async {
+  testWidgets('Clone root save propagates to the API and updates state', (tester) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -1080,8 +1041,7 @@ void main() {
   });
 
   testWidgets('Clone root save shows an error on failure', (tester) async {
-    final fake = _FakeApiService()
-      ..cloneRootError = Exception('path must be absolute');
+    final fake = _FakeApiService()..cloneRootError = Exception('path must be absolute');
     final state = AppState.test(
       api: fake,
       user: User(
@@ -1194,10 +1154,7 @@ void main() {
     expect(find.text('AGPL-3.0-only'), findsOneWidget);
     expect(find.text('Source code'), findsOneWidget);
     expect(find.text('Support'), findsOneWidget);
-    expect(
-      find.text('https://gitlab.com/HttpAnimations/devinorium'),
-      findsOneWidget,
-    );
+    expect(find.text('https://gitlab.com/HttpAnimations/devinorium'), findsOneWidget);
     expect(
       find.text('https://gitlab.com/HttpAnimations/devinorium/-/work_items'),
       findsOneWidget,
@@ -1262,7 +1219,9 @@ void main() {
     expect(find.text('0.21.0'), findsOneWidget);
   });
 
-  testWidgets('About section falls back when version is empty', (tester) async {
+  testWidgets('About section falls back when version is empty', (
+    tester,
+  ) async {
     final state = _FakeAppState.test(
       settingsTopicIndex: 6,
       user: User(
@@ -1328,16 +1287,16 @@ void main() {
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-          switch (call.method) {
-            case 'canLaunch':
-              return true;
-            case 'launch':
-              final args = call.arguments as Map<dynamic, dynamic>;
-              launched.add(args['url'] as String);
-              return true;
-          }
-          return null;
-        });
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          final args = call.arguments as Map<dynamic, dynamic>;
+          launched.add(args['url'] as String);
+          return true;
+      }
+      return null;
+    });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -1363,7 +1322,10 @@ void main() {
     await tester.tap(find.text('Source code'));
     await tester.pumpAndSettle();
 
-    expect(launched, contains('https://gitlab.com/HttpAnimations/devinorium'));
+    expect(
+      launched,
+      contains('https://gitlab.com/HttpAnimations/devinorium'),
+    );
 
     await tester.tap(find.text('Support'));
     await tester.pumpAndSettle();
@@ -1374,7 +1336,9 @@ void main() {
     );
   });
 
-  testWidgets('About section shows the current version', (tester) async {
+  testWidgets('About section shows the current version', (
+    tester,
+  ) async {
     final state = _FakeAppState.test(
       settingsTopicIndex: 6,
       user: User(
@@ -1403,52 +1367,51 @@ void main() {
     expect(find.text('0.40.2'), findsOneWidget);
   });
 
-  testWidgets(
-    'About section shows an update chip when a newer release exists',
-    (tester) async {
-      final checker = _FakeVersionChecker(
-        AppUpdate(
-          latestVersion: '0.40.3',
-          updateAvailable: true,
-          releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
+  testWidgets('About section shows an update chip when a newer release exists', (
+    tester,
+  ) async {
+    final checker = _FakeVersionChecker(
+      AppUpdate(
+        latestVersion: '0.40.3',
+        updateAvailable: true,
+        releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
+      ),
+    );
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      packageInfoFuture: Future.value(
+        PackageInfo(
+          appName: 'Devinorium',
+          packageName: 'devinorium_frontend',
+          version: '0.40.2',
+          buildNumber: '51',
+          buildSignature: '',
         ),
-      );
-      final state = _FakeAppState.test(
-        settingsTopicIndex: 6,
-        user: User(
-          id: 1,
-          username: 'owner',
-          role: 'user',
-          totpEnabled: false,
-          isOwner: true,
-          providerId: 'devin-cli',
-          providerCommand: 'devin',
-        ),
-        packageInfoFuture: Future.value(
-          PackageInfo(
-            appName: 'Devinorium',
-            packageName: 'devinorium_frontend',
-            version: '0.40.2',
-            buildNumber: '51',
-            buildSignature: '',
-          ),
-        ),
-        versionChecker: checker,
-      );
+      ),
+      versionChecker: checker,
+    );
 
-      await tester.pumpWidget(_buildWithState(state));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Update available: 0.40.3'), findsNothing);
-      expect(checker.calls, 0);
+    expect(find.text('Update available: 0.40.3'), findsNothing);
+    expect(checker.calls, 0);
 
-      await tester.tap(find.text('Check for updates'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Check for updates'));
+    await tester.pumpAndSettle();
 
-      expect(checker.calls, 1);
-      expect(find.text('Update available: 0.40.3'), findsOneWidget);
-    },
-  );
+    expect(checker.calls, 1);
+    expect(find.text('Update available: 0.40.3'), findsOneWidget);
+  });
 
   testWidgets('About section reports up to date when no update is found', (
     tester,
@@ -1483,21 +1446,23 @@ void main() {
 
   testWidgets(
     'About section opens the release page when the version row is tapped and an update is available',
-    (tester) async {
+    (
+      tester,
+    ) async {
       final launched = <String>[];
       const channel = MethodChannel('plugins.flutter.io/url_launcher');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
-            switch (call.method) {
-              case 'canLaunch':
-                return true;
-              case 'launch':
-                final args = call.arguments as Map<dynamic, dynamic>;
-                launched.add(args['url'] as String);
-                return true;
-            }
-            return null;
-          });
+        switch (call.method) {
+          case 'canLaunch':
+            return true;
+          case 'launch':
+            final args = call.arguments as Map<dynamic, dynamic>;
+            launched.add(args['url'] as String);
+            return true;
+        }
+        return null;
+      });
       addTearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null);
@@ -1546,21 +1511,23 @@ void main() {
     },
   );
 
-  testWidgets('About section opens the releases link', (tester) async {
+  testWidgets('About section opens the releases link', (
+    tester,
+  ) async {
     final launched = <String>[];
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-          switch (call.method) {
-            case 'canLaunch':
-              return true;
-            case 'launch':
-              final args = call.arguments as Map<dynamic, dynamic>;
-              launched.add(args['url'] as String);
-              return true;
-          }
-          return null;
-        });
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          final args = call.arguments as Map<dynamic, dynamic>;
+          launched.add(args['url'] as String);
+          return true;
+      }
+      return null;
+    });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -1597,14 +1564,14 @@ void main() {
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-          switch (call.method) {
-            case 'canLaunch':
-              return true;
-            case 'launch':
-              return false;
-          }
-          return null;
-        });
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          return false;
+      }
+      return null;
+    });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
