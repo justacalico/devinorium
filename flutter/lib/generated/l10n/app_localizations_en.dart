@@ -41,6 +41,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aboutReleases => 'Releases';
 
   @override
+  String get aboutCheckForUpdates => 'Check for updates';
+
+  @override
+  String get aboutCheckForUpdatesSubtitle => 'Check GitLab for a newer release';
+
+  @override
+  String get aboutUpToDate => 'You are on the latest version';
+
+  @override
   String appUpdateAvailable(String version) {
     return 'Update available: $version';
   }

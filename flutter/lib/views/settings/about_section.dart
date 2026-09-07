@@ -21,12 +21,12 @@ class _AboutSection extends StatefulWidget {
 class _AboutSectionState extends State<_AboutSection> {
   late Future<PackageInfo> _packageInfo;
   bool _openingUpdate = false;
+  bool _checkingUpdate = false;
 
   @override
   void initState() {
     super.initState();
     _packageInfo = widget.state.packageInfo();
-    unawaited(widget.state.checkForAppUpdate());
   }
 
   @override
@@ -34,7 +34,23 @@ class _AboutSectionState extends State<_AboutSection> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.state != widget.state) {
       _packageInfo = widget.state.packageInfo();
-      unawaited(widget.state.checkForAppUpdate());
+    }
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    try {
+      await widget.state.checkForAppUpdate();
+      if (!mounted) return;
+      final update = widget.state.appUpdate;
+      if (update != null && !update.updateAvailable) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n(context).aboutUpToDate)));
+      }
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
     }
   }
 
@@ -117,6 +133,28 @@ class _AboutSectionState extends State<_AboutSection> {
               },
             );
           },
+        ),
+        _AboutTile(
+          icon: Icons.update,
+          title: l.aboutCheckForUpdates,
+          subtitle: l.aboutCheckForUpdatesSubtitle,
+          trailing: ExcludeSemantics(
+            child: _checkingUpdate
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : Icon(
+                    Icons.refresh,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+          ),
+          onTap: _checkingUpdate ? null : () => unawaited(_checkForUpdates()),
         ),
         _AboutTile(
           icon: Icons.gavel,

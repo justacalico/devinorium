@@ -45,6 +45,18 @@
   "@aboutReleases": {
     "description": "Releases link label on the About page"
   },
+  "aboutCheckForUpdates": "Check for updates",
+  "@aboutCheckForUpdates": {
+    "description": "Button on the About page that checks for a newer release"
+  },
+  "aboutCheckForUpdatesSubtitle": "Check GitLab for a newer release",
+  "@aboutCheckForUpdatesSubtitle": {
+    "description": "Subtitle under the check-for-updates button on the About page"
+  },
+  "aboutUpToDate": "You are on the latest version",
+  "@aboutUpToDate": {
+    "description": "Message shown when an update check finds no newer release"
+  },
   "appUpdateAvailable": "Update available: {version}",
   "@appUpdateAvailable": {
     "description": "Chip shown on the About page when a newer release exists",
