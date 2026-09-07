@@ -148,6 +148,18 @@ abstract class AppLocalizations {
   /// **'Could not open {url}'**
   String aboutOpenLinkFailed(String url);
 
+  /// Releases link label on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'Releases'**
+  String get aboutReleases;
+
+  /// Chip shown on the About page when a newer release exists
+  ///
+  /// In en, this message translates to:
+  /// **'Update available: {version}'**
+  String appUpdateAvailable(String version);
+
   /// No description provided for @connectionFailed.
   ///
   /// In en, this message translates to:

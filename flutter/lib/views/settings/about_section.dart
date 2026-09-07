@@ -6,6 +6,7 @@ class _AboutLinks {
   static const repository = 'https://gitlab.com/HttpAnimations/devinorium';
   static const support =
       'https://gitlab.com/HttpAnimations/devinorium/-/work_items';
+  static const releases = VersionChecker.releasesUrl;
 }
 
 class _AboutSection extends StatefulWidget {
@@ -19,11 +20,13 @@ class _AboutSection extends StatefulWidget {
 
 class _AboutSectionState extends State<_AboutSection> {
   late Future<PackageInfo> _packageInfo;
+  bool _openingUpdate = false;
 
   @override
   void initState() {
     super.initState();
     _packageInfo = widget.state.packageInfo();
+    unawaited(widget.state.checkForAppUpdate());
   }
 
   @override
@@ -31,6 +34,23 @@ class _AboutSectionState extends State<_AboutSection> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.state != widget.state) {
       _packageInfo = widget.state.packageInfo();
+      unawaited(widget.state.checkForAppUpdate());
+    }
+  }
+
+  Future<void> _openRelease(String url) async {
+    if (_openingUpdate) return;
+    setState(() => _openingUpdate = true);
+    try {
+      await openLink(url);
+    } catch (e) {
+      if (!mounted) return;
+      final l = l10n(context);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l.aboutOpenLinkFailed(url))));
+    } finally {
+      if (mounted) setState(() => _openingUpdate = false);
     }
   }
 
@@ -49,33 +69,52 @@ class _AboutSectionState extends State<_AboutSection> {
           ),
         ),
         const SizedBox(height: 16),
-        _AboutTile(
-          icon: Icons.apps,
-          title: l.appTitle,
-          subtitle: l.appName,
-        ),
-        FutureBuilder<PackageInfo>(
-          future: _packageInfo,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return _AboutTile(
-                icon: Icons.tag,
-                title: l.loading,
-                subtitle: l.aboutVersion,
-              );
-            }
-            if (snapshot.hasError) {
-              return _AboutTile(
-                icon: Icons.tag,
-                title: l.error,
-                subtitle: l.aboutVersion,
-              );
-            }
-            final version = snapshot.data?.version ?? '';
-            return _AboutTile(
-              icon: Icons.tag,
-              title: version.isEmpty ? l.noValue : version,
-              subtitle: l.aboutVersion,
+        _AboutTile(icon: Icons.apps, title: l.appTitle, subtitle: l.appName),
+        Selector<AppState, AppUpdate?>(
+          selector: (_, state) => state.appUpdate,
+          builder: (context, appUpdate, _) {
+            return FutureBuilder<PackageInfo>(
+              future: _packageInfo,
+              builder: (context, snapshot) {
+                Widget? trailing;
+                VoidCallback? onTap;
+                if (appUpdate != null && appUpdate.updateAvailable) {
+                  trailing = Chip(
+                    label: Text(l.appUpdateAvailable(appUpdate.latestVersion)),
+                    visualDensity: VisualDensity.compact,
+                  );
+                  onTap = _openingUpdate
+                      ? null
+                      : () => unawaited(_openRelease(appUpdate.releaseUrl));
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return _AboutTile(
+                    icon: Icons.tag,
+                    title: l.loading,
+                    subtitle: l.aboutVersion,
+                    trailing: trailing,
+                    onTap: onTap,
+                  );
+                }
+                if (snapshot.hasError) {
+                  return _AboutTile(
+                    icon: Icons.tag,
+                    title: l.error,
+                    subtitle: l.aboutVersion,
+                    trailing: trailing,
+                    onTap: onTap,
+                  );
+                }
+                final version = snapshot.data?.version ?? '';
+                return _AboutTile(
+                  icon: Icons.tag,
+                  title: version.isEmpty ? l.noValue : version,
+                  subtitle: l.aboutVersion,
+                  trailing: trailing,
+                  onTap: onTap,
+                );
+              },
             );
           },
         ),
@@ -94,6 +133,11 @@ class _AboutSectionState extends State<_AboutSection> {
           icon: Icons.support,
           label: l.aboutSupport,
           url: _AboutLinks.support,
+        ),
+        _AboutLinkTile(
+          icon: Icons.new_releases_outlined,
+          label: l.aboutReleases,
+          url: _AboutLinks.releases,
         ),
       ],
     );
@@ -127,26 +171,15 @@ class _AboutTile extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
     );
     if (tooltip != null) {
-      subtitleWidget = Tooltip(
-        message: tooltip,
-        child: subtitleWidget,
-      );
+      subtitleWidget = Tooltip(message: tooltip, child: subtitleWidget);
     }
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: ExcludeSemantics(
-        child: Icon(
-          icon,
-          size: 22,
-          color: colors.onSurfaceVariant,
-        ),
+        child: Icon(icon, size: 22, color: colors.onSurfaceVariant),
       ),
-      title: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: subtitleWidget,
       trailing: trailing,
       onTap: onTap,
@@ -201,11 +234,7 @@ class _AboutLinkTileState extends State<_AboutLinkTile> {
               color: colors.onSurfaceVariant,
             ),
           )
-        : Icon(
-            Icons.open_in_new,
-            size: 18,
-            color: colors.onSurfaceVariant,
-          );
+        : Icon(Icons.open_in_new, size: 18, color: colors.onSurfaceVariant);
 
     return _AboutTile(
       icon: widget.icon,

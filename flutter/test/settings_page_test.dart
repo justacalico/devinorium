@@ -1,6 +1,7 @@
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
+import 'package:devinorium_frontend/services/version_checker.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/theme/theme.dart';
 import 'package:devinorium_frontend/views/settings_page.dart';
@@ -149,11 +150,25 @@ class _FakeApiService extends ApiService {
 class _FakeAppState extends AppState {
   final Future<PackageInfo>? packageInfoFuture;
 
-  _FakeAppState.test({super.user, super.settingsTopicIndex, this.packageInfoFuture})
-      : super.test(api: _FakeApiService());
+  _FakeAppState.test({
+    super.user,
+    super.settingsTopicIndex,
+    this.packageInfoFuture,
+    super.versionChecker,
+  }) : super.test(api: _FakeApiService());
 
   @override
   Future<PackageInfo> packageInfo() => packageInfoFuture ?? super.packageInfo();
+}
+
+class _FakeVersionChecker extends VersionChecker {
+  final AppUpdate _update;
+
+  _FakeVersionChecker(this._update) : super(client: null);
+
+  @override
+  Future<AppUpdate> check(String currentVersion) async =>
+      _update.copyWith(currentVersion: currentVersion);
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
@@ -1316,6 +1331,184 @@ void main() {
       launched,
       contains('https://gitlab.com/HttpAnimations/devinorium/-/work_items'),
     );
+  });
+
+  testWidgets('About section shows the current version', (
+    tester,
+  ) async {
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      packageInfoFuture: Future.value(
+        PackageInfo(
+          appName: 'Devinorium',
+          packageName: 'devinorium_frontend',
+          version: '0.40.2',
+          buildNumber: '51',
+          buildSignature: '',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('0.40.2'), findsOneWidget);
+  });
+
+  testWidgets('About section shows an update chip when a newer release exists', (
+    tester,
+  ) async {
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      packageInfoFuture: Future.value(
+        PackageInfo(
+          appName: 'Devinorium',
+          packageName: 'devinorium_frontend',
+          version: '0.40.2',
+          buildNumber: '51',
+          buildSignature: '',
+        ),
+      ),
+      versionChecker: _FakeVersionChecker(
+        AppUpdate(
+          latestVersion: '0.40.3',
+          updateAvailable: true,
+          releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Update available: 0.40.3'), findsOneWidget);
+  });
+
+  testWidgets(
+    'About section opens the release page when the version row is tapped and an update is available',
+    (
+      tester,
+    ) async {
+      final launched = <String>[];
+      const channel = MethodChannel('plugins.flutter.io/url_launcher');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'canLaunch':
+            return true;
+          case 'launch':
+            final args = call.arguments as Map<dynamic, dynamic>;
+            launched.add(args['url'] as String);
+            return true;
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+        launched.clear();
+      });
+
+      final state = _FakeAppState.test(
+        settingsTopicIndex: 6,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        packageInfoFuture: Future.value(
+          PackageInfo(
+            appName: 'Devinorium',
+            packageName: 'devinorium_frontend',
+            version: '0.40.2',
+            buildNumber: '51',
+            buildSignature: '',
+          ),
+        ),
+        versionChecker: _FakeVersionChecker(
+          AppUpdate(
+            latestVersion: '0.40.3',
+            updateAvailable: true,
+            releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('0.40.2'));
+      await tester.pumpAndSettle();
+
+      expect(launched, contains('${VersionChecker.releasesUrl}/v0.40.3'));
+    },
+  );
+
+  testWidgets('About section opens the releases link', (
+    tester,
+  ) async {
+    final launched = <String>[];
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          final args = call.arguments as Map<dynamic, dynamic>;
+          launched.add(args['url'] as String);
+          return true;
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+      launched.clear();
+    });
+
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Releases'));
+    await tester.pumpAndSettle();
+
+    expect(launched, contains(VersionChecker.releasesUrl));
   });
 
   testWidgets('About section shows a snackbar when a link fails to open', (

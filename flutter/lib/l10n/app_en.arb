@@ -41,6 +41,19 @@
       }
     }
   },
+  "aboutReleases": "Releases",
+  "@aboutReleases": {
+    "description": "Releases link label on the About page"
+  },
+  "appUpdateAvailable": "Update available: {version}",
+  "@appUpdateAvailable": {
+    "description": "Chip shown on the About page when a newer release exists",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "connectionFailed": "connection failed",
   "importFailed": "import failed",
   "totpPrompt": "Enter your 6-digit TOTP code.",

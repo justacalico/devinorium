@@ -38,6 +38,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get aboutReleases => 'Releases';
+
+  @override
+  String appUpdateAvailable(String version) {
+    return 'Update available: $version';
+  }
+
+  @override
   String get connectionFailed => 'connection failed';
 
   @override
