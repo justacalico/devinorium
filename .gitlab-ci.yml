@@ -53,6 +53,17 @@ github-sync:
         else
           git push -f github "$CI_COMMIT_TAG"
         fi
+        # v* tags trigger the release build on GitHub; watch it so a failed
+        # release build fails this pipeline.
+        if echo "$CI_COMMIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+          SHA=$(git rev-parse "$CI_COMMIT_TAG^{commit}")
+          RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push || true)
+          if [ -z "$RUN_ID" ]; then
+            echo "No GitHub run found for tag $CI_COMMIT_TAG" >&2
+            exit 1
+          fi
+          bash scripts/watch-github-run.sh "$RUN_ID"
+        fi
       else
         git push github HEAD:main
         # Watch the GitHub build for the pushed commit so a failed job on
@@ -99,6 +110,28 @@ github-mr-build:
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
   script:
     - bash scripts/trigger-github-build.sh "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" true false "$CI_COMMIT_SHA"
+
+auto-release:
+  stage: release
+  tags: [linux-truenas]
+  image: alpine:3.19
+  resource_group: auto-release
+  timeout: 30m
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  needs: [github-sync]
+  variables:
+    COCOGITTO_VERSION: "7.0.0"
+  before_script:
+    - apk add --no-cache bash curl git
+    - curl -fsSL --retry 3 -o /tmp/cog.tar.gz "https://github.com/cocogitto/cocogitto/releases/download/${COCOGITTO_VERSION}/cocogitto-${COCOGITTO_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+    - mkdir -p /tmp/cog && tar -xzf /tmp/cog.tar.gz -C /tmp/cog
+    - install -m 755 /tmp/cog/x86_64-unknown-linux-musl/cog /usr/local/bin/cog
+    - git config user.name "GitLab CI"
+    - git config user.email "ci@gitlab.com"
+    - git remote set-url origin "https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+  script:
+    - bash scripts/auto-release.sh
 
 openlyst-release-trigger:
   stage: release

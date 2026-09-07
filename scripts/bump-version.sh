@@ -29,6 +29,20 @@ if [[ -f flutter/pubspec.yaml ]]; then
   sed -i "s/^version: .*/version: ${VERSION}+${build}/" flutter/pubspec.yaml
 fi
 
+# Update Cargo.lock package version
+if [[ -f Cargo.lock ]]; then
+  awk -v ver="$VERSION" '
+  /^\[\[package\]\]/ { in_pkg = 0 }
+  /^name = "devinorium"/ { in_pkg = 1 }
+  in_pkg && /^version = / {
+    print "version = \"" ver "\""
+    in_pkg = 0
+    next
+  }
+  { print }
+  ' Cargo.lock > Cargo.lock.tmp && mv Cargo.lock.tmp Cargo.lock
+fi
+
 # Verify
 if ! grep -q "^version = \"$VERSION\"" Cargo.toml; then
   echo "Error: Cargo.toml version not updated" >&2

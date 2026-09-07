@@ -17,6 +17,15 @@ post_bump_hooks = [
   "./scripts/release.sh {{version_tag}}",
 ]
 
+# CI auto-release profile: only bump the version files. The tag pipeline
+# syncs the tag to GitHub where the release build runs, so no local builds,
+# pushes or release steps happen here.
+[bump_profiles.ci]
+pre_bump_hooks = [
+  "./scripts/bump-version.sh {{version}}",
+]
+post_bump_hooks = []
+
 [commit_types]
 feat = { changelog_title = "Features", bump_minor = true }
 fix = { changelog_title = "Bug Fixes", bump_patch = true }
