@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
+import '../utils/thread_status.dart';
 
 class ThreadTag extends StatelessWidget {
   final String tag;
@@ -27,10 +28,7 @@ class ThreadTag extends StatelessWidget {
             Container(
               width: 5,
               height: 5,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 4),
             Text(
@@ -49,15 +47,8 @@ class ThreadTag extends StatelessWidget {
   }
 
   (Color, Color) _colors(ThemeData theme) {
-    final cs = theme.colorScheme;
-    return switch (tag.toLowerCase()) {
-      'needs approval' => (cs.primary, cs.primaryContainer),
-      'running' || 'working' => (cs.tertiary, cs.tertiaryContainer),
-      'failed' => (Color(0xFFB3261E), cs.errorContainer),
-      'done' || 'completed' => (cs.secondary, cs.secondaryContainer),
-      'stopped' => (cs.onSurfaceVariant, cs.surfaceContainerHighest),
-      _ => (cs.onSurfaceVariant, cs.surfaceContainerHighest),
-    };
+    final style = threadStatusStyle(theme, tag);
+    return (style.color, style.background);
   }
 
   String _label(BuildContext context, String tag) {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/semantic_colors.dart';
+
 /// Color palette for syntax highlighting. Shared across all language
 /// highlighters so the look stays consistent.
 class HighlightPalette {
@@ -23,14 +25,20 @@ class HighlightPalette {
     required this.base,
   });
 
-  factory HighlightPalette.fromTheme(ThemeData theme) => HighlightPalette(
-        keyword: theme.colorScheme.primary,
-        string: const Color(0xFF4CAF50),
-        comment: theme.colorScheme.onSurfaceVariant.withAlpha(153),
-        number: const Color(0xFFFF9800),
-        type: const Color(0xFFE91E63),
-        function: const Color(0xFF2196F3),
-        variable: const Color(0xFF9C27B0),
-        base: theme.colorScheme.onSurface,
-      );
+  factory HighlightPalette.fromTheme(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final semantic =
+        theme.extension<SemanticColors>() ??
+        SemanticColors.fallback(theme.brightness);
+    return HighlightPalette(
+      keyword: scheme.primary,
+      string: semantic.success,
+      comment: scheme.onSurfaceVariant.withAlpha(153),
+      number: semantic.warning,
+      type: semantic.info,
+      function: scheme.secondary,
+      variable: scheme.tertiary,
+      base: scheme.onSurface,
+    );
+  }
 }

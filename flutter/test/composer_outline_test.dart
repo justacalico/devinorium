@@ -1,6 +1,7 @@
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/theme/semantic_colors.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,9 +80,10 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
+      final semantic = SemanticColors.fallback(Brightness.light);
       final decoration = _findOutline(tester);
       final gradient = decoration.gradient as LinearGradient;
-      expect(gradient.colors, [const Color(0xFF4CAF50), Colors.red]);
+      expect(gradient.colors, [semantic.success, Colors.red]);
     });
 
     testWidgets('plan + auto-run shows a gradient from amber to red', (
@@ -91,9 +93,10 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
+      final semantic = SemanticColors.fallback(Brightness.light);
       final decoration = _findOutline(tester);
       final gradient = decoration.gradient as LinearGradient;
-      expect(gradient.colors, [const Color(0xFFFFC107), Colors.red]);
+      expect(gradient.colors, [semantic.warning, Colors.red]);
     });
 
     testWidgets('ask + normal shows a solid green outline', (tester) async {
@@ -101,8 +104,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
+      final semantic = SemanticColors.fallback(Brightness.light);
       final decoration = _findOutline(tester);
-      expect(decoration.color, const Color(0xFF4CAF50));
+      expect(decoration.color, semantic.success);
       expect(decoration.gradient, isNull);
     });
 
@@ -111,8 +115,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
+      final semantic = SemanticColors.fallback(Brightness.light);
       final decoration = _findOutline(tester);
-      expect(decoration.color, const Color(0xFFFFC107));
+      expect(decoration.color, semantic.warning);
       expect(decoration.gradient, isNull);
     });
 
@@ -123,8 +128,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
+      final semantic = SemanticColors.fallback(Brightness.light);
       final decoration = _findOutline(tester);
-      expect(decoration.color, const Color(0xFF4CAF50));
+      expect(decoration.color, semantic.success);
       expect(decoration.gradient, isNull);
     });
 
@@ -138,8 +144,9 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
+      final semantic = SemanticColors.fallback(Brightness.light);
       final decoration = _findOutline(tester);
-      expect(decoration.color, const Color(0xFFFFC107));
+      expect(decoration.color, semantic.warning);
       expect(decoration.gradient, isNull);
     });
 

@@ -11,13 +11,23 @@ class _ConnectionStatusIcon extends StatelessWidget {
     final theme = Theme.of(context);
     final l = l10n(context);
 
+    final semantic = SemanticColors.of(context);
     final (Color color, IconData icon, String label) = switch (status) {
-      ConnectionStatus.connected =>
-        (Colors.green, Icons.cloud_done, l.connected),
-      ConnectionStatus.disconnected =>
-        (theme.colorScheme.error, Icons.cloud_off, l.disconnected),
-      ConnectionStatus.checking =>
-        (theme.colorScheme.onSurfaceVariant, Icons.sync, l.checkingConnection),
+      ConnectionStatus.connected => (
+        semantic.success,
+        Icons.cloud_done,
+        l.connected,
+      ),
+      ConnectionStatus.disconnected => (
+        theme.colorScheme.error,
+        Icons.cloud_off,
+        l.disconnected,
+      ),
+      ConnectionStatus.checking => (
+        theme.colorScheme.onSurfaceVariant,
+        Icons.sync,
+        l.checkingConnection,
+      ),
     };
 
     final Widget indicator;

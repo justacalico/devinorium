@@ -63,11 +63,13 @@ body { color: red; }
 ''';
       expect(
         () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>().having(
-          (e) => e.message,
-          'message',
-          contains(':root'),
-        )),
+        throwsA(
+          isA<ThemeParseException>().having(
+            (e) => e.message,
+            'message',
+            contains(':root'),
+          ),
+        ),
       );
     });
 
@@ -80,10 +82,7 @@ body { color: red; }
   }
 }
 ''';
-      expect(
-        () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>()),
-      );
+      expect(() => ThemeParser.parse(css), throwsA(isA<ThemeParseException>()));
     });
 
     test('rejects layout properties', () {
@@ -96,11 +95,13 @@ body { color: red; }
 ''';
       expect(
         () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>().having(
-          (e) => e.message,
-          'message',
-          contains('display'),
-        )),
+        throwsA(
+          isA<ThemeParseException>().having(
+            (e) => e.message,
+            'message',
+            contains('display'),
+          ),
+        ),
       );
     });
 
@@ -114,11 +115,13 @@ body { color: red; }
 ''';
       expect(
         () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>().having(
-          (e) => e.message,
-          'message',
-          contains('unknown theme color token'),
-        )),
+        throwsA(
+          isA<ThemeParseException>().having(
+            (e) => e.message,
+            'message',
+            contains('unknown theme color token'),
+          ),
+        ),
       );
     });
 
@@ -131,11 +134,13 @@ body { color: red; }
 ''';
       expect(
         () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>().having(
-          (e) => e.message,
-          'message',
-          contains('hex color'),
-        )),
+        throwsA(
+          isA<ThemeParseException>().having(
+            (e) => e.message,
+            'message',
+            contains('hex color'),
+          ),
+        ),
       );
     });
 
@@ -167,27 +172,72 @@ body { color: red; }
       expect(BuiltInThemes.dark.name, 'Dark');
       expect(BuiltInThemes.oled.name, 'OLED');
 
-      expect(BuiltInThemes.light.toColorScheme(Brightness.light).primary,
-          const Color(0xFF6750A4));
-      expect(BuiltInThemes.dark.toColorScheme(Brightness.dark).surface,
-          const Color(0xFF0A0A0A));
-      expect(BuiltInThemes.oled.toColorScheme(Brightness.dark).surface,
-          Colors.black);
+      expect(
+        BuiltInThemes.light.toColorScheme(Brightness.light).primary,
+        const Color(0xFF6750A4),
+      );
+      expect(
+        BuiltInThemes.dark.toColorScheme(Brightness.dark).surface,
+        const Color(0xFF0A0A0A),
+      );
+      expect(
+        BuiltInThemes.oled.toColorScheme(Brightness.dark).surface,
+        Colors.black,
+      );
     });
 
-    test('dark theme uses deep black surfaces and progressively lighter containers', () {
-      final scheme = BuiltInThemes.dark.toColorScheme(Brightness.dark);
+    test('built-in themes expose semantic colors', () {
+      final light = BuiltInThemes.light.toSemanticColors(Brightness.light);
+      expect(light.success, const Color(0xFF16A34A));
+      expect(light.warning, const Color(0xFFD97706));
+      expect(light.info, const Color(0xFF0284C7));
 
-      expect(scheme.surface, const Color(0xFF0A0A0A));
-      expect(scheme.surfaceDim, Colors.black);
-      expect(scheme.surfaceBright, const Color(0xFF161616));
-      expect(scheme.surfaceContainerLowest, Colors.black);
-      expect(scheme.surfaceContainerLow, const Color(0xFF0A0A0A));
-      expect(scheme.surfaceContainer, const Color(0xFF111111));
-      expect(scheme.surfaceContainerHigh, const Color(0xFF171717));
-      expect(scheme.surfaceContainerHighest, const Color(0xFF1E1E1E));
-      expect(scheme.onSurface, Colors.white);
+      final dark = BuiltInThemes.dark.toSemanticColors(Brightness.dark);
+      expect(dark.success, const Color(0xFF22C55E));
+      expect(dark.warning, const Color(0xFFF59E0B));
+      expect(dark.info, const Color(0xFF0EA5E9));
     });
+
+    test('toThemeData attaches the semantic colors extension', () {
+      final theme = BuiltInThemes.light.toThemeData(Brightness.light);
+      final semantic = theme.extension<SemanticColors>();
+      expect(semantic, isNotNull);
+      expect(semantic!.success, const Color(0xFF16A34A));
+    });
+
+    test('parses semantic color tokens', () {
+      const css = '''
+/* @theme */
+:root {
+  --success: #123456;
+  --on-success: #654321;
+  --warning: #ABCDEF;
+  --info: #FEDCBA;
+}
+''';
+      final theme = ThemeParser.parse(css);
+      expect(theme.colors['success'], const Color(0xFF123456));
+      expect(theme.colors['on-success'], const Color(0xFF654321));
+      expect(theme.colors['warning'], const Color(0xFFABCDEF));
+      expect(theme.colors['info'], const Color(0xFFFEDCBA));
+    });
+
+    test(
+      'dark theme uses deep black surfaces and progressively lighter containers',
+      () {
+        final scheme = BuiltInThemes.dark.toColorScheme(Brightness.dark);
+
+        expect(scheme.surface, const Color(0xFF0A0A0A));
+        expect(scheme.surfaceDim, Colors.black);
+        expect(scheme.surfaceBright, const Color(0xFF161616));
+        expect(scheme.surfaceContainerLowest, Colors.black);
+        expect(scheme.surfaceContainerLow, const Color(0xFF0A0A0A));
+        expect(scheme.surfaceContainer, const Color(0xFF111111));
+        expect(scheme.surfaceContainerHigh, const Color(0xFF171717));
+        expect(scheme.surfaceContainerHighest, const Color(0xFF1E1E1E));
+        expect(scheme.onSurface, Colors.white);
+      },
+    );
 
     test('dark theme greys remain visible on near-black surfaces', () {
       final scheme = BuiltInThemes.dark.toColorScheme(Brightness.dark);
@@ -237,11 +287,13 @@ body { color: red; }
 ''';
       expect(
         () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>().having(
-          (e) => e.message,
-          'message',
-          contains('missing property name'),
-        )),
+        throwsA(
+          isA<ThemeParseException>().having(
+            (e) => e.message,
+            'message',
+            contains('missing property name'),
+          ),
+        ),
       );
     });
 
@@ -253,10 +305,7 @@ body { color: red; }
   --primary: #6750A4;
 }
 ''';
-      expect(
-        () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>()),
-      );
+      expect(() => ThemeParser.parse(css), throwsA(isA<ThemeParseException>()));
     });
 
     test('rejects a lone @ character', () {
@@ -268,11 +317,13 @@ body { color: red; }
 ''';
       expect(
         () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>().having(
-          (e) => e.message,
-          'message',
-          contains('at-rules'),
-        )),
+        throwsA(
+          isA<ThemeParseException>().having(
+            (e) => e.message,
+            'message',
+            contains('at-rules'),
+          ),
+        ),
       );
     });
 
@@ -286,11 +337,13 @@ body { color: red; }
 ''';
       expect(
         () => ThemeParser.parse(css),
-        throwsA(isA<ThemeParseException>().having(
-          (e) => e.message,
-          'message',
-          contains('unclosed comment'),
-        )),
+        throwsA(
+          isA<ThemeParseException>().having(
+            (e) => e.message,
+            'message',
+            contains('unclosed comment'),
+          ),
+        ),
       );
     });
 

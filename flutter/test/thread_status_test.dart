@@ -1,5 +1,7 @@
 import 'package:devinorium_frontend/models/models.dart';
+import 'package:devinorium_frontend/theme/semantic_colors.dart';
 import 'package:devinorium_frontend/utils/thread_status.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -66,11 +68,7 @@ void main() {
           requestId: 'a1',
           message: 'Need input',
           questions: [
-            AskQuestion(
-              id: 'q1',
-              prompt: 'Value',
-              fieldType: 'text',
-            ),
+            AskQuestion(id: 'q1', prompt: 'Value', fieldType: 'text'),
           ],
         ),
       );
@@ -91,11 +89,7 @@ void main() {
           requestId: 'a1',
           message: 'Need input',
           questions: [
-            AskQuestion(
-              id: 'q1',
-              prompt: 'Value',
-              fieldType: 'text',
-            ),
+            AskQuestion(id: 'q1', prompt: 'Value', fieldType: 'text'),
           ],
         ),
       );
@@ -172,6 +166,27 @@ void main() {
         runStatus: 'stopped',
       );
       expect(tag, 'running');
+    });
+  });
+
+  group('threadStatusStyle', () {
+    test('maps statuses to theme-aware colors', () {
+      final theme = ThemeData.light();
+      final semantic = SemanticColors.fallback(Brightness.light);
+
+      expect(threadStatusStyle(theme, 'running').color, semantic.info);
+      expect(threadStatusStyle(theme, 'working').color, semantic.info);
+      expect(
+        threadStatusStyle(theme, 'needs approval').color,
+        semantic.warning,
+      );
+      expect(threadStatusStyle(theme, 'needs answer').color, semantic.info);
+      expect(threadStatusStyle(theme, 'failed').color, theme.colorScheme.error);
+      expect(threadStatusStyle(theme, 'done').color, semantic.success);
+      expect(
+        threadStatusStyle(theme, 'stopped').color,
+        theme.colorScheme.onSurfaceVariant,
+      );
     });
   });
 }

@@ -313,17 +313,26 @@ class _ComposerState extends State<_Composer> {
     }
   }
 
-  static Color _modeColor(ComposerMode mode) => switch (mode) {
-    ComposerMode.code => Colors.transparent,
-    ComposerMode.plan => const Color(0xFFFFC107),
-    ComposerMode.ask => const Color(0xFF4CAF50),
-  };
+  static Color _modeColor(ComposerMode mode, SemanticColors semantic) =>
+      switch (mode) {
+        ComposerMode.code => Colors.transparent,
+        ComposerMode.plan => semantic.warning,
+        ComposerMode.ask => semantic.success,
+      };
 
-  static Color? _badgeBackground(ComposerMode mode) => switch (mode) {
-    ComposerMode.code => null,
-    ComposerMode.plan => const Color(0xFFFFECB3),
-    ComposerMode.ask => const Color(0xFFC8E6C9),
-  };
+  static Color? _badgeBackground(ComposerMode mode, SemanticColors semantic) =>
+      switch (mode) {
+        ComposerMode.code => null,
+        ComposerMode.plan => semantic.warningContainer,
+        ComposerMode.ask => semantic.successContainer,
+      };
+
+  static Color? _badgeForeground(ComposerMode mode, SemanticColors semantic) =>
+      switch (mode) {
+        ComposerMode.code => null,
+        ComposerMode.plan => semantic.onWarningContainer,
+        ComposerMode.ask => semantic.onSuccessContainer,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -347,7 +356,8 @@ class _ComposerState extends State<_Composer> {
         final isSending = model.sending;
         final hasActiveThread = model.activeThreadId != null;
         final mode = model.composerMode;
-        final modeColor = _modeColor(mode);
+        final semantic = SemanticColors.of(context);
+        final modeColor = _modeColor(mode, semantic);
         final showBadge = mode != ComposerMode.code;
 
         final isBypass = model.selectedPermission == 'bypass';
@@ -496,7 +506,8 @@ class _ComposerState extends State<_Composer> {
                                         // Once a provider session exists it
                                         // cannot be resumed by another
                                         // provider, so the picker locks.
-                                        enabled: hasActiveThread &&
+                                        enabled:
+                                            hasActiveThread &&
                                             !isSending &&
                                             !model.providerLocked,
                                         onChanged: (id) async {
@@ -539,9 +550,11 @@ class _ComposerState extends State<_Composer> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.center,
                                           children: [
-                                            for (var i = 0;
-                                                i < dropdowns.length;
-                                                i++) ...[
+                                            for (
+                                              var i = 0;
+                                              i < dropdowns.length;
+                                              i++
+                                            ) ...[
                                               if (i > 0)
                                                 const SizedBox(width: 8),
                                               dropdowns[i],
@@ -606,14 +619,14 @@ class _ComposerState extends State<_Composer> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: _badgeBackground(mode),
+                        color: _badgeBackground(mode, semantic),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: modeColor),
                       ),
                       child: Text(
                         mode.label,
-                        style: const TextStyle(
-                          color: Colors.black87,
+                        style: TextStyle(
+                          color: _badgeForeground(mode, semantic),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),

@@ -11,6 +11,7 @@ import '../models/models.dart';
 import '../servers/server_profile.dart';
 import '../services/window_actions.dart';
 import '../state/app_state.dart';
+import '../theme/semantic_colors.dart';
 import '../utils/thread_status.dart';
 import '../widgets/owner_badge.dart';
 import 'files_panel.dart';
@@ -52,8 +53,7 @@ bool _isDesktop(BuildContext context) {
   return switch (Theme.of(context).platform) {
     TargetPlatform.linux ||
     TargetPlatform.macOS ||
-    TargetPlatform.windows =>
-      true,
+    TargetPlatform.windows => true,
     _ => false,
   };
 }
@@ -95,27 +95,14 @@ String _timeAgo(String iso, AppLocalizations l) {
 
   if (tag == null) return null;
 
+  final style = threadStatusStyle(Theme.of(context), tag);
   return switch (tag) {
-    'running' || 'working' => (
-        color: const Color(0xFF0EA5E9),
-        label: l.threadStatusWorking,
-      ),
-    'failed' => (
-        color: const Color(0xFFEF4444),
-        label: l.threadStatusFailed,
-      ),
-    'needs approval' => (
-        color: const Color(0xFFF59E0B),
-        label: l.threadStatusApproval,
-      ),
-    'needs answer' => (
-        color: const Color(0xFF818CF8),
-        label: l.threadStatusInput,
-      ),
-    _ => (
-        color: const Color(0xFF22C55E),
-        label: l.threadStatusDone,
-      ),
+    'running' ||
+    'working' => (color: style.color, label: l.threadStatusWorking),
+    'failed' => (color: style.color, label: l.threadStatusFailed),
+    'needs approval' => (color: style.color, label: l.threadStatusApproval),
+    'needs answer' => (color: style.color, label: l.threadStatusInput),
+    _ => (color: style.color, label: l.threadStatusDone),
   };
 }
 
@@ -165,8 +152,8 @@ class _SidebarState extends State<Sidebar> {
 
     // macOS keeps ⌘K because ⌘H collides with the system Hide shortcut.
     final platform = Theme.of(context).platform;
-    final isApple = platform == TargetPlatform.macOS ||
-        platform == TargetPlatform.iOS;
+    final isApple =
+        platform == TargetPlatform.macOS || platform == TargetPlatform.iOS;
 
     final isShift = HardwareKeyboard.instance.isShiftPressed;
     final isAlt = HardwareKeyboard.instance.isAltPressed;
@@ -189,8 +176,8 @@ class _SidebarState extends State<Sidebar> {
 
     final focus = FocusManager.instance.primaryFocus;
     if (focus?.context != null) {
-      final editable =
-          focus!.context!.findAncestorWidgetOfExactType<EditableText>();
+      final editable = focus!.context!
+          .findAncestorWidgetOfExactType<EditableText>();
       if (editable != null) return false;
     }
 
@@ -204,52 +191,56 @@ class _SidebarState extends State<Sidebar> {
 
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
-      child: Selector<AppState,
-          ({MainPage page, bool filesPanelOpen, User? user, bool hasServer})>(
-        selector: (_, state) => (
-          page: state.page,
-          filesPanelOpen: state.filesPanelOpen,
-          user: state.user,
-          hasServer: state.multiServerState.hasAnyServer,
-        ),
-        builder: (context, model, _) {
-          final user = model.user;
-          final username = user?.username ?? '';
-          final avatar = username.isNotEmpty ? username[0].toUpperCase() : '?';
-          final isSettings = model.page == MainPage.settings;
-          final filesOpen = !isSettings && model.filesPanelOpen;
+      child:
+          Selector<
+            AppState,
+            ({MainPage page, bool filesPanelOpen, User? user, bool hasServer})
+          >(
+            selector: (_, state) => (
+              page: state.page,
+              filesPanelOpen: state.filesPanelOpen,
+              user: state.user,
+              hasServer: state.multiServerState.hasAnyServer,
+            ),
+            builder: (context, model, _) {
+              final user = model.user;
+              final username = user?.username ?? '';
+              final avatar = username.isNotEmpty
+                  ? username[0].toUpperCase()
+                  : '?';
+              final isSettings = model.page == MainPage.settings;
+              final filesOpen = !isSettings && model.filesPanelOpen;
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (!isSettings) const _AppTitle(),
-              if (isSettings) const _SettingsHeader(),
-              if (!isSettings) const _ModeSwitch(),
-              const _ServerSwitcher(),
-              if (!isSettings && !filesOpen) ...[
-                _SearchField(
-                  controller: _searchController,
-                  focusNode: _searchFocus,
-                ),
-                _ProjectsHeader(),
-              ],
-              Expanded(
-                child: isSettings
-                    ? const _SettingsNav()
-                    : filesOpen
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isSettings) const _AppTitle(),
+                  if (isSettings) const _SettingsHeader(),
+                  if (!isSettings) const _ModeSwitch(),
+                  const _ServerSwitcher(),
+                  if (!isSettings && !filesOpen) ...[
+                    _SearchField(
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                    ),
+                    _ProjectsHeader(),
+                  ],
+                  Expanded(
+                    child: isSettings
+                        ? const _SettingsNav()
+                        : filesOpen
                         ? const FilesPanel()
-                        : _ProjectThreadList(searchQuery: _searchController.text),
-              ),
-              if (model.hasServer)
-                _UserChip(
-                  username: username,
-                  avatar: avatar,
-                ),
-              const _ActivityBar(),
-            ],
-          );
-        },
-      ),
+                        : _ProjectThreadList(
+                            searchQuery: _searchController.text,
+                          ),
+                  ),
+                  if (model.hasServer)
+                    _UserChip(username: username, avatar: avatar),
+                  const _ActivityBar(),
+                ],
+              );
+            },
+          ),
     );
   }
 }
@@ -324,8 +315,7 @@ class _ActivityIcon extends StatelessWidget {
       onPressed: onPressed,
       visualDensity: VisualDensity.compact,
       style: IconButton.styleFrom(
-        backgroundColor:
-            active ? theme.colorScheme.surfaceContainerHigh : null,
+        backgroundColor: active ? theme.colorScheme.surfaceContainerHigh : null,
         foregroundColor: active
             ? theme.colorScheme.onSurface
             : theme.colorScheme.onSurfaceVariant,
@@ -362,10 +352,7 @@ class _AppTitleState extends State<_AppTitle> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          if (isDesktop) ...[
-            const WindowControls(),
-            const SizedBox(width: 12),
-          ],
+          if (isDesktop) ...[const WindowControls(), const SizedBox(width: 12)],
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -445,7 +432,10 @@ class _ModeSwitch extends StatelessWidget {
                     backgroundColor: isAgents
                         ? theme.colorScheme.surfaceContainerHigh
                         : Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                   icon: const Icon(Icons.chat_bubble_outline, size: 18),
@@ -460,7 +450,10 @@ class _ModeSwitch extends StatelessWidget {
                     backgroundColor: !isAgents
                         ? theme.colorScheme.surfaceContainerHigh
                         : Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                   icon: const Icon(Icons.code, size: 18),
@@ -491,10 +484,7 @@ class _SettingsHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          if (isDesktop) ...[
-            const WindowControls(),
-            const SizedBox(width: 12),
-          ],
+          if (isDesktop) ...[const WindowControls(), const SizedBox(width: 12)],
           IconButton(
             onPressed: () {
               Scaffold.of(context).closeDrawer();
@@ -512,8 +502,9 @@ class _SettingsHeader extends StatelessWidget {
               onDoubleTap: toggleMaximize,
               child: Text(
                 l.settings,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
@@ -574,8 +565,10 @@ class _SearchField extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(4),
@@ -684,8 +677,9 @@ class _UserChip extends StatelessWidget {
                 child: Text(
                   username,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w500),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
               const _ConnectionStatusIcon(),
