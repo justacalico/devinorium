@@ -2757,6 +2757,24 @@ void main() {
       },
     );
 
+    test('loadSettingsData does nothing without a server', () async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      await state.loadSettingsData();
+      expect(state.globalError, isEmpty);
+      expect(state.gitConnections, isEmpty);
+      expect(state.cloneRoot, isNull);
+    });
+
     test('createUser reloads users', () async {
       final state = AppState(
         api: ApiService(

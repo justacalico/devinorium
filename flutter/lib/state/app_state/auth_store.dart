@@ -177,6 +177,7 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> loadSettingsData() async {
+    if (multiServerState.activeApi == null) return;
     final futures = <Future<void>>[
       loadGitConnections(),
       loadCloneRoot(),

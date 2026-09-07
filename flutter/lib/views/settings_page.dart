@@ -52,9 +52,13 @@ class _SettingsPageState extends State<SettingsPage> {
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({bool isOwner, int settingsTopicIndex})>(
-      selector: (_, s) =>
-          (isOwner: s.isOwner, settingsTopicIndex: s.settingsTopicIndex),
+    return Selector<AppState,
+        ({bool isOwner, int settingsTopicIndex, bool hasServer})>(
+      selector: (_, s) => (
+        isOwner: s.isOwner,
+        settingsTopicIndex: s.settingsTopicIndex,
+        hasServer: s.multiServerState.hasAnyServer,
+      ),
       builder: (context, model, _) {
         final sections = [
           _AccountSection(state: state),
@@ -66,7 +70,11 @@ class _SettingsPageState extends State<SettingsPage> {
           _AboutSection(state: state),
           const _ServersSection(),
         ];
-        final index = model.settingsTopicIndex.clamp(0, sections.length - 1);
+        var index = model.settingsTopicIndex.clamp(0, sections.length - 1);
+        final serversIndex = sections.length - 1;
+        if (!model.hasServer && index != 2 && index != serversIndex) {
+          index = serversIndex;
+        }
 
         return Scaffold(
           appBar: AppBar(
