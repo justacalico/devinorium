@@ -147,7 +147,6 @@ openlyst-release-trigger:
       curl -sf --request POST \
         --form "token=$OPENLYST_TRIGGER_TOKEN" \
         --form "ref=main" \
-        --form "variables[DEVINORIUM_RELEASE_TAG]=$CI_COMMIT_TAG" \
         "${CI_SERVER_URL}/api/v4/projects/75502294/trigger/pipeline" > /dev/null
 
 github-release-sync:
