@@ -33,6 +33,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aboutSupport => 'Support';
 
   @override
+  String get aboutPrivacyPolicy => 'Privacy policy';
+
+  @override
   String aboutOpenLinkFailed(String url) {
     return 'Could not open $url';
   }

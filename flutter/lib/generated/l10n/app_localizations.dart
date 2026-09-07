@@ -142,6 +142,12 @@ abstract class AppLocalizations {
   /// **'Support'**
   String get aboutSupport;
 
+  /// Privacy policy link label on the About page
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy policy'**
+  String get aboutPrivacyPolicy;
+
   /// Error shown when an About page link cannot be opened
   ///
   /// In en, this message translates to:

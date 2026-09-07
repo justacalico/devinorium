@@ -32,6 +32,10 @@
   "@aboutSupport": {
     "description": "Support link label on the About page"
   },
+  "aboutPrivacyPolicy": "Privacy policy",
+  "@aboutPrivacyPolicy": {
+    "description": "Privacy policy link label on the About page"
+  },
   "aboutOpenLinkFailed": "Could not open {url}",
   "@aboutOpenLinkFailed": {
     "description": "Error shown when an About page link cannot be opened",

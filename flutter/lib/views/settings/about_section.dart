@@ -4,6 +4,8 @@ const _license = 'AGPL-3.0-only';
 
 class _AboutLinks {
   static const repository = 'https://gitlab.com/HttpAnimations/devinorium';
+  static const privacyPolicy =
+      'https://gitlab.com/HttpAnimations/devinorium/-/blob/main/privacy_policy.md';
   static const support =
       'https://gitlab.com/HttpAnimations/devinorium/-/work_items';
   static const releases = VersionChecker.releasesUrl;
@@ -140,6 +142,11 @@ class _AboutSectionState extends State<_AboutSection> {
           icon: Icons.support,
           label: l.aboutSupport,
           url: _AboutLinks.support,
+        ),
+        _AboutLinkTile(
+          icon: Icons.privacy_tip,
+          label: l.aboutPrivacyPolicy,
+          url: _AboutLinks.privacyPolicy,
         ),
         _AboutLinkTile(
           icon: Icons.new_releases_outlined,
