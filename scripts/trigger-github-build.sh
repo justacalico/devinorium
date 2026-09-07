@@ -11,12 +11,14 @@ WORKFLOW="build.yml"
 REF="${1:-main}"
 BUILD_ALL="${2:-true}"
 CREATE_RELEASE="${3:-false}"
-PUSH_REF="${4:-}"
+PUSH_REF="${4:-HEAD}"
 
 if [ -n "$PUSH_REF" ]; then
   if [ "$PUSH_REF" = "HEAD" ] && [ -n "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}" ]; then
     if [ -n "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-}" ]; then
       PUSH_REF="$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA"
+    elif [ -n "${CI_COMMIT_SHA:-}" ]; then
+      PUSH_REF="$CI_COMMIT_SHA"
     else
       git remote add origin "https://gitlab.com/${CI_PROJECT_PATH}.git" 2>/dev/null || true
       git remote update origin 2>/dev/null || true
