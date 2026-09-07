@@ -210,6 +210,7 @@ void main() {
 
   testWidgets('SettingsPage shows username and TOTP status', (tester) async {
     final state = AppState.test(
+      api: _FakeApiService(),
       user: User(
         id: 1,
         username: 'owner',
@@ -358,7 +359,15 @@ void main() {
   });
 
   testWidgets('Provider card shows installed version', (tester) async {
+    final api = _FakeApiService()
+      ..providerVersionToReturn = const ProviderVersion(
+        providerId: 'devin-cli',
+        providerName: 'Devin CLI',
+        installedVersion: '3000.6.14',
+        latestVersion: '3000.6.14',
+      );
     final state = AppState.test(
+      api: api,
       user: User(
         id: 1,
         username: 'owner',
@@ -369,12 +378,6 @@ void main() {
         providerCommand: 'devin',
       ),
       providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
-      providerVersion: const ProviderVersion(
-        providerId: 'devin-cli',
-        providerName: 'Devin CLI',
-        installedVersion: '3000.6.14',
-        latestVersion: '3000.6.14',
-      ),
     );
 
     await tester.pumpWidget(_buildWithState(state));
@@ -389,7 +392,16 @@ void main() {
   });
 
   testWidgets('Provider card flags an available update', (tester) async {
+    final api = _FakeApiService()
+      ..providerVersionToReturn = const ProviderVersion(
+        providerId: 'devin-cli',
+        providerName: 'Devin CLI',
+        installedVersion: '3000.6.13',
+        latestVersion: '3000.6.14',
+        updateAvailable: true,
+      );
     final state = AppState.test(
+      api: api,
       user: User(
         id: 1,
         username: 'owner',
@@ -400,13 +412,6 @@ void main() {
         providerCommand: 'devin',
       ),
       providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
-      providerVersion: const ProviderVersion(
-        providerId: 'devin-cli',
-        providerName: 'Devin CLI',
-        installedVersion: '3000.6.13',
-        latestVersion: '3000.6.14',
-        updateAvailable: true,
-      ),
     );
 
     await tester.pumpWidget(_buildWithState(state));
@@ -423,6 +428,7 @@ void main() {
   testWidgets('Provider card shows placeholder when version is unknown',
       (tester) async {
     final state = AppState.test(
+      api: _FakeApiService(),
       user: User(
         id: 1,
         username: 'owner',
@@ -619,6 +625,28 @@ void main() {
 
     // With 7 sections for non-owners, index 10 clamps to 6 (Servers).
     expect(find.text('Servers'), findsOneWidget);
+  });
+
+  testWidgets('Settings redirects to Servers when no server is configured', (
+    tester,
+  ) async {
+    final state = AppState.test(settingsTopicIndex: 0);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Account (index 0) is unavailable without a server, so the page falls
+    // back to the Servers section.
+    expect(find.text('No servers configured.'), findsOneWidget);
+
+    // Personalization and About stay reachable without a server.
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+    expect(find.text('Theme'), findsOneWidget);
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+    expect(find.text('About'), findsWidgets);
   });
 
   testWidgets('Personalization tab has theme selector', (tester) async {

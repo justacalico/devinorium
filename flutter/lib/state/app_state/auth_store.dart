@@ -8,10 +8,6 @@ mixin AuthStore on AppStateBase {
   @override
   List<User> _users = [];
   @override
-  String _loginError = '';
-  @override
-  bool _showTotpField = false;
-  @override
   String _totpSecret = '';
   @override
   User? get user => _user;
@@ -20,22 +16,7 @@ mixin AuthStore on AppStateBase {
   @override
   bool get isOwner => _user?.isOwner ?? false;
   @override
-  String get loginError => _loginError;
-  @override
-  bool get showTotpField => _showTotpField;
-  @override
   String get totpSecret => _totpSecret;
-  @override
-  void setLoginError(String e) {
-    _loginError = e;
-    notifyListeners();
-  }
-
-  @override
-  void setShowTotpField(bool v) {
-    _showTotpField = v;
-    notifyListeners();
-  }
 
   @override
   Future<void> bootstrap() async {
@@ -50,7 +31,7 @@ mixin AuthStore on AppStateBase {
       }
       final active = multiServerState.activeApi;
       if (active == null || !(await active.client.isConfigured)) {
-        _view = AppView.login;
+        _view = AppView.app;
         notifyListeners();
         return;
       }
@@ -58,44 +39,11 @@ mixin AuthStore on AppStateBase {
     } catch (e) {
       if (e is ApiException && e.statusCode == 401) {
         await multiServerState.clearActiveToken();
+      } else {
+        _globalError = '$e';
       }
-      _view = AppView.login;
-      notifyListeners();
-    }
-  }
-
-  @override
-  Future<void> doLogin({
-    required String serverUrl,
-    required String username,
-    required String password,
-    String? totp,
-  }) async {
-    _loginError = '';
-    notifyListeners();
-    try {
-      final profile = await _performServerLogin(
-        serverUrl: serverUrl,
-        username: username,
-        password: password,
-        totp: totp,
-      );
-      if (profile == null) {
-        _view = AppView.login;
-        _showTotpField = true;
-        _loginError = appL10n.totpPrompt;
-        notifyListeners();
-        return;
-      }
-      await multiServerState.addProfile(
-        profile.copyWith(isPrimary: true),
-        setActive: true,
-        api: _apiForNewProfile(),
-      );
-      await _loadUserAndData();
-    } catch (e) {
-      _view = AppView.login;
-      _loginError = '$e';
+      await _resetServerState();
+      _view = AppView.app;
       notifyListeners();
     }
   }
@@ -117,15 +65,21 @@ mixin AuthStore on AppStateBase {
         totp: totp,
       );
       if (profile == null) {
-        _globalError = appL10n.totpPrompt;
+        final prompt = appL10n.totpPrompt;
         notifyListeners();
-        return _globalError;
+        return prompt;
       }
+      final makeActive = multiServerState.activeServerId == null;
       await multiServerState.addProfile(
-        profile.copyWith(isPrimary: false),
-        setActive: false,
+        profile.copyWith(isPrimary: makeActive),
+        setActive: makeActive,
         api: _apiForNewProfile(),
       );
+      if (makeActive) {
+        _view = AppView.app;
+        notifyListeners();
+        await _loadUserAndData();
+      }
       _globalError = '';
       notifyListeners();
       return null;
@@ -223,6 +177,7 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> loadSettingsData() async {
+    if (multiServerState.activeApi == null) return;
     final futures = <Future<void>>[
       loadGitConnections(),
       loadCloneRoot(),
@@ -274,11 +229,19 @@ mixin AuthStore on AppStateBase {
     try {
       await api.logout();
     } catch (_) {}
-    await multiServerState.clearActiveToken();
-    await _resetServerState();
+    // Sign-out removes the server profile so no stale unauthenticated
+    // connection is left behind. On web the implicit same-origin profile is
+    // kept since it is recreated from the registry anyway.
+    final activeId = multiServerState.activeServerId;
+    if (!kIsWeb && activeId != null) {
+      await removeServer(activeId);
+    } else {
+      await multiServerState.clearActiveToken();
+      await _resetServerState();
+    }
     _settingsTopicIndex = 0;
     _userMenuOpen = false;
-    _view = AppView.login;
+    _view = AppView.app;
     notifyListeners();
   }
 
@@ -288,14 +251,13 @@ mixin AuthStore on AppStateBase {
     _switchingServer = true;
     stopHealthChecks();
     stopGitRefresh();
-    await _resetServerState();
     try {
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
+      await _resetServerState();
       await _loadUserAndData();
     } catch (e) {
-      _view = AppView.login;
-      _loginError = '$e';
+      _globalError = '$e';
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -311,20 +273,19 @@ mixin AuthStore on AppStateBase {
       if (wasActive) {
         stopHealthChecks();
         stopGitRefresh();
-        await _resetServerState();
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
+        await _resetServerState();
         if (multiServerState.activeApi != null) {
           await _loadUserAndData();
         } else {
-          _view = AppView.login;
+          _view = AppView.app;
           notifyListeners();
         }
       }
     } catch (e) {
-      _view = AppView.login;
-      _loginError = '$e';
+      _globalError = '$e';
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -374,8 +335,9 @@ mixin AuthStore on AppStateBase {
     if (user == null) return;
     await saveProvider(
       providerId: user.providerId,
-      providerCommand:
-          providerId == user.providerId ? command : user.providerCommand,
+      providerCommand: providerId == user.providerId
+          ? command
+          : user.providerCommand,
       providerCommands: {providerId: command},
     );
   }
@@ -438,8 +400,6 @@ mixin AuthStore on AppStateBase {
   }
 
   Future<void> _loadUserAndData() async {
-    _showTotpField = false;
-    _loginError = '';
     _user = await api.me();
     await _loadPlanOverlayState();
     await _loadComposerSelections();

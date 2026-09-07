@@ -15,8 +15,8 @@ void main() {
       var calls = 0;
       state.addListener(() => calls++);
 
-      state.setView(AppView.login);
-      expect(state.view, AppView.login);
+      state.setView(AppView.app);
+      expect(state.view, AppView.app);
 
       state.setPage(MainPage.settings);
       expect(state.page, MainPage.settings);
@@ -64,12 +64,6 @@ void main() {
       expect(state.user, user);
       expect(state.users, [user]);
       expect(state.isOwner, true);
-
-      state.setLoginError('bad');
-      expect(state.loginError, 'bad');
-
-      state.setShowTotpField(true);
-      expect(state.showTotpField, true);
     });
   });
 
@@ -127,11 +121,7 @@ void main() {
       final state = AppState.test();
       addTearDown(state.dispose);
 
-      final file = (
-        filename: 'a.txt',
-        mime: 'text/plain',
-        bytes: Uint8List(0),
-      );
+      final file = (filename: 'a.txt', mime: 'text/plain', bytes: Uint8List(0));
 
       state.addAttachments([file]);
       expect(state.attachments.length, 1);

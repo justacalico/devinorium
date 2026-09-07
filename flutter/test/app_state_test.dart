@@ -263,238 +263,172 @@ void main() {
       expect(state.selectedPermission, 'bypass');
     });
 
-    test('bootstrap falls back to user provider and first model when persisted provider is unknown', () async {
-      SharedPreferences.setMockInitialValues({
-        'devinorium_selected_provider': 'unknown',
-        'devinorium_selected_model': 'stale-model',
-        'devinorium_selected_permission': 'bypass',
-      });
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {
-              'id': 1,
-              'username': 'owner',
-              'role': 'user',
-              'is_owner': true,
-              'totp_enabled': false,
-              'provider_id': 'devin-cli',
-              'provider_command': 'devin',
-            }),
-            _json(200, [
-              {'id': 'devin-cli', 'name': 'Devin CLI'},
-            ]),
-            _json(200, [
-              {'id': 'glm-5-2', 'label': 'GLM'},
-            ]),
-            _json(200, [
-              {
+    test(
+      'bootstrap falls back to user provider and first model when persisted provider is unknown',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'devinorium_selected_provider': 'unknown',
+          'devinorium_selected_model': 'stale-model',
+          'devinorium_selected_permission': 'bypass',
+        });
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
                 'id': 1,
-                'name': 'p',
-                'path': '/x',
-                'created_at': '',
-                'updated_at': '',
-              },
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'totp_enabled': false,
+                'provider_id': 'devin-cli',
+                'provider_command': 'devin',
+              }),
+              _json(200, [
+                {'id': 'devin-cli', 'name': 'Devin CLI'},
+              ]),
+              _json(200, [
+                {'id': 'glm-5-2', 'label': 'GLM'},
+              ]),
+              _json(200, [
+                {
+                  'id': 1,
+                  'name': 'p',
+                  'path': '/x',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+              ]),
+              _json(200, []),
+              _json(200, []),
             ]),
-            _json(200, []),
-            _json(200, []),
-          ]),
-        ),
-      );
+          ),
+        );
 
-      await state.bootstrap();
-      expect(state.view, AppView.app);
-      expect(state.selectedProvider, 'devin-cli');
-      expect(state.selectedModel, 'glm-5-2');
-      expect(state.selectedPermission, 'bypass');
-    });
+        await state.bootstrap();
+        expect(state.view, AppView.app);
+        expect(state.selectedProvider, 'devin-cli');
+        expect(state.selectedModel, 'glm-5-2');
+        expect(state.selectedPermission, 'bypass');
+      },
+    );
 
-    test('bootstrap falls back to first provider when user provider is also unknown', () async {
-      SharedPreferences.setMockInitialValues({
-        'devinorium_selected_provider': 'unknown',
-        'devinorium_selected_model': 'stale',
-      });
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {
-              'id': 1,
-              'username': 'owner',
-              'role': 'user',
-              'is_owner': true,
-              'totp_enabled': false,
-              'provider_id': 'missing',
-              'provider_command': 'devin',
-            }),
-            _json(200, [
-              {'id': 'opencode', 'name': 'OpenCode'},
-            ]),
-            _json(200, [
-              {'id': 'oc-m2', 'label': 'OpenCode 2', 'cost_tier': 'free', 'family': 'OpenCode'},
-            ]),
-            _json(200, [
-              {
+    test(
+      'bootstrap falls back to first provider when user provider is also unknown',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'devinorium_selected_provider': 'unknown',
+          'devinorium_selected_model': 'stale',
+        });
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
                 'id': 1,
-                'name': 'p',
-                'path': '/x',
-                'created_at': '',
-                'updated_at': '',
-              },
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'totp_enabled': false,
+                'provider_id': 'missing',
+                'provider_command': 'devin',
+              }),
+              _json(200, [
+                {'id': 'opencode', 'name': 'OpenCode'},
+              ]),
+              _json(200, [
+                {
+                  'id': 'oc-m2',
+                  'label': 'OpenCode 2',
+                  'cost_tier': 'free',
+                  'family': 'OpenCode',
+                },
+              ]),
+              _json(200, [
+                {
+                  'id': 1,
+                  'name': 'p',
+                  'path': '/x',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+              ]),
+              _json(200, []),
+              _json(200, []),
             ]),
-            _json(200, []),
-            _json(200, []),
-          ]),
-        ),
-      );
+          ),
+        );
 
-      await state.bootstrap();
-      expect(state.view, AppView.app);
-      expect(state.selectedProvider, 'opencode');
-      expect(state.selectedModel, 'oc-m2');
-    });
+        await state.bootstrap();
+        expect(state.view, AppView.app);
+        expect(state.selectedProvider, 'opencode');
+        expect(state.selectedModel, 'oc-m2');
+      },
+    );
 
-    test('bootstrap falls back to normal permission when persisted permission is invalid', () async {
-      SharedPreferences.setMockInitialValues({
-        'devinorium_selected_provider': 'devin-cli',
-        'devinorium_selected_model': 'glm-5-2',
-        'devinorium_selected_permission': 'owner',
-      });
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {
-              'id': 1,
-              'username': 'owner',
-              'role': 'user',
-              'is_owner': true,
-              'totp_enabled': false,
-              'provider_id': 'devin-cli',
-              'provider_command': 'devin',
-            }),
-            _json(200, [
-              {'id': 'devin-cli', 'name': 'Devin CLI'},
-            ]),
-            _json(200, [
-              {'id': 'glm-5-2', 'label': 'GLM'},
-            ]),
-            _json(200, [
-              {
+    test(
+      'bootstrap falls back to normal permission when persisted permission is invalid',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'devinorium_selected_provider': 'devin-cli',
+          'devinorium_selected_model': 'glm-5-2',
+          'devinorium_selected_permission': 'owner',
+        });
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
                 'id': 1,
-                'name': 'p',
-                'path': '/x',
-                'created_at': '',
-                'updated_at': '',
-              },
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'totp_enabled': false,
+                'provider_id': 'devin-cli',
+                'provider_command': 'devin',
+              }),
+              _json(200, [
+                {'id': 'devin-cli', 'name': 'Devin CLI'},
+              ]),
+              _json(200, [
+                {'id': 'glm-5-2', 'label': 'GLM'},
+              ]),
+              _json(200, [
+                {
+                  'id': 1,
+                  'name': 'p',
+                  'path': '/x',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+              ]),
+              _json(200, []),
+              _json(200, []),
             ]),
-            _json(200, []),
-            _json(200, []),
-          ]),
-        ),
-      );
+          ),
+        );
 
-      await state.bootstrap();
-      expect(state.view, AppView.app);
-      expect(state.selectedProvider, 'devin-cli');
-      expect(state.selectedModel, 'glm-5-2');
-      expect(state.selectedPermission, 'normal');
-    });
+        await state.bootstrap();
+        expect(state.view, AppView.app);
+        expect(state.selectedProvider, 'devin-cli');
+        expect(state.selectedModel, 'glm-5-2');
+        expect(state.selectedPermission, 'normal');
+      },
+    );
 
-    test('bootstrap falls back to login on error', () async {
+    test('bootstrap falls back to app on error', () async {
       final state = AppState(
         api: ApiService(
           client: _clientFor([http.Response('unauthorized', 401)]),
         ),
       );
       await state.bootstrap();
-      expect(state.view, AppView.login);
-    });
-
-    test('doLogin navigates to app and loads data', () async {
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {
-              'ok': true,
-              'totp_required': false,
-              'username': 'owner',
-            }),
-            _json(200, {
-              'id': 1,
-              'username': 'owner',
-              'role': 'user',
-              'is_owner': true,
-              'totp_enabled': false,
-              'provider_id': 'devin-cli',
-              'provider_command': 'devin',
-            }),
-            _json(200, [
-              {'id': 'devin-cli', 'name': 'Devin CLI'},
-            ]),
-            _json(200, [
-              {'id': 'glm-5-2', 'label': 'GLM'},
-            ]),
-            _json(200, [
-              {
-                'id': 1,
-                'name': 'p',
-                'path': '/x',
-                'created_at': '',
-                'updated_at': '',
-              },
-            ]),
-            _json(200, []),
-            _json(200, []),
-          ]),
-        ),
-      );
-
-      await state.doLogin(
-        serverUrl: 'http://localhost',
-        username: 'owner',
-        password: 'pw',
-      );
       expect(state.view, AppView.app);
-      expect(state.user?.username, 'owner');
-      expect(state.loginError, isEmpty);
     });
 
-    test('doLogin shows TOTP field when required', () async {
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {
-              'ok': true,
-              'totp_required': true,
-              'username': 'owner',
-            }),
-          ]),
-        ),
-      );
-      await state.doLogin(
-        serverUrl: 'http://localhost',
-        username: 'owner',
-        password: 'pw',
-      );
-      expect(state.showTotpField, isTrue);
-      expect(state.view, AppView.login);
-      expect(state.loginError, contains('TOTP'));
-    });
-
-    test('doLogin sets error on failure', () async {
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(401, {'error': 'bad password'}),
-          ]),
-        ),
-      );
-      await state.doLogin(
-        serverUrl: 'http://localhost',
-        username: 'owner',
-        password: 'pw',
-      );
-      expect(state.view, AppView.login);
-      expect(state.loginError, contains('bad password'));
+    test('bootstrap lands on app when no server is configured', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState();
+      await state.bootstrap();
+      expect(state.view, AppView.app);
+      expect(state.user, isNull);
     });
 
     test('logout clears user state', () async {
@@ -510,11 +444,13 @@ void main() {
       state.setComposerText('hello');
       state.setSettingsTopicIndex(2);
       await state.logout();
-      expect(state.view, AppView.login);
+      expect(state.view, AppView.app);
       expect(state.user, isNull);
       expect(state.composerText, isEmpty);
       expect(state.projects, isEmpty);
       expect(state.settingsTopicIndex, 0);
+      expect(state.serverProfiles, isEmpty);
+      expect(state.activeServerId, isNull);
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('devinorium_selected_provider'), isNull);
@@ -568,18 +504,18 @@ void main() {
         password: 'pw',
       );
       expect(result, isNotNull);
-      expect(state.globalError, isNotEmpty);
+      expect(state.globalError, isEmpty);
     });
 
-    test('switchServer goes to login when the server id is unknown', () async {
+    test('switchServer falls back to app view when the server id is unknown', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(
         api: ApiService(client: _clientFor([_json(200, {})])),
       );
       state.setView(AppView.app);
       await state.switchServer('missing');
-      expect(state.view, AppView.login);
-      expect(state.loginError, contains('server not found'));
+      expect(state.view, AppView.app);
+      expect(state.globalError, contains('server not found'));
     });
 
     test(
@@ -619,7 +555,7 @@ void main() {
     );
 
     test(
-      'removeServer for the active profile goes to login when none remain',
+      'removeServer for the active profile falls back to app view when none remain',
       () async {
         SharedPreferences.setMockInitialValues({});
         final state = AppState(
@@ -631,7 +567,7 @@ void main() {
         await state.removeServer('default');
         expect(state.activeServerId, isNull);
         expect(state.serverProfiles, isEmpty);
-        expect(state.view, AppView.login);
+        expect(state.view, AppView.app);
         expect(state.composerText, '');
       },
     );
@@ -953,21 +889,24 @@ void main() {
       },
     );
 
-    test('checkConnection sets connected and serverVersion on success', () async {
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {'status': 'ok'}),
-            _json(200, {'version': '0.31.0'}),
-          ]),
-        ),
-      );
-      final base = AppState.test(api: state.api);
-      base.setView(AppView.app);
-      await base.checkConnection();
-      expect(base.connectionStatus, ConnectionStatus.connected);
-      expect(base.serverVersion, '0.31.0');
-    });
+    test(
+      'checkConnection sets connected and serverVersion on success',
+      () async {
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {'status': 'ok'}),
+              _json(200, {'version': '0.31.0'}),
+            ]),
+          ),
+        );
+        final base = AppState.test(api: state.api);
+        base.setView(AppView.app);
+        await base.checkConnection();
+        expect(base.connectionStatus, ConnectionStatus.connected);
+        expect(base.serverVersion, '0.31.0');
+      },
+    );
 
     test('checkConnection sets disconnected on failure', () async {
       final state = AppState(
@@ -979,35 +918,38 @@ void main() {
       expect(base.connectionStatus, ConnectionStatus.disconnected);
     });
 
-    test('checkConnection keeps connected when version endpoint fails', () async {
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {'status': 'ok'}),
-            http.Response('', 500),
-          ]),
-        ),
-      );
-      final base = AppState.test(api: state.api);
-      base.setView(AppView.app);
-      await base.checkConnection();
-      expect(base.connectionStatus, ConnectionStatus.connected);
-      expect(base.serverVersion, isNull);
-    });
+    test(
+      'checkConnection keeps connected when version endpoint fails',
+      () async {
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {'status': 'ok'}),
+              http.Response('', 500),
+            ]),
+          ),
+        );
+        final base = AppState.test(api: state.api);
+        base.setView(AppView.app);
+        await base.checkConnection();
+        expect(base.connectionStatus, ConnectionStatus.connected);
+        expect(base.serverVersion, isNull);
+      },
+    );
 
-    test('checkConnection clears serverVersion when server becomes unreachable', () async {
-      final state = AppState(
-        api: ApiService(client: _clientFor([http.Response('', 500)])),
-      );
-      final base = AppState.test(
-        api: state.api,
-        serverVersion: '0.31.0',
-      );
-      base.setView(AppView.app);
-      await base.checkConnection();
-      expect(base.connectionStatus, ConnectionStatus.disconnected);
-      expect(base.serverVersion, isNull);
-    });
+    test(
+      'checkConnection clears serverVersion when server becomes unreachable',
+      () async {
+        final state = AppState(
+          api: ApiService(client: _clientFor([http.Response('', 500)])),
+        );
+        final base = AppState.test(api: state.api, serverVersion: '0.31.0');
+        base.setView(AppView.app);
+        await base.checkConnection();
+        expect(base.connectionStatus, ConnectionStatus.disconnected);
+        expect(base.serverVersion, isNull);
+      },
+    );
 
     test('reorderProjects reorders list and calls API', () async {
       final state = AppState(
@@ -1484,45 +1426,48 @@ void main() {
       expect(base.globalError, isEmpty);
     });
 
-    test('saveProvider clears persisted composer selections when provider changes', () async {
-      SharedPreferences.setMockInitialValues({
-        'devinorium_selected_provider': 'opencode',
-        'devinorium_selected_model': 'oc-m2',
-      });
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, {
-              'id': 1,
-              'username': 'owner',
-              'role': 'user',
-              'is_owner': true,
-              'totp_enabled': false,
-              'provider_id': 'opencode',
-              'provider_command': 'opencode',
-            }),
-          ]),
-        ),
-      );
-      final base = AppState.test(
-        api: state.api,
-        user: User(
-          id: 1,
-          username: 'owner',
-          role: 'user',
-          totpEnabled: false,
-          providerId: 'devin-cli',
-          providerCommand: 'devin',
-        ),
-      );
-      await base.saveProvider(providerId: 'opencode');
-      await Future.delayed(Duration.zero);
+    test(
+      'saveProvider clears persisted composer selections when provider changes',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'devinorium_selected_provider': 'opencode',
+          'devinorium_selected_model': 'oc-m2',
+        });
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
+                'id': 1,
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'totp_enabled': false,
+                'provider_id': 'opencode',
+                'provider_command': 'opencode',
+              }),
+            ]),
+          ),
+        );
+        final base = AppState.test(
+          api: state.api,
+          user: User(
+            id: 1,
+            username: 'owner',
+            role: 'user',
+            totpEnabled: false,
+            providerId: 'devin-cli',
+            providerCommand: 'devin',
+          ),
+        );
+        await base.saveProvider(providerId: 'opencode');
+        await Future.delayed(Duration.zero);
 
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('devinorium_selected_provider'), isNull);
-      expect(prefs.getString('devinorium_selected_model'), isNull);
-      expect(base.selectedProvider, 'opencode');
-    });
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('devinorium_selected_provider'), isNull);
+        expect(prefs.getString('devinorium_selected_model'), isNull);
+        expect(base.selectedProvider, 'opencode');
+      },
+    );
 
     test('testProvider sets global error on failure', () async {
       final state = AppState(
@@ -1692,10 +1637,7 @@ void main() {
           ]),
         ),
       );
-      final base = AppState.test(
-        api: state.api,
-        activeProjectId: 1,
-      );
+      final base = AppState.test(api: state.api, activeProjectId: 1);
       await base.openFilesPanel();
       expect(base.filesEntries, hasLength(1));
       final dir = base.filesTreeRoot.children.first;
@@ -1742,39 +1684,46 @@ void main() {
       expect(base.hasMoreFiles, isFalse);
     });
 
-    test('loadMoreFiles advances offset by chunk size and skips duplicates', () async {
-      final initial = List<Map<String, Object>>.generate(
-        100,
-        (i) => {'name': i == 0 ? 'a.txt' : 'new${i - 1}.txt', 'is_dir': false, 'size': i},
-      );
-      final more = [
-        {'name': 'a.txt', 'is_dir': false, 'size': 0},
-        for (var i = 0; i < 99; i++)
-          {'name': 'new${99 + i}.txt', 'is_dir': false, 'size': 100 + i},
-      ];
-      final state = AppState(
-        api: ApiService(
-          client: _clientFor([
-            _json(200, initial),
-            _json(200, more),
-            _json(200, []),
-          ]),
-        ),
-      );
-      final base = AppState.test(api: state.api, activeProjectId: 1);
-      await base.openFilesPanel();
-      expect(base.filesEntries, hasLength(100));
-      expect(base.hasMoreFiles, isTrue);
+    test(
+      'loadMoreFiles advances offset by chunk size and skips duplicates',
+      () async {
+        final initial = List<Map<String, Object>>.generate(
+          100,
+          (i) => {
+            'name': i == 0 ? 'a.txt' : 'new${i - 1}.txt',
+            'is_dir': false,
+            'size': i,
+          },
+        );
+        final more = [
+          {'name': 'a.txt', 'is_dir': false, 'size': 0},
+          for (var i = 0; i < 99; i++)
+            {'name': 'new${99 + i}.txt', 'is_dir': false, 'size': 100 + i},
+        ];
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, initial),
+              _json(200, more),
+              _json(200, []),
+            ]),
+          ),
+        );
+        final base = AppState.test(api: state.api, activeProjectId: 1);
+        await base.openFilesPanel();
+        expect(base.filesEntries, hasLength(100));
+        expect(base.hasMoreFiles, isTrue);
 
-      await base.loadMoreFiles();
-      expect(base.filesEntries, hasLength(199));
-      expect(base.filesTreeRoot.offset, 200);
-      expect(base.hasMoreFiles, isTrue);
+        await base.loadMoreFiles();
+        expect(base.filesEntries, hasLength(199));
+        expect(base.filesTreeRoot.offset, 200);
+        expect(base.hasMoreFiles, isTrue);
 
-      await base.loadMoreFiles();
-      expect(base.filesEntries, hasLength(199));
-      expect(base.hasMoreFiles, isFalse);
-    });
+        await base.loadMoreFiles();
+        expect(base.filesEntries, hasLength(199));
+        expect(base.hasMoreFiles, isFalse);
+      },
+    );
 
     test('deleteFile removes and reloads', () async {
       final state = AppState(
@@ -2605,68 +2554,70 @@ void main() {
       },
     );
 
-    test('sendMessage updates thread title in active thread and sidebar', () async {
-      final completer = Completer<void>();
-      final client = _clientFor([
-        _json(200, {}),
-      ]);
-      final api = _StreamableApiService(client);
-      final controller = StreamController<SseEvent>();
-      api.streamBuilder = () => controller.stream;
+    test(
+      'sendMessage updates thread title in active thread and sidebar',
+      () async {
+        final completer = Completer<void>();
+        final client = _clientFor([_json(200, {})]);
+        final api = _StreamableApiService(client);
+        final controller = StreamController<SseEvent>();
+        api.streamBuilder = () => controller.stream;
 
-      final state = AppState.test(
-        api: api,
-        activeProjectId: 1,
-        activeThreadId: 'a',
-        activeThreadDetail: ThreadDetail(
-          thread: Thread(
-            id: 'a',
-            title: 'Old',
-            projectId: 1,
-            model: '',
-            permissionMode: 'normal',
-            createdAt: '2024-01-01T00:00:00.000Z',
-            updatedAt: '2024-01-01T00:00:00.000Z',
+        final state = AppState.test(
+          api: api,
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 'Old',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '2024-01-01T00:00:00.000Z',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+            messages: [],
           ),
-          messages: [],
-        ),
-        threads: [
-          Thread(
-            id: 'a',
-            title: 'Old',
-            projectId: 1,
-            model: '',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '2024-01-01T00:00:00.000Z',
+          threads: [
+            Thread(
+              id: 'a',
+              title: 'Old',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+          ],
+        );
+        state.setSelectedModel('m1');
+        state.setSelectedPermission('normal');
+        state.setComposerText('new title');
+
+        state.addListener(() {
+          if (state.threads.isNotEmpty &&
+              state.threads.first.title == 'new title') {
+            if (!completer.isCompleted) completer.complete();
+          }
+        });
+
+        await state.sendMessage();
+        controller.add(
+          SseEvent(
+            'thread_update',
+            '{"title":"new title","updated_at":"2024-01-02T00:00:00.000Z"}',
           ),
-        ],
-      );
-      state.setSelectedModel('m1');
-      state.setSelectedPermission('normal');
-      state.setComposerText('new title');
+        );
+        await controller.close();
 
-      state.addListener(() {
-        if (state.threads.isNotEmpty && state.threads.first.title == 'new title') {
-          if (!completer.isCompleted) completer.complete();
-        }
-      });
+        await completer.future.timeout(const Duration(seconds: 2));
 
-      await state.sendMessage();
-      controller.add(
-        SseEvent(
-          'thread_update',
-          '{"title":"new title","updated_at":"2024-01-02T00:00:00.000Z"}',
-        ),
-      );
-      await controller.close();
-
-      await completer.future.timeout(const Duration(seconds: 2));
-
-      expect(state.activeThreadDetail?.thread.title, 'new title');
-      expect(state.threads.first.title, 'new title');
-      expect(state.threads.first.updatedAt, '2024-01-02T00:00:00.000Z');
-    });
+        expect(state.activeThreadDetail?.thread.title, 'new title');
+        expect(state.threads.first.title, 'new title');
+        expect(state.threads.first.updatedAt, '2024-01-02T00:00:00.000Z');
+      },
+    );
   });
 
   group('TOTP, dialog and accounts', () {
@@ -2807,6 +2758,24 @@ void main() {
         expect(state.users.first.username, 'owner');
       },
     );
+
+    test('loadSettingsData does nothing without a server', () async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      await state.loadSettingsData();
+      expect(state.globalError, isEmpty);
+      expect(state.gitConnections, isEmpty);
+      expect(state.cloneRoot, isNull);
+    });
 
     test('createUser reloads users', () async {
       final state = AppState(

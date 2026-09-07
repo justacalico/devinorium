@@ -6,12 +6,14 @@ class _MessagesPanel extends StatelessWidget {
   final List<MessagePart> streamingParts;
   final bool streamingThinkingActive;
   final ScrollController controller;
+  final bool hasServer;
   const _MessagesPanel({
     required this.detail,
     required this.loading,
     required this.streamingParts,
     required this.streamingThinkingActive,
     required this.controller,
+    required this.hasServer,
   });
 
   @override
@@ -24,6 +26,37 @@ class _MessagesPanel extends StatelessWidget {
           child: CircularProgressIndicator(
             strokeWidth: 2,
             color: theme.colorScheme.primary,
+          ),
+        );
+      }
+      if (!hasServer) {
+        final state = context.read<AppState>();
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(48),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 48,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  l10n(context).addServerFromSettingsPrompt,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton.tonal(
+                  onPressed: () => state.setPage(MainPage.settings),
+                  child: Text(l10n(context).settings),
+                ),
+              ],
+            ),
           ),
         );
       }

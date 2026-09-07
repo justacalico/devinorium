@@ -26,13 +26,21 @@ class _SettingsNav extends StatelessWidget {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({bool isOwner, int settingsTopicIndex})>(
+    return Selector<AppState,
+        ({bool isOwner, int settingsTopicIndex, bool hasServer})>(
       selector: (_, s) => (
         isOwner: s.isOwner,
         settingsTopicIndex: s.settingsTopicIndex,
+        hasServer: s.multiServerState.hasAnyServer,
       ),
       builder: (context, model, _) {
         final topics = _settingsTopics(model.isOwner, l);
+        final serversIndex = topics.length - 1;
+        final aboutIndex = topics.length - 2;
+        bool enabled(int i) =>
+            model.hasServer || i == 2 || i == aboutIndex || i == serversIndex;
+        var selectedIndex = model.settingsTopicIndex;
+        if (!enabled(selectedIndex)) selectedIndex = serversIndex;
 
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -55,13 +63,16 @@ class _SettingsNav extends StatelessWidget {
                       ],
                     ],
                   ),
-                  selected: i == model.settingsTopicIndex,
+                  enabled: enabled(i),
+                  selected: i == selectedIndex,
                   selectedTileColor: theme.colorScheme.secondaryContainer,
                   dense: true,
-                  onTap: () {
-                    state.setSettingsTopicIndex(i);
-                    Scaffold.of(context).closeDrawer();
-                  },
+                  onTap: enabled(i)
+                      ? () {
+                          state.setSettingsTopicIndex(i);
+                          Scaffold.of(context).closeDrawer();
+                        }
+                      : null,
                 ),
               ),
           ],

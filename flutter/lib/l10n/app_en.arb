@@ -127,6 +127,7 @@
   "signInToYourAccount": "Sign in to your account",
   "totpCode": "TOTP code",
   "totpHint": "000000",
+  "totpOptional": "Optional — only if your account has 2FA enabled",
   "atLeast12Characters": "At least 12 characters",
   "createUser": "Create user",
   "cancel": "Cancel",
@@ -653,6 +654,10 @@
   "addServer": "Add server",
   "@addServer": {
     "description": "Button and dialog title for adding a new server"
+  },
+  "addServerFromSettingsPrompt": "No server configured.\nAdd a server in Settings to get started.",
+  "@addServerFromSettingsPrompt": {
+    "description": "Empty state in the thread page when no server is connected"
   },
   "switchServerLabel": "Switch",
   "@switchServerLabel": {

@@ -322,6 +322,12 @@ abstract class AppLocalizations {
   /// **'000000'**
   String get totpHint;
 
+  /// No description provided for @totpOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional — only if your account has 2FA enabled'**
+  String get totpOptional;
+
   /// No description provided for @atLeast12Characters.
   ///
   /// In en, this message translates to:
@@ -2019,6 +2025,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add server'**
   String get addServer;
+
+  /// Empty state in the thread page when no server is connected
+  ///
+  /// In en, this message translates to:
+  /// **'No server configured.\nAdd a server in Settings to get started.'**
+  String get addServerFromSettingsPrompt;
 
   /// Button text to activate a different server profile
   ///

@@ -137,6 +137,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get totpHint => '000000';
 
   @override
+  String get totpOptional => 'Optional — only if your account has 2FA enabled';
+
+  @override
   String get atLeast12Characters => 'At least 12 characters';
 
   @override
@@ -1074,6 +1077,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addServer => 'Add server';
+
+  @override
+  String get addServerFromSettingsPrompt =>
+      'No server configured.\nAdd a server in Settings to get started.';
 
   @override
   String get switchServerLabel => 'Switch';

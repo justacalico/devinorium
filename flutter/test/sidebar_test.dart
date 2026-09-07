@@ -283,6 +283,7 @@ void main() {
     tester,
   ) async {
     final state = AppState.test(
+      api: _FakeApiService(),
       user: User(
         id: 1,
         username: 'owner',
@@ -310,6 +311,7 @@ void main() {
     tester,
   ) async {
     final state = AppState.test(
+      api: _FakeApiService(),
       user: User(
         id: 1,
         username: 'owner',
@@ -373,6 +375,7 @@ void main() {
     tester,
   ) async {
     final state = AppState.test(
+      api: _FakeApiService(),
       user: User(
         id: 1,
         username: 'owner',
@@ -396,6 +399,7 @@ void main() {
 
   testWidgets('Tapping Git nav topic selects the git section', (tester) async {
     final state = AppState.test(
+      api: _FakeApiService(),
       user: User(
         id: 1,
         username: 'owner',
@@ -935,6 +939,7 @@ void main() {
 
   testWidgets('User chip is a rounded pill', (tester) async {
     final state = AppState.test(
+      api: _FakeApiService(),
       user: User(
         id: 1,
         username: 'owner',
@@ -1742,6 +1747,55 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Checking connection\u2026'), findsNothing);
+  });
+
+  testWidgets('User chip is hidden when no server is configured', (
+    tester,
+  ) async {
+    final state = AppState.test();
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.byType(CircleAvatar), findsNothing);
+  });
+
+  testWidgets('User chip is shown when a server is configured', (tester) async {
+    final state = AppState.test(api: _FakeApiService());
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.byType(CircleAvatar), findsOneWidget);
+  });
+
+  testWidgets('Settings topics are disabled without a server', (tester) async {
+    final state = AppState.test();
+    state.setPage(MainPage.settings);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    ListTile tile(String label) => tester.widget<ListTile>(
+          find.ancestor(
+            of: find.text(label),
+            matching: find.byType(ListTile),
+          ),
+        );
+
+    expect(tile('Account').enabled, isFalse);
+    expect(tile('Providers').enabled, isFalse);
+    expect(tile('Git').enabled, isFalse);
+    expect(tile('Clone root').enabled, isFalse);
+    expect(tile('About').enabled, isTrue);
+    expect(tile('Personalization').enabled, isTrue);
+    expect(tile('Servers').enabled, isTrue);
+    expect(tile('Servers').selected, isTrue);
+
+    state.setSettingsTopicIndex(2);
+    await tester.tap(find.text('Account'));
+    await tester.pumpAndSettle();
+    expect(state.settingsTopicIndex, 2);
   });
 
   testWidgets('Pinned project shows a leading border', (tester) async {

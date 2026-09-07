@@ -204,11 +204,13 @@ class _SidebarState extends State<Sidebar> {
 
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
-      child: Selector<AppState, ({MainPage page, bool filesPanelOpen, User? user})>(
+      child: Selector<AppState,
+          ({MainPage page, bool filesPanelOpen, User? user, bool hasServer})>(
         selector: (_, state) => (
           page: state.page,
           filesPanelOpen: state.filesPanelOpen,
           user: state.user,
+          hasServer: state.multiServerState.hasAnyServer,
         ),
         builder: (context, model, _) {
           final user = model.user;
@@ -238,10 +240,11 @@ class _SidebarState extends State<Sidebar> {
                         ? const FilesPanel()
                         : _ProjectThreadList(searchQuery: _searchController.text),
               ),
-              _UserChip(
-                username: username,
-                avatar: avatar,
-              ),
+              if (model.hasServer)
+                _UserChip(
+                  username: username,
+                  avatar: avatar,
+                ),
               const _ActivityBar(),
             ],
           );

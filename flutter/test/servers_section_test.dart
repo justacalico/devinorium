@@ -78,6 +78,8 @@ void main() {
 
       expect(find.text('Servers'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Add server'), findsOneWidget);
+      // The tile title shows the authed username; the label is the fallback.
+      expect(find.text('alice'), findsOneWidget);
       expect(find.text('test'), findsOneWidget);
     });
 
@@ -101,21 +103,32 @@ void main() {
       expect(find.text('Servers'), findsOneWidget);
     });
 
-    testWidgets('add-server dialog requires a URL scheme', (tester) async {
+    testWidgets('add-server dialog defaults to https and rejects a scheme in the host', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildWithState(buildState()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(FilledButton, 'Add server'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Server URL'), 'localhost:7878');
+      // https:// is the default scheme.
+      expect(find.text('https://'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Server URL'),
+        'https://other:7878',
+      );
       await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
       await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
 
       await tester.tap(find.widgetWithText(TextButton, 'Add server'));
       await tester.pumpAndSettle();
 
-      expect(find.text('URL must start with http:// or https://'), findsOneWidget);
+      expect(
+        find.text('Do not include http:// or https:// in the server address'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('add-server dialog adds a profile', (tester) async {
@@ -125,14 +138,57 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Add server'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Server URL'), 'http://other:7878');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Server URL'),
+        'other:7878',
+      );
       await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
       await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('http://').last);
+      await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(TextButton, 'Add server'));
       await tester.pumpAndSettle();
 
-      expect(find.text('other'), findsOneWidget);
+      expect(find.text('owner'), findsOneWidget);
+      expect(find.text('other:7878'), findsOneWidget);
+    });
+
+    testWidgets('add-server dialog shows an optional TOTP field', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildWithState(buildState()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Add server'));
+      await tester.pumpAndSettle();
+
+      final field = find.widgetWithText(TextFormField, 'TOTP code');
+      expect(field, findsOneWidget);
+      expect(
+        find.text('Optional — only if your account has 2FA enabled'),
+        findsOneWidget,
+      );
+
+      // An empty TOTP field does not block the form.
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Server URL'),
+        'other:7878',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Username'),
+        'owner',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Password'),
+        'pw',
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Add server'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('other:7878'), findsOneWidget);
     });
 
     testWidgets('add-server dialog shows TOTP when required', (tester) async {
@@ -149,7 +205,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Add server'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Server URL'), 'http://other:7878');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Server URL'), 'other:7878');
       await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'owner');
       await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'pw');
 
@@ -160,19 +216,35 @@ void main() {
       expect(find.widgetWithText(TextFormField, 'TOTP code'), findsOneWidget);
     });
 
-    testWidgets('add-server dialog rejects empty host and invalid schemes', (tester) async {
+    testWidgets('add-server dialog rejects an empty or invalid host', (tester) async {
       await tester.pumpWidget(_buildWithState(buildState()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(FilledButton, 'Add server'));
       await tester.pumpAndSettle();
 
-      for (final url in ['http://', 'https://', 'ftp://example.com', 'http://foo bar']) {
-        await tester.enterText(find.widgetWithText(TextFormField, 'Server URL'), url);
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Username'),
+        'owner',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Password'),
+        'pw',
+      );
+
+      for (final host in ['', 'ftp://example.com', 'foo bar']) {
+        await tester.enterText(find.widgetWithText(TextFormField, 'Server URL'), host);
         await tester.tap(find.widgetWithText(TextButton, 'Add server'));
         await tester.pumpAndSettle();
 
-        expect(find.text('URL must start with http:// or https://'), findsOneWidget);
+        expect(
+          find.text(
+            host.isEmpty
+                ? 'Required'
+                : 'Do not include http:// or https:// in the server address',
+          ),
+          findsOneWidget,
+        );
       }
     });
 
@@ -193,7 +265,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
 
-      expect(find.text('other'), findsOneWidget);
+      expect(find.text('other:7878'), findsOneWidget);
       expect(find.byIcon(Icons.delete_outline), findsNWidgets(2));
     });
 
@@ -222,12 +294,12 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
-      expect(find.text('other'), findsNothing);
+      expect(find.text('other:7878'), findsNothing);
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     });
 
     AppState buildLongState() {
-      final longLabel = 'lo${'o' * 40}ng';
+      final longUsername = 'ow${'n' * 40}er';
       final longUrl =
           'http://${'a' * 50}.local:7878/very/long/path/that/should/be/ellipsized';
 
@@ -235,10 +307,10 @@ void main() {
       multi.addTestConnection(
         ServerProfile(
           id: 'long',
-          label: longLabel,
+          label: 'long',
           baseUrl: longUrl,
           token: 't',
-          username: 'owner',
+          username: longUsername,
           createdAt: DateTime(2026, 1, 1).toUtc(),
           isPrimary: true,
         ),
@@ -260,22 +332,24 @@ void main() {
       );
     }
 
-    testWidgets('long server labels and URLs are ellipsized', (tester) async {
-      final longLabel = 'lo${'o' * 40}ng';
+    testWidgets('long server usernames and URLs are ellipsized', (
+      tester,
+    ) async {
+      final longUsername = 'ow${'n' * 40}er';
       final longUrl =
           'http://${'a' * 50}.local:7878/very/long/path/that/should/be/ellipsized';
 
       await tester.pumpWidget(_buildWithState(buildLongState()));
       await tester.pumpAndSettle();
 
-      final labelFinder = find.text(longLabel);
-      expect(labelFinder, findsOneWidget);
-      final labelText = tester.widget<Text>(labelFinder);
-      expect(labelText.maxLines, 1);
-      expect(labelText.overflow, TextOverflow.ellipsis);
-      expect(labelText.softWrap, false);
+      final titleFinder = find.text(longUsername);
+      expect(titleFinder, findsOneWidget);
+      final titleText = tester.widget<Text>(titleFinder);
+      expect(titleText.maxLines, 1);
+      expect(titleText.overflow, TextOverflow.ellipsis);
+      expect(titleText.softWrap, false);
 
-      final urlFinder = find.text(longUrl);
+      final urlFinder = find.text(longUrl.substring('http://'.length));
       expect(urlFinder, findsOneWidget);
       final urlText = tester.widget<Text>(urlFinder);
       expect(urlText.maxLines, 1);

@@ -21,6 +21,7 @@ class _ChatModel {
   final String? pendingAskRequestId;
   final bool sending;
   final String? startedAt;
+  final bool hasServer;
 
   const _ChatModel({
     required this.activeThreadId,
@@ -32,6 +33,7 @@ class _ChatModel {
     required this.pendingAskRequestId,
     required this.sending,
     required this.startedAt,
+    required this.hasServer,
   });
 
   @override
@@ -46,7 +48,8 @@ class _ChatModel {
         streamingThinkingActive == other.streamingThinkingActive &&
         pendingAskRequestId == other.pendingAskRequestId &&
         sending == other.sending &&
-        startedAt == other.startedAt;
+        startedAt == other.startedAt &&
+        hasServer == other.hasServer;
   }
 
   @override
@@ -60,6 +63,7 @@ class _ChatModel {
     pendingAskRequestId,
     sending,
     startedAt,
+    hasServer,
   );
 }
 
@@ -216,6 +220,7 @@ class _ChatViewState extends State<ChatView> {
         pendingAskRequestId: state.pendingAskRequest?.requestId,
         sending: state.sending,
         startedAt: state.startedAt,
+        hasServer: state.activeServerId != null,
       ),
       shouldRebuild: (prev, next) => prev != next,
       builder: (context, model, child) {
@@ -251,6 +256,7 @@ class _ChatViewState extends State<ChatView> {
                     streamingParts: state.streamingParts,
                     streamingThinkingActive: model.streamingThinkingActive,
                     controller: _scrollController,
+                    hasServer: model.hasServer,
                   ),
                   Positioned(
                     top: 16,
