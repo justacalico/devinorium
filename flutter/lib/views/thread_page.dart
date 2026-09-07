@@ -15,6 +15,7 @@ import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../theme/semantic_colors.dart';
 import '../utils/attachment_reader.dart';
 import '../utils/clipboard_image.dart';
 import '../utils/path_attachment.dart';
@@ -69,15 +70,18 @@ class _ThreadPageState extends State<ThreadPage> {
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({
-      Thread? thread,
-      String? tag,
-      String? activeThreadId,
-      MergeRequestLink? linkedMergeRequest,
-      Plan? activePlan,
-      bool planOverlayVisible,
-      ApiService api,
-    })>(
+    return Selector<
+      AppState,
+      ({
+        Thread? thread,
+        String? tag,
+        String? activeThreadId,
+        MergeRequestLink? linkedMergeRequest,
+        Plan? activePlan,
+        bool planOverlayVisible,
+        ApiService api,
+      })
+    >(
       selector: (_, s) {
         final detail = s.activeThreadDetail;
         final thread = detail?.thread;
@@ -103,10 +107,12 @@ class _ThreadPageState extends State<ThreadPage> {
       builder: (context, model, _) {
         final title = model.thread?.title ?? l10n(context).selectOrCreateThread;
         final activeThreadId = model.activeThreadId;
-        final terminalOpen = activeThreadId != null &&
+        final terminalOpen =
+            activeThreadId != null &&
             (_terminalOpenByThread[activeThreadId] ?? false);
         final terminalHeight = activeThreadId != null
-            ? (_terminalHeightByThread[activeThreadId] ?? _defaultTerminalHeight)
+            ? (_terminalHeightByThread[activeThreadId] ??
+                  _defaultTerminalHeight)
             : _defaultTerminalHeight;
 
         return Scaffold(

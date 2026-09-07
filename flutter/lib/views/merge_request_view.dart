@@ -7,6 +7,7 @@ import '../l10n/l10n.dart';
 import '../merge_request/diff_stats.dart';
 import '../merge_request/merge_request_models.dart';
 import '../state/async_value.dart';
+import '../theme/semantic_colors.dart';
 import '../utils/link_opener.dart';
 import 'markdown_rendering.dart';
 import 'merge_request_action_bar.dart';
@@ -244,9 +245,10 @@ class _Header extends StatelessWidget {
 
 Widget? _stateChip(BuildContext context, MergeRequestDetail detail) {
   final theme = Theme.of(context);
+  final semantic = SemanticColors.of(context);
   final color = switch (detail.state) {
     'opened' || 'open' => theme.colorScheme.primary,
-    'merged' => Colors.purple,
+    'merged' => semantic.success,
     'closed' => theme.colorScheme.error,
     _ => theme.colorScheme.onSurfaceVariant,
   };
@@ -656,14 +658,17 @@ class _PipelineJobRow extends StatelessWidget {
 }
 
 Color _pipelineColor(ThemeData theme, String status) {
+  final semantic =
+      theme.extension<SemanticColors>() ??
+      SemanticColors.fallback(theme.brightness);
   final lower = status.toLowerCase();
-  if (lower == 'success') return Colors.green;
+  if (lower == 'success') return semantic.success;
   if (lower == 'failed' || lower == 'failure') return theme.colorScheme.error;
   if (lower == 'running') return theme.colorScheme.primary;
   if (lower == 'pending' ||
       lower == 'created' ||
       lower == 'waiting_for_resource') {
-    return Colors.orange;
+    return semantic.warning;
   }
   return theme.colorScheme.onSurfaceVariant;
 }
@@ -819,7 +824,7 @@ class _ChangesTabState extends State<_ChangesTab> {
                       children: [
                         Row(
                           children: [
-                            _changeIcon(change),
+                            _changeIcon(change, context),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -861,12 +866,14 @@ class _ChangesTabState extends State<_ChangesTab> {
     );
   }
 
-  Widget _changeIcon(MergeRequestChange change) {
+  Widget _changeIcon(MergeRequestChange change, BuildContext context) {
+    final theme = Theme.of(context);
+    final semantic = SemanticColors.of(context);
     if (change.newFile) {
-      return const Icon(Icons.add, size: 18, color: Colors.green);
+      return Icon(Icons.add, size: 18, color: semantic.success);
     }
     if (change.deletedFile) {
-      return const Icon(Icons.remove, size: 18, color: Colors.red);
+      return Icon(Icons.remove, size: 18, color: theme.colorScheme.error);
     }
     if (change.renamedFile) {
       return const Icon(Icons.drive_file_rename_outline, size: 18);
@@ -970,18 +977,20 @@ class _DiffStatsText extends StatelessWidget {
     if (stats.isZero) {
       return const SizedBox.shrink();
     }
-    final base = Theme.of(context).textTheme.labelMedium;
+    final theme = Theme.of(context);
+    final semantic = SemanticColors.of(context);
+    final base = theme.textTheme.labelMedium;
     return Text.rich(
       TextSpan(
         children: [
           TextSpan(
             text: '+${stats.additions}',
-            style: base?.copyWith(color: Colors.green),
+            style: base?.copyWith(color: semantic.success),
           ),
           TextSpan(text: ' ', style: base),
           TextSpan(
             text: '-${stats.deletions}',
-            style: base?.copyWith(color: Colors.red),
+            style: base?.copyWith(color: theme.colorScheme.error),
           ),
         ],
       ),
@@ -1022,11 +1031,14 @@ class _DiffView extends StatelessWidget {
   }
 
   Widget _diffLine(String line, ThemeData theme) {
+    final semantic =
+        theme.extension<SemanticColors>() ??
+        SemanticColors.fallback(theme.brightness);
     Color color;
     if (line.startsWith('+')) {
-      color = Colors.green;
+      color = semantic.success;
     } else if (line.startsWith('-')) {
-      color = Colors.red;
+      color = theme.colorScheme.error;
     } else if (line.startsWith('@@') ||
         line.startsWith('---') ||
         line.startsWith('+++') ||

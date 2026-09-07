@@ -66,6 +66,18 @@ class ThemeParser {
     'on-inverse-surface',
     'inverse-primary',
     'surface-tint',
+    'success',
+    'on-success',
+    'success-container',
+    'on-success-container',
+    'warning',
+    'on-warning',
+    'warning-container',
+    'on-warning-container',
+    'info',
+    'on-info',
+    'info-container',
+    'on-info-container',
   };
 
   static final _forbiddenProperties = {
@@ -209,13 +221,15 @@ class ThemeParser {
     final before = css.substring(0, root).trim();
     if (before.isNotEmpty) {
       throw const ThemeParseException(
-          'only a single :root block is allowed; remove selectors before it',
+        'only a single :root block is allowed; remove selectors before it',
       );
     }
 
     final open = css.indexOf('{', root);
     if (open == -1) {
-      throw const ThemeParseException(':root block is missing an opening brace');
+      throw const ThemeParseException(
+        ':root block is missing an opening brace',
+      );
     }
 
     var depth = 1;
@@ -234,7 +248,7 @@ class ThemeParser {
     final after = css.substring(close).trim();
     if (after.isNotEmpty) {
       throw const ThemeParseException(
-          'only a single :root block is allowed; remove trailing content',
+        'only a single :root block is allowed; remove trailing content',
       );
     }
 
@@ -280,9 +294,7 @@ class ThemeParser {
       }
 
       if (!_allowedTokens.contains(token)) {
-        throw ThemeParseException(
-          'unknown theme color token "$token"',
-        );
+        throw ThemeParseException('unknown theme color token "$token"');
       }
 
       final color = _parseColor(value);

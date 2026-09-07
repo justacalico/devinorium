@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
 import '../models/models.dart';
+import '../theme/semantic_colors.dart';
 
 /// A Devin-style model picker: a search-able, two-pane popup that shows
 /// model families on the left and the selected/hovered model's details on
@@ -606,7 +607,7 @@ class _CostDot extends StatelessWidget {
       width: 10,
       height: 10,
       decoration: BoxDecoration(
-        color: color ?? _tierColor(tier, Theme.of(context).colorScheme),
+        color: color ?? _tierColor(tier, Theme.of(context)),
         shape: BoxShape.circle,
       ),
     );
@@ -620,7 +621,7 @@ class _CostBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _tierColor(tier, theme.colorScheme);
+    final color = _tierColor(tier, theme);
     final width = _tierBarWidth(tier);
 
     return Row(
@@ -708,11 +709,15 @@ String _formatTokens(int tokens, AppLocalizations l) {
   return l.tokensCount('$tokens');
 }
 
-Color _tierColor(String tier, ColorScheme scheme) {
+Color _tierColor(String tier, ThemeData theme) {
+  final scheme = theme.colorScheme;
+  final semantic =
+      theme.extension<SemanticColors>() ??
+      SemanticColors.fallback(theme.brightness);
   final lower = tier.toLowerCase();
   if (lower.contains('free')) return scheme.tertiary;
-  if (lower.contains('low')) return Colors.green;
-  if (lower.contains('medium')) return Colors.orange;
+  if (lower.contains('low')) return semantic.success;
+  if (lower.contains('medium')) return semantic.warning;
   if (lower.contains('high')) return scheme.error;
   return scheme.primary;
 }

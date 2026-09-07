@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/l10n.dart';
 import '../merge_request/merge_request_models.dart';
 import '../state/async_value.dart';
+import '../theme/semantic_colors.dart';
 import '../utils/job_log_formatter.dart';
 
 /// Shows the live, auto-updating trace for a CI/CD job.
@@ -255,10 +256,7 @@ class _Header extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        if (isLive) ...[
-          const SizedBox(width: 8),
-          _LiveBadge(),
-        ],
+        if (isLive) ...[const SizedBox(width: 8), _LiveBadge()],
         const SizedBox(width: 8),
         Chip(
           label: Text(
@@ -360,12 +358,17 @@ class _LogBody extends StatelessWidget {
 }
 
 Color _statusColor(ThemeData theme, String status) {
+  final semantic =
+      theme.extension<SemanticColors>() ??
+      SemanticColors.fallback(theme.brightness);
   final lower = status.toLowerCase();
-  if (lower == 'success') return Colors.green;
+  if (lower == 'success') return semantic.success;
   if (lower == 'failed' || lower == 'failure') return theme.colorScheme.error;
   if (lower == 'running') return theme.colorScheme.primary;
-  if (lower == 'pending' || lower == 'created' || lower == 'waiting_for_resource') {
-    return Colors.orange;
+  if (lower == 'pending' ||
+      lower == 'created' ||
+      lower == 'waiting_for_resource') {
+    return semantic.warning;
   }
   return theme.colorScheme.onSurfaceVariant;
 }

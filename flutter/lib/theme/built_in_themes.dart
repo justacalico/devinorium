@@ -54,6 +54,18 @@ class BuiltInThemes {
   --surface-container: #F3EDF7;
   --surface-container-high: #ECE6F0;
   --surface-container-highest: #E6E0E9;
+  --success: #16A34A;
+  --on-success: #FFFFFF;
+  --success-container: #DCFCE7;
+  --on-success-container: #14532D;
+  --warning: #D97706;
+  --on-warning: #000000;
+  --warning-container: #FEF3C7;
+  --on-warning-container: #78350F;
+  --info: #0284C7;
+  --on-info: #FFFFFF;
+  --info-container: #E0F2FE;
+  --on-info-container: #0C4A6E;
 }
 ''';
 
@@ -99,6 +111,18 @@ class BuiltInThemes {
   --surface-container: #111111;
   --surface-container-high: #171717;
   --surface-container-highest: #1E1E1E;
+  --success: #22C55E;
+  --on-success: #052E16;
+  --success-container: #14532D;
+  --on-success-container: #DCFCE7;
+  --warning: #F59E0B;
+  --on-warning: #451A03;
+  --warning-container: #78350F;
+  --on-warning-container: #FEF3C7;
+  --info: #0EA5E9;
+  --on-info: #082F49;
+  --info-container: #0C4A6E;
+  --on-info-container: #E0F2FE;
 }
 ''';
 
@@ -144,6 +168,18 @@ class BuiltInThemes {
   --surface-container: #111111;
   --surface-container-high: #181818;
   --surface-container-highest: #1F1F1F;
+  --success: #22C55E;
+  --on-success: #052E16;
+  --success-container: #14532D;
+  --on-success-container: #DCFCE7;
+  --warning: #F59E0B;
+  --on-warning: #451A03;
+  --warning-container: #78350F;
+  --on-warning-container: #FEF3C7;
+  --info: #0EA5E9;
+  --on-info: #082F49;
+  --info-container: #0C4A6E;
+  --on-info-container: #E0F2FE;
 }
 ''';
 

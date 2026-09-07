@@ -1,3 +1,4 @@
+import 'package:devinorium_frontend/theme/semantic_colors.dart';
 import 'package:devinorium_frontend/views/syntax_highlighter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,10 +90,11 @@ void main() {
       final span = highlighter.highlight('"hello"', 'json');
       expect(span.children, isNotNull);
       // At least one child span should have the string color.
+      final stringColor = SemanticColors.fallback(Brightness.light).success;
       final hasStringColor = span.children!.any((child) {
         if (child is TextSpan) {
           final color = child.style?.color;
-          return color == const Color(0xFF4CAF50);
+          return color == stringColor;
         }
         return false;
       });

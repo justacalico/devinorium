@@ -4,6 +4,7 @@ import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/theme/semantic_colors.dart';
 import 'package:devinorium_frontend/views/file_viewer.dart';
 import 'package:devinorium_frontend/views/files_panel.dart';
 import 'package:flutter/material.dart';
@@ -225,7 +226,8 @@ void main() {
       await tester.pumpAndSettle();
 
       final text = tester.widget<Text>(find.text('main.dart'));
-      expect(text.style?.color, Colors.orange);
+      final semantic = SemanticColors.fallback(Brightness.light);
+      expect(text.style?.color, semantic.warning);
     });
 
     testWidgets('highlights folders containing changes in the title color', (
@@ -246,7 +248,8 @@ void main() {
       await tester.pumpAndSettle();
 
       final text = tester.widget<Text>(find.text('src'));
-      expect(text.style?.color, Colors.orange);
+      final semantic = SemanticColors.fallback(Brightness.light);
+      expect(text.style?.color, semantic.warning);
     });
 
     testWidgets('tapping a file opens the file viewer', (tester) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'semantic_colors.dart';
+
 /// Metadata parsed from a CSS-like theme file's `@theme` block.
 @immutable
 class ThemeMetadata {
@@ -14,16 +16,16 @@ class ThemeMetadata {
   });
 
   Map<String, dynamic> toJson() => {
-        'version': version,
-        'creator': creator,
-        'description': description,
-      };
+    'version': version,
+    'creator': creator,
+    'description': description,
+  };
 
   factory ThemeMetadata.fromJson(Map<String, dynamic> json) => ThemeMetadata(
-        version: json['version'] as String? ?? '1.0.0',
-        creator: json['creator'] as String? ?? '',
-        description: json['description'] as String? ?? '',
-      );
+    version: json['version'] as String? ?? '1.0.0',
+    creator: json['creator'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+  );
 }
 
 /// A parsed color-only theme.
@@ -52,10 +54,7 @@ class ColorTheme {
   /// default seed) using [ColorScheme.fromSeed]. Explicit colors always win.
   ColorScheme toColorScheme(Brightness brightness) {
     final seed = colors['primary'] ?? _defaultSeed;
-    final base = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: brightness,
-    );
+    final base = ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
 
     return base.copyWith(
       primary: colors['primary'],
@@ -95,22 +94,28 @@ class ColorTheme {
     );
   }
 
-  ThemeData toThemeData(Brightness brightness) => ThemeData(
-        useMaterial3: true,
-        colorScheme: toColorScheme(brightness),
-        brightness: brightness,
-      );
+  SemanticColors toSemanticColors(Brightness brightness) =>
+      SemanticColors.fromColors(colors, brightness);
+
+  ThemeData toThemeData(Brightness brightness) {
+    final scheme = toColorScheme(brightness);
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      brightness: brightness,
+      extensions: <ThemeExtension<dynamic>>[toSemanticColors(brightness)],
+    );
+  }
 
   ColorTheme copyWith({
     Map<String, Color>? colors,
     ThemeMetadata? metadata,
     String? name,
-  }) =>
-      ColorTheme(
-        colors: colors ?? this.colors,
-        metadata: metadata ?? this.metadata,
-        name: name ?? this.name,
-      );
+  }) => ColorTheme(
+    colors: colors ?? this.colors,
+    metadata: metadata ?? this.metadata,
+    name: name ?? this.name,
+  );
 }
 
 /// The user's active theme choice.
@@ -206,10 +211,10 @@ class CustomThemeChoice extends ThemeChoice {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'css': css,
-        if (name != null) 'name': name,
-      };
+    'type': type,
+    'css': css,
+    if (name != null) 'name': name,
+  };
 
   @override
   bool operator ==(Object other) =>

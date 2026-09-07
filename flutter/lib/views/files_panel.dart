@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../theme/semantic_colors.dart';
 import 'file_viewer.dart';
 
 class FilesPanel extends StatefulWidget {
@@ -51,13 +52,16 @@ class _FilesPanelBody extends StatelessWidget {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({
-      int? activeProjectId,
-      String? activeThreadId,
-      AppMode appMode,
-      List<FileTreeRow> rows,
-      String error,
-    })>(
+    return Selector<
+      AppState,
+      ({
+        int? activeProjectId,
+        String? activeThreadId,
+        AppMode appMode,
+        List<FileTreeRow> rows,
+        String error,
+      })
+    >(
       selector: (_, s) => (
         activeProjectId: s.activeProjectId,
         activeThreadId: s.activeThreadId,
@@ -66,7 +70,8 @@ class _FilesPanelBody extends StatelessWidget {
         error: s.filesError,
       ),
       builder: (context, model, _) {
-        final showTree = model.activeProjectId != null &&
+        final showTree =
+            model.activeProjectId != null &&
             (model.appMode != AppMode.editor || model.activeThreadId != null);
 
         return Column(
@@ -87,7 +92,10 @@ class _FilesPanelBody extends StatelessWidget {
                   if (showTree)
                     IconButton(
                       tooltip: l.newFolder,
-                      icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                      icon: const Icon(
+                        Icons.create_new_folder_outlined,
+                        size: 18,
+                      ),
                       onPressed: () => _promptMkdir(context, state),
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.all(4),
@@ -112,16 +120,14 @@ class _FilesPanelBody extends StatelessWidget {
                           : l.selectOrCreateThread,
                     )
                   : model.rows.isEmpty
-                      ? model.error.isNotEmpty
-                          ? const SizedBox.shrink()
-                          : _EmptyPlaceholder(
-                              text: l.emptyFolder,
-                            )
-                      : ListView.builder(
-                          itemCount: model.rows.length,
-                          itemBuilder: (context, index) =>
-                              _buildRow(context, state, model.rows[index], theme),
-                        ),
+                  ? model.error.isNotEmpty
+                        ? const SizedBox.shrink()
+                        : _EmptyPlaceholder(text: l.emptyFolder)
+                  : ListView.builder(
+                      itemCount: model.rows.length,
+                      itemBuilder: (context, index) =>
+                          _buildRow(context, state, model.rows[index], theme),
+                    ),
             ),
           ],
         );
@@ -268,9 +274,14 @@ class _FilesPanelBody extends StatelessWidget {
     AppState state,
     FileTreeNode node,
   ) {
+    final theme = Theme.of(context);
     return IconButton(
       tooltip: l10n(context).delete,
-      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+      icon: Icon(
+        Icons.delete_outline,
+        color: theme.colorScheme.error,
+        size: 18,
+      ),
       onPressed: () async {
         if (await _confirm(
           context,
@@ -504,17 +515,17 @@ class _FilesPanelBody extends StatelessWidget {
   }
 
   Color _gitStatusColor(String status, ThemeData theme) {
+    final semantic =
+        theme.extension<SemanticColors>() ??
+        SemanticColors.fallback(theme.brightness);
+    final scheme = theme.colorScheme;
     return switch (status) {
-      'modified' => Colors.orange,
-      'added' => Colors.green,
-      'deleted' => Colors.red,
-      'renamed' => Colors.purple,
-      'copied' => Colors.pink,
-      'untracked' => Colors.blue,
-      'conflict' => Colors.redAccent,
-      'ignored' => theme.colorScheme.onSurfaceVariant,
-      'descendant' => Colors.orange,
-      _ => theme.colorScheme.onSurfaceVariant,
+      'modified' || 'descendant' => semantic.warning,
+      'added' || 'copied' => semantic.success,
+      'deleted' || 'conflict' => scheme.error,
+      'renamed' || 'untracked' => semantic.info,
+      'ignored' => scheme.onSurfaceVariant,
+      _ => scheme.onSurfaceVariant,
     };
   }
 
