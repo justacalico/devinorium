@@ -229,8 +229,16 @@ mixin AuthStore on AppStateBase {
     try {
       await api.logout();
     } catch (_) {}
-    await multiServerState.clearActiveToken();
-    await _resetServerState();
+    // Sign-out removes the server profile so no stale unauthenticated
+    // connection is left behind. On web the implicit same-origin profile is
+    // kept since it is recreated from the registry anyway.
+    final activeId = multiServerState.activeServerId;
+    if (!kIsWeb && activeId != null) {
+      await removeServer(activeId);
+    } else {
+      await multiServerState.clearActiveToken();
+      await _resetServerState();
+    }
     _settingsTopicIndex = 0;
     _userMenuOpen = false;
     _view = AppView.app;

@@ -36,8 +36,9 @@ class _SettingsNav extends StatelessWidget {
       builder: (context, model, _) {
         final topics = _settingsTopics(model.isOwner, l);
         final serversIndex = topics.length - 1;
+        final aboutIndex = topics.length - 2;
         bool enabled(int i) =>
-            model.hasServer || i == 2 || i == serversIndex;
+            model.hasServer || i == 2 || i == aboutIndex || i == serversIndex;
         var selectedIndex = model.settingsTopicIndex;
         if (!enabled(selectedIndex)) selectedIndex = serversIndex;
 

@@ -66,16 +66,26 @@ class _ServersSection extends StatelessWidget {
                       ? Icon(Icons.check_circle,
                           color: theme.colorScheme.primary)
                       : const Icon(Icons.circle_outlined);
-                  final displayUrl =
+                  var displayUrl =
                       profile.baseUrl.isEmpty ? l.web : profile.baseUrl;
+                  for (final scheme in ['https://', 'http://']) {
+                    if (displayUrl.startsWith(scheme)) {
+                      displayUrl = displayUrl.substring(scheme.length);
+                      break;
+                    }
+                  }
+                  final title =
+                      profile.username.isEmpty ? profile.label : profile.username;
                   return ListTile(
                     leading: leading,
-                    title: Text(profile.label,
+                    title: Text(title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         softWrap: false),
                     subtitle: Tooltip(
-                      message: displayUrl,
+                      message: profile.baseUrl.isEmpty
+                          ? displayUrl
+                          : profile.baseUrl,
                       child: Text(displayUrl,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -159,17 +169,18 @@ class _AddServerDialog extends StatefulWidget {
 
 class _AddServerDialogState extends State<_AddServerDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _url = TextEditingController();
+  final _host = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _totp = TextEditingController();
+  String _scheme = 'https://';
   bool _showTotp = false;
   String _error = '';
   bool _loading = false;
 
   @override
   void dispose() {
-    _url.dispose();
+    _host.dispose();
     _username.dispose();
     _password.dispose();
     _totp.dispose();
@@ -185,16 +196,16 @@ class _AddServerDialogState extends State<_AddServerDialog> {
     try {
       final l = l10n(context);
       final error = await widget.state.addServer(
-        serverUrl: _url.text.trim(),
+        serverUrl: '$_scheme${_host.text.trim()}',
         username: _username.text.trim(),
         password: _password.text,
-        totp: _showTotp ? _totp.text.trim() : null,
+        totp: _totp.text.trim().isEmpty ? null : _totp.text.trim(),
       );
       if (!mounted) return;
       if (error != null) {
         setState(() {
           _error = error;
-          _showTotp = error == l.totpPrompt;
+          _showTotp = _showTotp || error == l.totpPrompt;
         });
         return;
       }
@@ -214,15 +225,11 @@ class _AddServerDialogState extends State<_AddServerDialog> {
   Widget build(BuildContext context) {
     final l = l10n(context);
 
-    String? validateUrl(String? value) {
+    String? validateHost(String? value) {
       final trimmed = value?.trim() ?? '';
       if (trimmed.isEmpty) return l.required;
-      final uri = Uri.tryParse(trimmed);
-      if (uri == null ||
-          (uri.scheme != 'http' && uri.scheme != 'https') ||
-          uri.host.isEmpty ||
-          trimmed.contains(' ')) {
-        return l.serverUrlMustIncludeScheme;
+      if (trimmed.contains('://') || trimmed.contains(' ')) {
+        return l.serverUrlInvalid;
       }
       return null;
     }
@@ -243,14 +250,45 @@ class _AddServerDialogState extends State<_AddServerDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
-                controller: _url,
-                decoration: InputDecoration(
-                  labelText: l.serverUrl,
-                  hintText: l.serverUrlWithSchemeHint,
-                ),
-                validator: validateUrl,
-                enabled: !_loading,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 104,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _scheme,
+                      isExpanded: true,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'https://',
+                          child: Text('https://'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'http://',
+                          child: Text('http://'),
+                        ),
+                      ],
+                      onChanged: _loading
+                          ? null
+                          : (v) {
+                              if (v != null) setState(() => _scheme = v);
+                            },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _host,
+                      decoration: InputDecoration(
+                        labelText: l.serverUrl,
+                        hintText: l.serverUrlHint,
+                      ),
+                      keyboardType: TextInputType.url,
+                      validator: validateHost,
+                      enabled: !_loading,
+                    ),
+                  ),
+                ],
               ),
               TextFormField(
                 controller: _username,
@@ -265,16 +303,17 @@ class _AddServerDialogState extends State<_AddServerDialog> {
                 validator: validatePassword,
                 enabled: !_loading,
               ),
-              if (_showTotp)
-                TextFormField(
-                  controller: _totp,
-                  decoration: InputDecoration(
-                    labelText: l.totpCode,
-                    hintText: l.totpHint,
-                  ),
-                  validator: validateRequired,
-                  enabled: !_loading,
+              TextFormField(
+                controller: _totp,
+                decoration: InputDecoration(
+                  labelText: l.totpCode,
+                  hintText: l.totpHint,
+                  helperText: _showTotp ? null : l.totpOptional,
                 ),
+                validator: _showTotp ? validateRequired : null,
+                keyboardType: TextInputType.number,
+                enabled: !_loading,
+              ),
               if (_error.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(

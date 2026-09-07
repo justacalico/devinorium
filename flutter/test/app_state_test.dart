@@ -449,6 +449,8 @@ void main() {
       expect(state.composerText, isEmpty);
       expect(state.projects, isEmpty);
       expect(state.settingsTopicIndex, 0);
+      expect(state.serverProfiles, isEmpty);
+      expect(state.activeServerId, isNull);
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('devinorium_selected_provider'), isNull);

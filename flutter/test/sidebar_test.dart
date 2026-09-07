@@ -1787,7 +1787,7 @@ void main() {
     expect(tile('Providers').enabled, isFalse);
     expect(tile('Git').enabled, isFalse);
     expect(tile('Clone root').enabled, isFalse);
-    expect(tile('About').enabled, isFalse);
+    expect(tile('About').enabled, isTrue);
     expect(tile('Personalization').enabled, isTrue);
     expect(tile('Servers').enabled, isTrue);
     expect(tile('Servers').selected, isTrue);

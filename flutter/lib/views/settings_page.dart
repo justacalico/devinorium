@@ -72,7 +72,11 @@ class _SettingsPageState extends State<SettingsPage> {
         ];
         var index = model.settingsTopicIndex.clamp(0, sections.length - 1);
         final serversIndex = sections.length - 1;
-        if (!model.hasServer && index != 2 && index != serversIndex) {
+        final aboutIndex = sections.length - 2;
+        if (!model.hasServer &&
+            index != 2 &&
+            index != aboutIndex &&
+            index != serversIndex) {
           index = serversIndex;
         }
 

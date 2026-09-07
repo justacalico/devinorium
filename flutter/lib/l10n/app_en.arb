@@ -127,6 +127,7 @@
   "signInToYourAccount": "Sign in to your account",
   "totpCode": "TOTP code",
   "totpHint": "000000",
+  "totpOptional": "Optional — only if your account has 2FA enabled",
   "atLeast12Characters": "At least 12 characters",
   "createUser": "Create user",
   "cancel": "Cancel",

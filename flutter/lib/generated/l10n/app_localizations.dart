@@ -322,6 +322,12 @@ abstract class AppLocalizations {
   /// **'000000'**
   String get totpHint;
 
+  /// No description provided for @totpOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional — only if your account has 2FA enabled'**
+  String get totpOptional;
+
   /// No description provided for @atLeast12Characters.
   ///
   /// In en, this message translates to:

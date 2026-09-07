@@ -639,10 +639,14 @@ void main() {
     // back to the Servers section.
     expect(find.text('No servers configured.'), findsOneWidget);
 
-    // Personalization stays reachable without a server.
+    // Personalization and About stay reachable without a server.
     state.setSettingsTopicIndex(2);
     await tester.pumpAndSettle();
     expect(find.text('Theme'), findsOneWidget);
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+    expect(find.text('About'), findsWidgets);
   });
 
   testWidgets('Personalization tab has theme selector', (tester) async {

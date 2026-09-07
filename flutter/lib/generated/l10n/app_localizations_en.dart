@@ -137,6 +137,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get totpHint => '000000';
 
   @override
+  String get totpOptional => 'Optional — only if your account has 2FA enabled';
+
+  @override
   String get atLeast12Characters => 'At least 12 characters';
 
   @override
