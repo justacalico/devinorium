@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.41.0 - 2026-09-07
+#### Features
+- 恢复合并后自动发布版本 - (4ba396a) - HttpAnimations
+#### Bug Fixes
+- 修复自动发布取标签冲突与 Openlyst 触发 - (1988405) - HttpAnimations
+
+- - -
+
 ## v0.40.2 - 2026-09-06
 #### Bug Fixes
 - 为 GitHub Actions 获取标签 - (3c4d214) - HttpAnimations
