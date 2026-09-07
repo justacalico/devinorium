@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
@@ -164,12 +166,21 @@ class _FakeAppState extends AppState {
 class _FakeVersionChecker extends VersionChecker {
   final AppUpdate _update;
   int calls = 0;
+  Object? error;
+  Completer<AppUpdate>? gate;
 
   _FakeVersionChecker(this._update) : super(client: null);
 
   @override
   Future<AppUpdate> check(String currentVersion) async {
     calls++;
+    final error = this.error;
+    if (error != null) throw error;
+    final gate = this.gate;
+    if (gate != null && !gate.isCompleted) {
+      final update = await gate.future;
+      return update.copyWith(currentVersion: currentVersion);
+    }
     return _update.copyWith(currentVersion: currentVersion);
   }
 }
@@ -1442,6 +1453,87 @@ void main() {
     expect(checker.calls, 1);
     expect(find.text('You are on the latest version'), findsOneWidget);
     expect(find.textContaining('Update available'), findsNothing);
+  });
+
+  testWidgets('About section shows an error when the update check fails', (
+    tester,
+  ) async {
+    final checker = _FakeVersionChecker(
+      AppUpdate(releaseUrl: VersionChecker.releasesUrl),
+    )..error = Exception('offline');
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      versionChecker: checker,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Check for updates'));
+    await tester.pumpAndSettle();
+
+    expect(checker.calls, 1);
+    expect(find.text('Could not check for updates'), findsOneWidget);
+    expect(find.text('You are on the latest version'), findsNothing);
+  });
+
+  testWidgets('Check for updates button is disabled while a check runs', (
+    tester,
+  ) async {
+    final checker = _FakeVersionChecker(
+      AppUpdate(
+        latestVersion: '0.40.3',
+        updateAvailable: true,
+        releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
+      ),
+    )..gate = Completer<AppUpdate>();
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      versionChecker: checker,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Check for updates'));
+    await tester.pump();
+
+    expect(checker.calls, 1);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await tester.tap(find.text('Check for updates'));
+    await tester.pump();
+    expect(checker.calls, 1);
+
+    checker.gate!.complete(
+      AppUpdate(
+        latestVersion: '0.40.3',
+        updateAvailable: true,
+        releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Update available: 0.40.3'), findsOneWidget);
   });
 
   testWidgets(

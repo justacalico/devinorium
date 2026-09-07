@@ -7,6 +7,16 @@ import '../models/app_update.dart';
 import '../utils/debug_log.dart';
 import '../utils/version_utils.dart';
 
+/// Thrown when the GitLab releases API cannot be fetched or decoded.
+class VersionCheckException implements Exception {
+  final String message;
+
+  const VersionCheckException(this.message);
+
+  @override
+  String toString() => 'VersionCheckException: $message';
+}
+
 /// Checks the GitLab releases API for the latest semantic version of the app
 /// and compares it with the currently installed version.
 class VersionChecker {
@@ -24,7 +34,8 @@ class VersionChecker {
         _ownsClient = client == null;
 
   /// Returns an [AppUpdate] describing whether [currentVersion] is older than
-  /// the latest release on GitLab.
+  /// the latest release on GitLab. Throws [VersionCheckException] when the
+  /// releases API cannot be reached or returns an unexpected response.
   Future<AppUpdate> check(String currentVersion) async {
     final latest = await _fetchLatestRelease();
     if (latest == null) {
@@ -86,15 +97,13 @@ class VersionChecker {
             .timeout(const Duration(seconds: 10));
 
         if (response.statusCode != 200) {
-          debugLogFailure(
-            'versionChecker.fetch',
-            'HTTP ${response.statusCode}',
-          );
-          return null;
+          throw VersionCheckException('HTTP ${response.statusCode}');
         }
 
         final decoded = jsonDecode(response.body);
-        if (decoded is! List<dynamic>) return null;
+        if (decoded is! List<dynamic>) {
+          throw const VersionCheckException('unexpected response shape');
+        }
 
         for (final release in decoded) {
           if (release is! Map<String, dynamic>) continue;
@@ -111,7 +120,8 @@ class VersionChecker {
         if (decoded.length < _perPage) break;
       } catch (e) {
         debugLogFailure('versionChecker.fetch', e);
-        return null;
+        if (e is VersionCheckException) rethrow;
+        throw VersionCheckException('$e');
       }
     }
 

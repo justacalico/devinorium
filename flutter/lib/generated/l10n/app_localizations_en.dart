@@ -50,6 +50,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aboutUpToDate => 'You are on the latest version';
 
   @override
+  String get aboutUpdateCheckFailed => 'Could not check for updates';
+
+  @override
   String appUpdateAvailable(String version) {
     return 'Update available: $version';
   }

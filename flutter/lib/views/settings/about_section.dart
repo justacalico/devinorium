@@ -20,7 +20,6 @@ class _AboutSection extends StatefulWidget {
 
 class _AboutSectionState extends State<_AboutSection> {
   late Future<PackageInfo> _packageInfo;
-  bool _openingUpdate = false;
   bool _checkingUpdate = false;
 
   @override
@@ -41,32 +40,22 @@ class _AboutSectionState extends State<_AboutSection> {
     if (_checkingUpdate) return;
     setState(() => _checkingUpdate = true);
     try {
-      await widget.state.checkForAppUpdate();
+      final update = await widget.state.checkForAppUpdate();
       if (!mounted) return;
-      final update = widget.state.appUpdate;
-      if (update != null && !update.updateAvailable) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n(context).aboutUpToDate)));
+      if (update == null || !update.updateAvailable) {
+        final l = l10n(context);
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              update == null ? l.aboutUpdateCheckFailed : l.aboutUpToDate,
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _checkingUpdate = false);
-    }
-  }
-
-  Future<void> _openRelease(String url) async {
-    if (_openingUpdate) return;
-    setState(() => _openingUpdate = true);
-    try {
-      await openLink(url);
-    } catch (e) {
-      if (!mounted) return;
-      final l = l10n(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l.aboutOpenLinkFailed(url))));
-    } finally {
-      if (mounted) setState(() => _openingUpdate = false);
     }
   }
 
@@ -92,44 +81,24 @@ class _AboutSectionState extends State<_AboutSection> {
             return FutureBuilder<PackageInfo>(
               future: _packageInfo,
               builder: (context, snapshot) {
-                Widget? trailing;
-                VoidCallback? onTap;
-                if (appUpdate != null && appUpdate.updateAvailable) {
-                  trailing = Chip(
-                    label: Text(l.appUpdateAvailable(appUpdate.latestVersion)),
-                    visualDensity: VisualDensity.compact,
-                  );
-                  onTap = _openingUpdate
-                      ? null
-                      : () => unawaited(_openRelease(appUpdate.releaseUrl));
-                }
-
+                final String title;
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return _AboutTile(
-                    icon: Icons.tag,
-                    title: l.loading,
-                    subtitle: l.aboutVersion,
-                    trailing: trailing,
-                    onTap: onTap,
-                  );
+                  title = l.loading;
+                } else if (snapshot.hasError) {
+                  title = l.error;
+                } else {
+                  final version = snapshot.data?.version ?? '';
+                  title = version.isEmpty ? l.noValue : version;
                 }
-                if (snapshot.hasError) {
-                  return _AboutTile(
-                    icon: Icons.tag,
-                    title: l.error,
-                    subtitle: l.aboutVersion,
-                    trailing: trailing,
-                    onTap: onTap,
-                  );
-                }
-                final version = snapshot.data?.version ?? '';
-                return _AboutTile(
-                  icon: Icons.tag,
-                  title: version.isEmpty ? l.noValue : version,
-                  subtitle: l.aboutVersion,
-                  trailing: trailing,
-                  onTap: onTap,
-                );
+                // Only link to the release once the installed version has
+                // been resolved.
+                final update =
+                    snapshot.hasData &&
+                        appUpdate != null &&
+                        appUpdate.updateAvailable
+                    ? appUpdate
+                    : null;
+                return _AboutVersionTile(title: title, appUpdate: update);
               },
             );
           },
@@ -178,6 +147,73 @@ class _AboutSectionState extends State<_AboutSection> {
           url: _AboutLinks.releases,
         ),
       ],
+    );
+  }
+}
+
+class _AboutVersionTile extends StatefulWidget {
+  final String title;
+  final AppUpdate? appUpdate;
+
+  const _AboutVersionTile({required this.title, this.appUpdate});
+
+  @override
+  State<_AboutVersionTile> createState() => _AboutVersionTileState();
+}
+
+class _AboutVersionTileState extends State<_AboutVersionTile> {
+  bool _opening = false;
+
+  Future<void> _open() async {
+    final update = widget.appUpdate;
+    if (_opening || update == null) return;
+    setState(() => _opening = true);
+    try {
+      await openLink(update.releaseUrl);
+    } catch (e) {
+      if (!mounted) return;
+      final l = l10n(context);
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(content: Text(l.aboutOpenLinkFailed(update.releaseUrl))),
+      );
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l = l10n(context);
+    final update = widget.appUpdate;
+
+    Widget? trailing;
+    if (_opening) {
+      trailing = ExcludeSemantics(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+      );
+    } else if (update != null) {
+      trailing = Chip(
+        label: Text(l.appUpdateAvailable(update.latestVersion)),
+        visualDensity: VisualDensity.compact,
+      );
+    }
+
+    return _AboutTile(
+      icon: Icons.tag,
+      title: widget.title,
+      subtitle: l.aboutVersion,
+      trailing: trailing,
+      onTap: update == null || _opening ? null : () => unawaited(_open()),
     );
   }
 }

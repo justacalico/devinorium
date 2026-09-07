@@ -3,36 +3,40 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 mixin VersionStore on AppStateBase {
   AppUpdate? _appUpdate;
   VersionChecker? _versionChecker;
-  Future<void>? _appUpdateCheck;
+  Future<AppUpdate?>? _appUpdateCheck;
 
   @override
   AppUpdate? get appUpdate => _appUpdate;
 
+  /// Runs an update check and returns the result, or null when the check
+  /// fails. Callers can distinguish "no update" from "check failed" without
+  /// relying on the cached [appUpdate] value.
   @override
-  Future<void> checkForAppUpdate() {
+  Future<AppUpdate?> checkForAppUpdate() {
     final existing = _appUpdateCheck;
     if (existing != null) return existing;
-    _appUpdateCheck = _doAppUpdateCheck().whenComplete(
+    return _appUpdateCheck = _doAppUpdateCheck().whenComplete(
       () => _appUpdateCheck = null,
     );
-    return _appUpdateCheck!;
   }
 
-  Future<void> _doAppUpdateCheck() async {
+  Future<AppUpdate?> _doAppUpdateCheck() async {
     try {
       _versionChecker ??= VersionChecker();
       final info = await packageInfo();
       final update = await _versionChecker!.check(info.version);
 
       final current = _appUpdate;
-      if (current != null && current == update) return;
-
-      _appUpdate = update;
-      _notifyUpdateListeners();
+      if (current == null || current != update) {
+        _appUpdate = update;
+        _notifyUpdateListeners();
+      }
+      return update;
     } catch (e) {
       debugLogFailure('versionStore.check', e);
-      // A failed version check is not worth surfacing as an error. The
-      // About page simply stays in its current state.
+      // The caller gets null so it can show feedback; the cached value keeps
+      // whatever the last successful check produced.
+      return null;
     }
   }
 

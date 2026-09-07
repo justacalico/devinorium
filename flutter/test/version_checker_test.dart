@@ -88,14 +88,24 @@ void main() {
       expect(update.latestVersion, '0.40.2');
     });
 
-    test('falls back to the general releases URL on API failure', () async {
+    test('throws on API failure', () async {
       final mock = MockClient((req) async => _json(500, {}));
       final checker = VersionChecker(client: mock);
-      final update = await checker.check('0.40.2');
 
-      expect(update.updateAvailable, isFalse);
-      expect(update.latestVersion, isEmpty);
-      expect(update.releaseUrl, VersionChecker.releasesUrl);
+      await expectLater(
+        checker.check('0.40.2'),
+        throwsA(isA<VersionCheckException>()),
+      );
+    });
+
+    test('throws on a malformed response', () async {
+      final mock = MockClient((req) async => _json(200, {'not': 'a list'}));
+      final checker = VersionChecker(client: mock);
+
+      await expectLater(
+        checker.check('0.40.2'),
+        throwsA(isA<VersionCheckException>()),
+      );
     });
 
     test('requests the GitLab releases API with per_page and sorting', () async {

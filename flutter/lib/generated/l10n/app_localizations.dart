@@ -172,6 +172,12 @@ abstract class AppLocalizations {
   /// **'You are on the latest version'**
   String get aboutUpToDate;
 
+  /// Message shown when the update check itself fails
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check for updates'**
+  String get aboutUpdateCheckFailed;
+
   /// Chip shown on the About page when a newer release exists
   ///
   /// In en, this message translates to:

@@ -57,6 +57,10 @@
   "@aboutUpToDate": {
     "description": "Message shown when an update check finds no newer release"
   },
+  "aboutUpdateCheckFailed": "Could not check for updates",
+  "@aboutUpdateCheckFailed": {
+    "description": "Message shown when the update check itself fails"
+  },
   "appUpdateAvailable": "Update available: {version}",
   "@appUpdateAvailable": {
     "description": "Chip shown on the About page when a newer release exists",

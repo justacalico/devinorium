@@ -416,7 +416,7 @@ abstract class AppStateBase extends ChangeNotifier {
   void closeDialog();
   Future<void> openLink(String url);
   Future<PackageInfo> packageInfo() => PackageInfo.fromPlatform();
-  Future<void> checkForAppUpdate();
+  Future<AppUpdate?> checkForAppUpdate();
 
   // Editor
   List<EditorTab> get editorTabs;
