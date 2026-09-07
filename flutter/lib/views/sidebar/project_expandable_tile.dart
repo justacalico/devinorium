@@ -11,6 +11,7 @@ class _ProjectExpandableTile extends StatelessWidget {
   final VoidCallback? onNewThread;
   final ValueChanged<String> onThreadTap;
   final VoidCallback onShowMore;
+  final bool reorderEnabled;
 
   const _ProjectExpandableTile({
     super.key,
@@ -24,12 +25,92 @@ class _ProjectExpandableTile extends StatelessWidget {
     this.onNewThread,
     required this.onThreadTap,
     required this.onShowMore,
+    this.reorderEnabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = _projectColor(project.name);
+
+    final tile = Material(
+      color: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: _ProjectIcon(project: project, color: color),
+        ),
+        title: Tooltip(
+          message: project.path,
+          // The default long-press trigger would win the gesture arena
+          // over the delayed reorder drag. Hover still shows the tooltip.
+          triggerMode: TooltipTriggerMode.manual,
+          child: Text(
+            project.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+        subtitle: project.isRepo && project.gitBranch.isNotEmpty
+            ? Text(
+                project.gitBranch,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              )
+            : Text(
+                project.path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (onNewThread != null)
+              IconButton(
+                tooltip: l10n(context).newThreadIn(project.name),
+                icon: Icon(Icons.add,
+                    size: 18, color: theme.colorScheme.onSurfaceVariant),
+                onPressed: onNewThread,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+              ),
+            Icon(
+              isExpanded ? Icons.expand_more : Icons.chevron_right,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            _ProjectOptionsMenu(project: project),
+          ],
+        ),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 2,
+        ),
+        horizontalTitleGap: 8,
+        minLeadingWidth: 0,
+        minVerticalPadding: 0,
+        onTap: onToggle,
+      ),
+    );
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
@@ -46,83 +127,10 @@ class _ProjectExpandableTile extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ReorderableDragStartListener(
+          ReorderableDelayedDragStartListener(
             index: index,
-            child: Material(
-              color: Colors.transparent,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: ListTile(
-                leading: Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  alignment: Alignment.center,
-                  child: _ProjectIcon(project: project, color: color),
-                ),
-                title: Tooltip(
-                  message: project.path,
-                  child: Text(
-                    project.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                subtitle: project.isRepo && project.gitBranch.isNotEmpty
-                    ? Text(
-                        project.gitBranch,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      )
-                    : Text(
-                        project.path,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (onNewThread != null)
-                      IconButton(
-                        tooltip: l10n(context).newThreadIn(project.name),
-                        icon: Icon(Icons.add,
-                            size: 18, color: theme.colorScheme.onSurfaceVariant),
-                        onPressed: onNewThread,
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                      ),
-                    Icon(
-                      isExpanded ? Icons.expand_more : Icons.chevron_right,
-                      size: 18,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    _ProjectOptionsMenu(project: project),
-                  ],
-                ),
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 2,
-                ),
-                horizontalTitleGap: 8,
-                minLeadingWidth: 0,
-                minVerticalPadding: 0,
-                onTap: onToggle,
-              ),
-            ),
+            enabled: reorderEnabled,
+            child: tile,
           ),
           AnimatedSize(
             duration: const Duration(milliseconds: 150),
