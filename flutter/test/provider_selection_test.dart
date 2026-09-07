@@ -3,6 +3,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _ThrowingClient implements BaseApiClient {
@@ -15,6 +16,8 @@ class _ProviderApi extends ApiService {
   _ProviderApi() : super(client: _ThrowingClient());
 
   String? lastCreateProvider;
+  String? lastCreateModel;
+  String? lastCreatePermission;
   String? lastSettingsProvider;
   final modelsProviders = <String?>[];
   List<ModelInfo> modelsToReturn = const [];
@@ -47,6 +50,8 @@ class _ProviderApi extends ApiService {
     String? worktreePath,
   }) {
     lastCreateProvider = provider;
+    lastCreateModel = model;
+    lastCreatePermission = permissionMode;
     return Future.value(_thread());
   }
 
@@ -111,6 +116,7 @@ class _ProviderApi extends ApiService {
 void main() {
   setUp(() {
     if (kDebugMode) debugPrint = (String? message, {int? wrapWidth}) {};
+    SharedPreferences.setMockInitialValues({});
   });
 
   test('selectedProvider falls back to the user provider', () {
@@ -144,6 +150,31 @@ void main() {
 
     expect(api.lastCreateProvider, 'opencode');
     expect(state.selectedProvider, 'opencode');
+  });
+
+  test('createNewThread passes the selected model and permission', () async {
+    final api = _ProviderApi()
+      ..threadProviderId = 'opencode'
+      ..modelsToReturn = [
+        ModelInfo(id: 'oc-m1', label: 'm1', costTier: 'free', family: 'f'),
+      ];
+    final state = AppState.test(
+      api: api,
+      selectedProvider: 'opencode',
+      selectedModel: 'oc-m1',
+      selectedPermission: 'bypass',
+      projects: [
+        Project(id: 1, name: 'p', path: '/tmp/p', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
+    addTearDown(state.dispose);
+
+    await state.createNewThread();
+
+    expect(api.lastCreateProvider, 'opencode');
+    expect(api.lastCreateModel, 'oc-m1');
+    expect(api.lastCreatePermission, 'bypass');
   });
 
   test('opening a thread seeds its provider and loads its models', () async {
@@ -219,5 +250,112 @@ void main() {
     await state.saveThreadSettings();
 
     expect(api.lastSettingsProvider, 'opencode');
+  });
+
+  test('setSelectedModel persists the selected model', () async {
+    final state = AppState.test();
+    addTearDown(state.dispose);
+
+    state.setSelectedModel('glm-5-2');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_model'), 'glm-5-2');
+  });
+
+  test('setSelectedPermission persists the selected permission', () async {
+    final state = AppState.test();
+    addTearDown(state.dispose);
+
+    state.setSelectedPermission('bypass');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_permission'), 'bypass');
+  });
+
+  test('setSelectedProvider persists the selected provider and model', () async {
+    final api = _ProviderApi()
+      ..modelsToReturn = [
+        ModelInfo(id: 'oc-m1', label: 'm1', costTier: 'free', family: 'f'),
+      ];
+    final state = AppState.test(api: api, selectedProvider: 'opencode');
+    addTearDown(state.dispose);
+
+    await state.setSelectedProvider('opencode');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_provider'), 'opencode');
+    expect(prefs.getString('devinorium_selected_model'), 'oc-m1');
+  });
+
+  test('setSelectedProvider persists while a thread is active', () async {
+    final api = _ProviderApi()
+      ..threadProviderId = 'opencode'
+      ..modelsToReturn = [
+        ModelInfo(id: 'oc-m1', label: 'm1', costTier: 'free', family: 'f'),
+      ];
+    final state = AppState.test(api: api);
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+    await state.setSelectedProvider('opencode');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_provider'), 'opencode');
+    expect(prefs.getString('devinorium_selected_model'), 'oc-m1');
+  });
+
+  test('setSelectedModel persists while a thread is active', () async {
+    final api = _ProviderApi()
+      ..threadProviderId = 'devin-cli'
+      ..modelsToReturn = [
+        ModelInfo(id: 'glm-5-2', label: 'GLM', costTier: 'free', family: 'f'),
+      ];
+    final state = AppState.test(api: api);
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+    state.setSelectedModel('glm-5-2');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_model'), 'glm-5-2');
+  });
+
+  test('setSelectedPermission persists while a thread is active', () async {
+    final api = _ProviderApi()..threadProviderId = 'devin-cli';
+    final state = AppState.test(api: api);
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+    state.setSelectedPermission('bypass');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_permission'), 'bypass');
+  });
+
+  test('setSelectedProvider clears persisted model when catalog is empty',
+      () async {
+    final api = _ProviderApi()
+      ..modelsToReturn = []
+      ..threadProviderId = 'devin-cli';
+    SharedPreferences.setMockInitialValues({
+      'devinorium_selected_provider': 'devin-cli',
+      'devinorium_selected_model': 'stale-model',
+    });
+    final state = AppState.test(api: api, selectedProvider: 'devin-cli');
+    addTearDown(state.dispose);
+
+    await state.setSelectedProvider('opencode');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_provider'), 'opencode');
+    expect(prefs.getString('devinorium_selected_model'), isNull);
+    expect(state.selectedModel, '');
   });
 }
