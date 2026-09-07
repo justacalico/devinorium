@@ -7,7 +7,6 @@ import 'services/window_service.dart';
 import 'state/app_state.dart';
 import 'theme/theme.dart';
 import 'views/app_view.dart';
-import 'views/auth_views.dart';
 import 'views/dialogs.dart';
 
 Future<void> main() async {
@@ -122,7 +121,6 @@ class RootScaffold extends StatelessWidget {
           AppView.loading => const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           ),
-          AppView.login => const LoginView(),
           AppView.app => const AppShell(),
         };
 

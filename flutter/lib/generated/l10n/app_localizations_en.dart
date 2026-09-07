@@ -1076,6 +1076,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addServer => 'Add server';
 
   @override
+  String get addServerFromSettingsPrompt =>
+      'No server configured.\nAdd a server in Settings to get started.';
+
+  @override
   String get switchServerLabel => 'Switch';
 
   @override

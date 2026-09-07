@@ -654,6 +654,10 @@
   "@addServer": {
     "description": "Button and dialog title for adding a new server"
   },
+  "addServerFromSettingsPrompt": "No server configured.\nAdd a server in Settings to get started.",
+  "@addServerFromSettingsPrompt": {
+    "description": "Empty state in the thread page when no server is connected"
+  },
   "switchServerLabel": "Switch",
   "@switchServerLabel": {
     "description": "Button text to activate a different server profile"

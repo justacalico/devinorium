@@ -2020,6 +2020,12 @@ abstract class AppLocalizations {
   /// **'Add server'**
   String get addServer;
 
+  /// Empty state in the thread page when no server is connected
+  ///
+  /// In en, this message translates to:
+  /// **'No server configured.\nAdd a server in Settings to get started.'**
+  String get addServerFromSettingsPrompt;
+
   /// Button text to activate a different server profile
   ///
   /// In en, this message translates to:

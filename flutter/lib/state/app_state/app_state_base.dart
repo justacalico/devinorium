@@ -52,10 +52,6 @@ abstract class AppStateBase extends ChangeNotifier {
   set _activeThreadId(String? value);
   List<User> get _users;
   set _users(List<User> value);
-  String get _loginError;
-  set _loginError(String value);
-  bool get _showTotpField;
-  set _showTotpField(bool value);
   bool get _userMenuOpen;
   set _userMenuOpen(bool value);
   bool get _filesPanelOpen;
@@ -173,8 +169,6 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get activeThreadLoading;
   List<User> get users;
   bool get isOwner;
-  String get loginError;
-  bool get showTotpField;
   bool get userMenuOpen;
   bool get filesPanelOpen;
   bool get planOverlayVisible;
@@ -273,8 +267,6 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _saveSelectedProvider(String id);
   Future<void> _saveSelectedModel(String m);
   Future<void> _saveSelectedPermission(String p);
-  void setLoginError(String e);
-  void setShowTotpField(bool v);
   void setGlobalError(String e);
   void clearGlobalError();
   Future<void> setLanguage(String language);
@@ -319,12 +311,6 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadMoreThreads();
   Future<void> loadMoreProjectThreads(int projectId);
   Future<void> refreshRunningThreads();
-  Future<void> doLogin({
-    required String serverUrl,
-    required String username,
-    required String password,
-    String? totp,
-  });
   Future<void> loadUsers();
   Future<void> loadSettingsData();
   Future<void> createUser({required String username, required String password});

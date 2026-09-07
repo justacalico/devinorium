@@ -46,7 +46,7 @@ part 'app_state/settings_store.dart';
 part 'app_state/version_store.dart';
 part 'app_state/editor_store.dart';
 
-enum AppView { loading, login, app }
+enum AppView { loading, app }
 
 enum AppMode { agents, editor }
 
