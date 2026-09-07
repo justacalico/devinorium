@@ -58,10 +58,9 @@ mixin ModelStore on AppStateBase {
     final store = _activeStore;
     if (store != null) {
       store.selectedModel = m;
-    } else {
-      _selectedModel = m;
-      unawaited(_saveSelectedModel(m));
     }
+    _selectedModel = m;
+    unawaited(_saveSelectedModel(m));
     notifyListeners();
   }
 
@@ -70,32 +69,46 @@ mixin ModelStore on AppStateBase {
     final store = _activeStore;
     if (store != null) {
       store.selectedPermission = p;
-    } else {
-      _selectedPermission = p;
-      unawaited(_saveSelectedPermission(p));
     }
+    _selectedPermission = p;
+    unawaited(_saveSelectedPermission(p));
     notifyListeners();
   }
+
   @override
   Future<void> setSelectedProvider(String id) async {
     final store = _activeStore;
     if (store != null) {
       store.selectedProvider = id;
-    } else {
-      _selectedProvider = id;
     }
+    _selectedProvider = id;
     await ensureModelsFor(id);
-    if (_activeStore == null &&
-        _selectedProvider == id &&
-        _modelsProvider == id &&
-        _models.any((m) => m.id == _selectedModel)) {
-      await _saveSelectedProvider(_selectedProvider);
-      await _saveSelectedModel(_selectedModel);
-    } else if (_activeStore == null && _selectedProvider == id) {
+    if (_selectedProvider == id && _modelsProvider == id) {
+      if (_models.isNotEmpty) {
+        if (!_models.any((m) => m.id == _selectedModel)) {
+          _selectedModel = _models.first.id;
+          if (store != null) {
+            store.selectedModel = _selectedModel;
+          }
+        }
+        await _saveSelectedProvider(_selectedProvider);
+        await _saveSelectedModel(_selectedModel);
+      } else {
+        _selectedModel = '';
+        if (store != null) {
+          store.selectedModel = '';
+        }
+        await _saveSelectedProvider(_selectedProvider);
+        await _saveSelectedModel('');
+      }
+    } else if (_selectedProvider == id) {
       // The provider changed but the catalog is missing or stale; keep the
       // provider choice but drop the model so the next relaunch does not pair
       // this provider with an unrelated model.
       _selectedModel = '';
+      if (store != null) {
+        store.selectedModel = '';
+      }
       await _saveSelectedProvider(_selectedProvider);
       await _saveSelectedModel('');
     }

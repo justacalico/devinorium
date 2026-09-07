@@ -290,7 +290,7 @@ void main() {
     expect(prefs.getString('devinorium_selected_model'), 'oc-m1');
   });
 
-  test('setSelectedProvider does not persist while a thread is active', () async {
+  test('setSelectedProvider persists while a thread is active', () async {
     final api = _ProviderApi()
       ..threadProviderId = 'opencode'
       ..modelsToReturn = [
@@ -304,11 +304,11 @@ void main() {
     await Future.delayed(Duration.zero);
 
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('devinorium_selected_provider'), isNull);
-    expect(prefs.getString('devinorium_selected_model'), isNull);
+    expect(prefs.getString('devinorium_selected_provider'), 'opencode');
+    expect(prefs.getString('devinorium_selected_model'), 'oc-m1');
   });
 
-  test('setSelectedModel does not persist while a thread is active', () async {
+  test('setSelectedModel persists while a thread is active', () async {
     final api = _ProviderApi()
       ..threadProviderId = 'devin-cli'
       ..modelsToReturn = [
@@ -322,11 +322,10 @@ void main() {
     await Future.delayed(Duration.zero);
 
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('devinorium_selected_model'), isNull);
+    expect(prefs.getString('devinorium_selected_model'), 'glm-5-2');
   });
 
-  test('setSelectedPermission does not persist while a thread is active',
-      () async {
+  test('setSelectedPermission persists while a thread is active', () async {
     final api = _ProviderApi()..threadProviderId = 'devin-cli';
     final state = AppState.test(api: api);
     addTearDown(state.dispose);
@@ -336,7 +335,7 @@ void main() {
     await Future.delayed(Duration.zero);
 
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('devinorium_selected_permission'), isNull);
+    expect(prefs.getString('devinorium_selected_permission'), 'bypass');
   });
 
   test('setSelectedProvider clears persisted model when catalog is empty',
