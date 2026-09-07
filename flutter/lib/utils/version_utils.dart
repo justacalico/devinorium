@@ -4,7 +4,10 @@ class Version implements Comparable<Version> {
   final List<int> core;
   final List<String>? pre;
 
-  Version({required this.core, this.pre});
+  Version({required this.core, this.pre}) : assert(core.length == 3);
+
+  static final _corePartPattern = RegExp(r'^(0|[1-9]\d*)$');
+  static final _prePattern = RegExp(r'^[0-9A-Za-z-]+$');
 
   static Version? parse(String? input) {
     if (input == null || input.isEmpty) return null;
@@ -22,14 +25,14 @@ class Version implements Comparable<Version> {
     if (dash != -1) {
       corePart = cleaned.substring(0, dash);
       pre = cleaned.substring(dash + 1).split('.');
-      if (pre.isEmpty || pre.any((p) => p.isEmpty)) return null;
+      if (pre.isEmpty) return null;
     }
 
     final parts = corePart.split('.');
     if (parts.length != 3) return null;
     final core = <int>[];
     for (final p in parts) {
-      if (p.length > 1 && p.startsWith('0')) return null;
+      if (!_corePartPattern.hasMatch(p)) return null;
       final n = int.tryParse(p);
       if (n == null || n < 0) return null;
       core.add(n);
@@ -37,7 +40,7 @@ class Version implements Comparable<Version> {
 
     if (pre != null) {
       for (final p in pre) {
-        if (p.isEmpty) return null;
+        if (p.isEmpty || !_prePattern.hasMatch(p)) return null;
         if (_isNumeric(p) && p.length > 1 && p.startsWith('0')) return null;
       }
     }
@@ -90,7 +93,7 @@ class Version implements Comparable<Version> {
       value.isNotEmpty && value.runes.every((r) => r >= 48 && r <= 57);
 
   static BigInt? _tryParseBigInt(String value) {
-    if (value.length > 1 && value.startsWith('0')) return null;
+    if (!_isNumeric(value)) return null;
     try {
       return BigInt.parse(value);
     } on FormatException {

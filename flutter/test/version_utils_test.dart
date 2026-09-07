@@ -16,10 +16,16 @@ void main() {
       expect(Version.parse('vv1.0.0')?.core, [1, 0, 0]);
     });
 
-    test('rejects leading zeros in numeric identifiers', () {
+    test('rejects leading zeros and signs in numeric identifiers', () {
       expect(Version.parse('01.02.03'), isNull);
-      expect(Version.parse('1.0.0-01'), isNull);
+      expect(Version.parse('+1.0.0'), isNull);
+      expect(Version.parse('1.0.0-1'), isNotNull);
+      expect(Version.parse('1.0.0-+1'), isNull);
       expect(Version.parse('1.0.0-0a'), isNotNull);
+    });
+
+    test('constructor asserts core length', () {
+      expect(() => Version(core: [1, 2]), throwsAssertionError);
     });
 
     test('uses unmodifiable lists', () {
