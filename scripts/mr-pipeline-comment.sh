@@ -15,7 +15,7 @@ RUN_ID="${RUN_ID:-}"
 [ -n "$PROJECT_ID" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-TOKEN="${GITLAB_MR_COMMENT_TOKEN:-${CI_JOB_TOKEN:-}}"
+TOKEN="${GITLAB_MR_COMMENT_TOKEN:-${GITLAB_TOKEN:-${CI_JOB_TOKEN:-}}}"
 [ -n "$TOKEN" ] || exit 0
 
 SERVER_URL="${CI_SERVER_URL:-https://gitlab.com}"
@@ -23,23 +23,36 @@ API_BASE="${SERVER_URL}/api/v4"
 PROJECT_PATH="${CI_PROJECT_PATH:-HttpAnimations/devinorium}"
 MARKER="<!-- mr-pipeline-${PIPELINE_ID} -->"
 PIPELINE_URL="${SERVER_URL}/${PROJECT_PATH}/-/pipelines/${PIPELINE_ID}"
-RUN_URL="https://github.com/justacalico/devinorium/actions/runs/${RUN_ID}"
+RUN_URL="${RUN_ID:+https://github.com/justacalico/devinorium/actions/runs/${RUN_ID}}"
 
 # CI job tokens can only read the Notes API, so an MR comment token is needed.
-# If GITLAB_MR_COMMENT_TOKEN is set (PAT) we use PRIVATE-TOKEN.
-# Otherwise we fall back to CI_JOB_TOKEN with the JOB-TOKEN header, which can only read.
+# If GITLAB_MR_COMMENT_TOKEN or GITLAB_TOKEN is set (PAT or OAuth token) we use
+# it as a Bearer token. Otherwise we fall back to CI_JOB_TOKEN with the
+# JOB-TOKEN header, which will fail to post.
+# The header is read from a file so the token never appears in argv or logs.
 AUTH_HEADER_FILE="$(mktemp)"
 trap 'rm -f "$AUTH_HEADER_FILE"' EXIT
-if [ -n "${GITLAB_MR_COMMENT_TOKEN:-}" ]; then
-  printf 'PRIVATE-TOKEN: %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
+if [ -n "${GITLAB_MR_COMMENT_TOKEN:-${GITLAB_TOKEN:-}}" ]; then
+  printf 'Authorization: Bearer %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
 else
   printf 'JOB-TOKEN: %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
 fi
 
 post_or_update() {
   local body="$1"
-  local note_id
-  note_id=$(curl -fsS --header "@$AUTH_HEADER_FILE" "${API_BASE}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes?per_page=100" | jq -r --arg marker "$MARKER" '.[] | select(.body | contains($marker)) | .id' | head -n1)
+  local note_id="" page_notes count found
+  for page in 1 2 3 4 5; do
+    page_notes=$(curl -fsS --header "@$AUTH_HEADER_FILE" "${API_BASE}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes?per_page=100&page=${page}")
+    found=$(printf '%s' "$page_notes" | jq -r --arg marker "$MARKER" '[.[] | select(.body != null and (.body | contains($marker))) | .id] | first // empty')
+    if [ -n "$found" ] && [ "$found" != "null" ]; then
+      note_id="$found"
+      break
+    fi
+    count=$(printf '%s' "$page_notes" | jq 'length')
+    if [ "$count" -lt 100 ]; then
+      break
+    fi
+  done
   if [ -n "$note_id" ] && [ "$note_id" != "null" ]; then
     curl -fsS -X PUT --header "@$AUTH_HEADER_FILE" "${API_BASE}/projects/${PROJECT_ID}/merge_requests/${MR_IID}/notes/${note_id}" --data-urlencode "body=${body}"
   else

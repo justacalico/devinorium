@@ -13,6 +13,9 @@ BUILD_ALL="${2:-true}"
 CREATE_RELEASE="${3:-false}"
 PUSH_REF="${4:-HEAD}"
 
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+PUSHED_SHA=""
 if [ -n "$PUSH_REF" ]; then
   if [ "$PUSH_REF" = "HEAD" ] && [ -n "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}" ]; then
     if [ -n "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-}" ]; then
@@ -25,13 +28,12 @@ if [ -n "$PUSH_REF" ]; then
       PUSH_REF=$(git rev-parse --verify "refs/remotes/origin/$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" 2>/dev/null || git rev-parse HEAD)
     fi
   fi
-  echo "Pushing $PUSH_REF to GitHub branch $REF..."
+  PUSHED_SHA=$(git rev-parse "$PUSH_REF^{commit}")
+  echo "Pushing $PUSHED_SHA to GitHub branch $REF..."
   git remote add github "git@github.com:$REPO.git" 2>/dev/null || true
   git remote update github
-  git push -f github "$PUSH_REF:refs/heads/$REF"
+  git push -f github "$PUSHED_SHA:refs/heads/$REF"
 fi
-
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 update_comment() {
   [ -n "${CI_MERGE_REQUEST_IID:-}" ] || return 0
@@ -45,26 +47,28 @@ update_comment() {
 update_comment start
 
 echo "Triggering GitHub workflow: $WORKFLOW @ $REF (build_all=$BUILD_ALL, create_release=$CREATE_RELEASE)"
+# Record the dispatch time (minus a clock-skew margin) so the run lookup can
+# ignore older runs for the same commit.
+TRIGGER_TS=$(date -u -d "@$(( $(date +%s) - 120 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
 if ! gh workflow run "$WORKFLOW" -R "$REPO" --ref "$REF" \
-  -f build_all="$BUILD_ALL" \
-  -f create_release="$CREATE_RELEASE"; then
+  -F build_all="$BUILD_ALL" \
+  -F create_release="$CREATE_RELEASE"; then
   echo "Failed to trigger GitHub workflow" >&2
   update_comment finish failure
   exit 1
 fi
 
-echo "Looking for run ID..."
-RUN_ID=""
-for i in {1..30}; do
-  sleep 5
-  # Use the API directly so it works on older gh versions in the container.
-  RUN_ID=$(gh api "repos/$REPO/actions/runs?branch=$REF&event=workflow_dispatch&per_page=1" -q '.workflow_runs[0].id' 2>/dev/null || true)
-  if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-    break
-  fi
-done
+# Find the run created for the commit we pushed, so each pipeline watches
+# its own run instead of whatever happens to be newest on the branch.
+LOOKUP_SHA="${PUSHED_SHA:-$(git rev-parse "$REF^{commit}" 2>/dev/null || git rev-parse "origin/$REF^{commit}" 2>/dev/null || true)}"
+if [ -z "$LOOKUP_SHA" ]; then
+  echo "Could not resolve commit for $REF" >&2
+  update_comment finish failure
+  exit 1
+fi
+RUN_ID=$("$BASE_DIR/scripts/watch-github-run.sh" find --sha "$LOOKUP_SHA" --event workflow_dispatch --branch "$REF" --since "$TRIGGER_TS" || true)
 
-if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+if [ -z "${RUN_ID:-}" ]; then
   echo "Could not find GitHub run for $REF" >&2
   update_comment finish failure
   exit 1
@@ -73,34 +77,9 @@ fi
 export RUN_ID
 update_comment update
 
-echo "Watching GitHub run $RUN_ID..."
-FINAL_CONCLUSION="unknown"
-for attempt in 1 2 3; do
-  if gh run watch "$RUN_ID" -R "$REPO" --exit-status 2>&1; then
-    FINAL_CONCLUSION="success"
-    break
-  fi
-
-  # watch can fail due to transient GitHub API errors; verify the real run conclusion.
-  CONCLUSION=$(gh api "repos/$REPO/actions/runs/$RUN_ID" -q '.conclusion' 2>/dev/null || true)
-  case "$CONCLUSION" in
-    success)
-      FINAL_CONCLUSION="success"
-      break
-      ;;
-    failure|cancelled|timed_out|startup_failure|action_required|stale)
-      FINAL_CONCLUSION="$CONCLUSION"
-      break
-      ;;
-    *)
-      echo "gh run watch lost connection (attempt $attempt), retrying..."
-      sleep 10
-      ;;
-  esac
-done
-
-if [ "$FINAL_CONCLUSION" != "success" ]; then
-  [ "$FINAL_CONCLUSION" = "unknown" ] && FINAL_CONCLUSION="failure"
+if ! "$BASE_DIR/scripts/watch-github-run.sh" "$RUN_ID"; then
+  FINAL_CONCLUSION=$(gh api "repos/$REPO/actions/runs/$RUN_ID" -q '.conclusion' 2>/dev/null || true)
+  [ -n "$FINAL_CONCLUSION" ] && [ "$FINAL_CONCLUSION" != "null" ] || FINAL_CONCLUSION="failure"
   update_comment finish "$FINAL_CONCLUSION"
   exit 1
 fi

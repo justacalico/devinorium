@@ -32,11 +32,14 @@ variables:
 github-sync:
   stage: sync
   <<: *github-common
+  timeout: 3h
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG
+  variables:
+    GH_TOKEN: $GH_TOKEN
   before_script:
-    - apk add --no-cache git openssh-client
+    - apk add --no-cache bash git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
   script:
     - git remote add github git@github.com:justacalico/devinorium.git || true
@@ -52,15 +55,28 @@ github-sync:
         fi
       else
         git push github HEAD:main
+        # Watch the GitHub build for the pushed commit so a failed job on
+        # GitHub also fails this pipeline.
+        SHA=$(git rev-parse HEAD)
+        RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push --branch main || true)
+        if [ -z "$RUN_ID" ]; then
+          echo "No GitHub run found for pushed commit $SHA" >&2
+          exit 1
+        fi
+        bash scripts/watch-github-run.sh "$RUN_ID"
       fi
 
 github-dispatch:
   stage: sync
   <<: *github-common
+  timeout: 3h
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
   variables:
     GH_TOKEN: $GH_TOKEN
+  before_script:
+    - apk add --no-cache bash curl jq git github-cli openssh-client
+    - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
   script:
     - |
       BUILD_ALL="$[[ inputs.build_all ]]"
@@ -73,6 +89,7 @@ github-dispatch:
 github-mr-build:
   stage: sync
   <<: *github-common
+  timeout: 3h
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
