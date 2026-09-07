@@ -268,6 +268,10 @@ abstract class AppStateBase extends ChangeNotifier {
   void setComposerMode(ComposerMode m, {bool persist});
   Future<void> _saveComposerMode(ComposerMode m);
   Future<void> _loadComposerMode();
+  Future<void> _loadComposerSelections();
+  Future<void> _saveSelectedProvider(String id);
+  Future<void> _saveSelectedModel(String m);
+  Future<void> _saveSelectedPermission(String p);
   void setLoginError(String e);
   void setShowTotpField(bool v);
   void setGlobalError(String e);

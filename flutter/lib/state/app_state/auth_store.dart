@@ -275,7 +275,7 @@ mixin AuthStore on AppStateBase {
       await api.logout();
     } catch (_) {}
     await multiServerState.clearActiveToken();
-    _resetServerState();
+    await _resetServerState();
     _settingsTopicIndex = 0;
     _userMenuOpen = false;
     _view = AppView.login;
@@ -288,7 +288,7 @@ mixin AuthStore on AppStateBase {
     _switchingServer = true;
     stopHealthChecks();
     stopGitRefresh();
-    _resetServerState();
+    await _resetServerState();
     try {
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
@@ -311,7 +311,7 @@ mixin AuthStore on AppStateBase {
       if (wasActive) {
         stopHealthChecks();
         stopGitRefresh();
-        _resetServerState();
+        await _resetServerState();
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
@@ -352,7 +352,9 @@ mixin AuthStore on AppStateBase {
         _selectedModel = '';
         _modelsProvider = '';
         _models = [];
-        unawaited(ensureModelsFor(_user!.providerId));
+        await _saveSelectedProvider('');
+        await _saveSelectedModel('');
+        await ensureModelsFor(_user!.providerId);
       }
       _globalError = '';
       // The installed version depends on the provider command, so re-check
@@ -439,19 +441,22 @@ mixin AuthStore on AppStateBase {
     _showTotpField = false;
     _loginError = '';
     _user = await api.me();
-    _view = AppView.app;
     await _loadPlanOverlayState();
-    await Future.wait([_loadModelsAndProviders(), loadProjects()]);
+    await _loadComposerSelections();
+    await _loadModelsAndProviders();
+    await loadProjects();
     if (_projects.isNotEmpty) {
       await selectProject(_projects.first.id);
     } else {
       await selectAllProjects();
     }
+    _view = AppView.app;
+    notifyListeners();
     startHealthChecks();
     startGitRefresh();
   }
 
-  void _resetServerState() {
+  Future<void> _resetServerState() async {
     _user = null;
     _users = [];
     _projects = [];
@@ -486,6 +491,9 @@ mixin AuthStore on AppStateBase {
     _modelsProvider = '';
     _models = [];
     _providers = [];
+    await _saveSelectedProvider('');
+    await _saveSelectedModel('');
+    await _saveSelectedPermission('');
     _providerVersion = null;
     _runningThreadIds.clear();
     _connectionStatus = ConnectionStatus.checking;

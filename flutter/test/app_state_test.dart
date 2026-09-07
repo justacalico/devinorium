@@ -172,10 +172,10 @@ void main() {
               'provider_command': 'devin',
             }),
             _json(200, [
-              {'id': 'glm-5-2', 'label': 'GLM'},
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
             ]),
             _json(200, [
-              {'id': 'devin-cli', 'name': 'Devin CLI'},
+              {'id': 'glm-5-2', 'label': 'GLM'},
             ]),
             _json(200, [
               {
@@ -211,6 +211,194 @@ void main() {
       expect(state.activeProjectId, 1);
     });
 
+    test('bootstrap restores persisted composer selections', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_selected_provider': 'opencode',
+        'devinorium_selected_model': 'oc-m2',
+        'devinorium_selected_permission': 'bypass',
+      });
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+            _json(200, [
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
+              {'id': 'opencode', 'name': 'OpenCode'},
+            ]),
+            _json(200, [
+              {
+                'id': 'oc-m2',
+                'label': 'OpenCode 2',
+                'cost_tier': 'free',
+                'family': 'OpenCode',
+              },
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
+      );
+
+      await state.bootstrap();
+      expect(state.view, AppView.app);
+      expect(state.selectedProvider, 'opencode');
+      expect(state.selectedModel, 'oc-m2');
+      expect(state.selectedPermission, 'bypass');
+    });
+
+    test('bootstrap falls back to user provider and first model when persisted provider is unknown', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_selected_provider': 'unknown',
+        'devinorium_selected_model': 'stale-model',
+        'devinorium_selected_permission': 'bypass',
+      });
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+            _json(200, [
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
+            ]),
+            _json(200, [
+              {'id': 'glm-5-2', 'label': 'GLM'},
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
+      );
+
+      await state.bootstrap();
+      expect(state.view, AppView.app);
+      expect(state.selectedProvider, 'devin-cli');
+      expect(state.selectedModel, 'glm-5-2');
+      expect(state.selectedPermission, 'bypass');
+    });
+
+    test('bootstrap falls back to first provider when user provider is also unknown', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_selected_provider': 'unknown',
+        'devinorium_selected_model': 'stale',
+      });
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'missing',
+              'provider_command': 'devin',
+            }),
+            _json(200, [
+              {'id': 'opencode', 'name': 'OpenCode'},
+            ]),
+            _json(200, [
+              {'id': 'oc-m2', 'label': 'OpenCode 2', 'cost_tier': 'free', 'family': 'OpenCode'},
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
+      );
+
+      await state.bootstrap();
+      expect(state.view, AppView.app);
+      expect(state.selectedProvider, 'opencode');
+      expect(state.selectedModel, 'oc-m2');
+    });
+
+    test('bootstrap falls back to normal permission when persisted permission is invalid', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_selected_provider': 'devin-cli',
+        'devinorium_selected_model': 'glm-5-2',
+        'devinorium_selected_permission': 'owner',
+      });
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+            _json(200, [
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
+            ]),
+            _json(200, [
+              {'id': 'glm-5-2', 'label': 'GLM'},
+            ]),
+            _json(200, [
+              {
+                'id': 1,
+                'name': 'p',
+                'path': '/x',
+                'created_at': '',
+                'updated_at': '',
+              },
+            ]),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
+      );
+
+      await state.bootstrap();
+      expect(state.view, AppView.app);
+      expect(state.selectedProvider, 'devin-cli');
+      expect(state.selectedModel, 'glm-5-2');
+      expect(state.selectedPermission, 'normal');
+    });
+
     test('bootstrap falls back to login on error', () async {
       final state = AppState(
         api: ApiService(
@@ -240,10 +428,10 @@ void main() {
               'provider_command': 'devin',
             }),
             _json(200, [
-              {'id': 'glm-5-2', 'label': 'GLM'},
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
             ]),
             _json(200, [
-              {'id': 'devin-cli', 'name': 'Devin CLI'},
+              {'id': 'glm-5-2', 'label': 'GLM'},
             ]),
             _json(200, [
               {
@@ -310,6 +498,11 @@ void main() {
     });
 
     test('logout clears user state', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_selected_provider': 'opencode',
+        'devinorium_selected_model': 'oc-m2',
+        'devinorium_selected_permission': 'bypass',
+      });
       final state = AppState(
         api: ApiService(client: _clientFor([_json(200, {})])),
       );
@@ -322,6 +515,11 @@ void main() {
       expect(state.composerText, isEmpty);
       expect(state.projects, isEmpty);
       expect(state.settingsTopicIndex, 0);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_selected_provider'), isNull);
+      expect(prefs.getString('devinorium_selected_model'), isNull);
+      expect(prefs.getString('devinorium_selected_permission'), isNull);
     });
 
     test('addServer adds a profile without changing the active view', () async {
@@ -1284,6 +1482,46 @@ void main() {
       await base.saveProvider(providerCommand: 'devin-cli');
       expect(base.user?.providerCommand, 'devin-cli');
       expect(base.globalError, isEmpty);
+    });
+
+    test('saveProvider clears persisted composer selections when provider changes', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_selected_provider': 'opencode',
+        'devinorium_selected_model': 'oc-m2',
+      });
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'opencode',
+              'provider_command': 'opencode',
+            }),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      await base.saveProvider(providerId: 'opencode');
+      await Future.delayed(Duration.zero);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_selected_provider'), isNull);
+      expect(prefs.getString('devinorium_selected_model'), isNull);
+      expect(base.selectedProvider, 'opencode');
     });
 
     test('testProvider sets global error on failure', () async {
@@ -3594,10 +3832,10 @@ void main() {
               'provider_command': 'devin',
             }),
             _json(200, [
-              {'id': 'glm-5-2', 'label': 'GLM'},
+              {'id': 'devin-cli', 'name': 'Devin CLI'},
             ]),
             _json(200, [
-              {'id': 'devin-cli', 'name': 'Devin CLI'},
+              {'id': 'glm-5-2', 'label': 'GLM'},
             ]),
             _json(200, [
               {

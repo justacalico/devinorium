@@ -1,5 +1,10 @@
 part of 'package:devinorium_frontend/state/app_state.dart';
 
+const _selectedProviderKey = 'devinorium_selected_provider';
+const _selectedModelKey = 'devinorium_selected_model';
+const _selectedPermissionKey = 'devinorium_selected_permission';
+const _knownPermissionModes = {'normal', 'accept-edits', 'smart', 'bypass'};
+
 mixin ModelStore on AppStateBase {
   @override
   List<ModelInfo> _models = [];
@@ -55,9 +60,11 @@ mixin ModelStore on AppStateBase {
       store.selectedModel = m;
     } else {
       _selectedModel = m;
+      unawaited(_saveSelectedModel(m));
     }
     notifyListeners();
   }
+
   @override
   void setSelectedPermission(String p) {
     final store = _activeStore;
@@ -65,6 +72,7 @@ mixin ModelStore on AppStateBase {
       store.selectedPermission = p;
     } else {
       _selectedPermission = p;
+      unawaited(_saveSelectedPermission(p));
     }
     notifyListeners();
   }
@@ -77,6 +85,20 @@ mixin ModelStore on AppStateBase {
       _selectedProvider = id;
     }
     await ensureModelsFor(id);
+    if (_activeStore == null &&
+        _selectedProvider == id &&
+        _modelsProvider == id &&
+        _models.any((m) => m.id == _selectedModel)) {
+      await _saveSelectedProvider(_selectedProvider);
+      await _saveSelectedModel(_selectedModel);
+    } else if (_activeStore == null && _selectedProvider == id) {
+      // The provider changed but the catalog is missing or stale; keep the
+      // provider choice but drop the model so the next relaunch does not pair
+      // this provider with an unrelated model.
+      _selectedModel = '';
+      await _saveSelectedProvider(_selectedProvider);
+      await _saveSelectedModel('');
+    }
     notifyListeners();
   }
 
@@ -117,25 +139,109 @@ mixin ModelStore on AppStateBase {
   }
 
   @override
+  Future<void> _loadComposerSelections() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final provider = prefs.getString(_selectedProviderKey) ?? '';
+      final model = prefs.getString(_selectedModelKey) ?? '';
+      final permission = prefs.getString(_selectedPermissionKey) ?? '';
+      if (provider.isNotEmpty) _selectedProvider = provider;
+      if (model.isNotEmpty) _selectedModel = model;
+      if (permission.isNotEmpty && _knownPermissionModes.contains(permission)) {
+        _selectedPermission = permission;
+      }
+    } catch (_) {
+      // SharedPreferences may be unavailable in tests; keep the defaults.
+    }
+  }
+
+  @override
+  Future<void> _saveSelectedProvider(String id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (id.isEmpty) {
+        await prefs.remove(_selectedProviderKey);
+      } else {
+        await prefs.setString(_selectedProviderKey, id);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> _saveSelectedModel(String m) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (m.isEmpty) {
+        await prefs.remove(_selectedModelKey);
+      } else {
+        await prefs.setString(_selectedModelKey, m);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> _saveSelectedPermission(String p) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (p.isEmpty) {
+        await prefs.remove(_selectedPermissionKey);
+      } else {
+        await prefs.setString(_selectedPermissionKey, p);
+      }
+    } catch (_) {}
+  }
+
+  @override
   Future<void> _loadModelsAndProviders() async {
-    final provider = _user?.providerId ?? '';
-    await Future.wait([
-      (() async {
-        try {
-          _models = await api.listModels(
-            provider: provider.isEmpty ? null : provider,
-          );
-          _modelsProvider = provider;
-          if (_models.isNotEmpty && _selectedModel.isEmpty) {
-            _selectedModel = _models.first.id;
-          }
-        } catch (_) {}
-      })(),
-      (() async {
-        try {
-          _providers = await api.listProviders();
-        } catch (_) {}
-      })(),
-    ]);
+    final userProvider = _user?.providerId ?? '';
+    final seq = ++_modelsRequestSeq;
+
+    try {
+      final providers = await api.listProviders();
+      if (seq != _modelsRequestSeq) return;
+      _providers = providers;
+    } catch (_) {
+      if (seq != _modelsRequestSeq) return;
+      _providers = [];
+    }
+
+    String effectiveProvider;
+    if (_selectedProvider.isNotEmpty &&
+        _providers.any((p) => p.id == _selectedProvider)) {
+      effectiveProvider = _selectedProvider;
+    } else if (userProvider.isNotEmpty &&
+        _providers.any((p) => p.id == userProvider)) {
+      effectiveProvider = userProvider;
+    } else if (_providers.isNotEmpty) {
+      effectiveProvider = _providers.first.id;
+    } else {
+      effectiveProvider = '';
+    }
+
+    if (effectiveProvider.isEmpty) {
+      _models = [];
+      _modelsProvider = '';
+    } else if (effectiveProvider == _modelsProvider && _models.isNotEmpty) {
+      _revalidateSelectedModel();
+    } else {
+      try {
+        final models = await api.listModels(provider: effectiveProvider);
+        if (seq != _modelsRequestSeq) return;
+        _models = models;
+        _modelsProvider = effectiveProvider;
+        _revalidateSelectedModel();
+      } catch (_) {
+        if (seq != _modelsRequestSeq) return;
+        _models = [];
+        _modelsProvider = '';
+      }
+    }
+
+    _selectedProvider = effectiveProvider;
+    if (_models.isEmpty) _selectedModel = '';
+    if (!_knownPermissionModes.contains(_selectedPermission)) {
+      _selectedPermission = 'normal';
+    }
+    notifyListeners();
   }
 }
