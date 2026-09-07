@@ -1165,9 +1165,14 @@ void main() {
     expect(find.text('AGPL-3.0-only'), findsOneWidget);
     expect(find.text('Source code'), findsOneWidget);
     expect(find.text('Support'), findsOneWidget);
+    expect(find.text('Privacy policy'), findsOneWidget);
     expect(find.text('https://gitlab.com/HttpAnimations/devinorium'), findsOneWidget);
     expect(
       find.text('https://gitlab.com/HttpAnimations/devinorium/-/work_items'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('https://gitlab.com/HttpAnimations/devinorium/-/blob/main/privacy_policy.md'),
       findsOneWidget,
     );
   });
@@ -1344,6 +1349,56 @@ void main() {
     expect(
       launched,
       contains('https://gitlab.com/HttpAnimations/devinorium/-/work_items'),
+    );
+  });
+
+  testWidgets('About section opens the privacy policy link', (
+    tester,
+  ) async {
+    final launched = <String>[];
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'canLaunch':
+          return true;
+        case 'launch':
+          final args = call.arguments as Map<dynamic, dynamic>;
+          launched.add(args['url'] as String);
+          return true;
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+      launched.clear();
+    });
+
+    final state = _FakeAppState.test(
+      settingsTopicIndex: 6,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Privacy policy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Privacy policy'));
+    await tester.pumpAndSettle();
+
+    expect(
+      launched,
+      contains('https://gitlab.com/HttpAnimations/devinorium/-/blob/main/privacy_policy.md'),
     );
   });
 
