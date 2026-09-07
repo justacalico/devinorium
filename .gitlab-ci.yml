@@ -81,7 +81,7 @@ github-mr-build:
     - apk add --no-cache bash curl jq git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
   script:
-    - bash scripts/trigger-github-build.sh "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" true false "$CI_MERGE_REQUEST_SOURCE_BRANCH_SHA"
+    - bash scripts/trigger-github-build.sh "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" true false "$CI_COMMIT_SHA"
 
 openlyst-release-trigger:
   stage: release
