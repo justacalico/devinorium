@@ -166,6 +166,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                     },
                     onThreadTap: (id) => state.openThread(id),
                     onShowMore: () => _onShowMore(p.id),
+                    reorderEnabled: query.isEmpty,
                   );
                 },
               ),

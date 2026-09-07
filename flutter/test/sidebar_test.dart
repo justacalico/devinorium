@@ -79,6 +79,7 @@ class _FakeApiService extends ApiService {
   final unpinnedThreadIds = <String>[];
   final pinProjectReturns = <int, Project>{};
   final pinThreadReturns = <String, Thread>{};
+  final reorderedProjectIds = <List<int>>[];
   List<Thread> listThreadsResult = const [];
   bool healthOk = true;
 
@@ -93,6 +94,12 @@ class _FakeApiService extends ApiService {
   @override
   Future<void> deleteProject(int id) {
     deletedProjectIds.add(id);
+    return Future.value();
+  }
+
+  @override
+  Future<void> reorderProjects(List<int> projectIds) {
+    reorderedProjectIds.add(projectIds);
     return Future.value();
   }
 
@@ -169,11 +176,11 @@ class _FakeApiService extends ApiService {
 }
 
 Widget _buildWithState(AppState state, {TargetPlatform? platform}) =>
-    MaterialApp(
-      theme: platform == null ? null : ThemeData(platform: platform),
-      home: ChangeNotifierProvider<AppState>.value(
-        value: state,
-        child: const Scaffold(
+    ChangeNotifierProvider<AppState>.value(
+      value: state,
+      child: MaterialApp(
+        theme: platform == null ? null : ThemeData(platform: platform),
+        home: const Scaffold(
           drawer: Drawer(child: Sidebar()),
           body: SizedBox.shrink(),
         ),
@@ -601,15 +608,125 @@ void main() {
     );
     final projectDragHandle = find.ancestor(
       of: projectHeader,
-      matching: find.byType(ReorderableDragStartListener),
+      matching: find.byType(ReorderableDelayedDragStartListener),
     );
     expect(projectDragHandle, findsOneWidget);
 
     final threadDragHandle = find.ancestor(
       of: find.text('My thread'),
-      matching: find.byType(ReorderableDragStartListener),
+      matching: find.byType(ReorderableDelayedDragStartListener),
     );
     expect(threadDragHandle, findsNothing);
+  });
+
+  testWidgets('Dragging a project scrolls the list instead of reordering', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: List.generate(
+        12,
+        (i) => Project(
+          id: i + 1,
+          name: 'p${i + 1}',
+          path: '/x/${i + 1}',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final scrollable = find.descendant(
+      of: find.byType(ReorderableListView),
+      matching: find.byType(Scrollable),
+    );
+    expect(scrollable, findsOneWidget);
+    expect(tester.state<ScrollableState>(scrollable).position.pixels, 0);
+
+    await tester.drag(find.text('p1'), const Offset(0, -300));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.state<ScrollableState>(scrollable).position.pixels,
+      greaterThan(0),
+    );
+    expect(api.reorderedProjectIds, isEmpty);
+  });
+
+  testWidgets('Long press drag reorders projects', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x/1', createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'p2', path: '/x/2', createdAt: '', updatedAt: ''),
+        Project(id: 3, name: 'p3', path: '/x/3', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('p2')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveTo(tester.getCenter(find.text('p1')));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(api.reorderedProjectIds, hasLength(1));
+    expect(api.reorderedProjectIds.single, orderedEquals([2, 1, 3]));
+  });
+
+  testWidgets('Project drag is disabled while searching', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+    await tester.enterText(find.byKey(const Key('sidebar_search')), 'p');
+    await tester.pumpAndSettle();
+
+    final listener = tester.widget<ReorderableDelayedDragStartListener>(
+      find.byType(ReorderableDelayedDragStartListener),
+    );
+    expect(listener.enabled, isFalse);
   });
 
   testWidgets('Projects start collapsed when no thread is active', (
