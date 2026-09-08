@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.41.4 - 2026-09-08
+#### Bug Fixes
+- 修复 iOS 云终端退格键无响应 - (36a49cd) - 珍惜
+
+- - -
+
 ## v0.41.3 - 2026-09-08
 #### Bug Fixes
 - iOS 附件支持从相册或相机选择 - (a69c0c7) - HttpAnimations
