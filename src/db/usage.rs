@@ -481,10 +481,7 @@ mod tests {
             .await
             .unwrap();
         let (_, totals_a) = db.usage_summary(uid, "1970-01-01", 0).await.unwrap();
-        let (_, totals_b) = db
-            .usage_summary(other.id, "1970-01-01", 0)
-            .await
-            .unwrap();
+        let (_, totals_b) = db.usage_summary(other.id, "1970-01-01", 0).await.unwrap();
         assert_eq!(totals_a.total_tokens, 150);
         assert_eq!(totals_b.total_tokens, 60);
     }
@@ -495,12 +492,16 @@ mod tests {
         let mut s = snap(10, 5);
         s.cost_amount = Some(100.0);
         s.cost_currency = Some("CREDITS".into());
-        db.record_turn_usage(event(uid, "s1", true, s)).await.unwrap();
+        db.record_turn_usage(event(uid, "s1", true, s))
+            .await
+            .unwrap();
         // Provider switched to reporting dollars; 5 USD is not 5 - 100.
         let mut s2 = snap(20, 10);
         s2.cost_amount = Some(5.0);
         s2.cost_currency = Some("USD".into());
-        db.record_turn_usage(event(uid, "s1", false, s2)).await.unwrap();
+        db.record_turn_usage(event(uid, "s1", false, s2))
+            .await
+            .unwrap();
         let (_, totals) = db.usage_summary(uid, "1970-01-01", 0).await.unwrap();
         let usd = totals.costs.iter().find(|c| c.currency == "USD").unwrap();
         assert!((usd.amount - 5.0).abs() < 1e-9);
