@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.41.3 - 2026-09-08
+#### Bug Fixes
+- iOS 附件支持从相册或相机选择 - (a69c0c7) - HttpAnimations
+
+- - -
+
 ## v0.41.2 - 2026-09-08
 #### Bug Fixes
 - 补齐剩余界面字符串的本地化 - (3e2ae0d) - HttpAnimations
