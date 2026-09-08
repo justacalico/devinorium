@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.42.0 - 2026-09-08
+#### Features
+- 跟踪提供商和模型的 token 用量并新增用量页面 - (2e53e25) - HttpAnimations
+
+- - -
+
 ## v0.41.4 - 2026-09-08
 #### Bug Fixes
 - 修复 iOS 云终端退格键无响应 - (36a49cd) - 珍惜
