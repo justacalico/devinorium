@@ -54,5 +54,10 @@ void main() {
       l10n.terminalShellStartFailed('bash', 'boom'),
       '[failed to start bash: boom]',
     );
+    expect(l10n.attachSourcePhotoLibrary, 'Photo Library');
+    expect(l10n.attachSourceTakePhotoOrVideo, 'Take Photo or Video');
+    expect(l10n.attachSourceTakePhoto, 'Take Photo');
+    expect(l10n.attachSourceRecordVideo, 'Record Video');
+    expect(l10n.attachSourceBrowse, 'Browse');
   });
 }

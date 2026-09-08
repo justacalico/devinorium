@@ -73,5 +73,11 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Devinorium needs to connect to the self-hosted server you configure.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Devinorium needs camera access so you can attach photos and videos you capture.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Devinorium needs microphone access when you attach a recorded video.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Devinorium needs photo library access so you can attach photos and videos.</string>
 </dict>
 </plist>

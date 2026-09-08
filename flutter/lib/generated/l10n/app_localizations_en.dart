@@ -396,6 +396,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dropZoneDropHere => 'Drop files here to attach';
 
   @override
+  String get attachSourcePhotoLibrary => 'Photo Library';
+
+  @override
+  String get attachSourceTakePhotoOrVideo => 'Take Photo or Video';
+
+  @override
+  String get attachSourceTakePhoto => 'Take Photo';
+
+  @override
+  String get attachSourceRecordVideo => 'Record Video';
+
+  @override
+  String get attachSourceBrowse => 'Browse';
+
+  @override
   String get files => 'Files';
 
   @override

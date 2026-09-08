@@ -3,15 +3,22 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dropzone/flutter_dropzone.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../state/app_state.dart';
 import '../utils/attachment_reader.dart';
+import '../utils/media_picker.dart';
+import 'attachment_source_sheet.dart';
 
 class DropZone extends StatefulWidget {
   final Widget child;
-  const DropZone({super.key, required this.child});
+
+  /// Overrides the media picker used on mobile. For tests.
+  final MediaPicker? mediaPicker;
+
+  const DropZone({super.key, required this.child, this.mediaPicker});
 
   static DropZoneController? of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<_DropZoneScope>();
@@ -39,6 +46,10 @@ class _DropZoneState extends State<DropZone> {
   DropzoneViewController? _webCtrl;
   bool _hovering = false;
   late final DropZoneController _controller;
+  final _defaultMediaPicker = ImagePickerMediaPicker();
+
+  MediaPicker get _mediaPicker =>
+      widget.mediaPicker ?? _defaultMediaPicker;
 
   static const _maxSize = 8 * 1024 * 1024;
 
@@ -50,7 +61,57 @@ class _DropZoneState extends State<DropZone> {
 
   Future<List<FileAttachment>> _pickFiles({required bool multiple}) async {
     if (kIsWeb) return _pickWebFiles(multiple: multiple);
+    if (_isMobile(context)) return _pickMobileFiles(multiple: multiple);
     return _pickNativeFiles(multiple: multiple);
+  }
+
+  bool _isMobile(BuildContext context) {
+    return switch (Theme.of(context).platform) {
+      TargetPlatform.iOS || TargetPlatform.android => true,
+      _ => false,
+    };
+  }
+
+  Future<List<FileAttachment>> _pickMobileFiles({
+    required bool multiple,
+  }) async {
+    try {
+      final source = await showAttachSourceSheet(context);
+      if (!mounted || source == null) return [];
+      switch (source) {
+        case AttachSource.browse:
+          return _pickNativeFiles(multiple: multiple);
+        case AttachSource.photoLibrary:
+          final files = await _mediaPicker.pickGalleryMedia(
+            multiple: multiple,
+          );
+          return _readMediaFiles(files);
+        case AttachSource.camera:
+          final mode = await showCameraCaptureSheet(context);
+          if (!mounted || mode == null) return [];
+          final file = switch (mode) {
+            CameraCapture.photo => await _mediaPicker.capturePhoto(),
+            CameraCapture.video => await _mediaPicker.captureVideo(),
+          };
+          if (file == null) return [];
+          return _readMediaFiles([file]);
+      }
+    } catch (e) {
+      if (mounted) {
+        context
+            .read<AppState>()
+            .setGlobalError(l10n(context).dropZonePickFilesFailed('$e'));
+      }
+      return [];
+    }
+  }
+
+  Future<List<FileAttachment>> _readMediaFiles(List<XFile> files) async {
+    if (files.isEmpty) return [];
+    final results = await Future.wait(
+      files.map((f) => readAttachment(_XFileSource(f), maxSize: _maxSize)),
+    );
+    return _collect(results);
   }
 
   Future<List<FileAttachment>> _pickWebFiles({required bool multiple}) async {
@@ -282,6 +343,25 @@ class _WebAttachmentSource implements AttachmentSource {
 
   @override
   Future<Uint8List> readAsBytes() => controller.getFileData(file);
+}
+
+class _XFileSource implements AttachmentSource {
+  final XFile file;
+
+  _XFileSource(this.file);
+
+  @override
+  String get name => file.name;
+
+  @override
+  String? get mimeType =>
+      file.mimeType?.isNotEmpty == true ? file.mimeType : null;
+
+  @override
+  Future<int> length() => file.length();
+
+  @override
+  Future<Uint8List> readAsBytes() => file.readAsBytes();
 }
 
 class _PlatformFileSource implements AttachmentSource {
