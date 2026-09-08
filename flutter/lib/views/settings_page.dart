@@ -17,6 +17,7 @@ import '../widgets/git_provider_tile.dart';
 import '../widgets/owner_badge.dart';
 import 'create_user_dialog.dart';
 import 'folder_picker_dialog.dart';
+import 'settings/topics.dart';
 import 'window_title_drag.dart';
 
 part 'settings/account_section.dart';
@@ -26,9 +27,24 @@ part 'settings/accounts_section.dart';
 part 'settings/about_section.dart';
 part 'settings/git_section.dart';
 part 'settings/clone_root_section.dart';
+part 'settings/usage_section.dart';
 part 'settings/servers_section.dart';
 part 'settings/section_card.dart';
 part 'settings/settings_row.dart';
+
+/// Map a settings topic to its section widget. Kept in sync with
+/// [settingsTopics] so the sidebar list and this page always agree.
+Widget _sectionFor(SettingsTopic topic, AppState state) => switch (topic) {
+  SettingsTopic.account => _AccountSection(state: state),
+  SettingsTopic.providers => _ProviderCard(state: state),
+  SettingsTopic.personalization => _PersonalizationSection(state: state),
+  SettingsTopic.git => _GitSection(state: state),
+  SettingsTopic.cloneRoot => _CloneRootSection(state: state),
+  SettingsTopic.usage => _UsageSection(state: state),
+  SettingsTopic.manage => _AccountsSection(state: state),
+  SettingsTopic.about => _AboutSection(state: state),
+  SettingsTopic.servers => const _ServersSection(),
+};
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -60,22 +76,18 @@ class _SettingsPageState extends State<SettingsPage> {
         hasServer: s.multiServerState.hasAnyServer,
       ),
       builder: (context, model, _) {
+        final l = l10n(context);
+        final topics = settingsTopics(model.isOwner, l);
         final sections = [
-          _AccountSection(state: state),
-          _ProviderCard(state: state),
-          _PersonalizationSection(state: state),
-          _GitSection(state: state),
-          _CloneRootSection(state: state),
-          if (model.isOwner) _AccountsSection(state: state),
-          _AboutSection(state: state),
-          const _ServersSection(),
+          for (final t in topics) _sectionFor(t.topic, state),
         ];
         var index = model.settingsTopicIndex.clamp(0, sections.length - 1);
-        final serversIndex = sections.length - 1;
-        final aboutIndex = sections.length - 2;
+        int indexOf(SettingsTopic t) =>
+            topics.indexWhere((e) => e.topic == t);
+        final serversIndex = indexOf(SettingsTopic.servers);
         if (!model.hasServer &&
-            index != 2 &&
-            index != aboutIndex &&
+            index != indexOf(SettingsTopic.personalization) &&
+            index != indexOf(SettingsTopic.about) &&
             index != serversIndex) {
           index = serversIndex;
         }

@@ -1,22 +1,5 @@
 part of '../sidebar.dart';
 
-List<({IconData icon, String label})> _settingsTopics(
-  bool isOwner,
-  AppLocalizations l,
-) {
-  return [
-    (icon: Icons.person_outline, label: l.account),
-    (icon: Icons.cloud_outlined, label: l.providers),
-    (icon: Icons.palette_outlined, label: l.personalization),
-    (icon: Icons.code_outlined, label: l.git),
-    (icon: Icons.folder_outlined, label: l.cloneRoot),
-    if (isOwner)
-      (icon: Icons.manage_accounts_outlined, label: l.manage),
-    (icon: Icons.info_outlined, label: l.about),
-    (icon: Icons.dns_outlined, label: l.servers),
-  ];
-}
-
 class _SettingsNav extends StatelessWidget {
   const _SettingsNav();
 
@@ -34,17 +17,26 @@ class _SettingsNav extends StatelessWidget {
         hasServer: s.multiServerState.hasAnyServer,
       ),
       builder: (context, model, _) {
-        final topics = _settingsTopics(model.isOwner, l);
-        final serversIndex = topics.length - 1;
-        final aboutIndex = topics.length - 2;
+        final topics = settingsTopics(model.isOwner, l);
+        int indexOf(SettingsTopic t) =>
+            topics.indexWhere((e) => e.topic == t);
+        final serversIndex = indexOf(SettingsTopic.servers);
+        // Personalization, About, and Servers stay usable without a server.
         bool enabled(int i) =>
-            model.hasServer || i == 2 || i == aboutIndex || i == serversIndex;
+            model.hasServer ||
+            i == indexOf(SettingsTopic.personalization) ||
+            i == indexOf(SettingsTopic.about) ||
+            i == serversIndex;
         var selectedIndex = model.settingsTopicIndex;
         if (!enabled(selectedIndex)) selectedIndex = serversIndex;
 
-        return ListView(
+        // The topic list is small and fixed, so a Column builds every tile
+        // eagerly; scrolling keeps the last item reachable on short screens.
+        return SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             _SectionHeader(l.topics),
             for (var i = 0; i < topics.length; i++)
               Material(
@@ -57,7 +49,7 @@ class _SettingsNav extends StatelessWidget {
                   title: Row(
                     children: [
                       Text(topics[i].label),
-                      if (topics[i].label == l.manage) ...[
+                      if (topics[i].topic == SettingsTopic.manage) ...[
                         const SizedBox(width: 6),
                         const OwnerBadge(),
                       ],
@@ -75,7 +67,8 @@ class _SettingsNav extends StatelessWidget {
                       : null,
                 ),
               ),
-          ],
+            ],
+          ),
         );
       },
     );

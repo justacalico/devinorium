@@ -21,6 +21,7 @@ pub mod projects;
 pub mod sessions;
 pub mod thread_groups;
 pub mod threads;
+pub mod usage;
 pub mod users;
 
 pub use messages::{DuplicateClientMessageId, NewMessage, MAX_CLIENT_MESSAGE_ID_LEN};
@@ -28,6 +29,7 @@ pub use plans::{NewPlan, PlanRow};
 pub use projects::NewProject;
 pub use thread_groups::NewThreadGroup;
 pub use threads::NewThread;
+pub use usage::{NewUsageEvent, UsageBucket, UsageTotals};
 pub use users::NewUser;
 
 /// A typed handle to the SQLite pool plus app-wide db config.

@@ -15,6 +15,7 @@ pub mod settings;
 pub mod terminal;
 pub mod thread_groups;
 pub mod threads;
+pub mod usage;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

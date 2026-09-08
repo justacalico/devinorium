@@ -1317,4 +1317,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String terminalShellStartFailed(String shell, String error) {
     return '[failed to start $shell: $error]';
   }
+
+  @override
+  String get usage => 'Usage';
+
+  @override
+  String get usageDescription =>
+      'Token usage reported by providers, tracked on this server.';
+
+  @override
+  String usageLastDays(int count) {
+    return 'Last $count days';
+  }
+
+  @override
+  String get usageTotalTokens => 'Total tokens';
+
+  @override
+  String get usageInput => 'Input';
+
+  @override
+  String get usageOutput => 'Output';
+
+  @override
+  String get usageCached => 'Cached';
+
+  @override
+  String get usageReasoning => 'Reasoning';
+
+  @override
+  String get usageTurns => 'Turns';
+
+  @override
+  String get usageCost => 'Cost';
+
+  @override
+  String get usageByDay => 'Usage by day';
+
+  @override
+  String get usageByProvider => 'By provider';
+
+  @override
+  String get usageByModel => 'By model';
+
+  @override
+  String get usageEmpty => 'No usage recorded yet.';
+
+  @override
+  String get usageLoadFailed => 'Failed to load usage';
 }

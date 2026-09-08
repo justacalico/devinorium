@@ -16,6 +16,7 @@ import '../utils/thread_status.dart';
 import '../widgets/owner_badge.dart';
 import 'files_panel.dart';
 import 'project_icon.dart';
+import 'settings/topics.dart';
 import 'window_controls.dart';
 
 part 'sidebar/project_thread_list.dart';

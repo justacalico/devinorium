@@ -165,6 +165,26 @@ pub struct StartRequest {
     pub options: SendOptions,
 }
 
+/// Token and cost usage reported by a provider.
+///
+/// Values are cumulative session totals as reported by the agent (matching
+/// ACP `session/prompt` semantics), not per-turn counts. The per-turn delta
+/// is computed against the previous snapshot when the turn is recorded.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UsageSnapshot {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    /// Reasoning/thinking tokens; a subset of `output_tokens`.
+    pub thought_tokens: u64,
+    pub cached_read_tokens: u64,
+    pub cached_write_tokens: u64,
+    pub total_tokens: u64,
+    /// Cumulative session cost, when the agent reports it.
+    pub cost_amount: Option<f64>,
+    /// ISO 4217 currency code for `cost_amount`.
+    pub cost_currency: Option<String>,
+}
+
 /// Response from starting a conversation.
 #[derive(Debug, Clone, Serialize)]
 pub struct StartResponse {
@@ -178,6 +198,8 @@ pub struct StartResponse {
     pub parts: Vec<MessagePart>,
     /// A suggested title for the thread (e.g. derived from the first prompt).
     pub title: String,
+    /// Cumulative usage snapshot after the first turn, if reported.
+    pub usage: Option<UsageSnapshot>,
 }
 
 /// Request to continue an existing conversation.
@@ -195,6 +217,8 @@ pub struct SendResponse {
     pub reply: String,
     pub thinking: String,
     pub parts: Vec<MessagePart>,
+    /// Cumulative usage snapshot after this turn, if reported.
+    pub usage: Option<UsageSnapshot>,
 }
 
 /// Metadata about a provider the backend knows.

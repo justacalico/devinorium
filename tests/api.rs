@@ -123,6 +123,7 @@ impl Provider for StubProvider {
             thinking,
             parts,
             title: "Stub Thread".into(),
+            usage: None,
         })
     }
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
@@ -167,6 +168,7 @@ impl Provider for StubProvider {
             reply,
             thinking,
             parts,
+            usage: None,
         })
     }
     async fn export(
@@ -232,6 +234,7 @@ impl Provider for StreamingStubProvider {
             thinking: "thinking about it".into(),
             parts,
             title: "Streaming Thread".into(),
+            usage: None,
         })
     }
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
@@ -256,6 +259,7 @@ impl Provider for StreamingStubProvider {
             reply: "partial reply".into(),
             thinking: "thinking about it".into(),
             parts,
+            usage: None,
         })
     }
     async fn export(
@@ -5968,6 +5972,7 @@ impl Provider for PlanStubProvider {
             thinking: "".into(),
             parts,
             title: "Plan Thread".into(),
+            usage: None,
         })
     }
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
@@ -5982,6 +5987,7 @@ impl Provider for PlanStubProvider {
             reply: text.into(),
             thinking: "".into(),
             parts,
+            usage: None,
         })
     }
     async fn export(
@@ -7341,4 +7347,155 @@ async fn thread_send_uses_thread_provider_command() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}
+
+/// Provider that reports cumulative token usage growing by
+/// 100 input / 50 output tokens per call, so tests can verify per-turn
+/// deltas reach the usage API.
+struct UsageStubProvider {
+    calls: std::sync::atomic::AtomicU64,
+}
+
+#[async_trait]
+impl Provider for UsageStubProvider {
+    fn id(&self) -> &str {
+        "stub"
+    }
+    fn name(&self) -> &str {
+        "Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        if let Some(cb) = &req.options.session_callback {
+            cb("usage-session".to_string()).await;
+        }
+        Ok(StartResponse {
+            session_id: "usage-session".into(),
+            reply: format!("echo: {}", req.prompt),
+            thinking: String::new(),
+            parts: vec![MessagePart::text(format!("echo: {}", req.prompt))],
+            title: "Usage Thread".into(),
+            usage: Some(devinorium::providers::UsageSnapshot {
+                input_tokens: 100 * n,
+                output_tokens: 50 * n,
+                total_tokens: 150 * n,
+                cost_amount: Some(0.5 * n as f64),
+                cost_currency: Some("USD".into()),
+                ..Default::default()
+            }),
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        Ok(SendResponse {
+            reply: format!("echo: {}", req.prompt),
+            thinking: String::new(),
+            parts: vec![MessagePart::text(format!("echo: {}", req.prompt))],
+            usage: Some(devinorium::providers::UsageSnapshot {
+                input_tokens: 100 * n,
+                output_tokens: 50 * n,
+                total_tokens: 150 * n,
+                cost_amount: Some(0.5 * n as f64),
+                cost_currency: Some("USD".into()),
+                ..Default::default()
+            }),
+        })
+    }
+    async fn export(
+        &self,
+        _session_id: &str,
+        _working_dir: &std::path::Path,
+    ) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::json!({}))
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+async fn send_prompt(app: &Router, cookie: &str, tid: &str, prompt: &str) {
+    let boundary = "----testboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n{prompt}\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn usage_endpoint_reports_per_turn_deltas() {
+    let (app, _db) = make_app_with_provider(Arc::new(UsageStubProvider {
+        calls: std::sync::atomic::AtomicU64::new(0),
+    }))
+    .await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Usage").await;
+
+    send_prompt(&app, &cookie, &tid, "first").await;
+    send_prompt(&app, &cookie, &tid, "second").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/usage?days=7", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+    // Two turns: cumulative 150 then 300, so per-turn deltas are 150 + 150.
+    assert_eq!(json["totals"]["total_tokens"], 300);
+    assert_eq!(json["totals"]["input_tokens"], 200);
+    assert_eq!(json["totals"]["output_tokens"], 100);
+    assert_eq!(json["totals"]["records"], 2);
+    assert_eq!(json["totals"]["costs"][0]["currency"], "USD");
+    assert_eq!(json["totals"]["costs"][0]["amount"], 1.0);
+
+    let buckets = json["buckets"].as_array().unwrap();
+    assert_eq!(buckets.len(), 1, "one (day, provider, model) bucket");
+    assert_eq!(buckets[0]["provider_id"], "devin-cli");
+    assert_eq!(buckets[0]["model"], "stub-1");
+    assert_eq!(buckets[0]["total_tokens"], 300);
+    assert_eq!(buckets[0]["records"], 2);
+}
+
+#[tokio::test]
+async fn usage_endpoint_requires_auth() {
+    let (app, _db) = make_app().await;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/usage")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
