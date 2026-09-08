@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/ui.dart';
@@ -123,6 +124,10 @@ class _TerminalViewWidgetState extends State<TerminalViewWidget> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    // xterm can't detect on-screen backspace on mobile without this flag.
+    final deleteDetection = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.android);
 
     return Container(
       color: colorScheme.surface,
@@ -136,6 +141,7 @@ class _TerminalViewWidgetState extends State<TerminalViewWidget> {
               autofocus: widget.autofocus,
               padding: const EdgeInsets.all(4),
               backgroundOpacity: 1,
+              deleteDetection: deleteDetection,
               onKeyEvent: _handleKeyEvent,
             ),
           ),
