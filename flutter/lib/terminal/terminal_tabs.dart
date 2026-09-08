@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import 'terminal_grid.dart';
 import 'terminal_session.dart';
 
@@ -47,11 +48,8 @@ class TerminalTabs extends StatelessWidget {
         ),
         Expanded(
           child: tab == null
-              ? const Center(child: Text('No terminal sessions'))
-              : TerminalGrid(
-                  sessions: tab.sessions,
-                  onClose: onCloseSession,
-                ),
+              ? Center(child: Text(l10n(context).terminalNoSessions))
+              : TerminalGrid(sessions: tab.sessions, onClose: onCloseSession),
         ),
       ],
     );
@@ -81,9 +79,7 @@ class _TabBar extends StatelessWidget {
       height: 36,
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(color: colorScheme.outlineVariant),
-        ),
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: Row(
         children: [
@@ -128,10 +124,12 @@ class _Tab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final background =
-        active ? colorScheme.primaryContainer : colorScheme.surface;
-    final foreground =
-        active ? colorScheme.onPrimaryContainer : colorScheme.onSurfaceVariant;
+    final background = active
+        ? colorScheme.primaryContainer
+        : colorScheme.surface;
+    final foreground = active
+        ? colorScheme.onPrimaryContainer
+        : colorScheme.onSurfaceVariant;
 
     return InkWell(
       onTap: onTap,
@@ -143,11 +141,10 @@ class _Tab extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Tab ${index + 1}',
-                style: Theme.of(context)
-                    .textTheme
-                    .labelMedium
-                    ?.copyWith(color: foreground),
+                l10n(context).terminalTab(index + 1),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(color: foreground),
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
@@ -161,7 +158,7 @@ class _Tab extends StatelessWidget {
               ),
               icon: Icon(Icons.close, size: 14, color: foreground),
               onPressed: onClose,
-              tooltip: 'Close tab',
+              tooltip: l10n(context).terminalCloseTab,
             ),
           ],
         ),
@@ -188,7 +185,7 @@ class _AddTabButton extends StatelessWidget {
       ),
       icon: Icon(Icons.add, size: 18, color: colorScheme.onSurfaceVariant),
       onPressed: onTap,
-      tooltip: 'New tab',
+      tooltip: l10n(context).terminalNewTab,
     );
   }
 }

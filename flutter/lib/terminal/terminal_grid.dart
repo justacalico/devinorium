@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import 'terminal_session.dart';
 import 'terminal_view.dart';
 
@@ -17,14 +18,11 @@ class TerminalGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (sessions.isEmpty) {
-      return const Center(child: Text('No terminal sessions'));
+      return Center(child: Text(l10n(context).terminalNoSessions));
     }
 
     if (sessions.length == 1) {
-      return _TerminalTile(
-        session: sessions.first,
-        onClose: onClose,
-      );
+      return _TerminalTile(session: sessions.first, onClose: onClose);
     }
 
     return GridView.builder(
@@ -65,10 +63,7 @@ class _TerminalTile extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: TerminalViewWidget(
-                session: session,
-                autofocus: autofocus,
-              ),
+              child: TerminalViewWidget(session: session, autofocus: autofocus),
             ),
             Positioned(
               top: 0,
@@ -80,7 +75,7 @@ class _TerminalTile extends StatelessWidget {
                 ),
                 icon: const Icon(Icons.close, size: 18),
                 onPressed: () => onClose(session),
-                tooltip: 'Close terminal',
+                tooltip: l10n(context).terminalClose,
               ),
             ),
           ],

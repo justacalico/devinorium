@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../models/models.dart';
 
 /// Floating plan overlay shown at the top of the chat.
@@ -33,7 +34,7 @@ class PlanOverlay extends StatelessWidget {
     final percent = effectivePlan.progressPercent;
     final completed = effectivePlan.steps.where((s) => s.isCompleted).length;
     final total = effectivePlan.steps.length;
-    final explanation = effectivePlan.explanation ?? 'Plan';
+    final explanation = effectivePlan.explanation ?? l10n(context).planTitle;
 
     return Material(
       elevation: 2,
@@ -68,7 +69,9 @@ class PlanOverlay extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '$completed / $total steps · $percent%',
+                            l10n(
+                              context,
+                            ).planProgress(completed, total, percent),
                             style: theme.textTheme.labelSmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                               fontFamilyFallback: _cjkFallback,
@@ -82,12 +85,14 @@ class PlanOverlay extends StatelessWidget {
                         expanded ? Icons.expand_less : Icons.expand_more,
                       ),
                       onPressed: onToggleExpand,
-                      tooltip: expanded ? 'Collapse plan' : 'Expand plan',
+                      tooltip: expanded
+                          ? l10n(context).planCollapse
+                          : l10n(context).planExpand,
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: onDismiss,
-                      tooltip: 'Hide plan',
+                      tooltip: l10n(context).planHide,
                     ),
                   ],
                 ),
@@ -98,8 +103,9 @@ class PlanOverlay extends StatelessWidget {
                     value: percent / 100.0,
                     minHeight: 4,
                     backgroundColor: theme.colorScheme.surfaceContainerHigh,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      theme.colorScheme.primary,
+                    ),
                   ),
                 ),
                 if (expanded) ...[
@@ -184,8 +190,5 @@ const _cjkFallback = [
   'sans-serif',
 ];
 
-TextStyle? _emphasisStyle(ThemeData theme) =>
-    theme.textTheme.bodyMedium?.copyWith(
-      fontWeight: FontWeight.w500,
-      fontFamilyFallback: _cjkFallback,
-    );
+TextStyle? _emphasisStyle(ThemeData theme) => theme.textTheme.bodyMedium
+    ?.copyWith(fontWeight: FontWeight.w500, fontFamilyFallback: _cjkFallback);

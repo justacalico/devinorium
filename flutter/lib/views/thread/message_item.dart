@@ -191,8 +191,9 @@ class _MessageItemState extends State<_MessageItem> {
     final itemOffset = box.localToGlobal(Offset.zero, ancestor: viewport);
     final itemRect = itemOffset & box.size;
     final viewportRect = Offset.zero & viewport.size;
-    final isVisible =
-        itemRect.overlaps(viewportRect.inflate(_visibilityMargin));
+    final isVisible = itemRect.overlaps(
+      viewportRect.inflate(_visibilityMargin),
+    );
 
     final wasVisible = _isVisible;
     _isVisible = isVisible;
@@ -257,7 +258,8 @@ class _MessageItemState extends State<_MessageItem> {
         }
 
         final currentState = context.read<AppState>();
-        if (currentState.activeThreadId != threadId || _message.id != messageId) {
+        if (currentState.activeThreadId != threadId ||
+            _message.id != messageId) {
           setState(() => _loadingMore = false);
           return;
         }
@@ -283,7 +285,8 @@ class _MessageItemState extends State<_MessageItem> {
           );
           _loadingMore = false;
           _error = '';
-          _isFull = _message.content.runes.length >= (_message.totalChars ?? total);
+          _isFull =
+              _message.content.runes.length >= (_message.totalChars ?? total);
           _partGroups = _buildGroups(_effectiveMessage.allParts);
         });
       } catch (e) {
@@ -292,7 +295,8 @@ class _MessageItemState extends State<_MessageItem> {
           return;
         }
         final currentState = context.read<AppState>();
-        if (currentState.activeThreadId != threadId || _message.id != messageId) {
+        if (currentState.activeThreadId != threadId ||
+            _message.id != messageId) {
           setState(() => _loadingMore = false);
           return;
         }
@@ -534,13 +538,13 @@ class _MessageItemState extends State<_MessageItem> {
                       _expanded = true;
                       _partGroups = _buildGroups(_effectiveMessage.allParts);
                     }),
-                    child: const Text('Show more'),
+                    child: Text(l10n(context).showMore),
                   ),
                 ],
                 if (showLoadingMore) ...[
                   const SizedBox(height: 4),
                   Text(
-                    'Loading more…',
+                    l10n(context).loadingMore,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),

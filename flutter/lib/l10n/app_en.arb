@@ -772,5 +772,183 @@
   "contentViewShowAll": "Show all",
   "@contentViewShowAll": {
     "description": "Button label to show the rest of a truncated file"
+  },
+  "showMore": "Show more",
+  "@showMore": {
+    "description": "Button that expands a truncated message"
+  },
+  "loadingMore": "Loading more…",
+  "@loadingMore": {
+    "description": "Label shown while additional message content is loading"
+  },
+  "terminalNoSessions": "No terminal sessions",
+  "@terminalNoSessions": {
+    "description": "Empty state shown when no terminal sessions exist"
+  },
+  "terminalTab": "Tab {index}",
+  "@terminalTab": {
+    "description": "Label for a terminal tab",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "terminalNewTab": "New tab",
+  "@terminalNewTab": {
+    "description": "Tooltip for the button that opens a new terminal tab"
+  },
+  "terminalCloseTab": "Close tab",
+  "@terminalCloseTab": {
+    "description": "Tooltip for closing a terminal tab"
+  },
+  "terminalClose": "Close terminal",
+  "@terminalClose": {
+    "description": "Tooltip for closing a terminal session"
+  },
+  "terminalLocal": "Local terminal",
+  "@terminalLocal": {
+    "description": "Tooltip for adding a local terminal"
+  },
+  "terminalRemote": "Remote terminal",
+  "@terminalRemote": {
+    "description": "Tooltip for adding a remote terminal"
+  },
+  "terminalHide": "Hide terminal",
+  "@terminalHide": {
+    "description": "Tooltip for hiding the terminal panel"
+  },
+  "terminalStartFailed": "Failed to start terminal: {error}",
+  "@terminalStartFailed": {
+    "description": "Error shown when a terminal session cannot be started",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalCloseTitle": "Close terminal?",
+  "@terminalCloseTitle": {
+    "description": "Title of the confirmation dialog before closing a terminal"
+  },
+  "terminalCloseBody": "This terminal has running processes or output. Close it anyway?",
+  "@terminalCloseBody": {
+    "description": "Body of the confirmation dialog before closing a terminal"
+  },
+  "terminalTabCloseTitle": "Close tab?",
+  "@terminalTabCloseTitle": {
+    "description": "Title of the confirmation dialog before closing a terminal tab"
+  },
+  "terminalTabCloseBody": "{count, plural, =1{This tab contains 1 active terminal. Close it anyway?} other{This tab contains {count} active terminals. Close it anyway?}}",
+  "@terminalTabCloseBody": {
+    "description": "Body of the confirmation dialog before closing a terminal tab",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "planHide": "Hide plan",
+  "@planHide": {
+    "description": "Tooltip for hiding the plan overlay"
+  },
+  "planShow": "Show plan",
+  "@planShow": {
+    "description": "Tooltip for showing the plan overlay"
+  },
+  "planCollapse": "Collapse plan",
+  "@planCollapse": {
+    "description": "Tooltip for collapsing the plan overlay"
+  },
+  "planExpand": "Expand plan",
+  "@planExpand": {
+    "description": "Tooltip for expanding the plan overlay"
+  },
+  "planTitle": "Plan",
+  "@planTitle": {
+    "description": "Fallback title for the plan overlay"
+  },
+  "planProgress": "{completed} / {total} {total, plural, =1{step} other{steps}} · {percent}%",
+  "@planProgress": {
+    "description": "Progress line in the plan overlay",
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "composerModeCode": "Code",
+  "@composerModeCode": {
+    "description": "Label for the code composer mode"
+  },
+  "composerModePlan": "Plan",
+  "@composerModePlan": {
+    "description": "Label for the plan composer mode"
+  },
+  "composerModeAsk": "Ask",
+  "@composerModeAsk": {
+    "description": "Label for the ask composer mode"
+  },
+  "terminalLocalOnlyDesktop": "Local terminal is only available on desktop.",
+  "@terminalLocalOnlyDesktop": {
+    "description": "Message written to a terminal when the local backend is unavailable"
+  },
+  "terminalConnectionError": "[connection error: {error}]",
+  "@terminalConnectionError": {
+    "description": "Message written to a terminal when the connection fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalSessionExited": "[session exited with code {code}]",
+  "@terminalSessionExited": {
+    "description": "Message written to a terminal when the remote session exits",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalPtyError": "[pty error: {error}]",
+  "@terminalPtyError": {
+    "description": "Message written to a terminal when the local PTY errors",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalPtyClosed": "[pty closed]",
+  "@terminalPtyClosed": {
+    "description": "Message written to a terminal when the local PTY closes"
+  },
+  "terminalProcessExited": "[process exited with code {code}]",
+  "@terminalProcessExited": {
+    "description": "Message written to a terminal when the local process exits",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalShellStartFailed": "[failed to start {shell}: {error}]",
+  "@terminalShellStartFailed": {
+    "description": "Message written to a terminal when the local shell cannot start",
+    "placeholders": {
+      "shell": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
   }
 }
