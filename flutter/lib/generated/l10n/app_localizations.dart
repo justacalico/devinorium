@@ -2415,6 +2415,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'[failed to start {shell}: {error}]'**
   String terminalShellStartFailed(String shell, String error);
+
+  /// Usage section title in settings
+  ///
+  /// In en, this message translates to:
+  /// **'Usage'**
+  String get usage;
+
+  /// Short description shown under the Usage section title
+  ///
+  /// In en, this message translates to:
+  /// **'Token usage reported by providers, tracked on this server.'**
+  String get usageDescription;
+
+  /// Usage window selector label
+  ///
+  /// In en, this message translates to:
+  /// **'Last {count} days'**
+  String usageLastDays(int count);
+
+  /// No description provided for @usageTotalTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Total tokens'**
+  String get usageTotalTokens;
+
+  /// No description provided for @usageInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Input'**
+  String get usageInput;
+
+  /// No description provided for @usageOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Output'**
+  String get usageOutput;
+
+  /// No description provided for @usageCached.
+  ///
+  /// In en, this message translates to:
+  /// **'Cached'**
+  String get usageCached;
+
+  /// No description provided for @usageReasoning.
+  ///
+  /// In en, this message translates to:
+  /// **'Reasoning'**
+  String get usageReasoning;
+
+  /// No description provided for @usageTurns.
+  ///
+  /// In en, this message translates to:
+  /// **'Turns'**
+  String get usageTurns;
+
+  /// No description provided for @usageCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost'**
+  String get usageCost;
+
+  /// No description provided for @usageByDay.
+  ///
+  /// In en, this message translates to:
+  /// **'Usage by day'**
+  String get usageByDay;
+
+  /// No description provided for @usageByProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'By provider'**
+  String get usageByProvider;
+
+  /// No description provided for @usageByModel.
+  ///
+  /// In en, this message translates to:
+  /// **'By model'**
+  String get usageByModel;
+
+  /// No description provided for @usageEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No usage recorded yet.'**
+  String get usageEmpty;
+
+  /// No description provided for @usageLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load usage'**
+  String get usageLoadFailed;
 }
 
 class _AppLocalizationsDelegate

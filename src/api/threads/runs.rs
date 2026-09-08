@@ -29,7 +29,7 @@ use super::persistence::{
     persist_assistant_reply, persist_run_plan, save_partial_assistant_message,
     update_thread_title_from_send,
 };
-use super::send::{call_provider, SendInput};
+use super::send::{call_provider, ProviderOutcome, SendInput};
 use super::MessageOut;
 
 /// Get the current run status for a thread. Returns the active or most recent
@@ -268,10 +268,16 @@ pub(crate) async fn run_thread(
     // We also save the session ID so the next message resumes the same ACP
     // session (which preserved its context via $/cancelRequest).
     if run.cancelled.load(Ordering::SeqCst) {
-        let (parts, new_session_id, new_title) = match &provider_result {
-            Ok(t) => (t.2.clone(), t.0.clone(), t.1.clone()),
+        let (parts, new_session_id, new_title, usage) = match &provider_result {
+            Ok(o) => (
+                o.parts.clone(),
+                o.new_session_id.clone(),
+                o.new_title.clone(),
+                o.usage.clone(),
+            ),
             Err(_) => (
                 run.parts.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+                None,
                 None,
                 None,
             ),
@@ -304,11 +310,15 @@ pub(crate) async fn run_thread(
             let _ = state.db.touch_thread(&thread.id).await;
             persist_run_plan(&state.db, &thread.id, &run).await;
         }
+        // Tokens spent by a stopped turn still count.
+        if let Some(usage) = usage {
+            record_run_usage(&state, user.id, &thread, new_session_id, usage).await;
+        }
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
-    let (new_session_id, new_title, parts) = match provider_result {
-        Ok(t) => t,
+    let outcome = match provider_result {
+        Ok(o) => o,
         Err(e) => {
             // The model may have already produced useful output before the
             // provider crashed or rate-limited us. Persist that partial
@@ -343,6 +353,17 @@ pub(crate) async fn run_thread(
         }
     };
 
+    let ProviderOutcome {
+        new_session_id,
+        new_title,
+        parts,
+        usage,
+    } = outcome;
+
+    if let Some(usage) = usage {
+        record_run_usage(&state, user.id, &thread, new_session_id.clone(), usage).await;
+    }
+
     if run.cancelled.load(Ordering::SeqCst) {
         return Err(anyhow::anyhow!("stopped by user"));
     }
@@ -372,6 +393,36 @@ pub(crate) async fn run_thread(
     );
 
     Ok(())
+}
+
+/// Persist the usage snapshot from a completed provider call. The snapshot is
+/// cumulative per session, so the db layer diffs it against the stored
+/// baseline. Recording failure is logged, never fatal to the run.
+async fn record_run_usage(
+    state: &AppState,
+    user_id: i64,
+    thread: &crate::db::ThreadRow,
+    new_session_id: Option<String>,
+    usage: crate::providers::UsageSnapshot,
+) {
+    let session_id = new_session_id
+        .clone()
+        .or_else(|| thread.devin_session_id.clone());
+    if let Err(e) = state
+        .db
+        .record_turn_usage(crate::db::NewUsageEvent {
+            user_id,
+            thread_id: thread.id.clone(),
+            provider_id: thread.provider_id.clone(),
+            session_id,
+            model: thread.model.clone(),
+            snapshot: usage,
+            is_new_session: new_session_id.is_some(),
+        })
+        .await
+    {
+        tracing::warn!(error = %e, "failed to record turn usage");
+    }
 }
 
 #[cfg(test)]

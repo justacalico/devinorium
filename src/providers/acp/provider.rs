@@ -22,8 +22,8 @@ use agent_client_protocol::{
         ElicitationAction, ElicitationCapabilities, ElicitationFormCapabilities, ImageContent,
         InitializeRequest, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
         NewSessionResponse, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SessionId, SessionNotification, SetSessionModeRequest,
-        TextContent,
+        RequestPermissionResponse, SessionId, SessionNotification, SessionUpdate,
+        SetSessionModeRequest, TextContent,
     },
     schema::ProtocolVersion as ProtocolVersionEnum,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -37,6 +37,7 @@ use super::{
 use crate::providers::{
     collect_text, collect_thinking, title_from_prompt, Attachment, MessagePart, ModelInfo,
     PartCallback, Provider, SendOptions, SendRequest, SendResponse, StartRequest, StartResponse,
+    UsageSnapshot,
 };
 
 pub struct AcpProvider {
@@ -94,6 +95,7 @@ struct PromptResult {
     reply: String,
     thinking: String,
     parts: Vec<MessagePart>,
+    usage: Option<UsageSnapshot>,
 }
 
 async fn cancel_wait(flag: Arc<AtomicBool>) {
@@ -111,6 +113,9 @@ impl AcpProvider {
     ) -> anyhow::Result<PromptResult> {
         let parts = Arc::new(Mutex::new(Vec::<MessagePart>::new()));
         let part_callback: Option<PartCallback> = options.part_callback.clone();
+        // Latest cumulative session cost reported via `usage_update`
+        // notifications during this prompt turn.
+        let turn_cost = Arc::new(Mutex::new(None::<(f64, String)>));
 
         let cwd = options.working_dir.clone();
         let maybe_session = maybe_session.map(|s| s.to_string());
@@ -127,9 +132,16 @@ impl AcpProvider {
                     let parts = parts.clone();
                     let part_callback = part_callback.clone();
                     let replaying = replaying.clone();
+                    let turn_cost = turn_cost.clone();
                     async move |notification: SessionNotification, _cx| {
                         if replaying.load(Ordering::SeqCst) {
                             return Ok(());
+                        }
+                        if let SessionUpdate::UsageUpdate(u) = &notification.update {
+                            if let Some(cost) = &u.cost {
+                                *turn_cost.lock().await =
+                                    Some((cost.amount, cost.currency.clone()));
+                            }
                         }
                         let mut guard = parts.lock().await;
                         let event = apply_notification(&notification, &mut guard);
@@ -277,6 +289,27 @@ impl AcpProvider {
                         tracing::debug!(error = %e, "prompt cancelled by user");
                     }
 
+                    let usage = prompt_result
+                        .as_ref()
+                        .ok()
+                        .and_then(|resp| resp.usage.as_ref())
+                        .map(usage_from_acp);
+                    let cost = turn_cost.lock().await.clone();
+                    let usage = match (usage, cost) {
+                        (Some(mut u), Some((amount, currency))) => {
+                            u.cost_amount = Some(amount);
+                            u.cost_currency = Some(currency);
+                            Some(u)
+                        }
+                        (Some(u), None) => Some(u),
+                        (None, Some((amount, currency))) => Some(UsageSnapshot {
+                            cost_amount: Some(amount),
+                            cost_currency: Some(currency),
+                            ..UsageSnapshot::default()
+                        }),
+                        (None, None) => None,
+                    };
+
                     let parts = parts.lock().await.clone();
                     let reply = collect_text(&parts);
                     let thinking = collect_thinking(&parts);
@@ -286,6 +319,7 @@ impl AcpProvider {
                         reply,
                         thinking,
                         parts,
+                        usage,
                     })
                 },
             )
@@ -411,6 +445,22 @@ impl AcpProvider {
     }
 }
 
+/// Map the cumulative token totals on an ACP `session/prompt` response onto
+/// our snapshot type. Agents may omit the field entirely, in which case the
+/// caller keeps any cost data captured from `usage_update` notifications.
+fn usage_from_acp(usage: &agent_client_protocol::schema::v1::Usage) -> UsageSnapshot {
+    UsageSnapshot {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        thought_tokens: usage.thought_tokens.unwrap_or(0),
+        cached_read_tokens: usage.cached_read_tokens.unwrap_or(0),
+        cached_write_tokens: usage.cached_write_tokens.unwrap_or(0),
+        total_tokens: usage.total_tokens,
+        cost_amount: None,
+        cost_currency: None,
+    }
+}
+
 async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<PathBuf> {
     let preferred = working_dir.join(".devinorium-attachments");
     if tokio::fs::create_dir_all(&preferred).await.is_ok() {
@@ -460,6 +510,7 @@ impl Provider for AcpProvider {
             reply: result.reply,
             thinking: result.thinking,
             parts: result.parts,
+            usage: result.usage,
         })
     }
 
@@ -472,6 +523,7 @@ impl Provider for AcpProvider {
             reply: result.reply,
             thinking: result.thinking,
             parts: result.parts,
+            usage: result.usage,
         })
     }
 

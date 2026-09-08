@@ -55,8 +55,10 @@ class _ServerSwitcher extends StatelessWidget {
               MenuItemButton(
                 leadingIcon: const Icon(Icons.settings_outlined, size: 18),
                 onPressed: () {
-                  final topics = _settingsTopics(state.isOwner, l);
-                  state.setSettingsTopicIndex(topics.length - 1);
+                  final topics = settingsTopics(state.isOwner, l);
+                  state.setSettingsTopicIndex(
+                    topics.indexWhere((t) => t.topic == SettingsTopic.servers),
+                  );
                   state.setPage(MainPage.settings);
                   scaffold?.closeDrawer();
                 },

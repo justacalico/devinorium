@@ -135,6 +135,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::settings::router())
         .merge(api::models::router())
         .merge(api::providers::router())
+        .merge(api::usage::router())
         .route("/api/auth/me", get(api::auth::me))
         .route("/api/auth/me", axum::routing::patch(api::auth::update_me))
         .route(

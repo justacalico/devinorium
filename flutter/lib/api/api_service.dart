@@ -531,10 +531,7 @@ class ApiService {
     required String content,
     String? expectedSha256,
   }) async {
-    final body = <String, dynamic>{
-      'path': path,
-      'content': content,
-    };
+    final body = <String, dynamic>{'path': path, 'content': content};
     if (projectId != null) body['project_id'] = projectId;
     if (expectedSha256 != null && expectedSha256.isNotEmpty) {
       body['expected_sha256'] = expectedSha256;
@@ -741,6 +738,20 @@ class ApiService {
   Future<String?> setCloneRoot(String? path) async {
     final j = await _client.put('/api/settings/clone-root', {'path': path});
     return j['path'] as String?;
+  }
+
+  // ---- Usage ----
+
+  /// Fetch the caller's usage summary for the last [days] local days. The
+  /// device's timezone offset is sent so day buckets match what the user
+  /// experienced.
+  Future<UsageSummary> usageSummary({int days = 30}) async {
+    final uri = _buildPath('/api/usage', {
+      'days': '$days',
+      'tz_offset': '${DateTime.now().timeZoneOffset.inMinutes}',
+    });
+    final j = await _client.get(uri);
+    return UsageSummary.fromJson(j);
   }
 
   // ---- Terminal ----

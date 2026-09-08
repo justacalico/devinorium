@@ -16,7 +16,7 @@ use crate::db::messages::MAX_CLIENT_MESSAGE_ID_LEN;
 use crate::db::{DuplicateClientMessageId, MessageRow, ThreadRow};
 use crate::providers::{
     AskCallback, Attachment, MessagePart, PartCallback, PermissionCallback, SendOptions,
-    SendRequest, SessionCallback, StartRequest,
+    SendRequest, SessionCallback, StartRequest, UsageSnapshot,
 };
 use crate::thread_runner::{RunEvent, RunStatus};
 use crate::AppState;
@@ -373,6 +373,16 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
     })
 }
 
+/// What a completed provider call produced, beyond the message parts.
+pub(crate) struct ProviderOutcome {
+    /// Session id when the provider created a new session this run.
+    pub new_session_id: Option<String>,
+    pub new_title: Option<String>,
+    pub parts: Vec<MessagePart>,
+    /// Cumulative usage reported by the provider, if any.
+    pub usage: Option<UsageSnapshot>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn call_provider(
     state: &AppState,
@@ -383,7 +393,7 @@ pub(crate) async fn call_provider(
     ask_callback: Option<AskCallback>,
     part_callback: Option<PartCallback>,
     cancel_signal: Arc<std::sync::atomic::AtomicBool>,
-) -> anyhow::Result<(Option<String>, Option<String>, Vec<MessagePart>)> {
+) -> anyhow::Result<ProviderOutcome> {
     let provider = state.provider_for(user, &thread.provider_id);
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
@@ -434,7 +444,12 @@ pub(crate) async fn call_provider(
                 options,
             })
             .await
-            .map(|r| (None, None, r.parts))
+            .map(|r| ProviderOutcome {
+                new_session_id: None,
+                new_title: None,
+                parts: r.parts,
+                usage: r.usage,
+            })
     } else {
         provider
             .start(StartRequest {
@@ -442,7 +457,12 @@ pub(crate) async fn call_provider(
                 options,
             })
             .await
-            .map(|r| (Some(r.session_id), Some(r.title), r.parts))
+            .map(|r| ProviderOutcome {
+                new_session_id: Some(r.session_id),
+                new_title: Some(r.title),
+                parts: r.parts,
+                usage: r.usage,
+            })
     }
 }
 
