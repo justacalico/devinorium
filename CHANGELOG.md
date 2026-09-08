@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.41.2 - 2026-09-08
+#### Bug Fixes
+- 补齐剩余界面字符串的本地化 - (3e2ae0d) - HttpAnimations
+
+- - -
+
 ## v0.41.1 - 2026-09-07
 #### Bug Fixes
 - 统一语义颜色到主题系统 - (3a8b1a0) - HttpAnimations
