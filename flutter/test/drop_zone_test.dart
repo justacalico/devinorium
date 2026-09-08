@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 Widget _buildWithState(AppState state) => MaterialApp(
+  theme: ThemeData(platform: TargetPlatform.linux),
   home: ChangeNotifierProvider<AppState>.value(
     value: state,
     child: const DropZone(

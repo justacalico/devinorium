@@ -238,6 +238,11 @@
     }
   },
   "dropZoneDropHere": "Drop files here to attach",
+  "attachSourcePhotoLibrary": "Photo Library",
+  "attachSourceTakePhotoOrVideo": "Take Photo or Video",
+  "attachSourceTakePhoto": "Take Photo",
+  "attachSourceRecordVideo": "Record Video",
+  "attachSourceBrowse": "Browse",
   "files": "Files",
   "emptyFolder": "Empty folder",
   "folderNameHint": "Folder name",

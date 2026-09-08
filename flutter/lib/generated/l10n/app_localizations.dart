@@ -820,6 +820,36 @@ abstract class AppLocalizations {
   /// **'Drop files here to attach'**
   String get dropZoneDropHere;
 
+  /// No description provided for @attachSourcePhotoLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo Library'**
+  String get attachSourcePhotoLibrary;
+
+  /// No description provided for @attachSourceTakePhotoOrVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Take Photo or Video'**
+  String get attachSourceTakePhotoOrVideo;
+
+  /// No description provided for @attachSourceTakePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take Photo'**
+  String get attachSourceTakePhoto;
+
+  /// No description provided for @attachSourceRecordVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Record Video'**
+  String get attachSourceRecordVideo;
+
+  /// No description provided for @attachSourceBrowse.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse'**
+  String get attachSourceBrowse;
+
   /// No description provided for @files.
   ///
   /// In en, this message translates to:
