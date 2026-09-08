@@ -147,5 +147,24 @@ void main() {
 
       expect(outputs, equals(const ['\x7f']));
     }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    testWidgets('detects on-screen backspace on iOS', (tester) async {
+      await tester.pumpWidget(buildTerminal());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TerminalView));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: ' ',
+          selection: TextSelection.collapsed(offset: 1),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(outputs, equals(const ['\x7f']));
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
   });
 }
