@@ -1,6 +1,5 @@
 import 'package:devinorium_frontend/terminal/terminal_session.dart';
 import 'package:devinorium_frontend/terminal/terminal_view.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
