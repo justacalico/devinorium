@@ -111,5 +111,59 @@ void main() {
       expect(setClipboardText, isNull);
       expect(outputs, equals(const ['\x03']));
     });
+
+    testWidgets('enables delete detection on iOS', (tester) async {
+      await tester.pumpWidget(buildTerminal());
+      await tester.pumpAndSettle();
+
+      final view = tester.widget<TerminalView>(find.byType(TerminalView));
+      expect(view.deleteDetection, isTrue);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    testWidgets('enables delete detection on Android', (tester) async {
+      await tester.pumpWidget(buildTerminal());
+      await tester.pumpAndSettle();
+
+      final view = tester.widget<TerminalView>(find.byType(TerminalView));
+      expect(view.deleteDetection, isTrue);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+    testWidgets('disables delete detection on desktop', (tester) async {
+      await tester.pumpWidget(buildTerminal());
+      await tester.pumpAndSettle();
+
+      final view = tester.widget<TerminalView>(find.byType(TerminalView));
+      expect(view.deleteDetection, isFalse);
+    }, variant: TargetPlatformVariant.desktop());
+
+    testWidgets('sends backspace on iOS hardware keyboard', (tester) async {
+      await tester.pumpWidget(buildTerminal());
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.backspace);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.backspace);
+      await tester.pumpAndSettle();
+
+      expect(outputs, equals(const ['\x7f']));
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    testWidgets('detects on-screen backspace on iOS', (tester) async {
+      await tester.pumpWidget(buildTerminal());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TerminalView));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: ' ',
+          selection: TextSelection.collapsed(offset: 1),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(outputs, equals(const ['\x7f']));
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
   });
 }
