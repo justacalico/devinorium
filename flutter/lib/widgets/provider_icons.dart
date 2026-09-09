@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-/// The icon shown for a provider (CLI) in the model selector. Unknown
-/// providers fall back to a generic terminal icon so new providers render
+/// The logo shown for a provider (CLI) in the model selector and settings.
+///
+/// The bundled assets under `assets/providers/` are the official brand marks
+/// downloaded from each vendor (Devin ships a light variant for dark themes).
+/// Unknown providers fall back to a generic icon so new providers render
 /// without a code change.
 class ProviderIcon extends StatelessWidget {
   final String providerId;
   final double size;
+
+  /// Tints the monochrome marks and the fallback icon. Full-color logos
+  /// (Devin, OpenCode) ignore it and always render in their brand colors.
   final Color? color;
 
   const ProviderIcon({
@@ -18,17 +25,33 @@ class ProviderIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveColor = color ?? Theme.of(context).colorScheme.onSurface;
-    return Icon(
-      providerIconData(providerId),
-      size: size,
-      color: effectiveColor,
-    );
+    return switch (providerId) {
+      'devin-cli' => Image.asset(
+          Theme.of(context).brightness == Brightness.dark
+              ? 'assets/providers/devin_light.png'
+              : 'assets/providers/devin.png',
+          width: size,
+          height: size,
+        ),
+      'opencode' => ClipRRect(
+          borderRadius: BorderRadius.circular(size * 0.22),
+          child: SvgPicture.asset(
+            'assets/providers/opencode.svg',
+            width: size,
+            height: size,
+          ),
+        ),
+      'codex' => SvgPicture.asset(
+          'assets/providers/codex.svg',
+          width: size,
+          height: size,
+          colorFilter: ColorFilter.mode(effectiveColor, BlendMode.srcIn),
+        ),
+      _ => Icon(
+          Icons.smart_toy_outlined,
+          size: size,
+          color: effectiveColor,
+        ),
+    };
   }
 }
-
-IconData providerIconData(String providerId) => switch (providerId) {
-  'devin-cli' => Icons.auto_awesome,
-  'opencode' => Icons.code,
-  'codex' => Icons.terminal,
-  _ => Icons.smart_toy_outlined,
-};
