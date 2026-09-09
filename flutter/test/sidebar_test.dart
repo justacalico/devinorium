@@ -3,6 +3,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
+import 'package:devinorium_frontend/widgets/provider_icons.dart';
 import 'package:devinorium_frontend/widgets/thread_tag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -3237,5 +3238,62 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('0.31.0'), findsNothing);
+  });
+
+  testWidgets('Thread tile shows provider icon without provider name', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    api.listThreadsResult = [
+      Thread(
+        id: 't1',
+        title: 'codex thread',
+        projectId: 1,
+        providerId: 'codex',
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    ];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('codex thread'), findsOneWidget);
+    final tile = find.ancestor(
+      of: find.text('codex thread'),
+      matching: find.byType(ListTile),
+    );
+    expect(tile, findsOneWidget);
+
+    final providerIcon = find.descendant(
+      of: tile,
+      matching: find.byType(ProviderIcon),
+    );
+    expect(providerIcon, findsOneWidget);
+    final icon = tester.widget<ProviderIcon>(providerIcon);
+    expect(icon.providerId, 'codex');
+    expect(icon.semanticLabel, 'Codex CLI');
+    expect(find.text('Codex CLI'), findsNothing);
   });
 }

@@ -195,6 +195,12 @@ class _ThreadTitle extends StatelessWidget {
           ),
         ),
       ),
+      const SizedBox(width: 6),
+      ProviderIcon(
+        providerId: thread.providerId,
+        size: 16,
+        semanticLabel: providerName(thread.providerId),
+      ),
     ];
 
     if (status != null) {
@@ -214,7 +220,7 @@ class _ThreadTitle extends StatelessWidget {
     }
 
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       children: children,
     );
   }

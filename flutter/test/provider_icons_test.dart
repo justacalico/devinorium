@@ -79,4 +79,25 @@ void main() {
     final icon = tester.widget<Icon>(find.byType(Icon));
     expect(icon.icon, Icons.smart_toy_outlined);
   });
+
+  testWidgets('ProviderIcon applies a semantic label', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        const ProviderIcon(
+          providerId: 'codex',
+          semanticLabel: 'Codex CLI',
+        ),
+      ),
+    );
+    final handle = tester.ensureSemantics();
+    expect(find.bySemanticsLabel('Codex CLI'), findsOneWidget);
+    handle.dispose();
+  });
+
+  test('providerName maps known ids and falls back to the id', () {
+    expect(providerName('devin-cli'), 'Devin CLI');
+    expect(providerName('opencode'), 'OpenCode');
+    expect(providerName('codex'), 'Codex CLI');
+    expect(providerName('unknown'), 'unknown');
+  });
 }
