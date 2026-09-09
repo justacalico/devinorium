@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.48.0 - 2026-09-09
+#### Features
+- 为会话持久化并展示关联的 GitLab 合并请求 - (9c0903e) - HttpAnimations
+#### Bug Fixes
+- 会话列表显示关联合并请求的编号 - (1a4cc2e) - HttpAnimations
+
+- - -
+
 ## v0.47.0 - 2026-09-09
 #### Features
 - 添加线程环境模式并自动创建工作树 - (ad86a06) - HttpAnimations
