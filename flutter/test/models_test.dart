@@ -769,6 +769,61 @@ void main() {
       expect(updated.title, 'Thread');
     });
 
+    test('copyWith updates branch and worktreePath', () {
+      final t = Thread(
+        id: 'abc',
+        title: 'Thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+        branch: 'main',
+        worktreePath: '/repo/main',
+      );
+      final updated = t.copyWith(
+        branch: 'devinorium/wt-1',
+        worktreePath: '/repo/.devinorium-worktrees/wt-1',
+      );
+      expect(updated.branch, 'devinorium/wt-1');
+      expect(updated.worktreePath, '/repo/.devinorium-worktrees/wt-1');
+      expect(updated.title, 'Thread');
+    });
+
+    test('copyWith can clear branch and worktreePath', () {
+      final t = Thread(
+        id: 'abc',
+        title: 'Thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+        branch: 'main',
+        worktreePath: '/repo/main',
+      );
+      final updated = t.copyWith(branch: null, worktreePath: null);
+      expect(updated.branch, isNull);
+      expect(updated.worktreePath, isNull);
+    });
+
+    test('copyWith preserves branch and worktreePath when omitted', () {
+      final t = Thread(
+        id: 'abc',
+        title: 'Thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+        branch: 'main',
+        worktreePath: '/repo/main',
+      );
+      final updated = t.copyWith(title: 'New');
+      expect(updated.branch, 'main');
+      expect(updated.worktreePath, '/repo/main');
+    });
+
     test('parses linked_mr from json', () {
       final t = Thread.fromJson({
         'id': 'abc',

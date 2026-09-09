@@ -177,6 +177,8 @@ class Thread {
     String? envMode,
     LinkedMergeRequestRef? linkedMr,
     Object? linkedMrOrNull = const _Unset(),
+    Object? branch = const _Unset(),
+    Object? worktreePath = const _Unset(),
   }) => Thread(
     id: id,
     title: title ?? this.title,
@@ -188,8 +190,9 @@ class Thread {
     permissionMode: permissionMode,
     reasoningEffort: reasoningEffort,
     permissions: permissions,
-    branch: branch,
-    worktreePath: worktreePath,
+    branch: branch is _Unset ? this.branch : (branch as String?),
+    worktreePath:
+        worktreePath is _Unset ? this.worktreePath : (worktreePath as String?),
     envMode: envMode ?? this.envMode,
     pinned: pinned ?? this.pinned,
     createdAt: createdAt,

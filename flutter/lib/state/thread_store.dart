@@ -589,7 +589,14 @@ class ThreadStore {
     if (ev.event == 'thread_update') {
       final updated = _detail.valueOrNull?.thread;
       final previous = d?.thread;
-      if (updated != null && updated != previous) {
+      // Only notify the thread list when the title or timestamp actually
+      // changed. Git/worktree-only updates sync the toolbar without
+      // disturbing the sorted thread list.
+      final titleChanged = updated != null &&
+          (previous == null ||
+              updated.title != previous.title ||
+              updated.updatedAt != previous.updatedAt);
+      if (titleChanged) {
         onThreadTitleChanged?.call(updated.title, updated.updatedAt);
       }
     }

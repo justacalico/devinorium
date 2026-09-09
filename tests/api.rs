@@ -4518,6 +4518,273 @@ async fn thread_send_worktree_mode_reuses_existing_worktree() {
 }
 
 #[tokio::test]
+async fn thread_local_mode_detects_agent_created_worktree() {
+    // The agent runs shell commands from the project's working directory and
+    // may run `git worktree add` on its own. The backend should notice the new
+    // worktree after the run, associate the thread with it, and flip it to
+    // worktree mode so the indicator and future prompts follow it.
+    let (app, _db) = make_app_with_provider(Arc::new(WorktreeCreatingProvider)).await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"agent-wt","env_mode":"local"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let tid = v["id"].as_str().unwrap();
+
+    let boundary = "----agentwt";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nmake a worktree\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    wait_for_run(&app, &cookie, tid, |b| {
+        b.contains(r#""status":"completed""#)
+    })
+    .await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let thread = &v["thread"];
+    let worktree_path = thread["worktree_path"].as_str().unwrap();
+    assert!(!worktree_path.is_empty());
+    assert!(std::path::Path::new(worktree_path).exists());
+    assert_eq!(thread["env_mode"], "worktree");
+    assert_eq!(thread["branch"], "agent-wt");
+}
+
+#[tokio::test]
+async fn thread_local_mode_no_new_worktree_stays_local() {
+    // When the agent does not create a worktree, the thread should remain in
+    // local mode with no worktree path.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"no-wt","env_mode":"local"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let tid = v["id"].as_str().unwrap();
+
+    send_prompt(&app, &cookie, tid, "hello").await;
+    wait_for_run(&app, &cookie, tid, |b| {
+        b.contains(r#""status":"completed""#)
+    })
+    .await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["thread"]["env_mode"], "local");
+    assert!(v["thread"]["worktree_path"].is_null());
+}
+
+#[tokio::test]
+async fn thread_existing_worktree_not_overwritten_by_detection() {
+    // A thread that already has an explicit worktree_path must not be
+    // reassigned to a different worktree the agent creates during the run.
+    let (app, _db) = make_app_with_provider(Arc::new(WorktreeCreatingProvider)).await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    // Create a first worktree and assign the thread to it explicitly.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/worktrees"),
+            &cookie,
+            r#"{"name":"explicit-wt","base":"HEAD","new_branch":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let wt_body = body_str(resp.into_body()).await;
+    let wt_v = serde_json::from_str::<serde_json::Value>(&wt_body).unwrap();
+    let explicit_wt = wt_v["path"].as_str().unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"has-wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let tid = v["id"].as_str().unwrap();
+
+    // Run once so ensure_thread_worktree assigns the thread its own worktree.
+    send_prompt(&app, &cookie, tid, "first prompt").await;
+    wait_for_run(&app, &cookie, tid, |b| {
+        b.contains(r#""status":"completed""#)
+    })
+    .await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let first_wt = v["thread"]["worktree_path"].as_str().unwrap();
+    assert!(!first_wt.is_empty());
+
+    // Now the agent creates a second worktree during the next run.
+    send_prompt(&app, &cookie, tid, "make another worktree").await;
+    wait_for_run(&app, &cookie, tid, |b| {
+        b.contains(r#""status":"completed""#)
+    })
+    .await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    // The thread must still point at the original worktree, not the
+    // agent-created "agent-wt".
+    assert_eq!(v["thread"]["worktree_path"].as_str().unwrap(), first_wt);
+    assert_ne!(v["thread"]["worktree_path"].as_str().unwrap(), explicit_wt);
+}
+
+/// A stub provider that simulates the agent running `git worktree add` in the
+/// project's working directory during a run.
+struct WorktreeCreatingProvider;
+
+#[async_trait]
+impl Provider for WorktreeCreatingProvider {
+    fn id(&self) -> &str {
+        "stub"
+    }
+    fn name(&self) -> &str {
+        "Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "stub-1".into(),
+            label: "Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        let wt_path = req.options.working_dir.join("agent-wt");
+        let output = std::process::Command::new("git")
+            .args(["worktree", "add", "-b", "agent-wt"])
+            .arg(&wt_path)
+            .arg("HEAD")
+            .current_dir(&req.options.working_dir)
+            .output()
+            .map_err(|e| anyhow::anyhow!("git worktree add failed: {e}"))?;
+        if !output.status.success() {
+            tracing::error!(
+                status = ?output.status,
+                stderr = %String::from_utf8_lossy(&output.stderr),
+                "WorktreeCreatingProvider git worktree add failed",
+            );
+        }
+        let session_id = "stub-session-wt".to_string();
+        if let Some(cb) = &req.options.session_callback {
+            cb(session_id.clone()).await;
+        }
+        Ok(StartResponse {
+            session_id,
+            reply: "created a worktree".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("created a worktree")],
+            title: "agent-wt".into(),
+            usage: None,
+        })
+    }
+    async fn send(&self, _req: SendRequest) -> anyhow::Result<SendResponse> {
+        Ok(SendResponse {
+            reply: "ok".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("ok")],
+            usage: None,
+        })
+    }
+    async fn export(&self, _sid: &str, _wd: &std::path::Path) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::json!({}))
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
 async fn thread_send_worktree_mode_is_idempotent_under_concurrency() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

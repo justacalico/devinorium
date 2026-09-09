@@ -688,6 +688,54 @@ void main() {
       expect(newUpdatedAt, '2024-01-02T00:00:00.000Z');
     });
 
+    test('syncs git fields without invoking onThreadTitleChanged', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+              branch: null,
+              worktreePath: null,
+              envMode: 'local',
+            ),
+            messages: [],
+          ),
+        ),
+      );
+
+      var called = false;
+      store.onStateChanged = () {};
+      store.onThreadTitleChanged = (_, _) => called = true;
+
+      await store.sendMessage();
+      api.controller.add(
+        SseEvent(
+          'thread_update',
+          '{"worktree_path":"/repo/.devinorium-worktrees/wt-1",'
+              '"branch":"devinorium/wt-1","env_mode":"worktree"}',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(store.detail.valueOrNull?.thread.title, 'Old');
+      expect(store.detail.valueOrNull?.thread.branch, 'devinorium/wt-1');
+      expect(store.detail.valueOrNull?.thread.worktreePath,
+          '/repo/.devinorium-worktrees/wt-1');
+      expect(store.detail.valueOrNull?.thread.envMode, 'worktree');
+      expect(called, isFalse);
+    });
+
     test('does not invoke callback when title is unchanged', () async {
       final api = _ControlledApiService();
       final store = ThreadStore(
