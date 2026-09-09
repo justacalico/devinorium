@@ -34,6 +34,32 @@ pub struct GitLabMergeRequestSummary {
 }
 
 impl GitRemoteService {
+    /// Load a single merge request by IID.
+    ///
+    /// Returns the full GitLab JSON for the merge request, which is then
+    /// converted into a lightweight summary by the caller.
+    pub async fn gitlab_merge_request(
+        &self,
+        user_id: i64,
+        hostname: &str,
+        project_path: &str,
+        iid: i64,
+    ) -> Result<GitLabMergeRequestSummary, RemoteError> {
+        if project_path.is_empty() || iid <= 0 {
+            return Err(RemoteError::StatusFailed(
+                "merge request reference is invalid".into(),
+            ));
+        }
+
+        let encoded_project = utf8_percent_encode(project_path, NON_ALPHANUMERIC).to_string();
+        let path = format!("projects/{encoded_project}/merge_requests/{iid}");
+        let output = self.gitlab_api(user_id, hostname, &path).await?;
+        let value: serde_json::Value = serde_json::from_str(&output).map_err(|e| {
+            RemoteError::StatusFailed(format!("gitlab returned invalid merge request json: {e}"))
+        })?;
+        Ok(parse_merge_request_summary(value))
+    }
+
     /// Apply a state change to a merge request and return the updated JSON.
     ///
     /// `Merge` can take a while for GitLab to actually complete (large repos,

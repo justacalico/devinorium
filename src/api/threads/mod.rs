@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::messages::{MESSAGE_CHAR_BUDGET, MESSAGE_PARTS_BUDGET};
 use crate::db::{MessageRow, ThreadRow};
+use crate::git::LinkedMergeRequest;
 use crate::providers::{collect_text, collect_thinking, MessagePart};
 use crate::AppState;
 
@@ -80,10 +81,14 @@ pub struct ThreadOut {
     pub pinned: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub linked_mr: Option<LinkedMergeRequest>,
 }
 
 impl From<ThreadRow> for ThreadOut {
     fn from(t: ThreadRow) -> Self {
+        let linked_mr = t
+            .linked_mr
+            .and_then(|s| serde_json::from_str::<LinkedMergeRequest>(&s).ok());
         Self {
             id: t.id,
             title: t.title,
@@ -101,6 +106,7 @@ impl From<ThreadRow> for ThreadOut {
             pinned: t.pinned,
             created_at: t.created_at,
             updated_at: t.updated_at,
+            linked_mr,
         }
     }
 }
@@ -287,6 +293,9 @@ pub struct UpdateThread {
     #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub worktree_path: Option<Option<String>>,
     pub env_mode: Option<String>,
+    /// Distinguish between absent, null (clear), and a string (set URL).
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub linked_mr: Option<Option<String>>,
 }
 
 /// Custom deserializer that maps `null` -> `Some(None)` and a number -> `Some(Some(n))`.
@@ -334,6 +343,7 @@ mod tests {
             env_mode: "local".into(),
             pinned: true,
             title_user_set: true,
+            linked_mr: None,
         };
         let out = ThreadOut::from(row);
         assert_eq!(out.id, "th-1");

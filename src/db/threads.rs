@@ -17,6 +17,7 @@ pub struct NewThread {
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
     pub env_mode: String,
+    pub linked_mr: Option<String>,
 }
 
 /// Fields a `PATCH /threads/:id` may update. `None` leaves a column alone;
@@ -29,13 +30,14 @@ pub struct ThreadSettingsUpdate {
     pub reasoning_effort: Option<String>,
     pub permissions: Option<Option<String>>,
     pub env_mode: Option<String>,
+    pub linked_mr: Option<Option<String>>,
 }
 
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, provider_id, model, permission_mode, reasoning_effort, permissions, branch, worktree_path, env_mode)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, provider_id, model, permission_mode, reasoning_effort, permissions, branch, worktree_path, env_mode, linked_mr)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
@@ -52,6 +54,7 @@ impl super::Db {
         .bind(&new.branch)
         .bind(&new.worktree_path)
         .bind(&new.env_mode)
+        .bind(&new.linked_mr)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
@@ -246,6 +249,20 @@ impl super::Db {
                 .bind(id)
                 .bind(user_id)
                 .execute(&mut *tx).await?;
+        }
+        if let Some(linked_mr) = update.linked_mr {
+            if let Some(linked_mr) = linked_mr {
+                sqlx::query("UPDATE threads SET linked_mr = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                    .bind(linked_mr)
+                    .bind(id)
+                    .bind(user_id)
+                    .execute(&mut *tx).await?;
+            } else {
+                sqlx::query("UPDATE threads SET linked_mr = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                    .bind(id)
+                    .bind(user_id)
+                    .execute(&mut *tx).await?;
+            }
         }
         tx.commit().await?;
         Ok(())

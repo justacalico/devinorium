@@ -164,6 +164,7 @@ pub struct ThreadRow {
     pub env_mode: String,
     pub pinned: bool,
     pub title_user_set: bool,
+    pub linked_mr: Option<String>,
 }
 
 /// A row from the `projects` table.

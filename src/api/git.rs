@@ -87,7 +87,8 @@ pub struct PullBranchRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct MergeRequestQuery {
-    pub branch: String,
+    pub branch: Option<String>,
+    pub iid: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -505,23 +506,39 @@ async fn delete_worktree(
     }
 }
 
-/// Find the open merge request linked to a thread's branch.
+/// Find a merge request linked to the project.
 ///
-/// Resolves the project's git remote URL to a GitLab project, then queries
-/// GitLab for an open merge request with a matching source branch. Returns
-/// the MR summary, `204` when no MR exists, or an error when the project is
-/// not a GitLab repository or glab is unavailable.
+/// Resolves the project's git remote URL to a GitLab project. With `branch`,
+/// returns the open MR for that source branch. With `iid`, returns the MR with
+/// that IID regardless of state. Returns the MR summary, `204` when no MR
+/// exists, or an error when the project is not a GitLab repository or glab is
+/// unavailable.
 async fn merge_request_for_branch(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
-    Query(q): Query<MergeRequestQuery>,
+    Query(mut q): Query<MergeRequestQuery>,
 ) -> Response {
-    let branch = q.branch.trim();
-    if branch.is_empty() {
+    if q.branch
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|s| s.is_empty())
+    {
+        q.branch = None;
+    }
+    if q.branch.is_none() && q.iid.is_none() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("branch is required")),
+            Json(crate::api::ApiError::new("branch or iid is required")),
+        )
+            .into_response();
+    }
+    if q.branch.is_some() && q.iid.is_some() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new(
+                "branch and iid cannot both be set",
+            )),
         )
             .into_response();
     }
@@ -561,11 +578,26 @@ async fn merge_request_for_branch(
         }
     };
 
-    match state
-        .git_remote
-        .gitlab_merge_request_for_branch(user.id, &gitlab.hostname, &gitlab.project_path, branch)
-        .await
-    {
+    let result = if let Some(iid) = q.iid {
+        state
+            .git_remote
+            .gitlab_merge_request(user.id, &gitlab.hostname, &gitlab.project_path, iid)
+            .await
+            .map(Some)
+    } else {
+        let branch = q.branch.as_deref().unwrap_or("");
+        state
+            .git_remote
+            .gitlab_merge_request_for_branch(
+                user.id,
+                &gitlab.hostname,
+                &gitlab.project_path,
+                branch,
+            )
+            .await
+    };
+
+    match result {
         Ok(Some(mr)) => Json(mr).into_response(),
         Ok(None) => StatusCode::NO_CONTENT.into_response(),
         Err(crate::git::RemoteError::GitLabNotAvailable) => (

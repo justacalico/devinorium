@@ -768,6 +768,33 @@ void main() {
       expect(updated.envMode, 'worktree');
       expect(updated.title, 'Thread');
     });
+
+    test('parses linked_mr from json', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'linked_mr': {
+          'hostname': 'gitlab.example.com',
+          'project_path': 'g/p',
+          'iid': 7,
+          'web_url': 'https://gitlab.example.com/g/p/-/merge_requests/7',
+        },
+      });
+      expect(t.linkedMr, isNotNull);
+      expect(t.linkedMr!.iid, 7);
+      expect(t.linkedMr!.webUrl, 'https://gitlab.example.com/g/p/-/merge_requests/7');
+    });
+
+    test('ignores malformed linked_mr', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'linked_mr': 'not-a-map',
+      });
+      expect(t.linkedMr, isNull);
+    });
   });
 
   group('ThreadGroup', () {
@@ -1376,6 +1403,83 @@ void main() {
     test('treats "open" state as open', () {
       final mr = MergeRequestLink.fromJson({'state': 'open'});
       expect(mr.isOpen, isTrue);
+    });
+
+    test('builds from a stored reference', () {
+      final ref = LinkedMergeRequestRef(
+        hostname: 'gitlab.example.com',
+        projectPath: 'g/p',
+        iid: 7,
+        webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/7',
+      );
+      final mr = MergeRequestLink.fromRef(ref);
+      expect(mr.iid, 7);
+      expect(mr.webUrl, ref.webUrl);
+    });
+  });
+
+  group('LinkedMergeRequestRef', () {
+    test('parses a GitLab MR URL', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://gitlab.example.com/group/project/-/merge_requests/12',
+      );
+      expect(ref, isNotNull);
+      expect(ref!.hostname, 'gitlab.example.com');
+      expect(ref.projectPath, 'group/project');
+      expect(ref.iid, 12);
+      expect(ref.webUrl, 'https://gitlab.example.com/group/project/-/merge_requests/12');
+    });
+
+    test('accepts a self-managed host and trailing path', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://git.example.com/a/b/-/merge_requests/7/diffs',
+      );
+      expect(ref, isNotNull);
+      expect(ref!.hostname, 'git.example.com');
+      expect(ref.projectPath, 'a/b');
+      expect(ref.iid, 7);
+    });
+
+    test('rejects invalid or non-MR URLs', () {
+      expect(
+        LinkedMergeRequestRef.tryParse('https://gitlab.com/group/project'),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse('https://gitlab.com/group/project/merge_requests/12'),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse('not-a-url'),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse(
+          'https://evil.com/https://gitlab.com/group/project/-/merge_requests/12',
+        ),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse(
+          'https://gitlab.com/group%2F..%2Fproject/-/merge_requests/12',
+        ),
+        isNull,
+      );
+      expect(
+        LinkedMergeRequestRef.tryParse(
+          'https://gitlab.com/group/project:foo/-/merge_requests/12',
+        ),
+        isNull,
+      );
+    });
+
+    test('lowercases hostname and decodes percent-encoded path', () {
+      final ref = LinkedMergeRequestRef.tryParse(
+        'https://GITLAB.EXAMPLE.COM/group%2Fproject/-/merge_requests/12',
+      )!;
+      expect(ref.hostname, 'gitlab.example.com');
+      expect(ref.projectPath, 'group/project');
+      expect(ref.iid, 12);
     });
   });
 

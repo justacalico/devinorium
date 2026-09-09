@@ -976,6 +976,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openInBrowser => 'Open in browser';
 
   @override
+  String get openLink => 'Open link';
+
+  @override
+  String get copyLink => 'Copy link';
+
+  @override
+  String get linkToThread => 'Link to thread';
+
+  @override
+  String get unlinkFromThread => 'Unlink from thread';
+
+  @override
   String get draft => 'Draft';
 
   @override

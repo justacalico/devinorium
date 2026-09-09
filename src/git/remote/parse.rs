@@ -1,5 +1,7 @@
 //! GitLab remote URL and API path parsing.
 
+use percent_encoding::percent_decode;
+
 use super::{GitRemoteService, RemoteError};
 
 /// A GitLab project resolved from a git remote URL.
@@ -7,6 +9,15 @@ use super::{GitRemoteService, RemoteError};
 pub struct GitLabProjectRef {
     pub hostname: String,
     pub project_path: String,
+}
+
+/// A merge request explicitly linked to a thread.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LinkedMergeRequest {
+    pub hostname: String,
+    pub project_path: String,
+    pub iid: i64,
+    pub web_url: String,
 }
 
 /// Parse a git remote URL into a GitLab host and project path.
@@ -45,7 +56,7 @@ pub fn parse_gitlab_remote_url(url: &str) -> Option<GitLabProjectRef> {
         return GitRemoteService::build_ref(host, path);
     }
 
-    // http(s)://[user:pass@]host/path
+    // http(s)://[user:pass@]host[:port]/path
     if let Some(rest) = url
         .strip_prefix("http://")
         .or_else(|| url.strip_prefix("https://"))
@@ -54,13 +65,81 @@ pub fn parse_gitlab_remote_url(url: &str) -> Option<GitLabProjectRef> {
             Some((_, host_and_path)) => host_and_path,
             None => rest,
         };
-        let (host, path) = after_auth.split_once('/')?;
+        let (host_and_port, path) = after_auth.split_once('/')?;
+        let hostname = host_and_port
+            .split_once(':')
+            .map(|(h, _)| h)
+            .unwrap_or(host_and_port);
         // Strip a trailing query/fragment if present.
         let path = path.split(['?', '#']).next().unwrap_or(path);
-        return GitRemoteService::build_ref(host, path);
+        return GitRemoteService::build_ref(hostname, path);
     }
 
     None
+}
+
+/// Parse a GitLab merge request URL into a linked merge request reference.
+///
+/// Accepts any host so self-managed GitLab instances work. The path must
+/// contain the `/-/merge_requests/` marker; everything before it is the project
+/// path, and the following path segment is the integer IID.
+///
+///   https://gitlab.example.com/group/project/-/merge_requests/12
+///   https://gitlab.example.com/group/project/-/merge_requests/12/diffs
+pub fn parse_gitlab_merge_request_url(url: &str) -> Option<LinkedMergeRequest> {
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+
+    let (scheme, rest) = if let Some(rest) = url.strip_prefix("https://") {
+        ("https", rest)
+    } else if let Some(rest) = url.strip_prefix("http://") {
+        ("http", rest)
+    } else {
+        return None;
+    };
+
+    // Strip optional user:pass@ authentication; the remainder is host + path.
+    let host_and_path = match rest.split_once('@') {
+        Some((_, after)) => after,
+        None => rest,
+    };
+
+    let (host_port, raw_path) = host_and_path.split_once('/')?;
+    let hostname = host_port
+        .split_once(':')
+        .map(|(h, _)| h)
+        .unwrap_or(host_port);
+    let hostname = hostname.trim();
+    if hostname.is_empty() {
+        return None;
+    }
+
+    // Strip trailing query/fragment for parsing so self-managed URLs are not tripped up.
+    let path = raw_path.split(['?', '#']).next().unwrap_or(raw_path);
+    if path.is_empty() {
+        return None;
+    }
+
+    // Project paths are encoded with `/`; the marker is `/-/merge_requests/`.
+    let mr_marker = "/-/merge_requests/";
+    let marker_idx = path.find(mr_marker)?;
+    let project_path = &path[..marker_idx];
+    let after_marker = &path[marker_idx + mr_marker.len()..];
+
+    let iid_str = after_marker.split('/').next().unwrap_or(after_marker);
+    let iid = iid_str.parse::<i64>().ok().filter(|&n| n > 0)?;
+
+    // Rebuild the URL without credentials, preserving port, path and query/fragment.
+    let web_url = format!("{}://{}/{}", scheme, host_port.to_lowercase(), raw_path);
+
+    GitRemoteService::build_ref(hostname, project_path).map(|r| LinkedMergeRequest {
+        hostname: r.hostname,
+        project_path: r.project_path,
+        iid,
+        web_url,
+    })
 }
 
 impl GitRemoteService {
@@ -92,19 +171,32 @@ impl GitRemoteService {
     }
 
     pub(super) fn build_ref(hostname: &str, path: &str) -> Option<GitLabProjectRef> {
-        let hostname = hostname.trim();
+        let hostname = hostname.trim().to_lowercase();
+        if hostname.is_empty() {
+            return None;
+        }
         let mut project_path = path.trim().trim_end_matches(".git").to_string();
-        // A trailing slash is meaningless and breaks API paths.
+        // A leading or trailing slash is meaningless and breaks API paths.
+        while project_path.starts_with('/') {
+            project_path.remove(0);
+        }
         while project_path.ends_with('/') {
             project_path.pop();
         }
-        if hostname.is_empty() || project_path.is_empty() {
+        // Percent-decode so callers can paste already-encoded URLs; this also
+        // turns encoded traversal ("%2E%2E") into plain ".." before we validate.
+        project_path = percent_decode(project_path.as_bytes())
+            .decode_utf8_lossy()
+            .into_owned();
+        if project_path.is_empty() {
             return None;
         }
-        // Reject paths that look like filesystem traversal or contain whitespace
-        // or control characters that could break the API path or shell handoff.
+        // Reject paths that look like filesystem traversal, contain whitespace,
+        // control characters, or characters that would break an API path.
         if project_path.contains(' ')
             || project_path.contains("..")
+            || project_path.contains(':')
+            || project_path.contains("//")
             || project_path.contains('\0')
             || project_path.contains('\n')
             || project_path.contains('\r')
@@ -112,7 +204,7 @@ impl GitRemoteService {
             return None;
         }
         Some(GitLabProjectRef {
-            hostname: hostname.to_string(),
+            hostname,
             project_path,
         })
     }
@@ -146,6 +238,14 @@ mod tests {
         .unwrap();
         assert_eq!(r.hostname, "gitlab.example.com");
         assert_eq!(r.project_path, "group/subgroup/project");
+
+        let r =
+            parse_gitlab_remote_url("https://gitlab.example.com:8443/group/project.git").unwrap();
+        assert_eq!(r.hostname, "gitlab.example.com");
+        assert_eq!(r.project_path, "group/project");
+
+        let r = parse_gitlab_remote_url("https://gitlab.com//group/project.git").unwrap();
+        assert_eq!(r.project_path, "group/project");
     }
 
     #[test]
@@ -175,6 +275,16 @@ mod tests {
         assert!(GitRemoteService::build_ref("gitlab.com", "group/../project").is_none());
         assert!(GitRemoteService::build_ref("gitlab.com", "").is_none());
         assert!(GitRemoteService::build_ref("", "group/project").is_none());
+        assert!(GitRemoteService::build_ref("gitlab.com", "group/project:foo").is_none());
+        assert!(GitRemoteService::build_ref("gitlab.com", "group//project").is_none());
+        assert!(GitRemoteService::build_ref("gitlab.com", "group%2F..%2Fproject").is_none());
+    }
+
+    #[test]
+    fn build_ref_lowercases_hostname_and_decodes_project_path() {
+        let r = GitRemoteService::build_ref("GITLAB.COM", "group%2Fproject").unwrap();
+        assert_eq!(r.hostname, "gitlab.com");
+        assert_eq!(r.project_path, "group/project");
     }
 
     #[test]
@@ -195,5 +305,86 @@ mod tests {
         assert!(GitRemoteService::check_api_path("/projects/foo").is_err());
         assert!(GitRemoteService::check_api_path("projects/foo\nbar").is_err());
         assert!(GitRemoteService::check_api_path("projects/foo/../bar").is_err());
+    }
+
+    #[test]
+    fn parse_gitlab_merge_request_url_extracts_host_path_and_iid() {
+        let r = parse_gitlab_merge_request_url(
+            "https://gitlab.example.com/group/project/-/merge_requests/12",
+        )
+        .unwrap();
+        assert_eq!(r.hostname, "gitlab.example.com");
+        assert_eq!(r.project_path, "group/project");
+        assert_eq!(r.iid, 12);
+        assert_eq!(
+            r.web_url,
+            "https://gitlab.example.com/group/project/-/merge_requests/12"
+        );
+    }
+
+    #[test]
+    fn parse_gitlab_merge_request_url_accepts_self_managed_hosts() {
+        let r =
+            parse_gitlab_merge_request_url("https://git.example.com/a/b/-/merge_requests/7?foo=1")
+                .unwrap();
+        assert_eq!(r.hostname, "git.example.com");
+        assert_eq!(r.project_path, "a/b");
+        assert_eq!(r.iid, 7);
+    }
+
+    #[test]
+    fn parse_gitlab_merge_request_url_ignores_trailing_path_segments() {
+        let r = parse_gitlab_merge_request_url(
+            "https://gitlab.com/group/project/-/merge_requests/42/diffs",
+        )
+        .unwrap();
+        assert_eq!(r.project_path, "group/project");
+        assert_eq!(r.iid, 42);
+    }
+
+    #[test]
+    fn parse_gitlab_merge_request_url_rejects_invalid_urls() {
+        assert!(parse_gitlab_merge_request_url("").is_none());
+        assert!(parse_gitlab_merge_request_url("not a url").is_none());
+        assert!(parse_gitlab_merge_request_url("https://gitlab.com").is_none());
+        assert!(parse_gitlab_merge_request_url("https://gitlab.com/group/project").is_none());
+        assert!(parse_gitlab_merge_request_url(
+            "https://gitlab.com/group/project/merge_requests/12"
+        )
+        .is_none());
+        assert!(parse_gitlab_merge_request_url(
+            "https://gitlab.com/group/project/-/merge_requests/abc"
+        )
+        .is_none());
+        assert!(parse_gitlab_merge_request_url(
+            "https://evil.com/https://gitlab.com/group/project/-/merge_requests/12"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn parse_gitlab_merge_request_url_is_case_and_percent_agnostic() {
+        let r = parse_gitlab_merge_request_url(
+            "https://GITLAB.EXAMPLE.COM/group%2Fproject/-/merge_requests/12",
+        )
+        .unwrap();
+        assert_eq!(r.hostname, "gitlab.example.com");
+        assert_eq!(r.project_path, "group/project");
+        assert_eq!(r.iid, 12);
+    }
+
+    #[test]
+    fn parse_gitlab_merge_request_url_strips_credentials_and_preserves_port() {
+        let r = parse_gitlab_merge_request_url(
+            "https://user:pass@gitlab.example.com:8443/group%2Fproject/-/merge_requests/12/diffs?foo=1",
+        )
+        .unwrap();
+        assert_eq!(r.hostname, "gitlab.example.com");
+        assert_eq!(r.project_path, "group/project");
+        assert_eq!(r.iid, 12);
+        assert!(!r.web_url.contains("user"));
+        assert!(!r.web_url.contains("pass"));
+        assert!(r.web_url.starts_with("https://gitlab.example.com:8443/"));
+        assert!(r.web_url.ends_with("/diffs?foo=1"));
     }
 }

@@ -1,4 +1,5 @@
 import '../api/api_client.dart';
+import '../models/models.dart' show LinkedMergeRequestRef;
 import '../state/async_value.dart';
 import 'merge_request_models.dart';
 import 'merge_request_provider.dart';
@@ -248,26 +249,12 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
   }
 
   static _MergeRequestRef? _parseRef(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
-      return null;
-    }
-
-    final segs = uri.pathSegments;
-    final mrIdx = segs.indexOf('merge_requests');
-    if (mrIdx < 2 || segs[mrIdx - 1] != '-') return null;
-    if (mrIdx + 1 >= segs.length) return null;
-
-    final iid = int.tryParse(segs[mrIdx + 1]);
-    if (iid == null) return null;
-
-    final projectPath = segs.take(mrIdx - 1).join('/');
-    if (projectPath.isEmpty) return null;
-
+    final ref = LinkedMergeRequestRef.tryParse(url);
+    if (ref == null) return null;
     return _MergeRequestRef(
-      hostname: uri.host.isEmpty ? 'gitlab.com' : uri.host,
-      projectPath: projectPath,
-      iid: iid,
+      hostname: ref.hostname,
+      projectPath: ref.projectPath,
+      iid: ref.iid,
     );
   }
 

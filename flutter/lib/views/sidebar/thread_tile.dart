@@ -168,6 +168,73 @@ class _StatusDot extends StatelessWidget {
   }
 }
 
+class _ThreadMrChip extends StatelessWidget {
+  final LinkedMergeRequestRef ref;
+
+  const _ThreadMrChip({required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final label = '!${ref.iid}';
+    final url = ref.webUrl;
+    final tooltip = url.isEmpty ? label : '$label · $url';
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: url.isEmpty
+            ? null
+            : () => context.read<AppState>().openLink(url),
+        onLongPress: url.isEmpty
+            ? null
+            : () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(l10n(context).copiedToClipboard),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                }
+              },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: colorScheme.secondaryContainer.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: colorScheme.secondary.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.merge,
+                size: 11,
+                color: colorScheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSecondaryContainer,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ThreadTitle extends StatelessWidget {
   final Thread thread;
   final ({Color color, String label})? status;
@@ -196,6 +263,12 @@ class _ThreadTitle extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 6),
+      if (thread.linkedMr != null) ...[
+        const SizedBox(width: 6),
+        _ThreadMrChip(ref: thread.linkedMr!),
+        const SizedBox(width: 4),
+      ] else
+        const SizedBox(width: 6),
       ProviderIcon(
         providerId: thread.providerId,
         size: 16,

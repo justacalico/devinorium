@@ -3296,4 +3296,94 @@ void main() {
     expect(icon.semanticLabel, 'Codex CLI');
     expect(find.text('Codex CLI'), findsNothing);
   });
+
+  testWidgets('Thread tile shows linked merge request chip', (tester) async {
+    final api = _FakeApiService();
+    api.listThreadsResult = [
+      Thread(
+        id: 't1',
+        title: 'MR thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+        linkedMr: const LinkedMergeRequestRef(
+          hostname: 'gitlab.example.com',
+          projectPath: 'g/p',
+          iid: 42,
+          webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/42',
+        ),
+      ),
+    ];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('MR thread'), findsOneWidget);
+    expect(find.text('!42'), findsOneWidget);
+    expect(find.byIcon(Icons.merge), findsOneWidget);
+  });
+
+  testWidgets('Thread tile hides merge request chip when not linked', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    api.listThreadsResult = [
+      Thread(
+        id: 't1',
+        title: 'plain thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    ];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('plain thread'), findsOneWidget);
+    expect(find.text('!42'), findsNothing);
+    expect(find.byIcon(Icons.merge), findsNothing);
+  });
 }

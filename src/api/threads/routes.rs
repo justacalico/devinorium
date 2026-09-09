@@ -1,5 +1,7 @@
 //! Thread CRUD and message listing routes.
 
+use std::path::PathBuf;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -148,6 +150,7 @@ pub(super) async fn create(
         branch: req.branch,
         worktree_path: req.worktree_path,
         env_mode,
+        linked_mr: None,
     };
     match state.db.create_thread(new).await {
         Ok(t) => (StatusCode::CREATED, Json(ThreadOut::from(t))).into_response(),
@@ -227,6 +230,112 @@ pub(super) async fn get_one(
             .into_response(),
         Err(e) => map_err_internal(e).into_response(),
     }
+}
+
+/// Resolve and validate a linked merge request URL against a thread's project
+/// remote. Returns the JSON string to store, `None` to clear, or an HTTP
+/// response if the URL is invalid or does not match the remote.
+async fn resolve_linked_mr(
+    state: &AppState,
+    thread: &crate::db::ThreadRow,
+    url: &str,
+    user_id: i64,
+) -> Result<Option<String>, Response> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Ok(None);
+    }
+
+    let linked = match crate::git::parse_gitlab_merge_request_url(url) {
+        Some(l) => l,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(
+                    "not a valid GitLab merge request URL",
+                )),
+            )
+                .into_response());
+        }
+    };
+
+    let project_id = match thread.project_id {
+        Some(pid) => pid,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("thread has no project")),
+            )
+                .into_response());
+        }
+    };
+
+    let project = match state.db.get_project(project_id, user_id).await {
+        Ok(Some(p)) => p,
+        _ => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("project not found")),
+            )
+                .into_response());
+        }
+    };
+
+    let remote_url = match state
+        .git
+        .remote_url(PathBuf::from(&project.path).as_path())
+        .await
+    {
+        Ok(u) => u,
+        Err(crate::git::GitError::NotEnabled) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(
+                    "git support is not enabled on this backend",
+                )),
+            )
+                .into_response());
+        }
+        Err(crate::git::GitError::NotRepo) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("project is not a git repository")),
+            )
+                .into_response());
+        }
+        Err(e) => {
+            return Err((
+                e.status_code(),
+                Json(crate::api::ApiError::new(e.to_string())),
+            )
+                .into_response());
+        }
+    };
+
+    let remote = match crate::git::parse_gitlab_remote_url(&remote_url) {
+        Some(r) => r,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(
+                    "project remote is not a GitLab repository",
+                )),
+            )
+                .into_response());
+        }
+    };
+
+    if linked.hostname != remote.hostname || linked.project_path != remote.project_path {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new(
+                "merge request URL does not match project remote",
+            )),
+        )
+            .into_response());
+    }
+
+    Ok(Some(serde_json::to_string(&linked).unwrap()))
 }
 
 pub(super) async fn rename(
@@ -315,6 +424,18 @@ pub(super) async fn rename(
         }
     }
 
+    // Resolve and validate a linked merge request URL against the thread's
+    // project remote. An empty string or JSON null clears the stored link.
+    let linked_mr_json = match &req.linked_mr {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(url)) => match resolve_linked_mr(&state, &thread, url, user.id).await {
+            Ok(Some(json)) => Some(Some(json)),
+            Ok(None) => Some(None),
+            Err(resp) => return resp,
+        },
+    };
+
     // Apply updates.
     if let Some(title) = &req.title {
         if let Err(e) = state.db.rename_thread(&id, user.id, title).await {
@@ -343,6 +464,7 @@ pub(super) async fn rename(
         || req.reasoning_effort.is_some()
         || req.permissions.is_some()
         || env_mode.is_some()
+        || linked_mr_json.is_some()
     {
         // Treat an empty permissions string as a request to clear the field.
         let permissions = req
@@ -365,6 +487,7 @@ pub(super) async fn rename(
                 .map(str::to_string),
             permissions: permissions.map(|opt| opt.map(str::to_string)),
             env_mode,
+            linked_mr: linked_mr_json,
         };
         if let Err(e) = state.db.update_thread_settings(&id, user.id, update).await {
             return map_err_internal(e).into_response();

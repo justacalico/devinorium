@@ -334,6 +334,25 @@ mixin GitStore on AppStateBase {
     }
   }
   @override
+  Future<void> setThreadLinkedMr(String threadId, String? url) async {
+    try {
+      await api.setThreadLinkedMr(threadId, url);
+      _globalError = '';
+      await refreshThreadsAndGroups();
+      if (_activeStore?.threadId == threadId) {
+        await _activeStore?.reloadDetail();
+        await refreshLinkedMergeRequest();
+      }
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+  @override
+  Future<void> unlinkThreadLinkedMr(String threadId) async {
+    await setThreadLinkedMr(threadId, null);
+  }
+  @override
   String? get _linkedMrEffectiveBranch {
     final thread = activeThreadDetail?.thread;
     final branch = thread?.branch;
@@ -346,6 +365,12 @@ mixin GitStore on AppStateBase {
   @override
   Future<void> refreshLinkedMergeRequest() async {
     final projectId = _activeProjectId;
+    final thread = activeThreadDetail?.thread;
+    final linkedRef = thread?.linkedMr;
+    if (projectId != null && linkedRef != null) {
+      await loadLinkedMergeRequestByIid(projectId, linkedRef);
+      return;
+    }
     final branch = _linkedMrEffectiveBranch;
     if (projectId == null || branch == null || branch.isEmpty) {
       _clearLinkedMergeRequest();
@@ -371,6 +396,31 @@ mixin GitStore on AppStateBase {
     } catch (e) {
       if (_linkedMrProjectId == projectId && _linkedMrBranch == branch) {
         _linkedMergeRequest = null;
+        _loadingLinkedMergeRequest = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  @override
+  Future<void> loadLinkedMergeRequestByIid(
+    int projectId,
+    LinkedMergeRequestRef ref,
+  ) async {
+    _loadingLinkedMergeRequest = true;
+    _linkedMrProjectId = projectId;
+    _linkedMrBranch = '';
+    notifyListeners();
+    try {
+      final mr = await api.findMergeRequestByIid(projectId, ref.iid);
+      if (_linkedMrProjectId == projectId && _linkedMrBranch == '') {
+        _linkedMergeRequest = mr ?? MergeRequestLink.fromRef(ref);
+        _loadingLinkedMergeRequest = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      if (_linkedMrProjectId == projectId && _linkedMrBranch == '') {
+        _linkedMergeRequest = MergeRequestLink.fromRef(ref);
         _loadingLinkedMergeRequest = false;
         notifyListeners();
       }

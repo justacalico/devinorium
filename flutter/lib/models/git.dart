@@ -145,6 +145,76 @@ class GitConnection {
   );
 }
 
+/// A merge request reference stored on a thread record.
+///
+/// Unlike [MergeRequestLink], this does not include live state; it just keeps
+/// enough information to resolve the MR in the GitLab UI or to fetch its
+/// current summary on demand.
+class LinkedMergeRequestRef {
+  final String hostname;
+  final String projectPath;
+  final int iid;
+  final String webUrl;
+
+  const LinkedMergeRequestRef({
+    required this.hostname,
+    required this.projectPath,
+    required this.iid,
+    required this.webUrl,
+  });
+
+  factory LinkedMergeRequestRef.fromJson(Map<String, dynamic> j) =>
+      LinkedMergeRequestRef(
+        hostname: j['hostname'] as String? ?? '',
+        projectPath: j['project_path'] as String? ?? '',
+        iid: (j['iid'] as num?)?.toInt() ?? 0,
+        webUrl: j['web_url'] as String? ?? '',
+      );
+
+  /// Parse a GitLab merge request URL into a reference.
+  ///
+  /// Accepts any host so self-managed GitLab works. The path must contain the
+  /// `/-/merge_requests/` marker.
+  static LinkedMergeRequestRef? tryParse(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return null;
+    }
+    final segs = uri.pathSegments;
+    final mrIdx = segs.indexOf('merge_requests');
+    if (mrIdx < 2 || segs[mrIdx - 1] != '-') return null;
+    if (mrIdx + 1 >= segs.length) return null;
+    final iid = int.tryParse(segs[mrIdx + 1]);
+    if (iid == null || iid <= 0) return null;
+    final projectPath = segs.take(mrIdx - 1).join('/');
+    if (projectPath.isEmpty ||
+        projectPath.contains(':') ||
+        projectPath.contains('..') ||
+        projectPath.contains('//')) {
+      return null;
+    }
+    return LinkedMergeRequestRef(
+      hostname: (uri.host.isEmpty ? 'gitlab.com' : uri.host).toLowerCase(),
+      projectPath: projectPath,
+      iid: iid,
+      webUrl: url,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! LinkedMergeRequestRef) return false;
+    return hostname == other.hostname &&
+        projectPath == other.projectPath &&
+        iid == other.iid &&
+        webUrl == other.webUrl;
+  }
+
+  @override
+  int get hashCode => Object.hash(hostname, projectPath, iid, webUrl);
+}
+
 /// A lightweight merge request reference linked to a thread's branch.
 ///
 /// This is the summary returned by the backend's
@@ -188,4 +258,14 @@ class MergeRequestLink {
       draft: (j['draft'] as bool?) ?? false,
     );
   }
+
+  factory MergeRequestLink.fromRef(LinkedMergeRequestRef ref) => MergeRequestLink(
+    iid: ref.iid,
+    title: '',
+    state: '',
+    sourceBranch: '',
+    targetBranch: '',
+    webUrl: ref.webUrl,
+    draft: false,
+  );
 }

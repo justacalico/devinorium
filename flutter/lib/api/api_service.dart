@@ -181,6 +181,25 @@ class ApiService {
     }
   }
 
+  /// Load a merge request by its project and IID.
+  Future<MergeRequestLink?> findMergeRequestByIid(
+    int projectId,
+    int iid,
+  ) async {
+    if (iid <= 0) return null;
+    final uri = _buildPath('/api/projects/$projectId/git/merge-request', {
+      'iid': iid.toString(),
+    });
+    try {
+      final j = await _client.get(uri);
+      if (j.isEmpty) return null;
+      return MergeRequestLink.fromJson(j);
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   // ---- Git connections ----
 
   Future<List<GitConnection>> listGitConnections() async {
@@ -422,6 +441,10 @@ class ApiService {
     if (body.isNotEmpty) {
       await _client.patch('/api/threads/$id', body);
     }
+  }
+
+  Future<void> setThreadLinkedMr(String id, String? url) async {
+    await _client.patch('/api/threads/$id', {'linked_mr': url});
   }
 
   Future<void> moveThreadToGroup(String id, int? groupId) async {
