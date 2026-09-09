@@ -57,7 +57,7 @@ class _ThreadTileState extends State<_ThreadTile>
   }
 
   void _delete() {
-    if (_deleting) return;
+    if (_deleting || !mounted) return;
     setState(() => _deleting = true);
     _pendingDelete = true;
     _controller.forward();
@@ -116,7 +116,6 @@ class _ThreadTileState extends State<_ThreadTile>
                   isActive: widget.isActive,
                 ),
                 trailing: _ThreadActions(
-                  status: status,
                   time: time,
                   isDeleting: _deleting,
                   thread: widget.thread,
@@ -300,7 +299,6 @@ class _ThreadTitle extends StatelessWidget {
 }
 
 class _ThreadActions extends StatelessWidget {
-  final ({Color color, String label})? status;
   final String time;
   final bool isDeleting;
   final Thread thread;
@@ -308,7 +306,6 @@ class _ThreadActions extends StatelessWidget {
   final VoidCallback onDelete;
 
   const _ThreadActions({
-    this.status,
     required this.time,
     required this.isDeleting,
     required this.thread,
@@ -319,7 +316,6 @@ class _ThreadActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final l = l10n(context);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -348,21 +344,7 @@ class _ThreadActions extends StatelessWidget {
         _ThreadOptionsMenu(
           thread: thread,
           isDeleting: isDeleting,
-        ),
-        IconButton(
-          tooltip: l.deleteThreadTooltip,
-          icon: Icon(Icons.delete_outline,
-              color: theme.colorScheme.error, size: 18),
-          onPressed: isDeleting
-              ? null
-              : () async {
-                  if (HardwareKeyboard.instance.isShiftPressed ||
-                      await _confirm(context, l.deleteThreadConfirm)) {
-                    onDelete();
-                  }
-                },
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.all(4),
+          onDelete: onDelete,
         ),
       ],
     );
@@ -372,10 +354,12 @@ class _ThreadActions extends StatelessWidget {
 class _ThreadOptionsMenu extends StatelessWidget {
   final Thread thread;
   final bool isDeleting;
+  final VoidCallback onDelete;
 
   const _ThreadOptionsMenu({
     required this.thread,
     required this.isDeleting,
+    required this.onDelete,
   });
 
   @override
@@ -394,16 +378,32 @@ class _ThreadOptionsMenu extends StatelessWidget {
             size: 18,
             color: theme.colorScheme.primary,
           ),
+          onPressed: isDeleting
+              ? null
+              : () => state.pinThread(thread.id, !thread.pinned),
           child: Text(thread.pinned ? l.unpin : l.pin),
-          onPressed: () =>
-              state.pinThread(thread.id, !thread.pinned),
         ),
         MenuItemButton(
           leadingIcon: Icon(Icons.edit_outlined,
               size: 18, color: theme.colorScheme.onSurface),
+          onPressed: isDeleting
+              ? null
+              : () => state.openRenameThreadDialog(thread.id, thread.title),
           child: Text(l.rename),
-          onPressed: () =>
-              state.openRenameThreadDialog(thread.id, thread.title),
+        ),
+        MenuItemButton(
+          leadingIcon: Icon(Icons.delete_outline,
+              size: 18, color: theme.colorScheme.error),
+          onPressed: isDeleting
+              ? null
+              : () async {
+                  if (HardwareKeyboard.instance.isShiftPressed ||
+                      await _confirm(context, l.deleteThreadConfirm)) {
+                    if (!context.mounted) return;
+                    onDelete();
+                  }
+                },
+          child: Text(l.deleteThread),
         ),
       ],
       builder: (context, controller, child) {

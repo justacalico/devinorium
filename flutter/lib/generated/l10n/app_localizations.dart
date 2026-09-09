@@ -1126,12 +1126,6 @@ abstract class AppLocalizations {
   /// **'Delete this thread? This cannot be undone.'**
   String get deleteThreadConfirm;
 
-  /// No description provided for @deleteThreadTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete thread (Shift+click to skip confirmation)'**
-  String get deleteThreadTooltip;
-
   /// No description provided for @deleteProjectConfirm.
   ///
   /// In en, this message translates to:
@@ -1143,6 +1137,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete project'**
   String get deleteProject;
+
+  /// No description provided for @deleteThread.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete thread'**
+  String get deleteThread;
 
   /// No description provided for @connected.
   ///

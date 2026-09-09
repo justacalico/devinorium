@@ -877,9 +877,18 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pump();
 
-    final delete = find.widgetWithIcon(IconButton, Icons.delete_outline);
-    expect(delete, findsOneWidget);
-    await tester.tap(delete);
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    expect(more, findsOneWidget);
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete thread'));
     await tester.pumpAndSettle();
 
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
@@ -927,15 +936,138 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    final delete = find.widgetWithIcon(IconButton, Icons.delete_outline);
-    expect(delete, findsOneWidget);
-    await tester.tap(delete);
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    expect(more, findsOneWidget);
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete thread'));
     await tester.pumpAndSettle();
 
     expect(
       find.text('Delete this thread? This cannot be undone.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Confirm thread delete removes it', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete thread'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(api.deletedThreadIds, contains('a'));
+    expect(state.threads, isEmpty);
+    expect(find.text('My thread'), findsNothing);
+  });
+
+  testWidgets('Cancel thread delete does not remove it', (tester) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete thread'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Delete this thread? This cannot be undone.'),
+      findsNothing,
+    );
+    expect(api.deletedThreadIds, isEmpty);
+    expect(state.threads, hasLength(1));
+    expect(find.text('My thread'), findsOneWidget);
   });
 
   testWidgets('User chip is a rounded pill', (tester) async {
@@ -1936,9 +2068,18 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pump();
 
-    final delete = find.widgetWithIcon(IconButton, Icons.delete_outline);
-    expect(delete, findsOneWidget);
-    await tester.tap(delete);
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+    expect(more, findsOneWidget);
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete thread'));
 
     await tester.pump(const Duration(milliseconds: 150));
 
@@ -2229,12 +2370,15 @@ void main() {
         of: find.text('trash thread'),
         matching: find.byType(ListTile),
       );
-      final delete = find.descendant(
+      final more = find.descendant(
         of: trashTile,
-        matching: find.widgetWithIcon(IconButton, Icons.delete_outline),
+        matching: find.byIcon(Icons.more_vert),
       );
-      expect(delete, findsOneWidget);
-      await tester.tap(delete);
+      expect(more, findsOneWidget);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Delete thread'));
       await tester.pump(const Duration(milliseconds: 50));
 
       // Filter the list while the delete animation is still running.

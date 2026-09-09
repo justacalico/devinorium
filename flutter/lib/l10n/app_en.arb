@@ -330,7 +330,6 @@
   "noProjectsYet": "No projects yet.\nCreate one to get started.",
   "noThreadsYet": "No threads yet",
   "deleteThreadConfirm": "Delete this thread? This cannot be undone.",
-  "deleteThreadTooltip": "Delete thread (Shift+click to skip confirmation)",
   "deleteProjectConfirm": "Remove \"{name}\" from Devinorium? This deletes the project and all its threads from the database. The folder on disk is not touched.",
   "@deleteProjectConfirm": {
     "placeholders": {
@@ -340,6 +339,7 @@
     }
   },
   "deleteProject": "Delete project",
+  "deleteThread": "Delete thread",
   "connected": "Connected",
   "disconnected": "Disconnected",
   "checkingConnection": "Checking connection\u2026",
