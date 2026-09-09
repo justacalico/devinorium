@@ -461,7 +461,7 @@ fn usage_from_acp(usage: &agent_client_protocol::schema::v1::Usage) -> UsageSnap
     }
 }
 
-async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<PathBuf> {
+pub(crate) async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<PathBuf> {
     let preferred = working_dir.join(".devinorium-attachments");
     if tokio::fs::create_dir_all(&preferred).await.is_ok() {
         let probe = preferred.join(format!(".probe-{}", uuid::Uuid::new_v4()));

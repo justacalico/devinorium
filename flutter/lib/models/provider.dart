@@ -16,6 +16,7 @@ class ProviderInfo {
 /// Mirrors `providers::default_command` in the backend.
 String defaultProviderCommand(String providerId) => switch (providerId) {
   'opencode' => 'opencode',
+  'codex' => 'codex',
   _ => 'devin',
 };
 

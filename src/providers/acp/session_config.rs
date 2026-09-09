@@ -15,25 +15,7 @@ impl AcpProvider {
     /// `interaction_mode` session config option, and a supplement for those
     /// that do: the markup conventions are devinorium's own.
     pub fn apply_interaction_mode_prefix(prompt: String, mode: &str) -> String {
-        match mode.trim().to_lowercase().as_str() {
-            "plan" => format!(
-                "You are in Plan mode. First produce a concise, decision-complete \
-plan and do not run tools, edit files, or execute commands until the user \
-confirms. Wrap the final plan in a `<proposed_plan>` block with \
-`<step status=\"pending\">...</step>` children. At most one step may be \
-`in_progress`.\n\n{prompt}"
-            ),
-            "ask" => format!(
-                "You are in Ask mode. Answer the user's question directly and do \
-not use tools, edit files, or execute commands.\n\n{prompt}"
-            ),
-            _ => format!(
-                "{prompt}\n\nWhen working on a multi-step task, you may track \
-progress by emitting `<update_plan explanation=\"...\"><step \
-status=\"pending|in_progress|completed\">...</step></update_plan>` blocks. \
-Only one step should be `in_progress` at a time."
-            ),
-        }
+        crate::providers::apply_interaction_mode_prefix(prompt, mode)
     }
 }
 

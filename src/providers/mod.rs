@@ -14,6 +14,7 @@
 
 pub mod acp;
 pub mod ask;
+pub mod codex;
 pub mod parts;
 pub mod version;
 
@@ -282,6 +283,31 @@ pub trait Provider: Send + Sync {
     }
 }
 
+/// Prepend a mode instruction to the prompt so the agent behaves according to
+/// the selected composer mode (plan/ask/code). Providers that cannot set the
+/// mode natively rely on this; the markup conventions are devinorium's own.
+pub(crate) fn apply_interaction_mode_prefix(prompt: String, mode: &str) -> String {
+    match mode.trim().to_lowercase().as_str() {
+        "plan" => format!(
+            "You are in Plan mode. First produce a concise, decision-complete \
+plan and do not run tools, edit files, or execute commands until the user \
+confirms. Wrap the final plan in a `<proposed_plan>` block with \
+`<step status=\"pending\">...</step>` children. At most one step may be \
+`in_progress`.\n\n{prompt}"
+        ),
+        "ask" => format!(
+            "You are in Ask mode. Answer the user's question directly and do \
+not use tools, edit files, or execute commands.\n\n{prompt}"
+        ),
+        _ => format!(
+            "{prompt}\n\nWhen working on a multi-step task, you may track \
+progress by emitting `<update_plan explanation=\"...\"><step \
+status=\"pending|in_progress|completed\">...</step></update_plan>` blocks. \
+Only one step should be `in_progress` at a time."
+        ),
+    }
+}
+
 /// Derive a short title from the first non-empty line of a prompt.
 pub fn title_from_prompt(prompt: &str) -> String {
     let title = prompt
@@ -322,6 +348,10 @@ pub fn available_providers() -> Vec<ProviderInfo> {
             id: "opencode",
             name: "OpenCode",
         },
+        ProviderInfo {
+            id: codex::PROVIDER_ID,
+            name: "Codex CLI",
+        },
     ]
 }
 
@@ -329,6 +359,7 @@ pub fn available_providers() -> Vec<ProviderInfo> {
 pub fn default_command(provider_id: &str) -> &'static str {
     match provider_id {
         "opencode" => acp::AgentKind::Opencode.default_command(),
+        codex::PROVIDER_ID => "codex",
         _ => acp::AgentKind::Devin.default_command(),
     }
 }
@@ -345,6 +376,12 @@ pub fn provider_name(id: &str) -> Option<&'static str> {
 ///
 /// **When adding a provider, add one match arm here.**
 pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> {
+    if cfg.id == codex::PROVIDER_ID {
+        return Ok(Box::new(codex::CodexProvider::new(
+            cfg.command,
+            cfg.default_model,
+        )));
+    }
     let kind = match cfg.id.as_str() {
         "devin-cli" => acp::AgentKind::Devin,
         "opencode" => acp::AgentKind::Opencode,

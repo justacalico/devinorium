@@ -397,7 +397,10 @@ pub(crate) async fn call_provider(
     let provider = state.provider_for(user, &thread.provider_id);
     let working_dir = project_working_dir_for_thread(state, thread).await?;
 
-    let session_callback: Option<SessionCallback> = if thread.devin_session_id.is_none() {
+    // The callback stays attached for follow-ups too: some providers (codex)
+    // only learn the durable session id after the first turn runs, so a
+    // later correction must be able to overwrite a stale stored id.
+    let session_callback: Option<SessionCallback> = {
         let thread_id = thread.id.clone();
         let provider_id = thread.provider_id.clone();
         let state_for_session = state.clone();
@@ -418,8 +421,6 @@ pub(crate) async fn call_provider(
             });
             cb
         })
-    } else {
-        None
     };
 
     let options = SendOptions {
