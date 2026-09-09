@@ -111,6 +111,78 @@ void main() {
     });
   });
 
+  group('ModelInfo', () {
+    test('parses reasoning effort metadata', () {
+      final m = ModelInfo.fromJson({
+        'id': 'gpt-5.4-terra',
+        'label': 'GPT-5.4-Terra',
+        'cost_tier': 'high',
+        'family': 'gpt',
+        'default_reasoning_effort': 'medium',
+        'supported_reasoning_efforts': ['low', 'medium', 'high', 'xhigh'],
+      });
+      expect(m.defaultReasoningEffort, 'medium');
+      expect(m.supportedReasoningEfforts, ['low', 'medium', 'high', 'xhigh']);
+    });
+
+    test('defaults reasoning fields when absent', () {
+      final m = ModelInfo.fromJson({'id': 'm1'});
+      expect(m.defaultReasoningEffort, isEmpty);
+      expect(m.supportedReasoningEfforts, isEmpty);
+    });
+  });
+
+  group('reasoningEffortLabel', () {
+    test('maps known provider values to labels', () {
+      expect(reasoningEffortLabel('low'), 'Low');
+      expect(reasoningEffortLabel('xhigh'), 'Extra High');
+      expect(reasoningEffortLabel('extra_high'), 'Extra High');
+      expect(reasoningEffortLabel('unknown'), 'Unknown');
+    });
+  });
+
+  group('effectiveReasoningEffort', () {
+    final model = ModelInfo(
+      id: 'm1',
+      label: 'm1',
+      costTier: 'free',
+      family: 'f',
+      defaultReasoningEffort: 'medium',
+      supportedReasoningEfforts: const ['low', 'medium', 'high'],
+    );
+
+    test('keeps a supported selection', () {
+      expect(effectiveReasoningEffort(model, 'high'), 'high');
+    });
+
+    test('falls back to the provider default', () {
+      expect(effectiveReasoningEffort(model, ''), 'medium');
+      expect(effectiveReasoningEffort(model, 'stale'), 'medium');
+    });
+
+    test('uses the first level when no default is advertised', () {
+      final noDefault = ModelInfo(
+        id: 'm2',
+        label: 'm2',
+        costTier: 'free',
+        family: 'f',
+        supportedReasoningEfforts: const ['low', 'high'],
+      );
+      expect(effectiveReasoningEffort(noDefault, ''), 'low');
+    });
+
+    test('returns empty when the model has no reasoning levels', () {
+      final plain = ModelInfo(
+        id: 'm3',
+        label: 'm3',
+        costTier: 'free',
+        family: 'f',
+      );
+      expect(effectiveReasoningEffort(plain, 'high'), isEmpty);
+      expect(effectiveReasoningEffort(null, 'high'), isEmpty);
+    });
+  });
+
   group('Plan', () {
     test('parses plan with steps and explanation', () {
       final plan = Plan.fromJson({
@@ -651,6 +723,18 @@ void main() {
       });
       expect(t.model, isEmpty);
       expect(t.permissionMode, 'normal');
+    });
+
+    test('parses reasoning_effort', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'model': 'gpt-5.4-terra',
+        'permission_mode': 'normal',
+        'reasoning_effort': 'high',
+      });
+      expect(t.reasoningEffort, 'high');
     });
   });
 

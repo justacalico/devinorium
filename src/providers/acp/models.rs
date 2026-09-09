@@ -19,6 +19,8 @@ pub fn static_models(kind: AgentKind) -> Vec<ModelInfo> {
                 max_output_tokens: 128_000,
                 is_new: false,
                 is_beta: false,
+                default_reasoning_effort: None,
+                supported_reasoning_efforts: vec![],
             },
             ModelInfo {
                 id: "claude-opus-5-medium".into(),
@@ -30,6 +32,8 @@ pub fn static_models(kind: AgentKind) -> Vec<ModelInfo> {
                 max_output_tokens: 128_000,
                 is_new: false,
                 is_beta: false,
+                default_reasoning_effort: None,
+                supported_reasoning_efforts: vec![],
             },
         ],
         AgentKind::Opencode => vec![ModelInfo {
@@ -42,6 +46,8 @@ pub fn static_models(kind: AgentKind) -> Vec<ModelInfo> {
             max_output_tokens: 32_000,
             is_new: false,
             is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
         }],
     }
 }
@@ -195,6 +201,8 @@ pub fn parse_opencode_models_plain(out: &str) -> Vec<ModelInfo> {
             max_output_tokens: 0,
             is_new: false,
             is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
         })
         .collect()
 }
@@ -226,6 +234,8 @@ fn opencode_model_info(slug: &str, meta: OpencodeModelMeta) -> ModelInfo {
         max_output_tokens: meta.limit.output,
         is_new: false,
         is_beta: false,
+        default_reasoning_effort: None,
+        supported_reasoning_efforts: vec![],
     }
 }
 

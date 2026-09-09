@@ -277,6 +277,7 @@ class ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
     String? branch,
     String? worktreePath,
@@ -287,6 +288,7 @@ class ApiService {
     if (provider != null && provider.isNotEmpty) body['provider'] = provider;
     if (model != null) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
+    if (reasoningEffort != null) body['reasoning_effort'] = reasoningEffort;
     if (permissions != null) body['permissions'] = permissions;
     if (branch != null) body['branch'] = branch;
     if (worktreePath != null) body['worktree_path'] = worktreePath;
@@ -368,12 +370,14 @@ class ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
   }) async {
     final body = <String, dynamic>{};
     if (provider != null && provider.isNotEmpty) body['provider'] = provider;
     if (model != null && model.isNotEmpty) body['model'] = model;
     if (permissionMode != null) body['permission_mode'] = permissionMode;
+    if (reasoningEffort != null) body['reasoning_effort'] = reasoningEffort;
     // An empty permissions string is sent as JSON null, which clears the field.
     if (permissions != null) {
       body['permissions'] = permissions.isEmpty ? null : permissions;

@@ -94,6 +94,50 @@ impl CodexProvider {
         }
     }
 
+    /// Pick the reasoning effort for a new turn. When the model catalog is
+    /// reachable, the requested value must match one of the model's
+    /// advertised efforts (aliases like `extra_high` are normalized to
+    /// `xhigh`); otherwise it is dropped so the model's default applies.
+    /// When the catalog cannot be fetched the request is forwarded as-is.
+    async fn resolve_reasoning(
+        &self,
+        options: &SendOptions,
+        model: Option<&str>,
+    ) -> Option<String> {
+        let requested = options.reasoning_effort.as_deref()?.trim();
+        if requested.is_empty() {
+            return None;
+        }
+        let requested_norm = normalize_effort(requested);
+
+        let Some(models) = super::models::known_models(&self.bin, &options.working_dir).await
+        else {
+            return Some(requested.to_string());
+        };
+        let Some(model) = model else {
+            return Some(requested.to_string());
+        };
+        let Some(info) = models.iter().find(|m| m.id == model) else {
+            return Some(requested.to_string());
+        };
+
+        match info
+            .supported_reasoning_efforts
+            .iter()
+            .find(|e| normalize_effort(e) == requested_norm)
+        {
+            Some(e) => Some(e.clone()),
+            None => {
+                tracing::warn!(
+                    model = %model,
+                    effort = %requested,
+                    "reasoning effort not in codex model list, using the model default"
+                );
+                None
+            }
+        }
+    }
+
     /// Open or reopen a codex thread. `thread/resume` may fail when the
     /// stored rollout is gone; fall back to a fresh thread in that case.
     async fn open_thread(
@@ -179,6 +223,7 @@ impl CodexProvider {
         handshake(&server).await?;
 
         let model = self.resolve_model(options).await;
+        let reasoning_effort = self.resolve_reasoning(options, model.as_deref()).await;
         let thread_id = self
             .open_thread(&server, options, session, model.as_deref())
             .await?;
@@ -200,6 +245,9 @@ impl CodexProvider {
         });
         if let Some(model) = &model {
             turn_params["model"] = json!(model);
+        }
+        if let Some(effort) = &reasoning_effort {
+            turn_params["effort"] = json!(effort);
         }
 
         let result = server.request("turn/start", turn_params).await?;
@@ -348,6 +396,17 @@ fn sanitize_filename(name: &str) -> String {
     crate::providers::acp::content::sanitize(name)
 }
 
+/// Normalize a reasoning effort value so provider aliases (`extra_high`,
+/// `extra-high`, `xhigh`) compare equal.
+fn normalize_effort(effort: &str) -> String {
+    let s = effort.trim().to_lowercase().replace(['-', '_'], "");
+    if s == "extrahigh" {
+        "xhigh".into()
+    } else {
+        s
+    }
+}
+
 #[async_trait]
 impl Provider for CodexProvider {
     fn id(&self) -> &str {
@@ -424,13 +483,12 @@ mod tests {
     use std::sync::Arc;
 
     /// A fake `codex` binary that implements just enough of the app-server
-    /// protocol for a full prompt round trip.
+    /// protocol for a full prompt round trip. `turn/start` request bodies are
+    /// logged to `turn_start.log` in [dir] so tests can assert on them.
     #[cfg(unix)]
     fn fake_codex(dir: &Path) -> PathBuf {
         let path = dir.join("codex");
-        std::fs::write(
-            &path,
-            r#"#!/bin/sh
+        let script = r#"#!/bin/sh
 id_of() { printf '%s' "$1" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'; }
 while IFS= read -r line; do
   case "$line" in
@@ -444,6 +502,7 @@ while IFS= read -r line; do
       ;;
     *'"method":"turn/start"'*)
       id=$(id_of "$line")
+      printf '%s\n' "$line" >> "__LOGDIR__/turn_start.log"
       printf '{"id":%s,"result":{"turn":{"id":"tu-1","items":[],"status":"inProgress"}}}\n' "$id"
       printf '%s\n' '{"method":"thread/started","params":{"thread":{"id":"th-1","sessionId":"roll-9"}}}'
       printf '%s\n' '{"method":"item/agentMessage/delta","params":{"threadId":"roll-9","turnId":"tu-1","itemId":"m1","delta":"Hel"}}'
@@ -459,13 +518,12 @@ while IFS= read -r line; do
       ;;
     *'"method":"model/list"'*)
       id=$(id_of "$line")
-      printf '{"id":%s,"result":{"data":[{"id":"gpt-test","model":"gpt-test","displayName":"GPT Test","description":"d","hidden":false,"isDefault":true,"defaultReasoningEffort":"low","supportedReasoningEfforts":[]}]}}\n' "$id"
+      printf '{"id":%s,"result":{"data":[{"id":"gpt-test","model":"gpt-test","displayName":"GPT Test","description":"d","hidden":false,"isDefault":true,"defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low","description":"Low"},{"reasoningEffort":"medium","description":"Medium"},{"reasoningEffort":"high","description":"High"},{"reasoningEffort":"xhigh","description":"Extra High"}]}]}}\n' "$id"
       ;;
   esac
 done
-"#,
-        )
-        .unwrap();
+"#.replace("__LOGDIR__", &dir.display().to_string());
+        std::fs::write(&path, script).unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
@@ -474,6 +532,7 @@ done
     fn options(dir: &Path) -> SendOptions {
         SendOptions {
             model: "gpt-test".into(),
+            reasoning_effort: None,
             working_dir: dir.to_path_buf(),
             permission_mode: "normal".into(),
             permissions: None,
@@ -556,6 +615,63 @@ done
             provider.resolve_model(&opts).await.as_deref(),
             Some("gpt-test")
         );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn reasoning_effort_is_validated_against_the_model_catalog() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = fake_codex(dir.path());
+        let provider = CodexProvider::new(bin.to_string_lossy().into(), String::new());
+        let mut opts = options(dir.path());
+
+        opts.reasoning_effort = Some("high".into());
+        assert_eq!(
+            provider
+                .resolve_reasoning(&opts, Some("gpt-test"))
+                .await
+                .as_deref(),
+            Some("high")
+        );
+
+        // Aliases the CLI accepts normalize to the advertised value.
+        opts.reasoning_effort = Some("extra-high".into());
+        assert_eq!(
+            provider
+                .resolve_reasoning(&opts, Some("gpt-test"))
+                .await
+                .as_deref(),
+            Some("xhigh")
+        );
+
+        // Unknown values fall back to the model default.
+        opts.reasoning_effort = Some("ultra".into());
+        assert!(provider
+            .resolve_reasoning(&opts, Some("gpt-test"))
+            .await
+            .is_none());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn turn_start_carries_the_reasoning_effort() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = fake_codex(dir.path());
+        let provider = CodexProvider::new(bin.to_string_lossy().into(), String::new());
+        let mut opts = options(dir.path());
+        opts.reasoning_effort = Some("extra-high".into());
+
+        provider
+            .start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            })
+            .await
+            .unwrap();
+
+        // The alias should normalize to the advertised value on the wire.
+        let log = std::fs::read_to_string(dir.path().join("turn_start.log")).unwrap();
+        assert!(log.contains("\"effort\":\"xhigh\""), "log: {log}");
     }
 
     #[tokio::test]

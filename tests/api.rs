@@ -61,6 +61,8 @@ impl Provider for StubProvider {
                 max_output_tokens: 32_000,
                 is_new: false,
                 is_beta: false,
+                default_reasoning_effort: None,
+                supported_reasoning_efforts: vec![],
             },
             ModelInfo {
                 id: "stub-2".into(),
@@ -72,6 +74,8 @@ impl Provider for StubProvider {
                 max_output_tokens: 32_000,
                 is_new: false,
                 is_beta: false,
+                default_reasoning_effort: None,
+                supported_reasoning_efforts: vec![],
             },
         ])
     }
@@ -207,6 +211,8 @@ impl Provider for StreamingStubProvider {
             max_output_tokens: 32_000,
             is_new: false,
             is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
         }])
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
@@ -297,6 +303,8 @@ impl Provider for FailingProvider {
             max_output_tokens: 32_000,
             is_new: false,
             is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
         }])
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
@@ -769,6 +777,81 @@ async fn thread_model_update() {
     assert!(
         body.contains("swe-1-7"),
         "updated model should persist: {body}"
+    );
+}
+
+#[tokio::test]
+async fn thread_reasoning_effort_round_trips() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"model":"gpt-test","reasoning_effort":"high"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid: String = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        body.contains(r#""reasoning_effort":"high""#),
+        "created thread should carry the effort: {body}"
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"reasoning_effort":"low"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains(r#""reasoning_effort":"low""#),
+        "updated effort should persist: {body}"
+    );
+
+    // An empty string clears the stored effort.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"reasoning_effort":""}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains(r#""reasoning_effort":""#),
+        "cleared effort should persist: {body}"
     );
 }
 
@@ -5956,6 +6039,8 @@ impl Provider for PlanStubProvider {
             max_output_tokens: 32_000,
             is_new: false,
             is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
         }])
     }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {

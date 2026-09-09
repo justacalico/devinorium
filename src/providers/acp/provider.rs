@@ -416,6 +416,10 @@ impl AcpProvider {
             is_new: bool,
             #[serde(default)]
             is_beta: bool,
+            #[serde(default)]
+            default_reasoning_effort: Option<String>,
+            #[serde(default)]
+            supported_reasoning_efforts: Vec<String>,
         }
 
         #[derive(Deserialize)]
@@ -437,6 +441,8 @@ impl AcpProvider {
                     max_output_tokens: v.max_output_tokens,
                     is_new: v.is_new,
                     is_beta: v.is_beta,
+                    default_reasoning_effort: v.default_reasoning_effort,
+                    supported_reasoning_efforts: v.supported_reasoning_efforts,
                 });
             }
         }

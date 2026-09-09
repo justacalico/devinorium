@@ -28,7 +28,7 @@ pub use messages::{DuplicateClientMessageId, NewMessage, MAX_CLIENT_MESSAGE_ID_L
 pub use plans::{NewPlan, PlanRow};
 pub use projects::NewProject;
 pub use thread_groups::NewThreadGroup;
-pub use threads::NewThread;
+pub use threads::{NewThread, ThreadSettingsUpdate};
 pub use usage::{NewUsageEvent, UsageBucket, UsageTotals};
 pub use users::NewUser;
 
@@ -153,6 +153,7 @@ pub struct ThreadRow {
     pub provider_id: String,
     pub model: String,
     pub permission_mode: String,
+    pub reasoning_effort: String,
     pub permissions: Option<String>,
     pub created_at: String,
     pub updated_at: String,

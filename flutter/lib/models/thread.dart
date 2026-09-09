@@ -110,6 +110,7 @@ class Thread {
   final String providerId;
   final String model;
   final String permissionMode;
+  final String reasoningEffort;
   final String? permissions;
   final String? branch;
   final String? worktreePath;
@@ -126,6 +127,7 @@ class Thread {
     this.providerId = 'devin-cli',
     required this.model,
     required this.permissionMode,
+    this.reasoningEffort = '',
     this.permissions,
     this.branch,
     this.worktreePath,
@@ -143,6 +145,7 @@ class Thread {
     providerId: j['provider_id'] as String? ?? 'devin-cli',
     model: j['model'] as String? ?? '',
     permissionMode: j['permission_mode'] as String? ?? 'normal',
+    reasoningEffort: j['reasoning_effort'] as String? ?? '',
     permissions: j['permissions'] as String?,
     branch: j['branch'] as String?,
     worktreePath: j['worktree_path'] as String?,
@@ -160,6 +163,7 @@ class Thread {
     providerId: providerId,
     model: model,
     permissionMode: permissionMode,
+    reasoningEffort: reasoningEffort,
     permissions: permissions,
     branch: branch,
     worktreePath: worktreePath,
@@ -180,6 +184,7 @@ class Thread {
         providerId == other.providerId &&
         model == other.model &&
         permissionMode == other.permissionMode &&
+        reasoningEffort == other.reasoningEffort &&
         permissions == other.permissions &&
         branch == other.branch &&
         worktreePath == other.worktreePath &&
@@ -198,6 +203,7 @@ class Thread {
     providerId,
     model,
     permissionMode,
+    reasoningEffort,
     permissions,
     branch,
     worktreePath,
@@ -354,7 +360,9 @@ class ThreadDetail {
     messages: messages ?? this.messages,
     totalMessages: totalMessages ?? this.totalMessages,
     plan: clearPlan ? null : (plan ?? this.plan),
-    beforeCursor: beforeCursor == _unset ? this.beforeCursor : beforeCursor as String?,
+    beforeCursor: beforeCursor == _unset
+        ? this.beforeCursor
+        : beforeCursor as String?,
     hasMore: hasMore == _unset ? this.hasMore : hasMore as bool?,
     turnLimit: turnLimit == _unset ? this.turnLimit : turnLimit as int?,
     rawCount: rawCount == _unset ? this.rawCount : rawCount as int?,

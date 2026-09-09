@@ -4,7 +4,6 @@ import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/elapsed_time_indicator.dart';
-import 'package:devinorium_frontend/views/model_picker.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -100,6 +99,7 @@ class _FakeApiService extends ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
   }) => Future.value();
 
@@ -173,16 +173,16 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      final modelPicker = find.byType(ModelPicker);
+      final modelSelector = find.byKey(const Key('model_selector'));
       final dropdown = find.byType(DropdownButton<String>);
 
-      expect(modelPicker, findsOneWidget);
+      expect(modelSelector, findsOneWidget);
       expect(dropdown, findsOneWidget);
 
       final button = tester.widget<DropdownButton<String>>(dropdown);
       expect(button.onChanged, isNull);
 
-      await tester.tap(modelPicker);
+      await tester.tap(modelSelector);
       await tester.pumpAndSettle();
       expect(find.byType(Dialog), findsNothing);
     },
@@ -230,16 +230,16 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pump();
 
-      final modelPicker = find.byType(ModelPicker);
+      final modelSelector = find.byKey(const Key('model_selector'));
       final dropdown = find.byType(DropdownButton<String>);
 
-      expect(modelPicker, findsOneWidget);
+      expect(modelSelector, findsOneWidget);
       expect(dropdown, findsOneWidget);
 
       final button = tester.widget<DropdownButton<String>>(dropdown);
       expect(button.onChanged, isNull);
 
-      await tester.tap(modelPicker);
+      await tester.tap(modelSelector);
       await tester.pump();
       expect(find.byType(Dialog), findsNothing);
     },
@@ -286,16 +286,16 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      final modelPicker = find.byType(ModelPicker);
+      final modelSelector = find.byKey(const Key('model_selector'));
       final dropdown = find.byType(DropdownButton<String>);
 
-      expect(modelPicker, findsOneWidget);
+      expect(modelSelector, findsOneWidget);
       expect(dropdown, findsOneWidget);
 
       final button = tester.widget<DropdownButton<String>>(dropdown);
       expect(button.onChanged, isNotNull);
 
-      await tester.tap(modelPicker);
+      await tester.tap(modelSelector);
       await tester.pumpAndSettle();
       expect(find.byType(Dialog), findsOneWidget);
     },

@@ -25,6 +25,7 @@ class _SendApiService extends ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
   }) => Future.value();
 

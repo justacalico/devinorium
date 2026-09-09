@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::api::map_err_internal;
 use crate::api::pagination::Pagination;
 use crate::auth::session::CurrentUser;
-use crate::db::NewThread;
+use crate::db::{NewThread, ThreadSettingsUpdate};
 use crate::AppState;
 
 use super::persistence::active_run_plan;
@@ -110,6 +110,13 @@ pub(super) async fn create(
         )
             .into_response();
     }
+    let reasoning_effort = req
+        .reasoning_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string();
     let title = req.title.unwrap_or_else(|| "New thread".into());
     let title_user_set = title != "New thread";
     let new = NewThread {
@@ -122,6 +129,7 @@ pub(super) async fn create(
         provider_id,
         model,
         permission_mode,
+        reasoning_effort,
         permissions: req.permissions,
         branch: req.branch,
         worktree_path: req.worktree_path,
@@ -302,6 +310,7 @@ pub(super) async fn rename(
     if provider_update.is_some()
         || req.model.is_some()
         || req.permission_mode.is_some()
+        || req.reasoning_effort.is_some()
         || req.permissions.is_some()
     {
         // Treat an empty permissions string as a request to clear the field.
@@ -309,23 +318,23 @@ pub(super) async fn rename(
             .permissions
             .as_ref()
             .map(|opt| opt.as_deref().filter(|s| !s.trim().is_empty()));
-        let model = req
-            .model
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty());
-        if let Err(e) = state
-            .db
-            .update_thread_settings(
-                &id,
-                user.id,
-                provider_update,
-                model,
-                req.permission_mode.as_deref(),
-                permissions,
-            )
-            .await
-        {
+        let update = ThreadSettingsUpdate {
+            provider: provider_update.map(str::to_string),
+            model: req
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            permission_mode: req.permission_mode,
+            reasoning_effort: req
+                .reasoning_effort
+                .as_deref()
+                .map(str::trim)
+                .map(str::to_string),
+            permissions: permissions.map(|opt| opt.map(str::to_string)),
+        };
+        if let Err(e) = state.db.update_thread_settings(&id, user.id, update).await {
             return map_err_internal(e).into_response();
         }
     }

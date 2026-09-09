@@ -71,6 +71,7 @@ pub struct ThreadOut {
     pub provider_id: String,
     pub model: String,
     pub permission_mode: String,
+    pub reasoning_effort: String,
     pub permissions: Option<String>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
@@ -90,6 +91,7 @@ impl From<ThreadRow> for ThreadOut {
             provider_id: t.provider_id,
             model: t.model,
             permission_mode: t.permission_mode,
+            reasoning_effort: t.reasoning_effort,
             permissions: t.permissions,
             branch: t.branch,
             worktree_path: t.worktree_path,
@@ -184,6 +186,7 @@ pub struct CreateThread {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub permissions: Option<String>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
@@ -266,6 +269,8 @@ pub struct UpdateThread {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
+    /// Reasoning effort the provider should use. Empty string clears it.
+    pub reasoning_effort: Option<String>,
     /// Distinguish between:
     ///   - field absent: don't change permissions
     ///   - field null: clear permissions
@@ -313,6 +318,7 @@ mod tests {
             provider_id: "devin-cli".into(),
             model: "glm-5-2".into(),
             permission_mode: "normal".into(),
+            reasoning_effort: "".into(),
             permissions: None,
             created_at: "2024-01-01T00:00:00Z".into(),
             updated_at: "2024-01-01T00:00:00Z".into(),

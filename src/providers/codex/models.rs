@@ -44,6 +44,13 @@ pub async fn fetch_models(bin: &str, cwd: &Path) -> anyhow::Result<Vec<ModelInfo
                 max_output_tokens: 0,
                 is_new: false,
                 is_beta: false,
+                default_reasoning_effort: m.default_reasoning_effort.filter(|s| !s.is_empty()),
+                supported_reasoning_efforts: m
+                    .supported_reasoning_efforts
+                    .into_iter()
+                    .map(|e| e.reasoning_effort)
+                    .filter(|e| !e.is_empty())
+                    .collect(),
             }
         })
         .collect())
@@ -63,30 +70,37 @@ pub fn static_models() -> Vec<ModelInfo> {
         max_output_tokens: 0,
         is_new: false,
         is_beta: false,
+        default_reasoning_effort: None,
+        supported_reasoning_efforts: vec![],
     }]
 }
 
 /// Process-wide `model/list` cache keyed by binary path. Providers are
 /// rebuilt per request, so an instance field would respawn a server (and a
 /// second codex process) on every prompt.
-static MODEL_CACHE: Lazy<Mutex<HashMap<String, Option<HashSet<String>>>>> =
+static MODEL_CACHE: Lazy<Mutex<HashMap<String, Option<Vec<ModelInfo>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-/// Model ids the binary advertises, or `None` when the lookup failed. Cached
-/// after the first successful or failed fetch per binary.
-pub async fn known_model_ids(bin: &str, cwd: &Path) -> Option<HashSet<String>> {
+/// The model catalog the binary advertises, or `None` when the lookup
+/// failed. Cached after the first successful or failed fetch per binary.
+pub async fn known_models(bin: &str, cwd: &Path) -> Option<Vec<ModelInfo>> {
     if let Some(cached) = MODEL_CACHE.lock().unwrap().get(bin) {
         return cached.clone();
     }
-    let fetched = fetch_models(bin, cwd).await.ok().map(|ms| {
-        ms.into_iter()
-            .map(|m| m.id)
-            .filter(|id| !id.is_empty())
-            .collect()
-    });
+    let fetched = fetch_models(bin, cwd).await.ok();
     MODEL_CACHE
         .lock()
         .unwrap()
         .insert(bin.to_string(), fetched.clone());
     fetched
+}
+
+/// Model ids the binary advertises, or `None` when the lookup failed.
+pub async fn known_model_ids(bin: &str, cwd: &Path) -> Option<HashSet<String>> {
+    known_models(bin, cwd).await.map(|ms| {
+        ms.into_iter()
+            .map(|m| m.id)
+            .filter(|id| !id.is_empty())
+            .collect()
+    })
 }

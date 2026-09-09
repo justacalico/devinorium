@@ -143,6 +143,15 @@ pub struct ModelListResponse {
     pub data: Vec<CodexModel>,
 }
 
+/// One entry in `supportedReasoningEfforts`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReasoningEffortOption {
+    pub reasoning_effort: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexModel {
@@ -157,6 +166,10 @@ pub struct CodexModel {
     pub hidden: bool,
     #[serde(default)]
     pub is_default: bool,
+    #[serde(default)]
+    pub default_reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub supported_reasoning_efforts: Vec<ReasoningEffortOption>,
 }
 
 /// `item/tool/requestUserInput` question.

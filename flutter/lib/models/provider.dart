@@ -67,6 +67,8 @@ class ModelInfo {
   final int maxOutputTokens;
   final bool isNew;
   final bool isBeta;
+  final String defaultReasoningEffort;
+  final List<String> supportedReasoningEfforts;
 
   ModelInfo({
     required this.id,
@@ -78,6 +80,8 @@ class ModelInfo {
     this.maxOutputTokens = 0,
     this.isNew = false,
     this.isBeta = false,
+    this.defaultReasoningEffort = '',
+    this.supportedReasoningEfforts = const [],
   });
 
   factory ModelInfo.fromJson(Map<String, dynamic> j) => ModelInfo(
@@ -90,5 +94,11 @@ class ModelInfo {
     maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt() ?? 0,
     isNew: j['is_new'] as bool? ?? false,
     isBeta: j['is_beta'] as bool? ?? false,
+    defaultReasoningEffort: j['default_reasoning_effort'] as String? ?? '',
+    supportedReasoningEfforts:
+        (j['supported_reasoning_efforts'] as List<dynamic>?)
+            ?.whereType<String>()
+            .toList() ??
+        const [],
   );
 }
