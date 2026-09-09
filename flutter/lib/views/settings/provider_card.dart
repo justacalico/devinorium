@@ -92,7 +92,14 @@ class _ProviderDropdown extends StatelessWidget {
         items: providers
             .map((p) => DropdownMenuItem(
                   value: p.id,
-                  child: Text(p.name),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ProviderIcon(providerId: p.id, size: 16),
+                      const SizedBox(width: 8),
+                      Text(p.name),
+                    ],
+                  ),
                 ))
             .toList(),
         onChanged: (id) {
@@ -121,7 +128,13 @@ class _ProviderCommandRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(provider.name, style: Theme.of(context).textTheme.labelLarge),
+        Row(
+          children: [
+            ProviderIcon(providerId: provider.id, size: 16),
+            const SizedBox(width: 8),
+            Text(provider.name, style: Theme.of(context).textTheme.labelLarge),
+          ],
+        ),
         const SizedBox(height: 6),
         _ProviderCommandField(state: state, providerId: provider.id),
       ],
