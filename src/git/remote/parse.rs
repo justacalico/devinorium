@@ -94,10 +94,9 @@ pub fn parse_gitlab_merge_request_url(url: &str) -> Option<LinkedMergeRequest> {
 
     let (scheme, rest) = if let Some(rest) = url.strip_prefix("https://") {
         ("https", rest)
-    } else if let Some(rest) = url.strip_prefix("http://") {
-        ("http", rest)
     } else {
-        return None;
+        let rest = url.strip_prefix("http://")?;
+        ("http", rest)
     };
 
     // Strip optional user:pass@ authentication; the remainder is host + path.
