@@ -1522,6 +1522,18 @@ abstract class AppLocalizations {
   /// **'Switch back to the main worktree to change branches'**
   String get worktreeBranchLocked;
 
+  /// Tooltip showing the full worktree path in the sidebar thread list
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree: {path}'**
+  String threadWorktreeTooltip(String path);
+
+  /// Tooltip showing the worktree path and branch in the sidebar thread list
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree: {path} ({branch})'**
+  String threadWorktreeBranchTooltip(String path, String branch);
+
   /// No description provided for @envModeTooltip.
   ///
   /// In en, this message translates to:

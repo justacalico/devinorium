@@ -2628,7 +2628,7 @@ void main() {
     expect(find.text('t6'), findsNothing);
     expect(find.text('Show 1 more'), findsOneWidget);
 
-    await tester.drag(find.text('t5'), const Offset(0, -200));
+    await tester.ensureVisible(find.text('Show 1 more'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show 1 more'));
     await tester.pumpAndSettle();
@@ -2732,7 +2732,7 @@ void main() {
     expect(find.text('t7'), findsNothing);
     expect(find.text('Show 2 more'), findsOneWidget);
 
-    await tester.drag(find.text('t5'), const Offset(0, -200));
+    await tester.ensureVisible(find.text('Show 2 more'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show 2 more'));
     await tester.pumpAndSettle();
@@ -3385,5 +3385,161 @@ void main() {
     expect(find.text('plain thread'), findsOneWidget);
     expect(find.text('!42'), findsNothing);
     expect(find.byIcon(Icons.merge), findsNothing);
+  });
+
+  testWidgets('Thread tile is taller and shows its branch', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'branch-thread',
+          title: 'Branch thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          branch: 'feature/abc',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'branch-thread',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final tile = find
+        .ancestor(
+          of: find.text('Branch thread'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    final listTile = tester.widget<ListTile>(tile);
+    expect(listTile.isThreeLine, isTrue);
+    expect(listTile.subtitle, isNotNull);
+
+    expect(find.text('feature/abc'), findsOneWidget);
+    expect(find.byIcon(Icons.call_split), findsOneWidget);
+    expect(find.byIcon(Icons.folder_copy), findsNothing);
+    final branchTooltip = find.ancestor(
+      of: find.byIcon(Icons.call_split),
+      matching: find.byType(Tooltip),
+    );
+    expect(branchTooltip, findsNothing);
+  });
+
+  testWidgets('Thread tile shows worktree path with tooltip', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'worktree-thread',
+          title: 'Worktree thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          worktreePath: '/home/user/worktrees/project-wt-abc',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'worktree-thread',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final tile = find
+        .ancestor(
+          of: find.text('Worktree thread'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    final listTile = tester.widget<ListTile>(tile);
+    expect(listTile.isThreeLine, isTrue);
+
+    expect(find.byIcon(Icons.folder_copy), findsOneWidget);
+    expect(find.text('project-wt-abc'), findsOneWidget);
+    expect(find.byIcon(Icons.call_split), findsNothing);
+
+    final tooltipFinder = find.ancestor(
+      of: find.byIcon(Icons.folder_copy),
+      matching: find.byType(Tooltip),
+    );
+    expect(tooltipFinder, findsOneWidget);
+    final tooltip = tester.widget<Tooltip>(tooltipFinder.first);
+    expect(tooltip.message, contains('/home/user/worktrees/project-wt-abc'));
+  });
+
+  testWidgets('Thread tile shows branch and worktree tooltip', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'both-thread',
+          title: 'Both thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          branch: 'feature/xyz',
+          worktreePath: '/home/user/worktrees/xyz-wt',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'both-thread',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('feature/xyz'), findsOneWidget);
+    expect(find.byIcon(Icons.folder_copy), findsOneWidget);
+    expect(find.byIcon(Icons.call_split), findsNothing);
+
+    final tooltipFinder = find.ancestor(
+      of: find.byIcon(Icons.folder_copy),
+      matching: find.byType(Tooltip),
+    );
+    expect(tooltipFinder, findsOneWidget);
+    final tooltip = tester.widget<Tooltip>(tooltipFinder.first);
+    expect(tooltip.message, contains('/home/user/worktrees/xyz-wt'));
+    expect(tooltip.message, contains('feature/xyz'));
   });
 }

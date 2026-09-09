@@ -507,6 +507,27 @@
   "worktrees": "Worktrees",
   "mainWorktree": "Main worktree",
   "worktreeBranchLocked": "Switch back to the main worktree to change branches",
+  "threadWorktreeTooltip": "Worktree: {path}",
+  "@threadWorktreeTooltip": {
+    "description": "Tooltip showing the full worktree path in the sidebar thread list",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "threadWorktreeBranchTooltip": "Worktree: {path} ({branch})",
+  "@threadWorktreeBranchTooltip": {
+    "description": "Tooltip showing the worktree path and branch in the sidebar thread list",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      },
+      "branch": {
+        "type": "String"
+      }
+    }
+  },
   "envModeTooltip": "Run mode",
   "localMode": "Local",
   "localModeShort": "local",

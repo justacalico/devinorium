@@ -115,6 +115,7 @@ class _ThreadTileState extends State<_ThreadTile>
                   status: status,
                   isActive: widget.isActive,
                 ),
+                subtitle: _ThreadSubtitle(thread: widget.thread),
                 trailing: _ThreadActions(
                   status: status,
                   time: time,
@@ -123,15 +124,16 @@ class _ThreadTileState extends State<_ThreadTile>
                   isRunning: model.isRunning,
                   onDelete: _delete,
                 ),
+                isThreeLine: true,
                 dense: true,
                 visualDensity: VisualDensity.compact,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 10,
-                  vertical: 2,
+                  vertical: 4,
                 ),
                 horizontalTitleGap: 8,
                 minLeadingWidth: 0,
-                minVerticalPadding: 0,
+                minVerticalPadding: 8,
                 onTap: _deleting
                     ? null
                     : () {
@@ -297,6 +299,84 @@ class _ThreadTitle extends StatelessWidget {
       children: children,
     );
   }
+}
+
+class _ThreadSubtitle extends StatelessWidget {
+  final Thread thread;
+
+  const _ThreadSubtitle({required this.thread});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final branch = thread.branch?.trim() ?? '';
+    final worktreePath = thread.worktreePath?.trim() ?? '';
+    final hasBranch = branch.isNotEmpty;
+    final hasWorktree = worktreePath.isNotEmpty;
+
+    if (!hasBranch && !hasWorktree) {
+      return const SizedBox.shrink();
+    }
+
+    final children = <Widget>[];
+    if (hasWorktree) {
+      children.add(Icon(
+        Icons.folder_copy,
+        size: 12,
+        semanticLabel: l.worktreeMode,
+        color: theme.colorScheme.onSurfaceVariant,
+      ));
+    } else if (hasBranch) {
+      children.add(Icon(
+        Icons.call_split,
+        size: 12,
+        semanticLabel: l.gitBranches,
+        color: theme.colorScheme.onSurfaceVariant,
+      ));
+    }
+    children.add(const SizedBox(width: 4));
+
+    final label = hasBranch ? branch : _formatWorktreePathForDisplay(worktreePath);
+    children.add(Expanded(
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ));
+
+    final row = Row(
+      mainAxisSize: MainAxisSize.max,
+      children: children,
+    );
+
+    if (hasWorktree) {
+      final tooltip = hasBranch
+          ? l.threadWorktreeBranchTooltip(worktreePath, branch)
+          : l.threadWorktreeTooltip(worktreePath);
+      return Tooltip(
+        message: tooltip,
+        child: row,
+      );
+    }
+
+    return row;
+  }
+}
+
+String _formatWorktreePathForDisplay(String worktreePath) {
+  final trimmed = worktreePath.trim();
+  if (trimmed.isEmpty) return worktreePath;
+
+  final normalized =
+      trimmed.replaceAll('\\', '/').replaceAll(RegExp(r'/+$'), '');
+  final parts = normalized.split('/');
+  final last = parts.isNotEmpty ? parts.last.trim() : '';
+  return last.isNotEmpty ? last : trimmed;
 }
 
 class _ThreadActions extends StatelessWidget {

@@ -800,6 +800,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'Switch back to the main worktree to change branches';
 
   @override
+  String threadWorktreeTooltip(String path) {
+    return 'Worktree: $path';
+  }
+
+  @override
+  String threadWorktreeBranchTooltip(String path, String branch) {
+    return 'Worktree: $path ($branch)';
+  }
+
+  @override
   String get envModeTooltip => 'Run mode';
 
   @override
