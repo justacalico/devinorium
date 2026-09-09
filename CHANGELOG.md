@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.46.0 - 2026-09-09
+#### Features
+- 在侧边栏线程标题显示提供商图标 - (069a18e) - HttpAnimations
+#### Bug Fixes
+- 修复 provider_icons 语义测试中的 await 警告 - (f18cf76) - HttpAnimations
+
+- - -
+
 ## v0.45.0 - 2026-09-09
 #### Features
 - 为模型选择器和设置页使用供应商官方图标 - (d80ec23) - HttpAnimations
