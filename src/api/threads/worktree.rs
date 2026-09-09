@@ -109,14 +109,22 @@ pub(crate) async fn snapshot_worktree_paths(
     thread: &ThreadRow,
 ) -> Option<HashSet<String>> {
     let project_id = thread.project_id?;
-    let project = state.db.get_project(project_id, thread.user_id).await.ok()??;
+    let project = state
+        .db
+        .get_project(project_id, thread.user_id)
+        .await
+        .ok()??;
     let project_path = PathBuf::from(&project.path);
     state
         .git
         .worktrees(&project_path, true)
         .await
         .ok()
-        .map(|wts| wts.into_iter().map(|w| w.path.to_string_lossy().into_owned()).collect())
+        .map(|wts| {
+            wts.into_iter()
+                .map(|w| w.path.to_string_lossy().into_owned())
+                .collect()
+        })
 }
 
 /// After a run, detect worktrees the agent created on its own (e.g. via

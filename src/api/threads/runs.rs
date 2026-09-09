@@ -331,7 +331,8 @@ pub(crate) async fn run_thread(
         if let Some(usage) = usage {
             record_run_usage(&state, user.id, &thread, new_session_id, usage).await;
         }
-        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
+        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
+            .await;
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
@@ -367,7 +368,14 @@ pub(crate) async fn run_thread(
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
             persist_run_plan(&state.db, &thread.id, &run).await;
-            sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
+            sync_agent_worktree_and_emit(
+                &state,
+                &user,
+                &mut thread,
+                worktree_before.as_ref(),
+                &run,
+            )
+            .await;
             return Err(e);
         }
     };
@@ -384,7 +392,8 @@ pub(crate) async fn run_thread(
     }
 
     if run.cancelled.load(Ordering::SeqCst) {
-        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
+        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
+            .await;
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
@@ -401,8 +410,14 @@ pub(crate) async fn run_thread(
     {
         Ok(m) => m,
         Err(_) => {
-            sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
-                .await;
+            sync_agent_worktree_and_emit(
+                &state,
+                &user,
+                &mut thread,
+                worktree_before.as_ref(),
+                &run,
+            )
+            .await;
             return Err(anyhow::anyhow!("failed to save assistant message"));
         }
     };
@@ -410,7 +425,8 @@ pub(crate) async fn run_thread(
     persist_run_plan(&state.db, &thread.id, &run).await;
 
     if run.cancelled.load(Ordering::SeqCst) {
-        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
+        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
+            .await;
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
