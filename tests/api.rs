@@ -7280,6 +7280,43 @@ async fn thread_provider_is_locked_once_session_exists() {
 }
 
 #[tokio::test]
+async fn thread_list_includes_provider_id() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let id = make_thread(&app, &cookie, pid, "oc").await;
+
+    // Switch the thread to a non-default provider.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{id}"),
+            &cookie,
+            r#"{"provider":"opencode"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let entry = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"].as_str().unwrap() == id)
+        .unwrap();
+    assert_eq!(entry["provider_id"].as_str().unwrap(), "opencode");
+}
+
+#[tokio::test]
 async fn models_list_honors_provider_param() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
