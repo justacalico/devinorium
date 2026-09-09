@@ -114,6 +114,7 @@ class Thread {
   final String? permissions;
   final String? branch;
   final String? worktreePath;
+  final String envMode;
   final bool pinned;
   final String createdAt;
   final String updatedAt;
@@ -131,6 +132,7 @@ class Thread {
     this.permissions,
     this.branch,
     this.worktreePath,
+    this.envMode = 'local',
     this.pinned = false,
     required this.createdAt,
     required this.updatedAt,
@@ -149,12 +151,18 @@ class Thread {
     permissions: j['permissions'] as String?,
     branch: j['branch'] as String?,
     worktreePath: j['worktree_path'] as String?,
+    envMode: j['env_mode'] as String? ?? 'local',
     pinned: j['pinned'] as bool? ?? false,
     createdAt: j['created_at'] as String? ?? '',
     updatedAt: j['updated_at'] as String? ?? '',
   );
 
-  Thread copyWith({String? title, String? updatedAt, bool? pinned}) => Thread(
+  Thread copyWith({
+    String? title,
+    String? updatedAt,
+    bool? pinned,
+    String? envMode,
+  }) => Thread(
     id: id,
     title: title ?? this.title,
     threadGroupId: threadGroupId,
@@ -167,6 +175,7 @@ class Thread {
     permissions: permissions,
     branch: branch,
     worktreePath: worktreePath,
+    envMode: envMode ?? this.envMode,
     pinned: pinned ?? this.pinned,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -188,6 +197,7 @@ class Thread {
         permissions == other.permissions &&
         branch == other.branch &&
         worktreePath == other.worktreePath &&
+        envMode == other.envMode &&
         pinned == other.pinned &&
         createdAt == other.createdAt &&
         updatedAt == other.updatedAt;
@@ -207,6 +217,7 @@ class Thread {
     permissions,
     branch,
     worktreePath,
+    envMode,
     pinned,
     createdAt,
     updatedAt,

@@ -281,6 +281,7 @@ class ApiService {
     String? permissions,
     String? branch,
     String? worktreePath,
+    String? envMode,
   }) async {
     final body = <String, dynamic>{'project_id': projectId};
     if (title != null) body['title'] = title;
@@ -292,6 +293,7 @@ class ApiService {
     if (permissions != null) body['permissions'] = permissions;
     if (branch != null) body['branch'] = branch;
     if (worktreePath != null) body['worktree_path'] = worktreePath;
+    if (envMode != null && envMode.isNotEmpty) body['env_mode'] = envMode;
     final j = await _client.post('/api/threads', body);
     return Thread.fromJson(j);
   }
@@ -372,6 +374,7 @@ class ApiService {
     String? permissionMode,
     String? reasoningEffort,
     String? permissions,
+    String? envMode,
   }) async {
     final body = <String, dynamic>{};
     if (provider != null && provider.isNotEmpty) body['provider'] = provider;
@@ -382,6 +385,7 @@ class ApiService {
     if (permissions != null) {
       body['permissions'] = permissions.isEmpty ? null : permissions;
     }
+    if (envMode != null && envMode.isNotEmpty) body['env_mode'] = envMode;
     if (body.isNotEmpty) {
       await _client.patch('/api/threads/$id', body);
     }

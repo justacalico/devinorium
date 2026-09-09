@@ -45,6 +45,7 @@ class _MessageItemApiService extends ApiService {
     String? permissionMode,
     String? reasoningEffort,
     String? permissions,
+    String? envMode,
   }) => Future.value();
 
   @override

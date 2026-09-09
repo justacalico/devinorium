@@ -24,6 +24,7 @@ use crate::AppState;
 use super::persistence::persist_user_message;
 use super::plan::{normalize_mode, project_working_dir_for_thread};
 use super::runs::{events_stream, run_thread};
+use super::worktree::ensure_thread_worktree;
 use super::MessageOut;
 
 pub(super) async fn send(
@@ -32,13 +33,21 @@ pub(super) async fn send(
     Path(id): Path<String>,
     multipart: Multipart,
 ) -> Response {
-    let thread = match state.db.get_thread(&id, user.id).await {
+    let mut thread = match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => t,
         Ok(None) => {
             return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
         }
         Err(e) => return map_err_internal(e).into_response(),
     };
+
+    if let Err(e) = ensure_thread_worktree(&state, &user, &mut thread).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiError::new(format!("worktree setup failed: {e}"))),
+        )
+            .into_response();
+    }
 
     let input = match parse_send_multipart(multipart).await {
         Ok(parsed) => parsed,
@@ -204,13 +213,21 @@ pub(super) async fn send_stream(
     Path(id): Path<String>,
     multipart: Multipart,
 ) -> Response {
-    let thread = match state.db.get_thread(&id, user.id).await {
+    let mut thread = match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => t,
         Ok(None) => {
             return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response();
         }
         Err(e) => return map_err_internal(e).into_response(),
     };
+
+    if let Err(e) = ensure_thread_worktree(&state, &user, &mut thread).await {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiError::new(format!("worktree setup failed: {e}"))),
+        )
+            .into_response();
+    }
 
     let input = match parse_send_multipart(multipart).await {
         Ok(parsed) => parsed,

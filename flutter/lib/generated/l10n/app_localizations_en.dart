@@ -800,6 +800,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'Switch back to the main worktree to change branches';
 
   @override
+  String get envModeTooltip => 'Run mode';
+
+  @override
+  String get localMode => 'Local';
+
+  @override
+  String get localModeShort => 'local';
+
+  @override
+  String get worktreeMode => 'Worktree';
+
+  @override
+  String get worktreeModeShort => 'worktree';
+
+  @override
   String get git => 'Git';
 
   @override

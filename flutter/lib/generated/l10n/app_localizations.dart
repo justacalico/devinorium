@@ -1522,6 +1522,36 @@ abstract class AppLocalizations {
   /// **'Switch back to the main worktree to change branches'**
   String get worktreeBranchLocked;
 
+  /// No description provided for @envModeTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Run mode'**
+  String get envModeTooltip;
+
+  /// No description provided for @localMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get localMode;
+
+  /// No description provided for @localModeShort.
+  ///
+  /// In en, this message translates to:
+  /// **'local'**
+  String get localModeShort;
+
+  /// No description provided for @worktreeMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree'**
+  String get worktreeMode;
+
+  /// No description provided for @worktreeModeShort.
+  ///
+  /// In en, this message translates to:
+  /// **'worktree'**
+  String get worktreeModeShort;
+
   /// No description provided for @git.
   ///
   /// In en, this message translates to:

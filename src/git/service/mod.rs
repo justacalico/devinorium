@@ -1,9 +1,12 @@
 //! Git command execution, caching, and output parsing.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use mini_moka::sync::Cache;
+use tokio::sync::Mutex;
 
 pub mod branch;
 pub mod diff;
@@ -53,6 +56,8 @@ pub struct GitService {
     pub(super) repo_cache: Cache<String, RepoStatus>,
     pub(super) branch_cache: Cache<String, Vec<Branch>>,
     pub(super) worktree_cache: Cache<String, Vec<Worktree>>,
+    /// Per-thread lock so only one worktree is created on a thread's first send.
+    pub(super) worktree_creation_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
 impl Default for GitService {
@@ -80,7 +85,17 @@ impl GitService {
                 .max_capacity(CACHE_CAPACITY)
                 .time_to_live(BRANCH_CACHE_TTL)
                 .build(),
+            worktree_creation_locks: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Return a per-thread lock. Callers should `.lock().await` on the
+    /// returned mutex while creating a worktree for the thread.
+    pub async fn worktree_creation_lock(&self, thread_id: &str) -> Arc<Mutex<()>> {
+        let mut map = self.worktree_creation_locks.lock().await;
+        map.entry(thread_id.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
     }
 
     pub fn is_enabled(&self) -> bool {

@@ -161,6 +161,7 @@ pub struct ThreadRow {
     pub project_id: Option<i64>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
+    pub env_mode: String,
     pub pinned: bool,
     pub title_user_set: bool,
 }

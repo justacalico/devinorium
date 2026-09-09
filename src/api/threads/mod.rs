@@ -11,6 +11,7 @@ pub(crate) mod routes;
 pub(crate) mod runs;
 pub(crate) mod send;
 pub(crate) mod stream;
+pub(crate) mod worktree;
 
 use axum::routing::{get, post, Router};
 use serde::{Deserialize, Serialize};
@@ -75,6 +76,7 @@ pub struct ThreadOut {
     pub permissions: Option<String>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
+    pub env_mode: String,
     pub pinned: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -95,6 +97,7 @@ impl From<ThreadRow> for ThreadOut {
             permissions: t.permissions,
             branch: t.branch,
             worktree_path: t.worktree_path,
+            env_mode: t.env_mode,
             pinned: t.pinned,
             created_at: t.created_at,
             updated_at: t.updated_at,
@@ -190,6 +193,7 @@ pub struct CreateThread {
     pub permissions: Option<String>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
+    pub env_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -282,6 +286,7 @@ pub struct UpdateThread {
     pub branch: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub worktree_path: Option<Option<String>>,
+    pub env_mode: Option<String>,
 }
 
 /// Custom deserializer that maps `null` -> `Some(None)` and a number -> `Some(Some(n))`.
@@ -326,6 +331,7 @@ mod tests {
             project_id: Some(7),
             branch: None,
             worktree_path: None,
+            env_mode: "local".into(),
             pinned: true,
             title_user_set: true,
         };

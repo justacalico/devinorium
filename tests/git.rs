@@ -244,6 +244,31 @@ async fn worktree_create_and_remove() {
 }
 
 #[tokio::test]
+async fn auto_worktree_uses_slashed_branch_and_external_path() {
+    let tmp = make_repo();
+    git_cli(&["checkout", "-b", "main"], tmp.path());
+    let svc = GitService::new();
+    let branch = devinorium::git::service::worktree::temporary_worktree_branch_name();
+    let worktree_path =
+        devinorium::git::service::worktree::managed_worktree_path(tmp.path(), &branch);
+    let wt = svc
+        .create_worktree_at(tmp.path(), &branch, "HEAD", &worktree_path, true)
+        .await
+        .unwrap();
+
+    assert!(wt.path.exists());
+    assert_eq!(wt.branch, Some(branch.clone()));
+    assert!(devinorium::git::service::worktree::is_temporary_worktree_branch(&branch));
+
+    let head = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&wt.path)
+        .output()
+        .unwrap();
+    assert_eq!(std::str::from_utf8(&head.stdout).unwrap().trim(), branch);
+}
+
+#[tokio::test]
 async fn repo_status_includes_ahead_and_behind() {
     let local = make_repo();
     git_cli(&["checkout", "-b", "main"], local.path());
