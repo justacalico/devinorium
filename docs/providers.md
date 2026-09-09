@@ -67,6 +67,12 @@ That is the entire surface area of the change. No other file in the project
 needs to be touched — the rest of Devinorium only depends on the `Provider`
 trait.
 
+The Devin CLI and OpenCode providers both speak ACP (`<bin> acp`) and share the
+implementation in `src/providers/acp/`. Codex CLI has no `acp` subcommand, so
+`src/providers/codex/` drives `codex app-server --stdio` — the JSON-RPC
+transport built into the Codex CLI — for threads, turns, streaming items,
+approvals, and `model/list`.
+
 ## Selecting a provider at runtime
 
 Users can pick their default provider from **Settings**, and each thread can
