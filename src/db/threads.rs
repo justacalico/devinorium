@@ -287,6 +287,27 @@ impl super::Db {
         Ok(())
     }
 
+    /// Flip a thread's env_mode without touching the other settings columns.
+    /// Used when the agent creates its own worktree mid-run and the thread
+    /// needs to switch from local to worktree mode so subsequent prompts keep
+    /// running inside that worktree.
+    pub async fn update_thread_env_mode(
+        &self,
+        id: &str,
+        user_id: i64,
+        env_mode: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE threads SET env_mode = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?",
+        )
+        .bind(env_mode)
+        .bind(id)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
     pub async fn delete_thread(&self, id: &str, user_id: i64) -> anyhow::Result<()> {
         sqlx::query("DELETE FROM threads WHERE id = ? AND user_id = ?")
             .bind(id)

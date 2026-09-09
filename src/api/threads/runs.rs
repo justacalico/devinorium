@@ -30,6 +30,7 @@ use super::persistence::{
     update_thread_title_from_send,
 };
 use super::send::{call_provider, ProviderOutcome, SendInput};
+use super::worktree::{snapshot_worktree_paths, sync_agent_created_worktree};
 use super::MessageOut;
 
 /// Get the current run status for a thread. Returns the active or most recent
@@ -202,6 +203,11 @@ pub(crate) async fn run_thread(
         &serde_json::to_string(&MessageOut::from(user_msg)).unwrap_or_else(|_| "{}".into()),
     );
 
+    // Snapshot the project's worktrees before the agent runs so we can detect
+    // ones it creates on its own (e.g. `git worktree add`) and associate the
+    // thread with them afterwards.
+    let worktree_before = snapshot_worktree_paths(&state, &thread).await;
+
     // Each turn owns its own plan; clear any stale plan from a previous turn
     // so the UI doesn’t show outdated todos while the model thinks.
     let _ = state.db.delete_plans_for_thread(&thread.id).await;
@@ -325,6 +331,7 @@ pub(crate) async fn run_thread(
         if let Some(usage) = usage {
             record_run_usage(&state, user.id, &thread, new_session_id, usage).await;
         }
+        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
@@ -360,6 +367,7 @@ pub(crate) async fn run_thread(
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
             persist_run_plan(&state.db, &thread.id, &run).await;
+            sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
             return Err(e);
         }
     };
@@ -376,10 +384,11 @@ pub(crate) async fn run_thread(
     }
 
     if run.cancelled.load(Ordering::SeqCst) {
+        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
-    let assistant_msg = persist_assistant_reply(
+    let assistant_msg = match persist_assistant_reply(
         &state,
         &thread,
         user.id,
@@ -389,13 +398,23 @@ pub(crate) async fn run_thread(
         &run,
     )
     .await
-    .map_err(|_| anyhow::anyhow!("failed to save assistant message"))?;
+    {
+        Ok(m) => m,
+        Err(_) => {
+            sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
+                .await;
+            return Err(anyhow::anyhow!("failed to save assistant message"));
+        }
+    };
 
     persist_run_plan(&state.db, &thread.id, &run).await;
 
     if run.cancelled.load(Ordering::SeqCst) {
+        sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
         return Err(anyhow::anyhow!("stopped by user"));
     }
+
+    sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run).await;
 
     let _ = run.set_status(RunStatus::Completed).await;
     run.emit(
@@ -445,6 +464,28 @@ pub(crate) fn thread_git_update_payload(thread: &ThreadRow) -> serde_json::Value
         "branch": thread.branch,
         "env_mode": thread.env_mode,
     })
+}
+
+/// Detect worktrees the agent created during the run and, when found, persist
+/// the new git metadata to the thread and emit a `thread_update` so the
+/// toolbar follows the worktree the agent actually works in. Best-effort:
+/// failures are logged and never abort the run.
+async fn sync_agent_worktree_and_emit(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    thread: &mut ThreadRow,
+    before: Option<&std::collections::HashSet<String>>,
+    run: &crate::thread_runner::RunState,
+) {
+    match sync_agent_created_worktree(state, user, thread, before).await {
+        Ok(true) => {
+            if let Ok(json) = serde_json::to_string(&thread_git_update_payload(thread)) {
+                run.emit("thread_update", &json);
+            }
+        }
+        Ok(false) => {}
+        Err(e) => tracing::warn!(error = %e, "failed to sync agent-created worktree"),
+    }
 }
 
 #[cfg(test)]
