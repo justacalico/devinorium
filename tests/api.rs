@@ -4569,7 +4569,7 @@ async fn thread_local_mode_detects_agent_created_worktree() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    wait_for_run(&app, &cookie, &tid, |b| {
+    wait_for_run(&app, &cookie, tid, |b| {
         b.contains(r#""status":"completed""#)
     })
     .await;
@@ -4616,8 +4616,8 @@ async fn thread_local_mode_no_new_worktree_stays_local() {
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     let tid = v["id"].as_str().unwrap();
 
-    send_prompt(&app, &cookie, &tid, "hello").await;
-    wait_for_run(&app, &cookie, &tid, |b| {
+    send_prompt(&app, &cookie, tid, "hello").await;
+    wait_for_run(&app, &cookie, tid, |b| {
         b.contains(r#""status":"completed""#)
     })
     .await;
@@ -4676,8 +4676,8 @@ async fn thread_existing_worktree_not_overwritten_by_detection() {
     let tid = v["id"].as_str().unwrap();
 
     // Run once so ensure_thread_worktree assigns the thread its own worktree.
-    send_prompt(&app, &cookie, &tid, "first prompt").await;
-    wait_for_run(&app, &cookie, &tid, |b| {
+    send_prompt(&app, &cookie, tid, "first prompt").await;
+    wait_for_run(&app, &cookie, tid, |b| {
         b.contains(r#""status":"completed""#)
     })
     .await;
@@ -4693,8 +4693,8 @@ async fn thread_existing_worktree_not_overwritten_by_detection() {
     assert!(!first_wt.is_empty());
 
     // Now the agent creates a second worktree during the next run.
-    send_prompt(&app, &cookie, &tid, "make another worktree").await;
-    wait_for_run(&app, &cookie, &tid, |b| {
+    send_prompt(&app, &cookie, tid, "make another worktree").await;
+    wait_for_run(&app, &cookie, tid, |b| {
         b.contains(r#""status":"completed""#)
     })
     .await;
