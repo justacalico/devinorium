@@ -191,14 +191,44 @@ class ThreadStore {
     }
   }
 
-  /// Explicitly refresh the persisted detail without touching the stream.
+  /// Explicitly refresh the persisted thread metadata without touching the
+  /// stream. The fetched detail carries no messages (see [includeMessages]),
+  /// so we merge its fresh metadata into the existing detail instead of
+  /// replacing it wholesale. Replacing it would briefly wipe the loaded
+  /// messages and paging cursors, causing the thread view to flicker while
+  /// the first page is reloaded.
   Future<void> reloadDetail() async {
     try {
-      final d = await api.getThread(threadId, includeMessages: false);
-      _detail = AsyncValue.ready(d);
+      final fresh = await api.getThread(threadId, includeMessages: false);
+      final current = _detail.valueOrNull;
+      if (current != null && current.messages.isNotEmpty) {
+        // Merge fresh metadata into the existing detail, keeping the loaded
+        // messages and paging cursors intact so the view does not flicker.
+        _detail = AsyncValue.ready(
+          current.copyWith(
+            thread: fresh.thread,
+            totalMessages: fresh.totalMessages,
+            plan: fresh.plan,
+            clearPlan: fresh.plan == null,
+          ),
+        );
+      } else {
+        // No messages loaded yet: adopt the fresh detail and load the first
+        // page in the background.
+        _detail = AsyncValue.ready(
+          current != null
+              ? current.copyWith(
+                  thread: fresh.thread,
+                  totalMessages: fresh.totalMessages,
+                  plan: fresh.plan,
+                  clearPlan: fresh.plan == null,
+                )
+              : fresh,
+        );
+        unawaited(_loadInitialMessages());
+      }
       _globalError = '';
       _emit();
-      unawaited(_loadInitialMessages());
     } catch (e) {
       debugLogFailure('thread.reloadDetail', e, threadId: threadId);
       _globalError = '$e';
@@ -219,7 +249,9 @@ class ThreadStore {
         if (token != _streamToken || onStateChanged == null) return;
 
         // Fetch metadata if we don't have it yet (e.g. resumeThread).
+        var justLoadedDetail = false;
         if (_detail.valueOrNull == null) {
+          justLoadedDetail = true;
           try {
             final d = await api.getThread(threadId, includeMessages: false);
             _detail = AsyncValue.ready(d);
@@ -246,7 +278,21 @@ class ThreadStore {
           unawaited(_loadInitialMessages());
         } else {
           _finishResume(run);
-          await reloadDetail();
+          if (justLoadedDetail) {
+            // The detail was fetched moments ago; only the first message page
+            // is missing, so load it directly instead of refetching metadata.
+            unawaited(_loadInitialMessages());
+          } else {
+            // Refresh metadata without wiping loaded messages, then pull any
+            // rows that arrived while we were disconnected. refreshTail
+            // appends only newer rows, so the view never flickers.
+            final hadMessages =
+                _detail.valueOrNull?.messages.isNotEmpty ?? false;
+            await reloadDetail();
+            if (hadMessages) {
+              await refreshTail();
+            }
+          }
         }
       } catch (e) {
         debugLogFailure('thread.resume', e, threadId: threadId);

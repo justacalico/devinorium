@@ -740,6 +740,138 @@ void main() {
     });
   });
 
+  group('reloadDetail', () {
+    test('preserves loaded messages and paging cursors', () async {
+      final api = _ReloadApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old title',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: [
+              Message(id: 1, role: 'user', content: 'hello'),
+              Message(id: 2, role: 'assistant', content: 'hi'),
+            ],
+            totalMessages: 2,
+            beforeCursor: 'c1',
+            hasMore: true,
+            turnLimit: 50,
+            rawCount: 2,
+          ),
+        ),
+      );
+      store.onStateChanged = () {};
+
+      await store.reloadDetail();
+
+      final d = store.detail.valueOrNull!;
+      expect(d.messages, hasLength(2));
+      expect(d.messages.first.id, 1);
+      expect(d.beforeCursor, 'c1');
+      expect(d.hasMore, isTrue);
+      expect(d.turnLimit, 50);
+      expect(d.rawCount, 2);
+      expect(d.thread.title, 'New title');
+      expect(api.getThreadMessagesCalls, 0);
+    });
+
+    test('updates thread metadata without dropping messages', () async {
+      final api = _ReloadApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+            messages: [Message(id: 1, role: 'user', content: 'hi')],
+            totalMessages: 1,
+          ),
+        ),
+      );
+      store.onStateChanged = () {};
+
+      await store.reloadDetail();
+
+      final d = store.detail.valueOrNull!;
+      expect(d.thread.title, 'New title');
+      expect(d.thread.updatedAt, '2024-02-01T00:00:00.000Z');
+      expect(d.messages, hasLength(1));
+      expect(d.totalMessages, 2);
+    });
+
+    test('loads initial messages when detail has no messages', () async {
+      final api = _ReloadApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+            totalMessages: 2,
+          ),
+        ),
+      );
+      final completer = Completer<void>();
+      store.onStateChanged = () {
+        if (store.detail.valueOrNull?.messages.length == 2) {
+          completer.complete();
+        }
+      };
+
+      await store.reloadDetail();
+      await completer.future.timeout(const Duration(seconds: 1));
+
+      expect(store.detail.valueOrNull!.messages, hasLength(2));
+      expect(api.getThreadMessagesCalls, 1);
+    });
+
+    test('loads initial messages when detail is empty', () async {
+      final api = _ReloadApiService();
+      final store = ThreadStore(api: api, threadId: 't1', projectId: 1);
+      final completer = Completer<void>();
+      store.onStateChanged = () {
+        if (store.detail.valueOrNull?.messages.length == 2) {
+          completer.complete();
+        }
+      };
+
+      await store.reloadDetail();
+      await completer.future.timeout(const Duration(seconds: 1));
+
+      expect(store.detail.valueOrNull!.messages, hasLength(2));
+      expect(api.getThreadMessagesCalls, 1);
+    });
+  });
+
   group('turn-windowed pagination', () {
     test('load fetches initial page and stores cursors', () async {
       final api = _CursorApiService();
@@ -1003,6 +1135,71 @@ class _StopFailingApiService extends _TestApiService {
   @override
   Future<void> stopThread(String id) =>
       Future.error(Exception('stopThread failed'));
+}
+
+class _ReloadApiService extends ApiService {
+  _ReloadApiService() : super(client: _ThrowingClient());
+
+  var getThreadMessagesCalls = 0;
+
+  @override
+  Future<ThreadDetail> getThread(
+    String id, {
+    bool includeMessages = false,
+    int? turnLimit,
+  }) => Future.value(
+    ThreadDetail(
+      thread: Thread(
+        id: id,
+        title: 'New title',
+        projectId: 1,
+        model: 'm1',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '2024-02-01T00:00:00.000Z',
+      ),
+      messages: const [],
+      totalMessages: 2,
+    ),
+  );
+
+  @override
+  Future<Map<String, dynamic>> getThreadRun(String id) =>
+      Future.value({'status': 'idle', 'parts': []});
+
+  @override
+  Future<void> updateThreadSettings(
+    String id, {
+    String? provider,
+    String? model,
+    String? permissionMode,
+    String? reasoningEffort,
+    String? permissions,
+    String? envMode,
+  }) => Future.value();
+
+  @override
+  Future<MessagePage> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
+    int limit = 50,
+  }) async {
+    getThreadMessagesCalls++;
+    return MessagePage(
+      messages: [
+        Message(id: 1, role: 'user', content: 'hello'),
+        Message(id: 2, role: 'assistant', content: 'hi'),
+      ],
+      total: 2,
+      turnLimit: 50,
+      rawCount: 2,
+      beforeCursor: 'c1',
+      hasMore: false,
+    );
+  }
 }
 
 void providerSelectionTests() {

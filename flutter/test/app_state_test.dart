@@ -2246,6 +2246,20 @@ void main() {
             },
           ],
         }),
+        _json(200, {
+          'messages': [
+            {
+              'id': 2,
+              'thread_id': 'a',
+              'role': 'assistant',
+              'content': 'done',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
+          ],
+          'total': 2,
+        }),
       ]);
       final api = _StreamableApiService(client);
       api.runResponse = {'status': 'completed'};
@@ -2315,6 +2329,20 @@ void main() {
               'created_at': '',
             },
           ],
+        }),
+        _json(200, {
+          'messages': [
+            {
+              'id': 2,
+              'thread_id': 'a',
+              'role': 'assistant',
+              'content': 'persisted',
+              'thinking': null,
+              'attachments': [],
+              'created_at': '',
+            },
+          ],
+          'total': 2,
         }),
       ]);
       final api = _StreamableApiService(client);
