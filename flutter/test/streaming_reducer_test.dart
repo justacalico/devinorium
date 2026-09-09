@@ -515,5 +515,132 @@ void main() {
       );
       expect(res.detail!.thread.title, '123');
     });
+
+    test('applies git worktree fields without a title', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          branch: null,
+          worktreePath: null,
+          envMode: 'local',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"worktree_path":"/repo/.devinorium-worktrees/wt-1",'
+              '"branch":"devinorium/wt-1","env_mode":"worktree"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail!.thread.title, 'Old');
+      expect(res.detail!.thread.worktreePath,
+          '/repo/.devinorium-worktrees/wt-1');
+      expect(res.detail!.thread.branch, 'devinorium/wt-1');
+      expect(res.detail!.thread.envMode, 'worktree');
+      expect(res.snapshot.lastSeq, 1);
+    });
+
+    test('clears worktree fields when sent as null', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          branch: 'devinorium/wt-1',
+          worktreePath: '/repo/.devinorium-worktrees/wt-1',
+          envMode: 'worktree',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"worktree_path":null,"branch":null,"env_mode":"local"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail!.thread.branch, isNull);
+      expect(res.detail!.thread.worktreePath, isNull);
+      expect(res.detail!.thread.envMode, 'local');
+    });
+
+    test('leaves git fields untouched when keys are absent', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          branch: 'main',
+          worktreePath: '/repo/main',
+          envMode: 'worktree',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"title":"New","updated_at":"2024-01-02T00:00:00.000Z"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail!.thread.title, 'New');
+      expect(res.detail!.thread.branch, 'main');
+      expect(res.detail!.thread.worktreePath, '/repo/main');
+      expect(res.detail!.thread.envMode, 'worktree');
+    });
+
+    test('ignores non-string branch and worktree_path values', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          branch: 'main',
+          worktreePath: '/repo/main',
+          envMode: 'local',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"branch":123,"worktree_path":456,"env_mode":"worktree"}',
+          id: '1',
+        ),
+      );
+      // Non-string values are ignored, so existing fields are preserved.
+      expect(res.detail!.thread.branch, 'main');
+      expect(res.detail!.thread.worktreePath, '/repo/main');
+      // env_mode is a string, so it is still applied.
+      expect(res.detail!.thread.envMode, 'worktree');
+    });
   });
 }
