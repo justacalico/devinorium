@@ -14,6 +14,7 @@ import '../state/app_state.dart';
 import '../theme/semantic_colors.dart';
 import '../utils/thread_status.dart';
 import '../widgets/owner_badge.dart';
+import '../widgets/provider_icons.dart';
 import 'files_panel.dart';
 import 'project_icon.dart';
 import 'settings/topics.dart';

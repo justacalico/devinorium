@@ -15,17 +15,21 @@ class ProviderIcon extends StatelessWidget {
   /// (Devin, OpenCode) ignore it and always render in their brand colors.
   final Color? color;
 
+  /// Optional accessibility label for the icon. Not visible.
+  final String? semanticLabel;
+
   const ProviderIcon({
     super.key,
     required this.providerId,
     this.size = 18,
     this.color,
+    this.semanticLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     final effectiveColor = color ?? Theme.of(context).colorScheme.onSurface;
-    return switch (providerId) {
+    final logo = switch (providerId) {
       'devin-cli' => Image.asset(
           Theme.of(context).brightness == Brightness.dark
               ? 'assets/providers/devin_light.png'
@@ -53,5 +57,21 @@ class ProviderIcon extends StatelessWidget {
           color: effectiveColor,
         ),
     };
+
+    return semanticLabel == null
+        ? logo
+        : Semantics(
+            label: semanticLabel,
+            child: logo,
+          );
   }
 }
+
+/// The human-readable provider name for a known provider id. Unknown ids
+/// fall back to the id itself so callers always have a non-empty label.
+String providerName(String providerId) => switch (providerId) {
+  'devin-cli' => 'Devin CLI',
+  'opencode' => 'OpenCode',
+  'codex' => 'Codex CLI',
+  _ => providerId,
+};
