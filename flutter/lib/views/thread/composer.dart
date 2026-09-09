@@ -6,6 +6,7 @@ typedef _ComposerModel = ({
   ComposerMode composerMode,
   List<({String filename, String mime, Uint8List bytes})> attachments,
   String selectedModel,
+  String selectedReasoning,
   String selectedPermission,
   String selectedProvider,
   bool providerLocked,
@@ -346,6 +347,7 @@ class _ComposerState extends State<_Composer> {
         composerMode: s.composerMode,
         attachments: s.attachments,
         selectedModel: s.selectedModel,
+        selectedReasoning: s.selectedReasoning,
         selectedPermission: s.selectedPermission,
         selectedProvider: s.selectedProvider,
         providerLocked: s.activeThreadDetail?.thread.devinSessionId != null,
@@ -499,29 +501,22 @@ class _ComposerState extends State<_Composer> {
                                         constraints.maxWidth <
                                         _compactDropdownsBreakpoint;
                                     final dropdowns = [
-                                      _ProviderDropdown(
-                                        value: model.selectedProvider,
-                                        providers: model.providers,
+                                      _ModelSelector(
                                         compact: compact,
                                         // Once a provider session exists it
                                         // cannot be resumed by another
                                         // provider, so the picker locks.
-                                        enabled:
-                                            hasActiveThread &&
-                                            !isSending &&
-                                            !model.providerLocked,
-                                        onChanged: (id) async {
-                                          await state.setSelectedProvider(id);
-                                          await state.saveThreadSettings();
-                                        },
+                                        providerLocked: model.providerLocked,
+                                        enabled: hasActiveThread && !isSending,
                                       ),
-                                      ModelPicker(
-                                        value: model.selectedModel,
+                                      _ReasoningDropdown(
                                         models: model.models,
+                                        selectedModel: model.selectedModel,
+                                        value: model.selectedReasoning,
                                         compact: compact,
                                         enabled: hasActiveThread && !isSending,
-                                        onChanged: (selected) {
-                                          state.setSelectedModel(selected);
+                                        onChanged: (effort) {
+                                          state.setSelectedReasoning(effort);
                                           state.saveThreadSettings();
                                         },
                                       ),

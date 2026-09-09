@@ -57,6 +57,7 @@ class ThreadStore {
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     ComposerMode? composerMode,
     String? selectedModel,
+    String? selectedReasoning,
     String? selectedPermission,
     String? selectedProvider,
     String? lastRunStatus,
@@ -67,6 +68,7 @@ class ThreadStore {
        attachments = attachments == null ? [] : List.of(attachments),
        composerMode = composerMode ?? ComposerMode.code,
        selectedModel = selectedModel ?? '',
+       selectedReasoning = selectedReasoning ?? '',
        selectedPermission = selectedPermission ?? 'normal',
        selectedProvider = selectedProvider ?? '' {
     _lastRunStatus = lastRunStatus;
@@ -84,6 +86,7 @@ class ThreadStore {
   final List<({String filename, String mime, Uint8List bytes})> attachments;
   ComposerMode composerMode;
   String selectedModel;
+  String selectedReasoning;
   String selectedPermission;
   String selectedProvider;
 
@@ -171,6 +174,7 @@ class ThreadStore {
       final d = detail as ThreadDetail;
       _detail = AsyncValue.ready(d);
       selectedModel = d.thread.model;
+      selectedReasoning = d.thread.reasoningEffort;
       selectedPermission = d.thread.permissionMode;
       selectedProvider = d.thread.providerId;
       _status = ThreadStoreStatus.ready;
@@ -220,6 +224,7 @@ class ThreadStore {
             final d = await api.getThread(threadId, includeMessages: false);
             _detail = AsyncValue.ready(d);
             selectedModel = d.thread.model;
+            selectedReasoning = d.thread.reasoningEffort;
             selectedPermission = d.thread.permissionMode;
             selectedProvider = d.thread.providerId;
             _status = ThreadStoreStatus.ready;
@@ -337,6 +342,7 @@ class ThreadStore {
         provider: selectedProvider.isEmpty ? null : selectedProvider,
         model: selectedModel.isEmpty ? null : selectedModel,
         permissionMode: selectedPermission,
+        reasoningEffort: selectedReasoning,
       );
       if (_detail.isEmpty) {
         await reloadDetail();
@@ -691,7 +697,11 @@ class ThreadStore {
     // waiting for a user message acknowledgement, treat it as a failure and
     // restore the composer so the user can retry.
     if (_pendingSend != null) {
-      debugLogFailure('thread.stream.done', appL10n.connectionFailed, threadId: threadId);
+      debugLogFailure(
+        'thread.stream.done',
+        appL10n.connectionFailed,
+        threadId: threadId,
+      );
       _finishStream(phase: StreamPhase.failed, error: appL10n.connectionFailed);
       return;
     }

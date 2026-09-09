@@ -9,21 +9,24 @@ import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 http.Response _json(int status, Object body) => http.Response(
-      jsonEncode(body),
-      status,
-      headers: {'content-type': 'application/json'},
-    );
+  jsonEncode(body),
+  status,
+  headers: {'content-type': 'application/json'},
+);
 
 String? _readBody(http.BaseRequest req) {
   if (req is http.Request) return req.body;
   return null;
 }
 
-ApiService _serviceFor(MockClient mock) => ApiService(client: ApiClient.withClient(mock));
+ApiService _serviceFor(MockClient mock) =>
+    ApiService(client: ApiClient.withClient(mock));
 
 Matcher _requestTo(String method, String path) {
-  return predicate<http.BaseRequest>((req) => req.method == method && req.url.path == path,
-      'a $method request to $path');
+  return predicate<http.BaseRequest>(
+    (req) => req.method == method && req.url.path == path,
+    'a $method request to $path',
+  );
 }
 
 void main() {
@@ -52,7 +55,11 @@ void main() {
         final body = jsonDecode(_readBody(req)!);
         expect(body['username'], 'owner');
         expect(body['password'], 'pw');
-        return _json(200, {'ok': true, 'totp_required': false, 'username': 'owner'});
+        return _json(200, {
+          'ok': true,
+          'totp_required': false,
+          'username': 'owner',
+        });
       });
       final service = _serviceFor(mock);
       final res = await service.login(username: 'owner', password: 'pw');
@@ -154,7 +161,13 @@ void main() {
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/projects'));
         return _json(200, [
-          {'id': 1, 'name': 'p', 'path': '/x', 'created_at': '', 'updated_at': ''},
+          {
+            'id': 1,
+            'name': 'p',
+            'path': '/x',
+            'created_at': '',
+            'updated_at': '',
+          },
         ]);
       });
       final service = _serviceFor(mock);
@@ -183,7 +196,13 @@ void main() {
         final body = jsonDecode(_readBody(req)!);
         expect(body['name'], 'p');
         expect(body['path'], '/x');
-        return _json(200, {'id': 1, 'name': 'p', 'path': '/x', 'created_at': '', 'updated_at': ''});
+        return _json(200, {
+          'id': 1,
+          'name': 'p',
+          'path': '/x',
+          'created_at': '',
+          'updated_at': '',
+        });
       });
       final service = _serviceFor(mock);
       final p = await service.createProject(name: 'p', path: '/x');
@@ -342,6 +361,7 @@ void main() {
         expect(body['provider'], 'opencode');
         expect(body['model'], 'm');
         expect(body['permission_mode'], 'normal');
+        expect(body['reasoning_effort'], 'high');
         expect(body['permissions'], 'perm');
         return _json(200, {
           'id': 'a',
@@ -349,6 +369,7 @@ void main() {
           'project_id': 1,
           'model': 'm',
           'permission_mode': 'normal',
+          'reasoning_effort': 'high',
           'created_at': '',
           'updated_at': '',
         });
@@ -361,9 +382,11 @@ void main() {
         provider: 'opencode',
         model: 'm',
         permissionMode: 'normal',
+        reasoningEffort: 'high',
         permissions: 'perm',
       );
       expect(t.id, 'a');
+      expect(t.reasoningEffort, 'high');
     });
 
     test('createThread omits absent optional fields', () async {
@@ -413,11 +436,7 @@ void main() {
         expect(req, _requestTo('GET', '/api/threads/a/messages'));
         return _json(200, {
           'messages': [
-            {
-              'id': 1,
-              'role': 'user',
-              'content': 'hello',
-            }
+            {'id': 1, 'role': 'user', 'content': 'hello'},
           ],
           'total': 1,
         });
@@ -440,12 +459,7 @@ void main() {
         return _json(200, {'messages': [], 'total': 0});
       });
       final service = _serviceFor(mock);
-      await service.getThreadMessages(
-        'a',
-        beforeId: 10,
-        afterId: 5,
-        limit: 25,
-      );
+      await service.getThreadMessages('a', beforeId: 10, afterId: 5, limit: 25);
     });
 
     test('getThreadMessages uses turn-windowed params', () async {
@@ -459,7 +473,9 @@ void main() {
         expect(q.containsKey('after_id'), isFalse);
         expect(q.containsKey('limit'), isFalse);
         return _json(200, {
-          'messages': [{'id': 1, 'role': 'user', 'content': 'hi'}],
+          'messages': [
+            {'id': 1, 'role': 'user', 'content': 'hi'},
+          ],
           'total': 1,
           'turn_limit': 50,
           'raw_count': 1,
@@ -509,15 +525,16 @@ void main() {
         expect(q['offset'], '100');
         expect(q['limit'], '500');
         return _json(200, {
-          'message': {
-            'id': 1,
-            'role': 'assistant',
-            'content': 'chunk',
-          },
+          'message': {'id': 1, 'role': 'assistant', 'content': 'chunk'},
         });
       });
       final service = _serviceFor(mock);
-      final msg = await service.getMessageChunk('a', 1, offset: 100, limit: 500);
+      final msg = await service.getMessageChunk(
+        'a',
+        1,
+        offset: 100,
+        limit: 500,
+      );
       expect(msg.content, 'chunk');
     });
 
@@ -539,14 +556,20 @@ void main() {
             'updated_at': '',
           },
           'total_messages': 1,
-          'messages': [{'id': 1, 'role': 'user', 'content': 'hello'}],
+          'messages': [
+            {'id': 1, 'role': 'user', 'content': 'hello'},
+          ],
           'turn_limit': 50,
           'before_cursor': 'c1',
           'has_more': false,
         });
       });
       final service = _serviceFor(mock);
-      final d = await service.getThread('a', includeMessages: true, turnLimit: 50);
+      final d = await service.getThread(
+        'a',
+        includeMessages: true,
+        turnLimit: 50,
+      );
       expect(d.messages, hasLength(1));
       expect(d.turnLimit, 50);
       expect(d.beforeCursor, 'c1');
@@ -568,7 +591,7 @@ void main() {
           },
           'total_messages': 1,
           'messages': [
-            {'id': 1, 'role': 'user', 'content': 'hello'}
+            {'id': 1, 'role': 'user', 'content': 'hello'},
           ],
         });
       });
@@ -595,7 +618,7 @@ void main() {
           },
           'total_messages': 1,
           'messages': [
-            {'id': 1, 'role': 'user', 'content': 'hello'}
+            {'id': 1, 'role': 'user', 'content': 'hello'},
           ],
         });
       });
@@ -625,7 +648,9 @@ void main() {
     test('getThreadRuns returns running ids', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('GET', '/api/threads/runs'));
-        return _json(200, {'running_ids': ['a', 'b']});
+        return _json(200, {
+          'running_ids': ['a', 'b'],
+        });
       });
       final service = _serviceFor(mock);
       final ids = await service.getThreadRuns();
@@ -672,6 +697,7 @@ void main() {
         expect(body['model'], 'm');
         expect(body['permission_mode'], 'normal');
         expect(body['provider'], 'opencode');
+        expect(body['reasoning_effort'], 'medium');
         return _json(200, {});
       });
       final service = _serviceFor(mock);
@@ -680,6 +706,7 @@ void main() {
         provider: 'opencode',
         model: 'm',
         permissionMode: 'normal',
+        reasoningEffort: 'medium',
       );
     });
 
@@ -742,7 +769,12 @@ void main() {
         final body = jsonDecode(_readBody(req)!);
         expect(body['name'], 'g');
         expect(body['thread_ids'], ['a']);
-        return _json(200, {'id': 1, 'name': 'g', 'position': 0, 'created_at': ''});
+        return _json(200, {
+          'id': 1,
+          'name': 'g',
+          'position': 0,
+          'created_at': '',
+        });
       });
       final service = _serviceFor(mock);
       final g = await service.createThreadGroup(name: 'g', threadIds: ['a']);

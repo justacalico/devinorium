@@ -262,6 +262,14 @@
   "beta": "Beta",
   "noModelSelected": "No model selected",
   "model": "Model",
+  "reasoning": "Reasoning",
+  "@reasoning": {
+    "description": "Label for the reasoning effort dropdown"
+  },
+  "reasoningDefault": "Default",
+  "@reasoningDefault": {
+    "description": "Badge shown next to the provider's default reasoning level"
+  },
   "selected": "Selected",
   "selectModel": "Select model",
   "modelContextLabel": "Context",

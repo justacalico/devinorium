@@ -21,20 +21,21 @@ class _MessageItemApiService extends ApiService {
     String id, {
     bool includeMessages = false,
     int? turnLimit,
-  }) =>
-      Future.value(ThreadDetail(
-        thread: Thread(
-          id: id,
-          title: 'Test',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
-        ),
-        messages: const [],
-        totalMessages: 1,
-      ));
+  }) => Future.value(
+    ThreadDetail(
+      thread: Thread(
+        id: id,
+        title: 'Test',
+        projectId: 1,
+        model: 'm1',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+      messages: const [],
+      totalMessages: 1,
+    ),
+  );
 
   @override
   Future<void> updateThreadSettings(
@@ -42,9 +43,9 @@ class _MessageItemApiService extends ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
-  }) =>
-      Future.value();
+  }) => Future.value();
 
   @override
   Future<Map<String, dynamic>> getThreadRun(String id) =>
@@ -96,13 +97,7 @@ void main() {
           createdAt: '',
           updatedAt: '',
         ),
-        messages: [
-          Message(
-            id: 1,
-            role: 'user',
-            content: 'a' * 700,
-          ),
-        ],
+        messages: [Message(id: 1, role: 'user', content: 'a' * 700)],
         totalMessages: 1,
       ),
     );
@@ -169,7 +164,9 @@ void main() {
     expect(find.text('Show full message'), findsNothing);
     expect(find.text('Loading more…'), findsNothing);
 
-    final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody).first);
+    final markdown = tester.widget<MarkdownBody>(
+      find.byType(MarkdownBody).first,
+    );
     expect(markdown.data, contains('full content'));
   });
 }

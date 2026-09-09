@@ -8,6 +8,7 @@ export 'json_utils.dart';
 export 'messages.dart';
 export 'permissions.dart';
 export 'provider.dart';
+export 'reasoning_effort.dart';
 export 'thread.dart';
 export 'totp.dart';
 export 'usage.dart';

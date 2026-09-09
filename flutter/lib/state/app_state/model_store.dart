@@ -2,6 +2,7 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 
 const _selectedProviderKey = 'devinorium_selected_provider';
 const _selectedModelKey = 'devinorium_selected_model';
+const _selectedReasoningKey = 'devinorium_selected_reasoning';
 const _selectedPermissionKey = 'devinorium_selected_permission';
 const _knownPermissionModes = {'normal', 'accept-edits', 'smart', 'bypass'};
 
@@ -14,6 +15,8 @@ mixin ModelStore on AppStateBase {
   ProviderVersion? _providerVersion;
   @override
   String _selectedModel = '';
+  @override
+  String _selectedReasoning = '';
   @override
   String _selectedPermission = 'normal';
   @override
@@ -38,8 +41,12 @@ mixin ModelStore on AppStateBase {
       // rather than flashing to an unknown state.
     }
   }
+
   @override
   String get selectedModel => _activeStore?.selectedModel ?? _selectedModel;
+  @override
+  String get selectedReasoning =>
+      _activeStore?.selectedReasoning ?? _selectedReasoning;
   @override
   String get selectedPermission =>
       _activeStore?.selectedPermission ?? _selectedPermission;
@@ -60,7 +67,20 @@ mixin ModelStore on AppStateBase {
       store.selectedModel = m;
     }
     _selectedModel = m;
+    _revalidateSelectedReasoning();
     unawaited(_saveSelectedModel(m));
+    unawaited(_saveSelectedReasoning(selectedReasoning));
+    notifyListeners();
+  }
+
+  @override
+  void setSelectedReasoning(String effort) {
+    final store = _activeStore;
+    if (store != null) {
+      store.selectedReasoning = effort;
+    }
+    _selectedReasoning = effort;
+    unawaited(_saveSelectedReasoning(effort));
     notifyListeners();
   }
 
@@ -91,15 +111,19 @@ mixin ModelStore on AppStateBase {
             store.selectedModel = _selectedModel;
           }
         }
+        _revalidateSelectedReasoning();
         await _saveSelectedProvider(_selectedProvider);
         await _saveSelectedModel(_selectedModel);
+        await _saveSelectedReasoning(selectedReasoning);
       } else {
         _selectedModel = '';
         if (store != null) {
           store.selectedModel = '';
         }
+        _revalidateSelectedReasoning();
         await _saveSelectedProvider(_selectedProvider);
         await _saveSelectedModel('');
+        await _saveSelectedReasoning('');
       }
     } else if (_selectedProvider == id) {
       // The provider changed but the catalog is missing or stale; keep the
@@ -109,8 +133,10 @@ mixin ModelStore on AppStateBase {
       if (store != null) {
         store.selectedModel = '';
       }
+      _revalidateSelectedReasoning();
       await _saveSelectedProvider(_selectedProvider);
       await _saveSelectedModel('');
+      await _saveSelectedReasoning('');
     }
     notifyListeners();
   }
@@ -125,6 +151,7 @@ mixin ModelStore on AppStateBase {
     final seq = ++_modelsRequestSeq;
     if (providerId == _modelsProvider && _models.isNotEmpty) {
       _revalidateSelectedModel();
+      _revalidateSelectedReasoning();
       return;
     }
     try {
@@ -133,6 +160,7 @@ mixin ModelStore on AppStateBase {
       _models = models;
       _modelsProvider = providerId;
       _revalidateSelectedModel();
+      _revalidateSelectedReasoning();
       notifyListeners();
     } catch (_) {
       // Keep the previous list on failure; the provider may be offline.
@@ -151,15 +179,46 @@ mixin ModelStore on AppStateBase {
     }
   }
 
+  /// Keep the selected reasoning effort inside the model's advertised set.
+  /// When the model changes or the catalog first loads, a stale value is
+  /// replaced by the model's default (or the first supported level).
+  void _revalidateSelectedReasoning() {
+    ModelInfo? model;
+    for (final m in _models) {
+      if (m.id == selectedModel) {
+        model = m;
+        break;
+      }
+    }
+    final supported = model?.supportedReasoningEfforts ?? const <String>[];
+    String next;
+    if (supported.isEmpty) {
+      next = '';
+    } else if (supported.contains(selectedReasoning)) {
+      next = selectedReasoning;
+    } else {
+      final fallback = model?.defaultReasoningEffort ?? '';
+      next = supported.contains(fallback) ? fallback : supported.first;
+    }
+    final store = _activeStore;
+    if (store != null) {
+      store.selectedReasoning = next;
+    } else {
+      _selectedReasoning = next;
+    }
+  }
+
   @override
   Future<void> _loadComposerSelections() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final provider = prefs.getString(_selectedProviderKey) ?? '';
       final model = prefs.getString(_selectedModelKey) ?? '';
+      final reasoning = prefs.getString(_selectedReasoningKey) ?? '';
       final permission = prefs.getString(_selectedPermissionKey) ?? '';
       if (provider.isNotEmpty) _selectedProvider = provider;
       if (model.isNotEmpty) _selectedModel = model;
+      if (reasoning.isNotEmpty) _selectedReasoning = reasoning;
       if (permission.isNotEmpty && _knownPermissionModes.contains(permission)) {
         _selectedPermission = permission;
       }
@@ -188,6 +247,18 @@ mixin ModelStore on AppStateBase {
         await prefs.remove(_selectedModelKey);
       } else {
         await prefs.setString(_selectedModelKey, m);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> _saveSelectedReasoning(String effort) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (effort.isEmpty) {
+        await prefs.remove(_selectedReasoningKey);
+      } else {
+        await prefs.setString(_selectedReasoningKey, effort);
       }
     } catch (_) {}
   }
@@ -252,6 +323,7 @@ mixin ModelStore on AppStateBase {
 
     _selectedProvider = effectiveProvider;
     if (_models.isEmpty) _selectedModel = '';
+    _revalidateSelectedReasoning();
     if (!_knownPermissionModes.contains(_selectedPermission)) {
       _selectedPermission = 'normal';
     }

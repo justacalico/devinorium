@@ -162,6 +162,7 @@ class AppState extends AppStateBase
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     String? selectedModel,
+    String? selectedReasoning,
     String? selectedPermission,
     String? selectedProvider,
     String? startedAt,
@@ -250,6 +251,8 @@ class AppState extends AppStateBase
         attachments: attachments,
         composerMode: composerMode,
         selectedModel: selectedModel ?? '',
+        selectedReasoning:
+            selectedReasoning ?? detail?.thread.reasoningEffort ?? '',
         selectedPermission: selectedPermission ?? 'normal',
         selectedProvider: selectedProvider ?? detail?.thread.providerId ?? '',
         lastRunStatus: lastRunStatus,
@@ -262,6 +265,7 @@ class AppState extends AppStateBase
       _composerText = composerText ?? '';
       _attachments.addAll(attachments);
       _selectedModel = selectedModel ?? '';
+      _selectedReasoning = selectedReasoning ?? '';
       _selectedPermission = selectedPermission ?? 'normal';
       _selectedProvider = selectedProvider ?? user?.providerId ?? '';
     }
@@ -392,6 +396,7 @@ class AppState extends AppStateBase
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     ComposerMode? composerMode,
     String? selectedModel,
+    String? selectedReasoning,
     String? selectedPermission,
     String? selectedProvider,
   }) {
@@ -405,6 +410,7 @@ class AppState extends AppStateBase
       attachments: attachments,
       composerMode: composerMode,
       selectedModel: selectedModel,
+      selectedReasoning: selectedReasoning,
       selectedPermission: selectedPermission,
       selectedProvider: selectedProvider,
     );

@@ -449,6 +449,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get model => 'Model';
 
   @override
+  String get reasoning => 'Reasoning';
+
+  @override
+  String get reasoningDefault => 'Default';
+
+  @override
   String get selected => 'Selected';
 
   @override

@@ -425,6 +425,11 @@ pub(crate) async fn call_provider(
 
     let options = SendOptions {
         model: thread.model.clone(),
+        reasoning_effort: if thread.reasoning_effort.is_empty() {
+            None
+        } else {
+            Some(thread.reasoning_effort.clone())
+        },
         working_dir,
         permission_mode: thread.permission_mode.clone(),
         permissions: thread.permissions.clone(),

@@ -32,6 +32,7 @@ class _TestApiService extends ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
   }) {
     updateThreadSettingsCalls++;
@@ -727,11 +728,7 @@ void main() {
 
     test('nully onThreadTitleChanged and onRunFinished on dispose', () {
       final api = _ControlledApiService();
-      final store = ThreadStore(
-        api: api,
-        threadId: 't1',
-        projectId: 1,
-      );
+      final store = ThreadStore(api: api, threadId: 't1', projectId: 1);
 
       store.onThreadTitleChanged = (_, _) {};
       store.onRunFinished = (_) {};
@@ -881,11 +878,7 @@ void main() {
 
       final api = _TestApiService();
       api.throwOnGetThread = true;
-      final store = ThreadStore(
-        api: api,
-        threadId: 't1',
-        projectId: 1,
-      );
+      final store = ThreadStore(api: api, threadId: 't1', projectId: 1);
 
       await store.load();
 
@@ -967,6 +960,7 @@ class _CursorApiService extends ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
   }) => Future.value();
 

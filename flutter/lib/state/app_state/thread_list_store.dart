@@ -281,18 +281,21 @@ mixin ThreadListStore on AppStateBase {
       // provider actually offers.
       await ensureModelsFor(provider);
       final model = _selectedModel;
+      final reasoning = _selectedReasoning;
       final t = await api.createThread(
         projectId: targetId,
         title: appL10n.newThread,
         provider: provider,
         model: model.isEmpty ? null : model,
         permissionMode: _selectedPermission,
+        reasoningEffort: reasoning.isEmpty ? null : reasoning,
       );
       final store = _createStore(
         t.id,
         projectId: targetId,
         composerMode: _composerMode,
         selectedModel: model,
+        selectedReasoning: reasoning,
         selectedPermission: _selectedPermission,
         selectedProvider: t.providerId,
       );
@@ -352,6 +355,7 @@ mixin ThreadListStore on AppStateBase {
         attachments: previous?.attachments,
         composerMode: previous?.composerMode ?? _composerMode,
         selectedModel: detail.thread.model,
+        selectedReasoning: detail.thread.reasoningEffort,
         selectedPermission: detail.thread.permissionMode,
         selectedProvider: detail.thread.providerId,
       );

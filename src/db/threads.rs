@@ -12,16 +12,28 @@ pub struct NewThread {
     pub provider_id: String,
     pub model: String,
     pub permission_mode: String,
+    pub reasoning_effort: String,
     pub permissions: Option<String>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
 }
 
+/// Fields a `PATCH /threads/:id` may update. `None` leaves a column alone;
+/// `Some(None)` clears a nullable column.
+#[derive(Default)]
+pub struct ThreadSettingsUpdate {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub permission_mode: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub permissions: Option<Option<String>>,
+}
+
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, provider_id, model, permission_mode, permissions, branch, worktree_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, provider_id, model, permission_mode, reasoning_effort, permissions, branch, worktree_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
@@ -33,6 +45,7 @@ impl super::Db {
         .bind(&new.provider_id)
         .bind(&new.model)
         .bind(&new.permission_mode)
+        .bind(&new.reasoning_effort)
         .bind(&new.permissions)
         .bind(&new.branch)
         .bind(&new.worktree_path)
@@ -169,13 +182,10 @@ impl super::Db {
         &self,
         id: &str,
         user_id: i64,
-        provider: Option<&str>,
-        model: Option<&str>,
-        permission_mode: Option<&str>,
-        permissions: Option<Option<&str>>,
+        update: ThreadSettingsUpdate,
     ) -> anyhow::Result<()> {
         let mut tx = self.pool().begin().await?;
-        if let Some(provider) = provider {
+        if let Some(provider) = update.provider.as_deref() {
             // A session id only means something to the provider that created
             // it, so the provider can only change while no session exists.
             // Guard at the database level so a concurrent send cannot slip a
@@ -192,21 +202,28 @@ impl super::Db {
                 anyhow::bail!("provider cannot be changed once the conversation has started");
             }
         }
-        if let Some(model) = model {
+        if let Some(model) = update.model.as_deref() {
             sqlx::query("UPDATE threads SET model = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                 .bind(model)
                 .bind(id)
                 .bind(user_id)
                 .execute(&mut *tx).await?;
         }
-        if let Some(mode) = permission_mode {
+        if let Some(mode) = update.permission_mode.as_deref() {
             sqlx::query("UPDATE threads SET permission_mode = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                 .bind(mode)
                 .bind(id)
                 .bind(user_id)
                 .execute(&mut *tx).await?;
         }
-        if let Some(perms) = permissions {
+        if let Some(effort) = update.reasoning_effort.as_deref() {
+            sqlx::query("UPDATE threads SET reasoning_effort = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                .bind(effort)
+                .bind(id)
+                .bind(user_id)
+                .execute(&mut *tx).await?;
+        }
+        if let Some(perms) = update.permissions {
             if let Some(perms) = perms {
                 sqlx::query("UPDATE threads SET permissions = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
                     .bind(perms)

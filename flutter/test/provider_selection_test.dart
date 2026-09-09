@@ -18,7 +18,9 @@ class _ProviderApi extends ApiService {
   String? lastCreateProvider;
   String? lastCreateModel;
   String? lastCreatePermission;
+  String? lastCreateReasoning;
   String? lastSettingsProvider;
+  String? lastSettingsReasoning;
   final modelsProviders = <String?>[];
   List<ModelInfo> modelsToReturn = const [];
   String threadProviderId = 'devin-cli';
@@ -45,6 +47,7 @@ class _ProviderApi extends ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
     String? branch,
     String? worktreePath,
@@ -52,6 +55,7 @@ class _ProviderApi extends ApiService {
     lastCreateProvider = provider;
     lastCreateModel = model;
     lastCreatePermission = permissionMode;
+    lastCreateReasoning = reasoningEffort;
     return Future.value(_thread());
   }
 
@@ -63,16 +67,18 @@ class _ProviderApi extends ApiService {
   }) {
     return Future.value(
       ThreadDetail(
-        thread: Thread(
-          id: id,
-          title: 't',
-          projectId: 1,
-          providerId: threadProviderId,
-          model: '',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
-        ),
+        thread:
+            createdThread ??
+            Thread(
+              id: id,
+              title: 't',
+              projectId: 1,
+              providerId: threadProviderId,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
         messages: const [],
         totalMessages: 0,
       ),
@@ -106,9 +112,11 @@ class _ProviderApi extends ApiService {
     String? provider,
     String? model,
     String? permissionMode,
+    String? reasoningEffort,
     String? permissions,
   }) {
     lastSettingsProvider = provider;
+    lastSettingsReasoning = reasoningEffort;
     return Future.value();
   }
 }
@@ -215,10 +223,7 @@ void main() {
     state.setSelectedModel('devin-model');
     await state.ensureModelsFor('opencode');
     expect(state.selectedModel, 'oc-m1');
-    expect(
-      api.modelsProviders.where((p) => p == 'opencode').length,
-      1,
-    );
+    expect(api.modelsProviders.where((p) => p == 'opencode').length, 1);
   });
 
   test('changing provider refreshes models and fixes invalid model', () async {
@@ -274,21 +279,24 @@ void main() {
     expect(prefs.getString('devinorium_selected_permission'), 'bypass');
   });
 
-  test('setSelectedProvider persists the selected provider and model', () async {
-    final api = _ProviderApi()
-      ..modelsToReturn = [
-        ModelInfo(id: 'oc-m1', label: 'm1', costTier: 'free', family: 'f'),
-      ];
-    final state = AppState.test(api: api, selectedProvider: 'opencode');
-    addTearDown(state.dispose);
+  test(
+    'setSelectedProvider persists the selected provider and model',
+    () async {
+      final api = _ProviderApi()
+        ..modelsToReturn = [
+          ModelInfo(id: 'oc-m1', label: 'm1', costTier: 'free', family: 'f'),
+        ];
+      final state = AppState.test(api: api, selectedProvider: 'opencode');
+      addTearDown(state.dispose);
 
-    await state.setSelectedProvider('opencode');
-    await Future.delayed(Duration.zero);
+      await state.setSelectedProvider('opencode');
+      await Future.delayed(Duration.zero);
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('devinorium_selected_provider'), 'opencode');
-    expect(prefs.getString('devinorium_selected_model'), 'oc-m1');
-  });
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_selected_provider'), 'opencode');
+      expect(prefs.getString('devinorium_selected_model'), 'oc-m1');
+    },
+  );
 
   test('setSelectedProvider persists while a thread is active', () async {
     final api = _ProviderApi()
@@ -338,24 +346,134 @@ void main() {
     expect(prefs.getString('devinorium_selected_permission'), 'bypass');
   });
 
-  test('setSelectedProvider clears persisted model when catalog is empty',
-      () async {
+  test(
+    'setSelectedProvider clears persisted model when catalog is empty',
+    () async {
+      final api = _ProviderApi()
+        ..modelsToReturn = []
+        ..threadProviderId = 'devin-cli';
+      SharedPreferences.setMockInitialValues({
+        'devinorium_selected_provider': 'devin-cli',
+        'devinorium_selected_model': 'stale-model',
+      });
+      final state = AppState.test(api: api, selectedProvider: 'devin-cli');
+      addTearDown(state.dispose);
+
+      await state.setSelectedProvider('opencode');
+      await Future.delayed(Duration.zero);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_selected_provider'), 'opencode');
+      expect(prefs.getString('devinorium_selected_model'), isNull);
+      expect(state.selectedModel, '');
+    },
+  );
+
+  test('createNewThread passes the selected reasoning effort', () async {
     final api = _ProviderApi()
-      ..modelsToReturn = []
-      ..threadProviderId = 'devin-cli';
-    SharedPreferences.setMockInitialValues({
-      'devinorium_selected_provider': 'devin-cli',
-      'devinorium_selected_model': 'stale-model',
-    });
-    final state = AppState.test(api: api, selectedProvider: 'devin-cli');
+      ..threadProviderId = 'codex'
+      ..modelsToReturn = [
+        ModelInfo(
+          id: 'gpt-5.4-terra',
+          label: 'GPT-5.4-Terra',
+          costTier: 'high',
+          family: 'gpt',
+          defaultReasoningEffort: 'medium',
+          supportedReasoningEfforts: const ['low', 'medium', 'high', 'xhigh'],
+        ),
+      ];
+    final state = AppState.test(
+      api: api,
+      selectedProvider: 'codex',
+      selectedModel: 'gpt-5.4-terra',
+      selectedReasoning: 'high',
+      projects: [
+        Project(id: 1, name: 'p', path: '/tmp/p', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
     addTearDown(state.dispose);
 
-    await state.setSelectedProvider('opencode');
+    await state.createNewThread();
+
+    expect(api.lastCreateProvider, 'codex');
+    expect(api.lastCreateModel, 'gpt-5.4-terra');
+    expect(api.lastCreateReasoning, 'high');
+  });
+
+  test('changing the model revalidates the reasoning effort', () {
+    final state = AppState.test(
+      selectedModel: 'm1',
+      selectedReasoning: 'low',
+      models: [
+        ModelInfo(
+          id: 'm1',
+          label: 'm1',
+          costTier: 'free',
+          family: 'f',
+          defaultReasoningEffort: 'low',
+          supportedReasoningEfforts: const ['low', 'medium'],
+        ),
+        ModelInfo(
+          id: 'm2',
+          label: 'm2',
+          costTier: 'free',
+          family: 'f',
+          defaultReasoningEffort: 'medium',
+          supportedReasoningEfforts: const ['medium', 'high'],
+        ),
+      ],
+    );
+    addTearDown(state.dispose);
+
+    state.setSelectedModel('m2');
+
+    expect(state.selectedModel, 'm2');
+    expect(state.selectedReasoning, 'medium');
+  });
+
+  test('setSelectedReasoning persists the effort', () async {
+    final state = AppState.test();
+    addTearDown(state.dispose);
+
+    state.setSelectedReasoning('high');
     await Future.delayed(Duration.zero);
 
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('devinorium_selected_provider'), 'opencode');
-    expect(prefs.getString('devinorium_selected_model'), isNull);
-    expect(state.selectedModel, '');
+    expect(prefs.getString('devinorium_selected_reasoning'), 'high');
+  });
+
+  test('saveThreadSettings sends the thread reasoning effort', () async {
+    final api = _ProviderApi()
+      ..threadProviderId = 'codex'
+      ..createdThread = Thread(
+        id: 't1',
+        title: 't',
+        projectId: 1,
+        providerId: 'codex',
+        model: 'gpt-5.4-terra',
+        permissionMode: 'normal',
+        reasoningEffort: 'high',
+        createdAt: '',
+        updatedAt: '',
+      )
+      ..modelsToReturn = [
+        ModelInfo(
+          id: 'gpt-5.4-terra',
+          label: 'GPT-5.4-Terra',
+          costTier: 'high',
+          family: 'gpt',
+          defaultReasoningEffort: 'medium',
+          supportedReasoningEfforts: const ['low', 'medium', 'high'],
+        ),
+      ];
+    final state = AppState.test(api: api);
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+    await state.saveThreadSettings();
+
+    expect(api.lastSettingsProvider, 'codex');
+    expect(api.lastSettingsReasoning, 'high');
   });
 }

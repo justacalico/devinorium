@@ -922,6 +922,18 @@ abstract class AppLocalizations {
   /// **'Model'**
   String get model;
 
+  /// Label for the reasoning effort dropdown
+  ///
+  /// In en, this message translates to:
+  /// **'Reasoning'**
+  String get reasoning;
+
+  /// Badge shown next to the provider's default reasoning level
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get reasoningDefault;
+
   /// No description provided for @selected.
   ///
   /// In en, this message translates to:

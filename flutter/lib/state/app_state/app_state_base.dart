@@ -79,6 +79,8 @@ abstract class AppStateBase extends ChangeNotifier {
   List<({String filename, String mime, Uint8List bytes})> get _attachments;
   String get _selectedModel;
   set _selectedModel(String value);
+  String get _selectedReasoning;
+  set _selectedReasoning(String value);
   String get _selectedPermission;
   set _selectedPermission(String value);
   String get _selectedProvider;
@@ -191,6 +193,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get lastRunStatus;
   List<({String filename, String mime, Uint8List bytes})> get attachments;
   String get selectedModel;
+  String get selectedReasoning;
   String get selectedPermission;
   String get selectedProvider;
   ComposerMode get composerMode;
@@ -235,6 +238,7 @@ abstract class AppStateBase extends ChangeNotifier {
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     ComposerMode? composerMode,
     String? selectedModel,
+    String? selectedReasoning,
     String? selectedPermission,
     String? selectedProvider,
   });
@@ -257,6 +261,7 @@ abstract class AppStateBase extends ChangeNotifier {
   void removeAttachment(int index);
   void clearAttachments();
   void setSelectedModel(String m);
+  void setSelectedReasoning(String effort);
   void setSelectedPermission(String p);
   Future<void> setSelectedProvider(String id);
   Future<void> ensureModelsFor(String providerId);
@@ -266,6 +271,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _loadComposerSelections();
   Future<void> _saveSelectedProvider(String id);
   Future<void> _saveSelectedModel(String m);
+  Future<void> _saveSelectedReasoning(String effort);
   Future<void> _saveSelectedPermission(String p);
   void setGlobalError(String e);
   void clearGlobalError();

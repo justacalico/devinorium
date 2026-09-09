@@ -117,6 +117,9 @@ pub struct SendOptions {
     // Manual Debug impl below.
     /// The model to use (ignored when resuming an existing session).
     pub model: String,
+    /// The reasoning effort the model should run at, when the model exposes
+    /// multiple levels. `None` or empty lets the provider use its default.
+    pub reasoning_effort: Option<String>,
     /// Working directory the provider should operate in.
     pub working_dir: PathBuf,
     /// Permission mode: "normal", "accept-edits", "smart", "bypass".
@@ -146,6 +149,7 @@ impl std::fmt::Debug for SendOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SendOptions")
             .field("model", &self.model)
+            .field("reasoning_effort", &self.reasoning_effort)
             .field("working_dir", &self.working_dir)
             .field("permission_mode", &self.permission_mode)
             .field("permissions", &self.permissions)
@@ -241,6 +245,14 @@ pub struct ModelInfo {
     pub max_output_tokens: u64,
     pub is_new: bool,
     pub is_beta: bool,
+    /// The reasoning effort the provider suggests when the user has not
+    /// picked one. `None` means the model does not expose reasoning levels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_reasoning_effort: Option<String>,
+    /// The reasoning effort levels this model supports, in the provider's
+    /// preferred order. Empty means the model does not expose a picker.
+    #[serde(default)]
+    pub supported_reasoning_efforts: Vec<String>,
 }
 
 /// The trait every AI backend implements.
