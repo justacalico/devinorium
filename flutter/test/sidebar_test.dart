@@ -569,10 +569,15 @@ void main() {
     final threadDeco =
         tester.widget<Container>(threadContainer).decoration as BoxDecoration?;
     expect(threadDeco, isNotNull);
-    expect(threadDeco!.border, isNotNull);
+    expect(threadDeco!.color, isNotNull);
+    expect(threadDeco.color!.a, greaterThan(0));
+    expect(threadDeco.border, isNull);
 
     final context = tester.element(find.text('My thread'));
-    expect(threadDeco.border!.top.color, Theme.of(context).colorScheme.primary);
+    expect(
+      threadDeco.color,
+      Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.20),
+    );
   });
 
   testWidgets('Project drag handle is only on the header', (tester) async {
@@ -2165,6 +2170,70 @@ void main() {
     expect(find.text('Done'), findsOneWidget);
   });
 
+  testWidgets('Thread tile shows a status dot on the project icon', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ),
+      sending: true,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final tile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
+    final listTile = tester.widget<ListTile>(tile);
+    expect(listTile.leading, isNotNull);
+
+    final dot = find.descendant(
+      of: find.byWidget(listTile.leading!),
+      matching: find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).shape == BoxShape.circle,
+      ),
+    );
+    expect(dot, findsOneWidget);
+  });
+
   testWidgets(
     'Thread delete still completes if tile unmounts during animation',
     (tester) async {
@@ -3387,7 +3456,7 @@ void main() {
     expect(find.byIcon(Icons.merge), findsNothing);
   });
 
-  testWidgets('Thread tile is taller and shows its branch', (tester) async {
+  testWidgets('Thread tile shows its branch', (tester) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -3427,7 +3496,6 @@ void main() {
         )
         .first;
     final listTile = tester.widget<ListTile>(tile);
-    expect(listTile.isThreeLine, isTrue);
     expect(listTile.subtitle, isNotNull);
 
     expect(find.text('feature/abc'), findsOneWidget);
@@ -3480,7 +3548,7 @@ void main() {
         )
         .first;
     final listTile = tester.widget<ListTile>(tile);
-    expect(listTile.isThreeLine, isTrue);
+    expect(listTile.subtitle, isNotNull);
 
     expect(find.byIcon(Icons.folder_copy), findsOneWidget);
     expect(find.text('project-wt-abc'), findsOneWidget);

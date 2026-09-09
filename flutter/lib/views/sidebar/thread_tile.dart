@@ -1,6 +1,7 @@
 part of '../sidebar.dart';
 
 class _ThreadTile extends StatefulWidget {
+  final Project project;
   final Thread thread;
   final bool isActive;
   final VoidCallback onTap;
@@ -8,6 +9,7 @@ class _ThreadTile extends StatefulWidget {
 
   const _ThreadTile({
     super.key,
+    required this.project,
     required this.thread,
     required this.isActive,
     required this.onTap,
@@ -69,13 +71,12 @@ class _ThreadTileState extends State<_ThreadTile>
     final l = l10n(context);
     final time = _timeAgo(widget.thread.updatedAt, l);
 
-    return Selector<AppState, ({Color? dotColor, String? dotLabel, bool isRunning})>(
+    return Selector<AppState, ({Color? dotColor, String? dotLabel})>(
       selector: (_, state) {
         final s = _threadStatus(context, state, widget.thread);
         return (
           dotColor: s?.color,
           dotLabel: s?.label,
-          isRunning: state.runningThreadIds.contains(widget.thread.id),
         );
       },
       builder: (context, model, _) {
@@ -83,24 +84,34 @@ class _ThreadTileState extends State<_ThreadTile>
             ? (color: model.dotColor!, label: model.dotLabel!)
             : null;
 
+        final branch = widget.thread.branch?.trim() ?? '';
+        final worktreePath = widget.thread.worktreePath?.trim() ?? '';
+        final hasSubtitle = branch.isNotEmpty ||
+            worktreePath.isNotEmpty ||
+            status != null ||
+            time.isNotEmpty;
+
+        BoxDecoration? decoration;
+        if (widget.isActive) {
+          decoration = BoxDecoration(
+            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.20),
+            borderRadius: BorderRadius.circular(8),
+          );
+        } else if (widget.thread.pinned) {
+          decoration = BoxDecoration(
+            border: Border(
+              left: BorderSide(color: theme.colorScheme.primary, width: 3),
+            ),
+            borderRadius: BorderRadius.circular(8),
+          );
+        }
+
         return SlideTransition(
           position: _slide,
           transformHitTests: false,
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 1),
-            decoration: BoxDecoration(
-              color: widget.isActive
-                  ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
-                  : theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
-              border: widget.isActive
-                  ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-                  : (widget.thread.pinned
-                      ? Border(
-                          left: BorderSide(
-                              color: theme.colorScheme.primary, width: 3))
-                      : null),
-              borderRadius: BorderRadius.circular(8),
-            ),
+            decoration: decoration,
             child: Material(
               color: Colors.transparent,
               elevation: 0,
@@ -109,31 +120,39 @@ class _ThreadTileState extends State<_ThreadTile>
               ),
               clipBehavior: Clip.antiAlias,
               child: ListTile(
-                leading: _StatusDot(status: status),
+                leading: _ThreadLeading(
+                  project: widget.project,
+                  status: status,
+                ),
                 title: _ThreadTitle(
                   thread: widget.thread,
-                  status: status,
                   isActive: widget.isActive,
                 ),
-                subtitle: _ThreadSubtitle(thread: widget.thread),
+                subtitle: hasSubtitle
+                    ? _ThreadSubtitle(
+                        thread: widget.thread,
+                        status: status,
+                        time: time,
+                      )
+                    : null,
                 trailing: _ThreadActions(
-                  status: status,
-                  time: time,
-                  isDeleting: _deleting,
                   thread: widget.thread,
-                  isRunning: model.isRunning,
+                  isDeleting: _deleting,
                   onDelete: _delete,
                 ),
-                isThreeLine: true,
                 dense: true,
                 visualDensity: VisualDensity.compact,
+                tileColor: Colors.transparent,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 10,
-                  vertical: 4,
+                  vertical: 6,
                 ),
                 horizontalTitleGap: 8,
                 minLeadingWidth: 0,
-                minVerticalPadding: 8,
+                minVerticalPadding: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 onTap: _deleting
                     ? null
                     : () {
@@ -149,22 +168,51 @@ class _ThreadTileState extends State<_ThreadTile>
   }
 }
 
-class _StatusDot extends StatelessWidget {
+class _ThreadLeading extends StatelessWidget {
+  final Project project;
   final ({Color color, String label})? status;
 
-  const _StatusDot({this.status});
+  const _ThreadLeading({
+    required this.project,
+    this.status,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (status == null) {
-      return const SizedBox(width: 8, height: 8);
-    }
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        color: status!.color,
-        shape: BoxShape.circle,
+    final theme = Theme.of(context);
+    final color = _projectColor(project.name);
+
+    return SizedBox(
+      width: 30,
+      height: 30,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: _ProjectIcon(project: project, color: color),
+          ),
+          if (status != null)
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: status!.color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: theme.colorScheme.surface,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -239,72 +287,57 @@ class _ThreadMrChip extends StatelessWidget {
 
 class _ThreadTitle extends StatelessWidget {
   final Thread thread;
-  final ({Color color, String label})? status;
   final bool isActive;
 
   const _ThreadTitle({
     required this.thread,
-    this.status,
     required this.isActive,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final children = <Widget>[
-      Expanded(
-        child: Text(
-          thread.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: (isActive || thread.pinned)
-                ? FontWeight.w600
-                : FontWeight.w400,
-          ),
-        ),
-      ),
-      const SizedBox(width: 6),
-      if (thread.linkedMr != null) ...[
-        const SizedBox(width: 6),
-        _ThreadMrChip(ref: thread.linkedMr!),
-        const SizedBox(width: 4),
-      ] else
-        const SizedBox(width: 6),
-      ProviderIcon(
-        providerId: thread.providerId,
-        size: 16,
-        semanticLabel: providerName(thread.providerId),
-      ),
-    ];
-
-    if (status != null) {
-      children.insert(
-        0,
-        Padding(
-          padding: const EdgeInsets.only(right: 6),
-          child: Text(
-            status!.label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: status!.color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      );
-    }
 
     return Row(
       mainAxisSize: MainAxisSize.max,
-      children: children,
+      children: [
+        Expanded(
+          child: Text(
+            thread.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: (isActive || thread.pinned)
+                  ? FontWeight.w600
+                  : FontWeight.w400,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        if (thread.linkedMr != null) ...[
+          _ThreadMrChip(ref: thread.linkedMr!),
+          const SizedBox(width: 4),
+        ],
+        ProviderIcon(
+          providerId: thread.providerId,
+          size: 16,
+          semanticLabel: providerName(thread.providerId),
+        ),
+      ],
     );
   }
 }
 
 class _ThreadSubtitle extends StatelessWidget {
   final Thread thread;
+  final ({Color color, String label})? status;
+  final String time;
 
-  const _ThreadSubtitle({required this.thread});
+  const _ThreadSubtitle({
+    required this.thread,
+    this.status,
+    required this.time,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -315,56 +348,113 @@ class _ThreadSubtitle extends StatelessWidget {
     final hasBranch = branch.isNotEmpty;
     final hasWorktree = worktreePath.isNotEmpty;
 
-    if (!hasBranch && !hasWorktree) {
+    if (!hasBranch && !hasWorktree && status == null && time.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final children = <Widget>[];
-    if (hasWorktree) {
-      children.add(Icon(
-        Icons.folder_copy,
-        size: 12,
-        semanticLabel: l.worktreeMode,
-        color: theme.colorScheme.onSurfaceVariant,
-      ));
-    } else if (hasBranch) {
-      children.add(Icon(
-        Icons.call_split,
-        size: 12,
-        semanticLabel: l.gitBranches,
-        color: theme.colorScheme.onSurfaceVariant,
-      ));
-    }
-    children.add(const SizedBox(width: 4));
+    final metadata = _buildMetadata(context, l, hasBranch, hasWorktree, branch, worktreePath);
 
-    final label = hasBranch ? branch : _formatWorktreePathForDisplay(worktreePath);
-    children.add(Expanded(
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    ));
-
-    final row = Row(
+    return Row(
       mainAxisSize: MainAxisSize.max,
-      children: children,
+      children: [
+        metadata ?? const Spacer(),
+        if (status != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            status!.label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: status!.color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        if (time.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Text(
+            time,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
     );
+  }
+
+  Widget? _buildMetadata(
+    BuildContext context,
+    AppLocalizations l,
+    bool hasBranch,
+    bool hasWorktree,
+    String branch,
+    String worktreePath,
+  ) {
+    final theme = Theme.of(context);
+    final iconColor = theme.colorScheme.onSurfaceVariant;
 
     if (hasWorktree) {
+      final label = hasBranch ? branch : _formatWorktreePathForDisplay(worktreePath);
       final tooltip = hasBranch
           ? l.threadWorktreeBranchTooltip(worktreePath, branch)
           : l.threadWorktreeTooltip(worktreePath);
-      return Tooltip(
-        message: tooltip,
-        child: row,
+
+      return Expanded(
+        child: Tooltip(
+          message: tooltip,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.folder_copy,
+                size: 12,
+                semanticLabel: l.worktreeMode,
+                color: iconColor,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
-    return row;
+    if (hasBranch) {
+      return Expanded(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.call_split,
+              size: 12,
+              semanticLabel: l.gitBranches,
+              color: iconColor,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                branch,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return null;
   }
 }
 
@@ -374,25 +464,20 @@ String _formatWorktreePathForDisplay(String worktreePath) {
 
   final normalized =
       trimmed.replaceAll('\\', '/').replaceAll(RegExp(r'/+$'), '');
-  final parts = normalized.split('/');
+  final parts = normalized.split('/').where((p) => p.isNotEmpty).toList();
   final last = parts.isNotEmpty ? parts.last.trim() : '';
-  return last.isNotEmpty ? last : trimmed;
+  if (last.isNotEmpty) return last;
+  return normalized.isEmpty ? '/' : normalized;
 }
 
 class _ThreadActions extends StatelessWidget {
-  final ({Color color, String label})? status;
-  final String time;
-  final bool isDeleting;
   final Thread thread;
-  final bool isRunning;
+  final bool isDeleting;
   final VoidCallback onDelete;
 
   const _ThreadActions({
-    this.status,
-    required this.time,
-    required this.isDeleting,
     required this.thread,
-    required this.isRunning,
+    required this.isDeleting,
     required this.onDelete,
   });
 
@@ -404,27 +489,6 @@ class _ThreadActions extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (isRunning)
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ),
-        if (time.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Text(
-              time,
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ),
         _ThreadOptionsMenu(
           thread: thread,
           isDeleting: isDeleting,

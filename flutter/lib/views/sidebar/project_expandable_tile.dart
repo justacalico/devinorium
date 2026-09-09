@@ -235,6 +235,7 @@ class _ThreadList extends StatelessWidget {
         ...visible.map(
           (t) => _ThreadTile(
             key: ValueKey(t.id),
+            project: project,
             thread: t,
             isActive: activeThreadId == t.id,
             onTap: () => onThreadTap(t.id),
