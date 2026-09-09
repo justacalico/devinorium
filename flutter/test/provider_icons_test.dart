@@ -89,7 +89,7 @@ void main() {
         ),
       ),
     );
-    final handle = await tester.ensureSemantics();
+    final handle = tester.ensureSemantics();
     expect(find.bySemanticsLabel('Codex CLI'), findsOneWidget);
     handle.dispose();
   });
