@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.49.0 - 2026-09-09
+#### Features
+- 将侧边栏线程的删除按钮移入三点菜单 - (6978ada) - HttpAnimations
+
+- - -
+
 ## v0.48.0 - 2026-09-09
 #### Features
 - 为会话持久化并展示关联的 GitLab 合并请求 - (9c0903e) - HttpAnimations
