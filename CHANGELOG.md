@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.45.0 - 2026-09-09
+#### Features
+- 为模型选择器和设置页使用供应商官方图标 - (d80ec23) - HttpAnimations
+
+- - -
+
 ## v0.44.0 - 2026-09-09
 #### Features
 - 合并模型选择器并按 provider 元数据提供推理档位 - (d72f982) - HttpAnimations
