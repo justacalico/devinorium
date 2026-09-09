@@ -3617,6 +3617,153 @@ void main() {
         expect(state.linkedMergeRequest!.iid, 1);
       },
     );
+
+    test(
+      'refreshLinkedMergeRequest prefers stored linked MR over branch lookup',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            if (req.url.path == '/api/projects/1/git/merge-request') {
+              expect(req.url.queryParameters['iid'], '42');
+              return _json(200, {
+                'iid': 42,
+                'title': 'Linked MR',
+                'state': 'merged',
+                'source_branch': 'feature/x',
+                'target_branch': 'main',
+                'web_url': 'https://gitlab.example.com/g/p/-/merge_requests/42',
+                'draft': false,
+              });
+            }
+            return _json(404, {'error': 'unexpected'});
+          }),
+        );
+        final state = AppState.test(
+          api: ApiService(client: client),
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 't',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              branch: 'feature/x',
+              createdAt: '',
+              updatedAt: '',
+              linkedMr: LinkedMergeRequestRef(
+                hostname: 'gitlab.example.com',
+                projectPath: 'g/p',
+                iid: 42,
+                webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/42',
+              ),
+            ),
+          ),
+        );
+        await state.refreshLinkedMergeRequest();
+        expect(state.linkedMergeRequest, isNotNull);
+        expect(state.linkedMergeRequest!.iid, 42);
+        expect(state.linkedMergeRequest!.state, 'merged');
+      },
+    );
+
+    test(
+      'loadLinkedMergeRequestByIid falls back to the stored ref on 204',
+      () async {
+        final client = ApiClient.withClient(
+          MockClient((req) async {
+            if (req.url.path == '/api/projects/1/git/merge-request') {
+              return http.Response('', 204);
+            }
+            return _json(404, {'error': 'unexpected'});
+          }),
+        );
+        final state = AppState.test(
+          api: ApiService(client: client),
+          activeProjectId: 1,
+        );
+        final ref = LinkedMergeRequestRef(
+          hostname: 'gitlab.example.com',
+          projectPath: 'g/p',
+          iid: 7,
+          webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/7',
+        );
+        await state.loadLinkedMergeRequestByIid(1, ref);
+        expect(state.loadingLinkedMergeRequest, isFalse);
+        expect(state.linkedMergeRequest, isNotNull);
+        expect(state.linkedMergeRequest!.iid, 7);
+        expect(state.linkedMergeRequest!.webUrl, ref.webUrl);
+      },
+    );
+
+    test('setThreadLinkedMr patches the linked MR field', () async {
+      String? capturedBody;
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.method == 'PATCH' && req.url.path == '/api/threads/a') {
+            capturedBody = utf8.decode(req.bodyBytes);
+            return _json(200, {'ok': true});
+          }
+          return _json(404, {'error': 'unexpected'});
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ),
+      );
+      await state.setThreadLinkedMr(
+        'a',
+        'https://gitlab.example.com/g/p/-/merge_requests/5',
+      );
+      expect(capturedBody, isNotNull);
+      expect(capturedBody, contains('linked_mr'));
+      expect(capturedBody, contains('merge_requests/5'));
+    });
+
+    test('unlinkThreadLinkedMr sends null linked_mr', () async {
+      String? capturedBody;
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.method == 'PATCH' && req.url.path == '/api/threads/a') {
+            capturedBody = utf8.decode(req.bodyBytes);
+            return _json(200, {'ok': true});
+          }
+          return _json(404, {'error': 'unexpected'});
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ),
+      );
+      await state.unlinkThreadLinkedMr('a');
+      expect(capturedBody, isNotNull);
+      expect(capturedBody, contains('"linked_mr":null'));
+    });
   });
 
   group('Plan overlay', () {

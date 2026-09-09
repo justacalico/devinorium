@@ -16,7 +16,9 @@ pub mod pipelines;
 
 pub use auth::GitLabStatus;
 pub use merge_requests::{GitLabMergeRequestSummary, MergeRequestAction};
-pub use parse::{parse_gitlab_remote_url, GitLabProjectRef};
+pub use parse::{
+    parse_gitlab_merge_request_url, parse_gitlab_remote_url, GitLabProjectRef, LinkedMergeRequest,
+};
 pub use pipelines::{GitLabJobLog, GitLabPipeline, GitLabPipelineJob};
 
 /// Possible errors from Git host CLI operations.

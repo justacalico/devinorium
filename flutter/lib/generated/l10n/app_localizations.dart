@@ -1834,6 +1834,30 @@ abstract class AppLocalizations {
   /// **'Open in browser'**
   String get openInBrowser;
 
+  /// No description provided for @openLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link'**
+  String get openLink;
+
+  /// No description provided for @copyLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get copyLink;
+
+  /// No description provided for @linkToThread.
+  ///
+  /// In en, this message translates to:
+  /// **'Link to thread'**
+  String get linkToThread;
+
+  /// No description provided for @unlinkFromThread.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlink from thread'**
+  String get unlinkFromThread;
+
   /// No description provided for @draft.
   ///
   /// In en, this message translates to:

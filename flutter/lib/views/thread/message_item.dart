@@ -523,7 +523,12 @@ class _MessageItemState extends State<_MessageItem> {
                 ),
                 const SizedBox(height: 4),
                 if (groups.isNotEmpty)
-                  SelectionArea(child: _buildPartWidgets(context, groups)),
+                  SelectionArea(
+                    child: _MessageContextMenu(
+                      message: _message,
+                      child: _buildPartWidgets(context, groups),
+                    ),
+                  ),
                 if (showLoading)
                   Text(
                     l10n(context).messageLoading,
@@ -586,6 +591,97 @@ class _MessageItemState extends State<_MessageItem> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MessageContextMenu extends StatelessWidget {
+  final Message message;
+  final Widget child;
+
+  const _MessageContextMenu({
+    required this.message,
+    required this.child,
+  });
+
+  static final _mrUrlPattern = RegExp(
+    r'https?://[^\s<>"`{}|\\^`\[\]]+?/-/merge_requests/\d+',
+    caseSensitive: false,
+  );
+
+  LinkedMergeRequestRef? get _firstLink {
+    for (final match in _mrUrlPattern.allMatches(message.content)) {
+      final ref = LinkedMergeRequestRef.tryParse(match.group(0)!);
+      if (ref != null) return ref;
+    }
+    return null;
+  }
+
+  bool _isLinkedToActiveThread(LinkedMergeRequestRef ref, AppState state) {
+    final thread = state.activeThreadDetail?.thread;
+    final linked = thread?.linkedMr;
+    if (linked == null) return false;
+    return linked.hostname == ref.hostname &&
+        linked.projectPath == ref.projectPath &&
+        linked.iid == ref.iid;
+  }
+
+  void _show(BuildContext context, Offset position) {
+    final ref = _firstLink;
+    if (ref == null) return;
+
+    final state = context.read<AppState>();
+    final l = l10n(context);
+    final isLinked = _isLinkedToActiveThread(ref, state);
+    final threadId = state.activeThreadId;
+    final renderBox = context.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (renderBox == null || overlay == null || overlay.size.isEmpty) return;
+
+    final global = renderBox.localToGlobal(position);
+    final relative = RelativeRect.fromSize(
+      Rect.fromPoints(global, global.translate(2, 2)),
+      overlay.size,
+    );
+
+    showMenu(
+      context: context,
+      position: relative,
+      items: [
+        PopupMenuItem(
+          child: Text(l.openLink),
+          onTap: () => state.openLink(ref.webUrl),
+        ),
+        PopupMenuItem(
+          child: Text(l.copyLink),
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: ref.webUrl));
+          },
+        ),
+        if (threadId != null)
+          PopupMenuItem(
+            child: Text(
+              isLinked ? l.unlinkFromThread : l.linkToThread,
+            ),
+            onTap: () {
+              if (isLinked) {
+                state.unlinkThreadLinkedMr(threadId);
+              } else {
+                state.setThreadLinkedMr(threadId, ref.webUrl);
+              }
+            },
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onSecondaryTapUp: (details) => _show(context, details.localPosition),
+      onLongPressStart: (details) => _show(context, details.localPosition),
+      child: child,
     );
   }
 }

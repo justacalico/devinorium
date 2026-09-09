@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show listEquals;
 
+import 'git.dart';
 import 'messages.dart';
 
 class _Unset {
@@ -101,6 +102,15 @@ class Project {
   );
 }
 
+LinkedMergeRequestRef? _parseLinkedMr(Object? raw) {
+  if (raw is! Map<String, dynamic>) return null;
+  try {
+    return LinkedMergeRequestRef.fromJson(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
 class Thread {
   final String id;
   final String title;
@@ -118,6 +128,7 @@ class Thread {
   final bool pinned;
   final String createdAt;
   final String updatedAt;
+  final LinkedMergeRequestRef? linkedMr;
 
   Thread({
     required this.id,
@@ -136,6 +147,7 @@ class Thread {
     this.pinned = false,
     required this.createdAt,
     required this.updatedAt,
+    this.linkedMr,
   });
 
   factory Thread.fromJson(Map<String, dynamic> j) => Thread(
@@ -155,6 +167,7 @@ class Thread {
     pinned: j['pinned'] as bool? ?? false,
     createdAt: j['created_at'] as String? ?? '',
     updatedAt: j['updated_at'] as String? ?? '',
+    linkedMr: _parseLinkedMr(j['linked_mr']),
   );
 
   Thread copyWith({
@@ -162,6 +175,8 @@ class Thread {
     String? updatedAt,
     bool? pinned,
     String? envMode,
+    LinkedMergeRequestRef? linkedMr,
+    Object? linkedMrOrNull = const _Unset(),
   }) => Thread(
     id: id,
     title: title ?? this.title,
@@ -179,6 +194,9 @@ class Thread {
     pinned: pinned ?? this.pinned,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    linkedMr: linkedMrOrNull is _Unset
+        ? (linkedMr ?? this.linkedMr)
+        : (linkedMrOrNull as LinkedMergeRequestRef?),
   );
 
   @override
@@ -200,7 +218,8 @@ class Thread {
         envMode == other.envMode &&
         pinned == other.pinned &&
         createdAt == other.createdAt &&
-        updatedAt == other.updatedAt;
+        updatedAt == other.updatedAt &&
+        linkedMr == other.linkedMr;
   }
 
   @override
@@ -221,6 +240,7 @@ class Thread {
     pinned,
     createdAt,
     updatedAt,
+    linkedMr,
   );
 }
 

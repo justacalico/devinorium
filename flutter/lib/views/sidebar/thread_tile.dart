@@ -196,6 +196,13 @@ class _ThreadTitle extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 6),
+      if (thread.linkedMr != null)
+        Icon(
+          Icons.merge_type,
+          size: 14,
+          color: theme.colorScheme.secondary,
+        ),
+      const SizedBox(width: 4),
       ProviderIcon(
         providerId: thread.providerId,
         size: 16,
