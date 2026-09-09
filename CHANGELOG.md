@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.44.0 - 2026-09-09
+#### Features
+- 合并模型选择器并按 provider 元数据提供推理档位 - (d72f982) - HttpAnimations
+#### Bug Fixes
+- 延迟模型选择弹窗的目录加载，避免 build 阶段触发通知 - (22cc7f5) - HttpAnimations
+- 模型选择器按 provider 缓存模型列表，避免切 provider 时重复请求 - (45cae63) - HttpAnimations
+
+- - -
+
 ## v0.43.0 - 2026-09-09
 #### Features
 - 新增 Codex CLI 提供商，通过 codex app-server JSON-RPC 驱动 - (72b3615) - HttpAnimations
