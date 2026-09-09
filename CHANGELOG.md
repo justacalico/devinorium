@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.50.0 - 2026-09-09
+#### Features
+- 检测并关联代理运行中创建的工作区 - (028f8e3) - HttpAnimations
+- 底部工作区指示器跟随实际工作区更新 - (914f080) - HttpAnimations
+#### Bug Fixes
+- 修复 clippy 检查与格式化问题 - (34d52fd) - HttpAnimations
+
+- - -
+
 ## v0.49.0 - 2026-09-09
 #### Features
 - 将侧边栏线程的删除按钮移入三点菜单 - (6978ada) - HttpAnimations
