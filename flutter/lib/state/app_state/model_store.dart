@@ -25,6 +25,10 @@ mixin ModelStore on AppStateBase {
   String _modelsProvider = '';
   @override
   int _modelsRequestSeq = 0;
+
+  /// In-memory model catalog per provider. Tapping through providers in the
+  /// model switch does not refetch a provider once it is in here.
+  final Map<String, List<ModelInfo>> _modelsByProvider = {};
   @override
   List<ModelInfo> get models => _models;
   @override
@@ -148,15 +152,24 @@ mixin ModelStore on AppStateBase {
   @override
   Future<void> ensureModelsFor(String providerId) async {
     if (providerId.isEmpty) return;
-    final seq = ++_modelsRequestSeq;
-    if (providerId == _modelsProvider && _models.isNotEmpty) {
+
+    // Serve from in-memory cache first so switching providers in the picker
+    // does not hit the network more than once per provider.
+    final cached = _modelsByProvider[providerId];
+    if (cached != null) {
+      _models = List.of(cached);
+      _modelsProvider = providerId;
       _revalidateSelectedModel();
       _revalidateSelectedReasoning();
+      notifyListeners();
       return;
     }
+
+    final seq = ++_modelsRequestSeq;
     try {
       final models = await api.listModels(provider: providerId);
       if (seq != _modelsRequestSeq) return;
+      _modelsByProvider[providerId] = models;
       _models = models;
       _modelsProvider = providerId;
       _revalidateSelectedModel();

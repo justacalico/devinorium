@@ -443,6 +443,32 @@ void main() {
     expect(prefs.getString('devinorium_selected_reasoning'), 'high');
   });
 
+  test('switching provider reuses cached model catalog', () async {
+    final api = _ProviderApi()
+      ..modelsToReturn = [
+        ModelInfo(id: 'm1', label: 'm1', costTier: 'free', family: 'f'),
+      ];
+    final state = AppState.test(
+      api: api,
+      selectedProvider: 'devin-cli',
+      providers: [
+        ProviderInfo(id: 'devin-cli', name: 'Devin CLI'),
+        ProviderInfo(id: 'opencode', name: 'OpenCode'),
+        ProviderInfo(id: 'codex', name: 'Codex'),
+      ],
+    );
+    addTearDown(state.dispose);
+
+    await state.setSelectedProvider('opencode');
+    await state.setSelectedProvider('codex');
+    await state.setSelectedProvider('opencode');
+    await state.setSelectedProvider('devin-cli');
+    await state.setSelectedProvider('codex');
+
+    // Each unique provider should only be fetched once.
+    expect(api.modelsProviders, ['opencode', 'codex', 'devin-cli']);
+  });
+
   test('saveThreadSettings sends the thread reasoning effort', () async {
     final api = _ProviderApi()
       ..threadProviderId = 'codex'

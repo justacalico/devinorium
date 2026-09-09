@@ -114,6 +114,13 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
   String _query = '';
 
   @override
+  void initState() {
+    super.initState();
+    final state = context.read<AppState>();
+    unawaited(state.ensureModelsFor(state.selectedProvider));
+  }
+
+  @override
   void dispose() {
     _search.dispose();
     super.dispose();
