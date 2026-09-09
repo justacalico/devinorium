@@ -116,8 +116,13 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
   @override
   void initState() {
     super.initState();
-    final state = context.read<AppState>();
-    unawaited(state.ensureModelsFor(state.selectedProvider));
+    // Loading the catalog can notify listeners; defer past the first frame so
+    // the dialog does not rebuild mid-mount.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final state = context.read<AppState>();
+      unawaited(state.ensureModelsFor(state.selectedProvider));
+    });
   }
 
   @override
