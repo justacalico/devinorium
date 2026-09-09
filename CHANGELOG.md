@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.43.0 - 2026-09-09
+#### Features
+- 新增 Codex CLI 提供商，通过 codex app-server JSON-RPC 驱动 - (72b3615) - HttpAnimations
+
+- - -
+
 ## v0.42.0 - 2026-09-08
 #### Features
 - 跟踪提供商和模型的 token 用量并新增用量页面 - (2e53e25) - HttpAnimations
