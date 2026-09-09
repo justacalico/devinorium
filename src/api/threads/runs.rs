@@ -186,6 +186,17 @@ pub(crate) async fn run_thread(
         }
     }
 
+    // Sync the thread's git/worktree metadata so the toolbar reflects the
+    // actual worktree the agent runs in. Without this the UI keeps showing the
+    // main worktree when one was auto-created on send, until the thread detail
+    // is reloaded. Skip the event when the thread is still on the main
+    // worktree (no branch/worktree_path, local mode) to avoid no-op traffic.
+    if thread.worktree_path.is_some() || thread.branch.is_some() || thread.env_mode != "local" {
+        if let Ok(json) = serde_json::to_string(&thread_git_update_payload(&thread)) {
+            run.emit("thread_update", &json);
+        }
+    }
+
     run.emit(
         "user_message",
         &serde_json::to_string(&MessageOut::from(user_msg)).unwrap_or_else(|_| "{}".into()),
@@ -425,9 +436,20 @@ async fn record_run_usage(
     }
 }
 
+/// Build the `thread_update` payload carrying a thread's git/worktree
+/// metadata. Emitted at the start of every run so the toolbar tracks the
+/// worktree the agent actually runs in, even when it was auto-created.
+pub(crate) fn thread_git_update_payload(thread: &ThreadRow) -> serde_json::Value {
+    serde_json::json!({
+        "worktree_path": thread.worktree_path,
+        "branch": thread.branch,
+        "env_mode": thread.env_mode,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::events_stream;
+    use super::{events_stream, thread_git_update_payload};
     use crate::thread_runner::ThreadRunner;
     use axum::body::to_bytes;
     use axum::response::IntoResponse;
@@ -456,5 +478,56 @@ mod tests {
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("event: state"), "body: {text}");
         assert!(text.contains("event: done"), "body: {text}");
+    }
+
+    use crate::db::ThreadRow;
+
+    fn sample_thread_row() -> ThreadRow {
+        ThreadRow {
+            id: "t1".into(),
+            user_id: 1,
+            title: "T".into(),
+            devin_session_id: None,
+            provider_id: "devin-cli".into(),
+            model: "m".into(),
+            permission_mode: "normal".into(),
+            reasoning_effort: String::new(),
+            permissions: None,
+            created_at: "2024-01-01T00:00:00Z".into(),
+            updated_at: "2024-01-01T00:00:00Z".into(),
+            thread_group_id: None,
+            project_id: Some(1),
+            branch: None,
+            worktree_path: None,
+            env_mode: "local".into(),
+            pinned: false,
+            title_user_set: false,
+            linked_mr: None,
+        }
+    }
+
+    #[test]
+    fn thread_git_update_payload_serializes_worktree_fields() {
+        let mut row = sample_thread_row();
+        row.env_mode = "worktree".into();
+        row.branch = Some("devinorium/wt-abc".into());
+        row.worktree_path = Some("/repo/.devinorium-worktrees/wt-abc".into());
+
+        let payload = thread_git_update_payload(&row);
+        assert_eq!(payload["env_mode"], "worktree");
+        assert_eq!(payload["branch"], "devinorium/wt-abc");
+        assert_eq!(
+            payload["worktree_path"],
+            "/repo/.devinorium-worktrees/wt-abc"
+        );
+    }
+
+    #[test]
+    fn thread_git_update_payload_serializes_nulls_for_local_mode() {
+        let row = sample_thread_row();
+        let payload = thread_git_update_payload(&row);
+        assert_eq!(payload["env_mode"], "local");
+        assert!(payload["branch"].is_null());
+        assert!(payload["worktree_path"].is_null());
     }
 }

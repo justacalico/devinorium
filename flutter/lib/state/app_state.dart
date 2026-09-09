@@ -361,7 +361,10 @@ class AppState extends AppStateBase
       _notifications.notifyThreadCompleted(title: title, failed: failed);
       final projectId = store.projectId;
       if (projectId > 0) {
-        unawaited(_refreshGitForProject(projectId));
+        // Refresh branches and worktrees too, not just the repo status: a
+        // run may have auto-created a worktree/branch that the toolbar's
+        // worktree menu needs to list.
+        unawaited(loadGitBranchData(projectId));
       }
       unawaited(loadProjects());
     };

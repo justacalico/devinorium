@@ -231,15 +231,42 @@ StreamingReduceResult reduceStreamingEvent({
       if (decoded == null || detail == null) {
         return StreamingReduceResult(detail: detail, snapshot: snapshot);
       }
+      var nextThread = detail.thread;
+      var changed = false;
       final title = decoded['title']?.toString();
+      if (title != null && title.isNotEmpty) {
+        nextThread = nextThread.copyWith(title: title);
+        changed = true;
+      }
       final updatedAt = decoded['updated_at']?.toString();
-      if (title == null || title.isEmpty) {
+      if (updatedAt != null && updatedAt.isNotEmpty) {
+        nextThread = nextThread.copyWith(updatedAt: updatedAt);
+        changed = true;
+      }
+      if (decoded.containsKey('env_mode')) {
+        final envMode = decoded['env_mode']?.toString();
+        if (envMode != null && envMode.isNotEmpty) {
+          nextThread = nextThread.copyWith(envMode: envMode);
+          changed = true;
+        }
+      }
+      if (decoded.containsKey('branch')) {
+        final raw = decoded['branch'];
+        if (raw == null || raw is String) {
+          nextThread = nextThread.copyWith(branch: raw as String?);
+          changed = true;
+        }
+      }
+      if (decoded.containsKey('worktree_path')) {
+        final raw = decoded['worktree_path'];
+        if (raw == null || raw is String) {
+          nextThread = nextThread.copyWith(worktreePath: raw as String?);
+          changed = true;
+        }
+      }
+      if (!changed) {
         return StreamingReduceResult(detail: detail, snapshot: snapshot);
       }
-      final nextThread = detail.thread.copyWith(
-        title: title,
-        updatedAt: updatedAt,
-      );
       return StreamingReduceResult(
         detail: detail.copyWith(thread: nextThread),
         snapshot: snapshot.copyWith(lastSeq: seq ?? snapshot.lastSeq),
