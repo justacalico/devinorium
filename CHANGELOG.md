@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.47.0 - 2026-09-09
+#### Features
+- 添加线程环境模式并自动创建工作树 - (ad86a06) - HttpAnimations
+
+- - -
+
 ## v0.46.0 - 2026-09-09
 #### Features
 - 在侧边栏线程标题显示提供商图标 - (069a18e) - HttpAnimations
