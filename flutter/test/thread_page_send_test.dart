@@ -27,6 +27,7 @@ class _SendApiService extends ApiService {
     String? permissionMode,
     String? reasoningEffort,
     String? permissions,
+    String? envMode,
   }) => Future.value();
 
   @override

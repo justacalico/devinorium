@@ -51,6 +51,7 @@ class _ProviderApi extends ApiService {
     String? permissions,
     String? branch,
     String? worktreePath,
+    String? envMode,
   }) {
     lastCreateProvider = provider;
     lastCreateModel = model;
@@ -114,6 +115,7 @@ class _ProviderApi extends ApiService {
     String? permissionMode,
     String? reasoningEffort,
     String? permissions,
+    String? envMode,
   }) {
     lastSettingsProvider = provider;
     lastSettingsReasoning = reasoningEffort;

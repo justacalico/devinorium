@@ -736,6 +736,38 @@ void main() {
       });
       expect(t.reasoningEffort, 'high');
     });
+
+    test('parses env_mode and defaults to local', () {
+      final worktree = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'env_mode': 'worktree',
+      });
+      expect(worktree.envMode, 'worktree');
+
+      final local = Thread.fromJson({
+        'id': 'def',
+        'title': 'Thread',
+        'project_id': 1,
+      });
+      expect(local.envMode, 'local');
+    });
+
+    test('copyWith updates env_mode', () {
+      final t = Thread(
+        id: 'abc',
+        title: 'Thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final updated = t.copyWith(envMode: 'worktree');
+      expect(updated.envMode, 'worktree');
+      expect(updated.title, 'Thread');
+    });
   });
 
   group('ThreadGroup', () {

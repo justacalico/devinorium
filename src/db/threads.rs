@@ -16,6 +16,7 @@ pub struct NewThread {
     pub permissions: Option<String>,
     pub branch: Option<String>,
     pub worktree_path: Option<String>,
+    pub env_mode: String,
 }
 
 /// Fields a `PATCH /threads/:id` may update. `None` leaves a column alone;
@@ -27,13 +28,14 @@ pub struct ThreadSettingsUpdate {
     pub permission_mode: Option<String>,
     pub reasoning_effort: Option<String>,
     pub permissions: Option<Option<String>>,
+    pub env_mode: Option<String>,
 }
 
 impl super::Db {
     pub async fn create_thread(&self, new: NewThread) -> anyhow::Result<ThreadRow> {
         sqlx::query_as::<_, ThreadRow>(
-            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, provider_id, model, permission_mode, reasoning_effort, permissions, branch, worktree_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO threads (id, user_id, project_id, thread_group_id, title, title_user_set, provider_id, model, permission_mode, reasoning_effort, permissions, branch, worktree_path, env_mode)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(&new.id)
@@ -49,6 +51,7 @@ impl super::Db {
         .bind(&new.permissions)
         .bind(&new.branch)
         .bind(&new.worktree_path)
+        .bind(&new.env_mode)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
@@ -236,6 +239,13 @@ impl super::Db {
                     .bind(user_id)
                     .execute(&mut *tx).await?;
             }
+        }
+        if let Some(env_mode) = update.env_mode {
+            sqlx::query("UPDATE threads SET env_mode = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                .bind(env_mode)
+                .bind(id)
+                .bind(user_id)
+                .execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok(())

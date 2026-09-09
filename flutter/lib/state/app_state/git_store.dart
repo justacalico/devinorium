@@ -320,6 +320,20 @@ mixin GitStore on AppStateBase {
     }
   }
   @override
+  Future<void> setThreadEnvMode(String threadId, String envMode) async {
+    try {
+      await api.updateThreadSettings(threadId, envMode: envMode);
+      _globalError = '';
+      await refreshThreadsAndGroups();
+      if (_activeStore?.threadId == threadId) {
+        await _activeStore?.reloadDetail();
+      }
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+    }
+  }
+  @override
   String? get _linkedMrEffectiveBranch {
     final thread = activeThreadDetail?.thread;
     final branch = thread?.branch;

@@ -20,6 +20,7 @@ typedef _BranchToolbarModel = ({
   GitRepoInfo? repo,
   List<GitBranch>? branches,
   List<GitWorktree>? worktrees,
+  String envMode,
 });
 
 /// Compact Git branch and worktree controls that live beneath the chat
@@ -72,6 +73,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
           repo: repo,
           branches: branches,
           worktrees: worktrees,
+          envMode: thread?.envMode ?? 'local',
         );
       },
       builder: (context, model, _) {
@@ -170,6 +172,16 @@ class _BranchToolbarState extends State<BranchToolbar> {
                           theme: theme,
                           l: l,
                         ),
+                        const SizedBox(width: 8),
+                        _buildEnvModeButton(
+                          state: state,
+                          threadId: threadId,
+                          envMode: model.envMode,
+                          sending: model.sending,
+                          compact: compact,
+                          theme: theme,
+                          l: l,
+                        ),
                       ],
                     );
                   },
@@ -194,6 +206,81 @@ class _BranchToolbarState extends State<BranchToolbar> {
       if (w.path == path) return w;
     }
     return null;
+  }
+
+  Widget _buildEnvModeButton({
+    required AppState state,
+    required String threadId,
+    required String envMode,
+    required bool sending,
+    required bool compact,
+    required ThemeData theme,
+    required AppLocalizations l,
+  }) {
+    final active = envMode == 'worktree';
+    final foreground = active
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurfaceVariant;
+    final label = active ? l.worktreeModeShort : l.localModeShort;
+
+    return PopupMenuButton<String>(
+      key: const Key('branch_toolbar_env_mode'),
+      enabled: !sending,
+      tooltip: l.envModeTooltip,
+      offset: const Offset(0, -4),
+      onSelected: (value) => _onEnvModeMenuSelected(state, threadId, value),
+      itemBuilder: (context) => _buildEnvModeMenuItems(
+        currentMode: envMode,
+        l: l,
+        theme: theme,
+      ),
+      child: _ToolbarButton(
+        icon: active ? Icons.fork_right : Icons.terminal,
+        label: label,
+        compact: compact,
+        foreground: foreground,
+        theme: theme,
+      ),
+    );
+  }
+
+  List<PopupMenuEntry<String>> _buildEnvModeMenuItems({
+    required String currentMode,
+    required AppLocalizations l,
+    required ThemeData theme,
+  }) {
+    return [
+      PopupMenuItem<String>(
+        enabled: false,
+        child: Text(
+          l.envModeTooltip,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      const PopupMenuDivider(height: 8),
+      CheckedPopupMenuItem(
+        value: 'local',
+        checked: currentMode == 'local',
+        child: Text(l.localMode),
+      ),
+      CheckedPopupMenuItem(
+        value: 'worktree',
+        checked: currentMode == 'worktree',
+        child: Text(l.worktreeMode),
+      ),
+    ];
+  }
+
+  Future<void> _onEnvModeMenuSelected(
+    AppState state,
+    String threadId,
+    String value,
+  ) async {
+    if (value != 'local' && value != 'worktree') return;
+    await state.setThreadEnvMode(threadId, value);
   }
 
   Widget _buildBranchButton({
@@ -510,6 +597,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
         branch: repo?.branch,
         worktreePath: null,
       );
+      await state.setThreadEnvMode(threadId, 'local');
       return;
     }
     final worktree = _findWorktree(worktrees, value);
@@ -519,6 +607,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
       branch: worktree.branch,
       worktreePath: worktree.path,
     );
+    await state.setThreadEnvMode(threadId, 'worktree');
   }
 
   Future<void> _showCreateBranchDialog(
@@ -716,6 +805,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
                   branch: worktree.branch,
                   worktreePath: worktree.path,
                 );
+                await state.setThreadEnvMode(threadId, 'worktree');
                 return;
               }
               setState(() {

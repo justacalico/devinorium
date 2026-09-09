@@ -117,6 +117,20 @@ pub(super) async fn create(
         .filter(|s| !s.is_empty())
         .unwrap_or("")
         .to_string();
+    let env_mode = req
+        .env_mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("local")
+        .to_string();
+    if !is_valid_env_mode(&env_mode) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid env_mode")),
+        )
+            .into_response();
+    }
     let title = req.title.unwrap_or_else(|| "New thread".into());
     let title_user_set = title != "New thread";
     let new = NewThread {
@@ -133,6 +147,7 @@ pub(super) async fn create(
         permissions: req.permissions,
         branch: req.branch,
         worktree_path: req.worktree_path,
+        env_mode,
     };
     match state.db.create_thread(new).await {
         Ok(t) => (StatusCode::CREATED, Json(ThreadOut::from(t))).into_response(),
@@ -284,6 +299,21 @@ pub(super) async fn rename(
                 .into_response();
         }
     }
+    let env_mode = req
+        .env_mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    if let Some(env_mode) = &env_mode {
+        if !is_valid_env_mode(env_mode) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid env_mode")),
+            )
+                .into_response();
+        }
+    }
 
     // Apply updates.
     if let Some(title) = &req.title {
@@ -312,6 +342,7 @@ pub(super) async fn rename(
         || req.permission_mode.is_some()
         || req.reasoning_effort.is_some()
         || req.permissions.is_some()
+        || env_mode.is_some()
     {
         // Treat an empty permissions string as a request to clear the field.
         let permissions = req
@@ -333,6 +364,7 @@ pub(super) async fn rename(
                 .map(str::trim)
                 .map(str::to_string),
             permissions: permissions.map(|opt| opt.map(str::to_string)),
+            env_mode,
         };
         if let Err(e) = state.db.update_thread_settings(&id, user.id, update).await {
             return map_err_internal(e).into_response();
@@ -561,6 +593,10 @@ pub(super) async fn get_message_full(
 
 fn is_valid_permission_mode(mode: &str) -> bool {
     ["normal", "accept-edits", "smart", "bypass"].contains(&mode)
+}
+
+fn is_valid_env_mode(mode: &str) -> bool {
+    ["local", "worktree"].contains(&mode)
 }
 
 #[cfg(test)]

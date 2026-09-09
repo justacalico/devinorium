@@ -393,6 +393,7 @@ abstract class AppStateBase extends ChangeNotifier {
     String? branch,
     String? worktreePath,
   });
+  Future<void> setThreadEnvMode(String threadId, String envMode);
   String? get _linkedMrEffectiveBranch;
   Future<void> refreshLinkedMergeRequest();
   Future<void> loadLinkedMergeRequest(int projectId, String branch);

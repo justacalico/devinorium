@@ -236,6 +236,19 @@ class _FakeApiService extends ApiService {
   }
 
   @override
+  Future<void> updateThreadSettings(
+    String id, {
+    String? provider,
+    String? model,
+    String? permissionMode,
+    String? reasoningEffort,
+    String? permissions,
+    String? envMode,
+  }) async {
+    calls.add('updateThreadSettings:$id:$envMode');
+  }
+
+  @override
   Future<void> updateThreadGit(
     String id, {
     String? branch,
@@ -262,6 +275,7 @@ class _FakeApiService extends ApiService {
         permissionMode: 'normal',
         branch: threadBranch,
         worktreePath: threadWorktreePath,
+        envMode: threadWorktreePath != null ? 'worktree' : 'local',
         createdAt: '',
         updatedAt: '',
       ),
@@ -417,6 +431,7 @@ void main() {
             permissionMode: 'normal',
             branch: 'main',
             worktreePath: '/x/wt',
+            envMode: 'worktree',
             createdAt: '',
             updatedAt: '',
           ),
@@ -723,6 +738,7 @@ void main() {
             permissionMode: 'normal',
             branch: 'main',
             worktreePath: '/x/wt',
+            envMode: 'worktree',
             createdAt: '',
             updatedAt: '',
           ),
@@ -808,6 +824,24 @@ void main() {
       expect(state.globalError, isNotEmpty);
       // The form should still be visible so the user can correct and retry.
       expect(find.widgetWithText(TextField, 'Branch name'), findsOneWidget);
+    });
+
+    testWidgets('env mode menu switches between local and worktree', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_env_mode')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Worktree'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(api.calls, contains('updateThreadSettings:t1:worktree'));
     });
   });
 }

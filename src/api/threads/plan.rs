@@ -95,14 +95,23 @@ pub(crate) async fn project_working_dir_for_thread(
             let project_path = tokio::fs::canonicalize(&p.path)
                 .await
                 .unwrap_or_else(|_| PathBuf::from(&p.path));
-            if let Some(wt) = &thread.worktree_path {
-                let path = PathBuf::from(wt);
-                if path.is_absolute() {
-                    match tokio::fs::canonicalize(&path).await {
-                        Ok(canonical) if canonical.starts_with(&project_path) => {
-                            return Ok(canonical)
+            if thread.env_mode == "worktree" {
+                if let Some(wt) = &thread.worktree_path {
+                    let path = PathBuf::from(wt);
+                    if path.is_absolute() {
+                        if let Ok(canonical) = tokio::fs::canonicalize(&path).await {
+                            if let (Ok(project_repo), Ok(worktree_repo)) = (
+                                state.git.repo_status(&project_path, false).await,
+                                state.git.repo_status(&canonical, false).await,
+                            ) {
+                                if project_repo.is_repo
+                                    && worktree_repo.is_repo
+                                    && project_repo.common_dir == worktree_repo.common_dir
+                                {
+                                    return Ok(canonical);
+                                }
+                            }
                         }
-                        _ => {}
                     }
                 }
             }
