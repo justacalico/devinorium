@@ -275,7 +275,7 @@ mixin ThreadListStore on AppStateBase {
     }
     _page = MainPage.threads;
     _composerText = '';
-    _attachments.clear();
+    _attachments = [];
     notifyListeners();
     try {
       final provider = selectedProvider;

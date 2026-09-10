@@ -77,6 +77,9 @@ abstract class AppStateBase extends ChangeNotifier {
   String get _composerText;
   set _composerText(String value);
   List<({String filename, String mime, Uint8List bytes})> get _attachments;
+  set _attachments(
+    List<({String filename, String mime, Uint8List bytes})> value,
+  );
   String get _selectedModel;
   set _selectedModel(String value);
   String get _selectedReasoning;
