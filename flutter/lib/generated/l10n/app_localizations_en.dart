@@ -18,7 +18,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get about => 'About';
 
   @override
-  String get aboutDescription => 'A self-hosted web UI for AI coding agents.';
+  String get aboutDescription => 'Bring your agents anywhere';
 
   @override
   String get aboutVersion => 'Version';

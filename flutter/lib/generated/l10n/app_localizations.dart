@@ -115,7 +115,7 @@ abstract class AppLocalizations {
   /// Short description shown on the About page
   ///
   /// In en, this message translates to:
-  /// **'A self-hosted web UI for AI coding agents.'**
+  /// **'Bring your agents anywhere'**
   String get aboutDescription;
 
   /// Version label on the About page

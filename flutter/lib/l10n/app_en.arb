@@ -12,7 +12,7 @@
   "@about": {
     "description": "About section title in settings"
   },
-  "aboutDescription": "A self-hosted web UI for AI coding agents.",
+  "aboutDescription": "Bring your agents anywhere",
   "@aboutDescription": {
     "description": "Short description shown on the About page"
   },
