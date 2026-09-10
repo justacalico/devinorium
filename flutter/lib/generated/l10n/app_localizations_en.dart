@@ -931,6 +931,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mergeRequest => 'Merge request';
 
   @override
+  String get linkMergeRequest => 'Link merge request';
+
+  @override
+  String get unlinkMergeRequest => 'Unlink merge request';
+
+  @override
+  String get mergeRequestUrlHint => 'GitLab merge request URL';
+
+  @override
+  String get invalidMergeRequestUrl => 'Enter a valid GitLab merge request URL';
+
+  @override
   String get overview => 'Overview';
 
   @override
