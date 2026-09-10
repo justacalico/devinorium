@@ -241,9 +241,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap().keep();
         assert!(resolve_context_path(&tmp, "../outside.txt").is_none());
         assert!(resolve_context_path(&tmp, ".git/config").is_none());
-        assert!(
-            resolve_context_path(&tmp, "sub/.devinorium-attachments/x").is_none()
-        );
+        assert!(resolve_context_path(&tmp, "sub/.devinorium-attachments/x").is_none());
     }
 
     #[test]
@@ -251,8 +249,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap().keep();
         let file = tmp.join("abs.txt");
         std::fs::write(&file, "x").unwrap();
-        let resolved =
-            resolve_context_path(&tmp, file.to_str().unwrap()).unwrap();
+        let resolved = resolve_context_path(&tmp, file.to_str().unwrap()).unwrap();
         assert_eq!(resolved, file.canonicalize().unwrap());
     }
 

@@ -372,11 +372,7 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
             match super::context_refs::parse_context_paths(&raw) {
                 Ok(paths) => context_paths.extend(paths),
                 Err(e) => {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        Json(ApiError::new(&e)),
-                    )
-                        .into_response())
+                    return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
                 }
             }
         } else if !filename.is_empty() {
@@ -516,10 +512,7 @@ pub(crate) async fn call_provider(
             })
     } else {
         provider
-            .start(StartRequest {
-                prompt,
-                options,
-            })
+            .start(StartRequest { prompt, options })
             .await
             .map(|r| ProviderOutcome {
                 new_session_id: Some(r.session_id),
