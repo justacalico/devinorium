@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.52.0 - 2026-09-10
+#### Features
+- 将提供者图标移到线程标题左侧 - (b0af930) - HttpAnimations
+- 在侧边栏线程标题下方显示工作区名称 - (6c25169) - HttpAnimations
+
+- - -
+
 ## v0.51.0 - 2026-09-10
 #### Features
 - 添加网页版登录提示 - (fc5428d) - HttpAnimations
