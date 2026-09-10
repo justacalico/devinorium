@@ -7,6 +7,7 @@ import 'services/window_service.dart';
 import 'state/app_state.dart';
 import 'theme/theme.dart';
 import 'views/app_view.dart';
+import 'views/dev_merge_request_dialog.dart';
 import 'views/dialogs.dart';
 
 Future<void> main() async {
@@ -101,7 +102,7 @@ class _DevinoriumAppState extends State<DevinoriumApp>
             theme: theme.lightTheme,
             darkTheme: theme.darkTheme,
             themeMode: theme.themeMode,
-            home: const RootScaffold(),
+            home: const DevMergeRequestWrapper(child: RootScaffold()),
           );
         },
       ),

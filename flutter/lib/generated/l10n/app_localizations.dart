@@ -2571,6 +2571,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to load usage'**
   String get usageLoadFailed;
+
+  /// Title of the dialog shown on builds from a merge request
+  ///
+  /// In en, this message translates to:
+  /// **'Development merge request'**
+  String get devMergeRequestTitle;
+
+  /// Body of the dialog shown on builds from a merge request
+  ///
+  /// In en, this message translates to:
+  /// **'You are on a development merge request (#{id}). Report issues here:\n\n{url}\n\nThis URL is hardcoded into this build as proof of its source.'**
+  String devMergeRequestBody(String id, String url);
+
+  /// Body shown when a merge request ID is known but the URL is missing or invalid
+  ///
+  /// In en, this message translates to:
+  /// **'You are on a development merge request (#{id}). The merge request URL is not available in this build.'**
+  String devMergeRequestBodyNoUrl(String id);
+
+  /// Button to open the merge request URL
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get devMergeRequestOpen;
+
+  /// Button to copy the merge request URL
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get devMergeRequestCopy;
+
+  /// Button to dismiss the merge request dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get devMergeRequestClose;
 }
 
 class _AppLocalizationsDelegate
