@@ -5,6 +5,7 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/elapsed_time_indicator.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
+import 'package:devinorium_frontend/widgets/provider_icons.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -365,6 +366,99 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Devin CLI · Free'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Model picker greys out a provider whose CLI is missing on the host',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        providers: [
+          ProviderInfo(id: 'devin-cli', name: 'Devin CLI'),
+          ProviderInfo(
+            id: 'opencode',
+            name: 'OpenCode',
+            installed: false,
+            status: 'error',
+            message: '`opencode` was not found on PATH',
+          ),
+        ],
+        models: [
+          ModelInfo(
+            id: 'm1',
+            label: 'Model 1',
+            costTier: 'free',
+            family: 'test',
+          ),
+        ],
+        selectedProvider: 'devin-cli',
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      );
+      state.setSelectedModel('m1');
+      state.setSelectedPermission('normal');
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('model_selector')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+
+      // The missing provider stays listed but is dimmed and explains why.
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is Tooltip &&
+                (w.message ?? '').contains('was not found on PATH'),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byWidgetPredicate(
+            (w) => w is Opacity && w.opacity == 0.5,
+          ),
+        ),
+        findsWidgets,
+      );
+
+      // Tapping the greyed-out provider does not select it.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byWidgetPredicate(
+            (w) => w is ProviderIcon && w.providerId == 'opencode',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(state.selectedProvider, 'devin-cli');
+      expect(find.byType(Dialog), findsOneWidget);
     },
   );
 

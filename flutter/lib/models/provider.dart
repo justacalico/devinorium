@@ -4,11 +4,40 @@ class ProviderInfo {
   final String id;
   final String name;
 
-  ProviderInfo({required this.id, required this.name});
+  /// True when the backend found the provider's CLI on the host. Absent means
+  /// available, matching t3code's rule that a missing `availability` field is
+  /// interpreted as available.
+  final bool installed;
+
+  /// `"ready"` when usable, `"error"` when the binary is missing or broken.
+  final String status;
+
+  /// Version reported by the installed binary, when detected.
+  final String? version;
+
+  /// Why the provider is unavailable, when the backend reported one.
+  final String? message;
+
+  ProviderInfo({
+    required this.id,
+    required this.name,
+    this.installed = true,
+    this.status = 'ready',
+    this.version,
+    this.message,
+  });
+
+  /// Whether the provider may be selected in pickers — the same check t3code's
+  /// `isProviderInstancePickerReady` makes for the default instance.
+  bool get isAvailable => installed && status == 'ready';
 
   factory ProviderInfo.fromJson(Map<String, dynamic> j) => ProviderInfo(
     id: j['id'] as String,
     name: j['name'] as String? ?? j['id'] as String,
+    installed: j['installed'] as bool? ?? true,
+    status: j['status'] as String? ?? 'ready',
+    version: j['version'] as String?,
+    message: j['message'] as String?,
   );
 }
 

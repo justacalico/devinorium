@@ -16,6 +16,7 @@ pub mod acp;
 pub mod ask;
 pub mod codex;
 pub mod parts;
+pub mod status;
 pub mod version;
 
 pub use ask::{AskCallback, AskOption, AskOutcome, AskQuestion, AskRequest, AskResponse};
@@ -23,6 +24,7 @@ pub use parts::{
     collect_text, collect_thinking, strip_plan_markup_from_parts, MessagePart, PartCallback,
     PartEvent,
 };
+pub use status::{ProviderStatus, ProviderStatusCache};
 pub use version::ProviderVersion;
 
 use std::future::Future;

@@ -398,6 +398,122 @@ void main() {
     );
 
     test(
+      'bootstrap falls back to the user provider when the persisted provider is unavailable',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'devinorium_selected_provider': 'opencode',
+        });
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
+                'id': 1,
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'totp_enabled': false,
+                'provider_id': 'devin-cli',
+                'provider_command': 'devin',
+              }),
+              _json(200, [
+                {
+                  'id': 'devin-cli',
+                  'name': 'Devin CLI',
+                  'installed': true,
+                  'status': 'ready',
+                },
+                {
+                  'id': 'opencode',
+                  'name': 'OpenCode',
+                  'installed': false,
+                  'status': 'error',
+                  'message': '`opencode` was not found on PATH',
+                },
+              ]),
+              _json(200, [
+                {'id': 'glm-5-2', 'label': 'GLM'},
+              ]),
+              _json(200, [
+                {
+                  'id': 1,
+                  'name': 'p',
+                  'path': '/x',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+              ]),
+              _json(200, []),
+              _json(200, []),
+            ]),
+          ),
+        );
+
+        await state.bootstrap();
+        expect(state.view, AppView.app);
+        expect(state.selectedProvider, 'devin-cli');
+        expect(state.selectedModel, 'glm-5-2');
+      },
+    );
+
+    test(
+      'bootstrap keeps the persisted provider when nothing is installed',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'devinorium_selected_provider': 'opencode',
+        });
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
+                'id': 1,
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'totp_enabled': false,
+                'provider_id': 'devin-cli',
+                'provider_command': 'devin',
+              }),
+              _json(200, [
+                {
+                  'id': 'devin-cli',
+                  'name': 'Devin CLI',
+                  'installed': false,
+                  'status': 'error',
+                },
+                {
+                  'id': 'opencode',
+                  'name': 'OpenCode',
+                  'installed': false,
+                  'status': 'error',
+                },
+              ]),
+              // No /api/models response: an unavailable provider never asks
+              // for a catalog. The projects reply landing here proves the
+              // request order skipped it.
+              _json(200, [
+                {
+                  'id': 1,
+                  'name': 'p',
+                  'path': '/x',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+              ]),
+              _json(200, []),
+              _json(200, []),
+            ]),
+          ),
+        );
+
+        await state.bootstrap();
+        expect(state.view, AppView.app);
+        expect(state.selectedProvider, 'opencode');
+        expect(state.models, isEmpty);
+        expect(state.projects, hasLength(1));
+      },
+    );
+
+    test(
       'bootstrap falls back to normal permission when persisted permission is invalid',
       () async {
         SharedPreferences.setMockInitialValues({

@@ -381,13 +381,25 @@ mixin AuthStore on AppStateBase {
         await ensureModelsFor(_user!.providerId);
       }
       _globalError = '';
-      // The installed version depends on the provider command, so re-check
-      // it whenever the saved provider config changes.
+      // The installed version and the availability probe both depend on the
+      // provider command, so re-check them whenever the saved config changes.
       unawaited(refreshProviderVersion());
+      unawaited(_refreshProviders());
     } catch (e) {
       _globalError = '$e';
     }
     notifyListeners();
+  }
+
+  /// Refetch the provider list so availability flags follow the last probe —
+  /// e.g. after a command edit or a successful health check.
+  Future<void> _refreshProviders() async {
+    try {
+      _providers = await api.listProviders();
+      notifyListeners();
+    } catch (_) {
+      // Keep the last known list on failure.
+    }
   }
 
   /// Save the CLI command for a single provider without changing the
@@ -413,6 +425,9 @@ mixin AuthStore on AppStateBase {
     try {
       await api.testProvider(providerId: providerId, command: command);
       _globalError = '';
+      // A passing health check means the binary answers; refresh the
+      // availability flags without waiting for the server-side TTL.
+      unawaited(_refreshProviders());
       notifyListeners();
     } catch (e) {
       _globalError = '$e';
@@ -513,6 +528,7 @@ mixin AuthStore on AppStateBase {
     _selectedProvider = '';
     _modelsProvider = '';
     _models = [];
+    _modelsByProvider.clear();
     _providers = [];
     await _saveSelectedProvider('');
     await _saveSelectedModel('');

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::session::CurrentUser;
 use crate::providers;
+use crate::providers::status::ProviderStatus;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -18,8 +19,42 @@ pub fn router() -> Router<AppState> {
         .route("/api/providers/health", post(health))
 }
 
-async fn list(CurrentUser(_user): CurrentUser) -> Response {
-    axum::Json(providers::available_providers()).into_response()
+/// One provider entry in `GET /api/providers`: the registry metadata plus the
+/// availability probe for the command the current user configured for it.
+#[derive(Debug, Serialize)]
+pub struct ProviderEntry {
+    pub id: &'static str,
+    pub name: &'static str,
+    #[serde(flatten)]
+    pub status: ProviderStatus,
+}
+
+/// List the registered providers with the availability probe result for the
+/// command the current user configured for each. Providers whose binary is
+/// missing are still listed so the frontend can show them greyed out, the
+/// same shape t3code's `ServerProvider` snapshot uses.
+async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
+    let entries =
+        futures::future::join_all(providers::available_providers().into_iter().map(|p| {
+            let state = state.clone();
+            let command = user.command_for_provider(p.id);
+            async move {
+                let status = if command.is_empty() {
+                    // An empty command means the app-level provider is in use,
+                    // which only happens with an injected stub in tests.
+                    ProviderStatus::ready()
+                } else {
+                    state.provider_status.status_for(&command).await
+                };
+                ProviderEntry {
+                    id: p.id,
+                    name: p.name,
+                    status,
+                }
+            }
+        }))
+        .await;
+    axum::Json(entries).into_response()
 }
 
 #[derive(Debug, Serialize)]
@@ -125,7 +160,11 @@ async fn health(
         }
     };
 
-    match provider.health_check().await {
+    let result = provider.health_check().await;
+    // The check just exercised the binary: re-probe on the next list so a
+    // command the user just fixed or installed does not stay greyed out.
+    state.provider_status.invalidate(command);
+    match result {
         Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => (
             axum::http::StatusCode::BAD_GATEWAY,

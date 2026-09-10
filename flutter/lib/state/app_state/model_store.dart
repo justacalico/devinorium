@@ -28,6 +28,7 @@ mixin ModelStore on AppStateBase {
 
   /// In-memory model catalog per provider. Tapping through providers in the
   /// model switch does not refetch a provider once it is in here.
+  @override
   final Map<String, List<ModelInfo>> _modelsByProvider = {};
   @override
   List<ModelInfo> get models => _models;
@@ -101,6 +102,12 @@ mixin ModelStore on AppStateBase {
 
   @override
   Future<void> setSelectedProvider(String id) async {
+    // A provider known to be missing its CLI cannot be selected. Ids not in
+    // the fetched list are allowed so the selection still works before the
+    // provider list has loaded.
+    for (final p in _providers) {
+      if (p.id == id && !p.isAvailable) return;
+    }
     final store = _activeStore;
     if (store != null) {
       store.selectedProvider = id;
@@ -153,10 +160,22 @@ mixin ModelStore on AppStateBase {
   Future<void> ensureModelsFor(String providerId) async {
     if (providerId.isEmpty) return;
 
+    // A provider whose CLI is missing has no catalog to list.
+    for (final p in _providers) {
+      if (p.id == providerId && !p.isAvailable) {
+        ++_modelsRequestSeq;
+        _models = [];
+        _modelsProvider = providerId;
+        notifyListeners();
+        return;
+      }
+    }
+
     // Serve from in-memory cache first so switching providers in the picker
     // does not hit the network more than once per provider.
     final cached = _modelsByProvider[providerId];
     if (cached != null) {
+      ++_modelsRequestSeq;
       _models = List.of(cached);
       _modelsProvider = providerId;
       _revalidateSelectedModel();
@@ -302,20 +321,43 @@ mixin ModelStore on AppStateBase {
       _providers = [];
     }
 
-    String effectiveProvider;
-    if (_selectedProvider.isNotEmpty &&
-        _providers.any((p) => p.id == _selectedProvider)) {
-      effectiveProvider = _selectedProvider;
-    } else if (userProvider.isNotEmpty &&
-        _providers.any((p) => p.id == userProvider)) {
-      effectiveProvider = userProvider;
-    } else if (_providers.isNotEmpty) {
-      effectiveProvider = _providers.first.id;
-    } else {
-      effectiveProvider = '';
+    ProviderInfo? findProvider(String id) {
+      for (final p in _providers) {
+        if (p.id == id) return p;
+      }
+      return null;
     }
 
-    if (effectiveProvider.isEmpty) {
+    // Same fallback order as t3code's resolveSelectableProviderInstanceEntry:
+    // keep the requested provider only while it is usable, then the account
+    // default, then the first available one. When nothing is usable the
+    // stored selection is retained so the picker can show it greyed out.
+    final selected = findProvider(_selectedProvider);
+    final userDefault = findProvider(userProvider);
+    ProviderInfo? firstAvailable;
+    for (final p in _providers) {
+      if (p.isAvailable) {
+        firstAvailable = p;
+        break;
+      }
+    }
+    final String effectiveProvider;
+    if (selected != null && selected.isAvailable) {
+      effectiveProvider = selected.id;
+    } else if (userDefault != null && userDefault.isAvailable) {
+      effectiveProvider = userDefault.id;
+    } else if (firstAvailable != null) {
+      effectiveProvider = firstAvailable.id;
+    } else {
+      effectiveProvider = selected?.id ?? (_providers.isNotEmpty ? _providers.first.id : '');
+    }
+
+    final effectiveEntry = findProvider(effectiveProvider);
+    if (effectiveProvider.isEmpty ||
+        (effectiveEntry != null && !effectiveEntry.isAvailable)) {
+      // A provider whose CLI is missing has no catalog to list; skip the
+      // request rather than making the backend spawn a binary that is not
+      // there.
       _models = [];
       _modelsProvider = '';
     } else if (effectiveProvider == _modelsProvider && _models.isNotEmpty) {
@@ -324,6 +366,7 @@ mixin ModelStore on AppStateBase {
       try {
         final models = await api.listModels(provider: effectiveProvider);
         if (seq != _modelsRequestSeq) return;
+        _modelsByProvider[effectiveProvider] = models;
         _models = models;
         _modelsProvider = effectiveProvider;
         _revalidateSelectedModel();

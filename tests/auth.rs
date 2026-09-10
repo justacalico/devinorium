@@ -65,6 +65,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         config: Arc::new(cfg.clone()),
         db: database.clone(),
         provider: Arc::from(provider),
+        provider_status: devinorium::providers::ProviderStatusCache::new(),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),

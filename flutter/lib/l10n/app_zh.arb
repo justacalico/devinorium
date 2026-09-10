@@ -308,6 +308,7 @@
     }
   },
   "providerIsReachable": "提供商可访问",
+  "providerUnavailable": "不可用",
   "providerCommandHint": "devin",
   "providerTestFailed": "提供商测试失败：{error}",
   "@providerTestFailed": {

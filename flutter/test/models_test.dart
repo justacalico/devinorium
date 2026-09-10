@@ -75,6 +75,40 @@ void main() {
     });
   });
 
+  group('ProviderInfo', () {
+    test('parses availability fields from the server', () {
+      final p = ProviderInfo.fromJson({
+        'id': 'opencode',
+        'name': 'OpenCode',
+        'installed': false,
+        'status': 'error',
+        'version': null,
+        'message': '`opencode` was not found on PATH',
+      });
+      expect(p.installed, isFalse);
+      expect(p.status, 'error');
+      expect(p.message, contains('not found'));
+      expect(p.isAvailable, isFalse);
+    });
+
+    test('a missing binary keeps the provider visible but unavailable', () {
+      final p = ProviderInfo.fromJson({
+        'id': 'codex',
+        'installed': true,
+        'status': 'error',
+      });
+      expect(p.installed, isTrue);
+      expect(p.isAvailable, isFalse);
+    });
+
+    test('defaults to available when the server omits the fields', () {
+      final p = ProviderInfo.fromJson({'id': 'devin-cli', 'name': 'Devin CLI'});
+      expect(p.installed, isTrue);
+      expect(p.status, 'ready');
+      expect(p.isAvailable, isTrue);
+    });
+  });
+
   group('ProviderVersion', () {
     test('parses a full version response', () {
       final v = ProviderVersion.fromJson({

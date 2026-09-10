@@ -527,6 +527,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get providerIsReachable => '提供商可访问';
 
   @override
+  String get providerUnavailable => '不可用';
+
+  @override
   String get providerCommandHint => 'devin';
 
   @override

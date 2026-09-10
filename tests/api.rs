@@ -445,6 +445,7 @@ async fn app_state() -> (AppState, db::Db) {
         config: Arc::new(cfg.clone()),
         db: database.clone(),
         provider: Arc::new(StubProvider { delay_ms: 0 }) as Arc<dyn Provider>,
+        provider_status: devinorium::providers::ProviderStatusCache::new(),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
@@ -4243,6 +4244,74 @@ async fn provider_list_requires_auth_and_returns_devin_cli() {
     let body = body_str(resp.into_body()).await;
     assert!(body.contains("devin-cli"), "body: {body}");
     assert!(body.contains("Devin CLI"), "body: {body}");
+    // Every entry reports whether its CLI was found on this host.
+    assert!(body.contains("\"installed\""), "body: {body}");
+    assert!(body.contains("\"status\""), "body: {body}");
+}
+
+#[tokio::test]
+async fn provider_list_reports_missing_binary() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // Point the default provider at a binary that does not exist.
+    sqlx::query(
+        "UPDATE users SET provider_command = '/nonexistent/devin' WHERE username = 'owner'",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/providers", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let entries: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    let devin = entries
+        .iter()
+        .find(|e| e["id"] == "devin-cli")
+        .expect("devin-cli entry");
+    assert_eq!(devin["installed"], false, "body: {body}");
+    assert_eq!(devin["status"], "error", "body: {body}");
+    assert!(
+        devin["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("not found"),
+        "body: {body}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn provider_list_reports_ready_for_default_command() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // `true` ignores --version and exits 0 on every supported host, so the
+    // entry is ready.
+    sqlx::query("UPDATE users SET provider_command = 'true' WHERE username = 'owner'")
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/providers", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let entries: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    let devin = entries
+        .iter()
+        .find(|e| e["id"] == "devin-cli")
+        .expect("devin-cli entry");
+    assert_eq!(devin["installed"], true, "body: {body}");
+    assert_eq!(devin["status"], "ready", "body: {body}");
 }
 
 #[tokio::test]

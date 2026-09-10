@@ -1082,6 +1082,12 @@ abstract class AppLocalizations {
   /// **'Provider is reachable'**
   String get providerIsReachable;
 
+  /// No description provided for @providerUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable'**
+  String get providerUnavailable;
+
   /// No description provided for @providerCommandHint.
   ///
   /// In en, this message translates to:
