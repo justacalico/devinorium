@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.53.0 - 2026-09-10
+#### Features
+- 更新关于页描述文案 - (cefadb6) - HttpAnimations
+
+- - -
+
 ## v0.52.1 - 2026-09-10
 #### Bug Fixes
 - 修复侧边栏线程工作树状态同步 - (833a40b) - HttpAnimations
