@@ -28,6 +28,17 @@ class _ModelsApi extends ApiService {
   }
 
   @override
+  Future<List<Thread>> listThreads({int? limit, int? offset}) =>
+      Future.value(const []);
+
+  @override
+  Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
+      Future.value(const []);
+
+  @override
+  Future<List<String>> getThreadRuns() => Future.value(const []);
+
+  @override
   Future<void> updateThreadSettings(
     String id, {
     String? provider,
@@ -159,6 +170,15 @@ void main() {
 
     await tester.tap(find.byKey(const Key('mobile_provider_dropdown')));
     await tester.pumpAndSettle();
+
+    final selectedMenuItem = find.ancestor(
+      of: find.text('Devin CLI'),
+      matching: find.byType(MenuItemButton),
+    );
+    expect(
+      find.descendant(of: selectedMenuItem, matching: find.byIcon(Icons.check)),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('OpenCode'));
     await tester.pumpAndSettle();
