@@ -18,6 +18,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 
 class _FakeApiService extends ApiService {
   int updateMeCalls = 0;
@@ -186,6 +187,9 @@ class _FakeVersionChecker extends VersionChecker {
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: state.locale,
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<AppState>.value(value: state),
@@ -810,6 +814,56 @@ void main() {
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
     expect(state.locale, const Locale('en'));
+  });
+
+  testWidgets('Language selector can switch to Simplified Chinese', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Simplified Chinese'));
+    await tester.pumpAndSettle();
+    expect(state.locale, const Locale('zh'));
+  });
+
+  testWidgets('Personalization tab renders in Simplified Chinese', (tester) async {
+    final state = AppState.test(
+      locale: const Locale('zh'),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    expect(find.text('语言'), findsOneWidget);
+    expect(find.text('简体中文'), findsOneWidget);
   });
 
   testWidgets('Git section lists GitLab and GitHub', (tester) async {

@@ -70,11 +70,12 @@ class _SettingsPageState extends State<SettingsPage> {
     final state = context.read<AppState>();
 
     return Selector<AppState,
-        ({bool isOwner, int settingsTopicIndex, bool hasServer})>(
+        ({bool isOwner, int settingsTopicIndex, bool hasServer, Locale locale})>(
       selector: (_, s) => (
         isOwner: s.isOwner,
         settingsTopicIndex: s.settingsTopicIndex,
         hasServer: s.multiServerState.hasAnyServer,
+        locale: s.locale,
       ),
       builder: (context, model, _) {
         final l = l10n(context);

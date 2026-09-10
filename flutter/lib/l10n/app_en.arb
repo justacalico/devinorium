@@ -318,6 +318,13 @@
     }
   },
   "languageEnglish": "English",
+  "@languageEnglish": {
+    "description": "Label for the English language option in settings"
+  },
+  "languageSimplifiedChinese": "Simplified Chinese",
+  "@languageSimplifiedChinese": {
+    "description": "Label for the Simplified Chinese language option in settings"
+  },
   "menu": "Menu",
   "newThreadIn": "New thread in {projectName}",
   "@newThreadIn": {

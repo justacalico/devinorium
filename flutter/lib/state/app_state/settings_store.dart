@@ -5,6 +5,8 @@ mixin SettingsStore on AppStateBase {
   Locale _locale = const Locale('en');
   @override
   int _settingsTopicIndex = 0;
+  static final _supportedLanguageCodes =
+      AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet();
   @override
   final _notifications = NotificationService();
   @override
@@ -20,7 +22,7 @@ mixin SettingsStore on AppStateBase {
   }
   @override
   Future<void> setLanguage(String language) async {
-    _locale = Locale(language);
+    _locale = _localeFromTag(language);
     setAppL10n(_locale);
     notifyListeners();
     try {
@@ -33,12 +35,18 @@ mixin SettingsStore on AppStateBase {
     try {
       final prefs = await SharedPreferences.getInstance();
       final value = prefs.getString('devinorium_language') ?? 'en';
-      _locale = Locale(value);
+      _locale = _localeFromTag(value);
     } catch (_) {
       _locale = const Locale('en');
     }
     setAppL10n(_locale);
     notifyListeners();
+  }
+  Locale _localeFromTag(String tag) {
+    final code = tag.contains('-') ? tag.substring(0, tag.indexOf('-')) : tag;
+    return _supportedLanguageCodes.contains(code)
+        ? Locale(code)
+        : const Locale('en');
   }
   @override
   Future<void> setNotificationsEnabled(bool enabled) async {

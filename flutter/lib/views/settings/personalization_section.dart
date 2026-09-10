@@ -70,6 +70,10 @@ class _PersonalizationSection extends StatelessWidget {
                 underline: const SizedBox.shrink(),
                 items: [
                   DropdownMenuItem(value: 'en', child: Text(l.languageEnglish)),
+                  DropdownMenuItem(
+                    value: 'zh',
+                    child: Text(l.languageSimplifiedChinese),
+                  ),
                 ],
                 onChanged: (value) {
                   if (value != null) state.setLanguage(value);
