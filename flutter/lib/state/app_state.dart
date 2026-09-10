@@ -138,7 +138,7 @@ class AppState extends AppStateBase
     List<ThreadGroup> groups = const [],
     List<ModelInfo> models = const [],
     List<ProviderInfo> providers = const [],
-    ProviderVersion? providerVersion,
+    Map<String, ProviderVersion> providerVersions = const {},
     List<GitConnection> gitConnections = const [],
     bool loadingGitConnections = false,
     String? cloneRoot,
@@ -221,7 +221,7 @@ class AppState extends AppStateBase
     _groups = groups;
     _models = models;
     _providers = providers;
-    _providerVersion = providerVersion;
+    _providerVersions.addAll(providerVersions);
     _activeProjectId = activeProjectId;
     _dialog = dialog ?? DialogKind.none;
     _mergeRequestUrl = mergeRequestUrl;

@@ -29,8 +29,10 @@ class _ProviderCard extends StatelessWidget {
           const Divider(),
           _ProviderCommandRow(state: state, provider: p),
         ],
-        const Divider(),
-        _ProviderVersionRow(state: state),
+        if (providers.isEmpty && (user?.providerId ?? '').isNotEmpty) ...[
+          const Divider(),
+          _ProviderVersionRow(state: state, providerId: user!.providerId),
+        ],
       ],
     );
   }
@@ -38,36 +40,43 @@ class _ProviderCard extends StatelessWidget {
 
 class _ProviderVersionRow extends StatelessWidget {
   final AppState state;
-  const _ProviderVersionRow({required this.state});
+  final String providerId;
+  const _ProviderVersionRow({required this.state, required this.providerId});
 
   @override
   Widget build(BuildContext context) {
-    final l = l10n(context);
-    final theme = Theme.of(context);
-    final version = state.providerVersion;
-    final installed = version?.installedVersion;
-    final latest = version?.latestVersion;
+    // The version arrives asynchronously; rebuild when AppState notifies.
+    return ListenableBuilder(
+      listenable: state,
+      builder: (context, _) {
+        final l = l10n(context);
+        final theme = Theme.of(context);
+        final version = state.providerVersionFor(providerId);
+        final installed = version?.installedVersion;
+        final latest = version?.latestVersion;
 
-    Widget trailing;
-    if (version != null && version.updateAvailable && latest != null) {
-      trailing = Chip(
-        label: Text(l.providerUpdateAvailable(latest)),
-        visualDensity: VisualDensity.compact,
-      );
-    } else if (installed != null && latest != null) {
-      trailing = Text(
-        l.providerUpToDate,
-        style: theme.textTheme.bodySmall
-            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-      );
-    } else {
-      trailing = const SizedBox.shrink();
-    }
+        Widget trailing;
+        if (version != null && version.updateAvailable && latest != null) {
+          trailing = Chip(
+            label: Text(l.providerUpdateAvailable(latest)),
+            visualDensity: VisualDensity.compact,
+          );
+        } else if (installed != null && latest != null) {
+          trailing = Text(
+            l.providerUpToDate,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          );
+        } else {
+          trailing = const SizedBox.shrink();
+        }
 
-    return _SettingsRow(
-      label: l.providerVersion,
-      value: installed ?? l.noValue,
-      trailing: trailing,
+        return _SettingsRow(
+          label: l.providerVersion,
+          value: installed ?? l.noValue,
+          trailing: trailing,
+        );
+      },
     );
   }
 }
@@ -159,6 +168,8 @@ class _ProviderCommandRow extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         _ProviderCommandField(state: state, providerId: provider.id),
+        const SizedBox(height: 12),
+        _ProviderVersionRow(state: state, providerId: provider.id),
       ],
     );
   }
