@@ -50,7 +50,7 @@ void main() {
 
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(find.text('Development merge request'), findsOneWidget);
-      expect(find.text(_mrUrl), findsOneWidget);
+      expect(find.textContaining(_mrUrl), findsOneWidget);
       expect(find.text('Open'), findsOneWidget);
       expect(find.text('Copy'), findsOneWidget);
       expect(find.text('Close'), findsOneWidget);

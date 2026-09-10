@@ -70,24 +70,11 @@ class DevMergeRequestDialog extends StatelessWidget {
       title: Text(l10n(context).devMergeRequestTitle),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              hasUrl
-                  ? l10n(context).devMergeRequestBody(mergeRequestId, mergeRequestUrl)
-                  : l10n(context).devMergeRequestBodyNoUrl(mergeRequestId),
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (hasUrl) ...[
-              const SizedBox(height: 16),
-              SelectableText(
-                mergeRequestUrl,
-                style: const TextStyle(fontFamily: 'monospace'),
-              ),
-            ],
-          ],
+        child: Text(
+          hasUrl
+              ? l10n(context).devMergeRequestBody(mergeRequestId, mergeRequestUrl)
+              : l10n(context).devMergeRequestBodyNoUrl(mergeRequestId),
+          style: theme.textTheme.bodyMedium,
         ),
       ),
       actions: [
