@@ -5,9 +5,15 @@ A self-hosted web UI for AI coding agents.
 - Backend: Rust (axum + tokio + SQLite)
 - Frontend: Flutter web, built with `./scripts/build-flutter.sh` and embedded from `frontend/dist/` at compile time
 
-![Devinorium running](docs/images/running.png)
+<p align="center">
+  <img src="docs/images/running.png" width="100%" alt="Devinorium running" />
+</p>
 
-<img src="docs/images/mobile-3.png" width="240" alt="Devinorium sidebar on mobile"> <img src="docs/images/mobile-2.png" width="240" alt="Devinorium thread view on mobile"> <img src="docs/images/mobile-1.png" width="240" alt="Devinorium code editor on mobile">
+<p align="center">
+  <img src="docs/images/mobile-3.png" width="30%" alt="Devinorium sidebar on mobile" />
+  <img src="docs/images/mobile-2.png" width="30%" alt="Devinorium thread view on mobile" />
+  <img src="docs/images/mobile-1.png" width="30%" alt="Devinorium code editor on mobile" />
+</p>
 
 ## What it is
 
