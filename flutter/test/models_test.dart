@@ -850,6 +850,115 @@ void main() {
       });
       expect(t.linkedMr, isNull);
     });
+
+    test('worktreeName uses basename of worktree_path', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'worktree_path': '/repo/.devinorium-worktrees/feature-x',
+        'branch': 'feature/x',
+      });
+      expect(t.worktreeName, 'feature-x');
+    });
+
+    test('worktreeName falls back to branch for worktree mode', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'env_mode': 'worktree',
+        'branch': 'feature/x',
+      });
+      expect(t.worktreeName, 'feature/x');
+    });
+
+    test('worktreeName is null for local mode without worktree', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'branch': 'main',
+      });
+      expect(t.worktreeName, isNull);
+    });
+
+    test('worktreeName is null when branch and worktree_path are empty', () {
+      final t = Thread(
+        id: 'abc',
+        title: 'Thread',
+        projectId: 1,
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      );
+      expect(t.worktreeName, isNull);
+    });
+
+    test('worktreeName handles Windows backslash paths', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'worktree_path': r'C:\repo\.devinorium-worktrees\feature-x',
+      });
+      expect(t.worktreeName, 'feature-x');
+    });
+
+    test('worktreeName handles trailing slash', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'worktree_path': '/repo/.devinorium-worktrees/feature-x/',
+      });
+      expect(t.worktreeName, 'feature-x');
+    });
+
+    test('worktreeName rejects empty worktree_path with branch fallback', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'env_mode': 'worktree',
+        'branch': 'feature/x',
+        'worktree_path': '',
+      });
+      expect(t.worktreeName, 'feature/x');
+    });
+
+    test('worktreeName rejects root-only worktree_path', () {
+      final posix = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'worktree_path': '/',
+        'branch': 'feature/x',
+        'env_mode': 'worktree',
+      });
+      expect(posix.worktreeName, 'feature/x');
+
+      final windows = Thread.fromJson({
+        'id': 'def',
+        'title': 'Thread',
+        'project_id': 1,
+        'worktree_path': r'C:\',
+        'branch': 'feature/x',
+        'env_mode': 'worktree',
+      });
+      expect(windows.worktreeName, 'feature/x');
+    });
+
+    test('worktreeName is null for worktree mode without branch or path', () {
+      final t = Thread.fromJson({
+        'id': 'abc',
+        'title': 'Thread',
+        'project_id': 1,
+        'env_mode': 'worktree',
+      });
+      expect(t.worktreeName, isNull);
+    });
   });
 
   group('ThreadGroup', () {

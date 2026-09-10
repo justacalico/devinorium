@@ -3530,4 +3530,209 @@ void main() {
     expect(find.text('!42'), findsNothing);
     expect(find.byIcon(Icons.merge), findsNothing);
   });
+
+  testWidgets('Thread tile shows worktree name under title', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 't1',
+          title: 'WT thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          worktreePath: '/x/.project-worktrees/project-wt',
+          envMode: 'worktree',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('WT thread'), findsOneWidget);
+    expect(find.text('project-wt'), findsOneWidget);
+    expect(find.byIcon(Icons.fork_right), findsOneWidget);
+  });
+
+  testWidgets('Thread tile hides worktree label when no worktree', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 't1',
+          title: 'Local thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          branch: 'main',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Local thread'), findsOneWidget);
+    expect(find.byIcon(Icons.fork_right), findsNothing);
+  });
+
+  testWidgets('Thread tile shows branch fallback for worktree mode', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 't1',
+          title: 'WT thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          branch: 'feature/x',
+          envMode: 'worktree',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('WT thread'), findsOneWidget);
+    expect(find.text('feature/x'), findsOneWidget);
+    expect(find.byIcon(Icons.fork_right), findsOneWidget);
+  });
+
+  testWidgets('Thread tile uses full worktree path as tooltip', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 't1',
+          title: 'WT thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          worktreePath: '/x/.project-worktrees/project-wt',
+          envMode: 'worktree',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final tooltipFinder = find.ancestor(
+      of: find.text('project-wt'),
+      matching: find.byType(Tooltip),
+    );
+    final tooltip = tester.widget<Tooltip>(tooltipFinder);
+    expect(tooltip.message, '/x/.project-worktrees/project-wt');
+  });
+
+  testWidgets('Thread tile tooltip falls back to branch when no worktree path', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 't1',
+          title: 'WT thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+          branch: 'feature/x',
+          envMode: 'worktree',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final tooltipFinder = find.ancestor(
+      of: find.text('feature/x'),
+      matching: find.byType(Tooltip),
+    );
+    final tooltip = tester.widget<Tooltip>(tooltipFinder);
+    expect(tooltip.message, 'feature/x');
+  });
 }
