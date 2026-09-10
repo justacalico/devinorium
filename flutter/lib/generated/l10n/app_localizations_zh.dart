@@ -919,6 +919,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mergeRequest => '合并请求';
 
   @override
+  String get linkMergeRequest => '关联合并请求';
+
+  @override
+  String get unlinkMergeRequest => '取消关联合并请求';
+
+  @override
+  String get mergeRequestUrlHint => 'GitLab 合并请求 URL';
+
+  @override
+  String get invalidMergeRequestUrl => '请输入有效的 GitLab 合并请求 URL';
+
+  @override
   String get overview => '概览';
 
   @override
@@ -1377,4 +1389,26 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get usageLoadFailed => '加载用量失败';
+
+  @override
+  String get devMergeRequestTitle => '开发合并请求';
+
+  @override
+  String devMergeRequestBody(String id, String url) {
+    return '你正在一个开发合并请求 (#$id) 上。在此处反馈问题：\n\n$url';
+  }
+
+  @override
+  String devMergeRequestBodyNoUrl(String id) {
+    return '你正在一个开发合并请求 (#$id) 上。此构建中没有合并请求 URL。';
+  }
+
+  @override
+  String get devMergeRequestOpen => '打开';
+
+  @override
+  String get devMergeRequestCopy => '复制';
+
+  @override
+  String get devMergeRequestClose => '关闭';
 }
