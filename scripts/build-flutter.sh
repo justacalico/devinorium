@@ -13,8 +13,17 @@ echo "Cleaning previous Flutter build artifacts..."
 flutter clean
 flutter pub get
 
+MERGE_REQUEST_ID="${MERGE_REQUEST_ID:-}"
+MERGE_REQUEST_URL="${MERGE_REQUEST_URL:-}"
+
+DART_DEFINES=()
+if [ -n "$MERGE_REQUEST_ID" ]; then
+  DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
+  DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
+fi
+
 echo "Building Flutter web frontend (release, wasm)..."
-flutter build web --release --wasm
+flutter build web --release --wasm "${DART_DEFINES[@]}"
 
 BUILD_OUTPUT="$FLUTTER_DIR/build/web"
 DIST_DIR="$PROJECT_DIR/frontend/dist"
