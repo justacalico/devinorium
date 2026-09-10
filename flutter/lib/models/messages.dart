@@ -41,6 +41,7 @@ class FileDiff {
   int get hashCode => Object.hash(path, oldText, newText);
 }
 
+
 class ToolCallData {
   final String id;
   final String title;
@@ -51,6 +52,7 @@ class ToolCallData {
   final String? outputPreview;
   final List<String> changedFiles;
   final List<FileDiff> diffs;
+  int? _hashCode;
 
   ToolCallData({
     required this.id,
@@ -121,7 +123,9 @@ class ToolCallData {
   }
 
   @override
-  int get hashCode {
+  int get hashCode => _hashCode ??= _computeHashCode();
+
+  int _computeHashCode() {
     var h = Object.hash(
       id,
       title,
@@ -146,6 +150,7 @@ class MessagePart {
   final String? id;
   final String? content;
   final ToolCallData? toolCall;
+  int? _hashCode;
 
   MessagePart._({required this.type, this.id, this.content, this.toolCall});
 
@@ -187,7 +192,7 @@ class MessagePart {
   }
 
   @override
-  int get hashCode => Object.hash(type, id, content, toolCall);
+  int get hashCode => _hashCode ??= Object.hash(type, id, content, toolCall);
 }
 
 class Message {
@@ -204,8 +209,10 @@ class Message {
   final bool truncated;
   final int? totalChars;
   final int? truncatedAt;
+  int? _partsDigest;
+  int? _attachmentsDigest;
 
-  const Message({
+  Message({
     this.id,
     required this.role,
     required this.content,
@@ -219,7 +226,12 @@ class Message {
     this.truncated = false,
     this.totalChars,
     this.truncatedAt,
-  });
+    int? partsDigest,
+    int? attachmentsDigest,
+  // ignore: prefer_initializing_formals
+  })  : _partsDigest = partsDigest,
+        // ignore: prefer_initializing_formals
+        _attachmentsDigest = attachmentsDigest;
 
   factory Message.fromJson(Map<String, dynamic> j) => Message(
     id: (j['id'] as num?)?.toInt(),
@@ -271,21 +283,36 @@ class Message {
     bool? truncated,
     int? totalChars,
     int? truncatedAt,
-  }) => Message(
-    id: id ?? this.id,
-    role: role ?? this.role,
-    content: content ?? this.content,
-    thinking: thinking ?? this.thinking,
-    attachments: attachments ?? this.attachments,
-    parts: parts ?? this.parts,
-    model: model ?? this.model,
-    clientMessageId: clientMessageId ?? this.clientMessageId,
-    turnId: turnId ?? this.turnId,
-    seq: seq ?? this.seq,
-    truncated: truncated ?? this.truncated,
-    totalChars: totalChars ?? this.totalChars,
-    truncatedAt: truncatedAt ?? this.truncatedAt,
-  );
+  }) {
+    final nextAttachments = attachments ?? this.attachments;
+    final nextParts = parts ?? this.parts;
+    return Message(
+      id: id ?? this.id,
+      role: role ?? this.role,
+      content: content ?? this.content,
+      thinking: thinking ?? this.thinking,
+      attachments: nextAttachments,
+      attachmentsDigest: identical(nextAttachments, this.attachments)
+          ? _attachmentsDigest
+          : null,
+      parts: nextParts,
+      partsDigest: identical(nextParts, this.parts) ? _partsDigest : null,
+      model: model ?? this.model,
+      clientMessageId: clientMessageId ?? this.clientMessageId,
+      turnId: turnId ?? this.turnId,
+      seq: seq ?? this.seq,
+      truncated: truncated ?? this.truncated,
+      totalChars: totalChars ?? this.totalChars,
+      truncatedAt: truncatedAt ?? this.truncatedAt,
+    );
+  }
+
+  int get partsDigest =>
+      _partsDigest ??= listDigest(parts ?? const <MessagePart>[]);
+
+  int get attachmentsDigest =>
+      _attachmentsDigest ??= listDigest(attachments ?? const <Attachment>[]);
+
 
   @override
   bool operator ==(Object other) {
@@ -302,8 +329,8 @@ class Message {
         truncated == other.truncated &&
         totalChars == other.totalChars &&
         truncatedAt == other.truncatedAt &&
-        listEquals(attachments, other.attachments) &&
-        listEquals(parts, other.parts);
+        attachmentsDigest == other.attachmentsDigest &&
+        partsDigest == other.partsDigest;
   }
 
   @override
@@ -321,12 +348,8 @@ class Message {
       totalChars,
       truncatedAt,
     );
-    for (final a in attachments ?? const <Attachment>[]) {
-      h = Object.hash(h, a);
-    }
-    for (final p in parts ?? const <MessagePart>[]) {
-      h = Object.hash(h, p);
-    }
+    h = Object.hash(h, attachmentsDigest);
+    h = Object.hash(h, partsDigest);
     return h;
   }
 }
@@ -402,4 +425,22 @@ class MessagePage {
     }
     return h;
   }
+}
+
+/// Combines an existing digest with the hash of the next element. Using a
+/// fold keeps [StreamingSnapshot] and [Message] digest values consistent
+/// without recomputing the whole list from scratch on every append.
+int combineDigests(int digest, int value) =>
+    digest == 0 ? value : Object.hash(digest, value);
+
+/// Computes an order-sensitive digest for an arbitrary list of hashable
+/// values by folding [combineDigests] over the elements. This is the same
+/// algorithm used for streaming snapshot digests so that precomputed values
+/// can be passed to [Message] safely.
+int listDigest(List<Object?> values) {
+  var d = 0;
+  for (final v in values) {
+    d = combineDigests(d, v.hashCode);
+  }
+  return d;
 }

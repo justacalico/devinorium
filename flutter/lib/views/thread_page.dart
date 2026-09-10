@@ -208,16 +208,6 @@ class _ThreadPageState extends State<ThreadPage> {
   }
 }
 
-int _streamingDigest(List<MessagePart> parts) {
-  var h = parts.length;
-  for (var i = 0; i < parts.length; i++) {
-    final p = parts[i];
-    final t = p.toolCall;
-    h = Object.hash(h, p.type, p.id, p.content, t?.status, t?.output, i);
-  }
-  return h;
-}
-
 (IconData, Color) _toolIconAndColor(String kind, ThemeData theme) {
   return switch (kind) {
     'read' => (Icons.file_open_outlined, theme.colorScheme.primary),

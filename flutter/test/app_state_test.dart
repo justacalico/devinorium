@@ -1488,7 +1488,7 @@ void main() {
       );
 
       messagesCompleter.complete(
-        const MessagePage(
+        MessagePage(
           messages: [
             Message(id: 1, role: 'user', content: 'hello', model: 'glm-5-2'),
           ],

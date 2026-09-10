@@ -2217,17 +2217,50 @@ async fn thread_run_snapshot_includes_accumulated_output() {
     let body = body_str(resp.into_body()).await;
     let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     assert_eq!(v["status"], "completed");
-    assert!(
-        v["text"].as_str().is_some_and(|s| !s.is_empty()),
-        "snapshot should include accumulated text"
-    );
-    assert!(
-        v["thinking"].as_str().is_some_and(|s| !s.is_empty()),
-        "snapshot should include accumulated thinking"
-    );
     assert_eq!(v["thinking_active"], false);
-    assert_eq!(v["tool_calls"].as_array().unwrap().len(), 1);
-    assert_eq!(v["parts"].as_array().unwrap().len(), 3);
+    let parts = v["parts"].as_array().unwrap();
+    assert_eq!(parts.len(), 3);
+    assert_eq!(
+        parts.iter().filter(|p| p["type"] == "tool_call").count(),
+        1,
+        "parts should include the tool call"
+    );
+}
+
+#[tokio::test]
+async fn thread_run_idle_snapshot_uses_compact_parts_shape() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/run"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["status"], "idle");
+    assert!(v["text"].is_null(), "idle run should not derive text");
+    assert!(
+        v["thinking"].is_null(),
+        "idle run should not derive thinking"
+    );
+    assert!(
+        v["tool_calls"].is_null(),
+        "idle run should not derive tool_calls"
+    );
+    assert!(v["parts"].as_array().unwrap().is_empty());
+    assert_eq!(v["thinking_active"], false);
 }
 
 #[tokio::test]
@@ -2369,8 +2402,8 @@ async fn thread_events_seeds_terminal_state_after_run_completes() {
         serde_json::from_str(&state_data[6..]).expect("valid state json");
     assert_eq!(state_json["status"], "completed");
     assert!(
-        state_json["text"].as_str().is_some_and(|s| !s.is_empty()),
-        "terminal state should include accumulated text"
+        state_json["parts"].is_array(),
+        "terminal state should include the parts array"
     );
 }
 

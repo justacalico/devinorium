@@ -640,6 +640,118 @@ void main() {
         expect(messages.first.clientMessageId, clientId);
       },
     );
+
+    test('throttles rapid part events to avoid rebuilding every frame', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+          ),
+        ),
+      );
+
+      var emitCount = 0;
+      store.onStateChanged = () => emitCount++;
+      await store.sendMessage();
+
+      // sendMessage emits twice before the stream starts.
+      expect(emitCount, 2);
+
+      for (var i = 0; i < 10; i++) {
+        api.controller.add(
+          SseEvent(
+            'part',
+            '{"type":"text","content":"$i"}',
+            id: '${i + 1}',
+          ),
+        );
+      }
+
+      // Let the first event emit immediately and the throttle timer fire once
+      // to flush the remaining nine events.
+      await Future.delayed(const Duration(milliseconds: 60));
+
+      expect(emitCount, lessThanOrEqualTo(4));
+      expect(store.streamingParts, hasLength(10));
+      expect(store.streamingDigest, isNot(0));
+    });
+
+    test(
+      'permission request flushes throttled part events immediately',
+      () async {
+        final api = _ControlledApiService();
+        final store = ThreadStore(
+          api: api,
+          threadId: 't1',
+          projectId: 1,
+          composerText: 'hello',
+          detail: AsyncValue.ready(
+            ThreadDetail(
+              thread: Thread(
+                id: 't1',
+                title: 'Test',
+                projectId: 1,
+                model: 'm1',
+                permissionMode: 'normal',
+                createdAt: '',
+                updatedAt: '',
+              ),
+              messages: const [],
+            ),
+          ),
+        );
+
+        var emitCount = 0;
+        store.onStateChanged = () => emitCount++;
+        await store.sendMessage();
+        expect(api.controller.hasListener, isTrue);
+        emitCount = 0;
+
+        for (var i = 0; i < 5; i++) {
+          api.controller.add(
+            SseEvent(
+              'part',
+              '{"type":"text","content":"$i"}',
+              id: '${i + 1}',
+            ),
+          );
+        }
+
+        // Give the stream controller a chance to deliver the first batch.
+        await Future.delayed(const Duration(milliseconds: 1));
+
+        // Before the 50 ms throttle window has elapsed, a permission request
+        // must flush the pending part updates and the prompt itself.
+        api.controller.add(
+          SseEvent(
+            'permission_request',
+            '{"request_id":"p1","scope":"read","title":"Read file",'
+                '"options":[]}',
+            id: '10',
+          ),
+        );
+
+        await Future.delayed(const Duration(milliseconds: 1));
+
+        expect(emitCount, greaterThan(0));
+        expect(store.pendingPermissionRequest, isNotNull);
+        expect(store.pendingPermissionRequest!.requestId, 'p1');
+      },
+    );
   });
 
   group('thread_update event', () {
@@ -1388,7 +1500,7 @@ void main() {
               createdAt: '',
               updatedAt: '',
             ),
-            messages: const [
+            messages: [
               Message(id: 1, role: 'user', content: 'hi', model: 'm1'),
             ],
             totalMessages: 2,

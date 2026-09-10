@@ -778,4 +778,104 @@ void main() {
       expect(res.snapshot.lastSeq, 1);
     });
   });
+
+  group('StreamingSnapshot digest', () {
+    test('part event updates digest incrementally', () {
+      var snapshot = StreamingSnapshot.empty;
+      final res1 = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('part', '{"type":"text","content":"a"}', id: '1'),
+      );
+      snapshot = res1.snapshot;
+      expect(snapshot.parts, hasLength(1));
+      expect(snapshot.digest, isNot(0));
+
+      final res2 = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('part', '{"type":"text","content":"b"}', id: '2'),
+      );
+      expect(res2.snapshot.digest, isNot(snapshot.digest));
+    });
+
+    test('part_update changes digest when tool call output updates', () {
+      final snapshot = runSnapshotFromJson({
+        'status': 'running',
+        'parts': [
+          {
+            'type': 'tool_call',
+            'id': 'tc-1',
+            'title': 'Read',
+            'kind': 'read',
+            'status': 'in_progress',
+          },
+        ],
+      });
+      final before = snapshot.digest;
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent(
+          'part_update',
+          '{"type":"tool_call","id":"tc-1","title":"Read","kind":"read","status":"completed","output":"hello"}',
+          id: '2',
+        ),
+      );
+      expect(res.snapshot.digest, isNot(before));
+      expect(res.snapshot.parts.first.toolCall!.output, 'hello');
+    });
+
+    test('done event resets digest to zero', () {
+      final snapshot = runSnapshotFromJson({
+        'status': 'running',
+        'parts': [{'type': 'text', 'content': 'x'}],
+      });
+      expect(snapshot.digest, isNot(0));
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: snapshot,
+        event: SseEvent('done', '{"role":"assistant","content":"x"}', id: '1'),
+      );
+      expect(res.snapshot.digest, 0);
+      expect(res.snapshot.parts, isEmpty);
+    });
+
+    test('each part event returns a new parts list', () {
+      final res1 = reduceStreamingEvent(
+        detail: null,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent('part', '{"type":"text","content":"a"}', id: '1'),
+      );
+      final res2 = reduceStreamingEvent(
+        detail: null,
+        snapshot: res1.snapshot,
+        event: SseEvent('part', '{"type":"text","content":"b"}', id: '2'),
+      );
+      expect(res1.snapshot.parts, hasLength(1));
+      expect(res2.snapshot.parts, hasLength(2));
+      expect(identical(res1.snapshot.parts, res2.snapshot.parts), isFalse);
+    });
+
+    test('digest matches StreamingSnapshot.digestForParts', () {
+      final res = reduceStreamingEvent(
+        detail: null,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent('part', '{"type":"text","content":"a"}', id: '1'),
+      );
+      expect(
+        res.snapshot.digest,
+        StreamingSnapshot.digestForParts(res.snapshot.parts),
+      );
+      final res2 = reduceStreamingEvent(
+        detail: null,
+        snapshot: res.snapshot,
+        event: SseEvent('part', '{"type":"text","content":"b"}', id: '2'),
+      );
+      expect(
+        res2.snapshot.digest,
+        StreamingSnapshot.digestForParts(res2.snapshot.parts),
+      );
+    });
+  });
 }

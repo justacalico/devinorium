@@ -56,6 +56,8 @@ mixin ThreadListStore on AppStateBase {
   List<MessagePart> get streamingParts =>
       _activeStore?.streamingParts ?? const [];
   @override
+  int get streamingDigest => _activeStore?.streamingDigest ?? 0;
+  @override
   bool get streamingThinkingActive =>
       _activeStore?.streamingThinkingActive ?? false;
   @override

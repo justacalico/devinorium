@@ -16,9 +16,7 @@ use tokio::task::AbortHandle;
 use uuid::Uuid;
 
 use crate::plan::Plan;
-use crate::providers::{
-    collect_text, collect_thinking, AskRequest, MessagePart, PermissionRequest,
-};
+use crate::providers::{AskRequest, MessagePart, PermissionRequest};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunEvent {
@@ -57,11 +55,8 @@ pub struct RunSnapshot {
     pub started_at: String,
     pub updated_at: String,
     pub error: Option<String>,
-    pub text: String,
-    pub thinking: String,
     pub thinking_active: bool,
     pub parts: Vec<MessagePart>,
-    pub tool_calls: Vec<MessagePart>,
     pub permission_request: Option<PermissionRequest>,
     pub ask_request: Option<AskRequest>,
     pub plan: Option<Plan>,
@@ -202,14 +197,7 @@ impl RunState {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let plan = self.plan.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let text = collect_text(&parts);
-        let thinking = collect_thinking(&parts);
         let thinking_active = matches!(parts.last(), Some(MessagePart::Thinking { .. }));
-        let tool_calls = parts
-            .iter()
-            .filter(|p| matches!(p, MessagePart::ToolCall { .. }))
-            .cloned()
-            .collect();
 
         let last_seq = self.next_seq.load(std::sync::atomic::Ordering::SeqCst);
 
@@ -220,11 +208,8 @@ impl RunState {
             started_at: self.started_at.clone(),
             updated_at: self.updated_at.read().await.clone(),
             error: self.error.read().await.clone(),
-            text,
-            thinking,
             thinking_active,
             parts,
-            tool_calls,
             permission_request,
             ask_request,
             plan,
@@ -448,11 +433,25 @@ mod tests {
         );
 
         let snapshot = state.snapshot().await;
-        assert_eq!(snapshot.text, "Hello world");
-        assert_eq!(snapshot.thinking, "hmm");
-        assert!(!snapshot.thinking_active);
-        assert_eq!(snapshot.tool_calls.len(), 1);
         assert_eq!(snapshot.parts.len(), 4);
+        let text_parts: Vec<&str> = snapshot
+            .parts
+            .iter()
+            .filter_map(|p| match p {
+                MessagePart::Text { content } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text_parts.concat(), "Hello world");
+        assert!(snapshot
+            .parts
+            .iter()
+            .any(|p| matches!(p, MessagePart::Thinking { .. })));
+        assert!(!snapshot.thinking_active);
+        assert!(snapshot
+            .parts
+            .iter()
+            .any(|p| matches!(p, MessagePart::ToolCall { .. })));
     }
 
     #[tokio::test]
@@ -506,7 +505,10 @@ mod tests {
 
         let snapshot = state.snapshot().await;
         assert_eq!(snapshot.parts.len(), 1);
-        assert_eq!(snapshot.tool_calls.len(), 1);
+        assert!(snapshot
+            .parts
+            .iter()
+            .any(|p| matches!(p, MessagePart::ToolCall { .. })));
     }
 
     #[tokio::test]
@@ -532,8 +534,11 @@ mod tests {
         state.apply_part(MessagePart::text("second "), true);
 
         let snapshot = state.snapshot().await;
-        assert_eq!(snapshot.text, "first ");
         assert_eq!(snapshot.parts.len(), 1);
+        assert_eq!(
+            snapshot.parts.first().and_then(|p| p.text_content()),
+            Some("first ")
+        );
     }
 
     #[tokio::test]

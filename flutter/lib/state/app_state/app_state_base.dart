@@ -204,6 +204,7 @@ abstract class AppStateBase extends ChangeNotifier {
   ComposerMode get composerMode;
   ComposerMode get defaultComposerMode;
   List<MessagePart> get streamingParts;
+  int get streamingDigest;
   bool get streamingThinkingActive;
   PermissionRequest? get pendingPermissionRequest;
   AskRequest? get pendingAskRequest;
