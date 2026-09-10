@@ -1185,6 +1185,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('About'), findsOneWidget);
+    expect(find.text('Bring your agents anywhere'), findsOneWidget);
     expect(find.text('App name'), findsOneWidget);
     expect(find.text('Devinorium'), findsOneWidget);
     expect(find.text('Version'), findsOneWidget);
