@@ -575,6 +575,19 @@ async fn body_str(b: Body) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
+async fn request_status(
+    app: Router,
+    cookie: &str,
+    method: &str,
+    uri: &str,
+    body: &str,
+) -> StatusCode {
+    app.oneshot(authed(method, uri, cookie, body))
+        .await
+        .unwrap()
+        .status()
+}
+
 async fn create_project(app: &Router, cookie: &str) -> i64 {
     let suffix = Uuid::new_v4();
     let body = format!(r#"{{"name":"test-project-{suffix}","path":"test-project-{suffix}"}}"#);
@@ -2857,6 +2870,243 @@ async fn file_manager_omits_git_status_outside_git_repo() {
     for e in entries {
         assert!(e.get("git_status").is_none());
     }
+}
+
+#[tokio::test]
+async fn file_manager_hides_hidden_names() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &cookie,
+            r#"{"name":"gitmeta","path":"gitmeta"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap();
+
+    std::fs::create_dir_all(format!("{path}/.git")).unwrap();
+    std::fs::create_dir_all(format!("{path}/.devinorium-attachments")).unwrap();
+    std::fs::write(format!("{path}/readme.txt"), "hi").unwrap();
+    std::fs::create_dir_all(format!("{path}/sub")).unwrap();
+    std::fs::write(format!("{path}/sub/.git"), "gitdir: /somewhere").unwrap();
+    std::fs::write(format!("{path}/sub/inner.txt"), "inner").unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={pid}&path=."),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let names: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&body)
+        .unwrap()
+        .into_iter()
+        .map(|e| e["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(!names.iter().any(|n| n == ".git"));
+    assert!(!names.iter().any(|n| n == ".devinorium-attachments"));
+    assert!(names.iter().any(|n| n == "sub"));
+    assert!(names.iter().any(|n| n == "readme.txt"));
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={pid}&path=sub"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let names: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&body)
+        .unwrap()
+        .into_iter()
+        .map(|e| e["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(!names.iter().any(|n| n == ".git"));
+    assert!(names.iter().any(|n| n == "inner.txt"));
+}
+
+#[tokio::test]
+async fn file_manager_rejects_hidden_paths() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &cookie,
+            r#"{"name":"gitguard","path":"gitguard"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap();
+
+    std::fs::create_dir_all(format!("{path}/.git")).unwrap();
+    std::fs::create_dir_all(format!("{path}/.devinorium-attachments")).unwrap();
+    std::fs::write(format!("{path}/.git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::write(format!("{path}/readme.txt"), "hi").unwrap();
+
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files?project_id={pid}&path=.git"),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files/content?project_id={pid}&path=.git/HEAD"),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "PUT",
+            "/api/files/content",
+            &format!(r#"{{"path":".git/config","project_id":{pid},"content":"[core]\n"}}"#),
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "DELETE",
+            &format!("/api/files/delete?project_id={pid}&path=.git"),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "POST",
+            "/api/files/dir",
+            &format!(r#"{{"path":".git/objects","project_id":{pid}}}"#),
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files?project_id={pid}&path=.devinorium-attachments"),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files/content?project_id={pid}&path=.devinorium-attachments/info"),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "POST",
+            "/api/files/move",
+            &format!(r#"{{"from":"{path}/readme.txt","to":".devinorium-attachments/readme.txt"}}"#),
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+
+    // Uploading into .git should also be rejected.
+    let boundary = "----fmboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"project_id\"\r\n\r\n{pid}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n.git\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"config\"\r\nContent-Type: text/plain\r\n\r\n[core]\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/files")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Uploading a file literally named .git should be rejected.
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"project_id\"\r\n\r\n{pid}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\".git\"\r\nContent-Type: text/plain\r\n\r\n[core]\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/files")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

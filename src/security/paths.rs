@@ -1,6 +1,34 @@
 //! Path safety: prevent path traversal while allowing any absolute path.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+
+/// Names that the file manager must hide and protect from user actions.
+pub const HIDDEN_NAMES: &[&str] = &[".devinorium-attachments", ".git"];
+
+fn is_hidden_os(name: &OsStr) -> bool {
+    HIDDEN_NAMES.iter().any(|&h| name == OsStr::new(h))
+}
+
+/// Check whether a single file or directory name is hidden.
+pub fn is_hidden_name(name: &str) -> bool {
+    HIDDEN_NAMES.contains(&name)
+}
+
+/// Check whether any component of `path` is a hidden name.
+pub fn is_hidden_path(path: &Path) -> bool {
+    path.components().any(|c| is_hidden_os(c.as_os_str()))
+}
+
+/// Check whether the part of `target` that extends beyond `root` contains a
+/// hidden name. Falls back to checking the full `target` when it is not under
+/// `root` (e.g. an absolute path resolved without sandboxing).
+pub fn is_hidden_within(root: &Path, target: &Path) -> bool {
+    match target.strip_prefix(root) {
+        Ok(suffix) => is_hidden_path(suffix),
+        Err(_) => is_hidden_path(target),
+    }
+}
 
 /// Normalize a user-supplied path string.
 ///
@@ -107,6 +135,43 @@ pub fn is_within(child: &Path, parent: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hidden_name_matches_exactly() {
+        assert!(is_hidden_name(".git"));
+        assert!(is_hidden_name(".devinorium-attachments"));
+        assert!(!is_hidden_name(".gitignore"));
+        assert!(!is_hidden_name(".Git"));
+        assert!(!is_hidden_name("git"));
+    }
+
+    #[test]
+    fn hidden_path_checks_any_component() {
+        assert!(is_hidden_path(Path::new("/project/.git")));
+        assert!(is_hidden_path(Path::new("/project/.git/config")));
+        assert!(is_hidden_path(Path::new(
+            "/project/.devinorium-attachments"
+        )));
+        assert!(!is_hidden_path(Path::new("/project/.gitignore")));
+        assert!(!is_hidden_path(Path::new("/project/src/main.rs")));
+    }
+
+    #[test]
+    fn hidden_within_allows_root_and_rejects_suffix() {
+        let root = Path::new("/project");
+        assert!(!is_hidden_within(root, Path::new("/project")));
+        assert!(!is_hidden_within(root, Path::new("/project/src")));
+        assert!(!is_hidden_within(
+            Path::new("/project.git"),
+            Path::new("/project.git/src"),
+        ));
+        assert!(is_hidden_within(root, Path::new("/project/.git")));
+        assert!(is_hidden_within(root, Path::new("/project/.git/config")));
+        assert!(is_hidden_within(
+            root,
+            Path::new("/project/sub/.devinorium-attachments"),
+        ));
+    }
 
     #[test]
     fn rejects_traversal_outside_root() {
