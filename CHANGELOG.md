@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.56.0 - 2026-09-10
+#### Features
+- 支持从文件面板拖拽文件/文件夹到输入框作为引用 - (5ad600b) - HttpAnimations
+- 启动时探测 Provider 可用性并置灰缺失的 CLI - (2748b28) - HttpAnimations
+
+- - -
+
 ## v0.55.0 - 2026-09-10
 #### Features
 - 在模型选择器中显示价格并为免费模型添加礼物图标 - (87bd91b) - HttpAnimations
