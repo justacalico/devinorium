@@ -6965,6 +6965,74 @@ async fn thread_send_auto_links_merge_request_for_project_remote() {
 }
 
 #[tokio::test]
+async fn thread_send_stream_emits_linked_mr_thread_update() {
+    let (app, _db) =
+        make_app_with_provider(Arc::new(LinkingStubProvider) as Arc<dyn Provider>).await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_gitlab_project(&app, &cookie, &repo).await;
+    let tid = make_thread(&app, &cookie, pid, "auto link stream").await;
+
+    let boundary = "----linkstreamboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nmake a merge request\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "text/event-stream"
+    );
+
+    let bytes = to_bytes(resp.into_body(), 10_000).await.unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+
+    let update_block = text
+        .split("\n\n")
+        .find(|b| b.contains("event: thread_update") && b.contains("linked_mr"))
+        .expect("thread_update with linked_mr should be emitted");
+    let data = update_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("data line")
+        .strip_prefix("data: ")
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(data).unwrap();
+    let linked = &v["linked_mr"];
+    assert_eq!(linked["hostname"], "gitlab.example.com");
+    assert_eq!(linked["project_path"], "group/project");
+    assert_eq!(linked["iid"], 42);
+    assert_eq!(
+        linked["web_url"],
+        "https://gitlab.example.com/group/project/-/merge_requests/42"
+    );
+    assert!(v["updated_at"].as_str().is_some_and(|s| !s.is_empty()));
+}
+
+#[tokio::test]
 async fn thread_send_does_not_auto_link_mismatched_remote() {
     let (app, _db) =
         make_app_with_provider(Arc::new(LinkingStubProvider) as Arc<dyn Provider>).await;

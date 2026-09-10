@@ -7,7 +7,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::api::map_err_internal;
 use crate::db::{MessageRow, NewMessage, ThreadRow};
-use crate::git::{first_gitlab_merge_request_url, parse_gitlab_remote_url};
+use crate::git::{first_gitlab_merge_request_url, parse_gitlab_remote_url, LinkedMergeRequest};
 use crate::plan::Plan;
 use crate::providers::{
     collect_text, collect_thinking, strip_plan_markup_from_parts, title_from_prompt, MessagePart,
@@ -72,37 +72,29 @@ async fn auto_link_thread_merge_request(
     thread: &ThreadRow,
     user_id: i64,
     content: &str,
-) {
-    let Some(linked) = first_gitlab_merge_request_url(content) else {
-        return;
-    };
-
-    let project_id = match thread.project_id {
-        Some(pid) => pid,
-        None => return,
-    };
+    run: &RunState,
+) -> Option<(LinkedMergeRequest, String)> {
+    let linked = first_gitlab_merge_request_url(content)?;
+    let project_id = thread.project_id?;
     let project = match state.db.get_project(project_id, user_id).await {
         Ok(Some(p)) => p,
-        Ok(None) => return,
+        Ok(None) => return None,
         Err(e) => {
             tracing::warn!(error = %e, "failed to load project for auto-link");
-            return;
+            return None;
         }
     };
 
     let remote_url = match state.git.remote_url(Path::new(&project.path)).await {
         Ok(u) => u,
-        Err(crate::git::GitError::NotEnabled | crate::git::GitError::NotRepo) => return,
+        Err(crate::git::GitError::NotEnabled | crate::git::GitError::NotRepo) => return None,
         Err(e) => {
             tracing::warn!(error = %e, "failed to read project remote for auto-link");
-            return;
+            return None;
         }
     };
 
-    let remote = match parse_gitlab_remote_url(&remote_url) {
-        Some(r) => r,
-        None => return,
-    };
+    let remote = parse_gitlab_remote_url(&remote_url)?;
 
     if linked.hostname != remote.hostname || linked.project_path != remote.project_path {
         tracing::debug!(
@@ -112,32 +104,43 @@ async fn auto_link_thread_merge_request(
             remote_project = %remote.project_path,
             "auto-link merge request does not match project remote"
         );
-        return;
+        return None;
     }
 
     let json = match serde_json::to_string(&linked) {
         Ok(j) => j,
         Err(e) => {
             tracing::warn!(error = %e, "failed to serialize linked merge request");
-            return;
+            return None;
         }
     };
 
+    if run.cancelled.load(Ordering::SeqCst) {
+        return None;
+    }
+
     // Only write the link when the row still has no linked MR, preventing a
     // manual link set while the run was in-flight from being clobbered.
-    if let Err(e) = sqlx::query(
+    let updated_at = match sqlx::query_scalar(
         "UPDATE threads
          SET linked_mr = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-         WHERE id = ? AND user_id = ? AND linked_mr IS NULL",
+         WHERE id = ? AND user_id = ? AND linked_mr IS NULL
+         RETURNING updated_at",
     )
     .bind(json)
     .bind(&thread.id)
     .bind(user_id)
-    .execute(state.db.pool())
+    .fetch_optional(state.db.pool())
     .await
     {
-        tracing::warn!(error = %e, "failed to persist auto-linked merge request");
-    }
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to persist auto-linked merge request");
+            return None;
+        }
+    };
+
+    updated_at.map(|at| (linked, at))
 }
 
 pub(crate) async fn persist_assistant_reply(
@@ -202,7 +205,20 @@ pub(crate) async fn persist_assistant_reply(
         return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
     }
 
-    auto_link_thread_merge_request(state, thread, user_id, &reply).await;
+    if !run.cancelled.load(Ordering::SeqCst) {
+        if let Some((linked, updated_at)) =
+            auto_link_thread_merge_request(state, thread, user_id, &reply, run).await
+        {
+            if !run.cancelled.load(Ordering::SeqCst) {
+                if let Ok(payload) = serde_json::to_string(&serde_json::json!({
+                    "linked_mr": serde_json::to_value(&linked).unwrap_or(serde_json::Value::Null),
+                    "updated_at": updated_at,
+                })) {
+                    run.emit("thread_update", &payload);
+                }
+            }
+        }
+    }
 
     let _ = state
         .db

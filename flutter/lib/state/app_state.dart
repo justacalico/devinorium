@@ -372,13 +372,17 @@ class AppState extends AppStateBase
     };
     store.onThreadUpdated = (updated) {
       final index = _threads.indexWhere((t) => t.id == updated.id);
-      // Active thread might not be in the loaded sidebar list yet; the next
-      // thread list refresh will pick up the updated metadata.
-      if (index < 0) return;
+      final previous = index >= 0 ? _threads[index] : null;
       final next = [..._threads];
-      next[index] = updated;
+      if (index >= 0) {
+        next[index] = updated;
+      }
       next.sort(_compareThreadsForSidebar);
       _threads = next;
+      if (updated.id == _activeThreadId &&
+          previous?.linkedMr != updated.linkedMr) {
+        unawaited(refreshLinkedMergeRequest());
+      }
     };
   }
 

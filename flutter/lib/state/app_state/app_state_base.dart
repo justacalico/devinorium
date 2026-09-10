@@ -117,6 +117,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _linkedMrProjectId(int? value);
   String? get _linkedMrBranch;
   set _linkedMrBranch(String? value);
+  int? get _linkedMrIid;
+  set _linkedMrIid(int? value);
   int? get _renameProjectId;
   set _renameProjectId(int? value);
   String? get _renameThreadId;

@@ -42,6 +42,7 @@ class _StreamableApiService extends ApiService {
   int getThreadMessagesCalls = 0;
   String? stoppedThread;
   String? lastClientMessageId;
+  Future<MergeRequestLink?> Function(int, int)? findMergeRequestByIidBuilder;
 
   _StreamableApiService(ApiClient client) : super(client: client);
 
@@ -95,6 +96,14 @@ class _StreamableApiService extends ApiService {
           beforeCursor: beforeCursor,
           limit: limit,
         );
+  }
+
+  @override
+  Future<MergeRequestLink?> findMergeRequestByIid(
+    int projectId,
+    int iid,
+  ) async {
+    return findMergeRequestByIidBuilder?.call(projectId, iid);
   }
 }
 
@@ -1481,88 +1490,83 @@ void main() {
       messagesCompleter.complete(
         const MessagePage(
           messages: [
-            Message(
-              id: 1,
-              role: 'user',
-              content: 'hello',
-              model: 'glm-5-2',
-            ),
+            Message(id: 1, role: 'user', content: 'hello', model: 'glm-5-2'),
           ],
           total: 1,
         ),
       );
       await openFuture;
 
-      expect(
-        logs,
-        anyElement(matches(RegExp(r'^Thread a opened in \d+ms$'))),
-      );
+      expect(logs, anyElement(matches(RegExp(r'^Thread a opened in \d+ms$'))));
     });
 
-    test('openThread does not log when initial messages fail to load', () async {
-      if (!kDebugMode) return;
+    test(
+      'openThread does not log when initial messages fail to load',
+      () async {
+        if (!kDebugMode) return;
 
-      final original = debugPrint;
-      final logs = <String>[];
-      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
-      addTearDown(() => debugPrint = original);
+        final original = debugPrint;
+        final logs = <String>[];
+        debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+        addTearDown(() => debugPrint = original);
 
-      final client = _clientFor([
-        _json(200, {
-          'thread': {
-            'id': 'a',
-            'title': 't',
-            'project_id': 1,
-            'model': 'glm-5-2',
-            'permission_mode': 'normal',
-            'provider_id': '',
-            'created_at': '',
-            'updated_at': '',
-          },
-          'messages': [],
-          'total_messages': 1,
-        }),
-        _json(200, {'project_id': 1, 'path': '/x'}),
-        _json(200, []),
-        _json(200, []),
-        _json(200, {
-          'thread': {
-            'id': 'a',
-            'title': 't',
-            'project_id': 1,
-            'model': 'glm-5-2',
-            'permission_mode': 'normal',
-            'provider_id': '',
-            'created_at': '',
-            'updated_at': '',
-          },
-          'messages': [],
-          'total_messages': 1,
-        }),
-      ]);
-      final messagesCompleter = Completer<MessagePage>();
-      final api = _StreamableApiService(client)
-        ..runResponse = {'status': 'idle'}
-        ..messagesResponse = messagesCompleter.future;
-      final state = AppState.test(
-        api: api,
-        projects: [
-          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
-        ],
-        activeProjectId: 1,
-      );
+        final client = _clientFor([
+          _json(200, {
+            'thread': {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': 'glm-5-2',
+              'permission_mode': 'normal',
+              'provider_id': '',
+              'created_at': '',
+              'updated_at': '',
+            },
+            'messages': [],
+            'total_messages': 1,
+          }),
+          _json(200, {'project_id': 1, 'path': '/x'}),
+          _json(200, []),
+          _json(200, []),
+          _json(200, {
+            'thread': {
+              'id': 'a',
+              'title': 't',
+              'project_id': 1,
+              'model': 'glm-5-2',
+              'permission_mode': 'normal',
+              'provider_id': '',
+              'created_at': '',
+              'updated_at': '',
+            },
+            'messages': [],
+            'total_messages': 1,
+          }),
+        ]);
+        final messagesCompleter = Completer<MessagePage>();
+        final api = _StreamableApiService(client)
+          ..runResponse = {'status': 'idle'}
+          ..messagesResponse = messagesCompleter.future;
+        final state = AppState.test(
+          api: api,
+          projects: [
+            Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+          ],
+          activeProjectId: 1,
+        );
 
-      final openFuture = state.openThread('a');
-      await pumpEventQueue();
-      messagesCompleter.completeError(Exception('network down'));
-      await openFuture;
+        final openFuture = state.openThread('a');
+        await pumpEventQueue();
+        messagesCompleter.completeError(Exception('network down'));
+        await openFuture;
 
-      expect(
-        logs,
-        isNot(anyElement(matches(RegExp(r'^Thread a opened in \d+ms$')))),
-      );
-      expect(state.globalError, contains('network down'));
-    });
+        expect(
+          logs,
+          isNot(anyElement(matches(RegExp(r'^Thread a opened in \d+ms$')))),
+        );
+        expect(state.globalError, contains('network down'));
+      },
+    );
 
     test('createNewThread requires a project', () async {
       final state = AppState.test();
@@ -2076,6 +2080,73 @@ void main() {
       expect(state.activeThreadDetail!.messages, hasLength(1));
       expect(state.activeThreadDetail!.messages.first.content, 'hello world');
       expect(state.sending, isFalse);
+    });
+
+    test('sendMessage refreshes linked merge request on thread_update', () async {
+      final client = _clientFor([_json(200, {})]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+      api.findMergeRequestByIidBuilder = (projectId, iid) async {
+        if (projectId == 1 && iid == 42) {
+          return MergeRequestLink(
+            iid: 42,
+            title: 'Linked MR',
+            state: 'opened',
+            sourceBranch: 'feature/x',
+            targetBranch: 'main',
+            webUrl: 'https://gitlab.example.com/g/p/-/merge_requests/42',
+          );
+        }
+        return null;
+      };
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (state.linkedMergeRequest != null) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      controller.add(
+        SseEvent(
+          'thread_update',
+          '{"linked_mr":{"hostname":"gitlab.example.com",'
+              '"project_path":"g/p","iid":42,'
+              '"web_url":"https://gitlab.example.com/g/p/-/merge_requests/42"},'
+              '"updated_at":"2024-01-02T00:00:00.000Z"}',
+        ),
+      );
+
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+      expect(state.linkedMergeRequest, isNotNull);
+      expect(state.linkedMergeRequest!.iid, 42);
+      expect(state.linkedMergeRequest!.title, 'Linked MR');
+      expect(state.activeThreadDetail?.thread.linkedMr, isNotNull);
+      expect(state.activeThreadDetail?.thread.linkedMr!.iid, 42);
     });
 
     test('sendMessage handles error event', () async {
