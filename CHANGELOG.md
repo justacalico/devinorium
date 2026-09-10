@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.50.1 - 2026-09-10
+#### Bug Fixes
+- 修复线程内容周期性闪烁问题 - (470d12a) - HttpAnimations
+
+- - -
+
 ## v0.50.0 - 2026-09-09
 #### Features
 - 检测并关联代理运行中创建的工作区 - (028f8e3) - HttpAnimations
