@@ -40,16 +40,34 @@ impl AcpProvider {
         if let Some(cached) = INSTALLED_CACHE.get(&self.bin) {
             return Some(cached);
         }
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            Command::new(&self.bin)
-                .arg("--version")
-                .kill_on_drop(true)
-                .output(),
-        )
-        .await
-        .ok()?
-        .ok()?;
+
+        // ExecutableFileBusy can fire when exec'ing a binary that was written
+        // moments ago (installer mid-copy, tests); retry briefly.
+        let mut output = None;
+        for attempt in 0..5 {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                Command::new(&self.bin)
+                    .arg("--version")
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await
+            {
+                Ok(Ok(out)) => {
+                    output = Some(out);
+                    break;
+                }
+                Ok(Err(e))
+                    if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt + 1 < 5 =>
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                _ => return None,
+            }
+        }
+
+        let output = output?;
         if !output.status.success() {
             return None;
         }
@@ -138,6 +156,24 @@ mod tests {
         assert_eq!(info.installed.as_deref(), Some("1.18.27"));
         assert_eq!(info.latest.as_deref(), Some("1.19.0"));
         assert!(info.update_available());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn check_version_retries_through_busy_binary() {
+        let (_dir, bin) = fake_cli("devin 1.0.0 (abc)");
+
+        // Keep the fake binary open for write so the first exec attempt
+        // returns ExecutableFileBusy; release it before the next retry.
+        let lock = fs::OpenOptions::new().write(true).open(&bin).unwrap();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            drop(lock);
+        });
+
+        let provider = AcpProvider::new(AgentKind::Devin, bin, "stub".into());
+        let info = provider.check_version_at(None).await;
+        assert_eq!(info.installed.as_deref(), Some("1.0.0"));
     }
 
     #[tokio::test]

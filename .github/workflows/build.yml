@@ -18,6 +18,14 @@ on:
         description: 'Create a versioned release from this build'
         type: boolean
         default: false
+      merge_request_id:
+        description: 'Merge request ID to embed in the build (development builds only)'
+        type: string
+        default: ''
+      merge_request_url:
+        description: 'Merge request URL to embed in the build (development builds only)'
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -155,6 +163,8 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
       BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
       BUILD_DATE: ${{ needs.setup.outputs.build_date }}
+      MERGE_REQUEST_ID: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || inputs.merge_request_id || '' }}
+      MERGE_REQUEST_URL: ${{ github.event_name == 'pull_request' && github.event.pull_request.html_url || inputs.merge_request_url || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -283,12 +293,17 @@ jobs:
           flutter config --no-analytics >/dev/null
           flutter pub get
           flutter config --enable-android
+          MR_DART_DEFINES=()
+          if [ -n "${MERGE_REQUEST_ID:-}" ]; then
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
+          fi
           if [ "${{ steps.signing.outputs.signing }}" = "release" ]; then
-            flutter build apk --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
-            flutter build appbundle --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+            flutter build apk --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+            flutter build appbundle --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
           else
-            flutter build apk --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER"
-            flutter build appbundle --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+            flutter build apk --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+            flutter build appbundle --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
           fi
           if [ "${{ steps.signing.outputs.signing }}" = "release" ]; then
             cp build/app/outputs/flutter-apk/app-release.apk "$ARTIFACTS_DIR/devinorium-android.apk"
@@ -308,7 +323,12 @@ jobs:
           flutter config --no-analytics >/dev/null
           flutter pub get
           flutter config --enable-linux-desktop
-          flutter build linux --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          MR_DART_DEFINES=()
+          if [ -n "${MERGE_REQUEST_ID:-}" ]; then
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
+          fi
+          flutter build linux --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
           if [ "${{ matrix.target }}" = "linux-arm64" ]; then
             LINUX_ARCH=arm64
             DEB_ARCH=arm64
@@ -349,7 +369,12 @@ jobs:
           flutter config --no-analytics >/dev/null
           flutter pub get
           flutter config --enable-windows-desktop
-          flutter build windows --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          MR_DART_DEFINES=()
+          if [ -n "${MERGE_REQUEST_ID:-}" ]; then
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
+          fi
+          flutter build windows --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
           if [ "${{ matrix.target }}" = "windows-arm64" ]; then
             WIN_ARCH=arm64
             OUT_ARCH=arm64
@@ -375,7 +400,12 @@ jobs:
           flutter config --no-analytics >/dev/null
           flutter pub get
           flutter config --enable-macos-desktop
-          flutter build macos --release --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          MR_DART_DEFINES=()
+          if [ -n "${MERGE_REQUEST_ID:-}" ]; then
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
+          fi
+          flutter build macos --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
           APP="build/macos/Build/Products/Release/Devinorium.app"
           (cd "$(dirname "$APP")" && zip -r "$ARTIFACTS_DIR/devinorium-macos-arm64.zip" "Devinorium.app" >/dev/null)
           hdiutil create -volname "Devinorium" -srcfolder "$APP" -ov -format UDZO "$ARTIFACTS_DIR/devinorium-macos-arm64.dmg" >/dev/null
@@ -389,7 +419,12 @@ jobs:
           cd flutter
           flutter config --no-analytics >/dev/null
           flutter pub get
-          flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="$BUILD_NUMBER"
+          MR_DART_DEFINES=()
+          if [ -n "${MERGE_REQUEST_ID:-}" ]; then
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
+            MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
+          fi
+          flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
           rm -rf Payload
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
@@ -406,7 +441,7 @@ jobs:
     name: Nightly release
     runs-on: ubuntu-latest
     needs: [setup, build]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.setup.outputs.build_all == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.create_release == false || inputs.create_release == 'false'))) }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.setup.outputs.build_all == 'true' && github.ref == 'refs/heads/main' && inputs.merge_request_id == '' && (github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.create_release == false || inputs.create_release == 'false'))) }}
     permissions:
       contents: write
     concurrency:
@@ -493,7 +528,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     needs: [setup, build]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.setup.outputs.build_all == 'true' && ((github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && (inputs.create_release == true || inputs.create_release == 'true')) || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.setup.outputs.build_all == 'true' && inputs.merge_request_id == '' && ((github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && (inputs.create_release == true || inputs.create_release == 'true')) || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) }}
     permissions:
       contents: write
     concurrency:

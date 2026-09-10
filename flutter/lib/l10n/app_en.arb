@@ -1008,5 +1008,42 @@
   "usageByProvider": "By provider",
   "usageByModel": "By model",
   "usageEmpty": "No usage recorded yet.",
-  "usageLoadFailed": "Failed to load usage"
+  "usageLoadFailed": "Failed to load usage",
+  "devMergeRequestTitle": "Development merge request",
+  "@devMergeRequestTitle": {
+    "description": "Title of the dialog shown on builds from a merge request"
+  },
+  "devMergeRequestBody": "You are on a development merge request (#{id}). Report issues here:\n\n{url}",
+  "@devMergeRequestBody": {
+    "description": "Body of the dialog shown on builds from a merge request",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "devMergeRequestBodyNoUrl": "You are on a development merge request (#{id}). The merge request URL is not available in this build.",
+  "@devMergeRequestBodyNoUrl": {
+    "description": "Body shown when a merge request ID is known but the URL is missing or invalid",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "devMergeRequestOpen": "Open",
+  "@devMergeRequestOpen": {
+    "description": "Button to open the merge request URL"
+  },
+  "devMergeRequestCopy": "Copy",
+  "@devMergeRequestCopy": {
+    "description": "Button to copy the merge request URL"
+  },
+  "devMergeRequestClose": "Close",
+  "@devMergeRequestClose": {
+    "description": "Button to dismiss the merge request dialog"
+  }
 }
