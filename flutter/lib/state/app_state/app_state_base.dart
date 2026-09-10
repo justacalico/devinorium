@@ -414,6 +414,11 @@ abstract class AppStateBase extends ChangeNotifier {
     required String password,
     String? totp,
   });
+  Future<String?> webLogin({
+    required String username,
+    required String password,
+    String? totp,
+  });
   Future<void> switchServer(String serverId);
   Future<void> removeServer(String serverId);
   void closeDialog();

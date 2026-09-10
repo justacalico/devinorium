@@ -43,6 +43,9 @@ mixin AuthStore on AppStateBase {
         _globalError = '$e';
       }
       await _resetServerState();
+      if (kIsWeb && e is ApiException && e.statusCode == 401) {
+        _dialog = DialogKind.webLogin;
+      }
       _view = AppView.app;
       notifyListeners();
     }
@@ -80,6 +83,59 @@ mixin AuthStore on AppStateBase {
         notifyListeners();
         await _loadUserAndData();
       }
+      _globalError = '';
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+      return _globalError;
+    }
+  }
+
+  @override
+  Future<String?> webLogin({
+    required String username,
+    required String password,
+    String? totp,
+  }) async {
+    _globalError = '';
+    notifyListeners();
+    try {
+      final res = await api.login(
+        username: username,
+        password: password,
+        totp: totp,
+      );
+      if (res.totpRequired) {
+        final prompt = appL10n.totpPrompt;
+        notifyListeners();
+        return prompt;
+      }
+      final active = multiServerState.activeProfile;
+      final updated = active != null
+          ? active.copyWith(
+              username: res.username.isNotEmpty ? res.username : username.trim(),
+              token: res.token,
+            )
+          : ServerProfile(
+              id: 'web',
+              label: 'web',
+              baseUrl: '',
+              token: res.token,
+              username: res.username.isNotEmpty ? res.username : username.trim(),
+              createdAt: DateTime.now().toUtc(),
+              isPrimary: true,
+            );
+      await multiServerState.addProfile(
+        updated,
+        setActive: true,
+        api: _apiForNewProfile(),
+      );
+      _view = AppView.app;
+      notifyListeners();
+      await _loadUserAndData();
+      closeDialog();
       _globalError = '';
       notifyListeners();
       return null;
@@ -238,6 +294,9 @@ mixin AuthStore on AppStateBase {
     } else {
       await multiServerState.clearActiveToken();
       await _resetServerState();
+      if (kIsWeb) {
+        _dialog = DialogKind.webLogin;
+      }
     }
     _settingsTopicIndex = 0;
     _userMenuOpen = false;

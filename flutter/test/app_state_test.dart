@@ -507,6 +507,81 @@ void main() {
       expect(state.globalError, isEmpty);
     });
 
+    test('webLogin signs in and loads user data', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'ok': true,
+              'totp_required': false,
+              'username': 'owner',
+              'token': 'abc',
+            }),
+            _json(200, {
+              'id': 1,
+              'username': 'owner',
+              'role': 'user',
+              'is_owner': true,
+              'totp_enabled': false,
+              'provider_id': 'devin-cli',
+              'provider_command': 'devin',
+            }),
+            _json(200, []),
+            _json(200, []),
+            _json(200, []),
+            _json(200, []),
+          ]),
+        ),
+      );
+      state.setView(AppView.app);
+      final result = await state.webLogin(
+        username: 'owner',
+        password: 'pw',
+      );
+      expect(result, isNull);
+      expect(state.view, AppView.app);
+      expect(state.user?.username, 'owner');
+      expect(state.activeServerId, 'default');
+      expect(state.serverProfiles.first.username, 'owner');
+      expect(state.dialog, DialogKind.none);
+      expect(state.globalError, isEmpty);
+    });
+
+    test('webLogin returns the TOTP prompt when required', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {
+              'ok': true,
+              'totp_required': true,
+              'username': 'owner',
+            }),
+          ]),
+        ),
+      );
+      final result = await state.webLogin(
+        username: 'owner',
+        password: 'pw',
+      );
+      expect(result, isNotNull);
+      expect(state.globalError, isEmpty);
+    });
+
+    test('webLogin returns an error on failed authentication', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(client: _clientFor([http.Response('unauthorized', 401)])),
+      );
+      final result = await state.webLogin(
+        username: 'owner',
+        password: 'wrong',
+      );
+      expect(result, isNotNull);
+      expect(state.globalError, isNotEmpty);
+    });
+
     test('switchServer falls back to app view when the server id is unknown', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(

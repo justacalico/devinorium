@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import 'folder_picker.dart';
 import 'issue_panel.dart';
 import 'merge_request_panel.dart';
+import 'web_login_dialog.dart';
 
 class DialogLayer extends StatelessWidget {
   const DialogLayer({super.key});
@@ -48,6 +49,8 @@ class DialogLayer extends StatelessWidget {
           case DialogKind.renameProject:
           case DialogKind.renameThread:
             return const _RenameDialog();
+          case DialogKind.webLogin:
+            return const WebLoginDialog();
         }
       },
     );
