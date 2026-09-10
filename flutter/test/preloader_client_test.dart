@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/preloader_client.dart';
+import 'package:devinorium_frontend/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeClient implements BaseApiClient {
@@ -87,6 +88,7 @@ class _FakeClient implements BaseApiClient {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) => const Stream.empty();
 
   @override

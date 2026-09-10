@@ -116,6 +116,7 @@ class _NoOpClient extends BaseApiClient {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) =>
       Stream.empty();
 

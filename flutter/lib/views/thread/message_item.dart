@@ -573,8 +573,22 @@ class _MessageItemState extends State<_MessageItem> {
                     children: [
                       for (final a in message.attachments!)
                         Chip(
-                          avatar: const Icon(Icons.attach_file, size: 14),
-                          label: Text(a.filename),
+                          avatar: Icon(
+                            a.isPathRef
+                                ? (a.isDir
+                                    ? Icons.folder_outlined
+                                    : Icons.insert_drive_file_outlined)
+                                : Icons.attach_file,
+                            size: 14,
+                          ),
+                          label: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 360),
+                            child: Text(
+                              a.filename,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 4,
                             vertical: 0,

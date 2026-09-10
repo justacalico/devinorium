@@ -35,6 +35,7 @@ part 'app_state/project_store.dart';
 part 'app_state/thread_list_store.dart';
 part 'app_state/composer_store.dart';
 part 'app_state/attachment_store.dart';
+part 'app_state/path_refs_store.dart';
 part 'app_state/model_store.dart';
 part 'app_state/plan_overlay_store.dart';
 part 'app_state/files_panel_store.dart';
@@ -77,6 +78,7 @@ class AppState extends AppStateBase
         ThreadListStore,
         ComposerStore,
         AttachmentStore,
+        PathRefsStore,
         ModelStore,
         PlanOverlayStore,
         FilesPanelStore,
@@ -163,6 +165,7 @@ class AppState extends AppStateBase
     String? composerText,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> pathRefs = const [],
     String? selectedModel,
     String? selectedReasoning,
     String? selectedPermission,
@@ -251,6 +254,7 @@ class AppState extends AppStateBase
         streaming: streaming,
         composerText: composerText ?? '',
         attachments: attachments,
+        pathRefs: pathRefs,
         composerMode: composerMode,
         selectedModel: selectedModel ?? '',
         selectedReasoning:
@@ -265,6 +269,7 @@ class AppState extends AppStateBase
       _activeThreadId = activeThreadId;
       _composerText = composerText ?? '';
       _attachments = List.of(attachments);
+      _pathRefs = List.of(pathRefs);
       _selectedModel = selectedModel ?? '';
       _selectedReasoning = selectedReasoning ?? '';
       _selectedPermission = selectedPermission ?? 'normal';
@@ -394,6 +399,7 @@ class AppState extends AppStateBase
     StreamingSnapshot? streaming,
     String? composerText,
     List<({String filename, String mime, Uint8List bytes})>? attachments,
+    List<PathRef>? pathRefs,
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedReasoning,
@@ -408,6 +414,7 @@ class AppState extends AppStateBase
       streaming: streaming,
       composerText: composerText,
       attachments: attachments,
+      pathRefs: pathRefs,
       composerMode: composerMode,
       selectedModel: selectedModel,
       selectedReasoning: selectedReasoning,

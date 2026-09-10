@@ -9,20 +9,23 @@ void main() {
   group('NativeApiClient SSE', () {
     late HttpServer server;
     late String baseUrl;
+    String? lastSendBody;
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({
         'devinorium_server_url': '',
         'devinorium_token': '',
       });
+      lastSendBody = null;
 
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       baseUrl = 'http://localhost:${server.port}';
 
       server.listen((request) async {
-        await request.drain();
+        final body = await utf8.decoder.bind(request).join();
 
         if (request.uri.path == '/api/threads/t/send/stream') {
+          lastSendBody = body;
           final response = request.response
             ..statusCode = 200
             ..headers.contentType = ContentType.parse('text/event-stream')
@@ -72,6 +75,38 @@ void main() {
       // stream is cancelled; it must not throw "Client is already closed".
       final resp = await client.get('/other');
       expect(resp, {'ok': true});
+    });
+
+    test('sendStream forwards context paths as a multipart field', () async {
+      final client = NativeApiClient();
+      await client.setServerUrl(baseUrl);
+      await client.setToken('test');
+
+      final stream = client.sendStream(
+        path: '/api/threads/t/send/stream',
+        prompt: 'hello',
+        contextPaths: [
+          (path: 'src/main.dart', isDir: false),
+          (path: 'docs', isDir: true),
+        ],
+      );
+
+      final sub = stream.listen(null);
+      await Future.delayed(const Duration(milliseconds: 200));
+      await sub.cancel();
+
+      final body = lastSendBody;
+      expect(body, isNotNull);
+      expect(body, contains('name="context_paths"'));
+      expect(
+        body,
+        contains(
+          jsonEncode([
+            {'path': 'src/main.dart', 'is_dir': false},
+            {'path': 'docs', 'is_dir': true},
+          ]),
+        ),
+      );
     });
   });
 }

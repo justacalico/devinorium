@@ -80,6 +80,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _attachments(
     List<({String filename, String mime, Uint8List bytes})> value,
   );
+  List<PathRef> get _pathRefs;
+  set _pathRefs(List<PathRef> value);
   String get _selectedModel;
   set _selectedModel(String value);
   String get _selectedReasoning;
@@ -197,6 +199,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get sending;
   String? get lastRunStatus;
   List<({String filename, String mime, Uint8List bytes})> get attachments;
+  List<PathRef> get pathRefs;
   String get selectedModel;
   String get selectedReasoning;
   String get selectedPermission;
@@ -242,6 +245,7 @@ abstract class AppStateBase extends ChangeNotifier {
     StreamingSnapshot? streaming,
     String? composerText,
     List<({String filename, String mime, Uint8List bytes})>? attachments,
+    List<PathRef>? pathRefs,
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedReasoning,
@@ -266,6 +270,8 @@ abstract class AppStateBase extends ChangeNotifier {
   );
   void removeAttachment(int index);
   void clearAttachments();
+  void addPathRef(String path, {required bool isDir});
+  void removePathRef(int index);
   void setSelectedModel(String m);
   void setSelectedReasoning(String effort);
   void setSelectedPermission(String p);

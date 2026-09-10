@@ -48,7 +48,17 @@ pub(crate) async fn update_thread_title_from_send(
     thread: &mut ThreadRow,
     input: &SendInput,
 ) -> anyhow::Result<bool> {
-    let title = title_from_prompt(&input.prompt);
+    // A refs-only message has no prompt text; title the thread after the
+    // first referenced path instead of burning the title as "New thread".
+    let title = if input.prompt.trim().is_empty() {
+        input
+            .context_refs
+            .first()
+            .map(|r| title_from_prompt(&r.rel))
+            .unwrap_or_else(|| "New thread".into())
+    } else {
+        title_from_prompt(&input.prompt)
+    };
     if let Some(updated_at) = state
         .db
         .update_title_from_send(&thread.id, user_id, &title)

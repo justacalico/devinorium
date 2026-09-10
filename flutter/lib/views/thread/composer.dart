@@ -5,6 +5,7 @@ typedef _ComposerModel = ({
   bool sending,
   ComposerMode composerMode,
   List<({String filename, String mime, Uint8List bytes})> attachments,
+  List<PathRef> pathRefs,
   String selectedModel,
   String selectedReasoning,
   String selectedPermission,
@@ -252,7 +253,7 @@ class _ComposerState extends State<_Composer> {
   }
 
   void _submit(AppState state) {
-    if (_effectivePrompt(state).isNotEmpty &&
+    if ((_effectivePrompt(state).isNotEmpty || state.pathRefs.isNotEmpty) &&
         state.activeThreadId != null &&
         !state.sending) {
       widget.controller.clear();
@@ -346,6 +347,7 @@ class _ComposerState extends State<_Composer> {
         sending: s.sending,
         composerMode: s.composerMode,
         attachments: s.attachments,
+        pathRefs: s.pathRefs,
         selectedModel: s.selectedModel,
         selectedReasoning: s.selectedReasoning,
         selectedPermission: s.selectedPermission,
@@ -393,6 +395,48 @@ class _ComposerState extends State<_Composer> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (model.pathRefs.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  for (
+                                    var i = 0;
+                                    i < model.pathRefs.length;
+                                    i++
+                                  )
+                                    Chip(
+                                      avatar: Icon(
+                                        model.pathRefs[i].isDir
+                                            ? Icons.folder_outlined
+                                            : Icons.insert_drive_file_outlined,
+                                        size: 14,
+                                      ),
+                                      label: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 280,
+                                        ),
+                                        child: Text(
+                                          model.pathRefs[i].path,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 0,
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                      backgroundColor: theme
+                                          .colorScheme
+                                          .surfaceContainerHigh,
+                                      onDeleted: () => state.removePathRef(i),
+                                    ),
+                                ],
+                              ),
+                            ),
                           if (model.attachments.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
@@ -589,8 +633,9 @@ class _ComposerState extends State<_Composer> {
                                         if (isSending) {
                                           state.stopThread();
                                         } else if (_effectivePrompt(
-                                          state,
-                                        ).isNotEmpty) {
+                                              state,
+                                            ).isNotEmpty ||
+                                            model.pathRefs.isNotEmpty) {
                                           widget.controller.clear();
                                           state.sendMessage();
                                         }
@@ -631,6 +676,50 @@ class _ComposerState extends State<_Composer> {
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// Drop target around the composer for nodes dragged out of the files panel.
+/// Dropping a file or folder adds it as a prompt reference (a path the agent
+/// reads on the backend machine); nothing is uploaded.
+class _PathRefDropTarget extends StatelessWidget {
+  final Widget child;
+
+  const _PathRefDropTarget({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = context.read<AppState>();
+    return DragTarget<FileTreeNode>(
+      onWillAcceptWithDetails: (_) =>
+          state.activeThreadId != null && !state.sending,
+      onAcceptWithDetails: (details) {
+        final node = details.data;
+        state.addPathRef(node.fullPathString, isDir: node.entry.isDir);
+      },
+      builder: (context, candidateData, rejectedData) {
+        return Stack(
+          children: [
+            child,
+            if (candidateData.isNotEmpty)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(_outerRadius),
+                      border: Border.all(
+                        color: theme.colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );

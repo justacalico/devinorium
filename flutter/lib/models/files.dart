@@ -96,6 +96,11 @@ class FileConflictException implements Exception {
   String toString() => 'file changed on disk';
 }
 
+/// A file or folder the user dragged from the files panel into the composer
+/// as a prompt reference. The path is relative to the project root and lives
+/// on the backend machine, so nothing is uploaded.
+typedef PathRef = ({String path, bool isDir});
+
 class DirEntry {
   final String name;
   final bool isDir;
