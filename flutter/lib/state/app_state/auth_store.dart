@@ -115,7 +115,9 @@ mixin AuthStore on AppStateBase {
       final active = multiServerState.activeProfile;
       final updated = active != null
           ? active.copyWith(
-              username: res.username.isNotEmpty ? res.username : username.trim(),
+              username: res.username.isNotEmpty
+                  ? res.username
+                  : username.trim(),
               token: res.token,
             )
           : ServerProfile(
@@ -123,7 +125,9 @@ mixin AuthStore on AppStateBase {
               label: 'web',
               baseUrl: '',
               token: res.token,
-              username: res.username.isNotEmpty ? res.username : username.trim(),
+              username: res.username.isNotEmpty
+                  ? res.username
+                  : username.trim(),
               createdAt: DateTime.now().toUtc(),
               isPrimary: true,
             );
@@ -503,7 +507,7 @@ mixin AuthStore on AppStateBase {
     _gitConnections = [];
     _linkedMergeRequest = null;
     _composerText = '';
-    _attachments.clear();
+    _attachments = [];
     _selectedModel = '';
     _selectedPermission = 'normal';
     _selectedProvider = '';

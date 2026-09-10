@@ -133,6 +133,68 @@ void main() {
       state.clearAttachments();
       expect(state.attachments, isEmpty);
     });
+
+    test('each mutation returns a new list instance', () {
+      final state = AppState.test();
+      addTearDown(state.dispose);
+
+      final file = (filename: 'a.txt', mime: 'text/plain', bytes: Uint8List(0));
+
+      final initial = state.attachments;
+      state.addAttachments([file]);
+      expect(state.attachments, hasLength(1));
+      expect(identical(initial, state.attachments), isFalse);
+
+      final afterAdd = state.attachments;
+      state.addAttachments([file]);
+      expect(identical(afterAdd, state.attachments), isFalse);
+      expect(state.attachments, hasLength(2));
+
+      final afterTwo = state.attachments;
+      state.removeAttachment(0);
+      expect(identical(afterTwo, state.attachments), isFalse);
+
+      final afterRemove = state.attachments;
+      state.clearAttachments();
+      expect(state.attachments, isEmpty);
+      expect(identical(afterRemove, state.attachments), isFalse);
+    });
+
+    test('per-thread attachments are replaced with a new list', () {
+      final state = AppState.test(
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      );
+      addTearDown(state.dispose);
+
+      final file = (filename: 'a.txt', mime: 'text/plain', bytes: Uint8List(0));
+      final before = state.attachments;
+      state.addAttachments([file]);
+      expect(state.attachments, hasLength(1));
+      expect(identical(before, state.attachments), isFalse);
+
+      final afterAdd = state.attachments;
+      state.removeAttachment(0);
+      expect(state.attachments, isEmpty);
+      expect(identical(afterAdd, state.attachments), isFalse);
+
+      state.addAttachments([file]);
+      final afterReadd = state.attachments;
+      state.clearAttachments();
+      expect(state.attachments, isEmpty);
+      expect(identical(afterReadd, state.attachments), isFalse);
+    });
   });
 
   group('ModelStore', () {

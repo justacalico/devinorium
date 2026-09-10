@@ -263,7 +263,7 @@ class AppState extends AppStateBase
     } else {
       _activeThreadId = activeThreadId;
       _composerText = composerText ?? '';
-      _attachments.addAll(attachments);
+      _attachments = List.of(attachments);
       _selectedModel = selectedModel ?? '';
       _selectedReasoning = selectedReasoning ?? '';
       _selectedPermission = selectedPermission ?? 'normal';

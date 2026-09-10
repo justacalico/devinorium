@@ -83,7 +83,8 @@ class ThreadStore {
   // Draft state for this thread. t3code keeps a per-thread draft so switching
   // threads does not lose the user's in-progress input.
   String composerText;
-  final List<({String filename, String mime, Uint8List bytes})> attachments;
+  // Reassigned rather than mutated so Selector-based widgets see a new list.
+  List<({String filename, String mime, Uint8List bytes})> attachments;
   ComposerMode composerMode;
   String selectedModel;
   String selectedReasoning;
@@ -337,7 +338,7 @@ class ThreadStore {
       // Clear the composer and show the message immediately, like t3code does.
       // The message is removed once the server echoes the same client id.
       composerText = '';
-      attachments.clear();
+      attachments = [];
       _optimisticMessages.add(
         _buildOptimisticMessage(prompt, messageAttachments, clientMessageId),
       );
@@ -883,9 +884,7 @@ class ThreadStore {
       return;
     }
     composerText = pending.composerText;
-    attachments
-      ..clear()
-      ..addAll(pending.attachments);
+    attachments = List.of(pending.attachments);
     composerMode = pending.composerMode;
     _optimisticMessages.removeWhere(
       (m) => m.clientMessageId == pending.clientMessageId,
