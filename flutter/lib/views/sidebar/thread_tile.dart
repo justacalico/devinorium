@@ -250,6 +250,22 @@ class _ThreadTitle extends StatelessWidget {
     final theme = Theme.of(context);
     final worktreeName = thread.worktreeName;
     final children = <Widget>[
+      ProviderIcon(
+        providerId: thread.providerId,
+        size: 16,
+        semanticLabel: providerName(thread.providerId),
+      ),
+      const SizedBox(width: 6),
+      if (status != null) ...[
+        Text(
+          status!.label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: status!.color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(width: 6),
+      ],
       Expanded(
         child: Text(
           thread.title,
@@ -264,33 +280,10 @@ class _ThreadTitle extends StatelessWidget {
       ),
       const SizedBox(width: 6),
       if (thread.linkedMr != null) ...[
-        const SizedBox(width: 6),
         _ThreadMrChip(ref: thread.linkedMr!),
         const SizedBox(width: 4),
-      ] else
-        const SizedBox(width: 6),
-      ProviderIcon(
-        providerId: thread.providerId,
-        size: 16,
-        semanticLabel: providerName(thread.providerId),
-      ),
+      ],
     ];
-
-    if (status != null) {
-      children.insert(
-        0,
-        Padding(
-          padding: const EdgeInsets.only(right: 6),
-          child: Text(
-            status!.label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: status!.color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      );
-    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
