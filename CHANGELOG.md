@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.52.1 - 2026-09-10
+#### Bug Fixes
+- 修复侧边栏线程工作树状态同步 - (833a40b) - HttpAnimations
+
+- - -
+
 ## v0.52.0 - 2026-09-10
 #### Features
 - 将提供者图标移到线程标题左侧 - (b0af930) - HttpAnimations
