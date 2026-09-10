@@ -21,6 +21,7 @@ class _TestApiService extends ApiService {
 
   var updateThreadSettingsCalls = 0;
   var getThreadCalls = 0;
+  var getThreadMessagesCalls = 0;
   var throwOnUpdateThreadSettings = false;
   var throwOnGetThread = false;
   String? lastProvider;
@@ -80,7 +81,10 @@ class _TestApiService extends ApiService {
     int? turnLimit,
     String? beforeCursor,
     int limit = 50,
-  }) async => const MessagePage(messages: [], total: 0);
+  }) async {
+    getThreadMessagesCalls++;
+    return const MessagePage(messages: [], total: 0);
+  }
 
   @override
   Future<Map<String, dynamic>> getThreadRun(String id) =>
@@ -1217,6 +1221,202 @@ void main() {
       expect(logs, anyElement(matches(RegExp(r'thread\.stop failed.*t1'))));
     });
   });
+
+  group('ensureInitialMessagesLoaded', () {
+    test('loads the first page and reuses the in-flight request', () async {
+      final api = _ReloadApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+            totalMessages: 2,
+          ),
+        ),
+      );
+
+      final first = store.ensureInitialMessagesLoaded();
+      final second = store.ensureInitialMessagesLoaded();
+      await Future.wait([first, second]);
+
+      expect(store.detail.valueOrNull?.messages, hasLength(2));
+      expect(api.getThreadMessagesCalls, 1);
+    });
+
+    test('returns the same future for concurrent calls', () async {
+      final api = _ReloadApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+            totalMessages: 2,
+          ),
+        ),
+      );
+
+      final first = store.ensureInitialMessagesLoaded();
+      final second = store.ensureInitialMessagesLoaded();
+
+      expect(identical(first, second), isTrue);
+      await first;
+    });
+
+    test('does nothing when detail is null', () async {
+      final api = _TestApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+      );
+
+      await store.ensureInitialMessagesLoaded();
+
+      expect(api.getThreadMessagesCalls, 0);
+    });
+
+    test('does nothing when totalMessages is 0', () async {
+      final api = _TestApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+            totalMessages: 0,
+          ),
+        ),
+      );
+
+      await store.ensureInitialMessagesLoaded();
+
+      expect(api.getThreadMessagesCalls, 0);
+    });
+
+    test('does nothing when messages are already loaded', () async {
+      final api = _ReloadApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [
+              Message(id: 1, role: 'user', content: 'hi', model: 'm1'),
+            ],
+            totalMessages: 2,
+          ),
+        ),
+      );
+
+      await store.ensureInitialMessagesLoaded();
+
+      expect(api.getThreadMessagesCalls, 0);
+    });
+
+    test('records error and does not duplicate on retry', () async {
+      final api = _FailingMessagesApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+            totalMessages: 2,
+          ),
+        ),
+      );
+
+      await store.ensureInitialMessagesLoaded();
+      await store.ensureInitialMessagesLoaded();
+
+      expect(store.globalError, contains('getThreadMessages failed'));
+      expect(api.getThreadMessagesCalls, 2);
+    });
+
+    test('handles an empty first page and avoids a refetch loop', () async {
+      final api = _EmptyPageApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+            totalMessages: 1,
+          ),
+        ),
+      );
+
+      await store.ensureInitialMessagesLoaded();
+      await store.ensureInitialMessagesLoaded();
+
+      expect(store.detail.valueOrNull?.totalMessages, 0);
+      expect(store.detail.valueOrNull?.hasMore, false);
+      expect(store.globalError, isEmpty);
+      expect(api.getThreadMessagesCalls, 1);
+    });
+  });
 }
 
 class _CursorApiService extends ApiService {
@@ -1297,6 +1497,50 @@ class _StopFailingApiService extends _TestApiService {
   @override
   Future<void> stopThread(String id) =>
       Future.error(Exception('stopThread failed'));
+}
+
+class _FailingMessagesApiService extends ApiService {
+  _FailingMessagesApiService() : super(client: _ThrowingClient());
+
+  var getThreadMessagesCalls = 0;
+
+  @override
+  Future<MessagePage> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
+    int limit = 50,
+  }) {
+    getThreadMessagesCalls++;
+    return Future.error(Exception('getThreadMessages failed'));
+  }
+}
+
+class _EmptyPageApiService extends ApiService {
+  _EmptyPageApiService() : super(client: _ThrowingClient());
+
+  var getThreadMessagesCalls = 0;
+
+  @override
+  Future<MessagePage> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
+    int limit = 50,
+  }) {
+    getThreadMessagesCalls++;
+    return Future.value(
+      const MessagePage(
+        messages: [],
+        total: 0,
+        hasMore: false,
+      ),
+    );
+  }
 }
 
 class _ReloadApiService extends ApiService {

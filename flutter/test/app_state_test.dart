@@ -37,6 +37,8 @@ class _StreamableApiService extends ApiService {
   Stream<SseEvent> Function()? streamBuilder;
   Stream<SseEvent> Function()? eventsBuilder;
   Map<String, dynamic>? runResponse;
+  Future<MessagePage>? messagesResponse;
+  int getThreadMessagesCalls = 0;
   String? stoppedThread;
   String? lastClientMessageId;
 
@@ -71,6 +73,27 @@ class _StreamableApiService extends ApiService {
   @override
   Stream<SseEvent> watchThreadEvents(String id) {
     return eventsBuilder?.call() ?? Stream.empty();
+  }
+
+  @override
+  Future<MessagePage> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
+    int limit = 50,
+  }) {
+    getThreadMessagesCalls++;
+    return messagesResponse ??
+        super.getThreadMessages(
+          id,
+          beforeId: beforeId,
+          afterId: afterId,
+          turnLimit: turnLimit,
+          beforeCursor: beforeCursor,
+          limit: limit,
+        );
   }
 }
 
@@ -1352,6 +1375,7 @@ void main() {
             'project_id': 1,
             'model': 'glm-5-2',
             'permission_mode': 'normal',
+            'provider_id': '',
             'created_at': '',
             'updated_at': '',
           },
@@ -1368,6 +1392,7 @@ void main() {
             'project_id': 1,
             'model': 'glm-5-2',
             'permission_mode': 'normal',
+            'provider_id': '',
             'created_at': '',
             'updated_at': '',
           },
@@ -1388,6 +1413,154 @@ void main() {
       await state.openThread('a');
 
       expect(logs, anyElement(matches(RegExp(r'^Thread a opened in \d+ms$'))));
+    });
+
+    test('openThread duration includes initial message load', () async {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      final messagesCompleter = Completer<MessagePage>();
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'provider_id': '',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+          'total_messages': 1,
+        }),
+        _json(200, {'project_id': 1, 'path': '/x'}),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'provider_id': '',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+          'total_messages': 1,
+        }),
+      ]);
+      final api = _StreamableApiService(client)
+        ..runResponse = {'status': 'idle'}
+        ..messagesResponse = messagesCompleter.future;
+      final state = AppState.test(
+        api: api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+      );
+
+      final openFuture = state.openThread('a');
+      await pumpEventQueue();
+
+      expect(api.getThreadMessagesCalls, 1);
+      expect(
+        logs,
+        isNot(anyElement(matches(RegExp(r'^Thread a opened in \d+ms$')))),
+      );
+
+      messagesCompleter.complete(
+        const MessagePage(
+          messages: [
+            Message(
+              id: 1,
+              role: 'user',
+              content: 'hello',
+              model: 'glm-5-2',
+            ),
+          ],
+          total: 1,
+        ),
+      );
+      await openFuture;
+
+      expect(
+        logs,
+        anyElement(matches(RegExp(r'^Thread a opened in \d+ms$'))),
+      );
+    });
+
+    test('openThread does not log when initial messages fail to load', () async {
+      if (!kDebugMode) return;
+
+      final original = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) => logs.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'provider_id': '',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+          'total_messages': 1,
+        }),
+        _json(200, {'project_id': 1, 'path': '/x'}),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'provider_id': '',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+          'total_messages': 1,
+        }),
+      ]);
+      final messagesCompleter = Completer<MessagePage>();
+      final api = _StreamableApiService(client)
+        ..runResponse = {'status': 'idle'}
+        ..messagesResponse = messagesCompleter.future;
+      final state = AppState.test(
+        api: api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+      );
+
+      final openFuture = state.openThread('a');
+      await pumpEventQueue();
+      messagesCompleter.completeError(Exception('network down'));
+      await openFuture;
+
+      expect(
+        logs,
+        isNot(anyElement(matches(RegExp(r'^Thread a opened in \d+ms$')))),
+      );
+      expect(state.globalError, contains('network down'));
     });
 
     test('createNewThread requires a project', () async {
