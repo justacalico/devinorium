@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.53.1 - 2026-09-10
+#### Bug Fixes
+- 修复附件添加后不立即显示的问题 - (a668a41) - HttpAnimations
+
+- - -
+
 ## v0.53.0 - 2026-09-10
 #### Features
 - 更新关于页描述文案 - (cefadb6) - HttpAnimations
