@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.54.0 - 2026-09-10
+#### Features
+- 添加简体中文语言支持 - (c974025) - HttpAnimations
+#### Bug Fixes
+- 修正打开线程时计时未包含首屏消息加载时间 - (d20ffff) - HttpAnimations
+
+- - -
+
 ## v0.53.1 - 2026-09-10
 #### Bug Fixes
 - 修复附件添加后不立即显示的问题 - (a668a41) - HttpAnimations
