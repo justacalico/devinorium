@@ -42,6 +42,7 @@ abstract class AppStateBase extends ChangeNotifier {
   set _groups(List<ThreadGroup> value);
   List<ModelInfo> get _models;
   set _models(List<ModelInfo> value);
+  Map<String, List<ModelInfo>> get _modelsByProvider;
   List<ProviderInfo> get _providers;
   set _providers(List<ProviderInfo> value);
   ProviderVersion? get _providerVersion;

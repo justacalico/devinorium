@@ -82,6 +82,15 @@ record, and a thread's provider is stored in `threads.provider_id`. Once a
 thread has started a provider session the provider is locked, because the
 stored session id only means something to the provider that created it.
 
+At startup the backend probes each registered provider's default command with
+`<command> --version` and caches the result briefly. `GET /api/providers`
+reports it per entry as `installed`, `version`, `status` (`"ready"` or
+`"error"`), and `message`, evaluated against the command the requesting user
+configured for that provider. The frontend lists every provider but greys out
+and disables the ones whose binary is missing. Saving a provider command or
+running the health check invalidates the cached probe so a fixed command is
+picked up on the next fetch.
+
 `GET /api/models?provider=<id>` returns the model catalog for a specific
 provider. When the provider is omitted the user's default provider is used.
 

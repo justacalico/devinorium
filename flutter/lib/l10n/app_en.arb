@@ -308,6 +308,7 @@
     }
   },
   "providerIsReachable": "Provider is reachable",
+  "providerUnavailable": "Unavailable",
   "providerCommandHint": "devin",
   "providerTestFailed": "Provider test failed: {error}",
   "@providerTestFailed": {

@@ -47,6 +47,9 @@ pub struct AppState {
     pub config: Arc<config::Config>,
     pub db: db::Db,
     pub provider: Arc<dyn providers::Provider>,
+    /// Startup probe results for each provider's backing CLI, so the API can
+    /// report which providers are installed on this host.
+    pub provider_status: providers::ProviderStatusCache,
     pub pending_permission_requests: Arc<Mutex<HashMap<String, PendingPermissionRequest>>>,
     pub pending_ask_requests: Arc<Mutex<HashMap<String, PendingAskRequest>>>,
     pub thread_runner: crate::thread_runner::ThreadRunner,

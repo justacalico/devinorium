@@ -92,13 +92,19 @@ class _ProviderDropdown extends StatelessWidget {
         items: providers
             .map((p) => DropdownMenuItem(
                   value: p.id,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ProviderIcon(providerId: p.id, size: 16),
-                      const SizedBox(width: 8),
-                      Text(p.name),
-                    ],
+                  // Providers whose CLI is missing stay visible but cannot be
+                  // picked, matching the model selector rail.
+                  enabled: p.isAvailable,
+                  child: Opacity(
+                    opacity: p.isAvailable ? 1.0 : 0.5,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ProviderIcon(providerId: p.id, size: 16),
+                        const SizedBox(width: 8),
+                        Text(p.name),
+                      ],
+                    ),
                   ),
                 ))
             .toList(),
@@ -125,6 +131,8 @@ class _ProviderCommandRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final message = provider.message?.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -132,7 +140,21 @@ class _ProviderCommandRow extends StatelessWidget {
           children: [
             ProviderIcon(providerId: provider.id, size: 16),
             const SizedBox(width: 8),
-            Text(provider.name, style: Theme.of(context).textTheme.labelLarge),
+            Text(provider.name, style: theme.textTheme.labelLarge),
+            if (!provider.isAvailable) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  message?.isNotEmpty == true
+                      ? message!
+                      : l10n(context).providerUnavailable,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 6),

@@ -62,6 +62,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         config: Arc::new(cfg.clone()),
         db: database.clone(),
         provider: Arc::from(provider),
+        provider_status: devinorium::providers::ProviderStatusCache::new(),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
@@ -278,6 +279,7 @@ async fn body_size_limit_rejects_oversized() {
         config: Arc::new(cfg.clone()),
         db: database,
         provider: Arc::from(provider),
+        provider_status: devinorium::providers::ProviderStatusCache::new(),
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),

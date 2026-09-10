@@ -533,6 +533,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get providerIsReachable => 'Provider is reachable';
 
   @override
+  String get providerUnavailable => 'Unavailable';
+
+  @override
   String get providerCommandHint => 'devin';
 
   @override

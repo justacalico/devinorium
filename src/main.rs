@@ -36,12 +36,33 @@ async fn main() -> Result<()> {
         default_model: cfg.default_model.clone(),
     })?;
 
+    // Probe each registered provider's CLI in the background so the first
+    // /api/providers response already knows which providers this host has.
+    let provider_status = providers::ProviderStatusCache::new();
+    {
+        let cache = provider_status.clone();
+        tokio::spawn(async move {
+            for (id, status) in cache.probe_registered().await {
+                if status.is_ready() {
+                    tracing::info!(provider = %id, version = ?status.version, "provider available");
+                } else {
+                    tracing::warn!(
+                        provider = %id,
+                        message = ?status.message,
+                        "provider unavailable"
+                    );
+                }
+            }
+        });
+    }
+
     let secure_cookie = cfg.secure_cookie;
     let cfg = Arc::new(cfg);
     let state = AppState {
         config: cfg.clone(),
         db: database,
         provider: Arc::from(provider),
+        provider_status,
         pending_permission_requests: Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),

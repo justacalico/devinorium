@@ -138,7 +138,7 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
   }
 
   void _selectProvider(AppState state, ProviderInfo provider) {
-    if (widget.providerLocked) return;
+    if (widget.providerLocked || !provider.isAvailable) return;
     unawaited(state.setSelectedProvider(provider.id));
     unawaited(state.saveThreadSettings());
   }
@@ -195,7 +195,7 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
                       _ProviderRailItem(
                         provider: p,
                         selected: p.id == selectedProvider,
-                        enabled: !widget.providerLocked,
+                        enabled: !widget.providerLocked && p.isAvailable,
                         onTap: () => _selectProvider(state, p),
                       ),
                   ],
@@ -266,10 +266,14 @@ class _ProviderRailItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final message = provider.message?.trim();
+    final tooltip = provider.isAvailable
+        ? provider.name
+        : '${provider.name} - ${message?.isNotEmpty == true ? message : l10n(context).providerUnavailable}';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       child: Tooltip(
-        message: provider.name,
+        message: tooltip,
         child: Material(
           color: selected
               ? theme.colorScheme.primaryContainer

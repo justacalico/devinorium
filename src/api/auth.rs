@@ -311,6 +311,16 @@ pub async fn update_me(
         {
             return crate::api::map_err_internal(e).into_response();
         }
+        // The stored probe result belongs to the previous command; drop it so
+        // the next provider list re-checks the new one.
+        if let Some(command) = &provider_command {
+            state.provider_status.invalidate(command);
+        }
+        for value in patch.values() {
+            if let Some(command) = value.as_str() {
+                state.provider_status.invalidate(command);
+            }
+        }
     }
 
     let user = match state.db.get_user_by_id(user.id).await {
