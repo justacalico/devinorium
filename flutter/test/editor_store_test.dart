@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
@@ -27,6 +29,46 @@ ApiClient _clientFor(List<http.Response> responses) {
 }
 
 ApiService _serviceFor(ApiClient client) => ApiService(client: client);
+
+class _StreamApiService extends ApiService {
+  _StreamApiService(ApiClient client) : super(client: client);
+
+  final controller = StreamController<SseEvent>();
+
+  @override
+  Stream<SseEvent> sendMessageStream({
+    required String threadId,
+    required String prompt,
+    String? mode,
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+    List<PathRef> contextPaths = const [],
+  }) => controller.stream;
+}
+
+Map<String, Object> _fileJson(String path, String text) => {
+      'path': path,
+      'mime': 'text/plain',
+      'size': text.length,
+      'base64': '',
+      'text': text,
+      'sha256': 'sha-$text',
+    };
+
+ThreadDetail _threadDetail({String? worktreePath}) => ThreadDetail(
+      thread: Thread(
+        id: 't1',
+        title: 'Test',
+        projectId: 1,
+        model: 'm1',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+        worktreePath: worktreePath,
+      ),
+      messages: const [],
+    );
 
 void main() {
   final project = Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: '');
@@ -410,6 +452,214 @@ void main() {
       expect(state.agentPanelOpen, isFalse);
       expect(state.agentPanelUserSet, isTrue);
       expect(state.editorTerminalOpen, isTrue);
+    });
+  });
+
+  group('agent edited files', () {
+    String editPart(String id, List<String> files) =>
+        '{"type":"tool_call","id":"$id","title":"Edit",'
+        '"kind":"edit","status":"in_progress",'
+        '"changed_files":[${files.map((f) => '"$f"').join(',')}]}';
+
+    test('editor mode opens and focuses the edited file', () async {
+      final api = _StreamApiService(
+        _clientFor([_json(200, {}), _json(200, _fileJson('src/a.rs', 'new'))]),
+      );
+      final state = AppState.test(
+        api: api,
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(),
+        composerText: 'go',
+      );
+      state.setAppMode(AppMode.editor);
+      await state.sendMessage();
+
+      api.controller.add(
+        SseEvent('part', editPart('tc1', ['src/a.rs']), id: '1'),
+      );
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(state.editorTabs.map((t) => t.path), ['src/a.rs']);
+      expect(state.activeEditorPath, 'src/a.rs');
+      expect(state.activeEditorTab?.text, 'new');
+    });
+
+    test('agents mode does not open tabs', () async {
+      final api = _StreamApiService(_clientFor([_json(200, {})]));
+      final state = AppState.test(
+        api: api,
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(),
+        composerText: 'go',
+      );
+      await state.sendMessage();
+
+      api.controller.add(
+        SseEvent('part', editPart('tc1', ['src/a.rs']), id: '1'),
+      );
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(state.editorTabs, isEmpty);
+    });
+
+    test('absolute paths under the project root become relative', () async {
+      final api = _StreamApiService(
+        _clientFor([_json(200, {}), _json(200, _fileJson('lib/b.dart', 'x'))]),
+      );
+      final state = AppState.test(
+        api: api,
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(),
+        composerText: 'go',
+      );
+      state.setAppMode(AppMode.editor);
+      await state.sendMessage();
+
+      api.controller.add(
+        SseEvent('part', editPart('tc1', ['/x/lib/b.dart']), id: '1'),
+      );
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(state.editorTabs.map((t) => t.path), ['lib/b.dart']);
+      expect(state.activeEditorPath, 'lib/b.dart');
+    });
+
+    test('relative paths resolve against the thread worktree', () async {
+      final api = _StreamApiService(
+        _clientFor([_json(200, {}), _json(200, _fileJson('/wt/c.rs', 'x'))]),
+      );
+      final state = AppState.test(
+        api: api,
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(worktreePath: '/wt'),
+        composerText: 'go',
+      );
+      state.setAppMode(AppMode.editor);
+      await state.sendMessage();
+
+      api.controller.add(SseEvent('part', editPart('tc1', ['c.rs']), id: '1'));
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(state.editorTabs.map((t) => t.path), ['/wt/c.rs']);
+      expect(state.activeEditorPath, '/wt/c.rs');
+    });
+
+    test('an already open tab is focused and reloaded', () async {
+      final api = _StreamApiService(
+        _clientFor([
+          _json(200, _fileJson('a.txt', 'old')),
+          _json(200, {}),
+          _json(200, _fileJson('a.txt', 'new')),
+        ]),
+      );
+      final state = AppState.test(
+        api: api,
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(),
+        composerText: 'go',
+      );
+      state.setAppMode(AppMode.editor);
+      await state.openEditorFileNewTab('a.txt');
+      await state.sendMessage();
+
+      api.controller.add(SseEvent('part', editPart('tc1', ['a.txt']), id: '1'));
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(state.editorTabs.length, 1);
+      expect(state.activeEditorPath, 'a.txt');
+      expect(state.activeEditorTab?.text, 'new');
+    });
+
+    test('a dirty tab is focused but not reloaded', () async {
+      final api = _StreamApiService(
+        _clientFor([_json(200, _fileJson('a.txt', 'old')), _json(200, {})]),
+      );
+      final state = AppState.test(
+        api: api,
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(),
+        composerText: 'go',
+      );
+      state.setAppMode(AppMode.editor);
+      await state.openEditorFileNewTab('a.txt');
+      state.setEditorTabText('a.txt', 'user');
+      await state.sendMessage();
+
+      api.controller.add(SseEvent('part', editPart('tc1', ['a.txt']), id: '1'));
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(state.editorTabs.length, 1);
+      expect(state.activeEditorPath, 'a.txt');
+      expect(state.activeEditorTab?.text, 'user');
+      expect(state.activeEditorTab?.dirty, isTrue);
+      // No reload ran: the on-disk snapshot is still the first read.
+      expect(state.activeEditorTab?.content?.sha256, 'sha-old');
+    });
+
+    test('reload keeps edits made while the read is in flight', () async {
+      final completer = Completer<http.Response>();
+      var call = 0;
+      final client = ApiClient.withClient(
+        MockClient((req) {
+          call++;
+          if (call == 1) {
+            return Future.value(_json(200, _fileJson('a.txt', 'old')));
+          }
+          return completer.future;
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        projects: [project],
+        activeProjectId: 1,
+      );
+      await state.openEditorFileNewTab('a.txt');
+
+      final reload = state.reloadEditorTab('a.txt');
+      state.setEditorTabText('a.txt', 'user');
+      completer.complete(_json(200, _fileJson('a.txt', 'disk')));
+      await reload;
+
+      final tab = state.activeEditorTab!;
+      expect(tab.text, 'user');
+      expect(tab.dirty, isTrue);
+      expect(tab.content?.text, 'disk');
+    });
+
+    test('an edit landing during a reload triggers a follow-up read', () async {
+      final completer = Completer<http.Response>();
+      var call = 0;
+      final client = ApiClient.withClient(
+        MockClient((req) {
+          call++;
+          if (call == 2) return completer.future;
+          return Future.value(_json(200, _fileJson('a.txt', 'v$call')));
+        }),
+      );
+      final state = AppState.test(
+        api: ApiService(client: client),
+        projects: [project],
+        activeProjectId: 1,
+      );
+      await state.openEditorFileNewTab('a.txt');
+
+      unawaited(state.openAgentEditedFile('a.txt'));
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(state.activeEditorTab?.loading, isTrue);
+
+      unawaited(state.openAgentEditedFile('a.txt'));
+      completer.complete(_json(200, _fileJson('a.txt', 'v2')));
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(call, 3);
+      expect(state.activeEditorTab?.text, 'v3');
+      expect(state.activeEditorTab?.loading, isFalse);
     });
   });
 }

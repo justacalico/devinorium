@@ -32,6 +32,7 @@ class EditorTab {
     bool? loading,
     bool? saving,
     String? error,
+    bool clearError = false,
     bool? showDiff,
     bool? preview,
   }) =>
@@ -42,7 +43,7 @@ class EditorTab {
         dirty: dirty ?? this.dirty,
         loading: loading ?? this.loading,
         saving: saving ?? this.saving,
-        error: error ?? this.error,
+        error: clearError ? null : (error ?? this.error),
         showDiff: showDiff ?? this.showDiff,
         preview: preview ?? this.preview,
       );
@@ -55,6 +56,9 @@ mixin EditorStore on AppStateBase {
   bool _agentPanelOpen = true;
   bool _agentPanelUserSet = false;
   bool _editorTerminalOpen = false;
+
+  // Tabs that should be reloaded once their in-flight read or write settles.
+  final Set<String> _pendingAgentReloads = {};
   double _editorAgentPanelWidth = 320;
   double _editorTerminalHeight = 280;
 
@@ -164,44 +168,101 @@ mixin EditorStore on AppStateBase {
   }
 
   Future<void> _openEditorFileImpl(String path) async {
-    final tab = EditorTab(path: path, loading: true, preview: true);
-    _editorTabs.add(tab);
-    _bumpEditorTabs();
-    _activeEditorPath = path;
-    notifyListeners();
-
     try {
-      final content = await api.readFile(
-        path: path,
-        projectId: activeProjectId,
-      );
-      final idx = _editorTabs.indexWhere((t) => t.path == path);
-      if (idx < 0) return;
-      final text = content.text ?? '';
-      _editorTabs[idx] = _editorTabs[idx].copyWith(
-        content: content,
-        text: text,
-        dirty: false,
-        loading: false,
-      );
+      final tab = EditorTab(path: path, loading: true, preview: true);
+      _editorTabs.add(tab);
       _bumpEditorTabs();
+      _activeEditorPath = path;
       notifyListeners();
-    } catch (e) {
-      final idx = _editorTabs.indexWhere((t) => t.path == path);
-      if (idx >= 0) {
+
+      try {
+        final content = await api.readFile(
+          path: path,
+          projectId: activeProjectId,
+        );
+        final idx = _editorTabs.indexWhere((t) => t.path == path);
+        if (idx < 0) return;
+        final text = content.text ?? '';
         _editorTabs[idx] = _editorTabs[idx].copyWith(
+          content: content,
+          text: text,
+          dirty: false,
           loading: false,
-          error: e.toString(),
+          clearError: true,
         );
         _bumpEditorTabs();
         notifyListeners();
+      } catch (e) {
+        final idx = _editorTabs.indexWhere((t) => t.path == path);
+        if (idx >= 0) {
+          _editorTabs[idx] = _editorTabs[idx].copyWith(
+            loading: false,
+            error: e.toString(),
+          );
+          _bumpEditorTabs();
+          notifyListeners();
+        }
       }
+    } finally {
+      _drainAgentReload(path);
     }
+  }
+
+  @override
+  Future<void> openAgentEditedFile(String path) async {
+    final existing = _tabFor(path);
+    if (existing == null) {
+      await _openEditorFileImpl(path);
+      return;
+    }
+    setActiveEditorPath(path);
+    // Refresh clean tabs so they show what the agent just wrote instead of
+    // the pre-edit contents. A busy tab queues the refresh for when its
+    // in-flight read or write settles.
+    if (existing.dirty) return;
+    if (existing.loading || existing.saving) {
+      _pendingAgentReloads.add(path);
+      return;
+    }
+    await reloadEditorTab(path);
+  }
+
+  void _drainAgentReload(String path) {
+    if (_pendingAgentReloads.remove(path)) {
+      unawaited(openAgentEditedFile(path));
+    }
+  }
+
+  /// Convert a path reported by an agent edit into the form editor tabs
+  /// use: project-relative when the file sits under the active project root,
+  /// absolute otherwise. Relative paths resolve against the thread's
+  /// worktree when one is set, since that is the agent's working directory.
+  String _agentEditedEditorPath(ThreadStore store, String raw) {
+    if (p.isAbsolute(raw)) {
+      final id = _activeProjectId;
+      if (id != null) {
+        for (final proj in _projects) {
+          if (proj.id != id) continue;
+          try {
+            final rel = p.relative(raw, from: proj.path);
+            if (rel != '.' && !rel.startsWith('..')) return rel;
+          } catch (_) {}
+          break;
+        }
+      }
+      return raw;
+    }
+    final worktree = store.detail.valueOrNull?.thread.worktreePath;
+    if (worktree != null && worktree.isNotEmpty) {
+      return p.normalize(p.join(worktree, raw));
+    }
+    return p.normalize(raw);
   }
 
   @override
   void closeEditorTab(String path) {
     _editorTabs.removeWhere((t) => t.path == path);
+    _pendingAgentReloads.remove(path);
     _bumpEditorTabs();
     if (_activeEditorPath == path) {
       _activeEditorPath = _editorTabs.isEmpty ? null : _editorTabs.last.path;
@@ -212,6 +273,7 @@ mixin EditorStore on AppStateBase {
   @override
   void closeAllEditorTabs() {
     _editorTabs.clear();
+    _pendingAgentReloads.clear();
     _bumpEditorTabs();
     _activeEditorPath = null;
     notifyListeners();
@@ -226,7 +288,7 @@ mixin EditorStore on AppStateBase {
     _editorTabs[idx] = tab.copyWith(
       text: text,
       dirty: dirty,
-      error: null,
+      clearError: true,
       preview: dirty ? false : tab.preview,
     );
     _bumpEditorTabs();
@@ -235,101 +297,115 @@ mixin EditorStore on AppStateBase {
 
   @override
   Future<void> saveEditorTab(String path) async {
-    final idx = _editorTabs.indexWhere((t) => t.path == path);
-    if (idx < 0) return;
-    final tab = _editorTabs[idx];
-    if (tab.content == null ||
-        tab.content?.text == null ||
-        !tab.dirty ||
-        tab.saving ||
-        tab.loading) {
-      return;
-    }
-
-    _editorTabs[idx] = tab.copyWith(saving: true, error: null);
-    _bumpEditorTabs();
-    notifyListeners();
-
-    // Capture the text and hash at the moment of the request so we send what
-    // the user asked to save, but re-look up the tab after the await in case
-    // it was closed or reordered while the network call was in flight.
-    final textToSave = _editorTabs[idx].text;
-    final expectedSha = _editorTabs[idx].content!.sha256;
-
     try {
-      final content = await api.writeFile(
-        path: path,
-        projectId: activeProjectId,
-        content: textToSave,
-        expectedSha256: expectedSha,
-      );
-      final newIdx = _editorTabs.indexWhere((t) => t.path == path);
-      if (newIdx < 0) return;
-      _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
-        content: content,
-        dirty: _editorTabs[newIdx].text != (content.text ?? ''),
-        saving: false,
-        preview: false,
-      );
+      final idx = _editorTabs.indexWhere((t) => t.path == path);
+      if (idx < 0) return;
+      final tab = _editorTabs[idx];
+      if (tab.content == null ||
+          tab.content?.text == null ||
+          !tab.dirty ||
+          tab.saving ||
+          tab.loading) {
+        return;
+      }
+
+      _editorTabs[idx] = tab.copyWith(saving: true, clearError: true);
       _bumpEditorTabs();
       notifyListeners();
-    } on FileConflictException catch (e) {
-      final newIdx = _editorTabs.indexWhere((t) => t.path == path);
-      if (newIdx < 0) return;
-      _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
-        saving: false,
-        error: 'file changed on disk',
-        content: e.current,
-      );
-      _bumpEditorTabs();
-      notifyListeners();
-    } catch (e) {
-      final newIdx = _editorTabs.indexWhere((t) => t.path == path);
-      if (newIdx < 0) return;
-      _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
-        saving: false,
-        error: e.toString(),
-      );
-      _bumpEditorTabs();
-      notifyListeners();
+
+      // Capture the text and hash at the moment of the request so we send what
+      // the user asked to save, but re-look up the tab after the await in case
+      // it was closed or reordered while the network call was in flight.
+      final textToSave = _editorTabs[idx].text;
+      final expectedSha = _editorTabs[idx].content!.sha256;
+
+      try {
+        final content = await api.writeFile(
+          path: path,
+          projectId: activeProjectId,
+          content: textToSave,
+          expectedSha256: expectedSha,
+        );
+        final newIdx = _editorTabs.indexWhere((t) => t.path == path);
+        if (newIdx < 0) return;
+        _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
+          content: content,
+          dirty: _editorTabs[newIdx].text != (content.text ?? ''),
+          saving: false,
+          preview: false,
+          clearError: true,
+        );
+        _bumpEditorTabs();
+        notifyListeners();
+      } on FileConflictException catch (e) {
+        final newIdx = _editorTabs.indexWhere((t) => t.path == path);
+        if (newIdx < 0) return;
+        _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
+          saving: false,
+          error: 'file changed on disk',
+          content: e.current,
+        );
+        _bumpEditorTabs();
+        notifyListeners();
+      } catch (e) {
+        final newIdx = _editorTabs.indexWhere((t) => t.path == path);
+        if (newIdx < 0) return;
+        _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
+          saving: false,
+          error: e.toString(),
+        );
+        _bumpEditorTabs();
+        notifyListeners();
+      }
+    } finally {
+      _drainAgentReload(path);
     }
   }
 
   @override
   Future<void> reloadEditorTab(String path) async {
-    final idx = _editorTabs.indexWhere((t) => t.path == path);
-    if (idx < 0) return;
-    final tab = _editorTabs[idx];
-    if (tab.loading || tab.saving) return;
-
-    _editorTabs[idx] = tab.copyWith(loading: true, error: null);
-    _bumpEditorTabs();
-    notifyListeners();
-
     try {
-      final content = await api.readFile(
-        path: path,
-        projectId: activeProjectId,
-      );
-      final newIdx = _editorTabs.indexWhere((t) => t.path == path);
-      if (newIdx < 0) return;
-      _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
-        content: content,
-        text: content.text ?? '',
-        dirty: false,
-        loading: false,
-      );
+      final idx = _editorTabs.indexWhere((t) => t.path == path);
+      if (idx < 0) return;
+      final tab = _editorTabs[idx];
+      if (tab.loading || tab.saving) return;
+
+      _editorTabs[idx] = tab.copyWith(loading: true, clearError: true);
       _bumpEditorTabs();
       notifyListeners();
-    } catch (e) {
-      final newIdx = _editorTabs.indexWhere((t) => t.path == path);
-      if (newIdx < 0) return;
-      _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
-        loading: false,
-        error: e.toString(),
-      );
-      _bumpEditorTabs();
-      notifyListeners();
+
+      try {
+        final content = await api.readFile(
+          path: path,
+          projectId: activeProjectId,
+        );
+        final newIdx = _editorTabs.indexWhere((t) => t.path == path);
+        if (newIdx < 0) return;
+        final current = _editorTabs[newIdx];
+        // The user may have typed while the read was in flight; keep their
+        // text and recompute dirty against the fresh on-disk content.
+        final text = current.dirty ? current.text : (content.text ?? '');
+        _editorTabs[newIdx] = current.copyWith(
+          content: content,
+          text: text,
+          dirty: text != (content.text ?? ''),
+          loading: false,
+          clearError: true,
+        );
+        _bumpEditorTabs();
+        notifyListeners();
+      } catch (e) {
+        final newIdx = _editorTabs.indexWhere((t) => t.path == path);
+        if (newIdx < 0) return;
+        _editorTabs[newIdx] = _editorTabs[newIdx].copyWith(
+          loading: false,
+          error: e.toString(),
+        );
+        _bumpEditorTabs();
+        notifyListeners();
+      }
+    } finally {
+      _drainAgentReload(path);
     }
   }
 }

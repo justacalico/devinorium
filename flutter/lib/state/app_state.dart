@@ -301,6 +301,7 @@ class AppState extends AppStateBase
     _activeStore?.onStateChanged = null;
     _activeStore?.onThreadUpdated = null;
     _activeStore?.onRunFinished = null;
+    _activeStore?.onAgentEditedFiles = null;
     _activeStore?.cancelStream();
     _activeStore?.clearStreamingState();
     _activeStore = store;
@@ -387,6 +388,16 @@ class AppState extends AppStateBase
       if (updated.id == _activeThreadId &&
           previous?.linkedMr != updated.linkedMr) {
         unawaited(refreshLinkedMergeRequest());
+      }
+    };
+    store.onAgentEditedFiles = (paths) {
+      // In editor mode each file the agent edits gets surfaced: open a tab
+      // when none exists for the path, focus the tab when it does.
+      if (_appMode != AppMode.editor) return;
+      for (final raw in paths) {
+        try {
+          unawaited(openAgentEditedFile(_agentEditedEditorPath(store, raw)));
+        } catch (_) {}
       }
     };
   }
