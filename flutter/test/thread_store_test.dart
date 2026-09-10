@@ -639,7 +639,7 @@ void main() {
   });
 
   group('thread_update event', () {
-    test('updates detail thread and invokes onThreadTitleChanged', () async {
+    test('updates detail thread and invokes onThreadUpdated', () async {
       final api = _ControlledApiService();
       final store = ThreadStore(
         api: api,
@@ -662,12 +662,10 @@ void main() {
         ),
       );
 
-      String? newTitle;
-      String? newUpdatedAt;
+      Thread? updatedThread;
       store.onStateChanged = () {};
-      store.onThreadTitleChanged = (title, updatedAt) {
-        newTitle = title;
-        newUpdatedAt = updatedAt;
+      store.onThreadUpdated = (thread) {
+        updatedThread = thread;
       };
 
       await store.sendMessage();
@@ -684,11 +682,12 @@ void main() {
         store.detail.valueOrNull?.thread.updatedAt,
         '2024-01-02T00:00:00.000Z',
       );
-      expect(newTitle, 'New title');
-      expect(newUpdatedAt, '2024-01-02T00:00:00.000Z');
+      expect(updatedThread, isNotNull);
+      expect(updatedThread!.title, 'New title');
+      expect(updatedThread!.updatedAt, '2024-01-02T00:00:00.000Z');
     });
 
-    test('syncs git fields without invoking onThreadTitleChanged', () async {
+    test('syncs git fields and invokes onThreadUpdated', () async {
       final api = _ControlledApiService();
       final store = ThreadStore(
         api: api,
@@ -714,9 +713,9 @@ void main() {
         ),
       );
 
-      var called = false;
+      Thread? captured;
       store.onStateChanged = () {};
-      store.onThreadTitleChanged = (_, _) => called = true;
+      store.onThreadUpdated = (thread) => captured = thread;
 
       await store.sendMessage();
       api.controller.add(
@@ -730,13 +729,81 @@ void main() {
 
       expect(store.detail.valueOrNull?.thread.title, 'Old');
       expect(store.detail.valueOrNull?.thread.branch, 'devinorium/wt-1');
-      expect(store.detail.valueOrNull?.thread.worktreePath,
-          '/repo/.devinorium-worktrees/wt-1');
+      expect(
+        store.detail.valueOrNull?.thread.worktreePath,
+        '/repo/.devinorium-worktrees/wt-1',
+      );
       expect(store.detail.valueOrNull?.thread.envMode, 'worktree');
-      expect(called, isFalse);
+      expect(captured, isNotNull);
+      expect(captured!.branch, 'devinorium/wt-1');
+      expect(captured!.worktreePath, '/repo/.devinorium-worktrees/wt-1');
+      expect(captured!.envMode, 'worktree');
     });
 
-    test('does not invoke callback when title is unchanged', () async {
+    test('updates thread title and git fields in one event', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        selectedModel: 'm1',
+        selectedProvider: 'p1',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+              branch: null,
+              worktreePath: null,
+              envMode: 'local',
+            ),
+            messages: [],
+          ),
+        ),
+      );
+
+      Thread? captured;
+      store.onStateChanged = () {};
+      store.onThreadUpdated = (thread) => captured = thread;
+
+      await store.sendMessage();
+      api.controller.add(
+        SseEvent(
+          'thread_update',
+          '{"title":"New",'
+              '"updated_at":"2024-01-02T00:00:00.000Z",'
+              '"worktree_path":"/repo/.devinorium-worktrees/wt-1",'
+              '"branch":"devinorium/wt-1",'
+              '"env_mode":"worktree"}',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(store.detail.valueOrNull?.thread.title, 'New');
+      expect(
+        store.detail.valueOrNull?.thread.updatedAt,
+        '2024-01-02T00:00:00.000Z',
+      );
+      expect(store.detail.valueOrNull?.thread.branch, 'devinorium/wt-1');
+      expect(
+        store.detail.valueOrNull?.thread.worktreePath,
+        '/repo/.devinorium-worktrees/wt-1',
+      );
+      expect(store.detail.valueOrNull?.thread.envMode, 'worktree');
+      expect(captured, isNotNull);
+      expect(captured!.title, 'New');
+      expect(captured!.branch, 'devinorium/wt-1');
+      expect(captured!.worktreePath, '/repo/.devinorium-worktrees/wt-1');
+      expect(captured!.envMode, 'worktree');
+    });
+
+    test('does not invoke callback when metadata is unchanged', () async {
       final api = _ControlledApiService();
       final store = ThreadStore(
         api: api,
@@ -759,9 +826,9 @@ void main() {
         ),
       );
 
-      var called = false;
+      Thread? captured;
       store.onStateChanged = () {};
-      store.onThreadTitleChanged = (_, _) => called = true;
+      store.onThreadUpdated = (thread) => captured = thread;
 
       await store.sendMessage();
       api.controller.add(
@@ -772,18 +839,65 @@ void main() {
       );
       await Future.delayed(const Duration(milliseconds: 10));
 
-      expect(called, isFalse);
+      expect(captured, isNull);
     });
 
-    test('nully onThreadTitleChanged and onRunFinished on dispose', () {
+    test('does not invoke callback for duplicate git thread_update', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+              branch: 'devinorium/wt-1',
+              worktreePath: '/repo/.devinorium-worktrees/wt-1',
+              envMode: 'worktree',
+            ),
+            messages: [],
+          ),
+        ),
+      );
+
+      Thread? captured;
+      store.onStateChanged = () {};
+      store.onThreadUpdated = (thread) => captured = thread;
+
+      await store.sendMessage();
+      api.controller.add(
+        SseEvent(
+          'thread_update',
+          '{"worktree_path":"/repo/.devinorium-worktrees/wt-1",'
+              '"branch":"devinorium/wt-1","env_mode":"worktree"}',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(captured, isNull);
+      expect(
+        store.detail.valueOrNull?.thread.worktreePath,
+        '/repo/.devinorium-worktrees/wt-1',
+      );
+    });
+
+    test('nulls onThreadUpdated and onRunFinished on dispose', () {
       final api = _ControlledApiService();
       final store = ThreadStore(api: api, threadId: 't1', projectId: 1);
 
-      store.onThreadTitleChanged = (_, _) {};
+      store.onThreadUpdated = (_) {};
       store.onRunFinished = (_) {};
       store.dispose();
 
-      expect(store.onThreadTitleChanged, isNull);
+      expect(store.onThreadUpdated, isNull);
       expect(store.onRunFinished, isNull);
     });
   });
