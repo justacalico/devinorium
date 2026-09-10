@@ -183,7 +183,8 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
               )
               .toList();
 
-    final isNarrow = MediaQuery.sizeOf(context).width < 640;
+    final media = MediaQuery.sizeOf(context);
+    final isNarrow = media.width < 640;
 
     return Dialog(
       backgroundColor: theme.colorScheme.surface,
@@ -193,7 +194,7 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
         width: isNarrow ? double.infinity : 720,
-        height: 520,
+        height: isNarrow ? media.height * 0.85 : 520,
         child: Row(
           children: [
             if (!isNarrow && providers.length > 1)
