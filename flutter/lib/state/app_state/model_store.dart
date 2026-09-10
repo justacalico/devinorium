@@ -11,8 +11,10 @@ mixin ModelStore on AppStateBase {
   List<ModelInfo> _models = [];
   @override
   List<ProviderInfo> _providers = [];
+  /// Installed/latest version per provider id. Revisited on settings open
+  /// and whenever a provider command changes.
   @override
-  ProviderVersion? _providerVersion;
+  final Map<String, ProviderVersion> _providerVersions = {};
   @override
   String _selectedModel = '';
   @override
@@ -35,16 +37,35 @@ mixin ModelStore on AppStateBase {
   @override
   List<ProviderInfo> get providers => _providers;
   @override
-  ProviderVersion? get providerVersion => _providerVersion;
+  ProviderVersion? providerVersionFor(String providerId) =>
+      _providerVersions[providerId];
+
+  /// Refresh the cached version info for one provider, or for every known
+  /// provider when [providerId] is null. Failures keep the last known value
+  /// so the row stays unchanged rather than flashing to an unknown state.
   @override
-  Future<void> refreshProviderVersion() async {
-    try {
-      _providerVersion = await api.providerVersion();
-      notifyListeners();
-    } catch (_) {
-      // Keep the last known value on failure; the row stays unchanged
-      // rather than flashing to an unknown state.
+  Future<void> refreshProviderVersion({String? providerId}) async {
+    final ids = providerId != null && providerId.isNotEmpty
+        ? [providerId]
+        : [for (final p in _providers) p.id];
+    if (ids.isEmpty) {
+      // The provider list has not loaded yet; without a query param the
+      // endpoint reports the user's configured provider.
+      try {
+        final v = await api.providerVersion();
+        if (v.providerId.isNotEmpty) {
+          _providerVersions[v.providerId] = v;
+          notifyListeners();
+        }
+      } catch (_) {}
+      return;
     }
+    await Future.wait(ids.map((id) async {
+      try {
+        _providerVersions[id] = await api.providerVersion(provider: id);
+      } catch (_) {}
+    }));
+    notifyListeners();
   }
 
   @override

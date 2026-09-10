@@ -383,7 +383,14 @@ mixin AuthStore on AppStateBase {
       _globalError = '';
       // The installed version and the availability probe both depend on the
       // provider command, so re-check them whenever the saved config changes.
-      unawaited(refreshProviderVersion());
+      final touched = <String>{
+        if (providerId != null || providerCommand != null)
+          providerId ?? user.providerId,
+        ...?providerCommands?.keys,
+      };
+      for (final id in touched) {
+        unawaited(refreshProviderVersion(providerId: id));
+      }
       unawaited(_refreshProviders());
     } catch (e) {
       _globalError = '$e';
@@ -533,7 +540,7 @@ mixin AuthStore on AppStateBase {
     await _saveSelectedProvider('');
     await _saveSelectedModel('');
     await _saveSelectedPermission('');
-    _providerVersion = null;
+    _providerVersions.clear();
     _runningThreadIds.clear();
     _connectionStatus = ConnectionStatus.checking;
     _serverVersion = null;

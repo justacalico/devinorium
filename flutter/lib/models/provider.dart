@@ -60,7 +60,7 @@ String providerCommandFor(User user, String providerId) {
   return defaultProviderCommand(providerId);
 }
 
-/// Installed and latest versions for the user's configured provider.
+/// Installed and latest versions for a single provider.
 /// Either version is null when it could not be determined.
 class ProviderVersion {
   final String providerId;

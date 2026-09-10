@@ -45,8 +45,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Map<String, List<ModelInfo>> get _modelsByProvider;
   List<ProviderInfo> get _providers;
   set _providers(List<ProviderInfo> value);
-  ProviderVersion? get _providerVersion;
-  set _providerVersion(ProviderVersion? value);
+  Map<String, ProviderVersion> get _providerVersions;
   int? get _activeProjectId;
   set _activeProjectId(int? value);
   String? get _activeThreadId;
@@ -172,7 +171,7 @@ abstract class AppStateBase extends ChangeNotifier {
   List<ThreadGroup> get groups;
   List<ModelInfo> get models;
   List<ProviderInfo> get providers;
-  ProviderVersion? get providerVersion;
+  ProviderVersion? providerVersionFor(String providerId);
   int? get activeProjectId;
   String? get activeThreadId;
   ThreadDetail? get activeThreadDetail;
@@ -310,7 +309,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> mkdir(String name);
   Future<void> deleteFile(String path);
   Future<void> _loadModelsAndProviders();
-  Future<void> refreshProviderVersion();
+  Future<void> refreshProviderVersion({String? providerId});
   Future<void> bootstrap();
   void startHealthChecks();
   void stopHealthChecks();
