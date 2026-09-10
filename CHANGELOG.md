@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.56.1 - 2026-09-10
+#### Bug Fixes
+- 设置页按每个 provider 显示各自版本 - (1ec4095) - HttpAnimations
+
+- - -
+
 ## v0.56.0 - 2026-09-10
 #### Features
 - 支持从文件面板拖拽文件/文件夹到输入框作为引用 - (5ad600b) - HttpAnimations
