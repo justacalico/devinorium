@@ -64,6 +64,7 @@ enum DialogKind {
   renameThread,
   mergeRequest,
   issue,
+  webLogin,
 }
 
 class AppState extends AppStateBase
