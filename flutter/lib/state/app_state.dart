@@ -260,7 +260,6 @@ class AppState extends AppStateBase
       );
       _threadStores[threadId] = store;
       _setActiveStore(store);
-      _configureStore(store);
     } else {
       _activeThreadId = activeThreadId;
       _composerText = composerText ?? '';
@@ -294,7 +293,7 @@ class AppState extends AppStateBase
   void _setActiveStore(ThreadStore? store) {
     if (_activeStore == store) return;
     _activeStore?.onStateChanged = null;
-    _activeStore?.onThreadTitleChanged = null;
+    _activeStore?.onThreadUpdated = null;
     _activeStore?.onRunFinished = null;
     _activeStore?.cancelStream();
     _activeStore?.clearStreamingState();
@@ -304,6 +303,7 @@ class AppState extends AppStateBase
     // Keep _planOverlayExpanded and _planOverlayUserDismissed as user
     // preferences so they survive thread switches and app restarts.
     store?.onStateChanged = _onThreadStoreChanged;
+    if (store != null) _configureStore(store);
     _syncFromActiveStore();
     _clearLinkedMergeRequest();
     notifyListeners();
@@ -369,23 +369,14 @@ class AppState extends AppStateBase
       }
       unawaited(loadProjects());
     };
-    store.onThreadTitleChanged = (title, updatedAt) {
-      final index = _threads.indexWhere((t) => t.id == id);
+    store.onThreadUpdated = (updated) {
+      final index = _threads.indexWhere((t) => t.id == updated.id);
+      // Active thread might not be in the loaded sidebar list yet; the next
+      // thread list refresh will pick up the updated metadata.
       if (index < 0) return;
-      final updated = _threads[index].copyWith(
-        title: title,
-        updatedAt: updatedAt,
-      );
       final next = [..._threads];
       next[index] = updated;
-      // Keep the list sorted by pinned status, recency, and id desc, matching
-      // the backend ordering used by listThreads.
-      next.sort((a, b) {
-        if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-        final byUpdated = b.updatedAt.compareTo(a.updatedAt);
-        if (byUpdated != 0) return byUpdated;
-        return b.id.compareTo(a.id);
-      });
+      next.sort(_compareThreadsForSidebar);
       _threads = next;
     };
   }
@@ -418,7 +409,6 @@ class AppState extends AppStateBase
       selectedPermission: selectedPermission,
       selectedProvider: selectedProvider,
     );
-    _configureStore(store);
     return store;
   }
 }

@@ -535,10 +535,7 @@ void main() {
         ),
       );
       state.setView(AppView.app);
-      final result = await state.webLogin(
-        username: 'owner',
-        password: 'pw',
-      );
+      final result = await state.webLogin(username: 'owner', password: 'pw');
       expect(result, isNull);
       expect(state.view, AppView.app);
       expect(state.user?.username, 'owner');
@@ -561,10 +558,7 @@ void main() {
           ]),
         ),
       );
-      final result = await state.webLogin(
-        username: 'owner',
-        password: 'pw',
-      );
+      final result = await state.webLogin(username: 'owner', password: 'pw');
       expect(result, isNotNull);
       expect(state.globalError, isEmpty);
     });
@@ -572,26 +566,28 @@ void main() {
     test('webLogin returns an error on failed authentication', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(
-        api: ApiService(client: _clientFor([http.Response('unauthorized', 401)])),
+        api: ApiService(
+          client: _clientFor([http.Response('unauthorized', 401)]),
+        ),
       );
-      final result = await state.webLogin(
-        username: 'owner',
-        password: 'wrong',
-      );
+      final result = await state.webLogin(username: 'owner', password: 'wrong');
       expect(result, isNotNull);
       expect(state.globalError, isNotEmpty);
     });
 
-    test('switchServer falls back to app view when the server id is unknown', () async {
-      SharedPreferences.setMockInitialValues({});
-      final state = AppState(
-        api: ApiService(client: _clientFor([_json(200, {})])),
-      );
-      state.setView(AppView.app);
-      await state.switchServer('missing');
-      expect(state.view, AppView.app);
-      expect(state.globalError, contains('server not found'));
-    });
+    test(
+      'switchServer falls back to app view when the server id is unknown',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final state = AppState(
+          api: ApiService(client: _clientFor([_json(200, {})])),
+        );
+        state.setView(AppView.app);
+        await state.switchServer('missing');
+        expect(state.view, AppView.app);
+        expect(state.globalError, contains('server not found'));
+      },
+    );
 
     test(
       'removeServer removes an inactive profile without resetting state',
@@ -2694,6 +2690,10 @@ void main() {
             ),
           ],
         );
+        addTearDown(() async {
+          state.dispose();
+          await controller.close();
+        });
         state.setSelectedModel('m1');
         state.setSelectedPermission('normal');
         state.setComposerText('new title');
@@ -2712,13 +2712,302 @@ void main() {
             '{"title":"new title","updated_at":"2024-01-02T00:00:00.000Z"}',
           ),
         );
-        await controller.close();
 
         await completer.future.timeout(const Duration(seconds: 2));
 
         expect(state.activeThreadDetail?.thread.title, 'new title');
         expect(state.threads.first.title, 'new title');
         expect(state.threads.first.updatedAt, '2024-01-02T00:00:00.000Z');
+      },
+    );
+
+    test(
+      'sendMessage updates thread worktree in active thread and sidebar',
+      () async {
+        final completer = Completer<void>();
+        final client = _clientFor([_json(200, {})]);
+        final api = _StreamableApiService(client);
+        final controller = StreamController<SseEvent>();
+        api.streamBuilder = () => controller.stream;
+
+        final state = AppState.test(
+          api: api,
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 'Old',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '2024-01-01T00:00:00.000Z',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+              envMode: 'local',
+            ),
+            messages: [],
+          ),
+          threads: [
+            Thread(
+              id: 'a',
+              title: 'Old',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+              envMode: 'local',
+            ),
+          ],
+        );
+        addTearDown(() async {
+          state.dispose();
+          await controller.close();
+        });
+        state.setSelectedModel('m1');
+        state.setSelectedPermission('normal');
+        state.setComposerText('switch worktree');
+
+        state.addListener(() {
+          if (state.threads.isNotEmpty &&
+              state.threads.first.worktreePath ==
+                  '/repo/.devinorium-worktrees/wt-1') {
+            if (!completer.isCompleted) completer.complete();
+          }
+        });
+
+        await state.sendMessage();
+        controller.add(
+          SseEvent(
+            'thread_update',
+            '{"worktree_path":"/repo/.devinorium-worktrees/wt-1",'
+                '"branch":"devinorium/wt-1","env_mode":"worktree"}',
+          ),
+        );
+
+        await completer.future.timeout(const Duration(seconds: 2));
+
+        expect(
+          state.activeThreadDetail?.thread.worktreePath,
+          '/repo/.devinorium-worktrees/wt-1',
+        );
+        expect(state.activeThreadDetail?.thread.branch, 'devinorium/wt-1');
+        expect(state.activeThreadDetail?.thread.envMode, 'worktree');
+        expect(
+          state.threads.first.worktreePath,
+          '/repo/.devinorium-worktrees/wt-1',
+        );
+        expect(state.threads.first.branch, 'devinorium/wt-1');
+        expect(state.threads.first.envMode, 'worktree');
+      },
+    );
+
+    test(
+      'sendMessage re-sorts sidebar when active thread becomes newer',
+      () async {
+        final completer = Completer<void>();
+        final client = _clientFor([_json(200, {})]);
+        final api = _StreamableApiService(client);
+        final controller = StreamController<SseEvent>();
+        api.streamBuilder = () => controller.stream;
+
+        final state = AppState.test(
+          api: api,
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 'Old',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '2024-01-01T00:00:00.000Z',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+            messages: [],
+          ),
+          threads: [
+            Thread(
+              id: 'b',
+              title: 'Newer',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-02T00:00:00.000Z',
+            ),
+            Thread(
+              id: 'a',
+              title: 'Old',
+              projectId: 1,
+              model: '',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+          ],
+        );
+        addTearDown(() async {
+          state.dispose();
+          await controller.close();
+        });
+        state.setSelectedModel('m1');
+        state.setSelectedPermission('normal');
+        state.setComposerText('bump a');
+
+        state.addListener(() {
+          if (state.threads.isNotEmpty &&
+              state.threads.first.id == 'a' &&
+              state.threads.first.title == 'new title') {
+            if (!completer.isCompleted) completer.complete();
+          }
+        });
+
+        await state.sendMessage();
+        controller.add(
+          SseEvent(
+            'thread_update',
+            '{"title":"new title","updated_at":"2024-01-03T00:00:00.000Z"}',
+          ),
+        );
+
+        await completer.future.timeout(const Duration(seconds: 2));
+
+        expect(state.threads.first.id, 'a');
+        expect(state.threads.first.title, 'new title');
+        expect(state.threads[1].id, 'b');
+      },
+    );
+
+    test(
+      'resumeThread reuses a cached store and still updates sidebar',
+      () async {
+        final client = _clientFor([
+          _json(200, []), // ensureModelsFor p1
+          _json(200, {
+            'id': 'b',
+            'title': 'New',
+            'project_id': 1,
+            'provider_id': 'p1',
+            'model': 'm1',
+            'permission_mode': 'normal',
+            'reasoning_effort': '',
+            'created_at': '',
+            'updated_at': '',
+            'env_mode': 'local',
+          }),
+          _json(200, {
+            'thread': {
+              'id': 'b',
+              'title': 'New',
+              'project_id': 1,
+              'provider_id': 'p1',
+              'model': 'm1',
+              'permission_mode': 'normal',
+              'reasoning_effort': '',
+              'created_at': '',
+              'updated_at': '',
+              'env_mode': 'local',
+            },
+            'messages': [],
+            'total_messages': 0,
+          }),
+          _json(200, [
+            {
+              'id': 'a',
+              'title': 'Old',
+              'project_id': 1,
+              'provider_id': 'p1',
+              'model': 'm1',
+              'permission_mode': 'normal',
+              'reasoning_effort': '',
+              'created_at': '',
+              'updated_at': '2024-01-01T00:00:00.000Z',
+              'env_mode': 'local',
+            },
+            {
+              'id': 'b',
+              'title': 'New',
+              'project_id': 1,
+              'provider_id': 'p1',
+              'model': 'm1',
+              'permission_mode': 'normal',
+              'reasoning_effort': '',
+              'created_at': '',
+              'updated_at': '2024-01-01T00:00:00.000Z',
+              'env_mode': 'local',
+            },
+          ]),
+          _json(200, []), // listThreadGroups
+        ]);
+        final api = _StreamableApiService(client);
+        final controller = StreamController<SseEvent>();
+        api.eventsBuilder = () => controller.stream;
+
+        final state = AppState.test(
+          api: api,
+          activeProjectId: 1,
+          activeThreadId: 'a',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 'a',
+              title: 'Old',
+              projectId: 1,
+              providerId: 'p1',
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+            messages: [],
+          ),
+        );
+        addTearDown(() async {
+          state.dispose();
+          await controller.close();
+        });
+        await state.setSelectedProvider('p1');
+        state.setSelectedModel('m1');
+        state.setSelectedPermission('normal');
+
+        // Switch to a new thread, leaving thread a cached and inactive.
+        api.runResponse = {'status': 'idle'};
+        await state.createNewThread(projectId: 1);
+
+        // Resume the cached thread with a running stream.
+        api.runResponse = {'status': 'running'};
+        final completer = Completer<void>();
+        state.addListener(() {
+          if (state.activeThreadDetail?.thread.worktreePath ==
+                  '/repo/.devinorium-worktrees/wt-1' &&
+              state.threads.any(
+                (t) =>
+                    t.id == 'a' &&
+                    t.worktreePath == '/repo/.devinorium-worktrees/wt-1',
+              )) {
+            if (!completer.isCompleted) completer.complete();
+          }
+        });
+        await state.resumeThread('a');
+        controller.add(
+          SseEvent(
+            'thread_update',
+            '{"worktree_path":"/repo/.devinorium-worktrees/wt-1",'
+                '"branch":"devinorium/wt-1","env_mode":"worktree"}',
+          ),
+        );
+
+        await completer.future.timeout(const Duration(seconds: 2));
+
+        expect(
+          state.activeThreadDetail?.thread.worktreePath,
+          '/repo/.devinorium-worktrees/wt-1',
+        );
+        final a = state.threads.firstWhere((t) => t.id == 'a');
+        expect(a.worktreePath, '/repo/.devinorium-worktrees/wt-1');
+        expect(a.branch, 'devinorium/wt-1');
+        expect(a.envMode, 'worktree');
       },
     );
   });

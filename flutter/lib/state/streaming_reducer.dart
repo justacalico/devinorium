@@ -234,38 +234,43 @@ StreamingReduceResult reduceStreamingEvent({
       var nextThread = detail.thread;
       var changed = false;
       final title = decoded['title']?.toString();
-      if (title != null && title.isNotEmpty) {
+      if (title != null && title.isNotEmpty && title != nextThread.title) {
         nextThread = nextThread.copyWith(title: title);
         changed = true;
       }
       final updatedAt = decoded['updated_at']?.toString();
-      if (updatedAt != null && updatedAt.isNotEmpty) {
+      if (updatedAt != null &&
+          updatedAt.isNotEmpty &&
+          updatedAt != nextThread.updatedAt) {
         nextThread = nextThread.copyWith(updatedAt: updatedAt);
         changed = true;
       }
       if (decoded.containsKey('env_mode')) {
-        final envMode = decoded['env_mode']?.toString();
-        if (envMode != null && envMode.isNotEmpty) {
-          nextThread = nextThread.copyWith(envMode: envMode);
+        final raw = decoded['env_mode'];
+        if (raw is String && raw != nextThread.envMode) {
+          nextThread = nextThread.copyWith(envMode: raw);
           changed = true;
         }
       }
       if (decoded.containsKey('branch')) {
         final raw = decoded['branch'];
-        if (raw == null || raw is String) {
+        if ((raw == null || raw is String) && raw != nextThread.branch) {
           nextThread = nextThread.copyWith(branch: raw as String?);
           changed = true;
         }
       }
       if (decoded.containsKey('worktree_path')) {
         final raw = decoded['worktree_path'];
-        if (raw == null || raw is String) {
+        if ((raw == null || raw is String) && raw != nextThread.worktreePath) {
           nextThread = nextThread.copyWith(worktreePath: raw as String?);
           changed = true;
         }
       }
       if (!changed) {
-        return StreamingReduceResult(detail: detail, snapshot: snapshot);
+        return StreamingReduceResult(
+          detail: detail,
+          snapshot: snapshot.copyWith(lastSeq: seq ?? snapshot.lastSeq),
+        );
       }
       return StreamingReduceResult(
         detail: detail.copyWith(thread: nextThread),

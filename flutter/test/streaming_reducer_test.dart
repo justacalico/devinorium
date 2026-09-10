@@ -454,11 +454,7 @@ void main() {
       final res = reduceStreamingEvent(
         detail: null,
         snapshot: StreamingSnapshot.empty,
-        event: SseEvent(
-          'thread_update',
-          '{"title":"New"}',
-          id: '1',
-        ),
+        event: SseEvent('thread_update', '{"title":"New"}', id: '1'),
       );
       expect(res.detail, isNull);
     });
@@ -543,8 +539,10 @@ void main() {
         ),
       );
       expect(res.detail!.thread.title, 'Old');
-      expect(res.detail!.thread.worktreePath,
-          '/repo/.devinorium-worktrees/wt-1');
+      expect(
+        res.detail!.thread.worktreePath,
+        '/repo/.devinorium-worktrees/wt-1',
+      );
       expect(res.detail!.thread.branch, 'devinorium/wt-1');
       expect(res.detail!.thread.envMode, 'worktree');
       expect(res.snapshot.lastSeq, 1);
@@ -611,6 +609,46 @@ void main() {
       expect(res.detail!.thread.envMode, 'worktree');
     });
 
+    test('updates title and git worktree fields together', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+          branch: null,
+          worktreePath: null,
+          envMode: 'local',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"title":"New",'
+              '"updated_at":"2024-01-02T00:00:00.000Z",'
+              '"worktree_path":"/repo/.devinorium-worktrees/wt-1",'
+              '"branch":"devinorium/wt-1",'
+              '"env_mode":"worktree"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail!.thread.title, 'New');
+      expect(res.detail!.thread.updatedAt, '2024-01-02T00:00:00.000Z');
+      expect(res.detail!.thread.branch, 'devinorium/wt-1');
+      expect(
+        res.detail!.thread.worktreePath,
+        '/repo/.devinorium-worktrees/wt-1',
+      );
+      expect(res.detail!.thread.envMode, 'worktree');
+      expect(res.snapshot.lastSeq, 1);
+    });
+
     test('ignores non-string branch and worktree_path values', () {
       final detail = ThreadDetail(
         thread: Thread(
@@ -641,6 +679,32 @@ void main() {
       expect(res.detail!.thread.worktreePath, '/repo/main');
       // env_mode is a string, so it is still applied.
       expect(res.detail!.thread.envMode, 'worktree');
+    });
+
+    test('advances lastSeq on no-op thread_update', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Same',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"title":"Same","updated_at":"2024-01-01T00:00:00.000Z"}',
+          id: '7',
+        ),
+      );
+      expect(res.detail, detail);
+      expect(res.snapshot.lastSeq, 7);
     });
   });
 }
