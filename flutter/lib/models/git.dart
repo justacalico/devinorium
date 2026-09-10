@@ -268,4 +268,28 @@ class MergeRequestLink {
     webUrl: ref.webUrl,
     draft: false,
   );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! MergeRequestLink) return false;
+    return iid == other.iid &&
+        title == other.title &&
+        state == other.state &&
+        sourceBranch == other.sourceBranch &&
+        targetBranch == other.targetBranch &&
+        webUrl == other.webUrl &&
+        draft == other.draft;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    iid,
+    title,
+    state,
+    sourceBranch,
+    targetBranch,
+    webUrl,
+    draft,
+  );
 }

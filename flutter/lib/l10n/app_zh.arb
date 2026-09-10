@@ -588,6 +588,10 @@
   "copied": "已复制",
   "copiedToClipboard": "已复制到剪贴板",
   "mergeRequest": "合并请求",
+  "linkMergeRequest": "关联合并请求",
+  "unlinkMergeRequest": "取消关联合并请求",
+  "mergeRequestUrlHint": "GitLab 合并请求 URL",
+  "invalidMergeRequestUrl": "请输入有效的 GitLab 合并请求 URL",
   "overview": "概览",
   "changes": "更改",
   "comments": "评论",
@@ -1008,5 +1012,42 @@
   "usageByProvider": "按提供商",
   "usageByModel": "按模型",
   "usageEmpty": "暂无使用记录",
-  "usageLoadFailed": "加载用量失败"
+  "usageLoadFailed": "加载用量失败",
+  "devMergeRequestTitle": "开发合并请求",
+  "@devMergeRequestTitle": {
+    "description": "Title of the dialog shown on builds from a merge request"
+  },
+  "devMergeRequestBody": "你正在一个开发合并请求 (#{id}) 上。在此处反馈问题：\n\n{url}",
+  "@devMergeRequestBody": {
+    "description": "Body of the dialog shown on builds from a merge request",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "devMergeRequestBodyNoUrl": "你正在一个开发合并请求 (#{id}) 上。此构建中没有合并请求 URL。",
+  "@devMergeRequestBodyNoUrl": {
+    "description": "Body shown when a merge request ID is known but the URL is missing or invalid",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "devMergeRequestOpen": "打开",
+  "@devMergeRequestOpen": {
+    "description": "Button to open the merge request URL"
+  },
+  "devMergeRequestCopy": "复制",
+  "@devMergeRequestCopy": {
+    "description": "Button to copy the merge request URL"
+  },
+  "devMergeRequestClose": "关闭",
+  "@devMergeRequestClose": {
+    "description": "Button to dismiss the merge request dialog"
+  }
 }

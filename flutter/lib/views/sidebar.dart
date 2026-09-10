@@ -17,6 +17,7 @@ import '../widgets/owner_badge.dart';
 import '../widgets/provider_icons.dart';
 import 'files_panel.dart';
 import 'project_icon.dart';
+import 'sidebar/link_merge_request_dialog.dart';
 import 'settings/topics.dart';
 import 'window_controls.dart';
 

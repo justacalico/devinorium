@@ -266,6 +266,23 @@ StreamingReduceResult reduceStreamingEvent({
           changed = true;
         }
       }
+      if (decoded.containsKey('linked_mr')) {
+        final raw = decoded['linked_mr'];
+        if (raw == null) {
+          if (nextThread.linkedMr != null) {
+            nextThread = nextThread.copyWith(linkedMrOrNull: null);
+            changed = true;
+          }
+        } else if (raw is Map<String, dynamic>) {
+          try {
+            final ref = LinkedMergeRequestRef.fromJson(raw);
+            if (ref != nextThread.linkedMr) {
+              nextThread = nextThread.copyWith(linkedMr: ref);
+              changed = true;
+            }
+          } catch (_) {}
+        }
+      }
       if (!changed) {
         return StreamingReduceResult(
           detail: detail,

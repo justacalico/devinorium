@@ -706,5 +706,76 @@ void main() {
       expect(res.detail, detail);
       expect(res.snapshot.lastSeq, 7);
     });
+
+    test('applies linked_mr from thread_update', () {
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"linked_mr":{"hostname":"gitlab.example.com",'
+              '"project_path":"group/project","iid":42,'
+              '"web_url":"https://gitlab.example.com/group/project/-/merge_requests/42"},'
+              '"updated_at":"2024-01-02T00:00:00.000Z"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail, isNotNull);
+      expect(res.detail!.thread.linkedMr, isNotNull);
+      expect(res.detail!.thread.linkedMr!.iid, 42);
+      expect(
+        res.detail!.thread.linkedMr!.webUrl,
+        'https://gitlab.example.com/group/project/-/merge_requests/42',
+      );
+      expect(res.detail!.thread.updatedAt, '2024-01-02T00:00:00.000Z');
+      expect(res.snapshot.lastSeq, 1);
+    });
+
+    test('clears linked_mr when sent as null', () {
+      final ref = LinkedMergeRequestRef(
+        hostname: 'gitlab.example.com',
+        projectPath: 'group/project',
+        iid: 42,
+        webUrl: 'https://gitlab.example.com/group/project/-/merge_requests/42',
+      );
+      final detail = ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Old',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+          linkedMr: ref,
+        ),
+        messages: [],
+      );
+      final res = reduceStreamingEvent(
+        detail: detail,
+        snapshot: StreamingSnapshot.empty,
+        event: SseEvent(
+          'thread_update',
+          '{"linked_mr":null,"updated_at":"2024-01-02T00:00:00.000Z"}',
+          id: '1',
+        ),
+      );
+      expect(res.detail, isNotNull);
+      expect(res.detail!.thread.linkedMr, isNull);
+      expect(res.detail!.thread.updatedAt, '2024-01-02T00:00:00.000Z');
+      expect(res.snapshot.lastSeq, 1);
+    });
   });
 }

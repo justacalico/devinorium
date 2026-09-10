@@ -1,6 +1,8 @@
 //! GitLab remote URL and API path parsing.
 
+use once_cell::sync::Lazy;
 use percent_encoding::percent_decode;
+use regex::Regex;
 
 use super::{GitRemoteService, RemoteError};
 
@@ -92,11 +94,14 @@ pub fn parse_gitlab_merge_request_url(url: &str) -> Option<LinkedMergeRequest> {
         return None;
     }
 
-    let (scheme, rest) = if let Some(rest) = url.strip_prefix("https://") {
-        ("https", rest)
+    // Scheme is case-insensitive in URLs; the rest of the path keeps its casing.
+    let lower = url.to_lowercase();
+    let (scheme, rest) = if lower.starts_with("https://") {
+        ("https", &url[8..])
+    } else if lower.starts_with("http://") {
+        ("http", &url[7..])
     } else {
-        let rest = url.strip_prefix("http://")?;
-        ("http", rest)
+        return None;
     };
 
     // Strip optional user:pass@ authentication; the remainder is host + path.
@@ -141,6 +146,23 @@ pub fn parse_gitlab_merge_request_url(url: &str) -> Option<LinkedMergeRequest> {
     })
 }
 
+/// Pattern for GitLab merge request URLs embedded in arbitrary text. Matches
+/// the same character set the Flutter client uses so assistant replies and
+/// pasted messages are discovered consistently.
+static MR_URL_RE: Lazy<Regex> = Lazy::new(|| {
+    regex::RegexBuilder::new(r#"https?://[^\s<>"`{}|\\^`\[\]]+?/-/merge_requests/\d+"#)
+        .case_insensitive(true)
+        .build()
+        .unwrap()
+});
+
+/// Extract and parse the first valid GitLab merge request URL found in text.
+pub fn first_gitlab_merge_request_url(content: &str) -> Option<LinkedMergeRequest> {
+    MR_URL_RE
+        .find_iter(content)
+        .find_map(|m| parse_gitlab_merge_request_url(m.as_str()))
+}
+
 impl GitRemoteService {
     pub(super) fn api_host(hostname: &str) -> &str {
         if hostname.is_empty() {
@@ -174,7 +196,7 @@ impl GitRemoteService {
         if hostname.is_empty() {
             return None;
         }
-        let mut project_path = path.trim().trim_end_matches(".git").to_string();
+        let mut project_path = path.trim().trim_end_matches(".git").to_lowercase();
         // A leading or trailing slash is meaningless and breaks API paths.
         while project_path.starts_with('/') {
             project_path.remove(0);
@@ -385,5 +407,52 @@ mod tests {
         assert!(!r.web_url.contains("pass"));
         assert!(r.web_url.starts_with("https://gitlab.example.com:8443/"));
         assert!(r.web_url.ends_with("/diffs?foo=1"));
+    }
+
+    #[test]
+    fn parse_gitlab_merge_request_url_is_case_insensitive_for_scheme() {
+        let r = parse_gitlab_merge_request_url(
+            "HTTPS://gitlab.example.com/group/project/-/merge_requests/5",
+        )
+        .unwrap();
+        assert_eq!(r.iid, 5);
+        assert_eq!(
+            r.web_url,
+            "https://gitlab.example.com/group/project/-/merge_requests/5"
+        );
+    }
+
+    #[test]
+    fn first_gitlab_merge_request_url_extracts_first_valid_url() {
+        let text = "Done. https://gitlab.example.com/group/project/-/merge_requests/5";
+        let r = first_gitlab_merge_request_url(text).unwrap();
+        assert_eq!(r.iid, 5);
+        assert_eq!(r.project_path, "group/project");
+    }
+
+    #[test]
+    fn first_gitlab_merge_request_url_prefers_first_matching_remote() {
+        let text = "See https://evil.com/thing and \
+                    https://gitlab.com/group/project/-/merge_requests/42";
+        let r = first_gitlab_merge_request_url(text).unwrap();
+        assert_eq!(r.iid, 42);
+    }
+
+    #[test]
+    fn first_gitlab_merge_request_url_ignores_invalid_urls() {
+        assert!(first_gitlab_merge_request_url("no urls here").is_none());
+        assert!(first_gitlab_merge_request_url(
+            "https://gitlab.com/group/project/merge_requests/5"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn first_gitlab_merge_request_url_is_case_insensitive_for_scheme() {
+        let text = "Done: HTTPS://GITLAB.EXAMPLE.COM/Group/Project/-/merge_requests/7";
+        let r = first_gitlab_merge_request_url(text).unwrap();
+        assert_eq!(r.iid, 7);
+        assert_eq!(r.hostname, "gitlab.example.com");
+        assert_eq!(r.project_path, "group/project");
     }
 }

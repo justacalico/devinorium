@@ -16,6 +16,8 @@ mixin GitStore on AppStateBase {
   @override
   String? _linkedMrBranch;
   @override
+  int? _linkedMrIid;
+  @override
   List<GitConnection> _gitConnections = [];
   List<GitConnection>? _gitConnectionsView;
   @override
@@ -45,13 +47,16 @@ mixin GitStore on AppStateBase {
     _gitConnections = List.of(_gitConnections);
     _gitConnectionsView = null;
   }
+
   @override
   void _clearLinkedMergeRequest() {
     _linkedMergeRequest = null;
     _loadingLinkedMergeRequest = false;
     _linkedMrProjectId = null;
     _linkedMrBranch = null;
+    _linkedMrIid = null;
   }
+
   @override
   GitRepoInfo? gitRepoInfo(int projectId) => _gitRepoInfo[projectId];
   @override
@@ -65,6 +70,7 @@ mixin GitStore on AppStateBase {
     _gitConnectionsView ??= List.unmodifiable(_gitConnections);
     return _gitConnectionsView!;
   }
+
   @override
   bool get loadingGitConnections => _loadingGitConnections;
   @override
@@ -75,6 +81,7 @@ mixin GitStore on AppStateBase {
     _globalError = '';
     notifyListeners();
   }
+
   @override
   Future<String?> cloneRepo(String url) async {
     _cloningRepo = true;
@@ -96,6 +103,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> loadGitRepoInfo(int projectId, {bool force = false}) async {
     try {
@@ -109,6 +117,7 @@ mixin GitStore on AppStateBase {
     }
     notifyListeners();
   }
+
   @override
   void _syncProjectBranch(int projectId, GitRepoInfo info) {
     final idx = _projects.indexWhere((p) => p.id == projectId);
@@ -119,6 +128,7 @@ mixin GitStore on AppStateBase {
       ..._projects.sublist(idx + 1),
     ];
   }
+
   @override
   Future<void> loadGitBranches(
     int projectId, {
@@ -138,6 +148,7 @@ mixin GitStore on AppStateBase {
     }
     notifyListeners();
   }
+
   @override
   Future<void> loadGitWorktrees(int projectId, {bool force = false}) async {
     try {
@@ -149,6 +160,7 @@ mixin GitStore on AppStateBase {
     }
     notifyListeners();
   }
+
   @override
   Future<void> loadGitBranchData(int projectId) async {
     await Future.wait([
@@ -157,6 +169,7 @@ mixin GitStore on AppStateBase {
       loadGitWorktrees(projectId, force: true),
     ]);
   }
+
   @override
   Future<void> _loadGitBranchesAndWorktrees(int projectId) async {
     await Future.wait([
@@ -164,6 +177,7 @@ mixin GitStore on AppStateBase {
       loadGitWorktrees(projectId, force: true),
     ]);
   }
+
   @override
   Future<bool> gitCreateBranch(
     int projectId,
@@ -190,6 +204,7 @@ mixin GitStore on AppStateBase {
       return false;
     }
   }
+
   @override
   Future<bool> gitCheckout(
     int projectId,
@@ -210,6 +225,7 @@ mixin GitStore on AppStateBase {
       return false;
     }
   }
+
   @override
   Future<bool> gitPull(int projectId) async {
     try {
@@ -226,6 +242,7 @@ mixin GitStore on AppStateBase {
       return false;
     }
   }
+
   @override
   Future<bool> gitPullBranch(int projectId, String name) async {
     try {
@@ -242,6 +259,7 @@ mixin GitStore on AppStateBase {
       return false;
     }
   }
+
   @override
   Future<bool> gitPush(int projectId) async {
     try {
@@ -258,6 +276,7 @@ mixin GitStore on AppStateBase {
       return false;
     }
   }
+
   @override
   Future<GitWorktree?> gitCreateWorktree(
     int projectId,
@@ -283,6 +302,7 @@ mixin GitStore on AppStateBase {
       return null;
     }
   }
+
   @override
   Future<void> gitDeleteWorktree(int projectId, String worktreePath) async {
     try {
@@ -296,6 +316,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> setThreadGit(
     String threadId, {
@@ -319,6 +340,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> setThreadEnvMode(String threadId, String envMode) async {
     try {
@@ -333,6 +355,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> setThreadLinkedMr(String threadId, String? url) async {
     try {
@@ -348,10 +371,12 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> unlinkThreadLinkedMr(String threadId) async {
     await setThreadLinkedMr(threadId, null);
   }
+
   @override
   String? get _linkedMrEffectiveBranch {
     final thread = activeThreadDetail?.thread;
@@ -362,6 +387,7 @@ mixin GitStore on AppStateBase {
     final repo = _gitRepoInfo[projectId];
     return repo?.branch.isNotEmpty == true ? repo!.branch : null;
   }
+
   @override
   Future<void> refreshLinkedMergeRequest() async {
     final projectId = _activeProjectId;
@@ -379,11 +405,13 @@ mixin GitStore on AppStateBase {
     }
     await loadLinkedMergeRequest(projectId, branch);
   }
+
   @override
   Future<void> loadLinkedMergeRequest(int projectId, String branch) async {
     _loadingLinkedMergeRequest = true;
     _linkedMrProjectId = projectId;
     _linkedMrBranch = branch;
+    _linkedMrIid = null;
     notifyListeners();
     try {
       final mr = await api.findMergeRequestForBranch(projectId, branch);
@@ -410,22 +438,28 @@ mixin GitStore on AppStateBase {
     _loadingLinkedMergeRequest = true;
     _linkedMrProjectId = projectId;
     _linkedMrBranch = '';
+    _linkedMrIid = ref.iid;
     notifyListeners();
     try {
       final mr = await api.findMergeRequestByIid(projectId, ref.iid);
-      if (_linkedMrProjectId == projectId && _linkedMrBranch == '') {
+      if (_linkedMrProjectId == projectId &&
+          _linkedMrBranch == '' &&
+          _linkedMrIid == ref.iid) {
         _linkedMergeRequest = mr ?? MergeRequestLink.fromRef(ref);
         _loadingLinkedMergeRequest = false;
         notifyListeners();
       }
     } catch (e) {
-      if (_linkedMrProjectId == projectId && _linkedMrBranch == '') {
+      if (_linkedMrProjectId == projectId &&
+          _linkedMrBranch == '' &&
+          _linkedMrIid == ref.iid) {
         _linkedMergeRequest = MergeRequestLink.fromRef(ref);
         _loadingLinkedMergeRequest = false;
         notifyListeners();
       }
     }
   }
+
   @override
   Future<void> loadCloneRoot() async {
     _loadingCloneRoot = true;
@@ -440,6 +474,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> setCloneRoot(String? path) async {
     _loadingCloneRoot = true;
@@ -454,6 +489,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> loadGitConnections() async {
     _loadingGitConnections = true;
@@ -469,6 +505,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> connectGitLab({String? hostname}) async {
     try {
@@ -487,6 +524,7 @@ mixin GitStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> disconnectGitLab({String? hostname}) async {
     try {

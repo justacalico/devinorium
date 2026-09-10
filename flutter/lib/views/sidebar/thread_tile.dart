@@ -167,46 +167,115 @@ class _StatusDot extends StatelessWidget {
   }
 }
 
-class _ThreadMrChip extends StatelessWidget {
-  final LinkedMergeRequestRef ref;
+class _ThreadMrBadge extends StatelessWidget {
+  final Thread thread;
+  final bool isActive;
 
-  const _ThreadMrChip({required this.ref});
+  const _ThreadMrBadge({required this.thread, required this.isActive});
 
   @override
   Widget build(BuildContext context) {
+    if (thread.linkedMr == null && !isActive) {
+      return const SizedBox.shrink();
+    }
+
+    return Selector<AppState, MergeRequestLink?>(
+      selector: (_, state) =>
+          isActive && state.activeThreadId == thread.id
+              ? state.linkedMergeRequest
+              : null,
+      builder: (context, live, _) {
+        final ref = thread.linkedMr;
+        if (ref == null && live == null) {
+          return const SizedBox.shrink();
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _MrChipBody(ref: ref, live: live),
+            const SizedBox(width: 4),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _MrChipBody extends StatelessWidget {
+  final LinkedMergeRequestRef? ref;
+  final MergeRequestLink? live;
+
+  const _MrChipBody({this.ref, this.live});
+
+  @override
+  Widget build(BuildContext context) {
+    final iid = live?.iid ?? ref?.iid ?? 0;
+    final url = live?.webUrl ?? ref?.webUrl ?? '';
+    if (iid == 0 || url.isEmpty) return const SizedBox.shrink();
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final label = '!${ref.iid}';
-    final url = ref.webUrl;
-    final tooltip = url.isEmpty ? label : '$label · $url';
+    final label = '!$iid';
+    final isDraft = live?.draft ?? false;
+    final state = live?.state ?? '';
+
+    final ({Color fg, Color bg}) style = switch (state) {
+      _ when isDraft => (
+          fg: colorScheme.error,
+          bg: colorScheme.errorContainer.withValues(alpha: 0.3)
+        ),
+      'merged' => (
+          fg: colorScheme.tertiary,
+          bg: colorScheme.tertiaryContainer.withValues(alpha: 0.3)
+        ),
+      'closed' => (
+          fg: colorScheme.error,
+          bg: colorScheme.errorContainer.withValues(alpha: 0.3)
+        ),
+      'opened' || 'open' => (
+          fg: colorScheme.primary,
+          bg: colorScheme.primaryContainer.withValues(alpha: 0.3)
+        ),
+      _ => (
+          fg: colorScheme.secondary,
+          bg: colorScheme.secondaryContainer.withValues(alpha: 0.5)
+        )
+    };
+
+    final title = live?.title;
+    final source = live?.sourceBranch;
+    final target = live?.targetBranch;
+    final parts = [label];
+    if (title != null && title.isNotEmpty) parts.add(title);
+    if (source != null && source.isNotEmpty && target != null && target.isNotEmpty) {
+      parts.add('$source → $target');
+    }
+    parts.add(url);
+    final tooltip = parts.join(' · ');
 
     return Tooltip(
       message: tooltip,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: url.isEmpty
-            ? null
-            : () => context.read<AppState>().openLink(url),
-        onLongPress: url.isEmpty
-            ? null
-            : () async {
-                await Clipboard.setData(ClipboardData(text: url));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(l10n(context).copiedToClipboard),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                }
-              },
+        onTap: () => context.read<AppState>().openLink(url),
+        onLongPress: () async {
+          await Clipboard.setData(ClipboardData(text: url));
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(l10n(context).copiedToClipboard),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          }
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
           decoration: BoxDecoration(
-            color: colorScheme.secondaryContainer.withValues(alpha: 0.5),
+            color: style.bg,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: colorScheme.secondary.withValues(alpha: 0.35),
+              color: style.fg.withValues(alpha: 0.4),
             ),
           ),
           child: Row(
@@ -215,7 +284,8 @@ class _ThreadMrChip extends StatelessWidget {
               Icon(
                 Icons.merge,
                 size: 11,
-                color: colorScheme.onSecondaryContainer,
+                color: style.fg,
+                semanticLabel: 'Merge request $iid',
               ),
               const SizedBox(width: 2),
               Text(
@@ -223,7 +293,7 @@ class _ThreadMrChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: colorScheme.onSecondaryContainer,
+                  color: style.fg,
                 ),
               ),
             ],
@@ -279,10 +349,7 @@ class _ThreadTitle extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 6),
-      if (thread.linkedMr != null) ...[
-        _ThreadMrChip(ref: thread.linkedMr!),
-        const SizedBox(width: 4),
-      ],
+      _ThreadMrBadge(thread: thread, isActive: isActive),
     ];
 
     return Column(
@@ -442,6 +509,38 @@ class _ThreadOptionsMenu extends StatelessWidget {
               : () => state.openRenameThreadDialog(thread.id, thread.title),
           child: Text(l.rename),
         ),
+        if (thread.linkedMr != null)
+          MenuItemButton(
+            leadingIcon: Icon(Icons.link_off,
+                size: 18, color: theme.colorScheme.onSurface),
+            onPressed: isDeleting
+                ? null
+                : () => state.unlinkThreadLinkedMr(thread.id),
+            child: Text(l.unlinkMergeRequest),
+          )
+        else
+          MenuItemButton(
+            leadingIcon: Icon(Icons.merge,
+                size: 18, color: theme.colorScheme.primary),
+            onPressed: isDeleting
+                ? null
+                : () async {
+                    final url = await showDialog<String?>(
+                      context: context,
+                      builder: (_) => const LinkMergeRequestDialog(),
+                    );
+                    if (url != null && url.isNotEmpty) {
+                      await state.setThreadLinkedMr(thread.id, url);
+                      if (!context.mounted) return;
+                      if (state.globalError.isNotEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(state.globalError)),
+                        );
+                      }
+                    }
+                  },
+            child: Text(l.linkMergeRequest),
+          ),
         MenuItemButton(
           leadingIcon: Icon(Icons.delete_outline,
               size: 18, color: theme.colorScheme.error),

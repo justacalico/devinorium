@@ -893,6 +893,52 @@ void main() {
       );
     });
 
+    test('syncs linked_mr and invokes onThreadUpdated', () async {
+      final api = _ControlledApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'hello',
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Old',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '2024-01-01T00:00:00.000Z',
+            ),
+            messages: [],
+          ),
+        ),
+      );
+
+      Thread? captured;
+      store.onStateChanged = () {};
+      store.onThreadUpdated = (thread) => captured = thread;
+
+      await store.sendMessage();
+      api.controller.add(
+        SseEvent(
+          'thread_update',
+          '{"linked_mr":{"hostname":"gitlab.example.com",'
+              '"project_path":"group/project","iid":42,'
+              '"web_url":"https://gitlab.example.com/group/project/-/merge_requests/42"},'
+              '"updated_at":"2024-01-02T00:00:00.000Z"}',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(store.detail.valueOrNull?.thread.linkedMr, isNotNull);
+      expect(store.detail.valueOrNull?.thread.linkedMr!.iid, 42);
+      expect(captured, isNotNull);
+      expect(captured!.linkedMr, isNotNull);
+      expect(captured!.linkedMr!.iid, 42);
+    });
+
     test('nulls onThreadUpdated and onRunFinished on dispose', () {
       final api = _ControlledApiService();
       final store = ThreadStore(api: api, threadId: 't1', projectId: 1);

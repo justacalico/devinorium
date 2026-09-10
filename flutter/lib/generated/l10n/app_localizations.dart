@@ -1766,6 +1766,30 @@ abstract class AppLocalizations {
   /// **'Merge request'**
   String get mergeRequest;
 
+  /// No description provided for @linkMergeRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Link merge request'**
+  String get linkMergeRequest;
+
+  /// No description provided for @unlinkMergeRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlink merge request'**
+  String get unlinkMergeRequest;
+
+  /// No description provided for @mergeRequestUrlHint.
+  ///
+  /// In en, this message translates to:
+  /// **'GitLab merge request URL'**
+  String get mergeRequestUrlHint;
+
+  /// No description provided for @invalidMergeRequestUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid GitLab merge request URL'**
+  String get invalidMergeRequestUrl;
+
   /// No description provided for @overview.
   ///
   /// In en, this message translates to:
