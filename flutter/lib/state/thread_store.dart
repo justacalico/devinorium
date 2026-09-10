@@ -109,9 +109,9 @@ class ThreadStore {
   /// Called whenever any piece of thread state changes.
   VoidCallback? onStateChanged;
 
-  /// Called when the thread title is updated by the server, so the global
+  /// Called when the thread metadata is updated by the server, so the global
   /// thread list can be kept in sync without waiting for a full refresh.
-  void Function(String title, String updatedAt)? onThreadTitleChanged;
+  void Function(Thread thread)? onThreadUpdated;
 
   /// Called when a run finishes (completed or failed). The [failed] flag
   /// indicates whether the run ended with an error.
@@ -570,7 +570,7 @@ class ThreadStore {
     _cancelStream();
     _scheduler.dispose();
     onStateChanged = null;
-    onThreadTitleChanged = null;
+    onThreadUpdated = null;
     onRunFinished = null;
     _emit();
   }
@@ -635,15 +635,11 @@ class ThreadStore {
     if (ev.event == 'thread_update') {
       final updated = _detail.valueOrNull?.thread;
       final previous = d?.thread;
-      // Only notify the thread list when the title or timestamp actually
-      // changed. Git/worktree-only updates sync the toolbar without
-      // disturbing the sorted thread list.
-      final titleChanged = updated != null &&
-          (previous == null ||
-              updated.title != previous.title ||
-              updated.updatedAt != previous.updatedAt);
-      if (titleChanged) {
-        onThreadTitleChanged?.call(updated.title, updated.updatedAt);
+      // Notify the thread list whenever the thread metadata actually
+      // changed, including git/worktree updates, so the sidebar stays in
+      // sync without a full refresh.
+      if (updated != null && (previous == null || updated != previous)) {
+        onThreadUpdated?.call(updated);
       }
     }
 

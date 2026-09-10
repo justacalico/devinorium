@@ -1,5 +1,12 @@
 part of 'package:devinorium_frontend/state/app_state.dart';
 
+int _compareThreadsForSidebar(Thread a, Thread b) {
+  if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+  final byUpdated = b.updatedAt.compareTo(a.updatedAt);
+  if (byUpdated != 0) return byUpdated;
+  return b.id.compareTo(a.id);
+}
+
 mixin ThreadListStore on AppStateBase {
   @override
   List<Thread> _threads = [];
@@ -236,12 +243,7 @@ mixin ThreadListStore on AppStateBase {
       if (index >= 0) {
         _threads = [..._threads];
         _threads[index] = updated;
-        _threads.sort((a, b) {
-          if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-          final byUpdated = b.updatedAt.compareTo(a.updatedAt);
-          if (byUpdated != 0) return byUpdated;
-          return a.id.compareTo(b.id);
-        });
+        _threads.sort(_compareThreadsForSidebar);
       }
       if (_activeThreadId == id) {
         await _activeStore?.reloadDetail();
