@@ -2,7 +2,8 @@
 //!
 //! Paths are resolved relative to the active project (if any) or the user's
 //! home directory. Absolute paths are accepted, and path traversal via `..`
-//! is prevented by canonicalization.
+//! is prevented by canonicalization. Paths containing `.git` or
+//! `.devinorium-attachments` are rejected and never listed.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -81,42 +82,42 @@ async fn resolve(
     };
 
     let rel = rel.unwrap_or("");
-    if rel.is_empty() {
-        match paths::resolve_within(
-            &root_canon,
-            Some(&root_canon),
-            std::slice::from_ref(&root_canon),
-        ) {
-            Some(p) => Ok((p, root_canon)),
-            None => Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("invalid path")),
-            )
-                .into_response()),
-        }
-    } else if std::path::Path::new(rel).is_absolute() {
-        match paths::resolve(Path::new(rel), None, None) {
-            Some(p) => Ok((p, root_canon)),
-            None => Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("invalid path")),
-            )
-                .into_response()),
-        }
+    let target = if rel.is_empty() {
+        root_canon.clone()
+    } else if Path::new(rel).is_absolute() {
+        PathBuf::from(rel)
     } else {
-        let target = root_canon.join(rel);
-        match paths::resolve_within(
+        root_canon.join(rel)
+    };
+
+    let resolved = if rel.is_empty() {
+        paths::resolve_within(
             &target,
             Some(&root_canon),
             std::slice::from_ref(&root_canon),
-        ) {
-            Some(p) => Ok((p, root_canon)),
-            None => Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("invalid path")),
-            )
-                .into_response()),
-        }
+        )
+    } else if Path::new(rel).is_absolute() {
+        paths::resolve(Path::new(rel), None, None)
+    } else {
+        paths::resolve_within(
+            &target,
+            Some(&root_canon),
+            std::slice::from_ref(&root_canon),
+        )
+    };
+
+    match resolved {
+        Some(p) if paths::is_hidden_within(&root_canon, &p) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid path")),
+        )
+            .into_response()),
+        Some(p) => Ok((p, root_canon)),
+        None => Err((
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid path")),
+        )
+            .into_response()),
     }
 }
 
@@ -163,8 +164,8 @@ async fn list_dir(
     let mut out = Vec::new();
     while let Ok(Some(entry)) = entries.next_entry().await {
         let name = entry.file_name().to_string_lossy().to_string();
-        // Skip the hidden attachment dir.
-        if name == ".devinorium-attachments" {
+        // Skip hidden attachment and git metadata entries.
+        if paths::is_hidden_name(&name) {
             continue;
         }
         let ft = entry.file_type().await.ok();
@@ -498,8 +499,8 @@ async fn upload(
             paths::resolve_within(&target, Some(&root_base), std::slice::from_ref(&root_base))
         };
         let resolved = match resolved {
-            Some(p) => p,
-            None => {
+            Some(p) if !paths::is_hidden_within(&root_base, &p) => p,
+            _ => {
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(crate::api::ApiError::new("invalid upload path")),
@@ -566,8 +567,8 @@ async fn mv(
         paths::resolve_within(&to_target, Some(&root), std::slice::from_ref(&root))
     };
     let to = match to {
-        Some(p) => p,
-        None => {
+        Some(p) if !paths::is_hidden_within(&root, &p) => p,
+        _ => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(crate::api::ApiError::new("invalid destination path")),
