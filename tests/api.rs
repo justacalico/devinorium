@@ -1442,6 +1442,260 @@ async fn thread_send_stream_echoes_client_message_id() {
 }
 
 #[tokio::test]
+async fn thread_send_context_paths_resolve_and_augment_prompt() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // Find the project's on-disk root and put a file in it.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    let projects: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let project_path = projects
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"].as_i64() == Some(pid))
+        .unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    std::fs::create_dir_all(format!("{project_path}/docs")).unwrap();
+    std::fs::write(format!("{project_path}/note.txt"), "hi").unwrap();
+
+    let context_paths = serde_json::json!([
+        {"path": "note.txt", "is_dir": false},
+        {"path": "docs", "is_dir": true},
+        // Traversal is dropped, not rejected.
+        {"path": "../outside.txt", "is_dir": false},
+    ]);
+    let boundary = "----ctxboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello world\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"context_paths\"\r\n\r\n\
+        {context_paths}\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    let reply = done_json["content"].as_str().unwrap();
+
+    // The stub echoes the effective prompt: it must list the resolved
+    // absolute paths, and must not mention the traversal attempt.
+    let note_abs = format!("{project_path}/note.txt");
+    let docs_abs = format!("{project_path}/docs");
+    let canonical_note = std::fs::canonicalize(&note_abs).unwrap();
+    let canonical_docs = std::fs::canonicalize(&docs_abs).unwrap();
+    assert!(
+        reply.contains(&format!("note.txt: {} (file)", canonical_note.display())),
+        "reply: {reply}"
+    );
+    assert!(
+        reply.contains(&format!("docs: {} (directory)", canonical_docs.display())),
+        "reply: {reply}"
+    );
+    assert!(!reply.contains("outside.txt"), "reply: {reply}");
+
+    wait_for_run(&app, &cookie, &tid, |body| {
+        body.contains(r#""status":"completed""#)
+            || body.contains(r#""status":"failed""#)
+            || body.contains(r#""status":"stopped""#)
+    })
+    .await;
+
+    // The user message persists path refs as attachment metadata chips.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    let atts = atts.as_array().unwrap();
+    assert_eq!(atts.len(), 2);
+    assert_eq!(atts[0]["kind"], "path");
+    assert_eq!(atts[0]["filename"], "note.txt");
+    assert_eq!(atts[0]["is_dir"], false);
+    assert_eq!(atts[1]["filename"], "docs");
+    assert_eq!(atts[1]["is_dir"], true);
+}
+
+#[tokio::test]
+async fn thread_send_context_paths_only_is_a_valid_message() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    // "New thread" keeps title_user_set = 0 so auto-titling applies.
+    let tid = make_thread(&app, &cookie, pid, "New thread").await;
+
+    let boundary = "----ctxonlyboundary";
+    let context_paths = serde_json::json!([{"path": "src", "is_dir": true}]);
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"context_paths\"\r\n\r\n\
+        {context_paths}\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The SSE stream can end before the run fully completes; poll the run
+    // status until it settles before checking the persisted messages.
+    wait_for_run(&app, &cookie, &tid, |body| {
+        body.contains(r#""status":"completed""#)
+            || body.contains(r#""status":"failed""#)
+            || body.contains(r#""status":"stopped""#)
+    })
+    .await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[0].content, "");
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    assert_eq!(atts[0]["filename"], "src");
+
+    // The thread is titled after the first referenced path.
+    let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
+    assert_eq!(thread.title, "src");
+}
+
+#[tokio::test]
+async fn thread_send_all_dropped_context_paths_is_rejected() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // Only traversal attempts: everything is dropped, leaving an empty
+    // prompt, so the send must be rejected rather than run a blank turn.
+    let boundary = "----ctxdropboundary";
+    let context_paths = serde_json::json!([
+        {"path": "../outside.txt", "is_dir": false},
+        {"path": ".git/config", "is_dir": false}
+    ]);
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"context_paths\"\r\n\r\n\
+        {context_paths}\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert!(msgs.is_empty());
+}
+
+#[tokio::test]
+async fn thread_send_rejects_invalid_context_paths() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----ctxbadboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hi\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"context_paths\"\r\n\r\n\
+        not json\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn thread_send_includes_client_message_id() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

@@ -233,6 +233,32 @@ class _FilesPanelBody extends StatelessWidget {
         ? _gitStatusColor(node.entry.gitStatus!, theme)
         : null;
 
+    final tile = ListTile(
+      contentPadding: EdgeInsets.only(left: leftPadding, right: 12),
+      leading: Icon(icon, size: 22, color: color),
+      title: Text(
+        node.entry.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: titleColor != null ? TextStyle(color: titleColor) : null,
+      ),
+      trailing: isDir
+          ? _deleteButton(context, state, node)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatSize(node.entry.size, l10n(context)),
+                  style: theme.textTheme.labelSmall,
+                ),
+                _deleteButton(context, state, node),
+              ],
+            ),
+      onTap: isDir
+          ? () => state.toggleFilesFolder(node)
+          : () => _openFile(context, state, node),
+    );
+
     return Listener(
       onPointerDown: (event) {
         if (!isDir &&
@@ -241,30 +267,24 @@ class _FilesPanelBody extends StatelessWidget {
           _openFile(context, state, node, newTab: true);
         }
       },
-      child: ListTile(
-        contentPadding: EdgeInsets.only(left: leftPadding, right: 12),
-        leading: Icon(icon, size: 22, color: color),
-        title: Text(
-          node.entry.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: titleColor != null ? TextStyle(color: titleColor) : null,
+      // Horizontal drags carry the node to the composer as a path reference;
+      // the enclosing ListView keeps vertical scroll.
+      child: Draggable<FileTreeNode>(
+        data: node,
+        affinity: Axis.horizontal,
+        maxSimultaneousDrags: 1,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Chip(
+            avatar: Icon(icon, size: 16, color: color),
+            label: Text(node.entry.name),
+            visualDensity: VisualDensity.compact,
+            backgroundColor: theme.colorScheme.surfaceContainerHigh,
+            side: BorderSide(color: theme.colorScheme.primary),
+          ),
         ),
-        trailing: isDir
-            ? _deleteButton(context, state, node)
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _formatSize(node.entry.size, l10n(context)),
-                    style: theme.textTheme.labelSmall,
-                  ),
-                  _deleteButton(context, state, node),
-                ],
-              ),
-        onTap: isDir
-            ? () => state.toggleFilesFolder(node)
-            : () => _openFile(context, state, node),
+        childWhenDragging: Opacity(opacity: 0.45, child: tile),
+        child: tile,
       ),
     );
   }

@@ -4,6 +4,7 @@
 //! (`provider.start`); subsequent sends continue it (`provider.send`). Every
 //! user message and assistant reply is persisted in the `messages` table.
 
+pub(crate) mod context_refs;
 pub(crate) mod permissions;
 pub(crate) mod persistence;
 pub(crate) mod plan;

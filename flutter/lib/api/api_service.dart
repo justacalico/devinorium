@@ -704,6 +704,7 @@ class ApiService {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) {
     return _client.sendStream(
       path: '/api/threads/$threadId/send/stream',
@@ -711,6 +712,7 @@ class ApiService {
       mode: mode,
       clientMessageId: clientMessageId,
       attachments: attachments,
+      contextPaths: contextPaths,
     );
   }
 

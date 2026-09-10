@@ -21,6 +21,7 @@ use crate::providers::{
 use crate::thread_runner::{RunEvent, RunStatus};
 use crate::AppState;
 
+use super::context_refs::{prompt_with_refs, resolve_context_refs, ContextPathIn, ContextRef};
 use super::persistence::persist_user_message;
 use super::plan::{normalize_mode, project_working_dir_for_thread};
 use super::runs::{events_stream, run_thread};
@@ -49,10 +50,18 @@ pub(super) async fn send(
             .into_response();
     }
 
-    let input = match parse_send_multipart(multipart).await {
+    let mut input = match parse_send_multipart(multipart).await {
         Ok(parsed) => parsed,
         Err(resp) => return resp,
     };
+    resolve_context_refs(&state, &thread, &mut input).await;
+    if input.prompt.trim().is_empty() && input.context_refs.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("prompt is required")),
+        )
+            .into_response();
+    }
 
     let user_msg = match persist_user_message(&state, &thread, &input).await {
         Ok(m) => m,
@@ -229,10 +238,18 @@ pub(super) async fn send_stream(
             .into_response();
     }
 
-    let input = match parse_send_multipart(multipart).await {
+    let mut input = match parse_send_multipart(multipart).await {
         Ok(parsed) => parsed,
         Err(resp) => return resp,
     };
+    resolve_context_refs(&state, &thread, &mut input).await;
+    if input.prompt.trim().is_empty() && input.context_refs.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("prompt is required")),
+        )
+            .into_response();
+    }
 
     let user_msg = match persist_user_message(&state, &thread, &input).await {
         Ok(m) => m,
@@ -283,6 +300,11 @@ pub(crate) struct SendInput {
     pub attachments: Vec<Attachment>,
     pub att_meta: Vec<serde_json::Value>,
     pub client_message_id: Option<String>,
+    /// Raw context paths sent by the client (files panel drag & drop).
+    pub context_paths: Vec<ContextPathIn>,
+    /// Context paths resolved against the project root; filled in by
+    /// `context_refs::resolve_context_refs` before the message is persisted.
+    pub context_refs: Vec<ContextRef>,
 }
 
 pub(crate) fn build_send_reply(messages: &[MessageRow]) -> Option<Response> {
@@ -315,6 +337,7 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
     let mut client_message_id: Option<String> = None;
     let mut attachments: Vec<Attachment> = Vec::new();
     let mut att_meta: Vec<serde_json::Value> = Vec::new();
+    let mut context_paths: Vec<ContextPathIn> = Vec::new();
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
@@ -344,6 +367,14 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
             if !s.is_empty() {
                 client_message_id = Some(s);
             }
+        } else if name == "context_paths" {
+            let raw = String::from_utf8_lossy(&bytes).to_string();
+            match super::context_refs::parse_context_paths(&raw) {
+                Ok(paths) => context_paths.extend(paths),
+                Err(e) => {
+                    return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
+                }
+            }
         } else if !filename.is_empty() {
             if bytes.len() > 8 * 1024 * 1024 {
                 return Err((
@@ -366,6 +397,9 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
     }
     let prompt = match prompt {
         Some(p) if !p.trim().is_empty() => p,
+        // Path references alone are a valid message: the context block makes
+        // up the effective prompt sent to the provider.
+        _ if !context_paths.is_empty() => String::new(),
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -387,6 +421,8 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
         attachments,
         att_meta,
         client_message_id,
+        context_paths,
+        context_refs: Vec::new(),
     })
 }
 
@@ -459,11 +495,12 @@ pub(crate) async fn call_provider(
         cancel_signal: Some(cancel_signal),
     };
 
+    let prompt = prompt_with_refs(&input.prompt, &input.context_refs);
     if let Some(sid) = thread.devin_session_id.as_ref() {
         provider
             .send(SendRequest {
                 session_id: sid.clone(),
-                prompt: input.prompt.clone(),
+                prompt,
                 options,
             })
             .await
@@ -475,10 +512,7 @@ pub(crate) async fn call_provider(
             })
     } else {
         provider
-            .start(StartRequest {
-                prompt: input.prompt.clone(),
-                options,
-            })
+            .start(StartRequest { prompt, options })
             .await
             .map(|r| ProviderOutcome {
                 new_session_id: Some(r.session_id),

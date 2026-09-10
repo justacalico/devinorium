@@ -215,11 +215,17 @@ class NativeApiClient implements BaseApiClient {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) {
     final fields = <String, String>{'prompt': prompt};
     if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
     if (clientMessageId != null && clientMessageId.isNotEmpty) {
       fields['client_message_id'] = clientMessageId;
+    }
+    if (contextPaths.isNotEmpty) {
+      fields['context_paths'] = jsonEncode([
+        for (final r in contextPaths) {'path': r.path, 'is_dir': r.isDir},
+      ]);
     }
     // Each SSE stream uses its own client because nativeSseStream closes it
     // when the stream ends or is cancelled.

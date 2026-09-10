@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import '../models/models.dart';
 import '../utils/preloader.dart';
 import 'api_client.dart';
 
@@ -100,12 +101,14 @@ class PreloaderClient implements BaseApiClient {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) => _inner.sendStream(
     path: path,
     prompt: prompt,
     mode: mode,
     clientMessageId: clientMessageId,
     attachments: attachments,
+    contextPaths: contextPaths,
   );
 
   Future<T> _mutate<T>(Future<T> Function() action) async {

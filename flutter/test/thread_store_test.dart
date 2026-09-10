@@ -98,6 +98,7 @@ class _TestApiService extends ApiService {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) => Stream.fromIterable([
     SseEvent(
       'user_message',
@@ -126,6 +127,7 @@ class _RecordingApiService extends _TestApiService {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) {
     lastPrompt = prompt;
     lastMode = mode;
@@ -147,6 +149,7 @@ class _ControlledApiService extends _TestApiService {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) => _controller.stream;
 }
 

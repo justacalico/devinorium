@@ -68,6 +68,7 @@ class _ThrowingClient extends BaseApiClient {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) => throw UnimplementedError();
 }
 

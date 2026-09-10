@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:async/async.dart';
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/terminal/terminal_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stream_channel/stream_channel.dart';
@@ -107,6 +108,7 @@ class _FakeBaseClient extends BaseApiClient {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
+    List<PathRef> contextPaths = const [],
   }) => throw UnimplementedError();
 
   @override
