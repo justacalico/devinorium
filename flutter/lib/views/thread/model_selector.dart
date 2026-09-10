@@ -139,8 +139,13 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
 
   void _selectProvider(AppState state, ProviderInfo provider) {
     if (widget.providerLocked) return;
-    unawaited(state.setSelectedProvider(provider.id));
-    unawaited(state.saveThreadSettings());
+    // setSelectedProvider revalidates the model before it returns; saving the
+    // thread settings must wait for that or the backend can persist a model
+    // the new provider does not offer.
+    unawaited(() async {
+      await state.setSelectedProvider(provider.id);
+      await state.saveThreadSettings();
+    }());
   }
 
   @override
@@ -159,6 +164,14 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
         break;
       }
     }
+    final effectiveProvider =
+        provider ??
+        (selectedProvider.isNotEmpty
+            ? ProviderInfo(
+                id: selectedProvider,
+                name: providerName(selectedProvider),
+              )
+            : providers.firstOrNull);
     final filtered = _query.isEmpty
         ? models
         : models
@@ -170,17 +183,22 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
               )
               .toList();
 
+    final isNarrow = MediaQuery.sizeOf(context).width < 640;
+
     return Dialog(
       backgroundColor: theme.colorScheme.surface,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+      insetPadding: isNarrow
+          ? const EdgeInsets.symmetric(horizontal: 16, vertical: 24)
+          : const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
-        width: 720,
+        width: isNarrow ? double.infinity : 720,
         height: 520,
         child: Row(
           children: [
-            if (providers.length > 1)
+            if (!isNarrow && providers.length > 1)
               Container(
+                key: const Key('provider_rail'),
                 width: 64,
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerLow,
@@ -205,6 +223,15 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (isNarrow &&
+                      providers.length > 1 &&
+                      effectiveProvider != null)
+                    _ProviderDropdown(
+                      providers: providers,
+                      selectedProvider: effectiveProvider,
+                      enabled: !widget.providerLocked,
+                      onChanged: (p) => _selectProvider(state, p),
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
                     child: TextField(
@@ -233,7 +260,7 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
                               final selected = m.id == selectedModel;
                               return _ModelRow(
                                 model: m,
-                                providerName: provider?.name ?? '',
+                                providerName: effectiveProvider?.name ?? '',
                                 selected: selected,
                                 onTap: () => _selectModel(state, m),
                               );
@@ -298,6 +325,105 @@ class _ProviderRailItem extends StatelessWidget {
   }
 }
 
+/// A labelled provider selector for narrow screens where the icon-only rail
+/// would be too cramped to read or tap reliably.
+class _ProviderDropdown extends StatelessWidget {
+  final List<ProviderInfo> providers;
+  final ProviderInfo selectedProvider;
+  final bool enabled;
+  final ValueChanged<ProviderInfo> onChanged;
+
+  const _ProviderDropdown({
+    required this.providers,
+    required this.selectedProvider,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final disabledColor = theme.colorScheme.onSurface.withValues(alpha: 0.38);
+    final selected = selectedProvider;
+
+    return MenuAnchor(
+      menuChildren: [
+        for (final p in providers)
+          MenuItemButton(
+            leadingIcon: ProviderIcon(providerId: p.id, size: 18),
+            trailingIcon: p.id == selected.id
+                ? Icon(Icons.check, size: 18, color: theme.colorScheme.primary)
+                : null,
+            onPressed: enabled && p.id != selected.id
+                ? () => onChanged(p)
+                : null,
+            child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      builder: (context, controller, child) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: Material(
+            color: theme.colorScheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              key: const Key('mobile_provider_dropdown'),
+              borderRadius: BorderRadius.circular(8),
+              onTap: enabled
+                  ? () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    }
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    ProviderIcon(
+                      providerId: selected.id,
+                      size: 18,
+                      color: enabled
+                          ? theme.colorScheme.onSurfaceVariant
+                          : disabledColor,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        selected.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: enabled
+                              ? theme.colorScheme.onSurface
+                              : disabledColor,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.expand_more,
+                      size: 18,
+                      color: enabled
+                          ? theme.colorScheme.onSurfaceVariant
+                          : disabledColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ModelRow extends StatelessWidget {
   final ModelInfo model;
   final String providerName;
@@ -320,6 +446,8 @@ class _ModelRow extends StatelessWidget {
       selectedTileColor: theme.colorScheme.primaryContainer.withAlpha(40),
       title: Text(
         model.label.isNotEmpty ? model.label : model.id,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: theme.textTheme.bodyMedium?.copyWith(
           fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
         ),
@@ -328,6 +456,8 @@ class _ModelRow extends StatelessWidget {
           ? null
           : Text(
               providerName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
