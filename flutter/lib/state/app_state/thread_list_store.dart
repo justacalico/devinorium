@@ -364,12 +364,20 @@ mixin ThreadListStore on AppStateBase {
       _threadStores[id] = store;
       _setActiveStore(store);
       unawaited(ensureModelsFor(detail.thread.providerId));
-      _threadOpening = false;
       previous?.dispose();
 
       // If the backend is already running this thread, reconnect to it.
       await store.resume();
-      if (stopwatch != null) {
+
+      final currentDetail = store.detail.valueOrNull;
+      if (currentDetail != null &&
+          currentDetail.totalMessages > 0 &&
+          currentDetail.messages.isEmpty) {
+        await store.ensureInitialMessagesLoaded();
+      }
+
+      _threadOpening = false;
+      if (stopwatch != null && store.globalError.isEmpty) {
         stopwatch.stop();
         debugPrint('Thread $id opened in ${stopwatch.elapsedMilliseconds}ms');
       }

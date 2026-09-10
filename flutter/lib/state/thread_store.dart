@@ -104,6 +104,9 @@ class ThreadStore {
   StreamSubscription? _subscription;
   int _streamToken = 0;
 
+  // In-flight initial message load so callers can await the same request.
+  Future<void>? _initialMessagesFuture;
+
   // t3code-style serial command queue for this thread.
   final ThreadCommandScheduler _scheduler = ThreadCommandScheduler();
 
@@ -447,6 +450,9 @@ class ThreadStore {
       }
     });
   }
+
+  /// Wait for the first page of messages to load, starting it if necessary.
+  Future<void> ensureInitialMessagesLoaded() => _loadInitialMessages();
 
   /// Load the next page of older messages.
   Future<void> loadMoreMessages() async {
@@ -817,27 +823,49 @@ class ThreadStore {
   }
 
   /// Load the first page of messages when the detail is ready but empty.
-  Future<void> _loadInitialMessages() async {
+  Future<void> _loadInitialMessages() {
+    if (_initialMessagesFuture != null) return _initialMessagesFuture!;
+
     final d = _detail.valueOrNull;
-    if (d == null || d.totalMessages == 0 || d.messages.isNotEmpty) return;
+    if (d == null || d.totalMessages == 0 || d.messages.isNotEmpty) {
+      return Future<void>.value();
+    }
+
+    _initialMessagesFuture = _fetchInitialMessages()
+        .whenComplete(() => _initialMessagesFuture = null);
+    return _initialMessagesFuture!;
+  }
+
+  Future<void> _fetchInitialMessages() async {
+    final current = _detail.valueOrNull;
+    if (current == null) return;
     try {
       final page = await api.getThreadMessages(threadId, turnLimit: 50);
       if (page.messages.isNotEmpty) {
         _detail = AsyncValue.ready(
-          d.copyWith(
+          current.copyWith(
             messages: page.messages,
-            totalMessages: page.total > d.totalMessages
+            totalMessages: page.total > current.totalMessages
                 ? page.total
-                : d.totalMessages,
+                : current.totalMessages,
             beforeCursor: page.beforeCursor,
             hasMore: page.hasMore,
             turnLimit: page.turnLimit ?? 50,
             rawCount: page.rawCount,
           ),
         );
-        _globalError = '';
-        _emit();
+      } else {
+        // The page is empty; still record the fresh total and pagination
+        // state so the UI does not keep asking for the same missing rows.
+        _detail = AsyncValue.ready(
+          current.copyWith(
+            totalMessages: page.total,
+            hasMore: page.hasMore ?? false,
+          ),
+        );
       }
+      _globalError = '';
+      _emit();
     } catch (e) {
       debugLogFailure('thread.loadInitialMessages', e, threadId: threadId);
       _globalError = '$e';
