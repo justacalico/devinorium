@@ -84,6 +84,14 @@ class ModelInfo {
     this.supportedReasoningEfforts = const [],
   });
 
+  bool get isFree =>
+      costTier.toLowerCase().contains('free') ||
+      costSummary.toLowerCase().contains('free');
+
+  bool get isPromo =>
+      costTier.toLowerCase().contains('promo') ||
+      costSummary.toLowerCase().contains('promo');
+
   factory ModelInfo.fromJson(Map<String, dynamic> j) => ModelInfo(
     id: j['id'] as String,
     label: j['label'] as String? ?? j['id'] as String,
