@@ -2,6 +2,24 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.55.0 - 2026-09-10
+#### Features
+- 在模型选择器中显示价格并为免费模型添加礼物图标 - (87bd91b) - HttpAnimations
+- 助手回复时自动链接项目远程对应的 GitLab 合并请求 - (1fa2edf) - HttpAnimations
+- 为侧边栏线程添加合并请求徽章和链接菜单 - (09fa0e2) - HttpAnimations
+- 添加开发合并请求启动提示对话框 - (7149efa) - HttpAnimations
+#### Bug Fixes
+- 隐藏 .git 与 .devinorium-attachments 目录 - (3ea2d1f) - HttpAnimations
+- 补充中文本地化缺失的合并请求文案 - (90471ce) - HttpAnimations
+- 自动链接合并请求后前端实时刷新 - (82943df) - HttpAnimations
+- 修复开发合并请求提示重复显示 URL - (03a1dfe) - HttpAnimations
+- 移除开发合并请求对话框中的硬编码来源说明 - (b8fa652) - HttpAnimations
+- 修复 ACP 版本检测因可执行文件忙导致的测试不稳定 - (7db23e5) - HttpAnimations
+#### Performance
+- 优化活跃长线程打开与流式更新性能 - (b0a6f33) - HttpAnimations
+
+- - -
+
 ## v0.54.0 - 2026-09-10
 #### Features
 - 添加简体中文语言支持 - (c974025) - HttpAnimations
