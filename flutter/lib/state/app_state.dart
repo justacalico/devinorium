@@ -14,6 +14,7 @@ import '../api/preloader_client.dart';
 import '../servers/multi_server_state.dart';
 import '../servers/server_profile.dart';
 import '../issue/gitlab_issue_provider.dart';
+import '../generated/l10n/app_localizations.dart';
 import '../l10n/global_l10n.dart';
 import '../merge_request/gitlab_merge_request_provider.dart';
 import '../models/composer_mode.dart';

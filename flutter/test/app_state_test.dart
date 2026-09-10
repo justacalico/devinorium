@@ -6,6 +6,7 @@ import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
+import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart' show Locale;
@@ -3238,7 +3239,7 @@ void main() {
     test('setLanguage saves and loadLanguage restores the value', () async {
       final state = AppState.test();
       await state.setLanguage('en-GB');
-      expect(state.locale, const Locale('en-GB'));
+      expect(state.locale, const Locale('en'));
       expect(
         (await SharedPreferences.getInstance()).getString(
           'devinorium_language',
@@ -3248,7 +3249,20 @@ void main() {
 
       final restored = AppState.test();
       await restored.bootstrap();
-      expect(restored.locale, const Locale('en-GB'));
+      expect(restored.locale, const Locale('en'));
+    });
+
+    test('setLanguage supports Simplified Chinese', () async {
+      final state = AppState.test();
+      await state.setLanguage('zh');
+      expect(state.locale, const Locale('zh'));
+      expect(lookupAppLocalizations(state.locale).language, '语言');
+      expect(
+        (await SharedPreferences.getInstance()).getString(
+          'devinorium_language',
+        ),
+        'zh',
+      );
     });
   });
 

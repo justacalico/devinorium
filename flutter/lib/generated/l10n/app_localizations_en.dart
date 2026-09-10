@@ -544,6 +544,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get languageEnglish => 'English';
 
   @override
+  String get languageSimplifiedChinese => 'Simplified Chinese';
+
+  @override
   String get menu => 'Menu';
 
   @override

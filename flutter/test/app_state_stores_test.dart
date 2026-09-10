@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
@@ -299,6 +300,7 @@ void main() {
 
       state.setLanguage('zh');
       expect(state.locale, const Locale('zh'));
+      expect(lookupAppLocalizations(state.locale).language, '语言');
 
       state.setNotificationsEnabled(true);
       expect(state.notificationsEnabled, true);

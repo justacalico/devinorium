@@ -1,0 +1,1012 @@
+{
+  "@@locale": "zh",
+  "appTitle": "Devinorium",
+  "@appTitle": {
+    "description": "Application title shown in the sidebar"
+  },
+  "appName": "应用名称",
+  "@appName": {
+    "description": "Label for the application name on the About page"
+  },
+  "about": "关于",
+  "@about": {
+    "description": "About section title in settings"
+  },
+  "aboutDescription": "让智能体伴你同行",
+  "@aboutDescription": {
+    "description": "Short description shown on the About page"
+  },
+  "aboutVersion": "版本",
+  "@aboutVersion": {
+    "description": "Version label on the About page"
+  },
+  "aboutLicense": "许可证",
+  "@aboutLicense": {
+    "description": "License label on the About page"
+  },
+  "aboutSourceCode": "源代码",
+  "@aboutSourceCode": {
+    "description": "Source code link label on the About page"
+  },
+  "aboutSupport": "支持",
+  "@aboutSupport": {
+    "description": "Support link label on the About page"
+  },
+  "aboutPrivacyPolicy": "隐私政策",
+  "@aboutPrivacyPolicy": {
+    "description": "Privacy policy link label on the About page"
+  },
+  "aboutOpenLinkFailed": "无法打开 {url}",
+  "@aboutOpenLinkFailed": {
+    "description": "Error shown when an About page link cannot be opened",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutReleases": "发布",
+  "@aboutReleases": {
+    "description": "Releases link label on the About page"
+  },
+  "aboutCheckForUpdates": "检查更新",
+  "@aboutCheckForUpdates": {
+    "description": "Button on the About page that checks for a newer release"
+  },
+  "aboutCheckForUpdatesSubtitle": "在 GitLab 上检查更新",
+  "@aboutCheckForUpdatesSubtitle": {
+    "description": "Subtitle under the check-for-updates button on the About page"
+  },
+  "aboutUpToDate": "已是最新版本",
+  "@aboutUpToDate": {
+    "description": "Message shown when an update check finds no newer release"
+  },
+  "aboutUpdateCheckFailed": "无法检查更新",
+  "@aboutUpdateCheckFailed": {
+    "description": "Message shown when the update check itself fails"
+  },
+  "appUpdateAvailable": "可用更新：{version}",
+  "@appUpdateAvailable": {
+    "description": "Chip shown on the About page when a newer release exists",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "connectionFailed": "连接失败",
+  "importFailed": "导入失败",
+  "totpPrompt": "输入你的 6 位 TOTP 验证码。",
+  "selectProjectFirst": "请先选择项目",
+  "newThread": "新会话",
+  "invalidPermissionRequest": "无效的权限请求：{error}",
+  "@invalidPermissionRequest": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failedToDecodePermissionRequest": "无法解码权限请求",
+  "invalidAskRequest": "无效的询问请求",
+  "failedToDecodeAskRequest": "无法解码询问请求",
+  "serverUrlNotConfigured": "未配置服务器 URL",
+  "authenticationTokenNotSet": "未设置认证令牌",
+  "httpErrorStatus": "HTTP {statusCode}",
+  "@httpErrorStatus": {
+    "placeholders": {
+      "statusCode": {
+        "type": "int"
+      }
+    }
+  },
+  "httpErrorWithText": "HTTP {statusCode}：{text}",
+  "@httpErrorWithText": {
+    "placeholders": {
+      "statusCode": {
+        "type": "int"
+      },
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "unexpectedResponseShape": "意外的响应格式",
+  "expectedAList": "应为列表",
+  "sseOnlySupportedOnWeb": "SSE 流式仅支持网页端",
+  "noResponseBody": "无响应体",
+  "unexpectedStreamChunkType": "意外的流块类型",
+  "genericRequestError": "{error}",
+  "@genericRequestError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "signInToYourAccount": "登录您的账户",
+  "totpCode": "TOTP 验证码",
+  "totpHint": "000000",
+  "totpOptional": "可选 — 仅在账户启用 2FA 时填写",
+  "atLeast12Characters": "至少 12 个字符",
+  "createUser": "创建用户",
+  "cancel": "取消",
+  "create": "创建",
+  "delete": "删除",
+  "ok": "确定",
+  "back": "返回",
+  "close": "关闭",
+  "windowClose": "关闭",
+  "windowMinimize": "最小化",
+  "windowZoom": "缩放",
+  "clear": "清除",
+  "required": "必填",
+  "invalidNumber": "必须是有效数字",
+  "otherOption": "其他（输入自定义）",
+  "otherHint": "输入你的答案",
+  "username": "用户名",
+  "password": "密码",
+  "test": "测试",
+  "error": "错误",
+  "on": "开",
+  "off": "关",
+  "enabled": "已启用",
+  "disabled": "已禁用",
+  "light": "浅色",
+  "dark": "深色",
+  "system": "系统",
+  "save": "保存",
+  "signIn": "登录",
+  "signOut": "退出",
+  "settings": "设置",
+  "account": "账户",
+  "providers": "提供商",
+  "provider": "提供商",
+  "personalization": "个性化",
+  "manage": "管理",
+  "projects": "项目",
+  "language": "语言",
+  "theme": "主题",
+  "root": "根",
+  "home": "主页",
+  "up": "上级",
+  "newProject": "新建项目",
+  "cloneRepo": "克隆存储库",
+  "cloneRepoDescription": "将远程仓库克隆到配置的克隆根目录",
+  "cloneRepoUrlLabel": "远程 URL",
+  "cloneRepoButton": "克隆",
+  "cloneRepoOpenProject": "打开项目",
+  "newFolder": "新建文件夹",
+  "rename": "重命名",
+  "renameProject": "重命名项目",
+  "renameThread": "重命名会话",
+  "pin": "置顶",
+  "unpin": "取消置顶",
+  "pinned": "已置顶",
+  "newName": "新名称",
+  "options": "选项",
+  "ownerBadge": "所有者",
+  "enable2fa": "启用 2FA",
+  "totpSetupInstructions": "在您的身份验证器应用程序中扫描此密码，然后输入当前代码。",
+  "verify": "验证",
+  "name": "名称",
+  "myProjectHint": "我的项目",
+  "path": "路径",
+  "projectPathHint": "relative/path or /absolute/project/path",
+  "browseToThisPath": "浏览到此路径",
+  "selectCurrentFolder": "选择当前文件夹",
+  "pathTraversalNotAllowed": "不允许路径遍历",
+  "nameAndPathRequired": "名称和路径必填",
+  "noSubfoldersHere": "此处无子文件夹",
+  "permissionRequest": "权限请求",
+  "askRequest": "智能体问题",
+  "allowThisAction": "允许此操作？",
+  "allowOnce": "允许一次",
+  "allowAlways": "始终允许",
+  "rejectOnce": "拒绝一次",
+  "rejectAlways": "始终拒绝",
+  "dropZoneFileTooLarge": "{name} 太大（最大 8 MB）",
+  "@dropZoneFileTooLarge": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZoneReadFileFailed": "读取文件失败：{error}",
+  "@dropZoneReadFileFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZoneAttachFilesFailed": "附加文件失败：{error}",
+  "@dropZoneAttachFilesFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZonePickFilesFailed": "选择文件失败：{error}",
+  "@dropZonePickFilesFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "dropZoneDropHere": "拖放文件到此处以附加",
+  "attachSourcePhotoLibrary": "照片图库",
+  "attachSourceTakePhotoOrVideo": "拍照或录像",
+  "attachSourceTakePhoto": "拍照",
+  "attachSourceRecordVideo": "录像",
+  "attachSourceBrowse": "浏览",
+  "files": "文件",
+  "emptyFolder": "空文件夹",
+  "folderNameHint": "文件夹名称",
+  "deleteName": "删除 {name}？",
+  "@deleteName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "searchModels": "搜索模型",
+  "noModelsMatch": "没有匹配的模型",
+  "free": "免费",
+  "promo": "促销",
+  "newLabel": "新",
+  "beta": "测试",
+  "noModelSelected": "未选择模型",
+  "model": "模型",
+  "reasoning": "推理",
+  "@reasoning": {
+    "description": "Label for the reasoning effort dropdown"
+  },
+  "reasoningDefault": "默认",
+  "@reasoningDefault": {
+    "description": "Badge shown next to the provider's default reasoning level"
+  },
+  "selected": "已选择",
+  "selectModel": "选择模型",
+  "modelContextLabel": "上下文",
+  "modelOutputLabel": "输出",
+  "costTierLabel": "成本等级",
+  "pricingLabel": "定价",
+  "contextWithTokens": "{count} 上下文长度",
+  "@contextWithTokens": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "otherFamily": "其他",
+  "serverUrl": "服务器 URL",
+  "serverUrlHint": "example.com",
+  "serverUrlInvalid": "服务器地址中请勿包含 http:// 或 https://",
+  "disable2faTitle": "禁用 2FA？",
+  "disable2faConfirmation": "这将移除基于 TOTP 的双因素认证。确定吗？",
+  "disable2fa": "禁用 2FA",
+  "twoFactorAuthentication": "双因素认证",
+  "twoFactorShort": "2FA",
+  "user": "用户",
+  "active": "活动",
+  "noUsersYet": "还没有用户。",
+  "command": "命令",
+  "providerVersion": "版本",
+  "providerUpToDate": "最新",
+  "providerUpdateAvailable": "可用更新：{version}",
+  "@providerUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "providerIsReachable": "提供商可访问",
+  "providerCommandHint": "devin",
+  "providerTestFailed": "提供商测试失败：{error}",
+  "@providerTestFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "languageEnglish": "English",
+  "@languageEnglish": {
+    "description": "Label for the English language option in settings"
+  },
+  "languageSimplifiedChinese": "简体中文",
+  "@languageSimplifiedChinese": {
+    "description": "Label for the Simplified Chinese language option in settings"
+  },
+  "menu": "菜单",
+  "newThreadIn": "在 {projectName} 中新建会话",
+  "@newThreadIn": {
+    "placeholders": {
+      "projectName": {
+        "type": "String"
+      }
+    }
+  },
+  "noProjectsYet": "还没有项目。\n创建一个以开始使用。",
+  "noThreadsYet": "还没有会话",
+  "deleteThreadConfirm": "删除此会话？此操作无法撤销。",
+  "deleteProjectConfirm": "从 Devinorium 移除“{name}”？这将删除项目及其所有会话，但不会删除磁盘上的文件夹。",
+  "@deleteProjectConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteProject": "删除项目",
+  "deleteThread": "删除会话",
+  "connected": "已连接",
+  "disconnected": "已断开",
+  "checkingConnection": "检查连接中…",
+  "serverVersion": "服务器版本",
+  "@serverVersion": {
+    "description": "Label for the connected server version row in settings"
+  },
+  "topics": "主题",
+  "timeAgoJustNow": "刚刚",
+  "timeAgoMinutes": "{count} 分钟前",
+  "@timeAgoMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoHours": "{count} 小时前",
+  "@timeAgoHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoDays": "{count} 天前",
+  "@timeAgoDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoMonths": "{count} 个月前",
+  "@timeAgoMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoYears": "{count} 年前",
+  "@timeAgoYears": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectOrCreateThread": "选择或创建会话",
+  "terminal": "终端",
+  "selectOrCreateThreadToChat": "选择或创建会话以开始聊天",
+  "startConversationHint": "在下方发送消息以开始对话",
+  "messageRoleYou": "你",
+  "messageRoleAssistant": "助手",
+  "messageRoleError": "错误",
+  "thinking": "思考中",
+  "hideThinking": "隐藏思考",
+  "showThinking": "显示思考",
+  "composerHint": "在此提问或拖放文件",
+  "permissionModeNormal": "每次都询问",
+  "permissionModeAcceptEdits": "确认编辑",
+  "permissionModeSmart": "智能确认",
+  "permissionModeBypass": "自动运行",
+  "preview": "预览",
+  "output": "输出",
+  "changed": "已更改",
+  "tagNeedsApproval": "需审批",
+  "tagRunning": "运行中",
+  "tagWorking": "处理中",
+  "tagFailed": "失败",
+  "tagDone": "完成",
+  "tagStopped": "已停止",
+  "noValue": "—",
+  "tokensMillionSuffix": "{count}M",
+  "@tokensMillionSuffix": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tokensThousandSuffix": "{count}K",
+  "@tokensThousandSuffix": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tokensCount": "{count}",
+  "@tokensCount": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeBytes": "{count} B",
+  "@sizeBytes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeKilobytes": "{count} KB",
+  "@sizeKilobytes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeMegabytes": "{count} MB",
+  "@sizeMegabytes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "breadcrumbSeparator": " / ",
+  "messageLoading": "...",
+  "readFileTitle": "读取 {fileName}",
+  "@readFileTitle": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      }
+    }
+  },
+  "readFileLineCount": "{count, plural, =1{1 行} other{{count} 行}}",
+  "@readFileLineCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "readFileLineRange": "{start}-{end}",
+  "@readFileLineRange": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      }
+    }
+  },
+  "readFileNoContent": "无内容",
+  "editFileNoDiff": "尚无差异内容",
+  "editFileOpenInFiles": "在文件中打开",
+  "gitBranches": "分支",
+  "pull": "拉取",
+  "push": "推送",
+  "createBranch": "创建分支",
+  "branchName": "分支名称",
+  "baseBranchOptional": "基础分支（可选）",
+  "createWorktree": "创建工作树",
+  "worktreeName": "工作树名称",
+  "baseBranch": "基础分支",
+  "newBranchInWorktree": "在工作树中创建新分支",
+  "worktrees": "工作树",
+  "mainWorktree": "主工作树",
+  "worktreeBranchLocked": "切换回主工作树以更改分支",
+  "envModeTooltip": "运行模式",
+  "localMode": "本地",
+  "localModeShort": "本地",
+  "worktreeMode": "工作树",
+  "worktreeModeShort": "工作树",
+  "git": "Git",
+  "gitConnections": "连接",
+  "gitlab": "GitLab",
+  "github": "GitHub",
+  "comingSoon": "即将推出",
+  "connect": "连接",
+  "disconnect": "断开",
+  "notConnected": "未连接",
+  "connectedAs": "以 {account} 身份连接",
+  "@connectedAs": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "token": "令牌",
+  "hostname": "主机名",
+  "gitlabComHint": "gitlab.com",
+  "gitlabConnectFailed": "GitLab 连接失败：{error}",
+  "@gitlabConnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gitlabDisconnectFailed": "GitLab 断开失败：{error}",
+  "@gitlabDisconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "loading": "加载中…",
+  "gitlabNotInstalled": "未安装 GitLab CLI（glab）。",
+  "gitlabConnectHint": "在终端中运行 glab auth login，然后点击连接。",
+  "none": "无",
+  "createAndSwitchBranch": "创建并切换",
+  "send": "发送",
+  "next": "下一步",
+  "previous": "上一步",
+  "stopGenerating": "停止生成",
+  "notifications": "通知",
+  "completionNotifications": "会话完成时通知",
+  "completionNotificationsDescription": "当会话在后台完成运行时显示浏览器通知",
+  "threadCompletedTitle": "会话完成",
+  "threadCompletedBody": "{title} 已运行完成",
+  "@threadCompletedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadFailedTitle": "会话失败",
+  "threadFailedBody": "{title} 遇到错误",
+  "@threadFailedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "copy": "复制",
+  "copied": "已复制",
+  "copiedToClipboard": "已复制到剪贴板",
+  "mergeRequest": "合并请求",
+  "overview": "概览",
+  "changes": "更改",
+  "comments": "评论",
+  "pipelines": "流水线",
+  "noDescription": "未提供描述",
+  "noChanges": "没有已更改的文件",
+  "changesFileCount": "{count, plural, =1{1 个文件} other{{count} 个文件}}",
+  "@changesFileCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noComments": "暂无评论",
+  "noPipelines": "暂无流水线",
+  "noJobs": "暂无作业",
+  "noJobLog": "暂无作业日志",
+  "jobLogLive": "实时",
+  "openInBrowser": "在浏览器中打开",
+  "openLink": "打开链接",
+  "copyLink": "复制链接",
+  "linkToThread": "关联到会话",
+  "unlinkFromThread": "取消关联会话",
+  "draft": "草稿",
+  "retry": "重试",
+  "merge": "合并",
+  "mergeWhenPipelineSucceeds": "流水线成功后合并",
+  "cancelAutoMerge": "取消自动合并",
+  "closeMergeRequest": "关闭合并请求",
+  "reopenMergeRequest": "重新打开合并请求",
+  "mergeRequestDraftBlocked": "合并前请将合并请求标记为可合并",
+  "mergeRequestConflictsBlocked": "合并前请解决冲突",
+  "mergeRequestAutoMergeSet": "此合并请求将在流水线成功后自动合并",
+  "mergeRequestWorking": "处理中…",
+  "issue": "议题",
+  "issueOpen": "打开",
+  "issueClosed": "已关闭",
+  "issueLabels": "标签",
+  "issueNoDescription": "未提供描述",
+  "issueComments": "评论",
+  "issueLoadFailed": "加载议题失败",
+  "issueOpenInBrowser": "在浏览器中打开",
+  "cloneRoot": "克隆根目录",
+  "cloneRootDescription": "克隆仓库所在的目录",
+  "cloneRootNotSet": "尚未设置",
+  "cloneRootSave": "保存",
+  "cloneRootBrowse": "浏览…",
+  "cloneRootOnlyOwner": "只有所有者可以更改克隆根目录",
+  "search": "搜索",
+  "searchHint": "搜索会话…",
+  "searchKeyboardShortcut": "⌘K",
+  "searchKeyboardShortcutNonMac": "Ctrl+H",
+  "noSearchResults": "未找到会话",
+  "threadStatusWorking": "进行中",
+  "threadStatusDone": "完成",
+  "threadStatusFailed": "失败",
+  "threadStatusApproval": "审批",
+  "threadStatusInput": "输入",
+  "showMoreThreads": "显示另外 {count} 个",
+  "@showMoreThreads": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "loadMore": "加载更多",
+  "servers": "服务器",
+  "@servers": {
+    "description": "Servers section title in settings and the sidebar switcher"
+  },
+  "manageServers": "管理服务器",
+  "@manageServers": {
+    "description": "Menu item to open the server settings"
+  },
+  "switchServer": "切换服务器",
+  "@switchServer": {
+    "description": "Tooltip for the quick server switcher"
+  },
+  "noServersConfigured": "未配置服务器",
+  "@noServersConfigured": {
+    "description": "Empty state shown when no servers are saved"
+  },
+  "serverSwitchNotAvailableWeb": "网页版不支持服务器切换",
+  "@serverSwitchNotAvailableWeb": {
+    "description": "Message shown in settings when running as a web app"
+  },
+  "web": "网页",
+  "@web": {
+    "description": "Fallback label for the implicit web server profile"
+  },
+  "addServer": "添加服务器",
+  "@addServer": {
+    "description": "Button and dialog title for adding a new server"
+  },
+  "addServerFromSettingsPrompt": "未配置服务器。\n在设置中添加服务器以开始使用。",
+  "@addServerFromSettingsPrompt": {
+    "description": "Empty state in the thread page when no server is connected"
+  },
+  "switchServerLabel": "切换",
+  "@switchServerLabel": {
+    "description": "Button text to activate a different server profile"
+  },
+  "deleteServerConfirm": "从 Devinorium 移除“{name}”？这将删除保存的连接。",
+  "@deleteServerConfirm": {
+    "description": "Confirmation before removing a saved server profile",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUrlWithSchemeHint": "http://localhost:7878",
+  "@serverUrlWithSchemeHint": {
+    "description": "Hint for the add-server URL field, which requires a scheme"
+  },
+  "serverUrlMustIncludeScheme": "URL 必须以 http:// 或 https:// 开头",
+  "@serverUrlMustIncludeScheme": {
+    "description": "Validation error when the add-server URL is missing a scheme"
+  },
+  "oledTheme": "OLED",
+  "@oledTheme": {
+    "description": "OLED built-in theme option"
+  },
+  "themeCustom": "自定义",
+  "@themeCustom": {
+    "description": "Label for a user-supplied custom theme"
+  },
+  "themeImport": "导入自定义",
+  "@themeImport": {
+    "description": "Button to open the custom theme import dialog"
+  },
+  "themeImportHint": "在下方粘贴受限 CSS 文件。仅允许 :root 和颜色值。",
+  "@themeImportHint": {
+    "description": "Hint text in the custom theme import dialog"
+  },
+  "themeImportError": "导入主题失败",
+  "@themeImportError": {
+    "description": "Error shown when a custom theme file cannot be parsed"
+  },
+  "themeCreator": "创作者",
+  "@themeCreator": {
+    "description": "Label for the theme creator metadata field"
+  },
+  "themeVersion": "版本",
+  "@themeVersion": {
+    "description": "Label for the theme version metadata field"
+  },
+  "themeDescription": "描述",
+  "@themeDescription": {
+    "description": "Label for the theme description metadata field"
+  },
+  "fileViewerContent": "内容",
+  "@fileViewerContent": {
+    "description": "Label for the content tab in the file viewer"
+  },
+  "fileViewerDiff": "差异",
+  "@fileViewerDiff": {
+    "description": "Label for the diff tab in the file viewer"
+  },
+  "fileViewerBinaryFile": "二进制文件",
+  "@fileViewerBinaryFile": {
+    "description": "Label shown when a file cannot be previewed as text"
+  },
+  "fileViewerLoadError": "加载文件失败",
+  "@fileViewerLoadError": {
+    "description": "Error shown when the file viewer fails to load a file"
+  },
+  "agentsMode": "智能体",
+  "editorMode": "编辑器",
+  "chat": "聊天",
+  "editorSelectFile": "从树中选择一个文件以编辑",
+  "editorUnsavedChanges": "未保存更改",
+  "editorSaveBeforeClose": "保存对 {name} 的更改？",
+  "editorReload": "重新加载",
+  "binaryFileNotEditable": "{name} 是二进制文件，无法编辑",
+  "@binaryFileNotEditable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@editorSaveBeforeClose": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "editorDiscard": "放弃",
+  "diffViewMoreLines": "… 还有 {count} 行未显示",
+  "@diffViewMoreLines": {
+    "description": "Note shown when a diff is truncated",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "contentViewMoreLines": "… 还有 {count} 行未显示",
+  "@contentViewMoreLines": {
+    "description": "Note shown when a file's content is truncated",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "contentViewShowAll": "显示全部",
+  "@contentViewShowAll": {
+    "description": "Button label to show the rest of a truncated file"
+  },
+  "showMore": "显示更多",
+  "@showMore": {
+    "description": "Button that expands a truncated message"
+  },
+  "loadingMore": "加载更多…",
+  "@loadingMore": {
+    "description": "Label shown while additional message content is loading"
+  },
+  "terminalNoSessions": "没有终端会话",
+  "@terminalNoSessions": {
+    "description": "Empty state shown when no terminal sessions exist"
+  },
+  "terminalTab": "标签页 {index}",
+  "@terminalTab": {
+    "description": "Label for a terminal tab",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "terminalNewTab": "新建标签页",
+  "@terminalNewTab": {
+    "description": "Tooltip for the button that opens a new terminal tab"
+  },
+  "terminalCloseTab": "关闭标签页",
+  "@terminalCloseTab": {
+    "description": "Tooltip for closing a terminal tab"
+  },
+  "terminalClose": "关闭终端",
+  "@terminalClose": {
+    "description": "Tooltip for closing a terminal session"
+  },
+  "terminalLocal": "本地终端",
+  "@terminalLocal": {
+    "description": "Tooltip for adding a local terminal"
+  },
+  "terminalRemote": "远程终端",
+  "@terminalRemote": {
+    "description": "Tooltip for adding a remote terminal"
+  },
+  "terminalHide": "隐藏终端",
+  "@terminalHide": {
+    "description": "Tooltip for hiding the terminal panel"
+  },
+  "terminalStartFailed": "无法启动终端：{error}",
+  "@terminalStartFailed": {
+    "description": "Error shown when a terminal session cannot be started",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalCloseTitle": "关闭终端？",
+  "@terminalCloseTitle": {
+    "description": "Title of the confirmation dialog before closing a terminal"
+  },
+  "terminalCloseBody": "此终端正在运行进程或输出。仍然关闭？",
+  "@terminalCloseBody": {
+    "description": "Body of the confirmation dialog before closing a terminal"
+  },
+  "terminalTabCloseTitle": "关闭标签页？",
+  "@terminalTabCloseTitle": {
+    "description": "Title of the confirmation dialog before closing a terminal tab"
+  },
+  "terminalTabCloseBody": "{count, plural, =1{此标签页包含 1 个活动终端。仍要关闭吗？} other{此标签页包含 {count} 个活动终端。仍要关闭吗？}}",
+  "@terminalTabCloseBody": {
+    "description": "Body of the confirmation dialog before closing a terminal tab",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "planHide": "隐藏计划",
+  "@planHide": {
+    "description": "Tooltip for hiding the plan overlay"
+  },
+  "planShow": "显示计划",
+  "@planShow": {
+    "description": "Tooltip for showing the plan overlay"
+  },
+  "planCollapse": "收起计划",
+  "@planCollapse": {
+    "description": "Tooltip for collapsing the plan overlay"
+  },
+  "planExpand": "展开计划",
+  "@planExpand": {
+    "description": "Tooltip for expanding the plan overlay"
+  },
+  "planTitle": "计划",
+  "@planTitle": {
+    "description": "Fallback title for the plan overlay"
+  },
+  "planProgress": "{completed} / {total} {total, plural, =1{步} other{步}} · {percent}%",
+  "@planProgress": {
+    "description": "Progress line in the plan overlay",
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "composerModeCode": "代码",
+  "@composerModeCode": {
+    "description": "Label for the code composer mode"
+  },
+  "composerModePlan": "计划",
+  "@composerModePlan": {
+    "description": "Label for the plan composer mode"
+  },
+  "composerModeAsk": "提问",
+  "@composerModeAsk": {
+    "description": "Label for the ask composer mode"
+  },
+  "terminalLocalOnlyDesktop": "本地终端仅适用于桌面端",
+  "@terminalLocalOnlyDesktop": {
+    "description": "Message written to a terminal when the local backend is unavailable"
+  },
+  "terminalConnectionError": "[连接错误：{error}]",
+  "@terminalConnectionError": {
+    "description": "Message written to a terminal when the connection fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalSessionExited": "[会话已退出，代码 {code}]",
+  "@terminalSessionExited": {
+    "description": "Message written to a terminal when the remote session exits",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalPtyError": "[PTY 错误：{error}]",
+  "@terminalPtyError": {
+    "description": "Message written to a terminal when the local PTY errors",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalPtyClosed": "[PTY 已关闭]",
+  "@terminalPtyClosed": {
+    "description": "Message written to a terminal when the local PTY closes"
+  },
+  "terminalProcessExited": "[进程已退出，代码 {code}]",
+  "@terminalProcessExited": {
+    "description": "Message written to a terminal when the local process exits",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalShellStartFailed": "[无法启动 {shell}：{error}]",
+  "@terminalShellStartFailed": {
+    "description": "Message written to a terminal when the local shell cannot start",
+    "placeholders": {
+      "shell": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "usage": "用量",
+  "@usage": {
+    "description": "Usage section title in settings"
+  },
+  "usageDescription": "由提供商报告的令牌用量，由本服务器追踪",
+  "@usageDescription": {
+    "description": "Short description shown under the Usage section title"
+  },
+  "usageLastDays": "最近 {count} 天",
+  "@usageLastDays": {
+    "description": "Usage window selector label",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "usageTotalTokens": "总令牌数",
+  "usageInput": "输入",
+  "usageOutput": "输出",
+  "usageCached": "缓存",
+  "usageReasoning": "推理",
+  "usageTurns": "轮次",
+  "usageCost": "费用",
+  "usageByDay": "按天",
+  "usageByProvider": "按提供商",
+  "usageByModel": "按模型",
+  "usageEmpty": "暂无使用记录",
+  "usageLoadFailed": "加载用量失败"
+}
