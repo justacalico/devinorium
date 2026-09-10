@@ -302,6 +302,72 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Model picker lists pricing and marks free models with a gift icon',
+    (tester) async {
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        providers: [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')],
+        models: [
+          ModelInfo(
+            id: 'm1',
+            label: 'Free Model',
+            costTier: 'free',
+            family: 'test',
+            costSummary: 'Free',
+          ),
+          ModelInfo(
+            id: 'm2',
+            label: 'Paid Model',
+            costTier: 'high',
+            family: 'test',
+            costSummary: '\$5 / MTok In · \$25 / MTok Out',
+          ),
+        ],
+        selectedProvider: 'devin-cli',
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test thread',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      );
+      state.setSelectedModel('m1');
+      state.setSelectedPermission('normal');
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('model_selector')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+
+      // The free model gets a gift icon; the paid model does not.
+      expect(find.byIcon(Icons.card_giftcard), findsOneWidget);
+      // Paid pricing shows up next to the provider name.
+      expect(
+        find.text('Devin CLI · \$5 / MTok In · \$25 / MTok Out'),
+        findsOneWidget,
+      );
+      expect(find.text('Devin CLI · Free'), findsOneWidget);
+    },
+  );
+
   testWidgets('renders thinking, text and tool call parts in order', (
     tester,
   ) async {

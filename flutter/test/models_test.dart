@@ -838,7 +838,10 @@ void main() {
       });
       expect(t.linkedMr, isNotNull);
       expect(t.linkedMr!.iid, 7);
-      expect(t.linkedMr!.webUrl, 'https://gitlab.example.com/g/p/-/merge_requests/7');
+      expect(
+        t.linkedMr!.webUrl,
+        'https://gitlab.example.com/g/p/-/merge_requests/7',
+      );
     });
 
     test('ignores malformed linked_mr', () {
@@ -1050,6 +1053,48 @@ void main() {
       expect(m.costSummary, isEmpty);
       expect(m.maxContextTokens, 0);
       expect(m.isNew, isFalse);
+    });
+
+    test('isFree matches free tier or summary', () {
+      expect(
+        ModelInfo(id: 'a', label: 'a', costTier: 'free', family: 'f').isFree,
+        isTrue,
+      );
+      expect(
+        ModelInfo(
+          id: 'b',
+          label: 'b',
+          costTier: 'low',
+          family: 'f',
+          costSummary: 'Free',
+        ).isFree,
+        isTrue,
+      );
+      expect(
+        ModelInfo(id: 'c', label: 'c', costTier: 'high', family: 'f').isFree,
+        isFalse,
+      );
+    });
+
+    test('isPromo matches promo tier or summary', () {
+      expect(
+        ModelInfo(id: 'a', label: 'a', costTier: 'promo', family: 'f').isPromo,
+        isTrue,
+      );
+      expect(
+        ModelInfo(
+          id: 'b',
+          label: 'b',
+          costTier: 'paid',
+          family: 'f',
+          costSummary: 'Promo pricing',
+        ).isPromo,
+        isTrue,
+      );
+      expect(
+        ModelInfo(id: 'c', label: 'c', costTier: 'high', family: 'f').isPromo,
+        isFalse,
+      );
     });
   });
 
@@ -1591,7 +1636,10 @@ void main() {
       expect(ref!.hostname, 'gitlab.example.com');
       expect(ref.projectPath, 'group/project');
       expect(ref.iid, 12);
-      expect(ref.webUrl, 'https://gitlab.example.com/group/project/-/merge_requests/12');
+      expect(
+        ref.webUrl,
+        'https://gitlab.example.com/group/project/-/merge_requests/12',
+      );
     });
 
     test('accepts a self-managed host and trailing path', () {
@@ -1610,13 +1658,12 @@ void main() {
         isNull,
       );
       expect(
-        LinkedMergeRequestRef.tryParse('https://gitlab.com/group/project/merge_requests/12'),
+        LinkedMergeRequestRef.tryParse(
+          'https://gitlab.com/group/project/merge_requests/12',
+        ),
         isNull,
       );
-      expect(
-        LinkedMergeRequestRef.tryParse('not-a-url'),
-        isNull,
-      );
+      expect(LinkedMergeRequestRef.tryParse('not-a-url'), isNull);
       expect(
         LinkedMergeRequestRef.tryParse(
           'https://evil.com/https://gitlab.com/group/project/-/merge_requests/12',

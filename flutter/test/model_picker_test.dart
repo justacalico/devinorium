@@ -62,5 +62,12 @@ void main() {
       final field = tester.widget<EditableText>(searchField);
       expect(field.focusNode.hasFocus, isTrue);
     });
+
+    testWidgets('shows a gift icon on free model badges', (tester) async {
+      await pumpAndOpen(tester);
+
+      // One icon in the list row badge, one in the details pane badge.
+      expect(find.byIcon(Icons.card_giftcard), findsNWidgets(2));
+    });
   });
 }

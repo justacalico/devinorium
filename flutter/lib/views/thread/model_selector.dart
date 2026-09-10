@@ -314,23 +314,52 @@ class _ModelRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appL10n = l10n(context);
+    final isFree = model.isFree;
+    final isPromo = model.isPromo;
+    final pricing = model.costSummary.trim();
+    final subtitle = [
+      if (providerName.isNotEmpty) providerName,
+      if (pricing.isNotEmpty) pricing,
+    ].join(' · ');
     return ListTile(
       dense: true,
       selected: selected,
       selectedTileColor: theme.colorScheme.primaryContainer.withAlpha(40),
-      title: Text(
-        model.label.isNotEmpty ? model.label : model.id,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-        ),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              model.label.isNotEmpty ? model.label : model.id,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (isFree || isPromo) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: isFree ? appL10n.free : appL10n.promo,
+              child: Icon(
+                Icons.card_giftcard,
+                size: 14,
+                color: isFree
+                    ? theme.colorScheme.tertiary
+                    : theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ],
       ),
-      subtitle: providerName.isEmpty
+      subtitle: subtitle.isEmpty
           ? null
           : Text(
-              providerName,
+              subtitle,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
       trailing: selected
           ? Icon(Icons.check, size: 16, color: theme.colorScheme.primary)

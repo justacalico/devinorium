@@ -363,7 +363,7 @@ class _ModelRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = l10n(context);
-    final isFree = _isFree(model);
+    final isFree = model.isFree;
     final contextText = l.contextWithTokens(
       _formatTokens(model.maxContextTokens, l),
     );
@@ -407,13 +407,15 @@ class _ModelRow extends StatelessWidget {
                     children: [
                       if (isFree)
                         _Badge(
-                          text: l10n(context).free,
+                          text: l.free,
                           color: theme.colorScheme.tertiary,
+                          icon: Icons.card_giftcard,
                         )
-                      else if (_isPromo(model))
+                      else if (model.isPromo)
                         _Badge(
-                          text: l10n(context).promo,
+                          text: l.promo,
                           color: theme.colorScheme.primary,
+                          icon: Icons.card_giftcard,
                         )
                       else
                         _CostBar(tier: model.costTier),
@@ -503,17 +505,25 @@ class _ModelDetails extends StatelessWidget {
             label: l.costTierLabel,
             value: model.costTier.isEmpty ? l.noValue : model.costTier,
           ),
-          if (model.costSummary.isNotEmpty)
+          if (model.costSummary.trim().isNotEmpty)
             _DetailRow(label: l.pricingLabel, value: model.costSummary),
           const SizedBox(height: 16),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
-              if (_isFree(model))
-                _Badge(text: l.free, color: theme.colorScheme.tertiary),
-              if (_isPromo(model))
-                _Badge(text: l.promo, color: theme.colorScheme.primary),
+              if (model.isFree)
+                _Badge(
+                  text: l.free,
+                  color: theme.colorScheme.tertiary,
+                  icon: Icons.card_giftcard,
+                ),
+              if (model.isPromo)
+                _Badge(
+                  text: l.promo,
+                  color: theme.colorScheme.primary,
+                  icon: Icons.card_giftcard,
+                ),
               if (model.isNew)
                 _Badge(text: l.newLabel, color: theme.colorScheme.primary),
               if (model.isBeta)
@@ -574,7 +584,8 @@ class _DetailRow extends StatelessWidget {
 class _Badge extends StatelessWidget {
   final String text;
   final Color color;
-  const _Badge({required this.text, required this.color});
+  final IconData? icon;
+  const _Badge({required this.text, required this.color, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -585,12 +596,21 @@ class _Badge extends StatelessWidget {
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(
-        text,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            text,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -682,16 +702,6 @@ String _shortLabel(ModelInfo m) {
     return rest.isEmpty ? l : rest;
   }
   return l;
-}
-
-bool _isFree(ModelInfo m) {
-  return m.costTier.toLowerCase().contains('free') ||
-      m.costSummary.toLowerCase().contains('free');
-}
-
-bool _isPromo(ModelInfo m) {
-  return m.costTier.toLowerCase().contains('promo') ||
-      m.costSummary.toLowerCase().contains('promo');
 }
 
 String _formatTokens(int tokens, AppLocalizations l) {
