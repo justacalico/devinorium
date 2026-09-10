@@ -248,6 +248,7 @@ class _ThreadTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final worktreeName = thread.worktreeName;
     final children = <Widget>[
       Expanded(
         child: Text(
@@ -291,11 +292,68 @@ class _ThreadTitle extends StatelessWidget {
       );
     }
 
-    return Row(
-      mainAxisSize: MainAxisSize.max,
-      children: children,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.max,
+          children: children,
+        ),
+        if (worktreeName != null) ...[
+          const SizedBox(height: 2),
+          _ThreadWorktreeLabel(
+            name: worktreeName,
+            tooltip: _worktreeTooltip(thread, worktreeName),
+          ),
+        ],
+      ],
     );
   }
+}
+
+class _ThreadWorktreeLabel extends StatelessWidget {
+  final String name;
+  final String tooltip;
+
+  const _ThreadWorktreeLabel({
+    required this.name,
+    required this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
+
+    return Tooltip(
+      message: tooltip,
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          Icon(Icons.fork_right, size: 12, color: color),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _worktreeTooltip(Thread thread, String worktreeName) {
+  if (thread.worktreePath?.isNotEmpty == true) return thread.worktreePath!;
+  if (thread.branch?.isNotEmpty == true) return thread.branch!;
+  return worktreeName;
 }
 
 class _ThreadActions extends StatelessWidget {

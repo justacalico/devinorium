@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:path/path.dart' as p;
 
 import 'git.dart';
 import 'messages.dart';
@@ -169,6 +170,22 @@ class Thread {
     updatedAt: j['updated_at'] as String? ?? '',
     linkedMr: _parseLinkedMr(j['linked_mr']),
   );
+
+  /// A short display name for the thread's active worktree.
+  ///
+  /// Returns the last segment of [worktreePath] when one is set, otherwise
+  /// falls back to [branch] for worktree-mode threads that have not yet been
+  /// associated with a path.
+  String? get worktreeName {
+    final wt = worktreePath;
+    if (wt != null && wt.isNotEmpty) {
+      final name = _worktreeBasename(wt);
+      if (name.isNotEmpty && !_isRootPath(name, wt)) return name;
+    }
+    final b = branch;
+    if (envMode == 'worktree' && b != null && b.isNotEmpty) return b;
+    return null;
+  }
 
   Thread copyWith({
     String? title,
@@ -427,4 +444,21 @@ class ThreadDetail {
     turnLimit,
     rawCount,
   );
+}
+
+String _worktreeBasename(String path) {
+  if (path.contains('\\')) {
+    return p.Context(style: p.Style.windows).basename(path);
+  }
+  return p.Context(style: p.Style.posix).basename(path);
+}
+
+bool _isRootPath(String basename, String path) {
+  if (basename.isEmpty) return true;
+  if (basename == path) {
+    // A path that contains separators but has no trailing filename is a root
+    // such as '/' or 'C:\'.
+    return path.contains('/') || path.contains('\\');
+  }
+  return false;
 }
