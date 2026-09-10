@@ -149,9 +149,11 @@ StreamingReduceResult reduceStreamingEvent({
       }
       try {
         final part = MessagePart.fromJson(decoded);
+        final (parts, digest) = _appendPart(snapshot, part);
         final next = snapshot.copyWith(
           phase: StreamPhase.running,
-          parts: [...snapshot.parts, part],
+          parts: parts,
+          digest: digest,
           lastSeq: seq ?? snapshot.lastSeq,
           clearError: true,
         );
@@ -170,12 +172,11 @@ StreamingReduceResult reduceStreamingEvent({
       }
       try {
         final part = MessagePart.fromJson(decoded);
-        final parts = part.id == null
-            ? [...snapshot.parts, part]
-            : _updateOrAppend(snapshot.parts, part);
+        final (parts, digest) = _updateOrAppendPart(snapshot, part);
         final next = snapshot.copyWith(
           phase: StreamPhase.running,
           parts: parts,
+          digest: digest,
           lastSeq: seq ?? snapshot.lastSeq,
           clearError: true,
         );
@@ -366,9 +367,11 @@ StreamingSnapshot _applyRunSnapshot({
     } catch (_) {}
   }
   final error = json['error'] as String?;
+  final digest = StreamingSnapshot.digestForParts(parts);
 
   return snapshot.copyWith(
     parts: parts,
+    digest: digest,
     thinkingActive: json['thinking_active'] as bool? ?? false,
     lastSeq: (json['last_seq'] as num?)?.toInt() ?? snapshot.lastSeq,
     pendingPermission: pendingPermission,
@@ -383,14 +386,21 @@ StreamingSnapshot _applyRunSnapshot({
   );
 }
 
-List<MessagePart> _updateOrAppend(List<MessagePart> parts, MessagePart part) {
-  final idx = parts.indexWhere((p) => p.id == part.id);
-  if (idx >= 0) {
-    final next = List<MessagePart>.of(parts);
-    next[idx] = part;
-    return next;
-  }
-  return [...parts, part];
+(List<MessagePart>, int) _appendPart(StreamingSnapshot snapshot, MessagePart part) {
+  final parts = snapshot.parts.isEmpty ? [part] : [...snapshot.parts, part];
+  return (parts, combineDigests(snapshot.digest, part.hashCode));
+}
+
+(List<MessagePart>, int) _updateOrAppendPart(
+  StreamingSnapshot snapshot,
+  MessagePart part,
+) {
+  if (part.id == null) return _appendPart(snapshot, part);
+  final idx = snapshot.parts.indexWhere((p) => p.id == part.id);
+  if (idx < 0) return _appendPart(snapshot, part);
+  final parts = [...snapshot.parts];
+  parts[idx] = part;
+  return (parts, listDigest(parts));
 }
 
 StreamingSnapshot _recomputeThinking(StreamingSnapshot snapshot) {
@@ -403,6 +413,7 @@ StreamingSnapshot _recomputeThinking(StreamingSnapshot snapshot) {
 StreamingSnapshot _finishSnapshot(StreamingSnapshot snapshot) {
   return snapshot.copyWith(
     parts: [],
+    digest: 0,
     thinkingActive: false,
     lastSeq: 0,
     clearPendingPermission: true,

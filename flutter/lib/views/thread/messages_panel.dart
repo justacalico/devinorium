@@ -4,14 +4,18 @@ class _MessagesPanel extends StatelessWidget {
   final ThreadDetail? detail;
   final bool loading;
   final List<MessagePart> streamingParts;
+  final int streamingDigest;
   final bool streamingThinkingActive;
+  final bool sending;
   final ScrollController controller;
   final bool hasServer;
   const _MessagesPanel({
     required this.detail,
     required this.loading,
     required this.streamingParts,
+    required this.streamingDigest,
     required this.streamingThinkingActive,
+    required this.sending,
     required this.controller,
     required this.hasServer,
   });
@@ -75,7 +79,7 @@ class _MessagesPanel extends StatelessWidget {
     }
 
     final messages = detail!.messages;
-    final hasStreaming = streamingParts.isNotEmpty;
+    final hasStreaming = sending && streamingParts.isNotEmpty;
 
     if (messages.isEmpty && !hasStreaming) {
       return Center(
@@ -111,6 +115,7 @@ class _MessagesPanel extends StatelessWidget {
                 content: '',
                 attachments: null,
                 parts: streamingParts,
+                partsDigest: streamingDigest,
                 model: detail?.thread.model ?? '',
               ),
               thinkingActive: streamingThinkingActive,

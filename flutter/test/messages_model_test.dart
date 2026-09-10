@@ -95,6 +95,45 @@ void main() {
       expect(a.hashCode, b.hashCode);
       expect(a == c, isFalse);
     });
+
+    test('partsDigest matches listDigest and detects list changes', () {
+      final parts = [
+        MessagePart.text(content: 'a'),
+        MessagePart.thinking(content: 'b'),
+      ];
+      final a = Message(
+        role: 'assistant',
+        content: '',
+        parts: parts,
+      );
+      expect(a.partsDigest, listDigest(parts));
+
+      final b = Message(
+        role: 'assistant',
+        content: '',
+        parts: [...parts, MessagePart.text(content: 'c')],
+      );
+      expect(a.partsDigest, isNot(b.partsDigest));
+      expect(a, isNot(b));
+    });
+
+    test('precomputed partsDigest avoids recomputing the list hash', () {
+      final parts = [MessagePart.text(content: 'x' * 1000)];
+      final a = Message(
+        role: 'assistant',
+        content: '',
+        parts: parts,
+      );
+      final b = Message(
+        role: 'assistant',
+        content: '',
+        parts: parts,
+        partsDigest: a.partsDigest,
+      );
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(b.partsDigest, a.partsDigest);
+    });
   });
 
   group('MessagePage', () {

@@ -107,6 +107,12 @@ class ThreadStore {
   // In-flight initial message load so callers can await the same request.
   Future<void>? _initialMessagesFuture;
 
+  // Throttle stream event notifications so a rapid burst of part events does
+  // not force the UI to rebuild on every single frame.
+  Timer? _emitTimer;
+  bool _emitPending = false;
+  static const _emitThrottle = Duration(milliseconds: 50);
+
   // t3code-style serial command queue for this thread.
   final ThreadCommandScheduler _scheduler = ThreadCommandScheduler();
 
@@ -153,6 +159,7 @@ class ThreadStore {
 
   bool get sending => _streaming.isActive;
   List<MessagePart> get streamingParts => _streaming.parts;
+  int get streamingDigest => _streaming.digest;
   bool get streamingThinkingActive => _streaming.thinkingActive;
   PermissionRequest? get pendingPermissionRequest =>
       _streaming.pendingPermission;
@@ -568,12 +575,16 @@ class ThreadStore {
   /// further operation is a no-op.
   void markDeleted() {
     _status = ThreadStoreStatus.deleted;
+    _flushEmit();
     _cancelStream();
     _emit();
   }
 
   /// Dispose the store, cancelling any in-flight stream.
   void dispose() {
+    _emitTimer?.cancel();
+    _emitTimer = null;
+    _emitPending = false;
     _cancelStream();
     _scheduler.dispose();
     onStateChanged = null;
@@ -586,6 +597,32 @@ class ThreadStore {
 
   void _emit() {
     onStateChanged?.call();
+  }
+
+  void _throttledEmit() {
+    _emitPending = true;
+    if (_emitTimer != null) return;
+    _emitNowAndSchedule();
+  }
+
+  void _emitNowAndSchedule() {
+    _emitPending = false;
+    _emit();
+    _emitTimer = Timer(_emitThrottle, () {
+      _emitTimer = null;
+      if (_emitPending) _emitNowAndSchedule();
+    });
+  }
+
+  void _flushEmit() {
+    _emitTimer?.cancel();
+    _emitTimer = null;
+    _emitPending = false;
+  }
+
+  void _emitNow() {
+    _flushEmit();
+    _emit();
   }
 
   void _applyRunSnapshot(Map<String, dynamic> run) {
@@ -666,7 +703,31 @@ class ThreadStore {
       }
     }
 
-    _emit();
+    // Stream events that only update parts/metadata can be throttled so rapid
+    // model output does not force a frame-by-frame rebuild. Anything that
+    // creates, completes, or interrupts a turn (or shows a permission/ask
+    // prompt) must be emitted immediately so the UI never misses it.
+    switch (ev.event) {
+      case 'part':
+      case 'part_update':
+      case 'plan_update':
+      case 'thread_update':
+        _throttledEmit();
+        break;
+      case 'state':
+      case 'user_message':
+      case 'permission_request':
+      case 'ask_request':
+        _emitNow();
+        break;
+      case 'done':
+      case 'error':
+      case 'stopped':
+        _flushEmit();
+        break;
+      default:
+        _throttledEmit();
+    }
 
     if (ev.event == 'done') {
       _cancelStream();
@@ -685,6 +746,7 @@ class ThreadStore {
       );
       refreshTail();
     } else if (ev.event == 'stopped') {
+      _emit();
       _cancelStream();
       _refreshThreadsList();
       _refreshTailAfterStop();

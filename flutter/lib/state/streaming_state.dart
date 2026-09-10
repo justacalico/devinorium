@@ -8,6 +8,9 @@ enum StreamPhase { idle, sending, running, completed, stopped, failed }
 /// t3code keeps per-turn streaming state separate from the persisted message
 /// list and reduces it from events. This class is the same idea: a compact,
 /// immutable value that the UI can read and the reducer can transform.
+///
+/// The [digest] is a fast, order-sensitive hash of [parts] so the UI can tell
+/// when the stream has changed without walking the whole list on every frame.
 class StreamingSnapshot {
   final StreamPhase phase;
   final List<MessagePart> parts;
@@ -18,6 +21,7 @@ class StreamingSnapshot {
   final Plan? plan;
   final String? error;
   final String? startedAt;
+  final int digest;
 
   const StreamingSnapshot({
     this.phase = StreamPhase.idle,
@@ -29,9 +33,12 @@ class StreamingSnapshot {
     this.plan,
     this.error,
     this.startedAt,
+    this.digest = 0,
   });
 
   static const empty = StreamingSnapshot();
+
+  static int digestForParts(List<MessagePart> parts) => listDigest(parts);
 
   bool get isActive =>
       phase == StreamPhase.sending || phase == StreamPhase.running;
@@ -54,10 +61,18 @@ class StreamingSnapshot {
     bool clearError = false,
     String? startedAt,
     bool clearStartedAt = false,
+    int? digest,
   }) {
+    final nextParts = parts ?? this.parts;
+    final nextDigest = digest ??
+        (parts != null
+            ? (identical(parts, this.parts)
+                ? this.digest
+                : StreamingSnapshot.digestForParts(nextParts))
+            : this.digest);
     return StreamingSnapshot(
       phase: phase ?? this.phase,
-      parts: parts ?? this.parts,
+      parts: nextParts,
       thinkingActive: thinkingActive ?? this.thinkingActive,
       lastSeq: lastSeq ?? this.lastSeq,
       pendingPermission: clearPendingPermission
@@ -67,6 +82,7 @@ class StreamingSnapshot {
       plan: clearPlan ? null : (plan ?? this.plan),
       error: clearError ? null : (error ?? this.error),
       startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
+      digest: nextDigest,
     );
   }
 }
