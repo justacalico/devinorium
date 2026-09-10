@@ -299,11 +299,11 @@ jobs:
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
           fi
           if [ "${{ steps.signing.outputs.signing }}" = "release" ]; then
-            flutter build apk --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
-            flutter build appbundle --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+            flutter build apk --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
+            flutter build appbundle --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
           else
-            flutter build apk --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
-            flutter build appbundle --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+            flutter build apk --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
+            flutter build appbundle --debug --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
           fi
           if [ "${{ steps.signing.outputs.signing }}" = "release" ]; then
             cp build/app/outputs/flutter-apk/app-release.apk "$ARTIFACTS_DIR/devinorium-android.apk"
@@ -328,7 +328,7 @@ jobs:
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
           fi
-          flutter build linux --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+          flutter build linux --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
           if [ "${{ matrix.target }}" = "linux-arm64" ]; then
             LINUX_ARCH=arm64
             DEB_ARCH=arm64
@@ -374,7 +374,7 @@ jobs:
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
           fi
-          flutter build windows --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+          flutter build windows --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
           if [ "${{ matrix.target }}" = "windows-arm64" ]; then
             WIN_ARCH=arm64
             OUT_ARCH=arm64
@@ -405,7 +405,7 @@ jobs:
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
           fi
-          flutter build macos --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+          flutter build macos --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
           APP="build/macos/Build/Products/Release/Devinorium.app"
           (cd "$(dirname "$APP")" && zip -r "$ARTIFACTS_DIR/devinorium-macos-arm64.zip" "Devinorium.app" >/dev/null)
           hdiutil create -volname "Devinorium" -srcfolder "$APP" -ov -format UDZO "$ARTIFACTS_DIR/devinorium-macos-arm64.dmg" >/dev/null
@@ -424,7 +424,7 @@ jobs:
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_ID="$MERGE_REQUEST_ID")
             MR_DART_DEFINES+=(--dart-define=MERGE_REQUEST_URL="$MERGE_REQUEST_URL")
           fi
-          flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]}"
+          flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
           rm -rf Payload
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
