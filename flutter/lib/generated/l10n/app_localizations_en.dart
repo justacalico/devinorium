@@ -1403,7 +1403,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String devMergeRequestBody(String id, String url) {
-    return 'You are on a development merge request (#$id). Report issues here:\n\n$url\n\nThis URL is hardcoded into this build as proof of its source.';
+    return 'You are on a development merge request (#$id). Report issues here:\n\n$url';
   }
 
   @override

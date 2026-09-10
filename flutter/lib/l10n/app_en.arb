@@ -1006,7 +1006,7 @@
   "@devMergeRequestTitle": {
     "description": "Title of the dialog shown on builds from a merge request"
   },
-  "devMergeRequestBody": "You are on a development merge request (#{id}). Report issues here:\n\n{url}\n\nThis URL is hardcoded into this build as proof of its source.",
+  "devMergeRequestBody": "You are on a development merge request (#{id}). Report issues here:\n\n{url}",
   "@devMergeRequestBody": {
     "description": "Body of the dialog shown on builds from a merge request",
     "placeholders": {

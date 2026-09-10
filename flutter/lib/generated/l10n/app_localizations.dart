@@ -2581,7 +2581,7 @@ abstract class AppLocalizations {
   /// Body of the dialog shown on builds from a merge request
   ///
   /// In en, this message translates to:
-  /// **'You are on a development merge request (#{id}). Report issues here:\n\n{url}\n\nThis URL is hardcoded into this build as proof of its source.'**
+  /// **'You are on a development merge request (#{id}). Report issues here:\n\n{url}'**
   String devMergeRequestBody(String id, String url);
 
   /// Body shown when a merge request ID is known but the URL is missing or invalid
