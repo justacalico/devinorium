@@ -7,8 +7,9 @@ pub mod service;
 
 pub use clone::{clone_repo, CloneError, ParsedRemote};
 pub use remote::{
-    parse_gitlab_merge_request_url, parse_gitlab_remote_url, GitConnection, GitLabJobLog,
-    GitLabMergeRequestSummary, GitLabPipeline, GitLabPipelineJob, GitLabProjectRef, GitLabStatus,
-    GitRemoteService, LinkedMergeRequest, MergeRequestAction, RemoteError,
+    first_gitlab_merge_request_url, parse_gitlab_merge_request_url, parse_gitlab_remote_url,
+    GitConnection, GitLabJobLog, GitLabMergeRequestSummary, GitLabPipeline, GitLabPipelineJob,
+    GitLabProjectRef, GitLabStatus, GitRemoteService, LinkedMergeRequest, MergeRequestAction,
+    RemoteError,
 };
 pub use service::{Branch, GitError, GitService, RepoStatus, Worktree};

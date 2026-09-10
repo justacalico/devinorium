@@ -188,6 +188,67 @@ impl Provider for StubProvider {
     }
 }
 
+/// A stub provider that replies with a GitLab merge request URL so the
+/// automatic link path can be exercised end-to-end.
+struct LinkingStubProvider;
+
+#[async_trait]
+impl Provider for LinkingStubProvider {
+    fn id(&self) -> &str {
+        "stub"
+    }
+    fn name(&self) -> &str {
+        "Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "stub-1".into(),
+            label: "Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
+        }])
+    }
+    async fn start(&self, _req: StartRequest) -> anyhow::Result<StartResponse> {
+        let reply = "Done: https://gitlab.example.com/group/project/-/merge_requests/42";
+        let parts = vec![MessagePart::text(reply)];
+        Ok(StartResponse {
+            session_id: "linking-session".into(),
+            reply: reply.into(),
+            thinking: "".into(),
+            parts,
+            title: "Linking Thread".into(),
+            usage: None,
+        })
+    }
+    async fn send(&self, _req: SendRequest) -> anyhow::Result<SendResponse> {
+        let reply = "Done: https://gitlab.example.com/group/project/-/merge_requests/42";
+        let parts = vec![MessagePart::text(reply)];
+        Ok(SendResponse {
+            reply: reply.into(),
+            thinking: "".into(),
+            parts,
+            usage: None,
+        })
+    }
+    async fn export(
+        &self,
+        _session_id: &str,
+        _working_dir: &std::path::Path,
+    ) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::json!({}))
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 /// A provider that emits parts incrementally with delays so a stop
 /// mid-generation leaves partial output in the run state.
 struct StreamingStubProvider;
@@ -6870,6 +6931,71 @@ async fn thread_link_merge_request_is_case_and_percent_agnostic() {
     assert_eq!(linked["hostname"], "gitlab.example.com");
     assert_eq!(linked["project_path"], "group/project");
     assert_eq!(linked["iid"], 5);
+}
+
+#[tokio::test]
+async fn thread_send_auto_links_merge_request_for_project_remote() {
+    let (app, _db) =
+        make_app_with_provider(Arc::new(LinkingStubProvider) as Arc<dyn Provider>).await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = make_gitlab_project(&app, &cookie, &repo).await;
+    let tid = make_thread(&app, &cookie, pid, "auto link").await;
+
+    send_prompt(&app, &cookie, &tid, "make a merge request").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let linked = &v["thread"]["linked_mr"];
+    assert_eq!(linked["hostname"], "gitlab.example.com");
+    assert_eq!(linked["project_path"], "group/project");
+    assert_eq!(linked["iid"], 42);
+    assert_eq!(
+        linked["web_url"],
+        "https://gitlab.example.com/group/project/-/merge_requests/42"
+    );
+}
+
+#[tokio::test]
+async fn thread_send_does_not_auto_link_mismatched_remote() {
+    let (app, _db) =
+        make_app_with_provider(Arc::new(LinkingStubProvider) as Arc<dyn Provider>).await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let mut remote = std::process::Command::new("git");
+    remote
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "git@gitlab.example.com:other/project.git",
+        ])
+        .current_dir(&repo);
+    assert!(remote.output().unwrap().status.success());
+    let pid = create_git_project(&app, &cookie, &repo).await;
+    let tid = make_thread(&app, &cookie, pid, "no auto link").await;
+
+    send_prompt(&app, &cookie, &tid, "make a merge request").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert!(v["thread"]["linked_mr"].is_null());
 }
 
 #[tokio::test]
