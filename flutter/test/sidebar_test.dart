@@ -3735,4 +3735,117 @@ void main() {
     final tooltip = tester.widget<Tooltip>(tooltipFinder);
     expect(tooltip.message, 'feature/x');
   });
+
+  testWidgets('Provider icon sits to the left of the thread title', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    api.listThreadsResult = [
+      Thread(
+        id: 't1',
+        title: 'provider left thread',
+        projectId: 1,
+        providerId: 'opencode',
+        model: '',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+    ];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final title = find.text('provider left thread');
+    final tile = find.ancestor(
+      of: title,
+      matching: find.byType(ListTile),
+    );
+    final icon = find.descendant(
+      of: tile,
+      matching: find.byType(ProviderIcon),
+    );
+    expect(title, findsOneWidget);
+    expect(icon, findsOneWidget);
+
+    final titleRect = tester.getRect(title);
+    final iconRect = tester.getRect(icon);
+    expect(iconRect.right, lessThan(titleRect.left));
+  });
+
+  testWidgets('Provider icon stays left of the title with a status tag', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    final thread = Thread(
+      id: 't1',
+      title: 'provider left with status',
+      projectId: 1,
+      providerId: 'opencode',
+      model: '',
+      permissionMode: 'normal',
+      createdAt: '',
+      updatedAt: '',
+    );
+    api.listThreadsResult = [thread];
+
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p1', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [...api.listThreadsResult],
+      activeProjectId: 1,
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(thread: thread),
+      sending: true,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final title = find.text('provider left with status');
+    final tile = find.ancestor(
+      of: title,
+      matching: find.byType(ListTile),
+    );
+    final icon = find.descendant(
+      of: tile,
+      matching: find.byType(ProviderIcon),
+    );
+    expect(title, findsOneWidget);
+    expect(icon, findsOneWidget);
+
+    final titleRect = tester.getRect(title);
+    final iconRect = tester.getRect(icon);
+    expect(iconRect.right, lessThan(titleRect.left));
+  });
 }
