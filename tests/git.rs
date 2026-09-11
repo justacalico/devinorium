@@ -31,6 +31,9 @@ fn git_cli(args: &[&str], cwd: &Path) {
 fn make_repo() -> TempDir {
     let tmp = TempDir::new().unwrap();
     git_cli(&["init"], tmp.path());
+    // Local identity so commits through GitService work without a global config.
+    git_cli(&["config", "user.email", "test@example.com"], tmp.path());
+    git_cli(&["config", "user.name", "Test"], tmp.path());
     std::fs::write(tmp.path().join("file.txt"), "hello").unwrap();
     git_cli(&["add", "file.txt"], tmp.path());
     git_cli(&["commit", "-m", "initial"], tmp.path());
@@ -1533,4 +1536,321 @@ async fn gitlab_merge_request_for_branch_rejects_empty_inputs() {
         .await
         .unwrap_err();
     assert!(matches!(err, devinorium::git::RemoteError::StatusFailed(_)));
+}
+
+fn status_porcelain(cwd: &Path) -> String {
+    let out = Command::new("git")
+        .args(["status", "--porcelain=1"])
+        .current_dir(cwd)
+        .output()
+        .expect("git status failed");
+    String::from_utf8_lossy(&out.stdout).to_string()
+}
+
+#[tokio::test]
+async fn changes_lists_staged_unstaged_and_untracked() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    // Staged modification, unstaged modification, and an untracked file.
+    std::fs::write(tmp.path().join("file.txt"), "changed").unwrap();
+    git_cli(&["add", "file.txt"], tmp.path());
+    std::fs::write(tmp.path().join("staged.txt"), "s").unwrap();
+    git_cli(&["add", "staged.txt"], tmp.path());
+    std::fs::write(tmp.path().join("untracked.txt"), "u").unwrap();
+
+    let list = svc.changes(tmp.path(), false).await.unwrap();
+    assert!(!list.branch.is_empty());
+    assert_eq!(list.staged.len(), 2);
+    assert!(list.staged.iter().any(|e| e.path == "file.txt"));
+    assert!(list.staged.iter().any(|e| e.path == "staged.txt"));
+    assert_eq!(list.unstaged.len(), 1);
+    assert_eq!(list.unstaged[0].path, "untracked.txt");
+    assert_eq!(list.unstaged[0].status, "untracked");
+}
+
+#[tokio::test]
+async fn changes_reports_file_in_both_lists_when_partially_staged() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    std::fs::write(tmp.path().join("file.txt"), "one").unwrap();
+    git_cli(&["add", "file.txt"], tmp.path());
+    std::fs::write(tmp.path().join("file.txt"), "two").unwrap();
+
+    let list = svc.changes(tmp.path(), false).await.unwrap();
+    assert_eq!(list.staged.len(), 1);
+    assert_eq!(list.unstaged.len(), 1);
+    assert_eq!(list.staged[0].path, "file.txt");
+    assert_eq!(list.unstaged[0].path, "file.txt");
+}
+
+#[tokio::test]
+async fn stage_and_unstage_specific_paths() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    std::fs::write(tmp.path().join("a.txt"), "a").unwrap();
+    std::fs::write(tmp.path().join("b.txt"), "b").unwrap();
+
+    svc.stage(tmp.path(), &["a.txt".to_string()], false)
+        .await
+        .unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("A  a.txt"), "{out}");
+    assert!(out.contains("?? b.txt"), "{out}");
+
+    svc.unstage(tmp.path(), &["a.txt".to_string()], false)
+        .await
+        .unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("?? a.txt"), "{out}");
+}
+
+#[tokio::test]
+async fn stage_all_and_unstage_all() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    std::fs::write(tmp.path().join("a.txt"), "a").unwrap();
+    std::fs::write(tmp.path().join("file.txt"), "modified").unwrap();
+
+    svc.stage(tmp.path(), &[], true).await.unwrap();
+    let list = svc.changes(tmp.path(), true).await.unwrap();
+    assert_eq!(list.staged.len(), 2);
+    assert!(list.unstaged.is_empty());
+
+    svc.unstage(tmp.path(), &[], true).await.unwrap();
+    let list = svc.changes(tmp.path(), true).await.unwrap();
+    assert!(list.staged.is_empty());
+    assert_eq!(list.unstaged.len(), 2);
+}
+
+#[tokio::test]
+async fn unstage_works_on_unborn_head() {
+    let tmp = TempDir::new().unwrap();
+    git_cli(&["init"], tmp.path());
+    std::fs::write(tmp.path().join("new.txt"), "n").unwrap();
+    git_cli(&["add", "new.txt"], tmp.path());
+
+    let svc = GitService::new();
+    svc.unstage(tmp.path(), &["new.txt".to_string()], false)
+        .await
+        .unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("?? new.txt"), "{out}");
+
+    // Unstage-all on an unborn HEAD must not fail either.
+    git_cli(&["add", "new.txt"], tmp.path());
+    svc.unstage(tmp.path(), &[], true).await.unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("?? new.txt"), "{out}");
+}
+
+#[tokio::test]
+async fn commit_creates_commit_and_returns_sha() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    std::fs::write(tmp.path().join("file.txt"), "v2").unwrap();
+    svc.stage(tmp.path(), &["file.txt".to_string()], false)
+        .await
+        .unwrap();
+    let result = svc.commit(tmp.path(), "update file", false).await.unwrap();
+    assert_eq!(result.subject, "update file");
+    assert_eq!(result.sha.len(), 40);
+
+    let list = svc.changes(tmp.path(), true).await.unwrap();
+    assert!(list.staged.is_empty());
+    assert!(list.unstaged.is_empty());
+}
+
+#[tokio::test]
+async fn commit_all_stages_everything_first() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    std::fs::write(tmp.path().join("file.txt"), "v2").unwrap();
+    std::fs::write(tmp.path().join("new.txt"), "n").unwrap();
+
+    let result = svc.commit(tmp.path(), "wip", true).await.unwrap();
+    assert_eq!(result.subject, "wip");
+
+    let out = status_porcelain(tmp.path());
+    assert!(out.trim().is_empty(), "{out}");
+}
+
+#[tokio::test]
+async fn commit_rejects_empty_message_and_empty_tree() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+
+    let err = svc.commit(tmp.path(), "   ", false).await.unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+
+    // Nothing staged: git commit must fail rather than create an empty commit.
+    let err = svc.commit(tmp.path(), "nope", false).await.unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+}
+
+#[tokio::test]
+async fn changes_in_worktree_are_scoped_to_it() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let wt = svc
+        .create_worktree(tmp.path(), "wt1", "HEAD", true)
+        .await
+        .unwrap();
+
+    // A change inside the worktree shows up only for that path.
+    std::fs::write(wt.path.join("wt-only.txt"), "w").unwrap();
+    let wt_list = svc.changes(&wt.path, true).await.unwrap();
+    assert_eq!(wt_list.unstaged.len(), 1);
+    assert_eq!(wt_list.unstaged[0].path, "wt-only.txt");
+
+    let main_list = svc.changes(tmp.path(), true).await.unwrap();
+    assert!(main_list.unstaged.is_empty());
+    assert!(main_list.staged.is_empty());
+
+    // The worktree branch is reported, not the main checkout's.
+    assert_ne!(wt_list.branch, main_list.branch);
+}
+
+#[tokio::test]
+async fn commit_inside_worktree() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let wt = svc
+        .create_worktree(tmp.path(), "wt2", "HEAD", true)
+        .await
+        .unwrap();
+
+    std::fs::write(wt.path.join("wt.txt"), "w").unwrap();
+    let result = svc
+        .commit(&wt.path, "work in worktree", true)
+        .await
+        .unwrap();
+    assert_eq!(result.subject, "work in worktree");
+
+    // The commit lands on the worktree branch, not on main.
+    let head = Command::new("git")
+        .args(["rev-list", "--max-parents=0", "HEAD"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    let root_sha = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    let main_log = Command::new("git")
+        .args(["log", "--format=%s"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&main_log.stdout).trim(), "initial");
+    assert_ne!(result.sha, root_sha);
+}
+
+#[tokio::test]
+async fn stage_all_skips_nested_worktrees() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    // create_worktree places the worktree inside the repo at <repo>/<name>.
+    let wt = svc
+        .create_worktree(tmp.path(), "nested-wt", "HEAD", true)
+        .await
+        .unwrap();
+    assert!(wt.path.join(".git").exists());
+
+    std::fs::write(tmp.path().join("real.txt"), "r").unwrap();
+
+    // The nested worktree is hidden from the change list.
+    let list = svc.changes(tmp.path(), true).await.unwrap();
+    assert_eq!(list.unstaged.len(), 1);
+    assert_eq!(list.unstaged[0].path, "real.txt");
+
+    // stage -A must not record a gitlink for it.
+    svc.stage(tmp.path(), &[], true).await.unwrap();
+    let staged = status_porcelain(tmp.path());
+    assert!(staged.contains("A  real.txt"), "{staged}");
+    assert!(staged.contains("?? nested-wt/"), "{staged}");
+    assert!(!staged.contains("A  nested-wt"), "{staged}");
+}
+
+#[tokio::test]
+async fn stage_paths_work_when_project_is_repo_subdir() {
+    // Repo at tmp/, "project" pointing at tmp/sub: porcelain paths are
+    // repo-relative so staging must run from the toplevel.
+    let tmp = make_repo();
+    let sub = tmp.path().join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(tmp.path().join("root.txt"), "r").unwrap();
+    std::fs::write(sub.join("inner.txt"), "i").unwrap();
+
+    let svc = GitService::new();
+    svc.stage(&sub, &["root.txt".to_string()], false)
+        .await
+        .unwrap();
+    svc.stage(&sub, &["sub/inner.txt".to_string()], false)
+        .await
+        .unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("A  root.txt"), "{out}");
+    assert!(out.contains("A  sub/inner.txt"), "{out}");
+
+    svc.unstage(&sub, &["sub/inner.txt".to_string()], false)
+        .await
+        .unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("A  root.txt"), "{out}");
+    // porcelain v1 collapses untracked dirs: inner.txt shows as "?? sub/".
+    assert!(out.contains("?? sub/"), "{out}");
+    assert!(!out.contains("A  sub/inner.txt"), "{out}");
+}
+
+#[tokio::test]
+async fn stage_treats_glob_like_filenames_literally() {
+    let tmp = make_repo();
+    // A filename that is valid pathspec magic must not expand.
+    std::fs::write(tmp.path().join(":(exclude)root.txt"), "x").unwrap();
+    std::fs::write(tmp.path().join("root.txt"), "x").unwrap();
+
+    let svc = GitService::new();
+    svc.stage(tmp.path(), &[":(exclude)root.txt".to_string()], false)
+        .await
+        .unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("A  :(exclude)root.txt"), "{out}");
+    // The magic name must not have staged anything else.
+    assert!(out.contains("?? root.txt"), "{out}");
+}
+
+#[tokio::test]
+async fn stage_rejects_paths_outside_the_repo() {
+    let tmp = make_repo();
+    std::fs::write(tmp.path().join("in.txt"), "x").unwrap();
+    let svc = GitService::new();
+    let err = svc
+        .stage(tmp.path(), &["../outside.txt".to_string()], false)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, devinorium::git::GitError::Other(_)),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn stage_all_skips_repo_nested_in_untracked_dir() {
+    let tmp = make_repo();
+    // vendor/ is untracked; vendor/repo/ is a clone inside it.
+    let nested = tmp.path().join("vendor/repo");
+    std::fs::create_dir_all(&nested).unwrap();
+    git_cli(&["init", "-q"], &nested);
+    std::fs::write(tmp.path().join("real.txt"), "r").unwrap();
+
+    let svc = GitService::new();
+    svc.stage(tmp.path(), &[], true).await.unwrap();
+    let out = status_porcelain(tmp.path());
+    assert!(out.contains("A  real.txt"), "{out}");
+    // vendor/repo must stay untracked, not staged as a gitlink.
+    assert!(!out.contains("A  vendor"), "{out}");
+    assert!(out.contains("?? vendor/"), "{out}");
 }

@@ -21,7 +21,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _mainKey = GlobalKey();
-  bool _wasFilesPanelOpen = false;
+  bool _wasSidePanelOpen = false;
   double _sidebarWidth = 300;
 
   static const double _minSidebarWidth = 240;
@@ -30,8 +30,8 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Selector<AppState, bool>(
-      selector: (_, state) => state.filesPanelOpen,
-      builder: (context, filesPanelOpen, _) {
+      selector: (_, state) => state.filesPanelOpen || state.gitPanelOpen,
+      builder: (context, sidePanelOpen, _) {
         final isNarrow = MediaQuery.of(context).size.width < 768;
 
         // A stable key lets Flutter reparent this subtree (and preserve all
@@ -40,28 +40,29 @@ class _AppShellState extends State<AppShell> {
         final main = DropZone(key: _mainKey, child: _MainArea());
 
         if (isNarrow) {
-          // The files view lives inside the unified sidebar, so opening it on a
+          // Side panels live inside the unified sidebar, so opening one on a
           // narrow screen opens the sidebar drawer instead of a second panel.
-          if (filesPanelOpen && !_wasFilesPanelOpen) {
+          if (sidePanelOpen && !_wasSidePanelOpen) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _scaffoldKey.currentState?.openDrawer();
             });
           }
-          _wasFilesPanelOpen = filesPanelOpen;
+          _wasSidePanelOpen = sidePanelOpen;
 
           return Scaffold(
             key: _scaffoldKey,
             drawer: const Drawer(width: 300, child: Sidebar()),
             body: main,
             onDrawerChanged: (opened) {
-              if (!opened && filesPanelOpen) {
-                context.read<AppState>().closeFilesPanel();
-              }
+              if (opened) return;
+              final s = context.read<AppState>();
+              if (s.filesPanelOpen) s.closeFilesPanel();
+              if (s.gitPanelOpen) s.closeGitPanel();
             },
           );
         }
 
-        _wasFilesPanelOpen = filesPanelOpen;
+        _wasSidePanelOpen = sidePanelOpen;
 
         return Scaffold(
           body: Row(

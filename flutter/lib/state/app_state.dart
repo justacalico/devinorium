@@ -40,6 +40,7 @@ part 'app_state/path_refs_store.dart';
 part 'app_state/model_store.dart';
 part 'app_state/plan_overlay_store.dart';
 part 'app_state/files_panel_store.dart';
+part 'app_state/git_panel_store.dart';
 part 'app_state/health_check_store.dart';
 part 'app_state/lifecycle_store.dart';
 part 'app_state/git_store.dart';
@@ -83,6 +84,7 @@ class AppState extends AppStateBase
         ModelStore,
         PlanOverlayStore,
         FilesPanelStore,
+        GitPanelStore,
         HealthCheckStore,
         LifecycleStore,
         GitStore,

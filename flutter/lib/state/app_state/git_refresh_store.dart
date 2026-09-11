@@ -26,6 +26,9 @@ mixin GitRefreshStore on AppStateBase {
       if (projectId != null) {
         await _refreshGitForProject(projectId);
       }
+      if (_gitPanelOpen) {
+        await refreshGitPanel();
+      }
     } finally {
       _refreshingGit = false;
     }

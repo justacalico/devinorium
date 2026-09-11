@@ -1478,6 +1478,72 @@ abstract class AppLocalizations {
   /// **'Push'**
   String get push;
 
+  /// No description provided for @refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get refresh;
+
+  /// No description provided for @commit.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit'**
+  String get commit;
+
+  /// No description provided for @commitMessageHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit message'**
+  String get commitMessageHint;
+
+  /// No description provided for @stage.
+  ///
+  /// In en, this message translates to:
+  /// **'Stage'**
+  String get stage;
+
+  /// No description provided for @unstage.
+  ///
+  /// In en, this message translates to:
+  /// **'Unstage'**
+  String get unstage;
+
+  /// No description provided for @stageAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Stage all'**
+  String get stageAll;
+
+  /// No description provided for @unstageAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Unstage all'**
+  String get unstageAll;
+
+  /// No description provided for @stagedChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Staged changes'**
+  String get stagedChanges;
+
+  /// No description provided for @notGitRepo.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a git repository'**
+  String get notGitRepo;
+
+  /// No description provided for @gitUnsupportedBackend.
+  ///
+  /// In en, this message translates to:
+  /// **'This server is too old for the Git panel. Update the backend and restart the app.'**
+  String get gitUnsupportedBackend;
+
+  /// No description provided for @gitCommitAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'There are no staged changes. Stage all changes and commit?'**
+  String get gitCommitAllConfirm;
+
   /// No description provided for @createBranch.
   ///
   /// In en, this message translates to:

@@ -112,6 +112,68 @@ class GitStatus {
   );
 }
 
+/// A changed file in the index or the working tree, as reported by
+/// `GET /api/projects/:id/git/changes`.
+class GitChangeEntry {
+  final String path;
+  final String status;
+  final String? origPath;
+
+  GitChangeEntry({required this.path, required this.status, this.origPath});
+
+  factory GitChangeEntry.fromJson(Map<String, dynamic> j) => GitChangeEntry(
+    path: j['path'] as String,
+    status: j['status'] as String? ?? 'modified',
+    origPath: j['orig_path'] as String?,
+  );
+}
+
+/// Staged and unstaged changes plus tracking state for a repository.
+class GitChanges {
+  final String branch;
+  final int ahead;
+  final int behind;
+  final List<GitChangeEntry> staged;
+  final List<GitChangeEntry> unstaged;
+
+  GitChanges({
+    this.branch = '',
+    this.ahead = 0,
+    this.behind = 0,
+    this.staged = const [],
+    this.unstaged = const [],
+  });
+
+  bool get isClean => staged.isEmpty && unstaged.isEmpty;
+
+  factory GitChanges.fromJson(Map<String, dynamic> j) => GitChanges(
+    branch: j['branch'] as String? ?? '',
+    ahead: (j['ahead'] as num?)?.toInt() ?? 0,
+    behind: (j['behind'] as num?)?.toInt() ?? 0,
+    staged: (j['staged'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(GitChangeEntry.fromJson)
+        .toList(),
+    unstaged: (j['unstaged'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(GitChangeEntry.fromJson)
+        .toList(),
+  );
+}
+
+/// The result of `POST /api/projects/:id/git/commit`.
+class GitCommitResult {
+  final String sha;
+  final String subject;
+
+  GitCommitResult({required this.sha, required this.subject});
+
+  factory GitCommitResult.fromJson(Map<String, dynamic> j) => GitCommitResult(
+    sha: j['sha'] as String? ?? '',
+    subject: j['subject'] as String? ?? '',
+  );
+}
+
 class GitConnection {
   final String id;
   final String name;

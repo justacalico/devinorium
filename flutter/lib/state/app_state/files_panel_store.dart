@@ -108,6 +108,7 @@ mixin FilesPanelStore on AppStateBase {
   @override
   Future<void> openFilesPanel() async {
     _filesPanelOpen = true;
+    _gitPanelOpen = false;
     _filesError = '';
     _filesTreeRoot = FileTreeNode.root()..isLoading = true;
     _filesScopeKey = activeFilesScopeKey;

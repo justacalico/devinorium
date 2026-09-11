@@ -12,4 +12,6 @@ pub use remote::{
     GitLabProjectRef, GitLabStatus, GitRemoteService, LinkedMergeRequest, MergeRequestAction,
     RemoteError,
 };
-pub use service::{Branch, GitError, GitService, RepoStatus, Worktree};
+pub use service::{
+    Branch, ChangeEntry, ChangeList, CommitResult, GitError, GitService, RepoStatus, Worktree,
+};

@@ -11,7 +11,7 @@ impl GitService {
     /// remote-tracking refs. This is a best-effort refresh used after branch
     /// switches so the UI can re-check for pull.
     pub async fn fetch(&self, path: &Path) -> Result<(), GitError> {
-        self.repo_status(path, false).await?;
+        self.repo_status(path, true).await?;
         let mut cmd = self.git_cmd(path);
         cmd.arg("fetch");
         self.run(&mut cmd, Duration::from_secs(30)).await?;
@@ -21,7 +21,7 @@ impl GitService {
 
     /// Pull the current branch's upstream using fast-forward only.
     pub async fn pull(&self, path: &Path) -> Result<(), GitError> {
-        self.repo_status(path, false).await?;
+        self.repo_status(path, true).await?;
         let mut cmd = self.git_cmd(path);
         cmd.arg("pull").arg("--ff-only");
         self.run(&mut cmd, Duration::from_secs(60)).await?;
@@ -31,7 +31,7 @@ impl GitService {
 
     /// Pull a specific branch's tracked remote, fast-forwarding the local ref.
     pub async fn pull_branch(&self, path: &Path, name: &str) -> Result<(), GitError> {
-        self.repo_status(path, false).await?;
+        self.repo_status(path, true).await?;
 
         let name = name.trim();
         if name.is_empty() {

@@ -127,7 +127,11 @@ class _FakeApiService extends ApiService {
   String? threadWorktreePath;
 
   @override
-  Future<GitRepoInfo> gitRepoStatus(int projectId, {bool force = false}) async {
+  Future<GitRepoInfo> gitRepoStatus(
+    int projectId, {
+    bool force = false,
+    String? threadId,
+  }) async {
     calls.add('gitRepoStatus:$projectId');
     return GitRepoInfo(
       isRepo: isRepo,
@@ -218,12 +222,12 @@ class _FakeApiService extends ApiService {
   }
 
   @override
-  Future<void> gitPull(int projectId) async {
+  Future<void> gitPull(int projectId, {String? threadId}) async {
     calls.add('gitPull:$projectId');
   }
 
   @override
-  Future<void> gitPush(int projectId) async {
+  Future<void> gitPush(int projectId, {String? threadId}) async {
     calls.add('gitPush:$projectId');
   }
 

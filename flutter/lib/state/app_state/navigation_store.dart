@@ -28,6 +28,7 @@ mixin NavigationStore on AppStateBase {
     _appMode = m;
     _page = MainPage.threads;
     _filesPanelOpen = m == AppMode.editor;
+    _gitPanelOpen = false;
     notifyListeners();
   }
   @override

@@ -58,20 +58,87 @@ class ApiService {
 
   // ---- Git ----
 
-  Future<GitRepoInfo> gitRepoStatus(int projectId, {bool force = false}) async {
+  Future<GitRepoInfo> gitRepoStatus(
+    int projectId, {
+    bool force = false,
+    String? threadId,
+  }) async {
     final params = <String, String>{};
     if (force) params['force'] = 'true';
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
     final uri = _buildPath('/api/projects/$projectId/git', params);
     final j = await _client.get(uri);
     return GitRepoInfo.fromJson(j);
   }
 
-  Future<GitStatus> gitStatus(int projectId, {bool force = false}) async {
+  Future<GitStatus> gitStatus(
+    int projectId, {
+    bool force = false,
+    String? threadId,
+  }) async {
     final params = <String, String>{};
     if (force) params['force'] = 'true';
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
     final uri = _buildPath('/api/projects/$projectId/git/status', params);
     final j = await _client.get(uri);
     return GitStatus.fromJson(j);
+  }
+
+  /// Staged and unstaged changes for the project, or for the thread's
+  /// worktree when [threadId] names a thread running in worktree mode.
+  Future<GitChanges> gitChanges(
+    int projectId, {
+    bool force = false,
+    String? threadId,
+  }) async {
+    final params = <String, String>{};
+    if (force) params['force'] = 'true';
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
+    final uri = _buildPath('/api/projects/$projectId/git/changes', params);
+    final j = await _client.get(uri);
+    return GitChanges.fromJson(j);
+  }
+
+  Future<void> gitStage(
+    int projectId, {
+    List<String> paths = const [],
+    bool all = false,
+    String? threadId,
+  }) async {
+    await _client.post('/api/projects/$projectId/git/stage', {
+      'paths': paths,
+      'all': all,
+      if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
+    });
+  }
+
+  Future<void> gitUnstage(
+    int projectId, {
+    List<String> paths = const [],
+    bool all = false,
+    String? threadId,
+  }) async {
+    await _client.post('/api/projects/$projectId/git/unstage', {
+      'paths': paths,
+      'all': all,
+      if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
+    });
+  }
+
+  /// Commit staged changes. With [all], the whole working tree is staged
+  /// first so the commit includes unstaged and untracked files.
+  Future<GitCommitResult> gitCommit(
+    int projectId,
+    String message, {
+    bool all = false,
+    String? threadId,
+  }) async {
+    final j = await _client.post('/api/projects/$projectId/git/commit', {
+      'message': message,
+      'all': all,
+      if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
+    });
+    return GitCommitResult.fromJson(j);
   }
 
   Future<List<GitBranch>> gitBranches(
@@ -115,18 +182,23 @@ class ApiService {
     });
   }
 
-  Future<void> gitPull(int projectId) async {
-    await _client.post('/api/projects/$projectId/git/pull', {});
-  }
-
-  Future<void> gitPullBranch(int projectId, String name) async {
-    await _client.post('/api/projects/$projectId/git/branches/pull', {
-      'name': name,
+  Future<void> gitPull(int projectId, {String? threadId}) async {
+    await _client.post('/api/projects/$projectId/git/pull', {
+      if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
     });
   }
 
-  Future<void> gitPush(int projectId) async {
-    await _client.post('/api/projects/$projectId/git/push', {});
+  Future<void> gitPullBranch(int projectId, String name, {String? threadId}) async {
+    await _client.post('/api/projects/$projectId/git/branches/pull', {
+      'name': name,
+      if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
+    });
+  }
+
+  Future<void> gitPush(int projectId, {String? threadId}) async {
+    await _client.post('/api/projects/$projectId/git/push', {
+      if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
+    });
   }
 
   Future<List<GitWorktree>> gitWorktrees(
