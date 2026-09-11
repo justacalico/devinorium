@@ -62,8 +62,29 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `DEVINORIUM_MAX_BODY_BYTES` | `16777216` | Max request body size in bytes |
 | `DEVINORIUM_SECURE_COOKIE` | `false` | Set the `Secure` cookie flag (enable over HTTPS) |
 | `DEVINORIUM_ALLOWED_ORIGIN` | (unset or empty) | Explicit allowed origin for CSRF checks |
+| `DEVINORIUM_LOCAL_TOKEN` | (unset) | Bundled desktop mode: requests bearing this token map onto the passwordless `local` owner account, and the process exits when stdin closes. Set automatically by the desktop app; not for normal servers |
 
 Database migrations run automatically on startup.
+
+## Desktop apps (Linux, macOS, Windows)
+
+Desktop builds bundle the `devinorium` server binary inside the app package
+(`server/` next to the app executable). On launch the app spawns it on a
+random loopback port with a fresh `DEVINORIUM_LOCAL_TOKEN`, so no login is
+needed while other processes on the machine still cannot use the API. The
+server exits automatically when the app closes.
+
+Remote servers still work: use "Add server" in Settings → Servers to connect
+to a Devinorium instance running on another machine, and switch between it
+and the bundled "This device" server from the sidebar.
+
+For development, the bundled server is only found inside packaged builds. To
+run it under `flutter run`, point the app at a binary you built yourself:
+
+```bash
+cargo build --release
+flutter run --dart-define=DEVINORIUM_SERVER_BINARY="$PWD/target/release/devinorium"
+```
 
 ## Testing
 

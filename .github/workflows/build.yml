@@ -200,11 +200,11 @@ jobs:
           fi
 
       - name: Install Rust
-        if: matrix.target == 'server'
+        if: matrix.target == 'server' || startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
         uses: dtolnay/rust-toolchain@1.88.0
 
       - name: Cache Rust
-        if: matrix.target == 'server'
+        if: matrix.target == 'server' || startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
         uses: Swatinem/rust-cache@v2
 
       - name: Install Linux build dependencies
@@ -283,6 +283,15 @@ jobs:
           mkdir -p artifacts
           cp target/release/devinorium artifacts/devinorium
 
+      - name: Build bundled server binary
+        if: startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # frontend/dist ships a placeholder page; the desktop app is the UI,
+          # so the bundled server does not need the real web build embedded.
+          cargo build --release
+
       - name: Build Android packages
         if: matrix.target == 'android'
         run: |
@@ -339,6 +348,7 @@ jobs:
             OUT_ARCH=x86_64
           fi
           BUNDLE="build/linux/$LINUX_ARCH/release/bundle"
+          ../scripts/bundle-server.sh ../target/release/devinorium "$BUNDLE"
           tar -czf "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.tar.gz" -C "$BUNDLE" .
           (cd "$BUNDLE" && zip -r "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.zip" . >/dev/null)
           pkgdir="$GITHUB_WORKSPACE/devinorium-linux-$OUT_ARCH-deb"
@@ -387,6 +397,7 @@ jobs:
             echo "Expected Windows build output at $RELEASE_DIR is missing" >&2
             exit 1
           fi
+          ../scripts/bundle-server.sh ../target/release/devinorium.exe "$RELEASE_DIR"
           powershell -NoProfile -Command \
             "Compress-Archive -Path '$(cygpath -w "$RELEASE_DIR")\\*' -DestinationPath '$(cygpath -w "$ARTIFACTS_DIR/devinorium-windows-$OUT_ARCH.zip")' -Force"
 
@@ -407,6 +418,11 @@ jobs:
           fi
           flutter build macos --release --build-name="$VERSION" --build-number="$BUILD_NUMBER" "${MR_DART_DEFINES[@]+"${MR_DART_DEFINES[@]}"}"
           APP="build/macos/Build/Products/Release/Devinorium.app"
+          ../scripts/bundle-server.sh ../target/release/devinorium "$APP/Contents/MacOS"
+          # The bundle changed after flutter build; re-sign ad-hoc so the app
+          # and the nested server binary stay runnable.
+          codesign --force --sign - "$APP/Contents/MacOS/server/devinorium"
+          codesign --force --deep --sign - "$APP"
           (cd "$(dirname "$APP")" && zip -r "$ARTIFACTS_DIR/devinorium-macos-arm64.zip" "Devinorium.app" >/dev/null)
           hdiutil create -volname "Devinorium" -srcfolder "$APP" -ov -format UDZO "$ARTIFACTS_DIR/devinorium-macos-arm64.dmg" >/dev/null
 
