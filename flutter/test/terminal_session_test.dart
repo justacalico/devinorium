@@ -210,6 +210,22 @@ void main() {
       expect(session.status, TerminalStatus.exited);
     });
 
+    testWidgets('does not reconnect after dispose', (tester) async {
+      final connector = _FailingConnector();
+      final session = RemoteTerminalSession(
+        id: 'r5',
+        uri: Uri.parse('ws://localhost/ws'),
+        reconnect: true,
+        connector: connector.call,
+      );
+
+      session.dispose();
+      await tester.pump(const Duration(seconds: 20));
+
+      expect(connector.calls, 1);
+      expect(session.status, TerminalStatus.disconnected);
+    });
+
     test('exited message completes the session', () {
       final fake = _FakeWebSocketChannel();
       final session = RemoteTerminalSession(

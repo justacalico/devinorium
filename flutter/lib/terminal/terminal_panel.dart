@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -106,14 +108,14 @@ class TerminalPanel extends StatelessWidget {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final maxHeight = (constraints.maxHeight * _maxHeightRatio).clamp(
-              TerminalStore.minHeight,
+            // The panel sits in a Column, so the parent constraint is
+            // unbounded — cap by the window height instead.
+            final maxHeight = math.min(
+              MediaQuery.sizeOf(context).height * _maxHeightRatio,
               constraints.maxHeight,
             );
-            final height = store.height.clamp(
-              TerminalStore.minHeight,
-              maxHeight,
-            );
+            final minHeight = math.min(TerminalStore.minHeight, maxHeight);
+            final height = store.height.clamp(minHeight, maxHeight);
 
             return SizedBox(
               height: height,
@@ -121,10 +123,7 @@ class TerminalPanel extends StatelessWidget {
                 children: [
                   _DragHandle(
                     onDragUpdate: (delta) => store.setHeight(
-                      (store.height - delta).clamp(
-                        TerminalStore.minHeight,
-                        maxHeight,
-                      ),
+                      (store.height - delta).clamp(minHeight, maxHeight),
                     ),
                   ),
                   _Header(

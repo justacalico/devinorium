@@ -1,9 +1,23 @@
 import 'dart:async';
 
+import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/terminal/terminal_session.dart';
 import 'package:devinorium_frontend/terminal/terminal_store.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+
+/// Records remote session kills without touching the network.
+class _RecordingApi extends ApiService {
+  _RecordingApi() : super(client: ApiClient.withClient(http.Client()));
+
+  final killed = <String>[];
+
+  @override
+  Future<void> killTerminalSession(String sessionId) async {
+    killed.add(sessionId);
+  }
+}
 
 TerminalStore _store({
   String? Function()? activeThreadId,
@@ -184,6 +198,100 @@ void main() {
       expect(store.height, 400);
       store.setHeight(10);
       expect(store.height, TerminalStore.minHeight);
+    });
+
+    test('removeSession kills remote sessions through their owning api', () async {
+      final api = _RecordingApi();
+      final store = TerminalStore(
+        api: () => api,
+        sessionFactory: _fakeFactory(),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+      store.removeSession(store.tabs.single.sessions.single);
+
+      expect(api.killed, ['s-1']);
+    });
+
+    test('local sessions are not killed remotely', () async {
+      final api = _RecordingApi();
+      final store = TerminalStore(
+        api: () => api,
+        sessionFactory: _fakeFactory(),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: true);
+      store.removeSession(store.tabs.single.sessions.single);
+
+      expect(api.killed, isEmpty);
+    });
+
+    test('drops a session created before clear while in flight', () async {
+      final gate = Completer<void>();
+      final api = _RecordingApi();
+      var calls = 0;
+      final store = TerminalStore(
+        api: () => api,
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+            }) async {
+              calls++;
+              await gate.future;
+              return TerminalSession(id: 's-$calls', isLocal: local);
+            },
+      );
+      addTearDown(store.dispose);
+
+      final pending = store.addSession(local: false);
+      expect(store.busy, isTrue);
+
+      store.clear();
+      gate.complete();
+      await pending;
+
+      // The stale session is dropped and its backend PTY is still killed.
+      expect(store.tabs, isEmpty);
+      expect(api.killed, ['s-1']);
+    });
+
+    test('addSession is a no-op after dispose', () async {
+      var calls = 0;
+      final store = TerminalStore(
+        api: () => ApiService(),
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+            }) async {
+              calls++;
+              return TerminalSession(id: 's', isLocal: local);
+            },
+      );
+
+      store.dispose();
+      await store.addSession(local: false);
+
+      expect(calls, 0);
+    });
+
+    test('removeTab keeps the active tab when an earlier tab closes', () {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      store.addTab();
+      store.addTab();
+      store.addTab();
+      store.setActiveTab(2);
+      store.removeTab(store.tabs[0]);
+
+      expect(store.tabs, hasLength(2));
+      expect(store.activeTabIndex, 1);
     });
 
     test('clear kills all sessions and closes the panel', () async {

@@ -28,6 +28,8 @@ class TerminalStore extends ChangeNotifier {
        _activeThreadId = activeThreadId ?? (() => null),
        sessionFactory = sessionFactory ?? createTerminalSession;
 
+  /// Resolved lazily so sessions are always created through the currently
+  /// active server connection.
   final ApiService Function() _api;
   final String? Function() _activeThreadId;
 
@@ -40,21 +42,30 @@ class TerminalStore extends ChangeNotifier {
   final List<TerminalTab> _tabs = [];
   int _activeTabIndex = 0;
   int _tabCounter = 0;
-  bool _busy = false;
+  int _inFlight = 0;
+  int _generation = 0;
   bool _open = false;
   bool _disposed = false;
   double _height = defaultHeight;
 
+  /// The server connection each remote session was created through, so kills
+  /// still reach the right backend after a server switch.
+  final _sessionApis = <TerminalSession, ApiService>{};
+
   List<TerminalTab> get tabs => _tabs;
   int get activeTabIndex => _activeTabIndex;
-  bool get busy => _busy;
+  bool get busy => _inFlight > 0;
   bool get open => _open;
   double get height => _height;
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
 
   void setOpen(bool value) {
     if (_open == value) return;
     _open = value;
-    notifyListeners();
+    _notify();
   }
 
   void toggleOpen() => setOpen(!_open);
@@ -63,54 +74,60 @@ class TerminalStore extends ChangeNotifier {
     final clamped = value < minHeight ? minHeight : value;
     if (_height == clamped) return;
     _height = clamped;
-    notifyListeners();
+    _notify();
   }
 
   void addTab() {
     _tabs.add(TerminalTab(id: 'tab-${_tabCounter++}'));
     _activeTabIndex = _tabs.length - 1;
-    notifyListeners();
+    _notify();
   }
 
   void setActiveTab(int index) {
     if (index < 0 || index >= _tabs.length || index == _activeTabIndex) return;
     _activeTabIndex = index;
-    notifyListeners();
+    _notify();
   }
 
   /// Spawn a session in the active tab, creating a tab if needed.
   ///
   /// Rethrows factory errors so callers can surface them in the UI.
   Future<void> addSession({required bool local}) async {
-    if (_busy || _disposed) return;
+    if (_inFlight > 0 || _disposed) return;
     if (_tabs.isEmpty) addTab();
 
-    _busy = true;
-    notifyListeners();
+    _inFlight++;
+    _notify();
+    final generation = _generation;
+    final api = _api();
     try {
       final session = await sessionFactory(
-        api: _api(),
+        api: api,
         threadId: _activeThreadId(),
         local: local,
       );
-      // The store may have been cleared or disposed while the factory was
-      // in flight — drop the session instead of writing to an empty tab list.
-      if (_disposed || _tabs.isEmpty || _activeTabIndex >= _tabs.length) {
-        session.dispose();
+      // The store may have been cleared or disposed while the factory was in
+      // flight — kill the session instead of writing to a stale workspace.
+      if (_disposed ||
+          generation != _generation ||
+          _tabs.isEmpty ||
+          _activeTabIndex >= _tabs.length) {
+        _disposeSession(session, api: api);
         return;
       }
-      session.addListener(notifyListeners);
+      session.addListener(_notify);
+      _sessionApis[session] = api;
       _tabs[_activeTabIndex].sessions.add(session);
     } finally {
-      _busy = false;
-      if (!_disposed) notifyListeners();
+      _inFlight--;
+      _notify();
     }
   }
 
   void removeSession(TerminalSession session) {
     for (final tab in _tabs) {
       if (!tab.sessions.remove(session)) continue;
-      notifyListeners();
+      _notify();
       _disposeSession(session);
       return;
     }
@@ -120,19 +137,22 @@ class TerminalStore extends ChangeNotifier {
     final index = _tabs.indexOf(tab);
     if (index == -1) return;
     _tabs.removeAt(index);
-    if (_activeTabIndex >= _tabs.length) {
+    if (index < _activeTabIndex) {
+      _activeTabIndex--;
+    } else if (_activeTabIndex >= _tabs.length) {
       _activeTabIndex = _tabs.isEmpty ? 0 : _tabs.length - 1;
     }
     for (final session in tab.sessions) {
       _disposeSession(session);
     }
     tab.sessions.clear();
-    notifyListeners();
+    _notify();
   }
 
   /// Kill every session and reset the workspace. Called on logout and server
   /// switches so no shells outlive the connection they belong to.
   void clear() {
+    _generation++;
     for (final tab in _tabs) {
       for (final session in tab.sessions) {
         _disposeSession(session);
@@ -140,20 +160,21 @@ class TerminalStore extends ChangeNotifier {
       tab.sessions.clear();
     }
     _tabs.clear();
+    _sessionApis.clear();
     _activeTabIndex = 0;
     _tabCounter = 0;
-    _busy = false;
     _open = false;
-    notifyListeners();
+    _notify();
   }
 
-  void _disposeSession(TerminalSession session) {
-    session.removeListener(notifyListeners);
+  void _disposeSession(TerminalSession session, {ApiService? api}) {
+    session.removeListener(_notify);
     if (!session.isLocal) {
       // Tell the backend to kill the PTY too — otherwise the shell keeps
       // running on the server until the idle TTL expires.
+      final owner = _sessionApis.remove(session) ?? api ?? _api();
       try {
-        unawaited(_api().killTerminalSession(session.id).catchError((_) {}));
+        unawaited(owner.killTerminalSession(session.id).catchError((_) {}));
       } catch (_) {}
     }
     session.dispose();
@@ -169,6 +190,7 @@ class TerminalStore extends ChangeNotifier {
       tab.sessions.clear();
     }
     _tabs.clear();
+    _sessionApis.clear();
     super.dispose();
   }
 }
