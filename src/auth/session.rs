@@ -42,10 +42,11 @@ where
     }
 }
 
-/// Extract the session token from a request's Cookie header or
-/// `Authorization: Bearer <token>` header, whichever is present.
+/// Extract the session token from a request's `Authorization: Bearer` header
+/// or `devinorium_session` cookie. The explicit header wins so a stale cookie
+/// cannot shadow a valid bearer credential.
 pub fn extract_token(req: &Request) -> Option<String> {
-    extract_cookie_token(req).or_else(|| extract_bearer_token(req))
+    extract_bearer_token(req).or_else(|| extract_cookie_token(req))
 }
 
 fn extract_cookie_token(req: &Request) -> Option<String> {
