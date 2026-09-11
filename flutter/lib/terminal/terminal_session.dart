@@ -24,6 +24,10 @@ class TerminalSession extends ChangeNotifier {
   final bool isLocal;
   final Terminal terminal;
 
+  /// Shared with [TerminalViewWidget] so view state (selection, scroll)
+  /// survives the panel being hidden or remounted in another view.
+  final controller = TerminalController();
+
   TerminalStatus _status = TerminalStatus.idle;
   TerminalStatus get status => _status;
 
@@ -57,6 +61,7 @@ class TerminalSession extends ChangeNotifier {
   void dispose() {
     terminal.onOutput = null;
     terminal.onResize = null;
+    controller.dispose();
     _complete();
     super.dispose();
   }
