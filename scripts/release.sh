@@ -41,7 +41,8 @@ for entry in \
   "devinorium-android.aab:devinorium-android-${VERSION_TAG}.aab" \
   "devinorium-linux-x86_64.tar.gz:devinorium-linux-x86_64-${VERSION_TAG}.tar.gz" \
   "devinorium-linux-x86_64.zip:devinorium-linux-x86_64-${VERSION_TAG}.zip" \
-  "devinorium-linux-x86_64.deb:devinorium-linux-x86_64-${VERSION_TAG}.deb"
+  "devinorium-linux-x86_64.deb:devinorium-linux-x86_64-${VERSION_TAG}.deb" \
+  "devinorium-linux-x86_64.rpm:devinorium-linux-x86_64-${VERSION_TAG}.rpm"
 do
   src="${entry%%:*}"
   dst="${entry##*:}"

@@ -211,7 +211,7 @@ jobs:
         if: startsWith(matrix.target, 'linux')
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev zip dpkg-dev
+          sudo apt-get install -y -qq clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev zip dpkg-dev rpm
 
       - name: Install Android SDK
         if: matrix.target == 'android'
@@ -341,10 +341,12 @@ jobs:
           if [ "${{ matrix.target }}" = "linux-arm64" ]; then
             LINUX_ARCH=arm64
             DEB_ARCH=arm64
+            RPM_ARCH=aarch64
             OUT_ARCH=arm64
           else
             LINUX_ARCH=x64
             DEB_ARCH=amd64
+            RPM_ARCH=x86_64
             OUT_ARCH=x86_64
           fi
           BUNDLE="build/linux/$LINUX_ARCH/release/bundle"
@@ -367,6 +369,7 @@ jobs:
           } > "$pkgdir/DEBIAN/control"
           dpkg-deb --build "$pkgdir" "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.deb" >/dev/null
           rm -rf "$pkgdir"
+          ../scripts/build-rpm.sh "$BUNDLE" "$VERSION" "$RPM_ARCH" "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.rpm" "$BUILD_NUMBER"
 
       - name: Build Windows package
         if: startsWith(matrix.target, 'windows')
@@ -620,7 +623,7 @@ jobs:
             ### Artifacts
             - Linux server binary (x86_64)
             - Android APK + AAB
-            - Linux desktop bundle (x86_64 + arm64: tar.gz, zip, deb)
+            - Linux desktop bundle (x86_64 + arm64: tar.gz, zip, deb, rpm)
             - Windows package (x86_64 + arm64: zip)
             - macOS app (arm64: dmg, zip)
             - iOS app (arm64: unsigned ipa)
