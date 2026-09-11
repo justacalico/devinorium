@@ -68,7 +68,11 @@ needs to be touched — the rest of Devinorium only depends on the `Provider`
 trait.
 
 The Devin CLI and OpenCode providers both speak ACP (`<bin> acp`) and share the
-implementation in `src/providers/acp/`. Codex CLI has no `acp` subcommand, so
+implementation in `src/providers/acp/`. Grok Code speaks the same protocol over
+`grok agent stdio`; the per-agent argv lives in `AgentKind::acp_args`, and its
+model catalog is read from the `initialize` response's
+`_meta.modelState.availableModels` (including the `reasoning_effort` session
+config option it advertises). Codex CLI has no `acp` subcommand, so
 `src/providers/codex/` drives `codex app-server --stdio` — the JSON-RPC
 transport built into the Codex CLI — for threads, turns, streaming items,
 approvals, and `model/list`.
