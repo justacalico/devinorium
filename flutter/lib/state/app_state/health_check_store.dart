@@ -45,7 +45,10 @@ mixin HealthCheckStore on AppStateBase {
     if (_isDisposed) return;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    final api = this.api;
+    final profileId = multiServerState.activeServerId;
     var ok = await api.checkHealth();
+    var authFailed = false;
     if (ok && multiServerState.activeProfile?.isLocal == true) {
       // /healthz is public, so also prove the bundled token still
       // authenticates; otherwise a stale token looks "connected".
@@ -53,8 +56,12 @@ mixin HealthCheckStore on AppStateBase {
         await api.me();
       } catch (_) {
         ok = false;
+        authFailed = true;
       }
     }
+    // A server switch during the check makes the result meaningless for the
+    // new profile — drop it; the switch's own load path re-checks anyway.
+    if (multiServerState.activeServerId != profileId) return;
     final version = ok ? await api.serverVersion() : null;
 
     final next = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;
@@ -73,11 +80,11 @@ mixin HealthCheckStore on AppStateBase {
     if (!ok) {
       // The bundled local server may have died without us noticing, or it
       // can be alive but unauthenticatable (stale token in a respawned
-      // process). stop() clears a live-but-broken instance first so
-      // ensureRunning spawns a fresh one instead of re-adopting it.
+      // process). Only the alive-but-broken case needs a stop() — killing a
+      // still-starting spawn would just burn the retry budget.
       if (multiServerState.activeProfile?.isLocal == true) {
         unawaited(() async {
-          await localServerManager.stop();
+          if (authFailed) await localServerManager.stop();
           await _ensureLocalServer();
         }());
       }
