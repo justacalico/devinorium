@@ -4,7 +4,7 @@ mixin PlanOverlayStore on AppStateBase {
   @override
   bool _planOverlayVisible = false;
   @override
-  bool _planOverlayExpanded = true;
+  bool _planOverlayExpanded = false;
   @override
   bool _planOverlayUserDismissed = false;
   @override
@@ -19,8 +19,12 @@ mixin PlanOverlayStore on AppStateBase {
   Future<void> _loadPlanOverlayState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // The old key was written on every open/dismiss even when the user
+      // never touched the expand state, so a stored `true` does not mean the
+      // user chose expanded. Start over under a new key.
+      await prefs.remove('devinorium_plan_overlay_expanded');
       _planOverlayExpanded =
-          prefs.getBool('devinorium_plan_overlay_expanded') ??
+          prefs.getBool('devinorium_plan_overlay_expanded_v2') ??
           _planOverlayExpanded;
       _planOverlayUserDismissed =
           prefs.getBool('devinorium_plan_overlay_dismissed') ?? false;
@@ -32,7 +36,7 @@ mixin PlanOverlayStore on AppStateBase {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(
-        'devinorium_plan_overlay_expanded',
+        'devinorium_plan_overlay_expanded_v2',
         _planOverlayExpanded,
       );
       await prefs.setBool(

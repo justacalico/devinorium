@@ -4711,7 +4711,7 @@ void main() {
       );
       expect(state.activePlan, isNotNull);
       expect(state.planOverlayVisible, isTrue);
-      expect(state.planOverlayExpanded, isTrue);
+      expect(state.planOverlayExpanded, isFalse);
     });
 
     test('dismissPlanOverlay hides overlay and openPlanOverlay reopens it', () {
@@ -4734,13 +4734,13 @@ void main() {
         ),
       );
       expect(state.planOverlayVisible, isTrue);
-      expect(state.planOverlayExpanded, isTrue);
+      expect(state.planOverlayExpanded, isFalse);
       state.dismissPlanOverlay();
       expect(state.planOverlayVisible, isFalse);
       expect(state.planOverlayDismissed, isTrue);
       state.openPlanOverlay();
       expect(state.planOverlayVisible, isTrue);
-      expect(state.planOverlayExpanded, isTrue);
+      expect(state.planOverlayExpanded, isFalse);
     });
 
     test(
@@ -4846,13 +4846,13 @@ void main() {
       state.dismissPlanOverlay();
       await Future.delayed(Duration.zero);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('devinorium_plan_overlay_expanded'), isFalse);
+      expect(prefs.getBool('devinorium_plan_overlay_expanded_v2'), isFalse);
       expect(prefs.getBool('devinorium_plan_overlay_dismissed'), isTrue);
     });
 
     test('bootstrap loads saved plan overlay state', () async {
       SharedPreferences.setMockInitialValues({
-        'devinorium_plan_overlay_expanded': false,
+        'devinorium_plan_overlay_expanded_v2': false,
         'devinorium_plan_overlay_dismissed': true,
       });
       final state = AppState(
@@ -4901,5 +4901,61 @@ void main() {
       expect(state.planOverlayExpanded, isFalse);
       expect(state.planOverlayDismissed, isTrue);
     });
+
+    test(
+      'bootstrap ignores the legacy expanded pref and stays collapsed',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'devinorium_plan_overlay_expanded': true,
+          'devinorium_plan_overlay_dismissed': false,
+        });
+        final state = AppState(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
+                'id': 1,
+                'username': 'owner',
+                'role': 'user',
+                'is_owner': true,
+                'totp_enabled': false,
+                'provider_id': 'devin-cli',
+                'provider_command': 'devin',
+              }),
+              _json(200, [
+                {'id': 'devin-cli', 'name': 'Devin CLI'},
+              ]),
+              _json(200, [
+                {'id': 'glm-5-2', 'label': 'GLM'},
+              ]),
+              _json(200, [
+                {
+                  'id': 1,
+                  'name': 'p',
+                  'path': '/x',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+              ]),
+              _json(200, [
+                {
+                  'id': 'a',
+                  'title': 't',
+                  'project_id': 1,
+                  'model': '',
+                  'permission_mode': 'normal',
+                  'created_at': '',
+                  'updated_at': '',
+                },
+              ]),
+              _json(200, []),
+            ]),
+          ),
+        );
+        await state.bootstrap();
+        expect(state.planOverlayExpanded, isFalse);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.containsKey('devinorium_plan_overlay_expanded'), isFalse);
+      },
+    );
   });
 }

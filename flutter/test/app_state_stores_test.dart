@@ -229,6 +229,19 @@ void main() {
       expect(state.planOverlayVisible, false);
       expect(state.planOverlayDismissed, true);
     });
+
+    test('plan overlay starts collapsed and can be expanded', () {
+      final state = AppState.test();
+      addTearDown(state.dispose);
+
+      expect(state.planOverlayExpanded, false);
+
+      state.expandPlanOverlay();
+      expect(state.planOverlayExpanded, true);
+
+      state.collapsePlanOverlay();
+      expect(state.planOverlayExpanded, false);
+    });
   });
 
   group('FilesPanelStore', () {
