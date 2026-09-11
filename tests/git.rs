@@ -31,6 +31,9 @@ fn git_cli(args: &[&str], cwd: &Path) {
 fn make_repo() -> TempDir {
     let tmp = TempDir::new().unwrap();
     git_cli(&["init"], tmp.path());
+    // Local identity so commits through GitService work without a global config.
+    git_cli(&["config", "user.email", "test@example.com"], tmp.path());
+    git_cli(&["config", "user.name", "Test"], tmp.path());
     std::fs::write(tmp.path().join("file.txt"), "hello").unwrap();
     git_cli(&["add", "file.txt"], tmp.path());
     git_cli(&["commit", "-m", "initial"], tmp.path());
