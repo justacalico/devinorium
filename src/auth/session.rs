@@ -42,9 +42,10 @@ where
     }
 }
 
-/// Extract the session token from a request's `Authorization: Bearer` header
-/// or `devinorium_session` cookie. The explicit header wins so a stale cookie
-/// cannot shadow a valid bearer credential.
+/// First credential present on a request — `Authorization: Bearer`, then the
+/// `devinorium_session` cookie. Session authentication itself does not rely
+/// on this ordering: `require_auth` tries each credential until one resolves
+/// to a live session.
 pub fn extract_token(req: &Request) -> Option<String> {
     extract_bearer_token(req).or_else(|| extract_cookie_token(req))
 }

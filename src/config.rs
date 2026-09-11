@@ -124,6 +124,8 @@ impl Config {
 }
 
 fn is_loopback_host(host: &str) -> bool {
+    // Accept bracketed IPv6 too — `bind_addr` tolerates either form.
+    let host = host.trim_start_matches('[').trim_end_matches(']');
     if host.eq_ignore_ascii_case("localhost") {
         return true;
     }

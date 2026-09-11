@@ -12,7 +12,10 @@ async fn main() -> Result<()> {
     // mode the launcher already controls the environment; a .env in the
     // server's working directory must not reintroduce DEVINORIUM_* settings
     // (e.g. a bootstrap password would create an interactive owner account).
-    if std::env::var_os("DEVINORIUM_LOCAL_TOKEN").is_none() {
+    if std::env::var("DEVINORIUM_LOCAL_TOKEN")
+        .map(|v| v.is_empty())
+        .unwrap_or(true)
+    {
         let _ = dotenvy::dotenv();
     }
 
