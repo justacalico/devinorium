@@ -46,14 +46,10 @@ class _AboutSectionState extends State<_AboutSection> {
       if (!mounted) return;
       if (update == null || !update.updateAvailable) {
         final l = l10n(context);
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              update == null ? l.aboutUpdateCheckFailed : l.aboutUpToDate,
-            ),
-          ),
+        showAppMessage(
+          context,
+          update == null ? l.aboutUpdateCheckFailed : l.aboutUpToDate,
+          kind: update == null ? MessageKind.error : MessageKind.success,
         );
       }
     } finally {
@@ -180,10 +176,10 @@ class _AboutVersionTileState extends State<_AboutVersionTile> {
     } catch (e) {
       if (!mounted) return;
       final l = l10n(context);
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(content: Text(l.aboutOpenLinkFailed(update.releaseUrl))),
+      showAppMessage(
+        context,
+        l.aboutOpenLinkFailed(update.releaseUrl),
+        kind: MessageKind.error,
       );
     } finally {
       if (mounted) setState(() => _opening = false);
@@ -294,8 +290,10 @@ class _AboutLinkTileState extends State<_AboutLinkTile> {
     } catch (e) {
       if (!mounted) return;
       final l = l10n(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l.aboutOpenLinkFailed(widget.url))),
+      showAppMessage(
+        context,
+        l.aboutOpenLinkFailed(widget.url),
+        kind: MessageKind.error,
       );
     } finally {
       if (mounted) setState(() => _opening = false);

@@ -21,8 +21,10 @@ class _GitSectionState extends State<_GitSection> {
     if (mounted) {
       setState(() => _busy = false);
       if (widget.state.globalError.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n(context).gitlabConnectFailed(widget.state.globalError))),
+        showAppMessage(
+          context,
+          l10n(context).gitlabConnectFailed(widget.state.globalError),
+          kind: MessageKind.error,
         );
       }
     }
@@ -34,8 +36,10 @@ class _GitSectionState extends State<_GitSection> {
     if (mounted) {
       setState(() => _busy = false);
       if (widget.state.globalError.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n(context).gitlabDisconnectFailed(widget.state.globalError))),
+        showAppMessage(
+          context,
+          l10n(context).gitlabDisconnectFailed(widget.state.globalError),
+          kind: MessageKind.error,
         );
       }
     }

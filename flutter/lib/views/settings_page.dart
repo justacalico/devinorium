@@ -14,6 +14,7 @@ import '../theme/theme.dart';
 import '../utils/link_opener.dart';
 import '../widgets/git_provider_icons.dart';
 import '../widgets/git_provider_tile.dart';
+import '../widgets/message_view.dart';
 import '../widgets/owner_badge.dart';
 import '../widgets/provider_icons.dart';
 import 'create_user_dialog.dart';
