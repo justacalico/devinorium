@@ -148,16 +148,6 @@ class ServerRegistry {
     });
   }
 
-  /// The currently active (primary) profile, or `null` if none is configured.
-  Future<ServerProfile?> primaryProfile() async {
-    final profiles = await loadProfiles();
-    if (profiles.isEmpty) return null;
-    return profiles.firstWhere(
-      (p) => p.isPrimary,
-      orElse: () => profiles.first,
-    );
-  }
-
   Future<void> _clearLegacy(SharedPreferences prefs) async {
     await prefs.remove(_legacyUrlKey);
     await prefs.remove(_legacyTokenKey);
