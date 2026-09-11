@@ -2,7 +2,8 @@
 //!
 //! Devinorium talks to AI backends through a single [`Provider`] trait. The
 //! built-in providers drive CLIs through the Agent Client Protocol ([`acp`]):
-//! the Devin CLI (`devin acp`) and OpenCode (`opencode acp`). Adding a new
+//! the Devin CLI (`devin acp`), OpenCode (`opencode acp`), and Grok Code
+//! (`grok agent stdio`). Adding a new
 //! provider is a two-step change:
 //!
 //! 1. **Create one new file** `src/providers/<name>.rs` implementing [`Provider`]

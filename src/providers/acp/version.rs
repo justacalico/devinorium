@@ -128,6 +128,8 @@ mod tests {
     use crate::providers::acp::AgentKind;
     use std::fs;
     use std::future::IntoFuture;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     fn fake_cli(version_line: &str) -> (tempfile::TempDir, String) {
         let dir = tempfile::tempdir().unwrap();
@@ -210,6 +212,51 @@ mod tests {
         let provider = AcpProvider::new(AgentKind::Devin, bin, "stub".into());
         let info = provider.check_version_at(None).await;
         assert_eq!(info.installed.as_deref(), Some("1.0.0"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grok_check_version_reads_update_check_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake-grok");
+        fs::write(
+            &path,
+            "#!/bin/sh\nif [ \"$1\" = update ]; then\n echo '{\"currentVersion\":\"1.0.0\",\"latestVersion\":\"9.9.9\",\"updateAvailable\":true}'\nelse\n echo 'grok 1.0.0 (abc)'\nfi\n",
+        )
+        .unwrap();
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let provider = AcpProvider::new(
+            AgentKind::Grok,
+            path.to_string_lossy().to_string(),
+            "stub".into(),
+        );
+        let info = provider.check_version().await;
+        assert_eq!(info.installed.as_deref(), Some("1.0.0"));
+        assert_eq!(info.latest.as_deref(), Some("9.9.9"));
+        assert!(info.update_available());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grok_check_version_tolerates_update_check_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake-grok");
+        fs::write(
+            &path,
+            "#!/bin/sh\nif [ \"$1\" = update ]; then\n exit 1\nelse\n echo 'grok 1.0.0 (abc)'\nfi\n",
+        )
+        .unwrap();
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let provider = AcpProvider::new(
+            AgentKind::Grok,
+            path.to_string_lossy().to_string(),
+            "stub".into(),
+        );
+        let info = provider.check_version().await;
+        assert_eq!(info.installed.as_deref(), Some("1.0.0"));
+        assert_eq!(info.latest, None);
     }
 
     #[tokio::test]

@@ -3,11 +3,11 @@ use serde::Deserialize;
 use tokio::process::Command;
 
 use agent_client_protocol::{
-    schema::v1::{ClientCapabilities, InitializeRequest},
-    schema::ProtocolVersion as ProtocolVersionEnum,
-    AcpAgent, Agent, Client, ConnectionTo,
+    schema::v1::InitializeRequest, schema::ProtocolVersion as ProtocolVersionEnum, AcpAgent, Agent,
+    Client, ConnectionTo,
 };
 
+use super::provider::client_capabilities;
 use super::spec::AgentKind;
 use crate::providers::ModelInfo;
 
@@ -154,7 +154,7 @@ pub async fn fetch_grok_models(bin: &str) -> anyhow::Result<Vec<ModelInfo>> {
             connection
                 .send_request(
                     InitializeRequest::new(ProtocolVersionEnum::V1)
-                        .client_capabilities(ClientCapabilities::new()),
+                        .client_capabilities(client_capabilities()),
                 )
                 .block_task()
                 .await

@@ -492,7 +492,7 @@ pub(crate) async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow
     Ok(fallback)
 }
 
-fn client_capabilities() -> ClientCapabilities {
+pub(crate) fn client_capabilities() -> ClientCapabilities {
     ClientCapabilities::new()
         .elicitation(ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()))
 }
@@ -647,6 +647,30 @@ mod tests {
         }
     }
 
+    /// Parse the recorded `session/set_config_option` request lines into
+    /// `(configId, value)` pairs.
+    #[cfg(unix)]
+    fn logged_config_sets(log: &Path) -> Vec<(String, String)> {
+        fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|v| v["method"] == "session/set_config_option")
+            .map(|v| {
+                (
+                    v["params"]["configId"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                    v["params"]["value"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                )
+            })
+            .collect()
+    }
+
     #[tokio::test]
     #[cfg(unix)]
     async fn grok_start_sets_model_and_reasoning_effort() {
@@ -654,19 +678,27 @@ mod tests {
         let provider = AcpProvider::new(AgentKind::Grok, bin, "grok-4.6".into());
         let workdir = tempfile::tempdir().unwrap();
 
-        let res = provider
-            .start(StartRequest {
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
                 prompt: "hi".into(),
                 options: send_options(workdir.path().to_path_buf(), Some("low")),
-            })
-            .await
-            .unwrap();
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
 
         assert_eq!(res.session_id, "fake-session");
-        let log = fs::read_to_string(&log).unwrap();
-        assert!(log.contains("\"reasoning_effort\""), "log: {log}");
-        assert!(log.contains("\"low\""), "log: {log}");
-        assert!(log.contains("grok-4.6"), "log: {log}");
+        let sets = logged_config_sets(&log);
+        assert!(
+            sets.contains(&("model".into(), "grok-4.6".into())),
+            "{sets:?}"
+        );
+        assert!(
+            sets.contains(&("reasoning_effort".into(), "low".into())),
+            "{sets:?}"
+        );
     }
 
     #[tokio::test]
@@ -676,17 +708,26 @@ mod tests {
         let provider = AcpProvider::new(AgentKind::Grok, bin, "grok-4.6".into());
         let workdir = tempfile::tempdir().unwrap();
 
-        provider
-            .start(StartRequest {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
                 prompt: "hi".into(),
                 options: send_options(workdir.path().to_path_buf(), Some("bogus")),
-            })
-            .await
-            .unwrap();
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
 
-        let log = fs::read_to_string(&log).unwrap();
-        assert!(log.contains("grok-4.6"), "log: {log}");
-        assert!(!log.contains("reasoning_effort"), "log: {log}");
+        let sets = logged_config_sets(&log);
+        assert!(
+            sets.contains(&("model".into(), "grok-4.6".into())),
+            "{sets:?}"
+        );
+        assert!(
+            !sets.iter().any(|(id, _)| id == "reasoning_effort"),
+            "{sets:?}"
+        );
     }
 
     #[tokio::test]
