@@ -98,6 +98,7 @@ class MultiServerState extends ChangeNotifier {
     for (final p in updated) {
       _profiles[p.id] = p;
     }
+    _apis[profile.id]?.dispose();
     _apis[profile.id] = api ?? ApiService(client: createApiClient(profile));
     if (setActive) {
       _activeServerId = profile.id;
@@ -161,7 +162,7 @@ class MultiServerState extends ChangeNotifier {
         _profiles[p.id] = p;
       }
     }
-    _apis.remove(id);
+    _apis.remove(id)?.dispose();
     _profiles.remove(id);
     if (_activeServerId == id) {
       _activeServerId = remaining.isNotEmpty ? remaining.first.id : null;
@@ -179,6 +180,7 @@ class MultiServerState extends ChangeNotifier {
     if (p == null || p.isLocal) return;
     final cleared = p.copyWith(token: '');
     _profiles[id] = cleared;
+    _apis[id]?.dispose();
     _apis[id] = ApiService(client: createApiClient(cleared));
     await _registry.upsert(cleared);
     notifyListeners();

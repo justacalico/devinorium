@@ -26,6 +26,9 @@ class NativeApiClient implements BaseApiClient {
   /// Construct an unconfigured client (used only in tests or as a placeholder).
   NativeApiClient({http.Client? client}) : _client = client ?? http.Client();
 
+  @override
+  void close() => _client.close();
+
   /// Construct a client backed by a specific server profile.
   NativeApiClient.fromProfile(
     ServerProfile profile, {

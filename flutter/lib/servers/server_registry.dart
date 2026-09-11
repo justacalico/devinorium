@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +20,8 @@ class ServerRegistry {
   static const _legacyUsernameKey = 'devinorium_username';
 
   final SharedPreferences? _prefs;
+
+  Future<void> _writeTail = Future.value();
 
   ServerRegistry({this._prefs});
 
@@ -87,42 +90,62 @@ class ServerRegistry {
     await prefs.setString(_serversKey, jsonEncode(json));
   }
 
+  /// Mutations are read-modify-write against SharedPreferences; serialize
+  /// them so a background writer (the local-server refresh) cannot clobber a
+  /// user-triggered add/remove/switch in flight.
+  Future<T> _serialized<T>(Future<T> Function() op) {
+    final prev = _writeTail;
+    final completer = Completer<T>();
+    _writeTail = prev.then((_) async {
+      try {
+        completer.complete(await op());
+      } catch (e, st) {
+        completer.completeError(e, st);
+      }
+    });
+    return completer.future;
+  }
+
   /// Add or replace a profile. If [profile] is marked primary, all others are
   /// demoted.
-  Future<List<ServerProfile>> upsert(ServerProfile profile) async {
-    final profiles = await loadProfiles();
-    final index = profiles.indexWhere((p) => p.id == profile.id);
-    final updated = index >= 0
-        ? [...profiles]
-      : [...profiles, profile];
-    if (index >= 0) updated[index] = profile;
-    if (profile.isPrimary) {
-      for (var i = 0; i < updated.length; i++) {
-        if (updated[i].id != profile.id) {
-          updated[i] = updated[i].copyWith(isPrimary: false);
+  Future<List<ServerProfile>> upsert(ServerProfile profile) {
+    return _serialized(() async {
+      final profiles = await loadProfiles();
+      final index = profiles.indexWhere((p) => p.id == profile.id);
+      final updated = index >= 0 ? [...profiles] : [...profiles, profile];
+      if (index >= 0) updated[index] = profile;
+      if (profile.isPrimary) {
+        for (var i = 0; i < updated.length; i++) {
+          if (updated[i].id != profile.id) {
+            updated[i] = updated[i].copyWith(isPrimary: false);
+          }
         }
       }
-    }
-    await saveProfiles(updated);
-    return updated;
+      await saveProfiles(updated);
+      return updated;
+    });
   }
 
   /// Remove a profile by id.
-  Future<List<ServerProfile>> remove(String id) async {
-    final profiles = await loadProfiles();
-    final updated = profiles.where((p) => p.id != id).toList();
-    await saveProfiles(updated);
-    return updated;
+  Future<List<ServerProfile>> remove(String id) {
+    return _serialized(() async {
+      final profiles = await loadProfiles();
+      final updated = profiles.where((p) => p.id != id).toList();
+      await saveProfiles(updated);
+      return updated;
+    });
   }
 
   /// Promote a profile to primary.
-  Future<List<ServerProfile>> setPrimary(String id) async {
-    final profiles = await loadProfiles();
-    final updated = profiles
-        .map((p) => p.copyWith(isPrimary: p.id == id))
-        .toList();
-    await saveProfiles(updated);
-    return updated;
+  Future<List<ServerProfile>> setPrimary(String id) {
+    return _serialized(() async {
+      final profiles = await loadProfiles();
+      final updated = profiles
+          .map((p) => p.copyWith(isPrimary: p.id == id))
+          .toList();
+      await saveProfiles(updated);
+      return updated;
+    });
   }
 
   /// The currently active (primary) profile, or `null` if none is configured.
