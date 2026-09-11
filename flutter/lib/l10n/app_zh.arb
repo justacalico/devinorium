@@ -514,6 +514,7 @@
   "unstageAll": "全部取消暂存",
   "stagedChanges": "已暂存的更改",
   "notGitRepo": "不是 git 仓库",
+  "gitUnsupportedBackend": "当前服务器版本过旧，不支持 Git 面板。请更新后端并重启应用。",
   "gitCommitAllConfirm": "没有已暂存的更改。是否暂存全部更改并提交？",
   "createBranch": "创建分支",
   "branchName": "分支名称",

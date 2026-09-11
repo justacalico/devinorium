@@ -12,12 +12,16 @@ mixin GitPanelStore on AppStateBase {
   @override
   bool _gitActionBusy = false;
   @override
+  bool _gitPanelUnsupported = false;
+  @override
   String _gitPanelError = '';
   @override
   String? _gitPanelScopeKey;
   @override
   String? _gitPanelThreadId;
+  @override
   int? _gitPanelProjectId;
+  @override
   int _gitPanelSeq = 0;
 
   @override
@@ -30,6 +34,8 @@ mixin GitPanelStore on AppStateBase {
   bool get gitPanelLoading => _gitPanelLoading;
   @override
   bool get gitActionBusy => _gitActionBusy;
+  @override
+  bool get gitPanelUnsupported => _gitPanelUnsupported;
   @override
   String get gitPanelError => _gitPanelError;
 
@@ -65,7 +71,12 @@ mixin GitPanelStore on AppStateBase {
   /// Periodic refresh from the git timer. Runs while the panel is open and
   /// re-reads the scope in case the active thread moved into a worktree.
   @override
-  Future<void> refreshGitPanel() => _loadGitPanel();
+  Future<void> refreshGitPanel() {
+    // An old backend has no git endpoints; polling them every tick just
+    // flickers the placeholder. Manual refresh still retries.
+    if (_gitPanelUnsupported) return Future.value();
+    return _loadGitPanel();
+  }
 
   Future<void> _loadGitPanel({bool force = false}) async {
     final projectId = _activeProjectId;
@@ -80,6 +91,7 @@ mixin GitPanelStore on AppStateBase {
       _gitPanelChanges = null;
       _gitPanelRepoInfo = null;
       _gitPanelError = '';
+      _gitPanelUnsupported = false;
       _gitPanelLoading = false;
       notifyListeners();
       return;
@@ -100,6 +112,7 @@ mixin GitPanelStore on AppStateBase {
     if (force || scopeChanged || _gitPanelChanges == null) {
       _gitPanelLoading = true;
     }
+    _gitPanelUnsupported = false;
     notifyListeners();
 
     final seq = ++_gitPanelSeq;
@@ -122,13 +135,21 @@ mixin GitPanelStore on AppStateBase {
       if (seq != _gitPanelSeq) return;
       _gitPanelRepoInfo = info;
       _gitPanelError = '';
+      _gitPanelUnsupported = false;
     } on ApiException catch (e) {
       if (seq != _gitPanelSeq) return;
-      if (e.statusCode == 404) {
-        // Not a repository (or git unavailable on the backend).
+      if (e.statusCode == 404 && e.message == 'not a git repository') {
+        // The backend confirmed the scope is not a repository.
         _gitPanelChanges = null;
         _gitPanelRepoInfo = null;
         _gitPanelError = '';
+      } else if (e.statusCode == 404 && e.data == null) {
+        // A non-JSON 404 means the route itself is missing: this backend
+        // predates the git endpoints and the panel cannot work against it.
+        _gitPanelChanges = null;
+        _gitPanelRepoInfo = null;
+        _gitPanelError = '';
+        _gitPanelUnsupported = true;
       } else {
         _gitPanelError = '$e';
       }

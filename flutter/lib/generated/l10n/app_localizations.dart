@@ -1532,6 +1532,12 @@ abstract class AppLocalizations {
   /// **'Not a git repository'**
   String get notGitRepo;
 
+  /// No description provided for @gitUnsupportedBackend.
+  ///
+  /// In en, this message translates to:
+  /// **'This server is too old for the Git panel. Update the backend and restart the app.'**
+  String get gitUnsupportedBackend;
+
   /// No description provided for @gitCommitAllConfirm.
   ///
   /// In en, this message translates to:

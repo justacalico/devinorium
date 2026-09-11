@@ -628,9 +628,14 @@ mixin AuthStore on AppStateBase {
     _gitPanelRepoInfo = null;
     _gitPanelLoading = false;
     _gitActionBusy = false;
+    _gitPanelUnsupported = false;
     _gitPanelError = '';
     _gitPanelScopeKey = null;
     _gitPanelThreadId = null;
+    _gitPanelProjectId = null;
+    // Invalidate any in-flight panel load so its result cannot write stale
+    // state from the old server back into the reset fields.
+    _gitPanelSeq++;
     _activeProjectId = null;
     _activeThreadId = null;
     for (final store in _threadStores.values) {

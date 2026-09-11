@@ -514,6 +514,7 @@
   "unstageAll": "Unstage all",
   "stagedChanges": "Staged changes",
   "notGitRepo": "Not a git repository",
+  "gitUnsupportedBackend": "This server is too old for the Git panel. Update the backend and restart the app.",
   "gitCommitAllConfirm": "There are no staged changes. Stage all changes and commit?",
   "createBranch": "Create branch",
   "branchName": "Branch name",

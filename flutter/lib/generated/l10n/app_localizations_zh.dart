@@ -792,6 +792,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notGitRepo => '不是 git 仓库';
 
   @override
+  String get gitUnsupportedBackend => '当前服务器版本过旧，不支持 Git 面板。请更新后端并重启应用。';
+
+  @override
   String get gitCommitAllConfirm => '没有已暂存的更改。是否暂存全部更改并提交？';
 
   @override

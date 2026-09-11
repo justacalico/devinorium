@@ -118,11 +118,13 @@ void main() {
       expect(state.gitPanelScopeKey, 'project:1');
     });
 
-    test('a 404 marks the scope as not a repo without an error', () async {
+    test('a not-a-repo 404 marks the scope without an error', () async {
       final state = _state(
         ApiService(
           client: ApiClient.withClient(
-            MockClient((_) async => _json(404, {'error': 'not a repo'})),
+            MockClient(
+              (_) async => _json(404, {'error': 'not a git repository'}),
+            ),
           ),
         ),
       );
@@ -131,6 +133,40 @@ void main() {
       expect(state.gitPanelChanges, isNull);
       expect(state.gitPanelRepoInfo, isNull);
       expect(state.gitPanelError, isEmpty);
+      expect(state.gitPanelUnsupported, isFalse);
+    });
+
+    test('a routing 404 means the backend lacks the git endpoints', () async {
+      // An older backend has no /git routes; the SPA fallback answers with a
+      // plain-text 404 that is not the git API's error shape.
+      final state = _state(
+        ApiService(
+          client: ApiClient.withClient(
+            MockClient((_) async => http.Response('not found', 404)),
+          ),
+        ),
+      );
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      expect(state.gitPanelChanges, isNull);
+      expect(state.gitPanelRepoInfo, isNull);
+      expect(state.gitPanelError, isEmpty);
+      expect(state.gitPanelUnsupported, isTrue);
+    });
+
+    test('a json 404 for another reason surfaces as an error', () async {
+      final state = _state(
+        ApiService(
+          client: ApiClient.withClient(
+            MockClient((_) async => _json(404, {'error': 'project not found'})),
+          ),
+        ),
+      );
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      expect(state.gitPanelChanges, isNull);
+      expect(state.gitPanelError, 'project not found');
+      expect(state.gitPanelUnsupported, isFalse);
     });
 
     test('gitStagePaths posts paths then reloads changes', () async {
@@ -567,11 +603,55 @@ void main() {
       expect(find.byTooltip('Refresh'), findsOneWidget);
     });
 
+    testWidgets('worktree thread shows its changes, not the repo placeholder', (
+      tester,
+    ) async {
+      final h = _Harness(
+        changes: _changes(
+          branch: 'wt-branch',
+          unstaged: [
+            {'path': 'a.txt', 'status': 'modified'},
+          ],
+        ),
+      );
+      final thread = Thread(
+        id: 't1',
+        title: 't',
+        projectId: 1,
+        model: 'm',
+        permissionMode: 'normal',
+        envMode: 'worktree',
+        worktreePath: '/repo/wt',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final state = _state(h.api, thread: thread);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not a git repository'), findsNothing);
+      expect(find.text('wt-branch'), findsOneWidget);
+      expect(find.text('a.txt', findRichText: true), findsOneWidget);
+      expect(
+        h.requests.any(
+          (r) =>
+              r.url.path.endsWith('/git/changes') &&
+              r.url.queryParameters['thread_id'] == 't1',
+        ),
+        isTrue,
+      );
+    });
+
     testWidgets('shows the not-a-repo placeholder', (tester) async {
       final state = _state(
         ApiService(
           client: ApiClient.withClient(
-            MockClient((_) async => _json(404, {'error': 'not a repo'})),
+            MockClient(
+              (_) async => _json(404, {'error': 'not a git repository'}),
+            ),
           ),
         ),
       );
@@ -582,6 +662,30 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Not a git repository'), findsOneWidget);
+    });
+
+    testWidgets('an old backend shows the unsupported message', (tester) async {
+      final state = _state(
+        ApiService(
+          client: ApiClient.withClient(
+            MockClient((_) async => http.Response('not found', 404)),
+          ),
+        ),
+      );
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not a git repository'), findsNothing);
+      expect(
+        find.text(
+          'This server is too old for the Git panel. '
+          'Update the backend and restart the app.',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('refresh button reloads', (tester) async {

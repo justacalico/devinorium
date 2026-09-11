@@ -84,12 +84,18 @@ abstract class AppStateBase extends ChangeNotifier {
   set _gitPanelLoading(bool value);
   bool get _gitActionBusy;
   set _gitActionBusy(bool value);
+  bool get _gitPanelUnsupported;
+  set _gitPanelUnsupported(bool value);
   String get _gitPanelError;
   set _gitPanelError(String value);
   String? get _gitPanelScopeKey;
   set _gitPanelScopeKey(String? value);
   String? get _gitPanelThreadId;
   set _gitPanelThreadId(String? value);
+  int? get _gitPanelProjectId;
+  set _gitPanelProjectId(int? value);
+  int get _gitPanelSeq;
+  set _gitPanelSeq(int value);
   bool get _planOverlayVisible;
   set _planOverlayVisible(bool value);
   bool get _planOverlayExpanded;
@@ -219,6 +225,7 @@ abstract class AppStateBase extends ChangeNotifier {
   GitRepoInfo? get gitPanelRepoInfo;
   bool get gitPanelLoading;
   bool get gitActionBusy;
+  bool get gitPanelUnsupported;
   String get gitPanelError;
   String? get gitPanelScopeKey;
   String? get gitApiThreadId;

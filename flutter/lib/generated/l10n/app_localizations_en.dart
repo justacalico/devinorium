@@ -801,6 +801,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notGitRepo => 'Not a git repository';
 
   @override
+  String get gitUnsupportedBackend =>
+      'This server is too old for the Git panel. Update the backend and restart the app.';
+
+  @override
   String get gitCommitAllConfirm =>
       'There are no staged changes. Stage all changes and commit?';
 

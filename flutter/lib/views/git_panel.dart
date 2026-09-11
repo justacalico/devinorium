@@ -18,6 +18,7 @@ typedef _GitPanelModel = ({
   GitRepoInfo? repoInfo,
   bool loading,
   bool busy,
+  bool unsupported,
   String error,
   String? scopeKey,
   String? loadedScopeKey,
@@ -79,6 +80,7 @@ class _GitPanelState extends State<GitPanel> {
         repoInfo: s.gitPanelRepoInfo,
         loading: s.gitPanelLoading,
         busy: s.gitActionBusy,
+        unsupported: s.gitPanelUnsupported,
         error: s.gitPanelError,
         scopeKey: s.activeFilesScopeKey,
         loadedScopeKey: s.gitPanelScopeKey,
@@ -179,6 +181,9 @@ class _GitPanelState extends State<GitPanel> {
     }
     if (model.appMode == AppMode.editor && model.activeThreadId == null) {
       return _Placeholder(text: l.selectOrCreateThread);
+    }
+    if (model.unsupported) {
+      return _Placeholder(text: l.gitUnsupportedBackend);
     }
     if (model.changes == null) {
       if (model.loading) {
