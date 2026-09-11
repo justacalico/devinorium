@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.57.0 - 2026-09-11
+#### Features
+- 编辑器模式下自动打开 AI 修改的文件 - (c5fdbec) - HttpAnimations
+
+- - -
+
 ## v0.56.1 - 2026-09-10
 #### Bug Fixes
 - 设置页按每个 provider 显示各自版本 - (1ec4095) - HttpAnimations
