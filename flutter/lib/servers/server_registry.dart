@@ -75,9 +75,15 @@ class ServerRegistry {
   }
 
   /// Persist the full list of profiles.
+  ///
+  /// The bundled local profile is stored without its token: the token is
+  /// re-issued on every launch, and keeping it out of SharedPreferences
+  /// means it never sits readable on disk between runs.
   Future<void> saveProfiles(List<ServerProfile> profiles) async {
     final prefs = await _preferences;
-    final json = profiles.map((p) => p.toJson()).toList();
+    final json = profiles
+        .map((p) => (p.isLocal ? p.copyWith(token: '') : p).toJson())
+        .toList();
     await prefs.setString(_serversKey, jsonEncode(json));
   }
 
