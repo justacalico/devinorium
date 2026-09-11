@@ -2,6 +2,39 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.58.0 - 2026-09-11
+#### Features
+- 本地服务器支持多实例共享并在断线时自愈 - (8e04c43) - HttpAnimations
+- 界面区分内置本地服务器并隐藏无关操作 - (e64a73b) - HttpAnimations
+- 桌面端启动时拉起内置本地服务器 - (3c8b070) - HttpAnimations
+- 服务器支持本地模式固定令牌认证 - (74f808f) - HttpAnimations
+#### Bug Fixes
+- 回环检测接受方括号 IPv6 且空令牌不跳过 .env - (3845ada) - HttpAnimations
+- 本地档案失败路径保持重连检查并统一销毁防护 - (085f69c) - HttpAnimations
+- 端点不变时保留 API 实例且删除晋升原子化 - (fdc4a4b) - HttpAnimations
+- 健康检查只在认证失效时重启本地服务器 - (bd3b54d) - HttpAnimations
+- 本地服务器的启动中止不消耗重试预算且端点文件校验权限 - (b8105dc) - HttpAnimations
+- 移除未使用的主档案查询 - (196014e) - HttpAnimations
+- 本地档案加载失败时保持重连检查并防止销毁后回调 - (1b2ccbd) - HttpAnimations
+- 序列化服务器档案写入并关闭被替换的客户端 - (e36833e) - HttpAnimations
+- Windows 锁只锁独立字节且解锁先于关句柄 - (d58cac1) - HttpAnimations
+- 本地模式下不再加载 .env 文件 - (2b5e168) - HttpAnimations
+- IPv6 回环地址的绑定地址补方括号 - (b08f692) - HttpAnimations
+- local 账号改用哨兵密码且仅恢复自身 owner 标记 - (f2d77c4) - HttpAnimations
+- 会话认证先尝试 Bearer 再回退 Cookie - (6768625) - HttpAnimations
+- 修复停止与启动竞争时的本地服务器泄漏 - (f4cf0df) - HttpAnimations
+- 本地档案在切换与启动失败时自动恢复 - (10a7637) - HttpAnimations
+- 本地档案令牌不落盘并隐藏 local 账号行 - (b59c9d8) - HttpAnimations
+- 收紧本地服务器进程与令牌文件的管理 - (2cd9714) - HttpAnimations
+- local 账户已存在时恢复 owner 标记 - (237cbaa) - HttpAnimations
+- 本地模式绑定非回环地址时拒绝启动 - (b5513ef) - HttpAnimations
+- Bearer 认证头优先于会话 Cookie - (6037098) - HttpAnimations
+- 单实例锁支持 Windows 平台 - (df0fcc4) - HttpAnimations
+#### Reverts
+- 恢复误删的主档案查询 - (8e3cdcd) - HttpAnimations
+
+- - -
+
 ## v0.57.0 - 2026-09-11
 #### Features
 - 编辑器模式下自动打开 AI 修改的文件 - (c5fdbec) - HttpAnimations
