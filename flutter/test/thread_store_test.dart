@@ -1578,6 +1578,220 @@ void main() {
       expect(api.getThreadMessagesCalls, 1);
     });
   });
+
+  group('agent edited files', () {
+    ThreadStore storeFor(ApiService api) => ThreadStore(
+      api: api,
+      threadId: 't1',
+      projectId: 1,
+      composerText: 'go',
+      detail: AsyncValue.ready(
+        ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      ),
+    );
+
+    test('fires once per file for edit tool calls', () async {
+      final api = _ControlledApiService();
+      final store = storeFor(api);
+      final opened = <String>[];
+      store.onStateChanged = () {};
+      store.onAgentEditedFiles = opened.addAll;
+      await store.sendMessage();
+
+      api.controller.add(
+        SseEvent(
+          'part',
+          '{"type":"tool_call","id":"tc1","title":"Edit",'
+              '"kind":"edit","status":"in_progress",'
+              '"changed_files":["src/a.rs","src/b.rs"]}',
+          id: '1',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(opened, ['src/a.rs', 'src/b.rs']);
+    });
+
+    test('ignores tool calls that only read files', () async {
+      final api = _ControlledApiService();
+      final store = storeFor(api);
+      final opened = <String>[];
+      store.onStateChanged = () {};
+      store.onAgentEditedFiles = opened.addAll;
+      await store.sendMessage();
+
+      api.controller.add(
+        SseEvent(
+          'part',
+          '{"type":"tool_call","id":"tc1","title":"Read",'
+              '"kind":"read","status":"completed",'
+              '"changed_files":["src/a.rs"]}',
+          id: '1',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(opened, isEmpty);
+    });
+
+    test('dedupes part_update but refires for a new tool call', () async {
+      final api = _ControlledApiService();
+      final store = storeFor(api);
+      final opened = <String>[];
+      store.onStateChanged = () {};
+      store.onAgentEditedFiles = opened.addAll;
+      await store.sendMessage();
+
+      const part =
+          '{"type":"tool_call","id":"tc1","title":"Edit",'
+          '"kind":"edit","status":"in_progress",'
+          '"changed_files":["src/a.rs"]}';
+      api.controller.add(SseEvent('part', part, id: '1'));
+      api.controller.add(SseEvent('part_update', part, id: '2'));
+      api.controller.add(
+        SseEvent(
+          'part',
+          '{"type":"tool_call","id":"tc2","title":"Edit",'
+              '"kind":"edit","status":"in_progress",'
+              '"changed_files":["src/a.rs"]}',
+          id: '3',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(opened, ['src/a.rs', 'src/a.rs']);
+    });
+
+    test('fires for diffs even when the kind is not edit', () async {
+      final api = _ControlledApiService();
+      final store = storeFor(api);
+      final opened = <String>[];
+      store.onStateChanged = () {};
+      store.onAgentEditedFiles = opened.addAll;
+      await store.sendMessage();
+
+      api.controller.add(
+        SseEvent(
+          'part',
+          '{"type":"tool_call","id":"tc1","title":"Patch",'
+              '"kind":"other","status":"completed",'
+              '"diffs":[{"path":"src/a.rs","new_text":"x"}]}',
+          id: '1',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(opened, ['src/a.rs']);
+    });
+
+    test('refires when a tool call rewrites the same file', () async {
+      final api = _ControlledApiService();
+      final store = storeFor(api);
+      final opened = <String>[];
+      store.onStateChanged = () {};
+      store.onAgentEditedFiles = opened.addAll;
+      await store.sendMessage();
+
+      api.controller.add(
+        SseEvent(
+          'part',
+          '{"type":"tool_call","id":"tc1","title":"Edit",'
+              '"kind":"edit","status":"in_progress",'
+              '"diffs":[{"path":"src/a.rs","new_text":"v1"}]}',
+          id: '1',
+        ),
+      );
+      api.controller.add(
+        SseEvent(
+          'part_update',
+          '{"type":"tool_call","id":"tc1","title":"Edit",'
+              '"kind":"edit","status":"in_progress",'
+              '"diffs":[{"path":"src/a.rs","new_text":"v2"}]}',
+          id: '2',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(opened, ['src/a.rs', 'src/a.rs']);
+    });
+
+    test('scans the persisted done message for edits', () async {
+      final api = _ControlledApiService();
+      final store = storeFor(api);
+      final opened = <String>[];
+      store.onStateChanged = () {};
+      store.onAgentEditedFiles = opened.addAll;
+      await store.sendMessage();
+
+      api.controller.add(
+        SseEvent(
+          'done',
+          '{"id":3,"role":"assistant","content":"",'
+              '"parts":[{"type":"tool_call","id":"tc1","title":"Edit",'
+              '"kind":"edit","status":"completed",'
+              '"changed_files":["src/a.rs"]}]}',
+          id: '1',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(opened, ['src/a.rs']);
+    });
+
+    test('resume seeds files the run already edited', () async {
+      final api = _RunningApiService({
+        'status': 'running',
+        'parts': [
+          {
+            'type': 'tool_call',
+            'id': 'tc1',
+            'title': 'Edit',
+            'kind': 'edit',
+            'status': 'completed',
+            'changed_files': ['src/a.rs'],
+          },
+        ],
+      });
+      final store = storeFor(api);
+      final opened = <String>[];
+      store.onStateChanged = () {};
+      store.onAgentEditedFiles = opened.addAll;
+      await store.resume();
+
+      api.events.add(
+        SseEvent(
+          'part_update',
+          '{"type":"tool_call","id":"tc1","title":"Edit",'
+              '"kind":"edit","status":"completed",'
+              '"changed_files":["src/a.rs"]}',
+          id: '1',
+        ),
+      );
+      api.events.add(
+        SseEvent(
+          'part',
+          '{"type":"tool_call","id":"tc2","title":"Edit",'
+              '"kind":"edit","status":"in_progress",'
+              '"changed_files":["src/b.rs"]}',
+          id: '2',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(opened, ['src/b.rs']);
+    });
+  });
 }
 
 class _CursorApiService extends ApiService {
@@ -1702,6 +1916,19 @@ class _EmptyPageApiService extends ApiService {
       ),
     );
   }
+}
+
+class _RunningApiService extends _TestApiService {
+  _RunningApiService(this.run);
+
+  final StreamController<SseEvent> events = StreamController<SseEvent>();
+  final Map<String, dynamic> run;
+
+  @override
+  Future<Map<String, dynamic>> getThreadRun(String id) => Future.value(run);
+
+  @override
+  Stream<SseEvent> watchThreadEvents(String id) => events.stream;
 }
 
 class _ReloadApiService extends ApiService {

@@ -109,6 +109,10 @@ class ThreadStore {
   StreamSubscription? _subscription;
   int _streamToken = 0;
 
+  // Keys from _editedFileEntries already reported through onAgentEditedFiles,
+  // so part_update refreshes of the same tool call don't fire again.
+  final Set<String> _seenEditedFiles = {};
+
   // In-flight initial message load so callers can await the same request.
   Future<void>? _initialMessagesFuture;
 
@@ -131,6 +135,11 @@ class ThreadStore {
   /// Called when a run finishes (completed or failed). The [failed] flag
   /// indicates whether the run ended with an error.
   void Function(bool failed)? onRunFinished;
+
+  /// Called when a tool call in the live stream reports files it edited.
+  /// Each (tool call, path) pair fires once; a later tool call touching the
+  /// same file fires again.
+  void Function(List<String> paths)? onAgentEditedFiles;
 
   // ---- getters ----
 
@@ -604,6 +613,7 @@ class ThreadStore {
     onStateChanged = null;
     onThreadUpdated = null;
     onRunFinished = null;
+    onAgentEditedFiles = null;
     _emit();
   }
 
@@ -641,6 +651,11 @@ class ThreadStore {
 
   void _applyRunSnapshot(Map<String, dynamic> run) {
     _streaming = runSnapshotFromJson(run);
+    // Edits already present in the snapshot are marked seen so resuming a
+    // run does not fire onAgentEditedFiles for work that already happened.
+    _seenEditedFiles
+      ..clear()
+      ..addAll(_editedFileEntries(_streaming.parts).map((e) => e.key));
     _lastRunStatus = run['status'] as String?;
     _emit();
   }
@@ -653,6 +668,7 @@ class ThreadStore {
 
   void _clearStreamingState() {
     _streaming = StreamingSnapshot.empty;
+    _seenEditedFiles.clear();
     _lastRunStatus = null;
   }
 
@@ -743,7 +759,16 @@ class ThreadStore {
         _throttledEmit();
     }
 
+    if (ev.event == 'part' ||
+        ev.event == 'part_update' ||
+        ev.event == 'state') {
+      _notifyAgentEditedFiles();
+    }
+
     if (ev.event == 'done') {
+      // The persisted message carries the full parts list; scan it so edits
+      // whose live part events were dropped still get reported.
+      _notifyAgentEditedFiles(parseSseMessage(ev.data)?.parts);
       _cancelStream();
       _finishStream(phase: StreamPhase.completed);
       refreshTail();
@@ -1012,6 +1037,44 @@ class ThreadStore {
   String _promptForMode(String prompt) {
     if (composerMode != ComposerMode.ask) return prompt;
     return stripAskPrefix(prompt);
+  }
+
+  void _notifyAgentEditedFiles([List<MessagePart>? parts]) {
+    final callback = onAgentEditedFiles;
+    if (callback == null) return;
+    final paths = <String>[];
+    for (final e in _editedFileEntries(parts ?? _streaming.parts)) {
+      if (_seenEditedFiles.add(e.key)) paths.add(e.path);
+    }
+    if (paths.isNotEmpty) callback(paths);
+  }
+
+  /// (dedupe key, path) pairs for tool calls that write files. The `edit`
+  /// kind is the main signal; providers only attach diffs to writes, so a
+  /// non-empty diff list counts as an edit regardless of the reported kind.
+  /// The key carries the diff content so a tool call that rewrites the same
+  /// file across updates still fires for each new version.
+  static Iterable<({String key, String path})> _editedFileEntries(
+    List<MessagePart> parts,
+  ) sync* {
+    for (final part in parts) {
+      final tool = part.toolCall;
+      if (tool == null) continue;
+      if (tool.kind != 'edit' && tool.diffs.isEmpty) continue;
+      final keys = <String, String>{};
+      for (final path in tool.changedFiles) {
+        if (path.isNotEmpty) keys[path] = '${tool.id} $path';
+      }
+      for (final diff in tool.diffs) {
+        if (diff.path.isNotEmpty) {
+          keys[diff.path] =
+              '${tool.id} ${diff.path} ${diff.newText.hashCode}';
+        }
+      }
+      for (final e in keys.entries) {
+        yield (key: e.value, path: e.key);
+      }
+    }
   }
 
   String? _statusFromPhase(StreamPhase phase) {
