@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_service.dart';
 import '../l10n/l10n.dart';
+import '../widgets/message_view.dart';
 import 'terminal_session.dart';
 import 'terminal_tabs.dart';
 
@@ -118,8 +119,10 @@ class _ThreadTerminalPanelState extends State<ThreadTerminalPanel> {
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n(context).terminalStartFailed('$e'))),
+        showAppMessage(
+          context,
+          l10n(context).terminalStartFailed('$e'),
+          kind: MessageKind.error,
         );
       }
     } finally {

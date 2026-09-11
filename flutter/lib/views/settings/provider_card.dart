@@ -230,14 +230,18 @@ class _ProviderCommandFieldState extends State<_ProviderCommandField> {
         command: command,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n(context).providerIsReachable)),
+        showAppMessage(
+          context,
+          l10n(context).providerIsReachable,
+          kind: MessageKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n(context).providerTestFailed('$e'))),
+        showAppMessage(
+          context,
+          l10n(context).providerTestFailed('$e'),
+          kind: MessageKind.error,
         );
       }
     } finally {

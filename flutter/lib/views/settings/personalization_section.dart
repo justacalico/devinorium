@@ -126,8 +126,10 @@ class _PersonalizationSection extends StatelessWidget {
       await themeProvider.loadCustom(css);
     } on ThemeParseException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${l10n(context).themeImportError}: $e')),
+      showAppMessage(
+        context,
+        '${l10n(context).themeImportError}: $e',
+        kind: MessageKind.error,
       );
     }
   }

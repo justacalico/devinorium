@@ -261,11 +261,11 @@ class _MrChipBody extends StatelessWidget {
         onLongPress: () async {
           await Clipboard.setData(ClipboardData(text: url));
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(l10n(context).copiedToClipboard),
-                duration: const Duration(seconds: 1),
-              ),
+            showAppMessage(
+              context,
+              l10n(context).copiedToClipboard,
+              kind: MessageKind.success,
+              duration: const Duration(seconds: 1),
             );
           }
         },
@@ -533,8 +533,10 @@ class _ThreadOptionsMenu extends StatelessWidget {
                       await state.setThreadLinkedMr(thread.id, url);
                       if (!context.mounted) return;
                       if (state.globalError.isNotEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(state.globalError)),
+                        showAppMessage(
+                          context,
+                          state.globalError,
+                          kind: MessageKind.error,
                         );
                       }
                     }

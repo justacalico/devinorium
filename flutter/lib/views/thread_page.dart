@@ -22,6 +22,7 @@ import '../utils/clipboard_image.dart';
 import '../utils/path_attachment.dart';
 import '../utils/plan_markup.dart';
 import '../utils/thread_status.dart';
+import '../widgets/message_view.dart';
 import '../widgets/provider_icons.dart';
 import '../widgets/thread_tag.dart';
 import 'ask_request_panel.dart';

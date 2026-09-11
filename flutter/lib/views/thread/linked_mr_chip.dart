@@ -23,11 +23,11 @@ class LinkedMergeRequestChip extends StatelessWidget {
             : () async {
                 await Clipboard.setData(ClipboardData(text: mr.webUrl));
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(l10n(context).copiedToClipboard),
-                      duration: const Duration(seconds: 1),
-                    ),
+                  showAppMessage(
+                    context,
+                    l10n(context).copiedToClipboard,
+                    kind: MessageKind.success,
+                    duration: const Duration(seconds: 1),
                   );
                 }
               },
