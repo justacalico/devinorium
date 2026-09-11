@@ -421,7 +421,6 @@ jobs:
           ../scripts/bundle-server.sh ../target/release/devinorium "$APP/Contents/MacOS"
           # The bundle changed after flutter build; re-sign ad-hoc so the app
           # and the nested server binary stay runnable.
-          codesign --force --sign - "$APP/Contents/MacOS/server/devinorium"
           codesign --force --deep --sign - "$APP"
           (cd "$(dirname "$APP")" && zip -r "$ARTIFACTS_DIR/devinorium-macos-arm64.zip" "Devinorium.app" >/dev/null)
           hdiutil create -volname "Devinorium" -srcfolder "$APP" -ov -format UDZO "$ARTIFACTS_DIR/devinorium-macos-arm64.dmg" >/dev/null
