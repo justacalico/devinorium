@@ -38,6 +38,7 @@ async fn make_app() -> (Router, db::Db) {
         max_body_bytes: 1024 * 1024,
         secure_cookie: false,
         allowed_origin: None,
+        local_token: None,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {

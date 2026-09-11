@@ -20,7 +20,33 @@ use crate::AppState;
 use super::session::{extract_token, CurrentUser};
 
 /// Middleware: require a valid authenticated session with role `user`.
+///
+/// When the server runs in bundled local mode (`DEVINORIUM_LOCAL_TOKEN`), a
+/// request whose bearer token matches the configured token is mapped onto the
+/// `local` account directly — no session or password is involved. The local
+/// account's `disabled` flag is ignored on this path: the token is only known
+/// to the desktop app that spawned the server, so disabling the account would
+/// brick the app with no way back in.
 pub async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    if let Some(expected) = state.config.local_token.as_deref() {
+        if let Some(token) = extract_token(&req) {
+            if constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes()) {
+                return match state
+                    .db
+                    .get_user_by_username(super::bootstrap::LOCAL_USERNAME)
+                    .await
+                {
+                    Ok(Some(user)) => {
+                        let mut req = req;
+                        req.extensions_mut().insert(CurrentUser(user));
+                        next.run(req).await
+                    }
+                    _ => unauthorized("local user missing"),
+                };
+            }
+        }
+    }
+
     let Some(token) = extract_token(&req) else {
         return unauthorized("no session");
     };

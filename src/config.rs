@@ -20,6 +20,11 @@ pub struct Config {
     pub max_body_bytes: usize,
     pub secure_cookie: bool,
     pub allowed_origin: Option<String>,
+    /// Fixed bearer token accepted as the passwordless `local` account.
+    /// Set by the desktop app when it spawns the bundled server, so local
+    /// requests never need a login while random processes still cannot call
+    /// the API without knowing the token.
+    pub local_token: Option<String>,
 }
 
 impl Config {
@@ -68,6 +73,18 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty());
 
+        let local_token = std::env::var("DEVINORIUM_LOCAL_TOKEN")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        if local_token.is_some() && !is_loopback_host(&host) {
+            tracing::warn!(
+                host,
+                "DEVINORIUM_LOCAL_TOKEN is set but DEVINORIUM_HOST is not a loopback \
+                 address; the bundled-server token mode is meant for local-only binds"
+            );
+        }
+
         Ok(Self {
             host,
             port,
@@ -81,6 +98,7 @@ impl Config {
             max_body_bytes,
             secure_cookie,
             allowed_origin,
+            local_token,
         })
     }
 
@@ -88,6 +106,21 @@ impl Config {
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
+
+    /// Whether the server runs in bundled local mode (fixed bearer token
+    /// instead of interactive logins).
+    pub fn is_local_mode(&self) -> bool {
+        self.local_token.is_some()
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .map(|ip| ip.is_loopback())
+        .unwrap_or(false)
 }
 
 fn env_or(key: &str, default: &str) -> String {
