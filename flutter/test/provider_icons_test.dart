@@ -20,6 +20,7 @@ void main() {
       'assets/providers/devin_light.png',
       'assets/providers/opencode.svg',
       'assets/providers/codex.svg',
+      'assets/providers/grok.svg',
     ]) {
       test('$path is bundled and non-empty', () async {
         final data = await rootBundle.load(path);
@@ -72,6 +73,14 @@ void main() {
     expect(svg.colorFilter, isNotNull);
   });
 
+  testWidgets('grok renders a tinted SVG', (tester) async {
+    await tester.pumpWidget(
+      _wrap(const ProviderIcon(providerId: 'grok', color: Colors.red)),
+    );
+    final svg = tester.widget<SvgPicture>(find.byType(SvgPicture));
+    expect(svg.colorFilter, isNotNull);
+  });
+
   testWidgets('unknown providers fall back to a generic icon', (tester) async {
     await tester.pumpWidget(
       _wrap(const ProviderIcon(providerId: 'future-cli')),
@@ -98,6 +107,7 @@ void main() {
     expect(providerName('devin-cli'), 'Devin CLI');
     expect(providerName('opencode'), 'OpenCode');
     expect(providerName('codex'), 'Codex CLI');
+    expect(providerName('grok'), 'Grok Code');
     expect(providerName('unknown'), 'unknown');
   });
 }

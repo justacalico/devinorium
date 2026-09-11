@@ -2,6 +2,12 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use tokio::process::Command;
 
+use agent_client_protocol::{
+    schema::v1::InitializeRequest, schema::ProtocolVersion as ProtocolVersionEnum, AcpAgent, Agent,
+    Client, ConnectionTo,
+};
+
+use super::provider::client_capabilities;
 use super::spec::AgentKind;
 use crate::providers::ModelInfo;
 
@@ -48,6 +54,24 @@ pub fn static_models(kind: AgentKind) -> Vec<ModelInfo> {
             is_beta: false,
             default_reasoning_effort: None,
             supported_reasoning_efforts: vec![],
+        }],
+        AgentKind::Grok => vec![ModelInfo {
+            id: "grok-4.6".into(),
+            label: "Grok 4.6".into(),
+            cost_tier: String::new(),
+            family: "xai".into(),
+            cost_summary: String::new(),
+            max_context_tokens: 500_000,
+            max_output_tokens: 0,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: Some("high".into()),
+            supported_reasoning_efforts: vec![
+                "low".into(),
+                "medium".into(),
+                "high".into(),
+                "xhigh".into(),
+            ],
         }],
     }
 }
@@ -114,6 +138,117 @@ pub async fn fetch_opencode_models(bin: &str) -> anyhow::Result<Vec<ModelInfo>> 
     Ok(parse_opencode_models_plain(&String::from_utf8_lossy(
         &output.stdout,
     )))
+}
+
+/// List the models `grok` can serve. `grok models` only prints ids, so this
+/// opens the ACP connection, runs `initialize`, and reads
+/// `_meta.modelState.availableModels` from the response — no session is
+/// created and no prompt runs.
+pub async fn fetch_grok_models(bin: &str) -> anyhow::Result<Vec<ModelInfo>> {
+    let argv: Vec<String> = std::iter::once(bin.to_string())
+        .chain(AgentKind::Grok.acp_args().iter().map(|s| s.to_string()))
+        .collect();
+    let handshake = Client.builder().name("devinorium").connect_with(
+        AcpAgent::from_args(argv)?,
+        async move |connection: ConnectionTo<Agent>| {
+            connection
+                .send_request(
+                    InitializeRequest::new(ProtocolVersionEnum::V1)
+                        .client_capabilities(client_capabilities()),
+                )
+                .block_task()
+                .await
+        },
+    );
+    let response = tokio::time::timeout(std::time::Duration::from_secs(15), handshake)
+        .await
+        .map_err(|_| anyhow::anyhow!("grok model list timed out"))??;
+    Ok(parse_grok_models(response.meta.as_ref()))
+}
+
+#[derive(Deserialize)]
+struct GrokModelMeta {
+    #[serde(default, rename = "totalContextTokens")]
+    total_context_tokens: u64,
+    #[serde(default, rename = "reasoningEffort")]
+    reasoning_effort: Option<String>,
+    #[serde(default, rename = "reasoningEfforts")]
+    reasoning_efforts: Vec<GrokReasoningEffort>,
+}
+
+#[derive(Deserialize)]
+struct GrokReasoningEffort {
+    #[serde(default)]
+    value: String,
+    #[serde(default)]
+    default: bool,
+}
+
+#[derive(Deserialize)]
+struct GrokAvailableModel {
+    #[serde(default, rename = "modelId")]
+    model_id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default, rename = "_meta")]
+    meta: Option<GrokModelMeta>,
+}
+
+/// Parse the `modelState.availableModels` list from an initialize response
+/// `_meta` blob into the shared model catalog shape.
+pub fn parse_grok_models(
+    meta: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Vec<ModelInfo> {
+    let Some(models) = meta
+        .and_then(|m| m.get("modelState"))
+        .and_then(|s| s.get("availableModels"))
+        .and_then(|a| a.as_array())
+    else {
+        return Vec::new();
+    };
+
+    models
+        .iter()
+        .filter_map(|m| serde_json::from_value::<GrokAvailableModel>(m.clone()).ok())
+        .filter(|m| !m.model_id.is_empty())
+        .map(|m| {
+            let meta = m.meta.unwrap_or(GrokModelMeta {
+                total_context_tokens: 0,
+                reasoning_effort: None,
+                reasoning_efforts: Vec::new(),
+            });
+            let supported: Vec<String> = meta
+                .reasoning_efforts
+                .iter()
+                .map(|e| e.value.clone())
+                .filter(|v| !v.is_empty())
+                .collect();
+            let default_effort = meta
+                .reasoning_efforts
+                .iter()
+                .find(|e| e.default)
+                .map(|e| e.value.clone())
+                .or(meta.reasoning_effort)
+                .filter(|v| supported.iter().any(|s| s == v));
+            ModelInfo {
+                id: m.model_id.clone(),
+                label: if m.name.is_empty() {
+                    m.model_id
+                } else {
+                    m.name
+                },
+                cost_tier: String::new(),
+                family: "xai".into(),
+                cost_summary: String::new(),
+                max_context_tokens: meta.total_context_tokens,
+                max_output_tokens: 0,
+                is_new: false,
+                is_beta: false,
+                default_reasoning_effort: default_effort,
+                supported_reasoning_efforts: supported,
+            }
+        })
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -263,6 +398,86 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "opencode/big-pickle");
         assert_eq!(models[0].cost_tier, "free");
+    }
+
+    #[test]
+    fn static_models_grok_lists_reasoning_efforts() {
+        let models = static_models(AgentKind::Grok);
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "grok-4.6");
+        assert_eq!(models[0].default_reasoning_effort.as_deref(), Some("high"));
+        assert!(models[0]
+            .supported_reasoning_efforts
+            .contains(&"low".to_string()));
+    }
+
+    #[test]
+    fn parse_grok_models_reads_initialize_meta() {
+        let meta = serde_json::json!({
+            "modelState": {
+                "currentModelId": "grok-4.6",
+                "availableModels": [{
+                    "modelId": "grok-4.6",
+                    "name": "Grok 4.6",
+                    "description": "SpaceXAI's latest frontier model",
+                    "_meta": {
+                        "totalContextTokens": 500000,
+                        "supportsReasoningEffort": true,
+                        "reasoningEffort": "high",
+                        "reasoningEfforts": [
+                            {"id": "xhigh", "value": "xhigh", "label": "Extra High Effort", "default": false},
+                            {"id": "high", "value": "high", "label": "High Effort", "default": true},
+                            {"id": "medium", "value": "medium", "label": "Medium Effort", "default": false},
+                            {"id": "low", "value": "low", "label": "Low Effort", "default": false}
+                        ]
+                    }
+                }]
+            }
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+
+        let models = parse_grok_models(Some(&meta));
+        assert_eq!(models.len(), 1);
+        let m = &models[0];
+        assert_eq!(m.id, "grok-4.6");
+        assert_eq!(m.label, "Grok 4.6");
+        assert_eq!(m.max_context_tokens, 500_000);
+        assert_eq!(m.default_reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(
+            m.supported_reasoning_efforts,
+            vec!["xhigh", "high", "medium", "low"]
+        );
+    }
+
+    #[test]
+    fn parse_grok_models_handles_missing_meta() {
+        assert!(parse_grok_models(None).is_empty());
+        let meta = serde_json::Map::new();
+        assert!(parse_grok_models(Some(&meta)).is_empty());
+    }
+
+    #[test]
+    fn parse_grok_models_falls_back_to_id_and_declared_effort() {
+        let meta = serde_json::json!({
+            "modelState": {
+                "availableModels": [{
+                    "modelId": "grok-x",
+                    "_meta": {"reasoningEffort": "medium"}
+                }]
+            }
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+
+        let models = parse_grok_models(Some(&meta));
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].label, "grok-x");
+        // A declared effort that is not in the advertised list is dropped.
+        assert_eq!(models[0].default_reasoning_effort, None);
+        assert!(models[0].supported_reasoning_efforts.is_empty());
     }
 
     #[test]

@@ -2,7 +2,8 @@
 //!
 //! Devinorium talks to AI backends through a single [`Provider`] trait. The
 //! built-in providers drive CLIs through the Agent Client Protocol ([`acp`]):
-//! the Devin CLI (`devin acp`) and OpenCode (`opencode acp`). Adding a new
+//! the Devin CLI (`devin acp`), OpenCode (`opencode acp`), and Grok Code
+//! (`grok agent stdio`). Adding a new
 //! provider is a two-step change:
 //!
 //! 1. **Create one new file** `src/providers/<name>.rs` implementing [`Provider`]
@@ -366,6 +367,10 @@ pub fn available_providers() -> Vec<ProviderInfo> {
             id: codex::PROVIDER_ID,
             name: "Codex CLI",
         },
+        ProviderInfo {
+            id: acp::AgentKind::Grok.id(),
+            name: "Grok Code",
+        },
     ]
 }
 
@@ -374,6 +379,7 @@ pub fn default_command(provider_id: &str) -> &'static str {
     match provider_id {
         "opencode" => acp::AgentKind::Opencode.default_command(),
         codex::PROVIDER_ID => "codex",
+        "grok" => acp::AgentKind::Grok.default_command(),
         _ => acp::AgentKind::Devin.default_command(),
     }
 }
@@ -399,6 +405,7 @@ pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> 
     let kind = match cfg.id.as_str() {
         "devin-cli" => acp::AgentKind::Devin,
         "opencode" => acp::AgentKind::Opencode,
+        "grok" => acp::AgentKind::Grok,
         other => anyhow::bail!("unknown provider: {other}"),
     };
     Ok(Box::new(acp::AcpProvider::new(

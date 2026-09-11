@@ -1,9 +1,11 @@
 //! Version detection and update checks for ACP providers.
 
 use once_cell::sync::Lazy;
+use serde::Deserialize;
 use tokio::process::Command;
 
 use super::provider::AcpProvider;
+use super::spec::AgentKind;
 use crate::providers::version::{fetch_latest_version, parse_version_output, ProviderVersion};
 
 /// `--version` results keyed by command, so revisiting Settings does not
@@ -20,8 +22,42 @@ impl AcpProvider {
     /// version. Both are best effort: a missing binary or an unreachable
     /// manifest leaves the field empty rather than failing.
     pub async fn check_version(&self) -> ProviderVersion {
+        if self.kind == AgentKind::Grok {
+            // Grok has no published manifest; `grok update --check --json`
+            // reports the latest release for the configured channel.
+            let (installed, latest) =
+                tokio::join!(self.installed_version(), self.grok_latest_version());
+            return ProviderVersion { installed, latest };
+        }
         self.check_version_at(self.kind.version_manifest_url())
             .await
+    }
+
+    async fn grok_latest_version(&self) -> Option<String> {
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            Command::new(&self.bin)
+                .args(["update", "--check", "--json"])
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        #[derive(Deserialize)]
+        struct UpdateCheck {
+            #[serde(default, rename = "latestVersion")]
+            latest_version: Option<String>,
+        }
+
+        serde_json::from_slice::<UpdateCheck>(&output.stdout)
+            .ok()
+            .and_then(|u| u.latest_version)
+            .filter(|v| !v.is_empty())
     }
 
     /// Same as [`check_version`] but against an explicit manifest URL, so
@@ -92,6 +128,8 @@ mod tests {
     use crate::providers::acp::AgentKind;
     use std::fs;
     use std::future::IntoFuture;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     fn fake_cli(version_line: &str) -> (tempfile::TempDir, String) {
         let dir = tempfile::tempdir().unwrap();
@@ -174,6 +212,51 @@ mod tests {
         let provider = AcpProvider::new(AgentKind::Devin, bin, "stub".into());
         let info = provider.check_version_at(None).await;
         assert_eq!(info.installed.as_deref(), Some("1.0.0"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grok_check_version_reads_update_check_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake-grok");
+        fs::write(
+            &path,
+            "#!/bin/sh\nif [ \"$1\" = update ]; then\n echo '{\"currentVersion\":\"1.0.0\",\"latestVersion\":\"9.9.9\",\"updateAvailable\":true}'\nelse\n echo 'grok 1.0.0 (abc)'\nfi\n",
+        )
+        .unwrap();
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let provider = AcpProvider::new(
+            AgentKind::Grok,
+            path.to_string_lossy().to_string(),
+            "stub".into(),
+        );
+        let info = provider.check_version().await;
+        assert_eq!(info.installed.as_deref(), Some("1.0.0"));
+        assert_eq!(info.latest.as_deref(), Some("9.9.9"));
+        assert!(info.update_available());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grok_check_version_tolerates_update_check_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake-grok");
+        fs::write(
+            &path,
+            "#!/bin/sh\nif [ \"$1\" = update ]; then\n exit 1\nelse\n echo 'grok 1.0.0 (abc)'\nfi\n",
+        )
+        .unwrap();
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let provider = AcpProvider::new(
+            AgentKind::Grok,
+            path.to_string_lossy().to_string(),
+            "stub".into(),
+        );
+        let info = provider.check_version().await;
+        assert_eq!(info.installed.as_deref(), Some("1.0.0"));
+        assert_eq!(info.latest, None);
     }
 
     #[tokio::test]

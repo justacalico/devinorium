@@ -55,6 +55,13 @@ impl AcpProvider {
         }
     }
 
+    /// argv that starts the agent's ACP stdio server.
+    pub(crate) fn agent_args(&self) -> Vec<String> {
+        std::iter::once(self.bin.clone())
+            .chain(self.kind.acp_args().iter().map(|s| s.to_string()))
+            .collect()
+    }
+
     /// Verify the binary is on PATH and the ACP handshake succeeds
     /// without creating a session or sending a prompt.
     pub async fn do_health_check(&self) -> anyhow::Result<()> {
@@ -69,7 +76,7 @@ impl AcpProvider {
         }
 
         let health = Client.builder().name("devinorium").connect_with(
-            AcpAgent::from_args([&self.bin, "acp"])?,
+            AcpAgent::from_args(self.agent_args())?,
             async move |connection: ConnectionTo<Agent>| {
                 let _ = connection
                     .send_request(
@@ -193,7 +200,7 @@ impl AcpProvider {
                 agent_client_protocol::on_receive_request!(),
             )
             .connect_with(
-                AcpAgent::from_args([&self.bin, "acp"])?,
+                AcpAgent::from_args(self.agent_args())?,
                 async move |connection: ConnectionTo<Agent>| {
                     let _init_response = connection
                         .send_request(
@@ -369,6 +376,7 @@ impl AcpProvider {
         match self.kind {
             AgentKind::Devin => self.fetch_devin_models().await,
             AgentKind::Opencode => models::fetch_opencode_models(&self.bin).await,
+            AgentKind::Grok => models::fetch_grok_models(&self.bin).await,
         }
     }
 
@@ -484,7 +492,7 @@ pub(crate) async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow
     Ok(fallback)
 }
 
-fn client_capabilities() -> ClientCapabilities {
+pub(crate) fn client_capabilities() -> ClientCapabilities {
     ClientCapabilities::new()
         .elicitation(ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()))
 }
@@ -584,6 +592,142 @@ mod tests {
 
     fn provider() -> AcpProvider {
         AcpProvider::new(AgentKind::Devin, "devin".into(), "swe-1-7".into())
+    }
+
+    /// A minimal ACP agent on stdin/stdout: answers `initialize`,
+    /// `session/new` (advertising `model` and `reasoning_effort` select
+    /// options), records every `session/set_config_option` request line to
+    /// `log_path`, and ends each prompt turn immediately.
+    #[cfg(unix)]
+    fn fake_acp_agent() -> (tempfile::TempDir, String, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("fake-agent");
+        let log = dir.path().join("requests.log");
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n\
+                 while IFS= read -r line; do\n\
+                 \x20 id=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\(\"[^\"]*\"\\|[0-9][0-9]*\\).*/\\1/p')\n\
+                 \x20 [ -z \"$id\" ] && continue\n\
+                 \x20 case \"$line\" in\n\
+                 \x20   *'\"session/new\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',\"result\":{{\"sessionId\":\"fake-session\",\"configOptions\":[{{\"id\":\"model\",\"name\":\"Model\",\"type\":\"select\",\"currentValue\":\"grok-4.6\",\"options\":[{{\"value\":\"grok-4.6\",\"name\":\"Grok 4.6\"}}]}},{{\"id\":\"reasoning_effort\",\"name\":\"Reasoning Effort\",\"type\":\"select\",\"currentValue\":\"high\",\"options\":[{{\"value\":\"low\",\"name\":\"Low\"}},{{\"value\":\"medium\",\"name\":\"Medium\"}},{{\"value\":\"high\",\"name\":\"High\"}},{{\"value\":\"xhigh\",\"name\":\"Extra High\"}}]}}]}}}}' ;;\n\
+                 \x20   *'\"session/set_config_option\"'*)\n\
+                 \x20     printf '%s\\n' \"$line\" >> '{}'\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{}}}}\\n' \"$id\" ;;\n\
+                 \x20   *'\"session/prompt\"'*)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{\"stopReason\":\"end_turn\"}}}}\\n' \"$id\" ;;\n\
+                 \x20   *)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{\"protocolVersion\":1}}}}\\n' \"$id\" ;;\n\
+                 \x20 esac\n\
+                 done\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (dir, script.to_string_lossy().to_string(), log)
+    }
+
+    fn send_options(working_dir: PathBuf, reasoning_effort: Option<&str>) -> SendOptions {
+        SendOptions {
+            model: "grok-4.6".into(),
+            reasoning_effort: reasoning_effort.map(str::to_string),
+            working_dir,
+            permission_mode: "normal".into(),
+            permissions: None,
+            attachments: vec![],
+            permission_callback: None,
+            ask_callback: None,
+            part_callback: None,
+            session_callback: None,
+            interaction_mode: "code".into(),
+            cancel_signal: None,
+        }
+    }
+
+    /// Parse the recorded `session/set_config_option` request lines into
+    /// `(configId, value)` pairs.
+    #[cfg(unix)]
+    fn logged_config_sets(log: &Path) -> Vec<(String, String)> {
+        fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|v| v["method"] == "session/set_config_option")
+            .map(|v| {
+                (
+                    v["params"]["configId"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                    v["params"]["value"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                )
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn grok_start_sets_model_and_reasoning_effort() {
+        let (_dir, bin, log) = fake_acp_agent();
+        let provider = AcpProvider::new(AgentKind::Grok, bin, "grok-4.6".into());
+        let workdir = tempfile::tempdir().unwrap();
+
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
+                prompt: "hi".into(),
+                options: send_options(workdir.path().to_path_buf(), Some("low")),
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
+
+        assert_eq!(res.session_id, "fake-session");
+        let sets = logged_config_sets(&log);
+        assert!(
+            sets.contains(&("model".into(), "grok-4.6".into())),
+            "{sets:?}"
+        );
+        assert!(
+            sets.contains(&("reasoning_effort".into(), "low".into())),
+            "{sets:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn unknown_reasoning_effort_keeps_agent_default() {
+        let (_dir, bin, log) = fake_acp_agent();
+        let provider = AcpProvider::new(AgentKind::Grok, bin, "grok-4.6".into());
+        let workdir = tempfile::tempdir().unwrap();
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
+                prompt: "hi".into(),
+                options: send_options(workdir.path().to_path_buf(), Some("bogus")),
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
+
+        let sets = logged_config_sets(&log);
+        assert!(
+            sets.contains(&("model".into(), "grok-4.6".into())),
+            "{sets:?}"
+        );
+        assert!(
+            !sets.iter().any(|(id, _)| id == "reasoning_effort"),
+            "{sets:?}"
+        );
     }
 
     #[tokio::test]

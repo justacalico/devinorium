@@ -1787,6 +1787,7 @@ void main() {
         'opencode',
       );
       expect(defaultProviderCommand('opencode'), 'opencode');
+      expect(defaultProviderCommand('grok'), 'grok');
       expect(defaultProviderCommand('devin-cli'), 'devin');
     });
   });

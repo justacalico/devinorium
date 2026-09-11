@@ -51,6 +51,12 @@ class ProviderIcon extends StatelessWidget {
           height: size,
           colorFilter: ColorFilter.mode(effectiveColor, BlendMode.srcIn),
         ),
+      'grok' => SvgPicture.asset(
+          'assets/providers/grok.svg',
+          width: size,
+          height: size,
+          colorFilter: ColorFilter.mode(effectiveColor, BlendMode.srcIn),
+        ),
       _ => Icon(
           Icons.smart_toy_outlined,
           size: size,
@@ -73,5 +79,6 @@ String providerName(String providerId) => switch (providerId) {
   'devin-cli' => 'Devin CLI',
   'opencode' => 'OpenCode',
   'codex' => 'Codex CLI',
+  'grok' => 'Grok Code',
   _ => providerId,
 };
