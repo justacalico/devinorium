@@ -117,7 +117,10 @@ mod tests {
 
     #[test]
     fn manifest_json_uses_pwa_content_type() {
-        assert_eq!(content_type_for("manifest.json"), "application/manifest+json");
+        assert_eq!(
+            content_type_for("manifest.json"),
+            "application/manifest+json"
+        );
         // frontend/dist/manifest.json only exists after scripts/build-flutter.sh
         // has run, so skip rather than fail on a bare checkout.
         let Some(resp) = try_serve_file("manifest.json") else {
