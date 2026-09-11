@@ -404,12 +404,12 @@ void main() {
       final state = AppState.test();
       expect(state.agentPanelOpen, isTrue);
       expect(state.agentPanelUserSet, isFalse);
-      expect(state.editorTerminalOpen, isFalse);
+      expect(state.terminalStore.open, isFalse);
       state.setAgentPanelOpen(false);
-      state.setEditorTerminalOpen(true);
+      state.terminalStore.setOpen(true);
       expect(state.agentPanelOpen, isFalse);
       expect(state.agentPanelUserSet, isTrue);
-      expect(state.editorTerminalOpen, isTrue);
+      expect(state.terminalStore.open, isTrue);
     });
   });
 }

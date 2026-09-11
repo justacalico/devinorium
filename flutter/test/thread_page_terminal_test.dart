@@ -1,6 +1,6 @@
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
-import 'package:devinorium_frontend/terminal/thread_terminal_panel.dart';
+import 'package:devinorium_frontend/terminal/terminal_panel.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,31 +32,40 @@ void main() {
         messages: const [],
       ),
     );
+    addTearDown(state.dispose);
 
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
     expect(find.text('No terminal sessions'), findsNothing);
-    // The panel is still mounted while hidden.
-    expect(
-      find.byType(ThreadTerminalPanel, skipOffstage: false),
-      findsOneWidget,
-    );
+    // The panel is always mounted; the store controls visibility.
+    expect(find.byType(TerminalPanel), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.terminal));
     await tester.pumpAndSettle();
 
+    expect(state.terminalStore.open, isTrue);
     expect(find.text('No terminal sessions'), findsOneWidget);
     expect(find.text('Terminal'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
     await tester.pumpAndSettle();
 
+    expect(state.terminalStore.open, isFalse);
     expect(find.text('No terminal sessions'), findsNothing);
-    // The panel stays mounted so thread sessions survive hide/show.
-    expect(
-      find.byType(ThreadTerminalPanel, skipOffstage: false),
-      findsOneWidget,
-    );
+  });
+
+  testWidgets('terminal toggle works without an active thread', (tester) async {
+    final state = AppState.test();
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.terminal));
+    await tester.pumpAndSettle();
+
+    expect(state.terminalStore.open, isTrue);
+    expect(find.text('Terminal'), findsOneWidget);
   });
 }

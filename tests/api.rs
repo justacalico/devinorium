@@ -8113,6 +8113,85 @@ async fn terminal_create_kill_and_ws_round_trip() {
     let _ = shutdown.send(());
 }
 
+#[tokio::test]
+async fn terminal_create_without_thread_id_is_allowed() {
+    let (app, _db) = make_app().await;
+    let (port, shutdown) = spawn_router(app).await;
+    let base = format!("http://127.0.0.1:{port}");
+    let origin = base.clone();
+    let client = reqwest::Client::new();
+
+    let login = client
+        .post(format!("{base}/api/auth/login"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .json(&serde_json::json!({
+            "username": "owner",
+            "password": "supersecret123",
+        }))
+        .send()
+        .await
+        .unwrap();
+    let cookie = session_cookie(&login);
+
+    // A global terminal does not require a thread.
+    let resp = client
+        .post(format!("{base}/api/terminal/sessions"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+    let term: serde_json::Value = resp.json().await.unwrap();
+    let terminal_id = term["id"].as_str().unwrap().to_string();
+    assert!(!terminal_id.is_empty());
+
+    let kill = client
+        .delete(format!("{base}/api/terminal/sessions/{terminal_id}"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert!(kill.status().is_success());
+
+    let _ = shutdown.send(());
+}
+
+#[tokio::test]
+async fn terminal_create_with_unknown_thread_id_is_rejected() {
+    let (app, _db) = make_app().await;
+    let (port, shutdown) = spawn_router(app).await;
+    let base = format!("http://127.0.0.1:{port}");
+    let origin = base.clone();
+    let client = reqwest::Client::new();
+
+    let login = client
+        .post(format!("{base}/api/auth/login"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .json(&serde_json::json!({
+            "username": "owner",
+            "password": "supersecret123",
+        }))
+        .send()
+        .await
+        .unwrap();
+    let cookie = session_cookie(&login);
+
+    let resp = client
+        .post(format!("{base}/api/terminal/sessions"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .json(&serde_json::json!({"thread_id": "no-such-thread"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let _ = shutdown.send(());
+}
+
 // ---- git clone ----
 
 fn run_git_checked(cwd: &std::path::Path, args: &[&str]) {

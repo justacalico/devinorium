@@ -12,19 +12,19 @@ class AgentPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = context.read<AppState>();
+    final terminalStore = state.terminalStore;
 
-    return Selector<AppState, bool>(
-      selector: (_, s) => s.editorTerminalOpen,
-      builder: (context, terminalOpen, _) {
+    return ListenableBuilder(
+      listenable: terminalStore,
+      builder: (context, _) {
         return Material(
           color: theme.colorScheme.surfaceContainerLow,
           child: Column(
             children: [
               _Header(
                 onClose: () => state.setAgentPanelOpen(false),
-                onToggleTerminal: () =>
-                    state.setEditorTerminalOpen(!terminalOpen),
-                terminalOpen: terminalOpen,
+                onToggleTerminal: terminalStore.toggleOpen,
+                terminalOpen: terminalStore.open,
               ),
               const Divider(height: 1),
               const Expanded(child: ChatView()),

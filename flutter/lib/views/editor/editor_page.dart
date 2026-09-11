@@ -3,10 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../api/api_service.dart';
 import '../../l10n/l10n.dart';
 import '../../state/app_state.dart';
-import '../../terminal/thread_terminal_panel.dart';
+import '../../terminal/terminal_panel.dart';
 import 'agent_panel.dart';
 import 'editor_tab_bar.dart';
 import 'file_editor.dart';
@@ -45,12 +44,11 @@ class _WideEditor extends StatelessWidget {
         agentPanelOpen: s.agentPanelOpen,
         agentPanelUserSet: s.agentPanelUserSet,
         agentPanelWidth: s.editorAgentPanelWidth,
-        terminalOpen: s.editorTerminalOpen && s.activeThreadId != null,
-        activeThreadId: s.activeThreadId,
       ),
       builder: (context, model, _) {
-        final agentPanelOpen =
-            model.agentPanelUserSet ? model.agentPanelOpen : true;
+        final agentPanelOpen = model.agentPanelUserSet
+            ? model.agentPanelOpen
+            : true;
         return Row(
           children: [
             Expanded(
@@ -60,17 +58,17 @@ class _WideEditor extends StatelessWidget {
                   const Expanded(child: FileEditor()),
                   if (model.tabSaving)
                     const LinearProgressIndicator(minHeight: 2),
-                  if (model.terminalOpen) const _EditorTerminal(),
+                  TerminalPanel(store: state.terminalStore),
                 ],
               ),
             ),
             if (agentPanelOpen) ...[
               _ResizeHandle(
                 onDrag: (delta) => state.setEditorAgentPanelWidth(
-                    model.agentPanelWidth - delta),
+                  model.agentPanelWidth - delta,
+                ),
               ),
-              SizedBox(
-                  width: model.agentPanelWidth, child: const AgentPanel()),
+              SizedBox(width: model.agentPanelWidth, child: const AgentPanel()),
             ],
           ],
         );
@@ -84,42 +82,7 @@ typedef _EditorLayoutModel = ({
   bool agentPanelOpen,
   bool agentPanelUserSet,
   double agentPanelWidth,
-  bool terminalOpen,
-  String? activeThreadId,
 });
-
-class _EditorTerminal extends StatelessWidget {
-  const _EditorTerminal();
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.read<AppState>();
-
-    return Selector<AppState, ({
-      String? activeThreadId,
-      double editorTerminalHeight,
-      ApiService api,
-    })>(
-      selector: (_, s) => (
-        activeThreadId: s.activeThreadId,
-        editorTerminalHeight: s.editorTerminalHeight,
-        api: s.api,
-      ),
-      builder: (context, model, _) {
-        final threadId = model.activeThreadId;
-        if (threadId == null) return const SizedBox.shrink();
-
-        return ThreadTerminalPanel(
-          api: model.api,
-          threadId: threadId,
-          initialHeight: model.editorTerminalHeight,
-          onHeightChanged: state.setEditorTerminalHeight,
-          onClose: () => state.setEditorTerminalOpen(false),
-        );
-      },
-    );
-  }
-}
 
 class _NarrowEditor extends StatelessWidget {
   const _NarrowEditor();
@@ -136,14 +99,13 @@ class _NarrowEditor extends StatelessWidget {
         agentPanelOpen: s.agentPanelOpen,
         agentPanelUserSet: s.agentPanelUserSet,
         agentPanelWidth: s.editorAgentPanelWidth,
-        terminalOpen: s.editorTerminalOpen && s.activeThreadId != null,
-        activeThreadId: s.activeThreadId,
       ),
       builder: (context, model, _) {
         // Until the user opens or closes the panel explicitly, let it follow
         // the layout: open in the wide layout, closed in the narrow one.
-        final agentPanelOpen =
-            model.agentPanelUserSet ? model.agentPanelOpen : false;
+        final agentPanelOpen = model.agentPanelUserSet
+            ? model.agentPanelOpen
+            : false;
         return Stack(
           children: [
             Column(
@@ -152,7 +114,7 @@ class _NarrowEditor extends StatelessWidget {
                 const Expanded(child: FileEditor()),
                 if (model.tabSaving)
                   const LinearProgressIndicator(minHeight: 2),
-                if (model.terminalOpen) const _EditorTerminal(),
+                TerminalPanel(store: state.terminalStore),
               ],
             ),
             if (agentPanelOpen)
@@ -182,10 +144,10 @@ class _NarrowEditor extends StatelessWidget {
               right: 8,
               child: _FloatingToggle(
                 icon: agentPanelOpen ? Icons.close : Icons.chat_outlined,
-                tooltip:
-                    agentPanelOpen ? l10n(context).close : l10n(context).chat,
-                onPressed: () =>
-                    state.setAgentPanelOpen(!agentPanelOpen),
+                tooltip: agentPanelOpen
+                    ? l10n(context).close
+                    : l10n(context).chat,
+                onPressed: () => state.setAgentPanelOpen(!agentPanelOpen),
               ),
             ),
             if (agentPanelOpen)
@@ -255,10 +217,7 @@ class _ResizeHandle extends StatelessWidget {
           width: 10,
           color: theme.colorScheme.outlineVariant.withAlpha(40),
           alignment: Alignment.center,
-          child: VerticalDivider(
-            width: 2,
-            color: theme.colorScheme.outline,
-          ),
+          child: VerticalDivider(width: 2, color: theme.colorScheme.outline),
         ),
       ),
     );

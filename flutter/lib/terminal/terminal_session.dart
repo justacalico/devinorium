@@ -108,6 +108,7 @@ class RemoteTerminalSession extends TerminalSession {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
   int _reconnectAttempts = 0;
+  bool _disposed = false;
   static const _maxReconnectAttempts = 5;
 
   @override
@@ -166,7 +167,9 @@ class RemoteTerminalSession extends TerminalSession {
     final delay = Duration(
       milliseconds: 500 * (pow(2, _reconnectAttempts - 1).toInt()),
     );
-    Future.delayed(delay, _connect);
+    Future.delayed(delay, () {
+      if (!_disposed) _connect();
+    });
   }
 
   void _onDone() {
@@ -192,30 +195,33 @@ class RemoteTerminalSession extends TerminalSession {
 
   @override
   void dispose() {
+    _disposed = true;
     _sub?.cancel();
     _channel?.sink.close();
     super.dispose();
   }
 }
 
-/// Factory signature for creating a [TerminalSession] for a thread.
+/// Factory signature for creating a [TerminalSession].
 ///
-/// This is the default factory used by [ThreadTerminalPanel] so tests can
-/// inject a fake session without starting a real PTY or WebSocket.
+/// This is the default factory used by [TerminalStore] so tests can inject a
+/// fake session without starting a real PTY or WebSocket. [threadId] is the
+/// currently active thread, if any — remote sessions may be created without
+/// one since the terminal workspace is global.
 ///
 /// Non-test callers should pass [createTerminalSession] and let it handle the
 /// actual local/remote backend.
 typedef TerminalSessionFactory =
     Future<TerminalSession> Function({
       required ApiService api,
-      required String threadId,
+      required String? threadId,
       required bool local,
     });
 
-/// Create a local or remote terminal session for [threadId].
+/// Create a local or remote terminal session.
 Future<TerminalSession> createTerminalSession({
   required ApiService api,
-  required String threadId,
+  required String? threadId,
   required bool local,
 }) async {
   if (local) {

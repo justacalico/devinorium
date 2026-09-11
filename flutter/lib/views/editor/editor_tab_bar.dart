@@ -13,15 +13,16 @@ class EditorTabBar extends StatelessWidget {
     final theme = Theme.of(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({
-      List<EditorTab> tabs,
-      String? activePath,
-      bool activeTabLoading,
-      bool activeTabSaving,
-      bool activeTabDirty,
-      String? activeThreadId,
-      bool editorTerminalOpen,
-    })>(
+    return Selector<
+      AppState,
+      ({
+        List<EditorTab> tabs,
+        String? activePath,
+        bool activeTabLoading,
+        bool activeTabSaving,
+        bool activeTabDirty,
+      })
+    >(
       selector: (_, s) {
         final activeTab = s.activeEditorTab;
         return (
@@ -30,8 +31,6 @@ class EditorTabBar extends StatelessWidget {
           activeTabLoading: activeTab?.loading ?? false,
           activeTabSaving: activeTab?.saving ?? false,
           activeTabDirty: activeTab?.dirty ?? false,
-          activeThreadId: s.activeThreadId,
-          editorTerminalOpen: s.editorTerminalOpen,
         );
       },
       builder: (context, model, _) {
@@ -46,27 +45,26 @@ class EditorTabBar extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   children: [
                     for (final tab in model.tabs)
-                      _Tab(
-                        tab: tab,
-                        active: activePath == tab.path,
-                      ),
+                      _Tab(tab: tab, active: activePath == tab.path),
                   ],
                 ),
               ),
-              if (model.activeThreadId != null)
-                _ToolbarButton(
-                  icon: model.editorTerminalOpen
+              ListenableBuilder(
+                listenable: state.terminalStore,
+                builder: (context, _) => _ToolbarButton(
+                  icon: state.terminalStore.open
                       ? Icons.terminal
                       : Icons.terminal_outlined,
                   tooltip: l10n(context).terminal,
-                  onPressed: () =>
-                      state.setEditorTerminalOpen(!model.editorTerminalOpen),
+                  onPressed: state.terminalStore.toggleOpen,
                 ),
+              ),
               if (activePath != null) ...[
                 _ToolbarButton(
                   icon: Icons.refresh,
                   tooltip: l10n(context).editorReload,
-                  onPressed: model.activeTabLoading ||
+                  onPressed:
+                      model.activeTabLoading ||
                           model.activeTabSaving ||
                           model.activeTabDirty
                       ? null

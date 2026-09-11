@@ -3,14 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/l10n.dart';
 import 'terminal_grid.dart';
 import 'terminal_session.dart';
-
-/// One workspace tab. A tab can hold multiple terminal sessions.
-class TerminalTab {
-  TerminalTab({required this.id});
-
-  final String id;
-  final List<TerminalSession> sessions = [];
-}
+import 'terminal_store.dart';
 
 /// Displays one or more workspace [TerminalTab]s like a browser tab bar, with
 /// the active tab's terminal grid shown below.

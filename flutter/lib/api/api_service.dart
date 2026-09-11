@@ -789,8 +789,10 @@ class ApiService {
 
   // ---- Terminal ----
 
-  /// Create a remote terminal session for [threadId]. Returns the session id.
-  Future<String> createTerminalSession(String threadId) async {
+  /// Create a remote terminal session. [threadId] is optional bookkeeping —
+  /// the terminal workspace is global and may outlive the active thread.
+  /// Returns the session id.
+  Future<String> createTerminalSession(String? threadId) async {
     final j = await _client.post('/api/terminal/sessions', {
       'thread_id': threadId,
     });

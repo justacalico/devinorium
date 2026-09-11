@@ -11,7 +11,6 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:provider/provider.dart';
 
-import '../api/api_service.dart';
 import '../l10n/l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
@@ -30,7 +29,7 @@ import 'drop_zone.dart';
 import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
-import '../terminal/thread_terminal_panel.dart';
+import '../terminal/terminal_panel.dart';
 import 'plan_overlay.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
@@ -53,18 +52,8 @@ part 'thread/pre_builder.dart';
 part 'thread/linked_mr_chip.dart';
 part 'thread/plan_overlay.dart';
 
-class ThreadPage extends StatefulWidget {
+class ThreadPage extends StatelessWidget {
   const ThreadPage({super.key});
-
-  @override
-  State<ThreadPage> createState() => _ThreadPageState();
-}
-
-class _ThreadPageState extends State<ThreadPage> {
-  final _terminalOpenByThread = <String, bool>{};
-  final _terminalHeightByThread = <String, double>{};
-
-  static const _defaultTerminalHeight = 280.0;
 
   @override
   Widget build(BuildContext context) {
@@ -77,11 +66,9 @@ class _ThreadPageState extends State<ThreadPage> {
       ({
         Thread? thread,
         String? tag,
-        String? activeThreadId,
         MergeRequestLink? linkedMergeRequest,
         Plan? activePlan,
         bool planOverlayVisible,
-        ApiService api,
       })
     >(
       selector: (_, s) {
@@ -99,23 +86,13 @@ class _ThreadPageState extends State<ThreadPage> {
                   runStatus: s.lastRunStatus,
                 )
               : null,
-          activeThreadId: s.activeThreadId,
           linkedMergeRequest: s.linkedMergeRequest,
           activePlan: s.activePlan,
           planOverlayVisible: s.planOverlayVisible,
-          api: s.api,
         );
       },
       builder: (context, model, _) {
         final title = model.thread?.title ?? l10n(context).selectOrCreateThread;
-        final activeThreadId = model.activeThreadId;
-        final terminalOpen =
-            activeThreadId != null &&
-            (_terminalOpenByThread[activeThreadId] ?? false);
-        final terminalHeight = activeThreadId != null
-            ? (_terminalHeightByThread[activeThreadId] ??
-                  _defaultTerminalHeight)
-            : _defaultTerminalHeight;
 
         return Scaffold(
           appBar: AppBar(
@@ -158,12 +135,11 @@ class _ThreadPageState extends State<ThreadPage> {
                   ),
                   onPressed: state.togglePlanOverlay,
                 ),
-              if (activeThreadId != null)
-                IconButton(
-                  tooltip: l10n(context).terminal,
-                  icon: const Icon(Icons.terminal),
-                  onPressed: () => _toggleTerminal(activeThreadId),
-                ),
+              IconButton(
+                tooltip: l10n(context).terminal,
+                icon: const Icon(Icons.terminal),
+                onPressed: state.terminalStore.toggleOpen,
+              ),
             ],
             centerTitle: false,
             backgroundColor: theme.colorScheme.surface,
@@ -172,39 +148,12 @@ class _ThreadPageState extends State<ThreadPage> {
           body: Column(
             children: [
               const Expanded(child: ChatView()),
-              ThreadTerminalPanel(
-                api: model.api,
-                threadId: activeThreadId ?? '',
-                open: terminalOpen,
-                initialHeight: terminalHeight,
-                onHeightChanged: (height) {
-                  if (activeThreadId != null) {
-                    _setTerminalHeight(activeThreadId, height);
-                  }
-                },
-                onClose: activeThreadId != null
-                    ? () => _toggleTerminal(activeThreadId)
-                    : null,
-              ),
+              TerminalPanel(store: state.terminalStore),
             ],
           ),
         );
       },
     );
-  }
-
-  void _toggleTerminal(String threadId) {
-    setState(() {
-      final open = !(_terminalOpenByThread[threadId] ?? false);
-      _terminalOpenByThread[threadId] = open;
-      if (open) {
-        _terminalHeightByThread[threadId] ??= _defaultTerminalHeight;
-      }
-    });
-  }
-
-  void _setTerminalHeight(String threadId, double height) {
-    setState(() => _terminalHeightByThread[threadId] = height);
   }
 }
 
