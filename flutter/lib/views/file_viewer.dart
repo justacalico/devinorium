@@ -23,12 +23,14 @@ const _maxInitialContentLines = 2000;
 class FileViewerPage extends StatefulWidget {
   final String path;
   final int? projectId;
+  final String? threadId;
   final String? gitStatus;
 
   const FileViewerPage({
     super.key,
     required this.path,
     this.projectId,
+    this.threadId,
     this.gitStatus,
   });
 
@@ -59,6 +61,7 @@ class _FileViewerPageState extends State<FileViewerPage> {
       final content = await api.readFile(
         path: widget.path,
         projectId: widget.projectId,
+        threadId: widget.threadId,
         includeDiff: includeDiff,
       );
       if (mounted) {

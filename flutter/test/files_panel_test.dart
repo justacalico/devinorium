@@ -466,4 +466,93 @@ void main() {
       expect(find.byIcon(Icons.create_new_folder_outlined), findsNothing);
     });
   });
+
+  group('FilesPanel worktree scope', () {
+    ThreadDetail detail({String? worktree, String envMode = 'local'}) =>
+        ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 't',
+            projectId: 1,
+            model: 'm',
+            permissionMode: 'normal',
+            envMode: envMode,
+            worktreePath: worktree,
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        );
+
+    testWidgets('follows the thread worktree and shows a marker', (
+      tester,
+    ) async {
+      final requests = <Uri>[];
+      var worktree = false;
+      final mock = MockClient((req) async {
+        requests.add(req.url);
+        if (req.url.path == '/api/files') {
+          return _json(200, [
+            {
+              'name': worktree ? 'wt.txt' : 'proj.txt',
+              'is_dir': false,
+              'size': 1,
+            },
+          ]);
+        }
+        if (req.url.path == '/api/threads/t1' && req.method == 'GET') {
+          return _json(200, {
+            'thread': {
+              'id': 't1',
+              'title': 't',
+              'project_id': 1,
+              'model': 'm',
+              'permission_mode': 'normal',
+              'env_mode': worktree ? 'worktree' : 'local',
+              'worktree_path': worktree ? '/wt' : null,
+              'created_at': '',
+              'updated_at': '',
+            },
+            'messages': [],
+          });
+        }
+        if (req.url.path == '/api/threads/runs') {
+          return _json(200, {'running_ids': []});
+        }
+        if (req.url.path.endsWith('/messages')) {
+          return _json(200, {'messages': []});
+        }
+        return _json(200, req.method == 'GET' ? [] : <String, dynamic>{});
+      });
+      final state = AppState.test(
+        api: ApiService(client: ApiClient.withClient(mock)),
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 't1',
+        activeThreadDetail: detail(),
+      );
+      await state.openFilesPanel();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(state.filesScopeKey, 'project:1');
+      expect(find.text('proj.txt'), findsOneWidget);
+      expect(find.byIcon(Icons.folder_copy_outlined), findsNothing);
+
+      // The thread's run created a worktree; the panel must follow it.
+      worktree = true;
+      await state.setThreadGit('t1', worktreePath: '/wt');
+      await state.setThreadEnvMode('t1', 'worktree');
+      await tester.pumpAndSettle();
+
+      expect(state.filesScopeKey, 'worktree:/wt');
+      expect(find.byIcon(Icons.folder_copy_outlined), findsOneWidget);
+      expect(find.text('wt.txt'), findsOneWidget);
+      final fileReqs = requests.where((u) => u.path == '/api/files').toList();
+      expect(fileReqs.length, greaterThanOrEqualTo(2));
+      expect(fileReqs.last.queryParameters['thread_id'], 't1');
+    });
+  });
 }

@@ -1027,6 +1027,77 @@ void main() {
       ];
       await service.uploadFiles(destDir: 'dir', projectId: 1, files: files);
     });
+
+    test('listFiles encodes thread_id', () async {
+      final mock = MockClient((req) async {
+        expect(req.url.queryParameters['project_id'], '1');
+        expect(req.url.queryParameters['thread_id'], 't1');
+        return _json(200, []);
+      });
+      final service = _serviceFor(mock);
+      await service.listFiles(path: 'foo', projectId: 1, threadId: 't1');
+    });
+
+    test('readFile encodes thread_id', () async {
+      final mock = MockClient((req) async {
+        expect(req.url.queryParameters['project_id'], '1');
+        expect(req.url.queryParameters['thread_id'], 't1');
+        return _json(200, {
+          'path': '/wt/foo.rs',
+          'mime': 'text/x-rust',
+          'size': 4,
+          'base64': '',
+          'text': 'hi',
+          'sha256': 's',
+        });
+      });
+      final service = _serviceFor(mock);
+      await service.readFile(path: 'foo.rs', projectId: 1, threadId: 't1');
+    });
+
+    test('writeFile sends thread_id in body', () async {
+      final mock = MockClient((req) async {
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['project_id'], 1);
+        expect(body['thread_id'], 't1');
+        return _json(200, {
+          'path': '/wt/foo.rs',
+          'mime': 'text/x-rust',
+          'size': 4,
+          'base64': '',
+          'text': 'hi',
+          'sha256': 's',
+        });
+      });
+      final service = _serviceFor(mock);
+      await service.writeFile(
+        path: 'foo.rs',
+        projectId: 1,
+        threadId: 't1',
+        content: 'hi',
+      );
+    });
+
+    test('mkdir sends thread_id', () async {
+      final mock = MockClient((req) async {
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['project_id'], 1);
+        expect(body['thread_id'], 't1');
+        return _json(200, {});
+      });
+      final service = _serviceFor(mock);
+      await service.mkdir('foo', projectId: 1, threadId: 't1');
+    });
+
+    test('deleteFile encodes thread_id', () async {
+      final mock = MockClient((req) async {
+        expect(req.url.queryParameters['project_id'], '1');
+        expect(req.url.queryParameters['thread_id'], 't1');
+        return _json(200, {});
+      });
+      final service = _serviceFor(mock);
+      await service.deleteFile('foo', projectId: 1, threadId: 't1');
+    });
   });
 
   group('Users', () {

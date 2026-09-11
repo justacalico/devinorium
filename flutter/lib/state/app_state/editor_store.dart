@@ -2,6 +2,7 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 
 class EditorTab {
   final String path;
+  final int? projectId;
   FileContent? content;
   String text;
   bool dirty;
@@ -13,6 +14,7 @@ class EditorTab {
 
   EditorTab({
     required this.path,
+    this.projectId,
     this.content,
     this.text = '',
     this.dirty = false,
@@ -38,6 +40,7 @@ class EditorTab {
   }) =>
       EditorTab(
         path: path,
+        projectId: projectId,
         content: content ?? this.content,
         text: text ?? this.text,
         dirty: dirty ?? this.dirty,
@@ -144,8 +147,9 @@ mixin EditorStore on AppStateBase {
 
   @override
   Future<void> openEditorFile(String path) async {
-    if (_tabFor(path) != null) {
-      setActiveEditorPath(path);
+    final scoped = filesScopedPath(path);
+    if (_tabFor(scoped) != null) {
+      setActiveEditorPath(scoped);
       return;
     }
 
@@ -154,22 +158,28 @@ mixin EditorStore on AppStateBase {
       closeEditorTab(active.path);
     }
 
-    await _openEditorFileImpl(path);
+    await _openEditorFileImpl(scoped);
   }
 
   @override
   Future<void> openEditorFileNewTab(String path) async {
-    if (_tabFor(path) != null) {
-      setActiveEditorPath(path);
+    final scoped = filesScopedPath(path);
+    if (_tabFor(scoped) != null) {
+      setActiveEditorPath(scoped);
       return;
     }
 
-    await _openEditorFileImpl(path);
+    await _openEditorFileImpl(scoped);
   }
 
   Future<void> _openEditorFileImpl(String path) async {
     try {
-      final tab = EditorTab(path: path, loading: true, preview: true);
+      final tab = EditorTab(
+        path: path,
+        projectId: _activeProjectId,
+        loading: true,
+        preview: true,
+      );
       _editorTabs.add(tab);
       _bumpEditorTabs();
       _activeEditorPath = path;
@@ -178,7 +188,7 @@ mixin EditorStore on AppStateBase {
       try {
         final content = await api.readFile(
           path: path,
-          projectId: activeProjectId,
+          projectId: p.isAbsolute(path) ? null : tab.projectId,
         );
         final idx = _editorTabs.indexWhere((t) => t.path == path);
         if (idx < 0) return;
@@ -250,10 +260,14 @@ mixin EditorStore on AppStateBase {
           break;
         }
       }
-      return raw;
+      return p.normalize(raw);
     }
-    final worktree = store.detail.valueOrNull?.thread.worktreePath;
-    if (worktree != null && worktree.isNotEmpty) {
+    final thread =
+        store.detail.valueOrNull?.thread ?? _threadById(store.threadId);
+    final worktree = thread?.worktreePath;
+    if (thread?.envMode == 'worktree' &&
+        worktree != null &&
+        worktree.isNotEmpty) {
       return p.normalize(p.join(worktree, raw));
     }
     return p.normalize(raw);
@@ -322,7 +336,7 @@ mixin EditorStore on AppStateBase {
       try {
         final content = await api.writeFile(
           path: path,
-          projectId: activeProjectId,
+          projectId: p.isAbsolute(path) ? null : tab.projectId,
           content: textToSave,
           expectedSha256: expectedSha,
         );
@@ -377,7 +391,7 @@ mixin EditorStore on AppStateBase {
       try {
         final content = await api.readFile(
           path: path,
-          projectId: activeProjectId,
+          projectId: p.isAbsolute(path) ? null : tab.projectId,
         );
         final newIdx = _editorTabs.indexWhere((t) => t.path == path);
         if (newIdx < 0) return;

@@ -32,7 +32,7 @@ class _FilesPanelState extends State<FilesPanel> {
   }
 
   void _loadIfNeeded(AppState state) {
-    if (state.filesProjectId == state.activeProjectId) return;
+    if (state.filesScopeKey == state.activeFilesScopeKey) return;
     if (state.appMode == AppMode.editor && state.activeThreadId == null) return;
     unawaited(state.reloadFiles());
   }
@@ -60,6 +60,8 @@ class _FilesPanelBody extends StatelessWidget {
         AppMode appMode,
         List<FileTreeRow> rows,
         String error,
+        String? scopeKey,
+        String? loadedScopeKey,
       })
     >(
       selector: (_, s) => (
@@ -68,11 +70,23 @@ class _FilesPanelBody extends StatelessWidget {
         appMode: s.appMode,
         rows: s.filesTreeRows,
         error: s.filesError,
+        scopeKey: s.activeFilesScopeKey,
+        loadedScopeKey: s.filesScopeKey,
       ),
       builder: (context, model, _) {
         final showTree =
             model.activeProjectId != null &&
             (model.appMode != AppMode.editor || model.activeThreadId != null);
+        if (showTree && model.scopeKey != model.loadedScopeKey) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            unawaited(state.reloadFiles());
+          });
+        }
+        final scopeKey = model.scopeKey;
+        final worktreeScope =
+            scopeKey != null && scopeKey.startsWith('worktree:')
+            ? scopeKey.substring('worktree:'.length)
+            : null;
 
         return Column(
           children: [
@@ -89,6 +103,18 @@ class _FilesPanelBody extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (worktreeScope != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Tooltip(
+                        message: worktreeScope,
+                        child: Icon(
+                          Icons.folder_copy_outlined,
+                          size: 14,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   if (showTree)
                     IconButton(
                       tooltip: l.newFolder,
@@ -156,8 +182,9 @@ class _FilesPanelBody extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FileViewerPage(
-          path: node.fullPathString,
+          path: state.filesScopedPath(node.fullPathString),
           projectId: state.activeProjectId,
+          threadId: state.filesApiThreadId,
           gitStatus: node.entry.gitStatus,
         ),
       ),

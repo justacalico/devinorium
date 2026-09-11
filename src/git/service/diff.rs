@@ -16,14 +16,14 @@ pub(crate) const MAX_DIFF_LINES: usize = 1000;
 impl GitService {
     /// Return a [`FileDiff`] between `target` and the same path at `HEAD`.
     ///
-    /// `root` is the project or home directory used to resolve the repository.
+    /// The repository is discovered from the target's own directory, so files
+    /// inside linked worktrees diff against that checkout's `HEAD`.
     /// `new_text` is the current working-tree content. If the file is untracked
     /// or newly added, `old_text` is `None`. Non-UTF-8 or oversized files and
     /// files outside a git repository return `None`.
     pub async fn text_diff(
         &self,
         target: &Path,
-        root: &Path,
         new_text: &str,
     ) -> Result<Option<FileDiff>, GitError> {
         if self.git.is_none() {
@@ -33,14 +33,15 @@ impl GitService {
             return Ok(None);
         }
 
-        let repo = self.repo_status(root, true).await?;
+        let target = tokio::fs::canonicalize(target)
+            .await
+            .map_err(|e| GitError::Other(e.to_string()))?;
+        let dir = target.parent().unwrap_or(target.as_path());
+        let repo = self.repo_status(dir, true).await?;
         if !repo.is_repo {
             return Ok(None);
         }
 
-        let target = tokio::fs::canonicalize(target)
-            .await
-            .map_err(|e| GitError::Other(e.to_string()))?;
         let rel = target
             .strip_prefix(&repo.toplevel)
             .map_err(|_| GitError::Other("path outside repository".into()))?;
@@ -142,7 +143,7 @@ mod tests {
 
         let git = GitService::new();
         let diff = git
-            .text_diff(&file, tmp.path(), "fn main() { println!(\"hi\"); }\n")
+            .text_diff(&file, "fn main() { println!(\"hi\"); }\n")
             .await
             .unwrap();
 
@@ -163,10 +164,7 @@ mod tests {
         tokio::fs::write(&file, "pub fn x() {}\n").await.unwrap();
 
         let git = GitService::new();
-        let diff = git
-            .text_diff(&file, tmp.path(), "pub fn x() {}\n")
-            .await
-            .unwrap();
+        let diff = git.text_diff(&file, "pub fn x() {}\n").await.unwrap();
 
         assert!(diff.is_some());
         assert_eq!(diff.unwrap().old_text, None);
@@ -182,10 +180,7 @@ mod tests {
         commit_all(tmp.path(), "initial").await;
 
         let git = GitService::new();
-        let diff = git
-            .text_diff(&file, tmp.path(), "fn main() {}\n")
-            .await
-            .unwrap();
+        let diff = git.text_diff(&file, "fn main() {}\n").await.unwrap();
 
         assert!(diff.is_none());
     }
@@ -197,7 +192,7 @@ mod tests {
         tokio::fs::write(&file, "hello\n").await.unwrap();
 
         let git = GitService::new();
-        let diff = git.text_diff(&file, tmp.path(), "hello\n").await.unwrap();
+        let diff = git.text_diff(&file, "hello\n").await.unwrap();
 
         assert!(diff.is_none());
     }
@@ -216,7 +211,7 @@ mod tests {
         tokio::fs::write(&file, &lines).await.unwrap();
 
         let git = GitService::new();
-        let diff = git.text_diff(&file, tmp.path(), &lines).await.unwrap();
+        let diff = git.text_diff(&file, &lines).await.unwrap();
 
         assert!(diff.is_none());
     }
@@ -241,7 +236,7 @@ mod tests {
         tokio::fs::write(&file, &new_lines).await.unwrap();
 
         let git = GitService::new();
-        let diff = git.text_diff(&file, tmp.path(), &new_lines).await.unwrap();
+        let diff = git.text_diff(&file, &new_lines).await.unwrap();
 
         assert!(diff.is_none());
     }
@@ -259,7 +254,7 @@ mod tests {
         tokio::fs::write(&file, &body).await.unwrap();
 
         let git = GitService::new();
-        let diff = git.text_diff(&file, tmp.path(), &body).await.unwrap();
+        let diff = git.text_diff(&file, &body).await.unwrap();
 
         assert!(diff.is_none());
     }
@@ -278,10 +273,7 @@ mod tests {
         tokio::fs::write(&file, "pub mod b;\n").await.unwrap();
 
         let git = GitService::new();
-        let diff = git
-            .text_diff(&file, tmp.path(), "pub mod b;\n")
-            .await
-            .unwrap();
+        let diff = git.text_diff(&file, "pub mod b;\n").await.unwrap();
 
         assert!(diff.is_some());
         assert_eq!(diff.unwrap().old_text.as_deref(), Some("pub mod a;\n"));

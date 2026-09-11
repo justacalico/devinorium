@@ -56,7 +56,8 @@ Map<String, Object> _fileJson(String path, String text) => {
       'sha256': 'sha-$text',
     };
 
-ThreadDetail _threadDetail({String? worktreePath}) => ThreadDetail(
+ThreadDetail _threadDetail({String? worktreePath, String envMode = 'local'}) =>
+    ThreadDetail(
       thread: Thread(
         id: 't1',
         title: 'Test',
@@ -66,6 +67,7 @@ ThreadDetail _threadDetail({String? worktreePath}) => ThreadDetail(
         createdAt: '',
         updatedAt: '',
         worktreePath: worktreePath,
+        envMode: envMode,
       ),
       messages: const [],
     );
@@ -442,6 +444,116 @@ void main() {
       expect(state.activeEditorPath, '/x/b.txt');
     });
 
+    test('openEditorFile resolves paths under the active worktree', () async {
+      String? requestedPath;
+      String? requestedThread;
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          requestedPath = req.url.queryParameters['path'];
+          requestedThread = req.url.queryParameters['thread_id'];
+          return _json(200, _fileJson('/wt/a.txt', 'x'));
+        }),
+      );
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(
+          worktreePath: '/wt',
+          envMode: 'worktree',
+        ),
+      );
+      state.setFilesEntries(const []);
+
+      await state.openEditorFile('a.txt');
+
+      // The tab key is the absolute worktree path so it cannot be confused
+      // with a project file after a scope switch.
+      expect(state.editorTabs.map((t) => t.path), ['/wt/a.txt']);
+      expect(state.activeEditorPath, '/wt/a.txt');
+      expect(requestedPath, '/wt/a.txt');
+      // Absolute paths resolve on their own; no thread scoping needed.
+      expect(requestedThread, isNull);
+      expect(state.activeEditorTab?.projectId, 1);
+    });
+
+    test('local-mode thread keeps paths project-relative', () async {
+      String? requestedPath;
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          requestedPath = req.url.queryParameters['path'];
+          return _json(200, _fileJson('a.txt', 'x'));
+        }),
+      );
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(worktreePath: '/wt'),
+      );
+
+      await state.openEditorFile('a.txt');
+
+      expect(state.activeEditorPath, 'a.txt');
+      expect(requestedPath, 'a.txt');
+    });
+
+    test('saveEditorTab writes to the worktree path', () async {
+      String? writtenPath;
+      final client = ApiClient.withClient(
+        MockClient((req) async {
+          if (req.method == 'PUT') {
+            writtenPath =
+                (jsonDecode(req.body) as Map<String, dynamic>)['path']
+                    as String?;
+            return _json(200, _fileJson('/wt/a.txt', 'new'));
+          }
+          return _json(200, _fileJson('/wt/a.txt', 'old'));
+        }),
+      );
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(
+          worktreePath: '/wt',
+          envMode: 'worktree',
+        ),
+      );
+      state.setFilesEntries(const []);
+      await state.openEditorFile('a.txt');
+      state.setEditorTabText('/wt/a.txt', 'new');
+
+      await state.saveEditorTab('/wt/a.txt');
+
+      expect(writtenPath, '/wt/a.txt');
+      expect(state.activeEditorTab?.dirty, isFalse);
+    });
+
+    test('deleteFile closes worktree-scoped tabs', () async {
+      final client = _clientFor([
+        _json(200, _fileJson('/wt/a.txt', 'x')),
+        _json(200, {}),
+        _json(200, []),
+      ]);
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadDetail: _threadDetail(
+          worktreePath: '/wt',
+          envMode: 'worktree',
+        ),
+      );
+      state.setFilesEntries(const []);
+      await state.openEditorFileNewTab('a.txt');
+      expect(state.editorTabs.length, 1);
+
+      await state.deleteFile('a.txt');
+
+      expect(state.editorTabs, isEmpty);
+    });
+
     test('toggle panels updates state', () {
       final state = AppState.test();
       expect(state.agentPanelOpen, isTrue);
@@ -527,6 +639,44 @@ void main() {
       expect(state.activeEditorPath, 'lib/b.dart');
     });
 
+    test('thread list entry supplies the worktree when detail unloads', () async {
+      final api = _StreamApiService(
+        _clientFor([_json(200, _fileJson('/wt/c.rs', 'x'))]),
+      );
+      final state = AppState.test(
+        api: api,
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadId: 't1',
+        // No activeThreadDetail: the edit event can arrive while the store
+        // detail is still loading; the sidebar list entry is the fallback.
+        threads: [
+          Thread(
+            id: 't1',
+            title: 't',
+            projectId: 1,
+            model: 'm',
+            permissionMode: 'normal',
+            envMode: 'worktree',
+            worktreePath: '/wt',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+        composerText: 'go',
+      );
+      state.setAppMode(AppMode.editor);
+      await state.sendMessage();
+
+      api.controller.add(
+        SseEvent('part', editPart('tc1', ['c.rs']), id: '1'),
+      );
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      expect(state.editorTabs.map((t) => t.path), ['/wt/c.rs']);
+      expect(state.activeEditorPath, '/wt/c.rs');
+    });
+
     test('relative paths resolve against the thread worktree', () async {
       final api = _StreamApiService(
         _clientFor([_json(200, {}), _json(200, _fileJson('/wt/c.rs', 'x'))]),
@@ -535,7 +685,10 @@ void main() {
         api: api,
         projects: [project],
         activeProjectId: 1,
-        activeThreadDetail: _threadDetail(worktreePath: '/wt'),
+        activeThreadDetail: _threadDetail(
+          worktreePath: '/wt',
+          envMode: 'worktree',
+        ),
         composerText: 'go',
       );
       state.setAppMode(AppMode.editor);

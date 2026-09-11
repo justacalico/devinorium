@@ -1990,6 +1990,159 @@ void main() {
       expect(base.filesError, isEmpty);
     });
 
+    test('openFilesPanel scopes the listing to the thread worktree', () async {
+      Uri? seen;
+      final state = AppState(
+        api: ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              seen = req.url;
+              return _json(200, [
+                {'name': 'a.txt', 'is_dir': false, 'size': 1},
+              ]);
+            }),
+          ),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        activeProjectId: 1,
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 't',
+            projectId: 1,
+            model: 'm',
+            permissionMode: 'normal',
+            envMode: 'worktree',
+            worktreePath: '/repo/wt',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      );
+      await base.openFilesPanel();
+      expect(seen?.queryParameters['thread_id'], 't1');
+      expect(base.filesScopeKey, 'worktree:/repo/wt');
+      expect(base.activeFilesScopeKey, 'worktree:/repo/wt');
+      expect(base.filesEntries, hasLength(1));
+    });
+
+    test('scope falls back to the project without a worktree', () async {
+      final base = AppState.test(activeProjectId: 1);
+      expect(base.activeFilesScopeKey, 'project:1');
+      expect(base.filesScopeKey, isNull);
+      expect(base.filesScopedPath('a.txt'), 'a.txt');
+    });
+
+    test('mutations stay pinned to the loaded scope during transition', () async {
+      final requests = <http.Request>[];
+      var worktree = false;
+      final state = AppState.test(
+        api: ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              requests.add(req);
+              if (req.url.path == '/api/files' && req.method == 'GET') {
+                return _json(200, []);
+              }
+              if (req.url.path == '/api/threads/t1' && req.method == 'GET') {
+                return _json(200, {
+                  'thread': {
+                    'id': 't1',
+                    'title': 't',
+                    'project_id': 1,
+                    'model': 'm',
+                    'permission_mode': 'normal',
+                    'env_mode': worktree ? 'worktree' : 'local',
+                    'worktree_path': worktree ? '/wt' : null,
+                    'created_at': '',
+                    'updated_at': '',
+                  },
+                  'messages': [],
+                });
+              }
+              if (req.url.path == '/api/threads/runs') {
+                return _json(200, {'running_ids': []});
+              }
+              if (req.url.path.endsWith('/messages')) {
+                return _json(200, {'messages': []});
+              }
+              return _json(200, req.method == 'GET' ? [] : <String, dynamic>{});
+            }),
+          ),
+        ),
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 't',
+            projectId: 1,
+            model: 'm',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      );
+      await state.openFilesPanel();
+      expect(state.filesScopeKey, 'project:1');
+
+      // The thread moves into a worktree but the loaded tree is still the
+      // project scope until the panel reloads.
+      worktree = true;
+      await state.setThreadEnvMode('t1', 'worktree');
+      expect(state.activeFilesScopeKey, 'worktree:/wt');
+      expect(state.filesScopeKey, 'project:1');
+
+      await state.deleteFile('a.txt');
+      var del = requests.lastWhere((r) => r.url.path == '/api/files/delete');
+      expect(del.url.queryParameters['path'], 'a.txt');
+      expect(del.url.queryParameters['thread_id'], isNull);
+
+      // Once reloaded under the worktree, deletes carry the absolute path.
+      await state.reloadFiles();
+      expect(state.filesScopeKey, 'worktree:/wt');
+      await state.deleteFile('b.txt');
+      del = requests.lastWhere((r) => r.url.path == '/api/files/delete');
+      expect(del.url.queryParameters['path'], '/wt/b.txt');
+      expect(del.url.queryParameters['thread_id'], 't1');
+    });
+
+    test('filesScopedPath joins relative paths onto the worktree', () {
+      final base = AppState.test(
+        activeProjectId: 1,
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 't',
+            projectId: 1,
+            model: 'm',
+            permissionMode: 'normal',
+            envMode: 'worktree',
+            worktreePath: '/repo/wt',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      );
+      // Establish the loaded scope; tree paths then resolve under it.
+      base.setFilesEntries(const []);
+      expect(base.filesScopeKey, 'worktree:/repo/wt');
+      expect(base.filesScopedPath('a.txt'), '/repo/wt/a.txt');
+      expect(base.filesScopedPath('dir/b.txt'), '/repo/wt/dir/b.txt');
+      expect(base.filesScopedPath('/abs/c.txt'), '/abs/c.txt');
+    });
+
     test('toggleFilesFolder expands a directory and loads children', () async {
       final state = AppState(
         api: ApiService(
