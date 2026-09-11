@@ -47,15 +47,48 @@ pub fn router() -> Router<AppState> {
 
 /// Resolve a `path` relative to the active project (if any) or the user's
 /// home directory. Absolute paths are accepted; `..` traversal is prevented.
+/// A `thread_id` takes precedence over `project_id`: the root becomes the
+/// thread's working directory, i.e. its worktree when the thread runs in
+/// worktree mode and the project root otherwise.
 async fn resolve(
     state: &AppState,
     user_id: i64,
     rel: Option<&str>,
     project_id: Option<i64>,
+    thread_id: Option<&str>,
 ) -> Result<(PathBuf, PathBuf), Response> {
     let home_dir = &state.config.home_dir;
 
-    let project_root = if let Some(pid) = project_id {
+    let project_root = if let Some(tid) = thread_id.filter(|s| !s.trim().is_empty()) {
+        match state.db.get_thread(tid, user_id).await {
+            Ok(Some(t)) => {
+                // A thread whose project row was deleted has no meaningful
+                // root; reject instead of falling back to the home dir.
+                if let Some(pid) = t.project_id {
+                    if !matches!(state.db.get_project(pid, user_id).await, Ok(Some(_))) {
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(crate::api::ApiError::new("invalid thread_id")),
+                        )
+                            .into_response());
+                    }
+                }
+                Some(
+                    crate::api::threads::plan::project_working_dir_for_thread(state, &t)
+                        .await
+                        .map_err(crate::api::map_err_internal)
+                        .map_err(IntoResponse::into_response)?,
+                )
+            }
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid thread_id")),
+                )
+                    .into_response())
+            }
+        }
+    } else if let Some(pid) = project_id {
         match state.db.get_project(pid, user_id).await {
             Ok(Some(p)) => Some(PathBuf::from(p.path)),
             _ => {
@@ -126,6 +159,7 @@ async fn resolve(
 struct ListQuery {
     path: Option<String>,
     project_id: Option<i64>,
+    thread_id: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 }
@@ -135,6 +169,7 @@ struct ListQuery {
 struct ReadQuery {
     path: Option<String>,
     project_id: Option<i64>,
+    thread_id: Option<String>,
     #[serde(default)]
     diff: bool,
 }
@@ -153,7 +188,15 @@ async fn list_dir(
     CurrentUser(user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> Response {
-    let (target, _root) = match resolve(&state, user.id, q.path.as_deref(), q.project_id).await {
+    let (target, _root) = match resolve(
+        &state,
+        user.id,
+        q.path.as_deref(),
+        q.project_id,
+        q.thread_id.as_deref(),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -223,7 +266,15 @@ async fn read_file(
     CurrentUser(user): CurrentUser,
     Query(q): Query<ReadQuery>,
 ) -> Response {
-    let (target, root) = match resolve(&state, user.id, q.path.as_deref(), q.project_id).await {
+    let (target, _root) = match resolve(
+        &state,
+        user.id,
+        q.path.as_deref(),
+        q.project_id,
+        q.thread_id.as_deref(),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -263,7 +314,7 @@ async fn read_file(
     let text = std::str::from_utf8(&bytes).ok().map(|s| s.to_string());
     let diff = if q.diff && state.git.is_enabled() {
         if let Some(ref text) = text {
-            match state.git.text_diff(&target, &root, text).await {
+            match state.git.text_diff(&target, text).await {
                 Ok(d) => d,
                 Err(e) => {
                     tracing::warn!(error = %e, "file diff failed");
@@ -297,6 +348,8 @@ struct WriteReq {
     path: String,
     #[serde(default)]
     project_id: Option<i64>,
+    #[serde(default)]
+    thread_id: Option<String>,
     content: String,
     #[serde(default)]
     expected_sha256: Option<String>,
@@ -313,7 +366,15 @@ async fn write_file(
     CurrentUser(user): CurrentUser,
     Json(req): Json<WriteReq>,
 ) -> Response {
-    let (target, _root) = match resolve(&state, user.id, Some(&req.path), req.project_id).await {
+    let (target, _root) = match resolve(
+        &state,
+        user.id,
+        Some(&req.path),
+        req.project_id,
+        req.thread_id.as_deref(),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -435,9 +496,11 @@ async fn upload(
     CurrentUser(user): CurrentUser,
     mut multipart: Multipart,
 ) -> Response {
-    // Fields: "path" (optional relative dir), "project_id" (optional int), file fields.
+    // Fields: "path" (optional relative dir), "project_id"/"thread_id"
+    // (optional scope), file fields.
     let mut dest_dir_rel: Option<String> = None;
     let mut project_id: Option<i64> = None;
+    let mut thread_id: Option<String> = None;
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
     while let Ok(Some(field)) = multipart.next_field().await {
@@ -455,6 +518,11 @@ async fn upload(
             project_id = String::from_utf8_lossy(&bytes).parse().ok();
             continue;
         }
+        if name == "thread_id" {
+            let raw = String::from_utf8_lossy(&bytes).to_string();
+            thread_id = Some(raw);
+            continue;
+        }
         if filename.is_empty() || filename.len() > 255 {
             continue;
         }
@@ -468,10 +536,11 @@ async fn upload(
         files.push((filename, bytes.to_vec()));
     }
 
-    let (root_base, _root) = match resolve(&state, user.id, None, project_id).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
+    let (root_base, _root) =
+        match resolve(&state, user.id, None, project_id, thread_id.as_deref()).await {
+            Ok(v) => v,
+            Err(r) => return r,
+        };
 
     let mut uploaded: Vec<String> = Vec::new();
     for (filename, bytes) in files {
@@ -524,6 +593,8 @@ struct MkdirReq {
     path: String,
     #[serde(default)]
     project_id: Option<i64>,
+    #[serde(default)]
+    thread_id: Option<String>,
 }
 
 async fn mkdir(
@@ -531,7 +602,15 @@ async fn mkdir(
     CurrentUser(user): CurrentUser,
     Json(req): Json<MkdirReq>,
 ) -> Response {
-    let (target, _root) = match resolve(&state, user.id, Some(&req.path), req.project_id).await {
+    let (target, _root) = match resolve(
+        &state,
+        user.id,
+        Some(&req.path),
+        req.project_id,
+        req.thread_id.as_deref(),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -545,6 +624,10 @@ async fn mkdir(
 struct MoveReq {
     from: String,
     to: String,
+    #[serde(default)]
+    project_id: Option<i64>,
+    #[serde(default)]
+    thread_id: Option<String>,
 }
 
 async fn mv(
@@ -552,7 +635,15 @@ async fn mv(
     CurrentUser(user): CurrentUser,
     Json(req): Json<MoveReq>,
 ) -> Response {
-    let (from, root) = match resolve(&state, user.id, Some(&req.from), None).await {
+    let (from, root) = match resolve(
+        &state,
+        user.id,
+        Some(&req.from),
+        req.project_id,
+        req.thread_id.as_deref(),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -590,7 +681,15 @@ async fn delete(
     CurrentUser(user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> Response {
-    let (target, _root) = match resolve(&state, user.id, q.path.as_deref(), q.project_id).await {
+    let (target, _root) = match resolve(
+        &state,
+        user.id,
+        q.path.as_deref(),
+        q.project_id,
+        q.thread_id.as_deref(),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(r) => return r,
     };

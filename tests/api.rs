@@ -3398,6 +3398,374 @@ async fn file_manager_rejects_hidden_paths() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+fn git_add_worktree(repo: &std::path::Path, path: &std::path::Path, branch: &str) {
+    let out = std::process::Command::new("git")
+        .args(["worktree", "add", "-b", branch])
+        .arg(path)
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git worktree add failed: {out:?}");
+}
+
+async fn patch_thread_git(app: &Router, cookie: &str, tid: &str, wt: &std::path::Path) {
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            cookie,
+            &format!(
+                r#"{{"env_mode":"worktree","branch":"wt-branch","worktree_path":"{}"}}"#,
+                wt.display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn file_manager_thread_scope_uses_worktree_root() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let wt = tmp.path().join("wt");
+    git_add_worktree(&repo, &wt, "wt-branch");
+    std::fs::write(wt.join("worktree-only.txt"), "wt content").unwrap();
+
+    let tid = make_thread(&app, &cookie, pid, "wt-thread").await;
+    patch_thread_git(&app, &cookie, &tid, &wt).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?thread_id={tid}&path=."),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("worktree-only.txt"), "body: {body}");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?thread_id={tid}&path=worktree-only.txt"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["text"], "wt content");
+    assert_eq!(
+        v["path"].as_str().unwrap(),
+        wt.canonicalize()
+            .unwrap()
+            .join("worktree-only.txt")
+            .to_string_lossy()
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/files/content",
+            &cookie,
+            &format!(r#"{{"path":"from-editor.txt","content":"hi","thread_id":"{tid}"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(wt.join("from-editor.txt").exists());
+    assert!(!repo.join("from-editor.txt").exists());
+}
+
+#[tokio::test]
+async fn file_manager_thread_scope_falls_back_to_project() {
+    // A worktree-mode thread that has not run yet has no worktree_path; the
+    // file APIs fall back to the project root until one is created.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let tid = make_thread(&app, &cookie, pid, "pending-wt").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"env_mode":"worktree"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    std::fs::write(repo.join("project-only.txt"), "project content").unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?thread_id={tid}&path=project-only.txt"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["text"], "project content");
+}
+
+#[tokio::test]
+async fn file_manager_thread_scope_rejects_unknown_thread() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files?project_id={pid}&thread_id=nope&path=."),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            "/api/files/content?thread_id=nope&path=x.txt",
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+}
+
+#[tokio::test]
+async fn file_manager_thread_scope_confines_traversal_to_worktree() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let wt = tmp.path().join("wt");
+    git_add_worktree(&repo, &wt, "wt-branch");
+    let tid = make_thread(&app, &cookie, pid, "wt-thread").await;
+    patch_thread_git(&app, &cookie, &tid, &wt).await;
+
+    // ".." escapes are confined to the worktree root even though the project
+    // root sits next to it on disk.
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files?thread_id={tid}&path=../repo"),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files?thread_id={tid}&path=.."),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+}
+
+#[tokio::test]
+async fn thread_send_context_paths_resolve_in_worktree() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"wt-ctx","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let v = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap();
+    let tid = v["id"].as_str().unwrap();
+
+    // init_git_repo commits file.txt; the send auto-creates the worktree and
+    // the context path must resolve inside it, not the project root.
+    let context_paths = serde_json::json!([{"path": "file.txt", "is_dir": false}]);
+    let boundary = "----wtctxboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"context_paths\"\r\n\r\n{context_paths}\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let reply = v["reply"].as_str().unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    let thread = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await)
+        .unwrap()["thread"]
+        .clone();
+    let wt = std::path::PathBuf::from(thread["worktree_path"].as_str().unwrap());
+    let expected = format!("file.txt: {} (file)", wt.join("file.txt").display());
+    assert!(reply.contains(&expected), "reply: {reply}");
+    assert!(!reply.contains(repo.join("file.txt").to_string_lossy().as_ref()));
+}
+
+#[tokio::test]
+async fn file_manager_thread_scope_rejects_other_users_thread() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let pid = create_project(&app, &owner_cookie).await;
+    let tid = make_thread(&app, &owner_cookie, pid, "owner-thread").await;
+
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &alice_cookie,
+            "GET",
+            &format!("/api/files?thread_id={tid}&path=."),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+}
+
+#[tokio::test]
+async fn file_manager_thread_scope_rejects_orphaned_thread() {
+    // Deleting a project leaves threads.project_id dangling; the file API
+    // must not silently fall back to the home directory for such threads.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "orphan").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/projects/{pid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        request_status(
+            app.clone(),
+            &cookie,
+            "GET",
+            &format!("/api/files?thread_id={tid}&path=."),
+            "",
+        )
+        .await,
+        StatusCode::BAD_REQUEST,
+    );
+}
+
+#[tokio::test]
+async fn file_manager_thread_scope_upload_lands_in_worktree() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let wt = tmp.path().join("wt");
+    git_add_worktree(&repo, &wt, "wt-branch");
+    let tid = make_thread(&app, &cookie, pid, "wt-thread").await;
+    patch_thread_git(&app, &cookie, &tid, &wt).await;
+
+    let boundary = "----wtuploadboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"thread_id\"\r\n\r\n{tid}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"up.txt\"\r\nContent-Type: text/plain\r\n\r\nuploaded\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/files")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(wt.join("up.txt").exists());
+    assert!(!repo.join("up.txt").exists());
+}
+
 #[tokio::test]
 async fn project_accepts_absolute_path_with_spaces() {
     let (app, _db) = make_app().await;

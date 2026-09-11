@@ -16,6 +16,7 @@ use crate::db::ThreadRow;
 use crate::security::paths;
 use crate::AppState;
 
+use super::plan::project_working_dir_for_thread;
 use super::send::SendInput;
 
 /// Maximum number of context references accepted per message.
@@ -95,17 +96,16 @@ fn resolve_context_path(root: &Path, rel: &str) -> Option<PathBuf> {
     }
 }
 
-/// The directory context paths resolve against: the thread's project root.
+/// The directory context paths resolve against: the thread's working
+/// directory — its worktree in worktree mode, the project root otherwise.
 /// Project-less threads fall back to the user's home directory; a thread whose
 /// project row is gone resolves nothing (`None`).
 async fn context_root(state: &AppState, thread: &ThreadRow) -> Option<PathBuf> {
     if let Some(pid) = thread.project_id {
-        let p = state.db.get_project(pid, thread.user_id).await.ok()??;
-        return Some(
-            tokio::fs::canonicalize(&p.path)
-                .await
-                .unwrap_or_else(|_| PathBuf::from(&p.path)),
-        );
+        // Keep the "project row gone means no refs" behavior; the helper
+        // falls back to home_dir, so gate on the project lookup first.
+        state.db.get_project(pid, thread.user_id).await.ok()??;
+        return project_working_dir_for_thread(state, thread).await.ok();
     }
     Some(state.config.home_dir.clone())
 }

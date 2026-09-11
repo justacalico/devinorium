@@ -549,10 +549,14 @@ class ApiService {
   Future<FileContent> readFile({
     required String path,
     int? projectId,
+    String? threadId,
     bool includeDiff = false,
   }) async {
     final params = <String, String>{'path': path};
     if (projectId != null) params['project_id'] = projectId.toString();
+    if (threadId != null && threadId.isNotEmpty) {
+      params['thread_id'] = threadId;
+    }
     if (includeDiff) params['diff'] = 'true';
     final uri = _buildPath('/api/files/content', params);
     final j = await _client.get(uri);
@@ -562,11 +566,13 @@ class ApiService {
   Future<FileContent> writeFile({
     required String path,
     int? projectId,
+    String? threadId,
     required String content,
     String? expectedSha256,
   }) async {
     final body = <String, dynamic>{'path': path, 'content': content};
     if (projectId != null) body['project_id'] = projectId;
+    if (threadId != null && threadId.isNotEmpty) body['thread_id'] = threadId;
     if (expectedSha256 != null && expectedSha256.isNotEmpty) {
       body['expected_sha256'] = expectedSha256;
     }
@@ -587,12 +593,16 @@ class ApiService {
   Future<List<DirEntry>> listFiles({
     String? path,
     int? projectId,
+    String? threadId,
     int? limit,
     int? offset,
   }) async {
     final params = <String, String>{};
     if (path != null && path.isNotEmpty) params['path'] = path;
     if (projectId != null) params['project_id'] = projectId.toString();
+    if (threadId != null && threadId.isNotEmpty) {
+      params['thread_id'] = threadId;
+    }
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null && offset > 0) params['offset'] = offset.toString();
     final uri = _buildPath('/api/files', params);
@@ -600,15 +610,23 @@ class ApiService {
     return list.map(DirEntry.fromJson).toList();
   }
 
-  Future<void> mkdir(String path, {int? projectId}) async {
+  Future<void> mkdir(String path, {int? projectId, String? threadId}) async {
     final body = <String, dynamic>{'path': path};
     if (projectId != null) body['project_id'] = projectId;
+    if (threadId != null && threadId.isNotEmpty) body['thread_id'] = threadId;
     await _client.post('/api/files/dir', body);
   }
 
-  Future<void> deleteFile(String path, {int? projectId}) async {
+  Future<void> deleteFile(
+    String path, {
+    int? projectId,
+    String? threadId,
+  }) async {
     final params = <String, String>{'path': path};
     if (projectId != null) params['project_id'] = projectId.toString();
+    if (threadId != null && threadId.isNotEmpty) {
+      params['thread_id'] = threadId;
+    }
     final uri = _buildPath('/api/files/delete', params);
     await _client.delete(uri);
   }
@@ -616,11 +634,13 @@ class ApiService {
   Future<void> uploadFiles({
     String? destDir,
     int? projectId,
+    String? threadId,
     required List<({String filename, String mime, Uint8List bytes})> files,
   }) async {
     final fields = <String, String>{};
     if (destDir != null && destDir.isNotEmpty) fields['path'] = destDir;
     if (projectId != null) fields['project_id'] = projectId.toString();
+    if (threadId != null && threadId.isNotEmpty) fields['thread_id'] = threadId;
     await _client.uploadMultipart('/api/files', fields, files);
   }
 

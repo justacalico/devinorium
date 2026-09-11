@@ -152,6 +152,7 @@ class _FakeApiService extends ApiService {
   Future<List<DirEntry>> listFiles({
     String? path,
     int? projectId,
+    String? threadId,
     int? limit,
     int? offset,
   }) async {
