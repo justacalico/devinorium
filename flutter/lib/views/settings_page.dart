@@ -71,12 +71,23 @@ class _SettingsPageState extends State<SettingsPage> {
     final state = context.read<AppState>();
 
     return Selector<AppState,
-        ({bool isOwner, int settingsTopicIndex, bool hasServer, Locale locale})>(
+        ({
+          bool isOwner,
+          int settingsTopicIndex,
+          bool hasServer,
+          Locale locale,
+          String language,
+          bool notificationsEnabled,
+        })>(
       selector: (_, s) => (
         isOwner: s.isOwner,
         settingsTopicIndex: s.settingsTopicIndex,
         hasServer: s.multiServerState.hasAnyServer,
         locale: s.locale,
+        // Choice-level fields so the section rebuilds even when the resolved
+        // locale/notifications outcome is unchanged.
+        language: s.language,
+        notificationsEnabled: s.notificationsEnabled,
       ),
       builder: (context, model, _) {
         final l = l10n(context);

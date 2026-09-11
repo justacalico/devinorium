@@ -72,6 +72,11 @@ class _DevinoriumAppState extends State<DevinoriumApp>
     _updateBrightness();
   }
 
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    widget.appState.handleLocalesChanged(locales);
+  }
+
   void _updateBrightness() {
     final brightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;

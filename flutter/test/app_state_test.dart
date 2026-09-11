@@ -3778,6 +3778,50 @@ void main() {
         'zh',
       );
     });
+
+    test('language defaults to system when nothing is stored', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test();
+      await state.bootstrap();
+      expect(state.language, 'system');
+      // The resolved locale always lands on a supported language.
+      expect(state.locale.languageCode, anyOf('en', 'zh'));
+    });
+
+    test('setLanguage system is persisted and reported', () async {
+      final state = AppState.test();
+      await state.setLanguage('zh');
+      await state.setLanguage('system');
+      expect(state.language, 'system');
+      expect(
+        (await SharedPreferences.getInstance()).getString(
+          'devinorium_language',
+        ),
+        'system',
+      );
+    });
+
+    test('handleLocalesChanged follows the OS only in system mode', () async {
+      final state = AppState.test();
+      await state.setLanguage('system');
+      state.handleLocalesChanged([const Locale('zh'), const Locale('en')]);
+      expect(state.locale, const Locale('zh'));
+
+      // An explicit pick pins the locale; OS changes are ignored.
+      await state.setLanguage('en');
+      state.handleLocalesChanged([const Locale('zh')]);
+      expect(state.locale, const Locale('en'));
+
+      // Back to system mode: the OS preference list is walked for the first
+      // supported language.
+      await state.setLanguage('system');
+      state.handleLocalesChanged([const Locale('fr'), const Locale('zh')]);
+      expect(state.locale, const Locale('zh'));
+
+      // Nothing supported at all falls back to en.
+      state.handleLocalesChanged([const Locale('fr')]);
+      expect(state.locale, const Locale('en'));
+    });
   });
 
   group('Git state', () {

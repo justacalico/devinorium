@@ -4,6 +4,8 @@ mixin SettingsStore on AppStateBase {
   @override
   Locale _locale = const Locale('en');
   @override
+  String _language = 'system';
+  @override
   int _settingsTopicIndex = 0;
   static final _supportedLanguageCodes =
       AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet();
@@ -11,6 +13,9 @@ mixin SettingsStore on AppStateBase {
   final _notifications = NotificationService();
   @override
   Locale get locale => _locale;
+  @override
+  String get language =>
+      _language == 'system' ? 'system' : _localeFromTag(_language).languageCode;
   @override
   int get settingsTopicIndex => _settingsTopicIndex;
   @override
@@ -22,7 +27,8 @@ mixin SettingsStore on AppStateBase {
   }
   @override
   Future<void> setLanguage(String language) async {
-    _locale = _localeFromTag(language);
+    _language = language;
+    _locale = _resolveLanguage(language);
     setAppL10n(_locale);
     notifyListeners();
     try {
@@ -32,16 +38,46 @@ mixin SettingsStore on AppStateBase {
   }
   @override
   Future<void> _loadLanguage() async {
+    var value = 'system';
     try {
       final prefs = await SharedPreferences.getInstance();
-      final value = prefs.getString('devinorium_language') ?? 'en';
-      _locale = _localeFromTag(value);
-    } catch (_) {
-      _locale = const Locale('en');
-    }
+      final stored = prefs.getString('devinorium_language');
+      if (stored != null && stored.isNotEmpty) value = stored;
+    } catch (_) {}
+    _language = value;
+    _locale = _resolveLanguage(value);
     setAppL10n(_locale);
     notifyListeners();
   }
+
+  /// Re-resolve the locale when the OS language list changes. Only the
+  /// "system" choice follows the platform; a picked language stays put.
+  @override
+  void handleLocalesChanged(List<Locale>? locales) {
+    if (_language != 'system') return;
+    final resolved = _systemLocale(locales);
+    if (resolved == _locale) return;
+    _locale = resolved;
+    setAppL10n(_locale);
+    notifyListeners();
+  }
+
+  Locale _resolveLanguage(String language) {
+    return language == 'system'
+        ? _systemLocale(null)
+        : _localeFromTag(language);
+  }
+
+  Locale _systemLocale(List<Locale>? locales) {
+    // Walk the OS preference list like localeListResolutionCallback does:
+    // the first supported entry wins, otherwise English.
+    for (final locale in locales ?? PlatformDispatcher.instance.locales) {
+      final code = locale.languageCode;
+      if (_supportedLanguageCodes.contains(code)) return Locale(code);
+    }
+    return const Locale('en');
+  }
+
   Locale _localeFromTag(String tag) {
     final code = tag.contains('-') ? tag.substring(0, tag.indexOf('-')) : tag;
     return _supportedLanguageCodes.contains(code)

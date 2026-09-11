@@ -65,10 +65,11 @@ class _PersonalizationSection extends StatelessWidget {
             const SizedBox(width: 16),
             Expanded(
               child: DropdownButton<String>(
-                value: state.locale.languageCode,
+                value: state.language,
                 isExpanded: true,
                 underline: const SizedBox.shrink(),
                 items: [
+                  DropdownMenuItem(value: 'system', child: Text(l.system)),
                   DropdownMenuItem(value: 'en', child: Text(l.languageEnglish)),
                   DropdownMenuItem(
                     value: 'zh',
