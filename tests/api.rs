@@ -3220,7 +3220,7 @@ async fn git_changes_stage_unstage_commit() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    assert!(v["branch"].as_str().unwrap().len() > 0);
+    assert!(!v["branch"].as_str().unwrap().is_empty());
     assert_eq!(v["staged"].as_array().unwrap().len(), 0);
     let unstaged = v["unstaged"].as_array().unwrap();
     assert_eq!(unstaged.len(), 2);
