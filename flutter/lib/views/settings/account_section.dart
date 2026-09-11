@@ -35,6 +35,9 @@ class _AccountSection extends StatelessWidget {
     final user = state.user;
     final username = user?.username ?? '';
     final totpEnabled = user?.totpEnabled ?? false;
+    // The bundled local server authenticates by token, not password, so
+    // two-factor settings have no effect on it.
+    final isLocal = state.multiServerState.activeProfile?.isLocal ?? false;
 
     final l = l10n(context);
     return _SectionCard(
@@ -44,22 +47,24 @@ class _AccountSection extends StatelessWidget {
           label: l.username,
           value: username.isEmpty ? '—' : username,
         ),
-        const Divider(),
-        _SettingsRow(
-          label: l.twoFactorAuthentication,
-          value: totpEnabled ? l.enabled : l.disabled,
-          trailing: totpEnabled
-              ? OutlinedButton.icon(
-                  onPressed: () => _confirmDisableTotp(context),
-                  icon: const Icon(Icons.lock_open_outlined, size: 18),
-                  label: Text(l.disable2fa),
-                )
-              : FilledButton.icon(
-                  onPressed: state.openTotpSetup,
-                  icon: const Icon(Icons.lock_outline, size: 18),
-                  label: Text(l.enable2fa),
-                ),
-        ),
+        if (!isLocal) ...[
+          const Divider(),
+          _SettingsRow(
+            label: l.twoFactorAuthentication,
+            value: totpEnabled ? l.enabled : l.disabled,
+            trailing: totpEnabled
+                ? OutlinedButton.icon(
+                    onPressed: () => _confirmDisableTotp(context),
+                    icon: const Icon(Icons.lock_open_outlined, size: 18),
+                    label: Text(l.disable2fa),
+                  )
+                : FilledButton.icon(
+                    onPressed: state.openTotpSetup,
+                    icon: const Icon(Icons.lock_outline, size: 18),
+                    label: Text(l.enable2fa),
+                  ),
+          ),
+        ],
       ],
     );
   }

@@ -40,7 +40,7 @@ class LocalServerManager {
     String? executablePath,
     Map<String, String>? environment,
     String? binaryPath,
-    String? dataDir,
+    this.dataDir,
     bool? supported,
     ServerProcessStarter? spawnProcess,
     Future<bool> Function(Uri url)? healthCheck,
@@ -48,7 +48,6 @@ class LocalServerManager {
   })  : _executablePath = executablePath ?? Platform.resolvedExecutable,
         _environment = environment ?? Platform.environment,
         _binaryPath = _nonEmpty(binaryPath ?? _binaryOverride),
-        _dataDir = dataDir,
         _supported = supported ?? _defaultSupported,
         _spawn = spawnProcess ?? _defaultSpawn,
         _healthCheck = healthCheck ?? _defaultHealthCheck;
@@ -66,7 +65,6 @@ class LocalServerManager {
   final String _executablePath;
   final Map<String, String> _environment;
   final String? _binaryPath;
-  final String? _dataDir;
   final bool _supported;
   final ServerProcessStarter _spawn;
   final Future<bool> Function(Uri url) _healthCheck;
@@ -77,6 +75,9 @@ class LocalServerManager {
   LocalServerEndpoint? _endpoint;
   DateTime? _lastSpawnAt;
   int _quickExits = 0;
+
+  /// Optional override for the data directory (default: per-user app data).
+  final String? dataDir;
 
   /// Called when the spawned server exits on its own (crash or kill), but not
   /// after a deliberate [stop].
@@ -95,7 +96,7 @@ class LocalServerManager {
     final exeDir = p.dirname(_executablePath);
     final name = binaryFileName(Platform.operatingSystem);
     return [
-      if (_binaryPath != null) _binaryPath!,
+      ?_binaryPath,
       p.join(exeDir, 'server', name),
       p.join(exeDir, name),
     ];
@@ -151,7 +152,7 @@ class LocalServerManager {
 
     _stopping = false;
     final dataDir = Directory(
-      _dataDir ?? dataDirPath(Platform.operatingSystem, _environment),
+      this.dataDir ?? dataDirPath(Platform.operatingSystem, _environment),
     );
     try {
       await dataDir.create(recursive: true);

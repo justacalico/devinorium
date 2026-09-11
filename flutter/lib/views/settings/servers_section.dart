@@ -74,8 +74,13 @@ class _ServersSection extends StatelessWidget {
                       break;
                     }
                   }
-                  final title =
-                      profile.username.isEmpty ? profile.label : profile.username;
+                  final title = profile.isLocal
+                      ? l.thisDevice
+                      : (profile.username.isEmpty
+                          ? profile.label
+                          : profile.username);
+                  final subtitle =
+                      profile.isLocal ? l.bundledServer : displayUrl;
                   return ListTile(
                     leading: leading,
                     title: Text(title,
@@ -86,7 +91,7 @@ class _ServersSection extends StatelessWidget {
                       message: profile.baseUrl.isEmpty
                           ? displayUrl
                           : profile.baseUrl,
-                      child: Text(displayUrl,
+                      child: Text(subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           softWrap: false),
@@ -100,12 +105,13 @@ class _ServersSection extends StatelessWidget {
                                 unawaited(state.switchServer(profile.id)),
                             child: Text(l.switchServerLabel),
                           ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          tooltip: l.delete,
-                          onPressed: () =>
-                              unawaited(_confirmAndRemove(context, state, profile)),
-                        ),
+                        if (!profile.isLocal)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: l.delete,
+                            onPressed: () => unawaited(
+                                _confirmAndRemove(context, state, profile)),
+                          ),
                       ],
                     ),
                   );
