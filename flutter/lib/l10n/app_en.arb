@@ -412,6 +412,14 @@
   "permissionModeAcceptEdits": "Confirm edits",
   "permissionModeSmart": "Smart confirm",
   "permissionModeBypass": "Auto-run",
+  "defaultPermissionLevel": "Default permission level",
+  "@defaultPermissionLevel": {
+    "description": "Label for the settings dropdown picking the permission level new threads start with"
+  },
+  "defaultPermissionLevelHint": "Applied to new threads",
+  "@defaultPermissionLevelHint": {
+    "description": "Hint under the default permission level setting clarifying it does not change the open thread"
+  },
   "preview": "Preview",
   "output": "Output",
   "changed": "Changed",

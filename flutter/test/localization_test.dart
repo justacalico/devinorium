@@ -59,5 +59,7 @@ void main() {
     expect(l10n.attachSourceTakePhoto, 'Take Photo');
     expect(l10n.attachSourceRecordVideo, 'Record Video');
     expect(l10n.attachSourceBrowse, 'Browse');
+    expect(l10n.defaultPermissionLevel, 'Default permission level');
+    expect(l10n.defaultPermissionLevelHint, 'Applied to new threads');
   });
 }

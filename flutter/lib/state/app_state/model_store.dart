@@ -4,7 +4,7 @@ const _selectedProviderKey = 'devinorium_selected_provider';
 const _selectedModelKey = 'devinorium_selected_model';
 const _selectedReasoningKey = 'devinorium_selected_reasoning';
 const _selectedPermissionKey = 'devinorium_selected_permission';
-const _knownPermissionModes = {'normal', 'accept-edits', 'smart', 'bypass'};
+const _knownPermissionModes = {...permissionModeIds};
 
 mixin ModelStore on AppStateBase {
   @override
@@ -77,6 +77,8 @@ mixin ModelStore on AppStateBase {
   String get selectedPermission =>
       _activeStore?.selectedPermission ?? _selectedPermission;
   @override
+  String get defaultPermission => _selectedPermission;
+  @override
   String get selectedProvider {
     final storeProvider = _activeStore?.selectedProvider;
     if (storeProvider != null && storeProvider.isNotEmpty) {
@@ -116,6 +118,19 @@ mixin ModelStore on AppStateBase {
     if (store != null) {
       store.selectedPermission = p;
     }
+    _selectedPermission = p;
+    unawaited(_saveSelectedPermission(p));
+    notifyListeners();
+  }
+
+  /// Set the permission mode new threads start with. Unlike
+  /// [setSelectedPermission] this does not touch the active thread; each open
+  /// thread keeps its own mode. The reverse direction still holds: changing
+  /// the composer dropdown on a thread also updates this default, matching how
+  /// the model and reasoning selections behave.
+  @override
+  void setDefaultPermission(String p) {
+    if (!_knownPermissionModes.contains(p)) return;
     _selectedPermission = p;
     unawaited(_saveSelectedPermission(p));
     notifyListeners();

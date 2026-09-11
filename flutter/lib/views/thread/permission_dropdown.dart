@@ -15,12 +15,7 @@ class _PermissionDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = l10n(context);
-    final modes = [
-      ('normal', l.permissionModeNormal),
-      ('accept-edits', l.permissionModeAcceptEdits),
-      ('smart', l.permissionModeSmart),
-      ('bypass', l.permissionModeBypass),
-    ];
+    final modes = permissionModeLabels(l);
     final fallback = !modes.any((m) => m.$1 == value)
         ? [DropdownMenuItem<String>(value: value, child: Text(value))]
         : <DropdownMenuItem<String>>[];

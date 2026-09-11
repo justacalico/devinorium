@@ -346,6 +346,98 @@ void main() {
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('devinorium_selected_permission'), 'bypass');
+    // Changing a thread's permission also updates the default for new
+    // threads, matching the model and reasoning selections.
+    expect(state.defaultPermission, 'bypass');
+  });
+
+  test('opening a thread does not overwrite the default permission', () async {
+    final api = _ProviderApi()
+      ..threadProviderId = 'devin-cli'
+      ..createdThread = Thread(
+        id: 't1',
+        title: 't',
+        projectId: 1,
+        providerId: 'devin-cli',
+        model: '',
+        permissionMode: 'bypass',
+        createdAt: '',
+        updatedAt: '',
+      );
+    final state = AppState.test(api: api);
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+
+    expect(state.selectedPermission, 'bypass');
+    expect(state.defaultPermission, 'normal');
+  });
+
+  test('setDefaultPermission persists the default permission', () async {
+    final state = AppState.test();
+    addTearDown(state.dispose);
+
+    state.setDefaultPermission('smart');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_permission'), 'smart');
+    expect(state.defaultPermission, 'smart');
+  });
+
+  test('setDefaultPermission ignores unknown modes', () async {
+    final state = AppState.test();
+    addTearDown(state.dispose);
+
+    state.setDefaultPermission('not-a-mode');
+    await Future.delayed(Duration.zero);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_permission'), isNull);
+    expect(state.defaultPermission, 'normal');
+  });
+
+  test('setDefaultPermission leaves the active thread untouched', () async {
+    final api = _ProviderApi()..threadProviderId = 'devin-cli';
+    final state = AppState.test(api: api);
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+    expect(state.selectedPermission, 'normal');
+
+    state.setDefaultPermission('bypass');
+
+    expect(state.defaultPermission, 'bypass');
+    expect(state.selectedPermission, 'normal');
+  });
+
+  test('createNewThread uses the default permission', () async {
+    final api = _ProviderApi()
+      ..threadProviderId = 'devin-cli'
+      ..createdThread = Thread(
+        id: 't-new',
+        title: 'New thread',
+        projectId: 1,
+        providerId: 'devin-cli',
+        model: '',
+        permissionMode: 'smart',
+        createdAt: '',
+        updatedAt: '',
+      );
+    final state = AppState.test(
+      api: api,
+      projects: [
+        Project(id: 1, name: 'p', path: '/tmp/p', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
+    addTearDown(state.dispose);
+
+    state.setDefaultPermission('smart');
+    await state.createNewThread();
+
+    expect(api.lastCreatePermission, 'smart');
+    expect(state.selectedPermission, 'smart');
   });
 
   test(

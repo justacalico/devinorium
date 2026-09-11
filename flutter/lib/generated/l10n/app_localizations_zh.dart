@@ -660,6 +660,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get permissionModeBypass => '自动运行';
 
   @override
+  String get defaultPermissionLevel => '默认权限级别';
+
+  @override
+  String get defaultPermissionLevelHint => '应用于新会话';
+
+  @override
   String get preview => '预览';
 
   @override

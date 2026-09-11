@@ -669,6 +669,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get permissionModeBypass => 'Auto-run';
 
   @override
+  String get defaultPermissionLevel => 'Default permission level';
+
+  @override
+  String get defaultPermissionLevelHint => 'Applied to new threads';
+
+  @override
   String get preview => 'Preview';
 
   @override

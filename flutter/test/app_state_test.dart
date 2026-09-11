@@ -295,6 +295,7 @@ void main() {
       expect(state.selectedProvider, 'opencode');
       expect(state.selectedModel, 'oc-m2');
       expect(state.selectedPermission, 'bypass');
+      expect(state.defaultPermission, 'bypass');
     });
 
     test(
