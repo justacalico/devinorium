@@ -253,7 +253,7 @@ mod tests {
         let results = cache.probe_registered().await;
         let mut ids: Vec<_> = results.iter().map(|(id, _)| id.as_str()).collect();
         ids.sort_unstable();
-        assert_eq!(ids, ["codex", "devin-cli", "opencode"]);
+        assert_eq!(ids, ["codex", "devin-cli", "grok", "opencode"]);
         // Each entry must classify one way or the other; which way depends on
         // what the host running the test has installed.
         for (_, status) in &results {

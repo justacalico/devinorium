@@ -173,7 +173,67 @@ fn registry_knows_devin_cli() {
 #[test]
 fn provider_name_looks_up_display_name() {
     assert_eq!(providers::provider_name("devin-cli"), Some("Devin CLI"));
+    assert_eq!(providers::provider_name("grok"), Some("Grok Code"));
     assert_eq!(providers::provider_name("nope"), None);
+}
+
+#[test]
+fn registry_knows_grok() {
+    let providers = providers::available_providers();
+    let grok = providers.iter().find(|p| p.id == "grok").unwrap();
+    assert_eq!(grok.name, "Grok Code");
+    assert_eq!(providers::default_command("grok"), "grok");
+    providers::build_provider(providers::ProviderConfig {
+        id: "grok".to_string(),
+        command: "grok".to_string(),
+        default_model: "grok-4.6".to_string(),
+    })
+    .expect("build grok provider");
+}
+
+/// Live check that `grok agent stdio` answers a prompt through the ACP
+/// provider. Ignored by default; run with `cargo test -- --ignored` on a
+/// host where `grok` is logged in.
+#[tokio::test]
+#[ignore = "requires grok CLI + auth"]
+async fn provider_grok_start() {
+    if std::process::Command::new("grok")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        eprintln!("skipping: grok not on PATH");
+        return;
+    }
+    let p = providers::acp::AcpProvider::new(
+        AgentKind::Grok,
+        "grok".to_string(),
+        "grok-4.6".to_string(),
+    );
+    let start = p
+        .start(StartRequest {
+            prompt: "Reply with exactly: GROK_OK".to_string(),
+            options: SendOptions {
+                model: "grok-4.6".to_string(),
+                reasoning_effort: Some("low".to_string()),
+                permissions: None,
+                permission_callback: None,
+                ask_callback: None,
+                part_callback: None,
+                session_callback: None,
+                working_dir: tmp_workdir(),
+                permission_mode: "normal".to_string(),
+                interaction_mode: "code".into(),
+                cancel_signal: None,
+                attachments: vec![],
+            },
+        })
+        .await
+        .expect("grok start");
+    assert!(!start.session_id.is_empty());
+    assert!(!start.reply.is_empty());
 }
 
 #[test]
