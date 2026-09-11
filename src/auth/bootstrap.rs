@@ -46,7 +46,12 @@ pub async fn run(db: &crate::db::Db, username: &str, password_str: &str) -> anyh
 /// interactive login is impossible; requests carrying the configured local
 /// token are mapped onto this user by the auth middleware.
 pub async fn run_local(db: &crate::db::Db) -> anyhow::Result<()> {
-    if db.get_user_by_username(LOCAL_USERNAME).await?.is_some() {
+    if let Some(existing) = db.get_user_by_username(LOCAL_USERNAME).await? {
+        // A pre-existing `local` row that lost its owner flag would silently
+        // break owner-only routes like the terminal, so re-assert it.
+        if !existing.is_owner {
+            db.set_user_owner(existing.id, true).await?;
+        }
         return Ok(());
     }
     let hash = password::hash(&random_secret())?;
