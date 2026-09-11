@@ -42,6 +42,7 @@ mixin HealthCheckStore on AppStateBase {
   }
 
   Future<void> _doCheck() async {
+    if (_isDisposed) return;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     var ok = await api.checkHealth();
@@ -66,15 +67,19 @@ mixin HealthCheckStore on AppStateBase {
       _serverVersion = version;
       changed = true;
     }
-    if (changed) {
+    if (changed && !_isDisposed) {
       notifyListeners();
     }
     if (!ok) {
-      // The bundled local server may have died without us noticing (e.g. it
-      // was owned by another app instance that exited). Re-ensure it so the
-      // next health check can come back connected.
+      // The bundled local server may have died without us noticing, or it
+      // can be alive but unauthenticatable (stale token in a respawned
+      // process). stop() clears a live-but-broken instance first so
+      // ensureRunning spawns a fresh one instead of re-adopting it.
       if (multiServerState.activeProfile?.isLocal == true) {
-        unawaited(_ensureLocalServer());
+        unawaited(() async {
+          await localServerManager.stop();
+          await _ensureLocalServer();
+        }());
       }
       if (_healthTimer != null) {
         _reconnectTimer = Timer(const Duration(seconds: 2), checkConnection);

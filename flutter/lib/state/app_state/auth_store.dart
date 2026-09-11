@@ -32,6 +32,12 @@ mixin AuthStore on AppStateBase {
       await _ensureLocalServer();
       final active = multiServerState.activeApi;
       if (active == null || !(await active.client.isConfigured)) {
+        // A local profile whose bundled server failed to start would
+        // otherwise sit dead forever — keep the health-check loop running so
+        // it can re-ensure and come back.
+        if (multiServerState.activeProfile?.isLocal == true) {
+          startHealthChecks();
+        }
         _view = AppView.app;
         notifyListeners();
         return;
@@ -55,6 +61,9 @@ mixin AuthStore on AppStateBase {
       await _resetServerState();
       if (kIsWeb && e is ApiException && e.statusCode == 401) {
         _dialog = DialogKind.webLogin;
+      }
+      if (multiServerState.activeProfile?.isLocal == true) {
+        startHealthChecks();
       }
       _view = AppView.app;
       notifyListeners();
@@ -239,7 +248,7 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> _ensureLocalServer() async {
     final manager = localServerManager;
-    if (!manager.isSupported) return;
+    if (_isDisposed || !manager.isSupported) return;
     try {
       final endpoint = await manager.ensureRunning();
       if (endpoint != null) {
@@ -259,8 +268,7 @@ mixin AuthStore on AppStateBase {
             store.dispose();
           }
           _threadStores.clear();
-          _activeStore = null;
-          _activeThreadId = null;
+          _setActiveStore(null);
         }
       } else if (!manager.hasBinary &&
           multiServerState

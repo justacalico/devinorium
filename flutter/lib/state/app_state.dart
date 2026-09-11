@@ -290,6 +290,7 @@ class AppState extends AppStateBase
   @override
   void dispose() {
     _versionChecker?.close();
+    markDisposed();
     stopHealthChecks();
     _resumeDebounceTimer?.cancel();
     _wantsResume = false;
