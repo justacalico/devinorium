@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.60.0 - 2026-09-11
+#### Features
+- 统一应用内消息提示样式 - (b176187) - HttpAnimations
+
+- - -
+
 ## v0.59.0 - 2026-09-11
 #### Features
 - 为 Linux 构建添加 RPM 安装包 - (13ac7cc) - HttpAnimations
