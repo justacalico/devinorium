@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
-import '../theme/semantic_colors.dart';
+import '../utils/git_status.dart';
 import 'file_viewer.dart';
 
 class FilesPanel extends StatefulWidget {
@@ -257,7 +257,7 @@ class _FilesPanelBody extends StatelessWidget {
         ? theme.colorScheme.primary
         : _fileIconColor(node.entry.name, theme);
     final titleColor = node.entry.gitStatus != null
-        ? _gitStatusColor(node.entry.gitStatus!, theme)
+        ? gitStatusColor(node.entry.gitStatus!, theme)
         : null;
 
     final tile = ListTile(
@@ -559,21 +559,6 @@ class _FilesPanelBody extends StatelessWidget {
       return l.sizeKilobytes((n / 1024).toStringAsFixed(1));
     }
     return l.sizeMegabytes((n / 1048576).toStringAsFixed(1));
-  }
-
-  Color _gitStatusColor(String status, ThemeData theme) {
-    final semantic =
-        theme.extension<SemanticColors>() ??
-        SemanticColors.fallback(theme.brightness);
-    final scheme = theme.colorScheme;
-    return switch (status) {
-      'modified' || 'descendant' => semantic.warning,
-      'added' || 'copied' => semantic.success,
-      'deleted' || 'conflict' => scheme.error,
-      'renamed' || 'untracked' => semantic.info,
-      'ignored' => scheme.onSurfaceVariant,
-      _ => scheme.onSurfaceVariant,
-    };
   }
 
   Future<void> _promptMkdir(BuildContext context, AppState state) async {

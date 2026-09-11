@@ -166,7 +166,11 @@ class _FakeApiService extends ApiService {
       Future.value([]);
 
   @override
-  Future<GitRepoInfo> gitRepoStatus(int projectId, {bool force = false}) =>
+  Future<GitRepoInfo> gitRepoStatus(
+    int projectId, {
+    bool force = false,
+    String? threadId,
+  }) =>
       Future.value(GitRepoInfo());
 
   @override

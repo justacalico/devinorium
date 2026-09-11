@@ -16,6 +16,7 @@ import '../utils/thread_status.dart';
 import '../widgets/owner_badge.dart';
 import '../widgets/provider_icons.dart';
 import 'files_panel.dart';
+import 'git_panel.dart';
 import 'project_icon.dart';
 import 'sidebar/link_merge_request_dialog.dart';
 import 'settings/topics.dart';
@@ -200,6 +201,7 @@ class _SidebarState extends State<Sidebar> {
             ({
               MainPage page,
               bool filesPanelOpen,
+              bool gitPanelOpen,
               User? user,
               bool hasServer,
               bool localActive,
@@ -208,6 +210,7 @@ class _SidebarState extends State<Sidebar> {
             selector: (_, state) => (
               page: state.page,
               filesPanelOpen: state.filesPanelOpen,
+              gitPanelOpen: state.gitPanelOpen,
               user: state.user,
               hasServer: state.multiServerState.hasAnyServer,
               localActive:
@@ -221,6 +224,7 @@ class _SidebarState extends State<Sidebar> {
                   : '?';
               final isSettings = model.page == MainPage.settings;
               final filesOpen = !isSettings && model.filesPanelOpen;
+              final gitOpen = !isSettings && model.gitPanelOpen;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,7 +233,7 @@ class _SidebarState extends State<Sidebar> {
                   if (isSettings) const _SettingsHeader(),
                   if (!isSettings) const _ModeSwitch(),
                   const _ServerSwitcher(),
-                  if (!isSettings && !filesOpen) ...[
+                  if (!isSettings && !filesOpen && !gitOpen) ...[
                     _SearchField(
                       controller: _searchController,
                       focusNode: _searchFocus,
@@ -239,6 +243,8 @@ class _SidebarState extends State<Sidebar> {
                   Expanded(
                     child: isSettings
                         ? const _SettingsNav()
+                        : gitOpen
+                        ? const GitPanel()
                         : filesOpen
                         ? const FilesPanel()
                         : _ProjectThreadList(
@@ -268,11 +274,19 @@ class _ActivityBar extends StatelessWidget {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({MainPage page, bool filesPanelOpen})>(
-      selector: (_, s) => (page: s.page, filesPanelOpen: s.filesPanelOpen),
+    return Selector<
+      AppState,
+      ({MainPage page, bool filesPanelOpen, bool gitPanelOpen})
+    >(
+      selector: (_, s) => (
+        page: s.page,
+        filesPanelOpen: s.filesPanelOpen,
+        gitPanelOpen: s.gitPanelOpen,
+      ),
       builder: (context, model, _) {
         final isSettings = model.page == MainPage.settings;
         final filesOpen = !isSettings && model.filesPanelOpen;
+        final gitOpen = !isSettings && model.gitPanelOpen;
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -281,9 +295,10 @@ class _ActivityBar extends StatelessWidget {
               _ActivityIcon(
                 icon: Icons.chat_bubble_outline,
                 tooltip: l.chat,
-                active: !isSettings && !filesOpen,
+                active: !isSettings && !filesOpen && !gitOpen,
                 onPressed: () {
                   state.closeFilesPanel();
+                  state.closeGitPanel();
                   state.setPage(MainPage.threads);
                 },
               ),
@@ -292,6 +307,12 @@ class _ActivityBar extends StatelessWidget {
                 tooltip: l.files,
                 active: filesOpen,
                 onPressed: () => unawaited(state.openFilesPanel()),
+              ),
+              _ActivityIcon(
+                icon: Icons.account_tree_outlined,
+                tooltip: l.git,
+                active: gitOpen,
+                onPressed: () => unawaited(state.openGitPanel()),
               ),
               const Spacer(),
               _ActivityIcon(

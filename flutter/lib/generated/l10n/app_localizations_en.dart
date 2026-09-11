@@ -774,6 +774,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get push => 'Push';
 
   @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get commit => 'Commit';
+
+  @override
+  String get commitMessageHint => 'Commit message';
+
+  @override
+  String get stage => 'Stage';
+
+  @override
+  String get unstage => 'Unstage';
+
+  @override
+  String get stageAll => 'Stage all';
+
+  @override
+  String get unstageAll => 'Unstage all';
+
+  @override
+  String get stagedChanges => 'Staged changes';
+
+  @override
+  String get notGitRepo => 'Not a git repository';
+
+  @override
+  String get gitCommitAllConfirm =>
+      'There are no staged changes. Stage all changes and commit?';
+
+  @override
   String get createBranch => 'Create branch';
 
   @override

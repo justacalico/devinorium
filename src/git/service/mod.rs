@@ -9,6 +9,7 @@ use mini_moka::sync::Cache;
 use tokio::sync::Mutex;
 
 pub mod branch;
+pub mod changes;
 pub mod diff;
 pub mod runner;
 pub mod status;
@@ -16,6 +17,7 @@ pub mod sync;
 pub mod worktree;
 
 pub use branch::Branch;
+pub use changes::{ChangeEntry, ChangeList, CommitResult};
 pub use status::RepoStatus;
 pub use worktree::Worktree;
 

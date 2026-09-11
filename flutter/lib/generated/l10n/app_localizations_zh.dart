@@ -765,6 +765,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get push => '推送';
 
   @override
+  String get refresh => '刷新';
+
+  @override
+  String get commit => '提交';
+
+  @override
+  String get commitMessageHint => '提交信息';
+
+  @override
+  String get stage => '暂存';
+
+  @override
+  String get unstage => '取消暂存';
+
+  @override
+  String get stageAll => '全部暂存';
+
+  @override
+  String get unstageAll => '全部取消暂存';
+
+  @override
+  String get stagedChanges => '已暂存的更改';
+
+  @override
+  String get notGitRepo => '不是 git 仓库';
+
+  @override
+  String get gitCommitAllConfirm => '没有已暂存的更改。是否暂存全部更改并提交？';
+
+  @override
   String get createBranch => '创建分支';
 
   @override

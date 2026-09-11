@@ -623,6 +623,14 @@ mixin AuthStore on AppStateBase {
     _filesTreeRoot = FileTreeNode.root();
     _filesPanelOpen = false;
     _filesError = '';
+    _gitPanelOpen = false;
+    _gitPanelChanges = null;
+    _gitPanelRepoInfo = null;
+    _gitPanelLoading = false;
+    _gitActionBusy = false;
+    _gitPanelError = '';
+    _gitPanelScopeKey = null;
+    _gitPanelThreadId = null;
     _activeProjectId = null;
     _activeThreadId = null;
     for (final store in _threadStores.values) {

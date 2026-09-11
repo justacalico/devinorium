@@ -3161,6 +3161,314 @@ async fn file_manager_omits_git_status_outside_git_repo() {
     }
 }
 
+/// Create a project backed by a fresh git repo and return (project id, path).
+async fn make_git_project(app: &Router, cookie: &str, name: &str) -> (i64, String) {
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            cookie,
+            &format!(r#"{{"name":"{name}","path":"{name}"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    let path = v["path"].as_str().unwrap().to_string();
+
+    std::fs::create_dir_all(&path).unwrap();
+    std::fs::write(format!("{path}/tracked.txt"), "tracked\n").unwrap();
+    let run_git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .current_dir(&path)
+            .args(args)
+            .output()
+            .expect("git command");
+        assert!(out.status.success(), "git {args:?} failed: {out:?}");
+    };
+    run_git(&["init", "-q"]);
+    run_git(&["config", "user.email", "test@example.com"]);
+    run_git(&["config", "user.name", "Test"]);
+    run_git(&["add", "."]);
+    run_git(&["commit", "-q", "-m", "init"]);
+    (pid, path)
+}
+
+#[tokio::test]
+async fn git_changes_stage_unstage_commit() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let (pid, path) = make_git_project(&app, &cookie, "git-panel").await;
+
+    std::fs::write(format!("{path}/tracked.txt"), "changed\n").unwrap();
+    std::fs::write(format!("{path}/untracked.txt"), "new\n").unwrap();
+
+    // The changes endpoint splits staged and unstaged entries. `force` is
+    // needed here because project creation cached a stale is_repo=false.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/changes?force=true"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert!(v["branch"].as_str().unwrap().len() > 0);
+    assert_eq!(v["staged"].as_array().unwrap().len(), 0);
+    let unstaged = v["unstaged"].as_array().unwrap();
+    assert_eq!(unstaged.len(), 2);
+    assert!(unstaged.iter().any(|e| e["path"] == "tracked.txt"));
+
+    // Stage a single path.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/stage"),
+            &cookie,
+            r#"{"paths":["tracked.txt"]}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/changes"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["staged"].as_array().unwrap().len(), 1);
+    assert_eq!(v["staged"][0]["path"], "tracked.txt");
+    assert_eq!(v["unstaged"].as_array().unwrap().len(), 1);
+
+    // Unstage it again.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/unstage"),
+            &cookie,
+            r#"{"paths":["tracked.txt"]}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Committing everything via `all` stages untracked files too.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/commit"),
+            &cookie,
+            r#"{"message":"wip","all":true}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["subject"], "wip");
+    assert_eq!(v["sha"].as_str().unwrap().len(), 40);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/changes"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["staged"].as_array().unwrap().len(), 0);
+    assert_eq!(v["unstaged"].as_array().unwrap().len(), 0);
+
+    // Committing with nothing to commit is an error.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/commit"),
+            &cookie,
+            r#"{"message":"nope"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // An empty message is rejected before touching git.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/commit"),
+            &cookie,
+            r#"{"message":"  "}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn git_changes_scopes_to_thread_worktree() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let (pid, path) = make_git_project(&app, &cookie, "git-wt").await;
+
+    // Create a worktree attached to a thread, placed next to the project so
+    // the worktree itself does not appear as an untracked directory.
+    let wt_path = format!("{path}-wt");
+    let out = std::process::Command::new("git")
+        .current_dir(&path)
+        .args(["worktree", "add", "-b", "wt-branch", &wt_path, "HEAD"])
+        .output()
+        .expect("git worktree add");
+    assert!(out.status.success(), "{out:?}");
+
+    let body = format!(
+        r#"{{"project_id":{pid},"title":"wt thread","env_mode":"worktree","worktree_path":"{wt_path}"}}"#
+    );
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/threads", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let tid = serde_json::from_str::<serde_json::Value>(
+        &body_str(resp.into_body()).await,
+    )
+    .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // A change inside the worktree is invisible at project scope. `force`
+    // clears the is_repo=false cached when the project was created before
+    // `git init` ran.
+    std::fs::write(format!("{wt_path}/wt-only.txt"), "w\n").unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/changes?force=true"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["unstaged"].as_array().unwrap().len(), 0);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/changes?thread_id={tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["branch"], "wt-branch");
+    let unstaged = v["unstaged"].as_array().unwrap();
+    assert_eq!(unstaged.len(), 1);
+    assert_eq!(unstaged[0]["path"], "wt-only.txt");
+
+    // Stage and commit inside the worktree via thread_id.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/commit"),
+            &cookie,
+            &format!(r#"{{"message":"wt commit","all":true,"thread_id":"{tid}"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The commit landed on the worktree branch only.
+    let out = std::process::Command::new("git")
+        .current_dir(&path)
+        .args(["log", "--format=%s", "-1"])
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "init");
+
+    // The repo status endpoint also resolves the worktree branch.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git?thread_id={tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["branch"], "wt-branch");
+}
+
+#[tokio::test]
+async fn git_changes_404_for_non_repo() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &cookie,
+            r#"{"name":"plain","path":"plain"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let pid = v["id"].as_i64().unwrap();
+    std::fs::create_dir_all(v["path"].as_str().unwrap()).unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/changes"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn file_manager_hides_hidden_names() {
     let (app, _db) = make_app().await;
@@ -9671,4 +9979,50 @@ async fn usage_endpoint_requires_auth() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn git_changes_rejects_thread_without_project() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // A thread whose project row was deleted must not resolve git scope to
+    // the home dir, where mutations could hit an unrelated repo.
+    let (pid, _path) = make_git_project(&app, &cookie, "git-orphan").await;
+    let tid = make_thread(&app, &cookie, pid, "orphan").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/projects/{pid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/git/changes?thread_id={tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/projects/{pid}/git/stage"),
+            &cookie,
+            &format!(r#"{{"all":true,"thread_id":"{tid}"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
