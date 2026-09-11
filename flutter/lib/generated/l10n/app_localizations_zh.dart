@@ -1121,6 +1121,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get serverSwitchNotAvailableWeb => '网页版不支持服务器切换';
 
   @override
+  String get thisDevice => '本机';
+
+  @override
+  String get bundledServer => '内置服务器';
+
+  @override
   String get web => '网页';
 
   @override

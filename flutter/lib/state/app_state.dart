@@ -13,6 +13,7 @@ import '../api/native_api_client.dart';
 import '../api/preloader_client.dart';
 import '../servers/multi_server_state.dart';
 import '../servers/server_profile.dart';
+import '../services/local_server.dart';
 import '../issue/gitlab_issue_provider.dart';
 import '../generated/l10n/app_localizations.dart';
 import '../l10n/global_l10n.dart';
@@ -92,6 +93,8 @@ class AppState extends AppStateBase
         EditorStore {
   @override
   final MultiServerState multiServerState;
+  @override
+  final LocalServerController localServerManager;
 
   ApiService? _defaultApi;
   @override
@@ -108,9 +111,12 @@ class AppState extends AppStateBase
     MultiServerState? multiServerState,
     ApiService? api,
     VersionChecker? versionChecker,
-  }) : multiServerState = multiServerState ?? MultiServerState() {
+    LocalServerController? localServerManager,
+  })  : multiServerState = multiServerState ?? MultiServerState(),
+        localServerManager = localServerManager ?? LocalServerManager() {
     _versionChecker = versionChecker;
     this.multiServerState.addListener(notifyListeners);
+    this.localServerManager.onExit = _onLocalServerExit;
     if (api != null) {
       this.multiServerState.addTestConnection(
         ServerProfile(
@@ -174,8 +180,12 @@ class AppState extends AppStateBase
     bool threadLoading = false,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
     String? serverVersion,
-  }) : multiServerState = multiServerState ?? MultiServerState() {
+    LocalServerController? localServerManager,
+  })  : multiServerState = multiServerState ?? MultiServerState(),
+        localServerManager =
+            localServerManager ?? LocalServerManager.disabled() {
     this.multiServerState.addListener(notifyListeners);
+    this.localServerManager.onExit = _onLocalServerExit;
     _versionChecker = versionChecker ?? _NoNetworkVersionChecker();
     if (api != null) {
       this.multiServerState.addTestConnection(
@@ -280,6 +290,7 @@ class AppState extends AppStateBase
   @override
   void dispose() {
     _versionChecker?.close();
+    markDisposed();
     stopHealthChecks();
     _resumeDebounceTimer?.cancel();
     _wantsResume = false;
@@ -292,6 +303,7 @@ class AppState extends AppStateBase
     _threadStores.clear();
     _activeStore = null;
     multiServerState.removeListener(notifyListeners);
+    localServerManager.dispose();
     super.dispose();
   }
 

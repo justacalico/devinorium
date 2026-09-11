@@ -197,13 +197,21 @@ class _SidebarState extends State<Sidebar> {
       child:
           Selector<
             AppState,
-            ({MainPage page, bool filesPanelOpen, User? user, bool hasServer})
+            ({
+              MainPage page,
+              bool filesPanelOpen,
+              User? user,
+              bool hasServer,
+              bool localActive,
+            })
           >(
             selector: (_, state) => (
               page: state.page,
               filesPanelOpen: state.filesPanelOpen,
               user: state.user,
               hasServer: state.multiServerState.hasAnyServer,
+              localActive:
+                  state.multiServerState.activeProfile?.isLocal ?? false,
             ),
             builder: (context, model, _) {
               final user = model.user;
@@ -238,7 +246,11 @@ class _SidebarState extends State<Sidebar> {
                           ),
                   ),
                   if (model.hasServer)
-                    _UserChip(username: username, avatar: avatar),
+                    _UserChip(
+                      username: username,
+                      avatar: avatar,
+                      isLocal: model.localActive,
+                    ),
                   const _ActivityBar(),
                 ],
               );
@@ -651,7 +663,15 @@ class _UserChip extends StatelessWidget {
   final String username;
   final String avatar;
 
-  const _UserChip({required this.username, required this.avatar});
+  /// True when the active profile is the bundled local server — there are
+  /// no credentials to sign out of, so the menu hides the sign-out item.
+  final bool isLocal;
+
+  const _UserChip({
+    required this.username,
+    required this.avatar,
+    this.isLocal = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -696,11 +716,12 @@ class _UserChip extends StatelessWidget {
                       state.setUserMenuOpen(false);
                     },
                   ),
-                  MenuItemButton(
-                    leadingIcon: const Icon(Icons.logout),
-                    child: Text(l10n(context).signOut),
-                    onPressed: () => state.logout(),
-                  ),
+                  if (!isLocal)
+                    MenuItemButton(
+                      leadingIcon: const Icon(Icons.logout),
+                      child: Text(l10n(context).signOut),
+                      onPressed: () => state.logout(),
+                    ),
                 ],
                 builder: (context, controller, child) {
                   return IconButton(

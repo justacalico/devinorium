@@ -49,6 +49,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         max_body_bytes: 1024 * 1024,
         secure_cookie: false,
         allowed_origin,
+        local_token: None,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -268,6 +269,7 @@ async fn body_size_limit_rejects_oversized() {
         max_body_bytes: 64,
         secure_cookie: false,
         allowed_origin: None,
+        local_token: None,
     };
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),

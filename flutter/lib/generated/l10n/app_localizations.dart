@@ -2150,6 +2150,18 @@ abstract class AppLocalizations {
   /// **'Server switching is not available in the web build.'**
   String get serverSwitchNotAvailableWeb;
 
+  /// Label for the bundled local server profile
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get thisDevice;
+
+  /// Subtitle for the bundled local server entry in the server list
+  ///
+  /// In en, this message translates to:
+  /// **'Bundled server'**
+  String get bundledServer;
+
   /// Fallback label for the implicit web server profile
   ///
   /// In en, this message translates to:

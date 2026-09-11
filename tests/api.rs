@@ -439,6 +439,7 @@ async fn app_state() -> (AppState, db::Db) {
         max_body_bytes: 20 * 1024 * 1024,
         secure_cookie: false,
         allowed_origin: None,
+        local_token: None,
     };
 
     let state = AppState {

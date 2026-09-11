@@ -13,6 +13,9 @@ class ApiService {
 
   BaseApiClient get client => _client;
 
+  /// Release the underlying HTTP client. The service must not be used after.
+  void dispose() => _client.close();
+
   // ---- Auth ----
 
   Future<User> me() async {

@@ -46,7 +46,8 @@ class _ServerSwitcher extends StatelessWidget {
                   onPressed: profile.id == activeId
                       ? null
                       : () => unawaited(state.switchServer(profile.id)),
-                  child: Text(profile.label,
+                  child: Text(
+                      profile.isLocal ? l.thisDevice : profile.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       softWrap: false),
@@ -88,14 +89,16 @@ class _ServerSwitcher extends StatelessWidget {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.cloud_outlined,
+                        active.isLocal
+                            ? Icons.computer_outlined
+                            : Icons.cloud_outlined,
                         size: 18,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          active.label,
+                          active.isLocal ? l.thisDevice : active.label,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w500,

@@ -67,7 +67,12 @@ class _AccountsSectionState extends State<_AccountsSection> {
         ListenableBuilder(
           listenable: widget.state,
           builder: (context, child) {
-            final users = widget.state.users;
+            var users = widget.state.users;
+            if (widget.state.multiServerState.activeProfile?.isLocal == true) {
+              // The passwordless bundled account is not a real login; hide it
+              // from account management.
+              users = users.where((u) => u.username != 'local').toList();
+            }
             if (users.isEmpty) {
               return Text(
                 l.noUsersYet,

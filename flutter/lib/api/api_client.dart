@@ -40,6 +40,9 @@ abstract class BaseApiClient {
 
   Stream<SseEvent> getStream({required String path});
 
+  /// Release any resources held by the client. Default is a no-op.
+  void close() {}
+
   /// Whether the client has enough configuration to make requests.
   Future<bool> get isConfigured;
 
@@ -91,6 +94,9 @@ class ApiClient implements BaseApiClient {
   final http.Client _client;
 
   ApiClient._internal(this._client);
+
+  @override
+  void close() => _client.close();
 
   @override
   Future<bool> get isConfigured => Future.value(true);

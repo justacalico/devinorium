@@ -8,8 +8,16 @@ use devinorium::{auth, config, db, git, lock, providers, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load .env file if present (ignored if not found).
-    let _ = dotenvy::dotenv();
+    // Load .env file if present (ignored if not found). In bundled local
+    // mode the launcher already controls the environment; a .env in the
+    // server's working directory must not reintroduce DEVINORIUM_* settings
+    // (e.g. a bootstrap password would create an interactive owner account).
+    if std::env::var("DEVINORIUM_LOCAL_TOKEN")
+        .map(|v| v.is_empty())
+        .unwrap_or(true)
+    {
+        let _ = dotenvy::dotenv();
+    }
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -29,6 +37,15 @@ async fn main() -> Result<()> {
 
     // First-run bootstrap: create the initial owner account if none exist.
     auth::bootstrap::run(&database, &cfg.bootstrap_username, &cfg.bootstrap_password).await?;
+
+    if cfg.is_local_mode() {
+        // Bundled mode: the passwordless local account backs every request
+        // carrying the configured token.
+        auth::bootstrap::run_local(&database).await?;
+        // The desktop app holds our stdin pipe; when it exits or crashes the
+        // pipe closes and we shut down instead of lingering as an orphan.
+        spawn_stdin_watchdog();
+    }
 
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".to_string(),
@@ -83,4 +100,21 @@ async fn main() -> Result<()> {
     )
     .await?;
     Ok(())
+}
+
+/// Exit the process once stdin reaches EOF. Used in bundled local mode, where
+/// the Flutter app owns stdin: a closed pipe means the app is gone.
+fn spawn_stdin_watchdog() {
+    tokio::task::spawn_blocking(|| {
+        use std::io::Read;
+        let mut stdin = std::io::stdin().lock();
+        let mut buf = [0u8; 256];
+        loop {
+            match stdin.read(&mut buf) {
+                // EOF or a broken pipe: the parent is gone.
+                Ok(0) | Err(_) => std::process::exit(0),
+                Ok(_) => {}
+            }
+        }
+    });
 }

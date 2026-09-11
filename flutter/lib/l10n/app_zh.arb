@@ -681,6 +681,14 @@
   "@serverSwitchNotAvailableWeb": {
     "description": "Message shown in settings when running as a web app"
   },
+  "thisDevice": "本机",
+  "@thisDevice": {
+    "description": "Label for the bundled local server profile"
+  },
+  "bundledServer": "内置服务器",
+  "@bundledServer": {
+    "description": "Subtitle for the bundled local server entry in the server list"
+  },
   "web": "网页",
   "@web": {
     "description": "Fallback label for the implicit web server profile"

@@ -43,6 +43,7 @@ void main() {
         username: 'owner',
         createdAt: DateTime(2024, 1, 2, 3, 4, 5).toUtc(),
         isPrimary: false,
+        isLocal: true,
       );
       final json = p.toJson();
       final restored = ServerProfile.fromJson(json);
@@ -53,6 +54,26 @@ void main() {
       expect(restored.username, p.username);
       expect(restored.createdAt, p.createdAt);
       expect(restored.isPrimary, p.isPrimary);
+      expect(restored.isLocal, p.isLocal);
+    });
+
+    test('isLocal defaults to false and survives older payloads', () {
+      final p = ServerProfile(
+        id: 'a',
+        label: 'x',
+        baseUrl: 'http://x',
+        token: 't',
+        username: 'u',
+        createdAt: DateTime(2024, 1, 1).toUtc(),
+      );
+      expect(p.isLocal, isFalse);
+
+      // Profiles saved before the flag existed deserialize as non-local.
+      final legacy = p.toJson()..remove('is_local');
+      expect(ServerProfile.fromJson(legacy).isLocal, isFalse);
+
+      expect(p.copyWith(isLocal: true).isLocal, isTrue);
+      expect(p.copyWith().isLocal, isFalse);
     });
   });
 }

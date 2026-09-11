@@ -42,13 +42,16 @@ where
     }
 }
 
-/// Extract the session token from a request's Cookie header or
-/// `Authorization: Bearer <token>` header, whichever is present.
+/// First credential present on a request — `Authorization: Bearer`, then the
+/// `devinorium_session` cookie. Session authentication itself does not rely
+/// on this ordering: `require_auth` tries each credential until one resolves
+/// to a live session.
 pub fn extract_token(req: &Request) -> Option<String> {
-    extract_cookie_token(req).or_else(|| extract_bearer_token(req))
+    extract_bearer_token(req).or_else(|| extract_cookie_token(req))
 }
 
-fn extract_cookie_token(req: &Request) -> Option<String> {
+/// The `devinorium_session` cookie credential, if present.
+pub fn extract_cookie_token(req: &Request) -> Option<String> {
     let header = req.headers().get(COOKIE)?;
     let s = header.to_str().ok()?;
     for pair in s.split(';') {
@@ -60,7 +63,8 @@ fn extract_cookie_token(req: &Request) -> Option<String> {
     None
 }
 
-fn extract_bearer_token(req: &Request) -> Option<String> {
+/// The `Authorization: Bearer <token>` credential, if present.
+pub fn extract_bearer_token(req: &Request) -> Option<String> {
     let header = req.headers().get(AUTHORIZATION)?;
     let s = header.to_str().ok()?;
     let rest = s.strip_prefix("Bearer ")?.trim();
@@ -114,14 +118,14 @@ mod tests {
     }
 
     #[test]
-    fn cookie_takes_precedence_over_bearer() {
+    fn bearer_takes_precedence_over_cookie() {
         let req = Request::builder()
             .uri("/")
             .header("cookie", "devinorium_session=from_cookie")
             .header("authorization", "Bearer from_header")
             .body(Body::empty())
             .unwrap();
-        assert_eq!(extract_token(&req).unwrap(), "from_cookie");
+        assert_eq!(extract_token(&req).unwrap(), "from_header");
     }
 
     #[test]

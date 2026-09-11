@@ -1138,6 +1138,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Server switching is not available in the web build.';
 
   @override
+  String get thisDevice => 'This device';
+
+  @override
+  String get bundledServer => 'Bundled server';
+
+  @override
   String get web => 'web';
 
   @override

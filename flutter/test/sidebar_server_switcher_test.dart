@@ -181,6 +181,61 @@ void main() {
     expect(find.text('work'), findsOneWidget);
   });
 
+  testWidgets('Bundled local server shows This device with a computer icon', (
+    tester,
+  ) async {
+    final multi = MultiServerState();
+    final local = ServerProfile(
+      id: MultiServerState.localProfileId,
+      label: 'local',
+      baseUrl: 'http://127.0.0.1:41234',
+      token: 't',
+      username: 'local',
+      createdAt: DateTime(2024, 1, 2).toUtc(),
+      isPrimary: true,
+      isLocal: true,
+    );
+    final remote = ServerProfile(
+      id: 'remote',
+      label: 'remote',
+      baseUrl: 'http://remote:7878',
+      token: 't2',
+      username: 'owner',
+      createdAt: DateTime(2024, 1, 1).toUtc(),
+    );
+    final client = ApiClient.withClient(
+      MockClient((_) async => http.Response('{}', 200)),
+    );
+    multi.addTestConnection(remote, ApiService(client: client));
+    multi.addTestConnection(local, ApiService(client: client));
+
+    final state = _FakeAppState(
+      multi: multi,
+      user: User(
+        id: 1,
+        username: 'local',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('This device'), findsOneWidget);
+    expect(find.byIcon(Icons.computer_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_outlined), findsNothing);
+
+    // The menu still lists the remote server for switching.
+    await tester.tap(find.text('This device'));
+    await tester.pumpAndSettle();
+    expect(find.text('remote'), findsOneWidget);
+  });
+
   testWidgets('Manage servers menu item opens server settings', (
     tester,
   ) async {

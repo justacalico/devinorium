@@ -4,7 +4,24 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 // ignore_for_file: unused_element_parameter
 
 abstract class AppStateBase extends ChangeNotifier {
+  /// Set by dispose(); late async callbacks (health checks, local-server
+  /// recovery) check it before touching listeners.
+  bool _disposed = false;
+
+  bool get _isDisposed => _disposed;
+
+  /// Marks the state object dead; called at the top of dispose().
+  void markDisposed() => _disposed = true;
+
+  /// Every async store method notifies after awaits; once disposed none of
+  /// them may reach listeners again.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
   MultiServerState get multiServerState;
+  LocalServerController get localServerManager;
   ApiService get api;
   AppView get _view;
   set _view(AppView value);
@@ -311,6 +328,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _loadModelsAndProviders();
   Future<void> refreshProviderVersion({String? providerId});
   Future<void> bootstrap();
+  Future<void> _ensureLocalServer();
   void startHealthChecks();
   void stopHealthChecks();
   void startGitRefresh();

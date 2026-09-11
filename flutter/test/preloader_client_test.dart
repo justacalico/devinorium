@@ -7,6 +7,9 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeClient implements BaseApiClient {
+  @override
+  void close() {}
+
   final _calls = <String>[];
   final _getCompleters = <Completer<Map<String, dynamic>>>[];
   final _getListCompleters = <Completer<List<Map<String, dynamic>>>>[];

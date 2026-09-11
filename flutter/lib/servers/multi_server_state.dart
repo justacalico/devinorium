@@ -12,6 +12,9 @@ import 'server_registry.dart';
 /// leak auth headers or cached state. The active server is persisted as the
 /// primary profile in [ServerRegistry].
 class MultiServerState extends ChangeNotifier {
+  /// Stable profile id for the server bundled inside the desktop app.
+  static const localProfileId = 'local';
+
   final ServerRegistry _registry;
 
   final Map<String, ApiService> _apis = {};
@@ -62,6 +65,9 @@ class MultiServerState extends ChangeNotifier {
   /// The active server id, or `null`.
   String? get activeServerId => _activeServerId;
 
+  /// Look up a profile by id, or `null`.
+  ServerProfile? profileById(String id) => _profiles[id];
+
   /// All configured profiles, active first.
   List<ServerProfile> get profiles {
     final values = _profiles.values.toList();
@@ -87,12 +93,20 @@ class MultiServerState extends ChangeNotifier {
     bool setActive = true,
     ApiService? api,
   }) async {
+    final existing = _profiles[profile.id];
     final updated = await _registry.upsert(profile);
     // Apply all returned profiles so primary flags stay in sync.
-    for (final p in updated) {
-      _profiles[p.id] = p;
+    _applyProfiles(updated);
+    // Rebuild the client only when the endpoint actually changed — disposing
+    // the shared ApiService would orphan open thread stores.
+    final unchanged = existing != null &&
+        existing.baseUrl == profile.baseUrl &&
+        existing.token == profile.token &&
+        api == null;
+    if (!unchanged || !_apis.containsKey(profile.id)) {
+      _apis[profile.id]?.dispose();
+      _apis[profile.id] = api ?? ApiService(client: createApiClient(profile));
     }
-    _apis[profile.id] = api ?? ApiService(client: createApiClient(profile));
     if (setActive) {
       _activeServerId = profile.id;
     }
@@ -104,43 +118,91 @@ class MultiServerState extends ChangeNotifier {
     if (!_profiles.containsKey(id)) return false;
     if (_activeServerId == id) return true;
     final updated = await _registry.setPrimary(id);
-    for (final p in updated) {
-      _profiles[p.id] = p;
-    }
+    _applyProfiles(updated);
     _activeServerId = id;
     notifyListeners();
     return true;
   }
 
+  /// Merge a reloaded profile list into memory. The local profile is stored
+  /// without its token, so the in-memory token wins over the empty persisted
+  /// one — the bundled endpoint stays usable until the next refresh.
+  void _applyProfiles(List<ServerProfile> profiles) {
+    for (final p in profiles) {
+      final existing = _profiles[p.id];
+      _profiles[p.id] = p.isLocal &&
+              p.token.isEmpty &&
+              (existing?.token.isNotEmpty ?? false)
+          ? p.copyWith(token: existing!.token)
+          : p;
+    }
+  }
+
+  /// Insert or refresh the bundled-server profile. The endpoint rotates every
+  /// launch, so the stored base URL and token are always overwritten. The
+  /// profile becomes active only when nothing else is active or it already
+  /// was — the user's chosen remote server keeps focus otherwise.
+  Future<void> upsertLocalProfile({
+    required String baseUrl,
+    required String token,
+    String username = 'local',
+  }) async {
+    final existing = _profiles[localProfileId];
+    final profile = ServerProfile(
+      id: localProfileId,
+      label: existing?.label ?? 'local',
+      baseUrl: baseUrl,
+      token: token,
+      username: username,
+      createdAt: existing?.createdAt ?? DateTime.now().toUtc(),
+      isPrimary: existing?.isPrimary ?? _activeServerId == null,
+      isLocal: true,
+    );
+    final setActive =
+        _activeServerId == null || _activeServerId == localProfileId;
+    await addProfile(profile, setActive: setActive);
+  }
+
   /// Remove a server by id. Promotes the most recently created remaining
   /// profile when the active one is removed.
-  Future<void> removeServer(String id) async {
-    var remaining = await _registry.remove(id);
-    if (_activeServerId == id && remaining.isNotEmpty) {
-      remaining = List<ServerProfile>.from(remaining)
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      final promoted = await _registry.setPrimary(remaining.first.id);
-      for (final p in promoted) {
-        _profiles[p.id] = p;
-      }
-    }
-    _apis.remove(id);
+  ///
+  /// Bundled local profiles refuse removal: they are managed automatically
+  /// and would be recreated on the next launch anyway. [force] bypasses the
+  /// guard for internal cleanup (e.g. the bundled binary vanished).
+  Future<void> removeServer(String id, {bool force = false}) async {
+    final existing = _profiles[id];
+    if (!force && existing != null && existing.isLocal) return;
+    final remaining = await _registry.remove(
+      id,
+      promoteNewest: _activeServerId == id,
+    );
+    _applyProfiles(remaining);
+    _apis.remove(id)?.dispose();
     _profiles.remove(id);
     if (_activeServerId == id) {
-      _activeServerId = remaining.isNotEmpty ? remaining.first.id : null;
+      _activeServerId = remaining.isEmpty
+          ? null
+          : remaining
+              .firstWhere(
+                (p) => p.isPrimary,
+                orElse: () => remaining.first,
+              )
+              .id;
     }
     notifyListeners();
   }
 
   /// Clear the active profile's token, e.g. on logout. The profile stays in the
-  /// registry so the user can reconnect.
+  /// registry so the user can reconnect. The bundled local profile is skipped:
+  /// its token is managed by the local server manager, not the user.
   Future<void> clearActiveToken() async {
     final id = _activeServerId;
     if (id == null) return;
     final p = _profiles[id];
-    if (p == null) return;
+    if (p == null || p.isLocal) return;
     final cleared = p.copyWith(token: '');
     _profiles[id] = cleared;
+    _apis[id]?.dispose();
     _apis[id] = ApiService(client: createApiClient(cleared));
     await _registry.upsert(cleared);
     notifyListeners();

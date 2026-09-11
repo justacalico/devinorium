@@ -20,6 +20,11 @@ pub struct Config {
     pub max_body_bytes: usize,
     pub secure_cookie: bool,
     pub allowed_origin: Option<String>,
+    /// Fixed bearer token accepted as the passwordless `local` account.
+    /// Set by the desktop app when it spawns the bundled server, so local
+    /// requests never need a login while random processes still cannot call
+    /// the API without knowing the token.
+    pub local_token: Option<String>,
 }
 
 impl Config {
@@ -68,6 +73,19 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty());
 
+        let local_token = std::env::var("DEVINORIUM_LOCAL_TOKEN")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        if local_token.is_some() && !is_loopback_host(&host) {
+            // A fixed bearer token bound to a non-loopback interface would
+            // give every host that can reach it owner-level API access.
+            bail!(
+                "DEVINORIUM_LOCAL_TOKEN requires DEVINORIUM_HOST to be a loopback \
+                 address (got {host:?}); refusing to start"
+            );
+        }
+
         Ok(Self {
             host,
             port,
@@ -81,13 +99,39 @@ impl Config {
             max_body_bytes,
             secure_cookie,
             allowed_origin,
+            local_token,
         })
     }
 
-    /// The bind address (`host:port`).
+    /// The bind address (`host:port`, with IPv6 hosts bracketed).
     pub fn bind_addr(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+        if self
+            .host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_ipv6())
+        {
+            format!("[{}]:{}", self.host, self.port)
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
     }
+
+    /// Whether the server runs in bundled local mode (fixed bearer token
+    /// instead of interactive logins).
+    pub fn is_local_mode(&self) -> bool {
+        self.local_token.is_some()
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    // Accept bracketed IPv6 too — `bind_addr` tolerates either form.
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .map(|ip| ip.is_loopback())
+        .unwrap_or(false)
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -107,4 +151,27 @@ fn rand_key(n: usize) -> Vec<u8> {
     let mut buf = vec![0u8; n];
     rand::thread_rng().fill_bytes(&mut buf);
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_detection_accepts_local_addresses() {
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("127.0.0.2"));
+        assert!(is_loopback_host("::1"));
+        assert!(is_loopback_host("localhost"));
+        assert!(is_loopback_host("LOCALHOST"));
+    }
+
+    #[test]
+    fn loopback_detection_rejects_remote_and_wildcard_addresses() {
+        assert!(!is_loopback_host("0.0.0.0"));
+        assert!(!is_loopback_host("::"));
+        assert!(!is_loopback_host("192.168.1.10"));
+        assert!(!is_loopback_host("example.com"));
+        assert!(!is_loopback_host(""));
+    }
 }
