@@ -298,6 +298,58 @@ void main() {
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     });
 
+    testWidgets('bundled local profile shows This device and no delete button', (
+      tester,
+    ) async {
+      final multi = MultiServerState();
+      multi.addTestConnection(
+        ServerProfile(
+          id: MultiServerState.localProfileId,
+          label: 'local',
+          baseUrl: 'http://127.0.0.1:41234',
+          token: 't',
+          username: 'local',
+          createdAt: DateTime(2024, 1, 1).toUtc(),
+          isPrimary: true,
+          isLocal: true,
+        ),
+        _FakeApiService(),
+      );
+      multi.addTestConnection(
+        ServerProfile(
+          id: 'remote',
+          label: 'remote',
+          baseUrl: 'http://remote:7878',
+          token: 't2',
+          username: 'owner',
+          createdAt: DateTime(2024, 1, 2).toUtc(),
+        ),
+        _FakeApiService(),
+      );
+      final state = AppState.test(
+        multiServerState: multi,
+        user: User(
+          id: 2,
+          username: 'alice',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: false,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        settingsTopicIndex: 6,
+      );
+      addTearDown(state.dispose);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('This device'), findsOneWidget);
+      expect(find.text('Bundled server'), findsOneWidget);
+      // Only the remote profile gets a delete button.
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+    });
+
     AppState buildLongState() {
       final longUsername = 'ow${'n' * 40}er';
       final longUrl =

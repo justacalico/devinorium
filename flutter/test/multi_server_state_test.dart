@@ -253,5 +253,92 @@ void main() {
       expect(state.activeServerId, 'newer');
       expect(state.activeProfile?.isPrimary, isTrue);
     });
+
+    test('upsertLocalProfile activates the local profile when nothing else exists', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40001',
+        token: 'local-token',
+      );
+
+      final profile = state.profileById(MultiServerState.localProfileId);
+      expect(profile, isNotNull);
+      expect(profile!.isLocal, isTrue);
+      expect(profile.isPrimary, isTrue);
+      expect(state.activeServerId, MultiServerState.localProfileId);
+      expect(state.activeApi, isNotNull);
+    });
+
+    test('upsertLocalProfile does not steal focus from a remote server', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+      final remote = ServerProfile(
+        id: 'remote',
+        label: 'remote',
+        baseUrl: 'http://remote:7878',
+        token: 't',
+        username: 'u',
+        createdAt: DateTime(2024, 1, 1).toUtc(),
+        isPrimary: true,
+      );
+      await state.addProfile(remote);
+
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40002',
+        token: 'local-token',
+      );
+
+      expect(state.activeServerId, 'remote');
+      final local = state.profileById(MultiServerState.localProfileId)!;
+      expect(local.isLocal, isTrue);
+      expect(local.isPrimary, isFalse);
+    });
+
+    test('upsertLocalProfile refreshes credentials and keeps primary state', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40001',
+        token: 'old-token',
+      );
+      final createdAt =
+          state.profileById(MultiServerState.localProfileId)!.createdAt;
+
+      // Second launch rotates the endpoint but keeps the profile active.
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40009',
+        token: 'new-token',
+      );
+
+      final profile = state.profileById(MultiServerState.localProfileId)!;
+      expect(profile.baseUrl, 'http://127.0.0.1:40009');
+      expect(profile.token, 'new-token');
+      expect(profile.createdAt, createdAt);
+      expect(profile.isPrimary, isTrue);
+      expect(state.activeServerId, MultiServerState.localProfileId);
+      expect(state.profiles, hasLength(1));
+    });
+
+    test('removeServer refuses the bundled local profile unless forced', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40001',
+        token: 't',
+      );
+
+      await state.removeServer(MultiServerState.localProfileId);
+      expect(
+        state.profileById(MultiServerState.localProfileId),
+        isNotNull,
+      );
+
+      await state.removeServer(MultiServerState.localProfileId, force: true);
+      expect(state.profileById(MultiServerState.localProfileId), isNull);
+      expect(state.hasAnyServer, isFalse);
+    });
   });
 }
