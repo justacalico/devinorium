@@ -288,7 +288,7 @@ mixin AuthStore on AppStateBase {
     _activeThreadId = null;
     // Kill terminals while the old connection is still authenticated —
     // after logout/server removal the kills would be rejected.
-    terminalStore.clear();
+    await terminalStore.clear();
     try {
       await api.logout();
     } catch (_) {}
@@ -320,7 +320,7 @@ mixin AuthStore on AppStateBase {
     try {
       // Terminals belong to the current server — kill them before the
       // active connection changes underneath us.
-      terminalStore.clear();
+      await terminalStore.clear();
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
       await _resetServerState();
@@ -342,7 +342,7 @@ mixin AuthStore on AppStateBase {
       if (wasActive) {
         stopHealthChecks();
         stopGitRefresh();
-        terminalStore.clear();
+        await terminalStore.clear();
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
@@ -523,7 +523,7 @@ mixin AuthStore on AppStateBase {
     }
     _threadStores.clear();
     _activeStore = null;
-    terminalStore.clear();
+    await terminalStore.clear();
     _gitRepoInfo.clear();
     _gitBranches.clear();
     _gitWorktrees.clear();

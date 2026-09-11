@@ -67,6 +67,7 @@ class _TerminalTile extends StatelessWidget {
                 session: session,
                 autofocus: autofocus,
                 controller: session.controller,
+                scrollController: session.scrollController,
               ),
             ),
             Positioned(

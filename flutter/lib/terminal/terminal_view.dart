@@ -15,11 +15,13 @@ class TerminalViewWidget extends StatefulWidget {
     required this.session,
     this.autofocus = true,
     this.controller,
+    this.scrollController,
   });
 
   final TerminalSession session;
   final bool autofocus;
   final TerminalController? controller;
+  final ScrollController? scrollController;
 
   @override
   State<TerminalViewWidget> createState() => _TerminalViewWidgetState();
@@ -138,6 +140,7 @@ class _TerminalViewWidgetState extends State<TerminalViewWidget> {
             child: TerminalView(
               widget.session.terminal,
               controller: _controller,
+              scrollController: widget.scrollController,
               autofocus: widget.autofocus,
               padding: const EdgeInsets.all(4),
               backgroundOpacity: 1,

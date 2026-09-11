@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show ScrollController;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xterm/xterm.dart';
 
@@ -24,9 +25,10 @@ class TerminalSession extends ChangeNotifier {
   final bool isLocal;
   final Terminal terminal;
 
-  /// Shared with [TerminalViewWidget] so view state (selection, scroll)
-  /// survives the panel being hidden or remounted in another view.
+  /// Shared with [TerminalViewWidget] so view state (selection, scroll
+  /// position) survives the panel being hidden or remounted in another view.
   final controller = TerminalController();
+  final scrollController = ScrollController();
 
   TerminalStatus _status = TerminalStatus.idle;
   TerminalStatus get status => _status;
@@ -62,6 +64,7 @@ class TerminalSession extends ChangeNotifier {
     terminal.onOutput = null;
     terminal.onResize = null;
     controller.dispose();
+    scrollController.dispose();
     _complete();
     super.dispose();
   }
@@ -141,6 +144,7 @@ class RemoteTerminalSession extends TerminalSession {
   }
 
   void _onMessage(dynamic message) {
+    if (_disposed) return;
     if (message is List<int>) {
       final text = utf8.decode(message, allowMalformed: true);
       terminal.write(text);
@@ -160,6 +164,7 @@ class RemoteTerminalSession extends TerminalSession {
   }
 
   void _onError(Object error) {
+    if (_disposed) return;
     _setStatus(TerminalStatus.disconnected);
     _sub?.cancel();
     _channel = null;
@@ -178,7 +183,7 @@ class RemoteTerminalSession extends TerminalSession {
   }
 
   void _onDone() {
-    if (_status == TerminalStatus.exited) return;
+    if (_disposed || _status == TerminalStatus.exited) return;
     _onError('WebSocket closed');
   }
 
@@ -193,6 +198,7 @@ class RemoteTerminalSession extends TerminalSession {
   }
 
   void _send(String data) {
+    if (_disposed) return;
     if (_channel != null && _status == TerminalStatus.connected) {
       _channel!.sink.add(data);
     }

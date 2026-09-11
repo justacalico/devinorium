@@ -8133,28 +8133,35 @@ async fn terminal_create_without_thread_id_is_allowed() {
         .unwrap();
     let cookie = session_cookie(&login);
 
-    // A global terminal does not require a thread.
-    let resp = client
-        .post(format!("{base}/api/terminal/sessions"))
-        .header(axum::http::header::ORIGIN, &origin)
-        .header(axum::http::header::COOKIE, &cookie)
-        .json(&serde_json::json!({}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
-    let term: serde_json::Value = resp.json().await.unwrap();
-    let terminal_id = term["id"].as_str().unwrap().to_string();
-    assert!(!terminal_id.is_empty());
+    // A global terminal does not require a thread; missing, null, and empty
+    // thread_id values are all accepted.
+    for body in [
+        serde_json::json!({}),
+        serde_json::json!({"thread_id": null}),
+        serde_json::json!({"thread_id": ""}),
+    ] {
+        let resp = client
+            .post(format!("{base}/api/terminal/sessions"))
+            .header(axum::http::header::ORIGIN, &origin)
+            .header(axum::http::header::COOKIE, &cookie)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+        let term: serde_json::Value = resp.json().await.unwrap();
+        let terminal_id = term["id"].as_str().unwrap().to_string();
+        assert!(!terminal_id.is_empty());
 
-    let kill = client
-        .delete(format!("{base}/api/terminal/sessions/{terminal_id}"))
-        .header(axum::http::header::ORIGIN, &origin)
-        .header(axum::http::header::COOKIE, &cookie)
-        .send()
-        .await
-        .unwrap();
-    assert!(kill.status().is_success());
+        let kill = client
+            .delete(format!("{base}/api/terminal/sessions/{terminal_id}"))
+            .header(axum::http::header::ORIGIN, &origin)
+            .header(axum::http::header::COOKIE, &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert!(kill.status().is_success());
+    }
 
     let _ = shutdown.send(());
 }

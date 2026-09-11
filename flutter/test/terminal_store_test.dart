@@ -214,6 +214,26 @@ void main() {
       expect(api.killed, ['s-1']);
     });
 
+    test('clear kills sessions through the api they were created with', () async {
+      final api1 = _RecordingApi();
+      final api2 = _RecordingApi();
+      var active = api1;
+      final store = TerminalStore(
+        api: () => active,
+        sessionFactory: _fakeFactory(),
+      );
+      addTearDown(store.dispose);
+
+      // Created while api1 is active, then the active server switches.
+      await store.addSession(local: false);
+      active = api2;
+
+      await store.clear();
+
+      expect(api1.killed, ['s-1']);
+      expect(api2.killed, isEmpty);
+    });
+
     test('local sessions are not killed remotely', () async {
       final api = _RecordingApi();
       final store = TerminalStore(
@@ -250,7 +270,7 @@ void main() {
       final pending = store.addSession(local: false);
       expect(store.busy, isTrue);
 
-      store.clear();
+      await store.clear();
       gate.complete();
       await pending;
 
@@ -302,7 +322,7 @@ void main() {
       await store.addSession(local: false);
       final session = store.tabs.single.sessions.single;
 
-      store.clear();
+      await store.clear();
 
       expect(store.tabs, isEmpty);
       expect(store.open, isFalse);

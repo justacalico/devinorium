@@ -112,7 +112,7 @@ class TerminalStore extends ChangeNotifier {
           generation != _generation ||
           _tabs.isEmpty ||
           _activeTabIndex >= _tabs.length) {
-        _disposeSession(session, api: api);
+        unawaited(_disposeSession(session, api: api));
         return;
       }
       session.addListener(_notify);
@@ -151,11 +151,17 @@ class TerminalStore extends ChangeNotifier {
 
   /// Kill every session and reset the workspace. Called on logout and server
   /// switches so no shells outlive the connection they belong to.
-  void clear() {
+  ///
+  /// The returned future completes once the backend kills have been sent —
+  /// callers that are about to invalidate the current credentials (e.g.
+  /// logout) should await it so the kills are still authenticated.
+  Future<void> clear() async {
     _generation++;
+    final kills = <Future<void>>[];
     for (final tab in _tabs) {
       for (final session in tab.sessions) {
-        _disposeSession(session);
+        final kill = _disposeSession(session);
+        if (kill != null) kills.add(kill);
       }
       tab.sessions.clear();
     }
@@ -165,19 +171,28 @@ class TerminalStore extends ChangeNotifier {
     _tabCounter = 0;
     _open = false;
     _notify();
+    // Each kill swallows its own errors, so this only waits, never throws.
+    await Future.wait(kills);
   }
 
-  void _disposeSession(TerminalSession session, {ApiService? api}) {
+  /// Detach and dispose [session], returning the backend kill for remote
+  /// sessions (null for local ones). The kill is bounded and swallows errors.
+  Future<void>? _disposeSession(TerminalSession session, {ApiService? api}) {
     session.removeListener(_notify);
+    Future<void>? kill;
     if (!session.isLocal) {
       // Tell the backend to kill the PTY too — otherwise the shell keeps
       // running on the server until the idle TTL expires.
-      final owner = _sessionApis.remove(session) ?? api ?? _api();
-      try {
-        unawaited(owner.killTerminalSession(session.id).catchError((_) {}));
-      } catch (_) {}
+      final owner = _sessionApis.remove(session) ?? api;
+      if (owner != null) {
+        kill = owner
+            .killTerminalSession(session.id)
+            .timeout(const Duration(seconds: 5))
+            .catchError((_) {});
+      }
     }
     session.dispose();
+    return kill;
   }
 
   @override
