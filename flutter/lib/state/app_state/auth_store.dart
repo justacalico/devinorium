@@ -251,6 +251,7 @@ mixin AuthStore on AppStateBase {
     if (_isDisposed || !manager.isSupported) return;
     try {
       final endpoint = await manager.ensureRunning();
+      if (_isDisposed) return;
       if (endpoint != null) {
         final previous =
             multiServerState.profileById(MultiServerState.localProfileId);
@@ -278,10 +279,15 @@ mixin AuthStore on AppStateBase {
         // The bundled binary vanished (e.g. a dev run without it); drop the
         // stale profile so it does not linger as a dead entry. A transient
         // start failure keeps the profile — health checks retry ensure.
+        final wasActive = multiServerState.activeServerId ==
+            MultiServerState.localProfileId;
         await multiServerState.removeServer(
           MultiServerState.localProfileId,
           force: true,
         );
+        if (wasActive) {
+          await _resetServerState();
+        }
       }
     } catch (e) {
       debugLogFailure('appState.ensureLocalServer', e);
@@ -359,8 +365,7 @@ mixin AuthStore on AppStateBase {
       store.dispose();
     }
     _threadStores.clear();
-    _activeStore = null;
-    _activeThreadId = null;
+    _setActiveStore(null);
     try {
       await api.logout();
     } catch (_) {}
@@ -407,6 +412,11 @@ mixin AuthStore on AppStateBase {
       await _loadUserAndData();
     } catch (e) {
       _globalError = '$e';
+      // The bundled server is app-managed — keep retrying it even when the
+      // switch to it failed, instead of sitting permanently disconnected.
+      if (multiServerState.activeProfile?.isLocal == true) {
+        startHealthChecks();
+      }
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -416,6 +426,8 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> removeServer(String serverId) async {
     if (_switchingServer) return;
+    // The bundled profile refuses removal; nothing to tear down.
+    if (multiServerState.profileById(serverId)?.isLocal == true) return;
     _switchingServer = true;
     try {
       final wasActive = multiServerState.activeServerId == serverId;
@@ -432,12 +444,18 @@ mixin AuthStore on AppStateBase {
         if (multiServerState.activeApi != null) {
           await _loadUserAndData();
         } else {
+          if (multiServerState.activeProfile?.isLocal == true) {
+            startHealthChecks();
+          }
           _view = AppView.app;
           notifyListeners();
         }
       }
     } catch (e) {
       _globalError = '$e';
+      if (multiServerState.activeProfile?.isLocal == true) {
+        startHealthChecks();
+      }
       notifyListeners();
     } finally {
       _switchingServer = false;
@@ -611,7 +629,7 @@ mixin AuthStore on AppStateBase {
       store.dispose();
     }
     _threadStores.clear();
-    _activeStore = null;
+    _setActiveStore(null);
     _gitRepoInfo.clear();
     _gitBranches.clear();
     _gitWorktrees.clear();

@@ -12,6 +12,14 @@ abstract class AppStateBase extends ChangeNotifier {
 
   /// Marks the state object dead; called at the top of dispose().
   void markDisposed() => _disposed = true;
+
+  /// Every async store method notifies after awaits; once disposed none of
+  /// them may reach listeners again.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
   MultiServerState get multiServerState;
   LocalServerController get localServerManager;
   ApiService get api;
