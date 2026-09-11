@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.58.1 - 2026-09-11
+#### Bug Fixes
+- 编辑器文件操作跟随线程 worktree 工作目录 - (ff8e80b) - HttpAnimations
+
+- - -
+
 ## v0.58.0 - 2026-09-11
 #### Features
 - 本地服务器支持多实例共享并在断线时自愈 - (8e04c43) - HttpAnimations
