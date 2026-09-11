@@ -312,6 +312,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _loadModelsAndProviders();
   Future<void> refreshProviderVersion({String? providerId});
   Future<void> bootstrap();
+  Future<void> _ensureLocalServer();
   void startHealthChecks();
   void stopHealthChecks();
   void startGitRefresh();

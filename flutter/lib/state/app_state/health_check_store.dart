@@ -60,8 +60,16 @@ mixin HealthCheckStore on AppStateBase {
     if (changed) {
       notifyListeners();
     }
-    if (!ok && _healthTimer != null) {
-      _reconnectTimer = Timer(const Duration(seconds: 2), checkConnection);
+    if (!ok) {
+      // The bundled local server may have died without us noticing (e.g. it
+      // was owned by another app instance that exited). Re-ensure it so the
+      // next health check can come back connected.
+      if (multiServerState.activeProfile?.isLocal == true) {
+        unawaited(_ensureLocalServer());
+      }
+      if (_healthTimer != null) {
+        _reconnectTimer = Timer(const Duration(seconds: 2), checkConnection);
+      }
     }
     if (_connectionStatus == ConnectionStatus.connected) {
       _onConnectionRestored();

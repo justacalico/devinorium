@@ -227,6 +227,7 @@ mixin AuthStore on AppStateBase {
 
   /// Spawn the bundled server on desktop and register its profile. No-ops on
   /// web/mobile or when the binary is not bundled (plain `flutter run`).
+  @override
   Future<void> _ensureLocalServer() async {
     final manager = localServerManager;
     if (!manager.isSupported) return;

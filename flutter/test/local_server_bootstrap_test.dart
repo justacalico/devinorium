@@ -232,7 +232,9 @@ void main() {
       manager.onExit?.call(1);
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      expect(manager.ensureCalls, 2);
+      // The dead endpoint also fails the next health check, which re-runs
+      // ensure again — all paths converge on re-registering the server.
+      expect(manager.ensureCalls, greaterThanOrEqualTo(2));
       expect(
         state.multiServerState
             .profileById(MultiServerState.localProfileId)!

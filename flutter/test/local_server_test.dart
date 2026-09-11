@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:devinorium_frontend/services/local_server_io.dart';
+import 'package:devinorium_frontend/services/local_server_types.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -86,6 +87,7 @@ void main() {
       required Directory dir,
       ServerProcessStarter? spawnProcess,
       Future<bool> Function(Uri)? healthCheck,
+      Future<bool> Function(LocalServerEndpoint)? verifyEndpoint,
       void Function(int)? onExit,
       List<Map<String, String>>? capturedEnv,
     }) async {
@@ -102,6 +104,7 @@ void main() {
               return Process.start('sleep', ['30']);
             },
         healthCheck: healthCheck ?? (_) async => true,
+        verifyEndpoint: verifyEndpoint ?? (_) async => true,
         onExit: onExit,
       );
     }
@@ -173,6 +176,8 @@ void main() {
       final manager = await fakeManager(
         dir: dir,
         onExit: (code) => exitCode = code,
+        // The old endpoint file is stale once the process is gone.
+        verifyEndpoint: (_) async => false,
         spawnProcess:
             (exe, args, {required environment, required workingDirectory}) async {
           final proc = await Process.start('sleep', ['30']);
@@ -217,6 +222,55 @@ void main() {
       await spawned.single.exitCode.timeout(const Duration(seconds: 5));
       expect(exitFired, isFalse);
       expect(manager.endpoint, isNull);
+    });
+
+    test('adopts a published endpoint instead of spawning again', () async {
+      final dir = Directory.systemTemp.createTempSync('local_server_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      // Simulate another app instance's endpoint file.
+      File('${dir.path}/endpoint.json').writeAsStringSync(
+        '{"base_url": "http://127.0.0.1:45000", "token": "adopted-tok"}',
+      );
+      var spawns = 0;
+      final manager = await fakeManager(
+        dir: dir,
+        spawnProcess:
+            (exe, args, {required environment, required workingDirectory}) {
+          spawns++;
+          return Process.start('sleep', ['30']);
+        },
+      );
+      addTearDown(manager.dispose);
+
+      final endpoint = await manager.ensureRunning();
+      expect(endpoint!.baseUrl, 'http://127.0.0.1:45000');
+      expect(endpoint.token, 'adopted-tok');
+      expect(spawns, 0);
+    });
+
+    test('spawns fresh when the published endpoint no longer verifies',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('local_server_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File('${dir.path}/endpoint.json').writeAsStringSync(
+        '{"base_url": "http://127.0.0.1:1", "token": "stale"}',
+      );
+      var spawns = 0;
+      final manager = await fakeManager(
+        dir: dir,
+        verifyEndpoint: (_) async => false,
+        spawnProcess:
+            (exe, args, {required environment, required workingDirectory}) {
+          spawns++;
+          return Process.start('sleep', ['30']);
+        },
+      );
+      addTearDown(manager.dispose);
+
+      final endpoint = await manager.ensureRunning();
+      expect(endpoint, isNotNull);
+      expect(endpoint!.token, isNot('stale'));
+      expect(spawns, 1);
     });
 
     test('stops retrying after repeated quick exits', () async {

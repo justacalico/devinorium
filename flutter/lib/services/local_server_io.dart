@@ -44,13 +44,15 @@ class LocalServerManager implements LocalServerController {
     bool? supported,
     ServerProcessStarter? spawnProcess,
     Future<bool> Function(Uri url)? healthCheck,
+    Future<bool> Function(LocalServerEndpoint endpoint)? verifyEndpoint,
     this.onExit,
   })  : _executablePath = executablePath ?? Platform.resolvedExecutable,
         _environment = environment ?? Platform.environment,
         _binaryPath = _nonEmpty(binaryPath ?? _binaryOverride),
         _supported = supported ?? _defaultSupported,
         _spawn = spawnProcess ?? _defaultSpawn,
-        _healthCheck = healthCheck ?? _defaultHealthCheck;
+        _healthCheck = healthCheck ?? _defaultHealthCheck,
+        _verifyEndpoint = verifyEndpoint ?? _defaultVerify;
 
   /// A manager that never spawns anything. Used by tests that do not exercise
   /// the bundled server.
@@ -68,6 +70,7 @@ class LocalServerManager implements LocalServerController {
   final bool _supported;
   final ServerProcessStarter _spawn;
   final Future<bool> Function(Uri url) _healthCheck;
+  final Future<bool> Function(LocalServerEndpoint endpoint) _verifyEndpoint;
 
   Process? _process;
   bool _exited = true;
@@ -161,6 +164,12 @@ class LocalServerManager implements LocalServerController {
   }
 
   Future<LocalServerEndpoint?> _start() async {
+    // A second app instance cannot spawn its own server (the backend takes a
+    // single-instance lock on the database), so adopt the endpoint the first
+    // instance published if it still answers.
+    final adopted = await _adoptExisting();
+    if (adopted != null) return adopted;
+
     final binary = _resolveBinary();
     if (binary == null) {
       debugLogFailure('localServer.resolve', 'no bundled server binary');
@@ -168,9 +177,7 @@ class LocalServerManager implements LocalServerController {
     }
 
     _stopping = false;
-    final dataDir = Directory(
-      this.dataDir ?? dataDirPath(Platform.operatingSystem, _environment),
-    );
+    final dataDir = Directory(_dataDirPath);
     try {
       await dataDir.create(recursive: true);
     } catch (e) {
@@ -208,6 +215,7 @@ class LocalServerManager implements LocalServerController {
       baseUrl: 'http://127.0.0.1:$port',
       token: token,
     );
+    unawaited(_writeEndpointFile(_endpoint!));
     return _endpoint;
   }
 
@@ -226,6 +234,7 @@ class LocalServerManager implements LocalServerController {
     } on TimeoutException {
       // Already dead or refusing to die; nothing more to do.
     }
+    await _deleteEndpointFile();
   }
 
   @override
@@ -238,6 +247,66 @@ class LocalServerManager implements LocalServerController {
       if (File(candidate).existsSync()) return candidate;
     }
     return null;
+  }
+
+  String get _dataDirPath =>
+      dataDir ?? dataDirPath(Platform.operatingSystem, _environment);
+
+  File get _endpointFile => File(p.join(_dataDirPath, 'endpoint.json'));
+
+  /// Reuse the endpoint a still-running instance of the bundled server
+  /// published into the shared data directory.
+  Future<LocalServerEndpoint?> _adoptExisting() async {
+    final file = _endpointFile;
+    if (!file.existsSync()) return null;
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map<String, dynamic>) return null;
+      final baseUrl = decoded['base_url'];
+      final token = decoded['token'];
+      if (baseUrl is! String || token is! String) return null;
+      final ep = LocalServerEndpoint(baseUrl: baseUrl, token: token);
+      if (await _verifyEndpoint(ep)) {
+        _endpoint = ep;
+        return ep;
+      }
+    } catch (_) {
+      // A missing, corrupt, or stale endpoint file just means we spawn.
+    }
+    return null;
+  }
+
+  Future<void> _writeEndpointFile(LocalServerEndpoint ep) async {
+    try {
+      await _endpointFile.writeAsString(
+        jsonEncode({'base_url': ep.baseUrl, 'token': ep.token}),
+      );
+    } catch (e) {
+      debugLogFailure('localServer.endpointFile', e);
+    }
+  }
+
+  Future<void> _deleteEndpointFile() async {
+    try {
+      final file = _endpointFile;
+      if (file.existsSync()) await file.delete();
+    } catch (_) {}
+  }
+
+  /// The stored endpoint is only trusted when its token actually
+  /// authenticates as the local-mode account.
+  static Future<bool> _defaultVerify(LocalServerEndpoint ep) async {
+    try {
+      final resp = await http
+          .get(
+            Uri.parse('${ep.baseUrl}/api/auth/me'),
+            headers: {'authorization': 'Bearer ${ep.token}'},
+          )
+          .timeout(const Duration(seconds: 2));
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<int> _pickPort() async {
