@@ -1723,7 +1723,10 @@ async fn commit_inside_worktree() {
         .unwrap();
 
     std::fs::write(wt.path.join("wt.txt"), "w").unwrap();
-    let result = svc.commit(&wt.path, "work in worktree", true).await.unwrap();
+    let result = svc
+        .commit(&wt.path, "work in worktree", true)
+        .await
+        .unwrap();
     assert_eq!(result.subject, "work in worktree");
 
     // The commit lands on the worktree branch, not on main.
@@ -1738,10 +1741,7 @@ async fn commit_inside_worktree() {
         .current_dir(tmp.path())
         .output()
         .unwrap();
-    assert_eq!(
-        String::from_utf8_lossy(&main_log.stdout).trim(),
-        "initial"
-    );
+    assert_eq!(String::from_utf8_lossy(&main_log.stdout).trim(), "initial");
     assert_ne!(result.sha, root_sha);
 }
 
@@ -1782,8 +1782,12 @@ async fn stage_paths_work_when_project_is_repo_subdir() {
     std::fs::write(sub.join("inner.txt"), "i").unwrap();
 
     let svc = GitService::new();
-    svc.stage(&sub, &["root.txt".to_string()], false).await.unwrap();
-    svc.stage(&sub, &["sub/inner.txt".to_string()], false).await.unwrap();
+    svc.stage(&sub, &["root.txt".to_string()], false)
+        .await
+        .unwrap();
+    svc.stage(&sub, &["sub/inner.txt".to_string()], false)
+        .await
+        .unwrap();
     let out = status_porcelain(tmp.path());
     assert!(out.contains("A  root.txt"), "{out}");
     assert!(out.contains("A  sub/inner.txt"), "{out}");
@@ -1824,7 +1828,10 @@ async fn stage_rejects_paths_outside_the_repo() {
         .stage(tmp.path(), &["../outside.txt".to_string()], false)
         .await
         .unwrap_err();
-    assert!(matches!(err, devinorium::git::GitError::Other(_)), "{err:?}");
+    assert!(
+        matches!(err, devinorium::git::GitError::Other(_)),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]

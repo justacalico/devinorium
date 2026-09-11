@@ -355,12 +355,7 @@ async fn list_branches(
 
     match state
         .git
-        .branches(
-            path.as_path(),
-            q.query.as_deref(),
-            Some(q.limit),
-            q.force,
-        )
+        .branches(path.as_path(), q.query.as_deref(), Some(q.limit), q.force)
         .await
     {
         Ok(branches) => {
@@ -437,7 +432,11 @@ async fn checkout(
         Err(r) => return r,
     };
 
-    match state.git.checkout(path.as_path(), ref_name, req.track).await {
+    match state
+        .git
+        .checkout(path.as_path(), ref_name, req.track)
+        .await
+    {
         Ok(name) => Json(serde_json::json!({"name": name})).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -583,10 +582,7 @@ async fn delete_worktree(
 
     match state
         .git
-        .remove_worktree(
-            path.as_path(),
-            PathBuf::from(&req.worktree_path).as_path(),
-        )
+        .remove_worktree(path.as_path(), PathBuf::from(&req.worktree_path).as_path())
         .await
     {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),

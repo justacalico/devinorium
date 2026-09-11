@@ -3219,8 +3219,7 @@ async fn git_changes_stage_unstage_commit() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert!(v["branch"].as_str().unwrap().len() > 0);
     assert_eq!(v["staged"].as_array().unwrap().len(), 0);
     let unstaged = v["unstaged"].as_array().unwrap();
@@ -3250,8 +3249,7 @@ async fn git_changes_stage_unstage_commit() {
         ))
         .await
         .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["staged"].as_array().unwrap().len(), 1);
     assert_eq!(v["staged"][0]["path"], "tracked.txt");
     assert_eq!(v["unstaged"].as_array().unwrap().len(), 1);
@@ -3281,8 +3279,7 @@ async fn git_changes_stage_unstage_commit() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["subject"], "wip");
     assert_eq!(v["sha"].as_str().unwrap().len(), 40);
 
@@ -3296,8 +3293,7 @@ async fn git_changes_stage_unstage_commit() {
         ))
         .await
         .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["staged"].as_array().unwrap().len(), 0);
     assert_eq!(v["unstaged"].as_array().unwrap().len(), 0);
 
@@ -3353,10 +3349,8 @@ async fn git_changes_scopes_to_thread_worktree() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let tid = serde_json::from_str::<serde_json::Value>(
-        &body_str(resp.into_body()).await,
-    )
-    .unwrap()["id"]
+    let tid = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()
+        ["id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -3376,8 +3370,7 @@ async fn git_changes_scopes_to_thread_worktree() {
         ))
         .await
         .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["unstaged"].as_array().unwrap().len(), 0);
 
     let resp = app
@@ -3391,8 +3384,7 @@ async fn git_changes_scopes_to_thread_worktree() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["branch"], "wt-branch");
     let unstaged = v["unstaged"].as_array().unwrap();
     assert_eq!(unstaged.len(), 1);
@@ -3430,8 +3422,7 @@ async fn git_changes_scopes_to_thread_worktree() {
         ))
         .await
         .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["branch"], "wt-branch");
 }
 
@@ -3451,8 +3442,7 @@ async fn git_changes_404_for_non_repo() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     let pid = v["id"].as_i64().unwrap();
     std::fs::create_dir_all(v["path"].as_str().unwrap()).unwrap();
 
