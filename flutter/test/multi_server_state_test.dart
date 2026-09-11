@@ -296,6 +296,39 @@ void main() {
       expect(local.isPrimary, isFalse);
     });
 
+    test('upsertLocalProfile reuses the api when the endpoint is unchanged',
+        () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40001',
+        token: 'same-token',
+      );
+      final first = state.activeApi;
+      expect(first, isNotNull);
+
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40001',
+        token: 'same-token',
+      );
+      expect(
+        identical(state.activeApi, first),
+        isTrue,
+        reason: 'an unchanged endpoint must not churn the api instance',
+      );
+
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40009',
+        token: 'new-token',
+      );
+      expect(
+        identical(state.activeApi, first),
+        isFalse,
+        reason: 'a rotated endpoint gets a fresh api',
+      );
+    });
+
     test('upsertLocalProfile refreshes credentials and keeps primary state', () async {
       final registry = await freshRegistry();
       final state = MultiServerState(registry: registry);

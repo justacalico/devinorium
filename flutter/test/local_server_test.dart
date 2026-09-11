@@ -293,5 +293,39 @@ void main() {
       }
       expect(spawns, 3);
     });
+
+    test('stop during an in-flight start kills it and keeps the retry budget',
+        () async {
+      final dir = Directory.systemTemp.createTempSync('local_server_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      var spawns = 0;
+      final manager = await fakeManager(
+        dir: dir,
+        spawnProcess:
+            (exe, args, {required environment, required workingDirectory}) {
+          spawns++;
+          // The first spawn stays alive so stop() can abort it mid-start;
+          // later spawns die instantly and consume the quick-exit budget.
+          return spawns == 1
+              ? Process.start('sleep', ['30'])
+              : Process.start('sh', ['-c', 'exit 1']);
+        },
+        healthCheck: (_) async => false,
+      );
+      addTearDown(manager.dispose);
+
+      final first = manager.ensureRunning();
+      // Let _start reach the health-wait loop, then abort it.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await manager.stop();
+      expect(await first, isNull);
+
+      // The aborted spawn was not counted as a quick exit: exactly three
+      // more starts happen before the cooldown kicks in.
+      for (var i = 0; i < 4; i++) {
+        expect(await manager.ensureRunning(), isNull);
+      }
+      expect(spawns, 4);
+    });
   });
 }

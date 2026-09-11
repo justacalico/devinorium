@@ -176,6 +176,105 @@ async fn local_account_cannot_be_logged_into_with_a_password() {
 }
 
 #[tokio::test]
+async fn run_local_does_not_promote_a_foreign_local_account() {
+    // A `local` user created through normal registration (real password hash)
+    // is not ours — re-running local bootstrap must not flip it to owner.
+    let dir = tempfile::tempdir().expect("tempdir").keep();
+    let db_url = format!("sqlite:{}?mode=rwc", dir.join("test.db").display());
+    let database = db::Db::connect(&db_url).await.expect("db connect");
+    database
+        .create_user(db::NewUser {
+            username: "local".into(),
+            password_hash: auth::password::hash("somepassword").unwrap(),
+            is_owner: false,
+        })
+        .await
+        .unwrap();
+
+    auth::bootstrap::run_local(&database).await.unwrap();
+
+    let user = database
+        .get_user_by_username("local")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!user.is_owner, "foreign local account must stay non-owner");
+}
+
+#[tokio::test]
+async fn run_local_restores_owner_on_its_own_sentinel_account() {
+    let dir = tempfile::tempdir().expect("tempdir").keep();
+    let db_url = format!("sqlite:{}?mode=rwc", dir.join("test.db").display());
+    let database = db::Db::connect(&db_url).await.expect("db connect");
+    database
+        .create_user(db::NewUser {
+            username: "local".into(),
+            password_hash: "!local-mode".into(),
+            is_owner: false,
+        })
+        .await
+        .unwrap();
+
+    auth::bootstrap::run_local(&database).await.unwrap();
+
+    let user = database
+        .get_user_by_username("local")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(user.is_owner);
+}
+
+#[tokio::test]
+async fn cookie_session_survives_an_unrelated_bearer_header() {
+    // Proxies may inject their own Authorization header; a bogus bearer must
+    // not shadow a valid session cookie.
+    let (app, _db) = make_app(None).await;
+
+    let login = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .header("host", "localhost")
+                .header("origin", "http://localhost")
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(login.status(), StatusCode::OK);
+    let cookie = login
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", cookie)
+                .header("authorization", "Bearer unrelated-proxy-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn run_local_is_idempotent() {
     let dir = tempfile::tempdir().expect("tempdir").keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("test.db").display());
