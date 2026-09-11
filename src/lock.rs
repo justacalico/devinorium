@@ -1,17 +1,16 @@
 //! Single-instance advisory lock to prevent multiple Devinorium processes
 //! from running against the same database.
 
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Seek, Write};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
-use rustix::fs::{flock, FlockOperation};
-use rustix::process::{test_kill_process, Pid};
+use anyhow::Result;
 
 /// Holds an exclusive advisory lock on the instance lock file.
 pub struct SingleInstance {
     _file: File,
+    #[cfg(windows)]
+    _guard: platform::LockGuard,
 }
 
 impl SingleInstance {
@@ -20,6 +19,23 @@ impl SingleInstance {
     /// If another process already holds the lock, this returns an error
     /// identifying the other process when possible.
     pub fn acquire(path: &Path) -> Result<Self> {
+        platform::acquire(path)
+    }
+}
+
+#[cfg(unix)]
+mod platform {
+    use std::fs::{File, OpenOptions};
+    use std::io::{Read, Seek, Write};
+    use std::path::Path;
+
+    use anyhow::{bail, Context, Result};
+    use rustix::fs::{flock, FlockOperation};
+    use rustix::process::{test_kill_process, Pid};
+
+    use super::SingleInstance;
+
+    pub fn acquire(path: &Path) -> Result<SingleInstance> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -35,7 +51,7 @@ impl SingleInstance {
         match flock(&file, FlockOperation::NonBlockingLockExclusive) {
             Ok(()) => {
                 write_pid(&mut file)?;
-                Ok(Self { _file: file })
+                Ok(SingleInstance { _file: file })
             }
             Err(rustix::io::Errno::AGAIN) => {
                 let other = read_pid(&mut file);
@@ -52,28 +68,154 @@ impl SingleInstance {
             Err(e) => bail!("failed to acquire instance lock: {e}"),
         }
     }
+
+    fn write_pid(file: &mut File) -> Result<()> {
+        let pid = std::process::id();
+        file.set_len(0)?;
+        file.rewind()?;
+        writeln!(file, "{pid}")?;
+        file.sync_all()?;
+        Ok(())
+    }
+
+    fn read_pid(file: &mut File) -> Option<u32> {
+        let mut buf = String::new();
+        file.rewind().ok()?;
+        file.read_to_string(&mut buf).ok()?;
+        buf.trim().parse().ok()
+    }
+
+    fn is_process_alive(pid: u32) -> bool {
+        Pid::from_raw(pid as i32)
+            .map(|p| test_kill_process(p).is_ok())
+            .unwrap_or(false)
+    }
 }
 
-fn write_pid(file: &mut File) -> Result<()> {
-    let pid = std::process::id();
-    file.set_len(0)?;
-    file.rewind()?;
-    writeln!(file, "{pid}")?;
-    file.sync_all()?;
-    Ok(())
+#[cfg(windows)]
+mod platform {
+    use std::fs::{File, OpenOptions};
+    use std::io::{Read, Seek, Write};
+    use std::os::windows::io::AsRawHandle;
+    use std::path::Path;
+
+    use anyhow::{bail, Context, Result};
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_LOCK_VIOLATION, HANDLE};
+    use windows_sys::Win32::Storage::FileSystem::{
+        LockFileEx, UnlockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    use super::SingleInstance;
+
+    /// Keeps the LockFileEx region held until dropped.
+    pub struct LockGuard {
+        handle: HANDLE,
+    }
+
+    impl Drop for LockGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let mut overlapped: OVERLAPPED = std::mem::zeroed();
+                UnlockFileEx(self.handle, 0, u32::MAX, u32::MAX, &mut overlapped);
+            }
+        }
+    }
+
+    pub fn acquire(path: &Path) -> Result<SingleInstance> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path)
+            .with_context(|| format!("opening lock file at {}", path.display()))?;
+
+        let handle = file.as_raw_handle() as HANDLE;
+        let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+        let locked = unsafe {
+            LockFileEx(
+                handle,
+                LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                0,
+                u32::MAX,
+                u32::MAX,
+                &mut overlapped,
+            )
+        };
+
+        if locked != 0 {
+            write_pid(&mut file)?;
+            return Ok(SingleInstance {
+                _file: file,
+                _guard: LockGuard { handle },
+            });
+        }
+
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(ERROR_LOCK_VIOLATION as i32) {
+            let other = read_pid(&mut file);
+            let pid_hint = other
+                .and_then(|pid| is_process_alive(pid).then_some(pid))
+                .map(|pid| format!("; another instance is running with PID {pid}"))
+                .unwrap_or_else(|| "; another instance may already be running".to_string());
+            bail!(
+                "database is locked by another Devinorium process{pid_hint}. \
+                 Stop the other process or remove the lock file ({}) to continue",
+                path.display()
+            );
+        }
+        bail!("failed to acquire instance lock: {err}");
+    }
+
+    fn write_pid(file: &mut File) -> Result<()> {
+        let pid = std::process::id();
+        file.set_len(0)?;
+        file.rewind()?;
+        writeln!(file, "{pid}")?;
+        file.sync_all()?;
+        Ok(())
+    }
+
+    fn read_pid(file: &mut File) -> Option<u32> {
+        let mut buf = String::new();
+        file.rewind().ok()?;
+        file.read_to_string(&mut buf).ok()?;
+        buf.trim().parse().ok()
+    }
+
+    fn is_process_alive(pid: u32) -> bool {
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle == 0 {
+                return false;
+            }
+            let mut code = 0u32;
+            let alive = GetExitCodeProcess(handle, &mut code) != 0 && code == 259; // STILL_ACTIVE
+            CloseHandle(handle);
+            alive
+        }
+    }
 }
 
-fn read_pid(file: &mut File) -> Option<u32> {
-    let mut buf = String::new();
-    file.rewind().ok()?;
-    file.read_to_string(&mut buf).ok()?;
-    buf.trim().parse().ok()
-}
+#[cfg(not(any(unix, windows)))]
+mod platform {
+    use std::path::Path;
 
-fn is_process_alive(pid: u32) -> bool {
-    Pid::from_raw(pid as i32)
-        .map(|p| test_kill_process(p).is_ok())
-        .unwrap_or(false)
+    use anyhow::Result;
+
+    use super::SingleInstance;
+
+    pub fn acquire(_path: &Path) -> Result<SingleInstance> {
+        anyhow::bail!("single-instance locking is not supported on this platform");
+    }
 }
 
 /// Derive the lock-file path from a SQLite database URL.
