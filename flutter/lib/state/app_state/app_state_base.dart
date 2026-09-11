@@ -5,6 +5,7 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 
 abstract class AppStateBase extends ChangeNotifier {
   MultiServerState get multiServerState;
+  LocalServerManager get localServerManager;
   ApiService get api;
   AppView get _view;
   set _view(AppView value);

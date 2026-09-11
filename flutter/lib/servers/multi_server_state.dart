@@ -12,6 +12,9 @@ import 'server_registry.dart';
 /// leak auth headers or cached state. The active server is persisted as the
 /// primary profile in [ServerRegistry].
 class MultiServerState extends ChangeNotifier {
+  /// Stable profile id for the server bundled inside the desktop app.
+  static const localProfileId = 'local';
+
   final ServerRegistry _registry;
 
   final Map<String, ApiService> _apis = {};
@@ -61,6 +64,9 @@ class MultiServerState extends ChangeNotifier {
 
   /// The active server id, or `null`.
   String? get activeServerId => _activeServerId;
+
+  /// Look up a profile by id, or `null`.
+  ServerProfile? profileById(String id) => _profiles[id];
 
   /// All configured profiles, active first.
   List<ServerProfile> get profiles {
@@ -112,9 +118,40 @@ class MultiServerState extends ChangeNotifier {
     return true;
   }
 
+  /// Insert or refresh the bundled-server profile. The endpoint rotates every
+  /// launch, so the stored base URL and token are always overwritten. The
+  /// profile becomes active only when nothing else is active or it already
+  /// was — the user's chosen remote server keeps focus otherwise.
+  Future<void> upsertLocalProfile({
+    required String baseUrl,
+    required String token,
+    String username = 'local',
+  }) async {
+    final existing = _profiles[localProfileId];
+    final profile = ServerProfile(
+      id: localProfileId,
+      label: existing?.label ?? 'local',
+      baseUrl: baseUrl,
+      token: token,
+      username: username,
+      createdAt: existing?.createdAt ?? DateTime.now().toUtc(),
+      isPrimary: existing?.isPrimary ?? _activeServerId == null,
+      isLocal: true,
+    );
+    final setActive =
+        _activeServerId == null || _activeServerId == localProfileId;
+    await addProfile(profile, setActive: setActive);
+  }
+
   /// Remove a server by id. Promotes the most recently created remaining
   /// profile when the active one is removed.
-  Future<void> removeServer(String id) async {
+  ///
+  /// Bundled local profiles refuse removal: they are managed automatically
+  /// and would be recreated on the next launch anyway. [force] bypasses the
+  /// guard for internal cleanup (e.g. the bundled binary vanished).
+  Future<void> removeServer(String id, {bool force = false}) async {
+    final existing = _profiles[id];
+    if (!force && existing != null && existing.isLocal) return;
     var remaining = await _registry.remove(id);
     if (_activeServerId == id && remaining.isNotEmpty) {
       remaining = List<ServerProfile>.from(remaining)

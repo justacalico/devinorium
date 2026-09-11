@@ -15,6 +15,11 @@ class ServerProfile {
   final DateTime createdAt;
   final bool isPrimary;
 
+  /// True when this profile points at the server bundled inside the desktop
+  /// app. Local profiles are managed automatically: they cannot be removed
+  /// and their base URL/token rotate every launch.
+  final bool isLocal;
+
   const ServerProfile({
     required this.id,
     required this.label,
@@ -23,6 +28,7 @@ class ServerProfile {
     required this.username,
     required this.createdAt,
     this.isPrimary = false,
+    this.isLocal = false,
   });
 
   ServerProfile copyWith({
@@ -33,6 +39,7 @@ class ServerProfile {
     String? username,
     DateTime? createdAt,
     bool? isPrimary,
+    bool? isLocal,
   }) {
     return ServerProfile(
       id: id ?? this.id,
@@ -42,6 +49,7 @@ class ServerProfile {
       username: username ?? this.username,
       createdAt: createdAt ?? this.createdAt,
       isPrimary: isPrimary ?? this.isPrimary,
+      isLocal: isLocal ?? this.isLocal,
     );
   }
 
@@ -53,6 +61,7 @@ class ServerProfile {
         'username': username,
         'created_at': createdAt.toIso8601String(),
         'is_primary': isPrimary,
+        'is_local': isLocal,
       };
 
   factory ServerProfile.fromJson(Map<String, dynamic> json) {
@@ -64,6 +73,7 @@ class ServerProfile {
       username: json['username'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
       isPrimary: json['is_primary'] as bool? ?? false,
+      isLocal: json['is_local'] as bool? ?? false,
     );
   }
 

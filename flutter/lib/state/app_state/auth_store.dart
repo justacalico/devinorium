@@ -29,6 +29,7 @@ mixin AuthStore on AppStateBase {
       if (!multiServerState.hasAnyServer) {
         await multiServerState.loadFromRegistry();
       }
+      await _ensureLocalServer();
       final active = multiServerState.activeApi;
       if (active == null || !(await active.client.isConfigured)) {
         _view = AppView.app;
@@ -224,6 +225,45 @@ mixin AuthStore on AppStateBase {
     return ApiService(client: api.client);
   }
 
+  /// Spawn the bundled server on desktop and register its profile. No-ops on
+  /// web/mobile or when the binary is not bundled (plain `flutter run`).
+  Future<void> _ensureLocalServer() async {
+    final manager = localServerManager;
+    if (!manager.isSupported) return;
+    try {
+      final endpoint = await manager.ensureRunning();
+      if (endpoint != null) {
+        await multiServerState.upsertLocalProfile(
+          baseUrl: endpoint.baseUrl,
+          token: endpoint.token,
+        );
+      } else if (multiServerState
+              .profileById(MultiServerState.localProfileId)
+              ?.isLocal ==
+          true) {
+        // The bundled binary vanished (e.g. a dev run without it); drop the
+        // stale profile so it does not linger as a dead entry.
+        await multiServerState.removeServer(
+          MultiServerState.localProfileId,
+          force: true,
+        );
+      }
+    } catch (e) {
+      debugLogFailure('appState.ensureLocalServer', e);
+    }
+  }
+
+  /// Restart the bundled server when it dies while its profile is active, so
+  /// a crash does not leave the app stuck on a dead connection.
+  void _onLocalServerExit(int exitCode) {
+    debugLogFailure('localServer.exit', 'exit code $exitCode');
+    if (multiServerState.activeProfile?.isLocal != true) return;
+    unawaited(() async {
+      await _ensureLocalServer();
+      await checkConnection();
+    }());
+  }
+
   @override
   Future<void> loadUsers() async {
     try {
@@ -291,10 +331,16 @@ mixin AuthStore on AppStateBase {
     } catch (_) {}
     // Sign-out removes the server profile so no stale unauthenticated
     // connection is left behind. On web the implicit same-origin profile is
-    // kept since it is recreated from the registry anyway.
+    // kept since it is recreated from the registry anyway. The bundled local
+    // profile is kept too: it has no credentials to sign out of.
     final activeId = multiServerState.activeServerId;
-    if (!kIsWeb && activeId != null) {
+    final isLocal = multiServerState.activeProfile?.isLocal ?? false;
+    if (!kIsWeb && activeId != null && !isLocal) {
       await removeServer(activeId);
+    } else if (isLocal) {
+      // Nothing to sign out of; just drop the in-memory state and reload.
+      await _resetServerState();
+      await _loadUserAndData();
     } else {
       await multiServerState.clearActiveToken();
       await _resetServerState();
