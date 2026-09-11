@@ -2,6 +2,20 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.62.0 - 2026-09-11
+#### Features
+- 侧边栏新增 Git 面板，支持暂存、提交、拉取与推送 - (58229a5) - HttpAnimations
+- 前端添加 Grok Code 图标和默认命令 - (ae3d702) - HttpAnimations
+- grok 版本检查改用 update --check - (f041cb2) - HttpAnimations
+- ACP 会话配置支持 reasoning_effort 选项 - (50199ff) - HttpAnimations
+- 从 grok initialize 元数据获取模型和推理档位 - (62e5573) - HttpAnimations
+- 注册 Grok Code provider 并接入 grok agent stdio - (3782361) - HttpAnimations
+#### Bug Fixes
+- 修复 Git 面板把缺少接口的旧后端误报为非仓库 - (b8abc6f) - HttpAnimations
+- 编辑器模式无活跃线程时 Git 面板显示提示而不是项目变更 - (1bc93cf) - HttpAnimations
+
+- - -
+
 ## v0.61.0 - 2026-09-11
 #### Features
 - 计划面板默认折叠 - (bdb1f98) - HttpAnimations
