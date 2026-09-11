@@ -60,9 +60,14 @@ class _FakeApi extends ApiService {
 /// A manager whose endpoint is fixed; `supported` controls whether bootstrap
 /// touches it at all.
 class _FakeLocalManager implements LocalServerController {
-  _FakeLocalManager({required this.supported, this.endpointToReturn});
+  _FakeLocalManager({
+    required this.supported,
+    this.endpointToReturn,
+    this.binaryAvailable = true,
+  });
 
   final bool supported;
+  final bool binaryAvailable;
   LocalServerEndpoint? endpointToReturn;
   int ensureCalls = 0;
 
@@ -71,6 +76,9 @@ class _FakeLocalManager implements LocalServerController {
 
   @override
   bool get isSupported => supported;
+
+  @override
+  bool get hasBinary => supported && binaryAvailable;
 
   @override
   LocalServerEndpoint? get endpoint => endpointToReturn;
@@ -178,7 +186,8 @@ void main() {
         ),
         _FakeApi(),
       );
-      final manager = _FakeLocalManager(supported: true);
+      final manager =
+          _FakeLocalManager(supported: true, binaryAvailable: false);
       final state = AppState.test(
         multiServerState: multi,
         localServerManager: manager,
@@ -191,6 +200,76 @@ void main() {
         multi.profileById(MultiServerState.localProfileId),
         isNull,
       );
+    });
+
+    test('bootstrap keeps the local profile on a transient start failure',
+        () async {
+      final multi = MultiServerState();
+      multi.addTestConnection(
+        ServerProfile(
+          id: MultiServerState.localProfileId,
+          label: 'local',
+          baseUrl: 'http://127.0.0.1:43210',
+          token: 'stale',
+          username: 'local',
+          createdAt: DateTime(2024, 1, 1).toUtc(),
+          isPrimary: true,
+          isLocal: true,
+        ),
+        _FakeApi(),
+      );
+      // Binary present, but ensureRunning could not get a healthy server.
+      final manager = _FakeLocalManager(supported: true);
+      final state = AppState.test(
+        multiServerState: multi,
+        localServerManager: manager,
+      );
+      addTearDown(state.dispose);
+
+      await state.bootstrap();
+
+      expect(
+        multi.profileById(MultiServerState.localProfileId),
+        isNotNull,
+      );
+    });
+
+    test('switchServer back to the local profile re-ensures the server',
+        () async {
+      final multi = MultiServerState();
+      multi.addTestConnection(
+        ServerProfile(
+          id: 'remote',
+          label: 'remote',
+          baseUrl: 'http://remote:7878',
+          token: 't',
+          username: 'owner',
+          createdAt: DateTime(2024, 1, 1).toUtc(),
+          isPrimary: true,
+        ),
+        _FakeApi(),
+      );
+      final manager = _FakeLocalManager(
+        supported: true,
+        endpointToReturn: const LocalServerEndpoint(
+          baseUrl: 'http://127.0.0.1:43210',
+          token: 'tok',
+        ),
+      );
+      final state = AppState.test(
+        multiServerState: multi,
+        localServerManager: manager,
+      );
+      addTearDown(state.dispose);
+      await state.bootstrap();
+      expect(state.activeServerId, 'remote');
+      final callsAfterBoot = manager.ensureCalls;
+
+      // The stored local endpoint is stale; switching must re-ensure first.
+      await state.switchServer(MultiServerState.localProfileId);
+
+      expect(state.activeServerId, MultiServerState.localProfileId);
+      expect(manager.ensureCalls, greaterThan(callsAfterBoot));
     });
 
     test('unsupported platforms never touch the manager', () async {

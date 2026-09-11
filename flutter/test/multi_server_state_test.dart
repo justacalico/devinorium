@@ -322,6 +322,43 @@ void main() {
       expect(state.profiles, hasLength(1));
     });
 
+    test('upsertLocalProfile persists the profile without its token', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40001',
+        token: 'secret-tok',
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('devinorium_servers')!;
+      expect(raw, contains('"is_local":true'));
+      expect(raw, isNot(contains('secret-tok')));
+
+      // The in-memory profile still carries the live token.
+      expect(
+        state.profileById(MultiServerState.localProfileId)!.token,
+        'secret-tok',
+      );
+    });
+
+    test('clearActiveToken leaves the local profile untouched', () async {
+      final registry = await freshRegistry();
+      final state = MultiServerState(registry: registry);
+      await state.upsertLocalProfile(
+        baseUrl: 'http://127.0.0.1:40001',
+        token: 'secret-tok',
+      );
+
+      await state.clearActiveToken();
+
+      expect(
+        state.profileById(MultiServerState.localProfileId)!.token,
+        'secret-tok',
+      );
+    });
+
     test('removeServer refuses the bundled local profile unless forced', () async {
       final registry = await freshRegistry();
       final state = MultiServerState(registry: registry);
