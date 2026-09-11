@@ -93,13 +93,20 @@ class MultiServerState extends ChangeNotifier {
     bool setActive = true,
     ApiService? api,
   }) async {
+    final existing = _profiles[profile.id];
     final updated = await _registry.upsert(profile);
     // Apply all returned profiles so primary flags stay in sync.
-    for (final p in updated) {
-      _profiles[p.id] = p;
+    _applyProfiles(updated);
+    // Rebuild the client only when the endpoint actually changed — disposing
+    // the shared ApiService would orphan open thread stores.
+    final unchanged = existing != null &&
+        existing.baseUrl == profile.baseUrl &&
+        existing.token == profile.token &&
+        api == null;
+    if (!unchanged || !_apis.containsKey(profile.id)) {
+      _apis[profile.id]?.dispose();
+      _apis[profile.id] = api ?? ApiService(client: createApiClient(profile));
     }
-    _apis[profile.id]?.dispose();
-    _apis[profile.id] = api ?? ApiService(client: createApiClient(profile));
     if (setActive) {
       _activeServerId = profile.id;
     }
@@ -111,12 +118,24 @@ class MultiServerState extends ChangeNotifier {
     if (!_profiles.containsKey(id)) return false;
     if (_activeServerId == id) return true;
     final updated = await _registry.setPrimary(id);
-    for (final p in updated) {
-      _profiles[p.id] = p;
-    }
+    _applyProfiles(updated);
     _activeServerId = id;
     notifyListeners();
     return true;
+  }
+
+  /// Merge a reloaded profile list into memory. The local profile is stored
+  /// without its token, so the in-memory token wins over the empty persisted
+  /// one — the bundled endpoint stays usable until the next refresh.
+  void _applyProfiles(List<ServerProfile> profiles) {
+    for (final p in profiles) {
+      final existing = _profiles[p.id];
+      _profiles[p.id] = p.isLocal &&
+              p.token.isEmpty &&
+              (existing?.token.isNotEmpty ?? false)
+          ? p.copyWith(token: existing!.token)
+          : p;
+    }
   }
 
   /// Insert or refresh the bundled-server profile. The endpoint rotates every
@@ -153,19 +172,22 @@ class MultiServerState extends ChangeNotifier {
   Future<void> removeServer(String id, {bool force = false}) async {
     final existing = _profiles[id];
     if (!force && existing != null && existing.isLocal) return;
-    var remaining = await _registry.remove(id);
-    if (_activeServerId == id && remaining.isNotEmpty) {
-      remaining = List<ServerProfile>.from(remaining)
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      final promoted = await _registry.setPrimary(remaining.first.id);
-      for (final p in promoted) {
-        _profiles[p.id] = p;
-      }
-    }
+    final remaining = await _registry.remove(
+      id,
+      promoteNewest: _activeServerId == id,
+    );
+    _applyProfiles(remaining);
     _apis.remove(id)?.dispose();
     _profiles.remove(id);
     if (_activeServerId == id) {
-      _activeServerId = remaining.isNotEmpty ? remaining.first.id : null;
+      _activeServerId = remaining.isEmpty
+          ? null
+          : remaining
+              .firstWhere(
+                (p) => p.isPrimary,
+                orElse: () => remaining.first,
+              )
+              .id;
     }
     notifyListeners();
   }

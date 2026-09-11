@@ -126,11 +126,21 @@ class ServerRegistry {
     });
   }
 
-  /// Remove a profile by id.
-  Future<List<ServerProfile>> remove(String id) {
+  /// Remove a profile by id. When [promoteNewest] is true, the most recently
+  /// created remaining profile is marked primary in the same write so removal
+  /// and promotion stay atomic.
+  Future<List<ServerProfile>> remove(String id, {bool promoteNewest = false}) {
     return _serialized(() async {
       final profiles = await loadProfiles();
       final updated = profiles.where((p) => p.id != id).toList();
+      if (promoteNewest && updated.isNotEmpty) {
+        final newest = updated
+            .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b)
+            .id;
+        for (var i = 0; i < updated.length; i++) {
+          updated[i] = updated[i].copyWith(isPrimary: updated[i].id == newest);
+        }
+      }
       await saveProfiles(updated);
       return updated;
     });
