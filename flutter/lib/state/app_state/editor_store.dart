@@ -58,12 +58,10 @@ mixin EditorStore on AppStateBase {
   String? _activeEditorPath;
   bool _agentPanelOpen = true;
   bool _agentPanelUserSet = false;
-  bool _editorTerminalOpen = false;
 
   // Tabs that should be reloaded once their in-flight read or write settles.
   final Set<String> _pendingAgentReloads = {};
   double _editorAgentPanelWidth = 320;
-  double _editorTerminalHeight = 280;
 
   static const double _minPanelWidth = 240;
   static const double _maxPanelWidth = 1200;
@@ -103,13 +101,7 @@ mixin EditorStore on AppStateBase {
   bool get agentPanelUserSet => _agentPanelUserSet;
 
   @override
-  bool get editorTerminalOpen => _editorTerminalOpen;
-
-  @override
   double get editorAgentPanelWidth => _editorAgentPanelWidth;
-
-  @override
-  double get editorTerminalHeight => _editorTerminalHeight;
 
   @override
   bool get hasDirtyEditorTabs => _editorTabs.any((t) => t.dirty);
@@ -122,20 +114,8 @@ mixin EditorStore on AppStateBase {
   }
 
   @override
-  void setEditorTerminalOpen(bool v) {
-    _editorTerminalOpen = v;
-    notifyListeners();
-  }
-
-  @override
   void setEditorAgentPanelWidth(double v) {
     _editorAgentPanelWidth = v.clamp(_minPanelWidth, _maxPanelWidth);
-    notifyListeners();
-  }
-
-  @override
-  void setEditorTerminalHeight(double v) {
-    _editorTerminalHeight = v;
     notifyListeners();
   }
 

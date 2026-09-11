@@ -657,6 +657,7 @@ mixin AuthStore on AppStateBase {
     }
     _threadStores.clear();
     _setActiveStore(null);
+    await terminalStore.clear();
     _gitRepoInfo.clear();
     _gitBranches.clear();
     _gitWorktrees.clear();

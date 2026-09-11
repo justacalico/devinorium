@@ -1,22 +1,24 @@
 import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/terminal/terminal_panel.dart';
 import 'package:devinorium_frontend/terminal/terminal_session.dart';
-import 'package:devinorium_frontend/terminal/thread_terminal_panel.dart';
+import 'package:devinorium_frontend/terminal/terminal_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+TerminalStore _openStore({TerminalSessionFactory? sessionFactory}) =>
+    TerminalStore(api: () => ApiService(), sessionFactory: sessionFactory)
+      ..setOpen(true);
+
+Widget _panel(TerminalStore store) => MaterialApp(
+  home: Scaffold(body: TerminalPanel(store: store)),
+);
+
 void main() {
   testWidgets('shows empty state and header controls', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ThreadTerminalPanel(
-            api: ApiService(),
-            threadId: 't1',
-            onClose: () {},
-          ),
-        ),
-      ),
-    );
+    final store = _openStore();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
     await tester.pumpAndSettle();
 
     expect(find.text('No terminal sessions'), findsOneWidget);
@@ -26,61 +28,38 @@ void main() {
     expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
   });
 
-  testWidgets('hides content when open is false', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ThreadTerminalPanel(
-            api: ApiService(),
-            threadId: 't1',
-            open: false,
-          ),
-        ),
-      ),
-    );
+  testWidgets('renders nothing when the store is closed', (tester) async {
+    final store = TerminalStore(api: () => ApiService());
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
     await tester.pumpAndSettle();
 
     expect(find.text('No terminal sessions'), findsNothing);
     expect(find.text('Terminal'), findsNothing);
   });
 
-  testWidgets('tapping hide icon invokes onClose', (tester) async {
-    var closed = false;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ThreadTerminalPanel(
-            api: ApiService(),
-            threadId: 't1',
-            onClose: () => closed = true,
-          ),
-        ),
-      ),
-    );
+  testWidgets('tapping hide icon closes the store', (tester) async {
+    final store = _openStore();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
     await tester.pumpAndSettle();
 
-    expect(closed, isTrue);
+    expect(store.open, isFalse);
+    expect(find.text('Terminal'), findsNothing);
   });
 
-  testWidgets('dragging the resize handle reports a new height', (
+  testWidgets('dragging the resize handle updates the store height', (
     tester,
   ) async {
-    double? reportedHeight;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ThreadTerminalPanel(
-            api: ApiService(),
-            threadId: 't1',
-            initialHeight: 280,
-            onHeightChanged: (height) => reportedHeight = height,
-          ),
-        ),
-      ),
-    );
+    final store = _openStore();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
     await tester.pumpAndSettle();
 
     final dragHandle = find.byKey(const ValueKey('terminalDragHandle'));
@@ -89,63 +68,86 @@ void main() {
     await tester.drag(dragHandle, const Offset(0, -50));
     await tester.pumpAndSettle();
 
-    expect(reportedHeight, isNotNull);
-    expect(reportedHeight, greaterThan(280));
+    expect(store.height, greaterThan(TerminalStore.defaultHeight));
   });
 
-  testWidgets('keeps sessions per thread when active thread changes', (
+  testWidgets('sessions survive the panel being unmounted and remounted', (
     tester,
   ) async {
     var callCount = 0;
     Future<TerminalSession> sessionFactory({
       required ApiService api,
-      required String threadId,
+      required String? threadId,
       required bool local,
     }) async {
       callCount++;
-      return TerminalSession(
-        id: 's-$callCount-$threadId',
-        isLocal: local,
-      );
+      return TerminalSession(id: 's-$callCount', isLocal: local);
     }
 
-    Widget build(String threadId) => MaterialApp(
-      home: Scaffold(
-        body: ThreadTerminalPanel(
-          key: const ValueKey('panel'),
-          api: ApiService(),
-          threadId: threadId,
-          sessionFactory: sessionFactory,
+    final store = _openStore(sessionFactory: sessionFactory);
+    addTearDown(store.dispose);
+
+    // Simulate the agents view hosting the panel.
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsOneWidget);
+
+    // Simulate switching to the editor view: a fresh panel instance in a new
+    // tree, backed by the same global store.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          appBar: AppBar(title: const Text('Editor')),
+          body: TerminalPanel(store: store),
         ),
       ),
     );
-
-    await tester.pumpWidget(build('t1'));
     await tester.pumpAndSettle();
-    expect(find.text('No terminal sessions'), findsOneWidget);
+
+    expect(find.text('s-1'), findsOneWidget);
+    expect(store.tabs.single.sessions.single.id, 's-1');
+  });
+
+  testWidgets('sessions are global and survive active thread changes', (
+    tester,
+  ) async {
+    var currentThread = 't1';
+    var callCount = 0;
+    Future<TerminalSession> sessionFactory({
+      required ApiService api,
+      required String? threadId,
+      required bool local,
+    }) async {
+      callCount++;
+      return TerminalSession(id: 's-$callCount-$threadId', isLocal: local);
+    }
+
+    final store = TerminalStore(
+      api: () => ApiService(),
+      activeThreadId: () => currentThread,
+      sessionFactory: sessionFactory,
+    )..setOpen(true);
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
     await tester.pumpAndSettle();
-    expect(find.text('Tab 1'), findsOneWidget);
     expect(find.text('s-1-t1'), findsOneWidget);
 
-    await tester.pumpWidget(build('t2'));
+    // Switching threads must not hide or replace existing sessions.
+    currentThread = 't2';
+    store.notifyListeners();
     await tester.pumpAndSettle();
-    expect(find.text('s-1-t1'), findsNothing);
-    expect(find.text('No terminal sessions'), findsOneWidget);
+    expect(find.text('s-1-t1'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
     await tester.pumpAndSettle();
-    expect(find.text('Tab 1'), findsOneWidget);
-    expect(find.text('s-2-t2'), findsOneWidget);
-
-    await tester.pumpWidget(build('t1'));
-    await tester.pumpAndSettle();
     expect(find.text('s-1-t1'), findsOneWidget);
-    expect(find.text('s-2-t2'), findsNothing);
-
-    await tester.pumpWidget(build('t2'));
-    await tester.pumpAndSettle();
     expect(find.text('s-2-t2'), findsOneWidget);
   });
 
@@ -153,27 +155,17 @@ void main() {
     var callCount = 0;
     Future<TerminalSession> sessionFactory({
       required ApiService api,
-      required String threadId,
+      required String? threadId,
       required bool local,
     }) async {
       callCount++;
-      return TerminalSession(
-        id: 's-$callCount',
-        isLocal: local,
-      );
+      return TerminalSession(id: 's-$callCount', isLocal: local);
     }
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ThreadTerminalPanel(
-            api: ApiService(),
-            threadId: 't1',
-            sessionFactory: sessionFactory,
-          ),
-        ),
-      ),
-    );
+    final store = _openStore(sessionFactory: sessionFactory);
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
     await tester.pumpAndSettle();
     expect(find.text('No terminal sessions'), findsOneWidget);
 
@@ -236,29 +228,19 @@ void main() {
     var callCount = 0;
     Future<TerminalSession> sessionFactory({
       required ApiService api,
-      required String threadId,
+      required String? threadId,
       required bool local,
     }) async {
       callCount++;
-      final session = TerminalSession(
-        id: 's-$callCount',
-        isLocal: local,
-      );
+      final session = TerminalSession(id: 's-$callCount', isLocal: local);
       session.terminal.write('hello');
       return session;
     }
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ThreadTerminalPanel(
-            api: ApiService(),
-            threadId: 't1',
-            sessionFactory: sessionFactory,
-          ),
-        ),
-      ),
-    );
+    final store = _openStore(sessionFactory: sessionFactory);
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
     await tester.pumpAndSettle();
 
     // Add a tab with a non-blank terminal.
@@ -313,5 +295,27 @@ void main() {
     expect(find.text('Close tab?'), findsNothing);
     expect(find.text('s-2'), findsNothing);
     expect(find.text('No terminal sessions'), findsOneWidget);
+  });
+
+  testWidgets('session start failure shows a snackbar', (tester) async {
+    Future<TerminalSession> sessionFactory({
+      required ApiService api,
+      required String? threadId,
+      required bool local,
+    }) async {
+      throw StateError('boom');
+    }
+
+    final store = _openStore(sessionFactory: sessionFactory);
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(store.busy, isFalse);
   });
 }

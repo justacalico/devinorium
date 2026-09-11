@@ -25,6 +25,7 @@ import '../utils/permission_modes.dart';
 import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/version_checker.dart';
+import '../terminal/terminal_store.dart';
 import 'async_value.dart';
 import 'streaming_state.dart';
 import 'thread_store.dart';
@@ -108,6 +109,13 @@ class AppState extends AppStateBase
   final MultiServerState multiServerState;
   @override
   final LocalServerController localServerManager;
+
+  /// Global terminal workspace shared by the agents and editor views.
+  @override
+  late final TerminalStore terminalStore = TerminalStore(
+    api: () => api,
+    activeThreadId: () => activeThreadId,
+  );
 
   ApiService? _defaultApi;
   @override
@@ -327,6 +335,7 @@ class AppState extends AppStateBase
     }
     _threadStores.clear();
     _activeStore = null;
+    terminalStore.dispose();
     multiServerState.removeListener(notifyListeners);
     localServerManager.dispose();
     super.dispose();
