@@ -650,6 +650,8 @@ mixin AuthStore on AppStateBase {
     _linkedMergeRequest = null;
     _composerText = '';
     _attachments = [];
+    _pathRefs = [];
+    _threadReferences = [];
     _selectedModel = '';
     _selectedPermission = 'normal';
     _selectedProvider = '';

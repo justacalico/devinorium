@@ -574,7 +574,9 @@ class _MessageItemState extends State<_MessageItem> {
                       for (final a in message.attachments!)
                         Chip(
                           avatar: Icon(
-                            a.isPathRef
+                            a.isThreadRef
+                                ? Icons.chat_bubble_outline
+                                : a.isPathRef
                                 ? (a.isDir
                                     ? Icons.folder_outlined
                                     : Icons.insert_drive_file_outlined)

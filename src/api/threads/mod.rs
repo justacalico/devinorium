@@ -12,6 +12,7 @@ pub(crate) mod routes;
 pub(crate) mod runs;
 pub(crate) mod send;
 pub(crate) mod stream;
+pub(crate) mod thread_refs;
 pub(crate) mod worktree;
 
 use axum::routing::{get, post, Router};

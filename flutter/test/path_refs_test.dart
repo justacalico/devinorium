@@ -45,6 +45,7 @@ class _RecordingApi extends ApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) {
     sentPrompt = prompt;
     sentContextPaths = contextPaths;

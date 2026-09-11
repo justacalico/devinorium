@@ -122,6 +122,8 @@ abstract class AppStateBase extends ChangeNotifier {
   );
   List<PathRef> get _pathRefs;
   set _pathRefs(List<PathRef> value);
+  List<ThreadReference> get _threadReferences;
+  set _threadReferences(List<ThreadReference> value);
   String get _selectedModel;
   set _selectedModel(String value);
   String get _selectedReasoning;
@@ -252,6 +254,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get lastRunStatus;
   List<({String filename, String mime, Uint8List bytes})> get attachments;
   List<PathRef> get pathRefs;
+  List<ThreadReference> get threadReferences;
   String get selectedModel;
   String get selectedReasoning;
   String get selectedPermission;
@@ -298,6 +301,7 @@ abstract class AppStateBase extends ChangeNotifier {
     String? composerText,
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     List<PathRef>? pathRefs,
+    List<ThreadReference>? threadReferences,
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedReasoning,
@@ -324,6 +328,9 @@ abstract class AppStateBase extends ChangeNotifier {
   void clearAttachments();
   void addPathRef(String path, {required bool isDir});
   void removePathRef(int index);
+  void addThreadReference(ThreadReference ref);
+  void removeThreadReference(int index);
+  void clearThreadReferences();
   void setSelectedModel(String m);
   void setSelectedReasoning(String effort);
   void setSelectedPermission(String p);

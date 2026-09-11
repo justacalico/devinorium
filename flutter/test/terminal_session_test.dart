@@ -109,6 +109,7 @@ class _FakeBaseClient extends BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => throw UnimplementedError();
 
   @override

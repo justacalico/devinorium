@@ -800,6 +800,7 @@ class ApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) {
     return _client.sendStream(
       path: '/api/threads/$threadId/send/stream',
@@ -808,6 +809,7 @@ class ApiService {
       clientMessageId: clientMessageId,
       attachments: attachments,
       contextPaths: contextPaths,
+      referencedThreadIds: referencedThreadIds,
     );
   }
 

@@ -44,6 +44,7 @@ class _StreamApiService extends ApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => controller.stream;
 }
 

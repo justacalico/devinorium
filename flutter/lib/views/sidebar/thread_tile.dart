@@ -69,7 +69,8 @@ class _ThreadTileState extends State<_ThreadTile>
     final l = l10n(context);
     final time = _timeAgo(widget.thread.updatedAt, l);
 
-    return Selector<AppState, ({Color? dotColor, String? dotLabel, bool isRunning})>(
+    final tile =
+        Selector<AppState, ({Color? dotColor, String? dotLabel, bool isRunning})>(
       selector: (_, state) {
         final s = _threadStatus(context, state, widget.thread);
         return (
@@ -142,6 +143,36 @@ class _ThreadTileState extends State<_ThreadTile>
           ),
         );
       },
+    );
+
+    // Horizontal drags carry the thread to the composer as a reference; the
+    // enclosing list keeps vertical scroll.
+    return Draggable<Thread>(
+      data: widget.thread,
+      affinity: Axis.horizontal,
+      maxSimultaneousDrags: 1,
+      feedback: Opacity(
+        opacity: 0.85,
+        child: Material(
+          color: Colors.transparent,
+          child: Chip(
+            avatar: const Icon(Icons.chat_bubble_outline, size: 16),
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: Text(
+                widget.thread.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            visualDensity: VisualDensity.compact,
+            backgroundColor: theme.colorScheme.surfaceContainerHigh,
+            side: BorderSide(color: theme.colorScheme.primary),
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.45, child: tile),
+      child: tile,
     );
   }
 }

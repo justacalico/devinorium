@@ -285,7 +285,9 @@ class _ChatViewState extends State<ChatView> {
                   ),
                 ),
               _PathRefDropTarget(
-                child: _Composer(controller: _composerController),
+                child: _ThreadRefDropTarget(
+                  child: _Composer(controller: _composerController),
+                ),
               ),
               const BranchToolbar(),
             ],

@@ -264,6 +264,25 @@ class Thread {
   );
 }
 
+/// A thread dropped into the composer so its history is sent along as
+/// context for the next message.
+class ThreadReference {
+  final String id;
+  final String title;
+
+  const ThreadReference({required this.id, required this.title});
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ThreadReference) return false;
+    return id == other.id && title == other.title;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, title);
+}
+
 class ThreadGroup {
   final int id;
   final String name;

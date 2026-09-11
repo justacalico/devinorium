@@ -24,6 +24,7 @@ class _PendingSend {
   final String composerText;
   final List<({String filename, String mime, Uint8List bytes})> attachments;
   final List<PathRef> pathRefs;
+  final List<ThreadReference> threadReferences;
   final String clientMessageId;
   final ComposerMode composerMode;
 
@@ -32,6 +33,7 @@ class _PendingSend {
     required this.composerText,
     required this.attachments,
     required this.pathRefs,
+    required this.threadReferences,
     required this.clientMessageId,
     required this.composerMode,
   });
@@ -58,6 +60,7 @@ class ThreadStore {
     String? composerText,
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     List<PathRef>? pathRefs,
+    List<ThreadReference>? threadReferences,
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedReasoning,
@@ -70,6 +73,8 @@ class ThreadStore {
        composerText = composerText ?? '',
        attachments = attachments == null ? [] : List.of(attachments),
        pathRefs = pathRefs == null ? [] : List.of(pathRefs),
+       threadReferences =
+           threadReferences == null ? [] : List.of(threadReferences),
        composerMode = composerMode ?? ComposerMode.code,
        selectedModel = selectedModel ?? '',
        selectedReasoning = selectedReasoning ?? '',
@@ -90,6 +95,7 @@ class ThreadStore {
   // Reassigned rather than mutated so Selector-based widgets see a new list.
   List<({String filename, String mime, Uint8List bytes})> attachments;
   List<PathRef> pathRefs;
+  List<ThreadReference> threadReferences;
   ComposerMode composerMode;
   String selectedModel;
   String selectedReasoning;
@@ -330,7 +336,9 @@ class ThreadStore {
   /// Send a user message and start a new streaming turn.
   Future<void> sendMessage() async {
     final prompt = _promptForMode(composerText.trim());
-    if (prompt.isEmpty && pathRefs.isEmpty) return;
+    if (prompt.isEmpty && pathRefs.isEmpty && threadReferences.isEmpty) {
+      return;
+    }
     if (_pendingSend != null) return;
     _globalError = '';
 
@@ -348,6 +356,7 @@ class ThreadStore {
             attachments,
           );
       final messagePathRefs = List<PathRef>.of(pathRefs);
+      final messageThreadRefs = List<ThreadReference>.of(threadReferences);
       final clientMessageId = _newClientMessageId();
 
       // Snapshot the composer so we can restore it if the turn fails before the
@@ -357,6 +366,7 @@ class ThreadStore {
         composerText: composerText,
         attachments: messageAttachments,
         pathRefs: messagePathRefs,
+        threadReferences: messageThreadRefs,
         clientMessageId: clientMessageId,
         composerMode: composerMode,
       );
@@ -366,11 +376,13 @@ class ThreadStore {
       composerText = '';
       attachments = [];
       pathRefs = [];
+      threadReferences = [];
       _optimisticMessages.add(
         _buildOptimisticMessage(
           prompt,
           messageAttachments,
           messagePathRefs,
+          messageThreadRefs,
           clientMessageId,
         ),
       );
@@ -398,6 +410,9 @@ class ThreadStore {
               clientMessageId: clientMessageId,
               attachments: messageAttachments,
               contextPaths: messagePathRefs,
+              referencedThreadIds: [
+                for (final r in messageThreadRefs) r.id,
+              ],
             )
             .listen(
               (ev) => _handleEvent(ev, token),
@@ -729,6 +744,9 @@ class ThreadStore {
         );
         if (idx != -1) {
           _optimisticMessages.removeAt(idx);
+          // The send was acknowledged, so release the pending snapshot;
+          // otherwise the stream's end would be mistaken for a failure.
+          _pendingSend = null;
         }
       }
     }
@@ -987,13 +1005,15 @@ class ThreadStore {
     String prompt,
     List<({String filename, String mime, Uint8List bytes})> attachments,
     List<PathRef> pathRefs,
+    List<ThreadReference> threadReferences,
     String clientMessageId,
   ) {
     return Message(
       role: 'user',
       content: prompt,
       clientMessageId: clientMessageId,
-      // Match the backend's att_meta order: uploads first, then path refs.
+      // Match the backend's att_meta order: uploads, then path refs, then
+      // thread references.
       attachments: [
         for (final a in attachments)
           Attachment(filename: a.filename, size: a.bytes.length),
@@ -1004,6 +1024,8 @@ class ThreadStore {
             isPathRef: true,
             isDir: r.isDir,
           ),
+        for (final r in threadReferences)
+          Attachment(filename: r.title, size: 0, isThreadRef: true),
       ],
     );
   }
@@ -1026,6 +1048,7 @@ class ThreadStore {
     composerText = pending.composerText;
     attachments = List.of(pending.attachments);
     pathRefs = List.of(pending.pathRefs);
+    threadReferences = List.of(pending.threadReferences);
     composerMode = pending.composerMode;
     _optimisticMessages.removeWhere(
       (m) => m.clientMessageId == pending.clientMessageId,

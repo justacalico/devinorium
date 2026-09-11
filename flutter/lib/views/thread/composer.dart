@@ -6,6 +6,7 @@ typedef _ComposerModel = ({
   ComposerMode composerMode,
   List<({String filename, String mime, Uint8List bytes})> attachments,
   List<PathRef> pathRefs,
+  List<ThreadReference> threadReferences,
   String selectedModel,
   String selectedReasoning,
   String selectedPermission,
@@ -253,7 +254,9 @@ class _ComposerState extends State<_Composer> {
   }
 
   void _submit(AppState state) {
-    if ((_effectivePrompt(state).isNotEmpty || state.pathRefs.isNotEmpty) &&
+    if ((_effectivePrompt(state).isNotEmpty ||
+            state.pathRefs.isNotEmpty ||
+            state.threadReferences.isNotEmpty) &&
         state.activeThreadId != null &&
         !state.sending) {
       widget.controller.clear();
@@ -348,6 +351,7 @@ class _ComposerState extends State<_Composer> {
         composerMode: s.composerMode,
         attachments: s.attachments,
         pathRefs: s.pathRefs,
+        threadReferences: s.threadReferences,
         selectedModel: s.selectedModel,
         selectedReasoning: s.selectedReasoning,
         selectedPermission: s.selectedPermission,
@@ -395,6 +399,50 @@ class _ComposerState extends State<_Composer> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (model.threadReferences.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  for (
+                                    var i = 0;
+                                    i < model.threadReferences.length;
+                                    i++
+                                  )
+                                    Chip(
+                                      key: Key(
+                                        'thread_ref_${model.threadReferences[i].id}',
+                                      ),
+                                      avatar: const Icon(
+                                        Icons.chat_bubble_outline,
+                                        size: 14,
+                                      ),
+                                      label: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 280,
+                                        ),
+                                        child: Text(
+                                          model.threadReferences[i].title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 0,
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                      backgroundColor: theme
+                                          .colorScheme
+                                          .surfaceContainerHigh,
+                                      onDeleted: () =>
+                                          state.removeThreadReference(i),
+                                    ),
+                                ],
+                              ),
+                            ),
                           if (model.pathRefs.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
@@ -635,7 +683,9 @@ class _ComposerState extends State<_Composer> {
                                         } else if (_effectivePrompt(
                                               state,
                                             ).isNotEmpty ||
-                                            model.pathRefs.isNotEmpty) {
+                                            model.pathRefs.isNotEmpty ||
+                                            model
+                                                .threadReferences.isNotEmpty) {
                                           widget.controller.clear();
                                           state.sendMessage();
                                         }
@@ -676,6 +726,54 @@ class _ComposerState extends State<_Composer> {
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// Drop target around the composer for threads dragged out of the sidebar.
+/// Dropping a thread adds it as a reference chip; its recent history is sent
+/// along as context for the next message.
+class _ThreadRefDropTarget extends StatelessWidget {
+  final Widget child;
+
+  const _ThreadRefDropTarget({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = context.read<AppState>();
+    return DragTarget<Thread>(
+      onWillAcceptWithDetails: (details) =>
+          state.activeThreadId != null &&
+          !state.sending &&
+          details.data.id != state.activeThreadId,
+      onAcceptWithDetails: (details) {
+        final thread = details.data;
+        state.addThreadReference(
+          ThreadReference(id: thread.id, title: thread.title),
+        );
+      },
+      builder: (context, candidateData, rejectedData) {
+        return Stack(
+          children: [
+            child,
+            if (candidateData.isNotEmpty)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(_outerRadius),
+                      border: Border.all(
+                        color: theme.colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );

@@ -36,6 +36,7 @@ abstract class BaseApiClient {
     String? clientMessageId,
     List<({String filename, String mime, Uint8List bytes})> attachments,
     List<PathRef> contextPaths,
+    List<String> referencedThreadIds,
   });
 
   Stream<SseEvent> getStream({required String path});
@@ -249,6 +250,7 @@ class ApiClient implements BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) {
     final fields = <String, String>{'prompt': prompt};
     if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
@@ -259,6 +261,9 @@ class ApiClient implements BaseApiClient {
       fields['context_paths'] = jsonEncode([
         for (final r in contextPaths) {'path': r.path, 'is_dir': r.isDir},
       ]);
+    }
+    if (referencedThreadIds.isNotEmpty) {
+      fields['referenced_thread_ids'] = jsonEncode(referencedThreadIds);
     }
     return fetchSseStream(
       client: _client,

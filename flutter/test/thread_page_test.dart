@@ -65,6 +65,7 @@ class _ThrowingClient extends BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => throw UnimplementedError();
 
   @override
@@ -135,6 +136,7 @@ class _FakeApiService extends ApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => Stream.fromFuture(Future.value(SseEvent('done', '')));
 
   @override
