@@ -3,6 +3,7 @@
 /devinorium-*.apk
 /devinorium-*.aab
 /devinorium-*.deb
+/devinorium-*.rpm
 /devinorium-*.tar.gz
 /devinorium-*.zip
 /devinorium-*-deb/
