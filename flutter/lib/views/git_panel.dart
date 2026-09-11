@@ -12,6 +12,8 @@ import 'file_viewer.dart';
 
 typedef _GitPanelModel = ({
   int? projectId,
+  String? activeThreadId,
+  AppMode appMode,
   GitChanges? changes,
   GitRepoInfo? repoInfo,
   bool loading,
@@ -56,6 +58,9 @@ class _GitPanelState extends State<GitPanel> {
 
   void _loadIfNeeded(AppState state) {
     if (state.gitPanelScopeKey == state.activeFilesScopeKey) return;
+    if (state.appMode == AppMode.editor && state.activeThreadId == null) {
+      return;
+    }
     unawaited(state.reloadGitChanges());
   }
 
@@ -68,6 +73,8 @@ class _GitPanelState extends State<GitPanel> {
     return Selector<AppState, _GitPanelModel>(
       selector: (_, s) => (
         projectId: s.activeProjectId,
+        activeThreadId: s.activeThreadId,
+        appMode: s.appMode,
         changes: s.gitPanelChanges,
         repoInfo: s.gitPanelRepoInfo,
         loading: s.gitPanelLoading,
@@ -77,7 +84,10 @@ class _GitPanelState extends State<GitPanel> {
         loadedScopeKey: s.gitPanelScopeKey,
       ),
       builder: (context, model, _) {
-        if (model.scopeKey != model.loadedScopeKey) {
+        final showPanel =
+            model.projectId != null &&
+            (model.appMode != AppMode.editor || model.activeThreadId != null);
+        if (showPanel && model.scopeKey != model.loadedScopeKey) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             // A message typed for one repo must not commit into another.
             _commitController.clear();
@@ -117,22 +127,23 @@ class _GitPanelState extends State<GitPanel> {
                         ),
                       ),
                     ),
-                  if (model.loading && !model.busy)
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    IconButton(
-                      tooltip: l.refresh,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      onPressed: model.busy
-                          ? null
-                          : () => state.reloadGitChanges(),
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.all(4),
-                    ),
+                  if (showPanel)
+                    if (model.loading && !model.busy)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      IconButton(
+                        tooltip: l.refresh,
+                        icon: const Icon(Icons.refresh, size: 18),
+                        onPressed: model.busy
+                            ? null
+                            : () => state.reloadGitChanges(),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                      ),
                 ],
               ),
             ),
@@ -165,6 +176,9 @@ class _GitPanelState extends State<GitPanel> {
 
     if (model.projectId == null) {
       return _Placeholder(text: l.selectProjectFirst);
+    }
+    if (model.appMode == AppMode.editor && model.activeThreadId == null) {
+      return _Placeholder(text: l.selectOrCreateThread);
     }
     if (model.changes == null) {
       if (model.loading) {

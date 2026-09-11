@@ -527,6 +527,46 @@ void main() {
       );
     });
 
+    testWidgets('editor mode with no thread shows the thread placeholder', (
+      tester,
+    ) async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      state.setAppMode(AppMode.editor);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select or create a thread'), findsOneWidget);
+      expect(find.text('a.txt', findRichText: true), findsNothing);
+      expect(find.byTooltip('Refresh'), findsNothing);
+    });
+
+    testWidgets('agents mode with no thread still shows project changes', (
+      tester,
+    ) async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.text('a.txt', findRichText: true), findsOneWidget);
+      expect(find.byTooltip('Refresh'), findsOneWidget);
+    });
+
     testWidgets('shows the not-a-repo placeholder', (tester) async {
       final state = _state(
         ApiService(
