@@ -26,7 +26,7 @@ typedef ServerProcessStarter = Future<Process> Function(
 /// other processes on the machine still cannot use the API. The child
 /// process exits on its own when the app dies because the server watches
 /// stdin (see `spawn_stdin_watchdog` in `src/main.rs`).
-class LocalServerManager {
+class LocalServerManager implements LocalServerController {
   /// Optional binary override for development:
   /// `flutter run --dart-define=DEVINORIUM_SERVER_BINARY=/path/to/devinorium`.
   static const _binaryOverride =
@@ -75,18 +75,22 @@ class LocalServerManager {
   LocalServerEndpoint? _endpoint;
   DateTime? _lastSpawnAt;
   int _quickExits = 0;
+  Future<LocalServerEndpoint?>? _starting;
 
   /// Optional override for the data directory (default: per-user app data).
   final String? dataDir;
 
   /// Called when the spawned server exits on its own (crash or kill), but not
   /// after a deliberate [stop].
+  @override
   void Function(int exitCode)? onExit;
 
   /// Whether this platform can run a bundled server.
+  @override
   bool get isSupported => _supported;
 
   /// The live endpoint, or `null` when no server is currently running.
+  @override
   LocalServerEndpoint? get endpoint => _endpoint;
 
   /// Ordered search list for the bundled binary: explicit override, then
@@ -139,11 +143,24 @@ class LocalServerManager {
   /// Start the bundled server if it is not already running and return its
   /// endpoint. Returns `null` when the platform is unsupported or no bundled
   /// binary exists — callers should fall back to the manual server flow.
-  Future<LocalServerEndpoint?> ensureRunning() async {
-    if (!_supported || _quickExits >= _maxQuickExits) return null;
+  /// Concurrent callers share a single spawn attempt.
+  @override
+  Future<LocalServerEndpoint?> ensureRunning() {
+    if (!_supported || _quickExits >= _maxQuickExits) {
+      return Future.value(null);
+    }
     final running = _process;
-    if (_endpoint != null && running != null && !_exited) return _endpoint;
+    if (_endpoint != null && running != null && !_exited) {
+      return Future.value(_endpoint);
+    }
+    final inFlight = _starting;
+    if (inFlight != null) return inFlight;
+    final future = _start();
+    _starting = future;
+    return future.whenComplete(() => _starting = null);
+  }
 
+  Future<LocalServerEndpoint?> _start() async {
     final binary = _resolveBinary();
     if (binary == null) {
       debugLogFailure('localServer.resolve', 'no bundled server binary');
@@ -195,6 +212,7 @@ class LocalServerManager {
   }
 
   /// Stop the bundled server. Safe to call when nothing is running.
+  @override
   Future<void> stop() async {
     _stopping = true;
     final proc = _process;
@@ -210,6 +228,7 @@ class LocalServerManager {
     }
   }
 
+  @override
   void dispose() {
     unawaited(stop());
   }

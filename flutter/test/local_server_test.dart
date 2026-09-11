@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:devinorium_frontend/services/local_server.dart';
+import 'package:devinorium_frontend/services/local_server_io.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
@@ -61,22 +59,33 @@ class _FakeApi extends ApiService {
 
 /// A manager whose endpoint is fixed; `supported` controls whether bootstrap
 /// touches it at all.
-class _FakeLocalManager extends LocalServerManager {
-  _FakeLocalManager({required this.supported, this.endpointToReturn})
-      : super(supported: false);
+class _FakeLocalManager implements LocalServerController {
+  _FakeLocalManager({required this.supported, this.endpointToReturn});
 
   final bool supported;
   LocalServerEndpoint? endpointToReturn;
   int ensureCalls = 0;
 
   @override
+  void Function(int exitCode)? onExit;
+
+  @override
   bool get isSupported => supported;
+
+  @override
+  LocalServerEndpoint? get endpoint => endpointToReturn;
 
   @override
   Future<LocalServerEndpoint?> ensureRunning() async {
     ensureCalls++;
     return endpointToReturn;
   }
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  void dispose() {}
 }
 
 void main() {

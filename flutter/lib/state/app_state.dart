@@ -94,7 +94,7 @@ class AppState extends AppStateBase
   @override
   final MultiServerState multiServerState;
   @override
-  final LocalServerManager localServerManager;
+  final LocalServerController localServerManager;
 
   ApiService? _defaultApi;
   @override
@@ -111,7 +111,7 @@ class AppState extends AppStateBase
     MultiServerState? multiServerState,
     ApiService? api,
     VersionChecker? versionChecker,
-    LocalServerManager? localServerManager,
+    LocalServerController? localServerManager,
   })  : multiServerState = multiServerState ?? MultiServerState(),
         localServerManager = localServerManager ?? LocalServerManager() {
     _versionChecker = versionChecker;
@@ -180,9 +180,10 @@ class AppState extends AppStateBase
     bool threadLoading = false,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
     String? serverVersion,
-    LocalServerManager? localServerManager,
+    LocalServerController? localServerManager,
   })  : multiServerState = multiServerState ?? MultiServerState(),
-        localServerManager = localServerManager ?? LocalServerManager.disabled() {
+        localServerManager =
+            localServerManager ?? LocalServerManager.disabled() {
     this.multiServerState.addListener(notifyListeners);
     this.localServerManager.onExit = _onLocalServerExit;
     _versionChecker = versionChecker ?? _NoNetworkVersionChecker();
