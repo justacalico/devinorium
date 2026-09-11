@@ -164,7 +164,7 @@ class LocalServerManager implements LocalServerController {
       return Future.value(null);
     }
     final running = _process;
-    if (_endpoint != null && running != null && !_exited) {
+    if (_endpoint != null && running != null && !_exited && !_stopping) {
       return Future.value(_endpoint);
     }
     final inFlight = _starting;
@@ -248,11 +248,12 @@ class LocalServerManager implements LocalServerController {
       // _detach untracks the process before we kill it, so the exit handler
       // ignores this deliberate kill (no onExit). If the process already
       // exited during the wait, its exit handler counted it as a quick
-      // exit; only count a still-alive-but-never-healthy spawn here.
+      // exit; only count a still-alive-but-never-healthy spawn here, and
+      // never count a spawn aborted by stop().
       final alreadyCounted = _exited;
       _detach();
       proc.kill();
-      if (!alreadyCounted) _quickExits += 1;
+      if (!alreadyCounted && !_stopping) _quickExits += 1;
       return null;
     }
     _quickExits = 0;
@@ -285,7 +286,7 @@ class LocalServerManager implements LocalServerController {
       proc.kill();
       try {
         await proc.exitCode.timeout(const Duration(seconds: 5));
-      } on TimeoutException {
+      } catch (_) {
         // Already dead or refusing to die; nothing more to do.
       }
       await _deleteEndpointFile();
@@ -313,7 +314,10 @@ class LocalServerManager implements LocalServerController {
     }
     final path = dataDirPath(Platform.operatingSystem, _environment);
     final base = p.dirname(path);
-    return (path: path, isTempFallback: base == Directory.systemTemp.path);
+    return (
+      path: path,
+      isTempFallback: p.equals(base, Directory.systemTemp.path),
+    );
   }
 
   File get _endpointFile => File(p.join(_dataDirInfo.path, 'endpoint.json'));
@@ -353,16 +357,24 @@ class LocalServerManager implements LocalServerController {
   }
 
   Future<void> _writeEndpointFile(LocalServerEndpoint ep) async {
+    File? tmp;
     try {
       final target = _endpointFile;
-      final tmp = File('${target.path}.tmp');
+      tmp = File('${target.path}.tmp');
       await tmp.writeAsString(
         jsonEncode({'base_url': ep.baseUrl, 'token': ep.token}),
       );
-      await _makePrivate(tmp);
+      // The file carries the token — do not publish it with default perms.
+      if (!await _makePrivate(tmp)) {
+        await tmp.delete();
+        return;
+      }
       await tmp.rename(target.path);
     } catch (e) {
       debugLogFailure('localServer.endpointFile', e);
+      try {
+        await tmp?.delete();
+      } catch (_) {}
     }
   }
 
