@@ -170,12 +170,13 @@ class MultiServerState extends ChangeNotifier {
   }
 
   /// Clear the active profile's token, e.g. on logout. The profile stays in the
-  /// registry so the user can reconnect.
+  /// registry so the user can reconnect. The bundled local profile is skipped:
+  /// its token is managed by the local server manager, not the user.
   Future<void> clearActiveToken() async {
     final id = _activeServerId;
     if (id == null) return;
     final p = _profiles[id];
-    if (p == null) return;
+    if (p == null || p.isLocal) return;
     final cleared = p.copyWith(token: '');
     _profiles[id] = cleared;
     _apis[id] = ApiService(client: createApiClient(cleared));

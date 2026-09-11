@@ -44,7 +44,16 @@ mixin HealthCheckStore on AppStateBase {
   Future<void> _doCheck() async {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    final ok = await api.checkHealth();
+    var ok = await api.checkHealth();
+    if (ok && multiServerState.activeProfile?.isLocal == true) {
+      // /healthz is public, so also prove the bundled token still
+      // authenticates; otherwise a stale token looks "connected".
+      try {
+        await api.me();
+      } catch (_) {
+        ok = false;
+      }
+    }
     final version = ok ? await api.serverVersion() : null;
 
     final next = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;

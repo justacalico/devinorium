@@ -39,6 +39,15 @@ mixin AuthStore on AppStateBase {
       await _loadUserAndData();
     } catch (e) {
       if (e is ApiException && e.statusCode == 401) {
+        if (multiServerState.activeProfile?.isLocal == true) {
+          // The bundled server may have restarted with a fresh token while a
+          // stale profile survived — re-ensure once before giving up.
+          await _ensureLocalServer();
+          try {
+            await _loadUserAndData();
+            return;
+          } catch (_) {}
+        }
         await multiServerState.clearActiveToken();
       } else {
         _globalError = '$e';
@@ -234,16 +243,33 @@ mixin AuthStore on AppStateBase {
     try {
       final endpoint = await manager.ensureRunning();
       if (endpoint != null) {
+        final previous =
+            multiServerState.profileById(MultiServerState.localProfileId);
         await multiServerState.upsertLocalProfile(
           baseUrl: endpoint.baseUrl,
           token: endpoint.token,
         );
-      } else if (multiServerState
-              .profileById(MultiServerState.localProfileId)
-              ?.isLocal ==
-          true) {
+        if (previous != null &&
+            (previous.baseUrl != endpoint.baseUrl ||
+                previous.token != endpoint.token)) {
+          // The bundled server respawned on a new port; open thread stores
+          // still hold the dead endpoint, so drop them and let threads
+          // reopen against the fresh connection.
+          for (final store in _threadStores.values) {
+            store.dispose();
+          }
+          _threadStores.clear();
+          _activeStore = null;
+          _activeThreadId = null;
+        }
+      } else if (!manager.hasBinary &&
+          multiServerState
+                  .profileById(MultiServerState.localProfileId)
+                  ?.isLocal ==
+              true) {
         // The bundled binary vanished (e.g. a dev run without it); drop the
-        // stale profile so it does not linger as a dead entry.
+        // stale profile so it does not linger as a dead entry. A transient
+        // start failure keeps the profile — health checks retry ensure.
         await multiServerState.removeServer(
           MultiServerState.localProfileId,
           force: true,
@@ -364,6 +390,11 @@ mixin AuthStore on AppStateBase {
     try {
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
+      // The bundled server may have died while a remote profile was active;
+      // bring it back before the stored (possibly stale) endpoint is used.
+      if (multiServerState.activeProfile?.isLocal == true) {
+        await _ensureLocalServer();
+      }
       await _resetServerState();
       await _loadUserAndData();
     } catch (e) {
@@ -387,6 +418,9 @@ mixin AuthStore on AppStateBase {
       await multiServerState.removeServer(serverId);
       if (wasActive) {
         await _resetServerState();
+        if (multiServerState.activeProfile?.isLocal == true) {
+          await _ensureLocalServer();
+        }
         if (multiServerState.activeApi != null) {
           await _loadUserAndData();
         } else {
