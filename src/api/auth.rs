@@ -129,7 +129,13 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
 }
 
 async fn logout(State(state): State<AppState>, req: axum::extract::Request) -> Response {
-    if let Some(token) = auth::session::extract_token(&req) {
+    for token in [
+        auth::session::extract_bearer_token(&req),
+        auth::session::extract_cookie_token(&req),
+    ]
+    .into_iter()
+    .flatten()
+    {
         let _ = state.db.delete_session(&token).await;
     }
     let cookie = auth::clear_cookie(state.config.secure_cookie);

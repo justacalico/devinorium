@@ -49,7 +49,8 @@ pub fn extract_token(req: &Request) -> Option<String> {
     extract_bearer_token(req).or_else(|| extract_cookie_token(req))
 }
 
-fn extract_cookie_token(req: &Request) -> Option<String> {
+/// The `devinorium_session` cookie credential, if present.
+pub fn extract_cookie_token(req: &Request) -> Option<String> {
     let header = req.headers().get(COOKIE)?;
     let s = header.to_str().ok()?;
     for pair in s.split(';') {
@@ -61,7 +62,8 @@ fn extract_cookie_token(req: &Request) -> Option<String> {
     None
 }
 
-fn extract_bearer_token(req: &Request) -> Option<String> {
+/// The `Authorization: Bearer <token>` credential, if present.
+pub fn extract_bearer_token(req: &Request) -> Option<String> {
     let header = req.headers().get(AUTHORIZATION)?;
     let s = header.to_str().ok()?;
     let rest = s.strip_prefix("Bearer ")?.trim();

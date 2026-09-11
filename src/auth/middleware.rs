@@ -17,7 +17,7 @@ use chrono::Utc;
 
 use crate::AppState;
 
-use super::session::{extract_token, CurrentUser};
+use super::session::{extract_bearer_token, extract_cookie_token, CurrentUser};
 
 /// Middleware: require a valid authenticated session with role `user`.
 ///
@@ -28,8 +28,9 @@ use super::session::{extract_token, CurrentUser};
 /// to the desktop app that spawned the server, so disabling the account would
 /// brick the app with no way back in.
 pub async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    let bearer = extract_bearer_token(&req);
     if let Some(expected) = state.config.local_token.as_deref() {
-        if let Some(token) = extract_token(&req) {
+        if let Some(token) = bearer.as_deref() {
             if constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes()) {
                 return match state
                     .db
@@ -47,13 +48,20 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         }
     }
 
-    let Some(token) = extract_token(&req) else {
-        return unauthorized("no session");
-    };
-
-    let session = match state.db.get_session(&token).await {
-        Ok(Some(s)) => s,
-        _ => return unauthorized("invalid session"),
+    // Session lookup tries the explicit bearer credential first, then the
+    // cookie — so a stale or proxy-injected header cannot shadow a valid
+    // session cookie, and a stale cookie cannot shadow a working bearer.
+    let mut session = None;
+    let mut token = None;
+    for candidate in [bearer, extract_cookie_token(&req)].into_iter().flatten() {
+        if let Ok(Some(s)) = state.db.get_session(&candidate).await {
+            session = Some(s);
+            token = Some(candidate);
+            break;
+        }
+    }
+    let (Some(session), Some(token)) = (session, token) else {
+        return unauthorized("invalid session");
     };
 
     let user = match state.db.get_user_by_id(session.user_id).await {
