@@ -14,6 +14,8 @@ pub enum AgentKind {
     Devin,
     /// `opencode acp` — the OpenCode CLI.
     Opencode,
+    /// `grok agent stdio` — the Grok Code CLI.
+    Grok,
 }
 
 impl AgentKind {
@@ -22,6 +24,7 @@ impl AgentKind {
         match self {
             Self::Devin => "devin-cli",
             Self::Opencode => "opencode",
+            Self::Grok => "grok",
         }
     }
 
@@ -30,6 +33,7 @@ impl AgentKind {
         match self {
             Self::Devin => "Devin CLI",
             Self::Opencode => "OpenCode",
+            Self::Grok => "Grok Code",
         }
     }
 
@@ -38,15 +42,26 @@ impl AgentKind {
         match self {
             Self::Devin => "devin",
             Self::Opencode => "opencode",
+            Self::Grok => "grok",
+        }
+    }
+
+    /// Arguments after the binary that start the ACP stdio server.
+    pub fn acp_args(self) -> &'static [&'static str] {
+        match self {
+            Self::Devin | Self::Opencode => &["acp"],
+            Self::Grok => &["agent", "stdio"],
         }
     }
 
     /// JSON manifest URL whose top-level `version` field names the latest
-    /// published release.
+    /// published release. Grok has no manifest; its update check goes
+    /// through `<bin> update --check --json` instead.
     pub fn version_manifest_url(self) -> Option<&'static str> {
         match self {
             Self::Devin => Some("https://static.devin.ai/cli/current/manifest.json"),
             Self::Opencode => Some("https://registry.npmjs.org/opencode-ai/latest"),
+            Self::Grok => None,
         }
     }
 
@@ -55,10 +70,12 @@ impl AgentKind {
     ///
     /// Devin has a dedicated `interaction_mode` option. OpenCode's `mode`
     /// option selects its agent (`build`/`plan`), which is the same idea.
+    /// Grok advertises no such option; the prompt prefix carries the mode.
     pub fn interaction_mode_option(self) -> Option<&'static str> {
         match self {
             Self::Devin => Some("interaction_mode"),
             Self::Opencode => Some("mode"),
+            Self::Grok => None,
         }
     }
 
@@ -68,16 +85,18 @@ impl AgentKind {
     /// OpenCode does not publish a permission config option over ACP; its own
     /// permission config decides when `session/request_permission` fires, and
     /// the callback/bypass handling in `permissions.rs` covers the rest.
+    /// Grok exposes no permission config option either; its own permission
+    /// rules and `session/request_permission` decide when approval is asked.
     pub fn permission_mode_option(self) -> Option<&'static str> {
         match self {
             Self::Devin => Some("mode"),
-            Self::Opencode => None,
+            Self::Opencode | Self::Grok => None,
         }
     }
 
     /// Map a composer interaction mode to an ACP `session/set_mode` id, when
     /// the agent supports that request. OpenCode exposes its agent selection
-    /// as the `mode` config option instead.
+    /// as the `mode` config option instead, and Grok has no session modes.
     pub fn session_mode_id(self, mode: &str) -> Option<SessionModeId> {
         match self {
             Self::Devin => {
@@ -88,7 +107,7 @@ impl AgentKind {
                 };
                 Some(SessionModeId::new(id))
             }
-            Self::Opencode => None,
+            Self::Opencode | Self::Grok => None,
         }
     }
 
@@ -120,6 +139,9 @@ impl AgentKind {
                 .find(|v| *v == "build")
                 .cloned()
                 .or_else(|| choices.first().cloned()),
+            // Grok advertises no interaction mode option, so this is only
+            // reachable if a future version adds one; take the default.
+            Self::Grok => choices.first().cloned(),
         }
     }
 }
