@@ -8,8 +8,13 @@ use devinorium::{auth, config, db, git, lock, providers, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load .env file if present (ignored if not found).
-    let _ = dotenvy::dotenv();
+    // Load .env file if present (ignored if not found). In bundled local
+    // mode the launcher already controls the environment; a .env in the
+    // server's working directory must not reintroduce DEVINORIUM_* settings
+    // (e.g. a bootstrap password would create an interactive owner account).
+    if std::env::var_os("DEVINORIUM_LOCAL_TOKEN").is_none() {
+        let _ = dotenvy::dotenv();
+    }
 
     tracing_subscriber::fmt()
         .with_env_filter(
