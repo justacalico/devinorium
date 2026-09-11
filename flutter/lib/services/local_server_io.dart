@@ -37,6 +37,7 @@ class LocalServerManager implements LocalServerController {
   static const _healthTimeout = Duration(seconds: 15);
   static const _maxQuickExits = 3;
   static const _quickExitWindow = Duration(seconds: 30);
+  static const _quickExitCooldown = Duration(minutes: 1);
 
   LocalServerManager({
     String? executablePath,
@@ -80,6 +81,7 @@ class LocalServerManager implements LocalServerController {
   LocalServerEndpoint? _endpoint;
   DateTime? _lastSpawnAt;
   int _quickExits = 0;
+  DateTime? _quickExitCooldownUntil;
   Future<LocalServerEndpoint?>? _starting;
 
   /// Optional override for the data directory (default: per-user app data).
@@ -180,8 +182,19 @@ class LocalServerManager implements LocalServerController {
     final adopted = await _adoptExisting();
     if (adopted != null) return adopted;
 
-    if (_stopping) return null;
-    if (_quickExits >= _maxQuickExits) return null;
+    if (_stopping) {
+      _endpoint = null;
+      return null;
+    }
+    if (_quickExits >= _maxQuickExits) {
+      // The cap is a cooldown, not a lifetime ban: a burst of quick exits
+      // pauses spawning, and once the window passes we try again.
+      final until =
+          _quickExitCooldownUntil ??= DateTime.now().add(_quickExitCooldown);
+      if (DateTime.now().isBefore(until)) return null;
+      _quickExits = 0;
+      _quickExitCooldownUntil = null;
+    }
 
     final binary = _resolveBinary();
     if (binary == null) {
@@ -189,10 +202,18 @@ class LocalServerManager implements LocalServerController {
       return null;
     }
 
-    final dataDir = Directory(_dataDirPath);
+    final dataDir = Directory(_dataDirInfo.path);
     try {
       await dataDir.create(recursive: true);
-      await _makePrivate(dataDir);
+      // When the only choice is a shared temp dir, failing to lock it down
+      // means another user owns it — do not write the token there.
+      if (!await _makePrivate(dataDir) && _dataDirInfo.isTempFallback) {
+        debugLogFailure(
+          'localServer.dataDir',
+          'temp fallback dir is not user-private: ${dataDir.path}',
+        );
+        return null;
+      }
     } catch (e) {
       debugLogFailure('localServer.dataDir', e);
       return null;
@@ -225,9 +246,13 @@ class LocalServerManager implements LocalServerController {
 
     if (!await _waitForHealth(port)) {
       // _detach untracks the process before we kill it, so the exit handler
-      // ignores this deliberate kill (no onExit, no quick-exit penalty).
+      // ignores this deliberate kill (no onExit). If the process already
+      // exited during the wait, its exit handler counted it as a quick
+      // exit; only count a still-alive-but-never-healthy spawn here.
+      final alreadyCounted = _exited;
       _detach();
       proc.kill();
+      if (!alreadyCounted) _quickExits += 1;
       return null;
     }
     _quickExits = 0;
@@ -239,15 +264,23 @@ class LocalServerManager implements LocalServerController {
     return _endpoint;
   }
 
-  /// Stop the bundled server. Safe to call when nothing is running.
+  /// Stop the bundled server. Safe to call when nothing is running. A spawn
+  /// already in flight is waited out while [_stopping] is held, so its own
+  /// guards kill the fresh process instead of adopting it.
   @override
   Future<void> stop() async {
     _stopping = true;
-    final proc = _process;
-    _process = null;
-    _endpoint = null;
-    _exited = true;
     try {
+      final inFlight = _starting;
+      if (inFlight != null) {
+        try {
+          await inFlight;
+        } catch (_) {}
+      }
+      final proc = _process;
+      _process = null;
+      _endpoint = null;
+      _exited = true;
       if (proc == null) return;
       proc.kill();
       try {
@@ -273,15 +306,23 @@ class LocalServerManager implements LocalServerController {
     return null;
   }
 
-  String get _dataDirPath =>
-      dataDir ?? dataDirPath(Platform.operatingSystem, _environment);
+  ({String path, bool isTempFallback}) get _dataDirInfo {
+    final override = dataDir;
+    if (override != null) {
+      return (path: override, isTempFallback: false);
+    }
+    final path = dataDirPath(Platform.operatingSystem, _environment);
+    final base = p.dirname(path);
+    return (path: path, isTempFallback: base == Directory.systemTemp.path);
+  }
 
-  File get _endpointFile => File(p.join(_dataDirPath, 'endpoint.json'));
+  File get _endpointFile => File(p.join(_dataDirInfo.path, 'endpoint.json'));
 
   /// Reuse the endpoint a still-running instance of the bundled server
   /// published into the shared data directory. Only loopback URLs are
   /// trusted; a file pointing anywhere else is treated as stale.
   Future<LocalServerEndpoint?> _adoptExisting() async {
+    if (_stopping) return null;
     final file = _endpointFile;
     if (!file.existsSync()) return null;
     try {
@@ -306,11 +347,9 @@ class LocalServerManager implements LocalServerController {
     final uri = Uri.tryParse(baseUrl);
     if (uri == null || uri.scheme != 'http') return false;
     final host = uri.host.toLowerCase();
-    if (host == 'localhost' || host == '[::1]') return true;
-    final octets = host.split('.');
-    if (octets.length != 4) return false;
-    if (octets.any((o) => int.tryParse(o) == null)) return false;
-    return octets[0] == '127';
+    if (host == 'localhost') return true;
+    final ip = InternetAddress.tryParse(host);
+    return ip != null && ip.isLoopback;
   }
 
   Future<void> _writeEndpointFile(LocalServerEndpoint ep) async {
@@ -328,12 +367,21 @@ class LocalServerManager implements LocalServerController {
   }
 
   /// Restrict a path to the current user where the platform supports it.
-  /// Windows per-user directories are already private by ACL.
-  static Future<void> _makePrivate(FileSystemEntity entity) async {
-    if (Platform.isWindows) return;
+  /// Windows per-user directories are already private by ACL. Returns false
+  /// when the restriction could not be applied.
+  static Future<bool> _makePrivate(FileSystemEntity entity) async {
+    if (Platform.isWindows) return true;
     try {
-      await Process.run('chmod', ['700', entity.path]);
-    } catch (_) {}
+      final result = await Process.run('chmod', ['700', entity.path]);
+      if (result.exitCode == 0) return true;
+      debugLogFailure(
+        'localServer.chmod',
+        '${entity.path}: ${result.stderr}',
+      );
+    } catch (e) {
+      debugLogFailure('localServer.chmod', e);
+    }
+    return false;
   }
 
   Future<void> _deleteEndpointFile() async {
@@ -390,7 +438,7 @@ class LocalServerManager implements LocalServerController {
     // change the bundled server's security posture — strip them and set only
     // what local mode needs.
     final env = Map<String, String>.of(_environment)
-      ..removeWhere((key, _) => key.startsWith('DEVINORIUM_'));
+      ..removeWhere((key, _) => key.toUpperCase().startsWith('DEVINORIUM_'));
     env['DEVINORIUM_HOST'] = '127.0.0.1';
     env['DEVINORIUM_PORT'] = '$port';
     env['DEVINORIUM_DB_URL'] = _sqliteUrl(dbPath, Platform.operatingSystem);
@@ -448,7 +496,7 @@ class LocalServerManager implements LocalServerController {
     final url = Uri.parse('http://127.0.0.1:$port/healthz');
     final deadline = DateTime.now().add(_healthTimeout);
     while (DateTime.now().isBefore(deadline)) {
-      if (_exited) return false;
+      if (_exited || _stopping) return false;
       try {
         if (await _healthCheck(url)) return true;
       } catch (_) {}
