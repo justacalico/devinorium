@@ -371,7 +371,7 @@ mixin AuthStore on AppStateBase {
     _setActiveStore(null);
     // Kill terminals while the old connection is still authenticated —
     // after logout/server removal the kills would be rejected.
-    terminalStore.clear();
+    await terminalStore.clear();
     try {
       await api.logout();
     } catch (_) {}
@@ -409,7 +409,7 @@ mixin AuthStore on AppStateBase {
     try {
       // Terminals belong to the current server — kill them before the
       // active connection changes underneath us.
-      terminalStore.clear();
+      await terminalStore.clear();
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
       // The bundled server may have died while a remote profile was active;
@@ -446,7 +446,7 @@ mixin AuthStore on AppStateBase {
       if (wasActive) {
         stopHealthChecks();
         stopGitRefresh();
-        terminalStore.clear();
+        await terminalStore.clear();
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
