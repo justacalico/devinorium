@@ -70,6 +70,40 @@ pub(crate) async fn apply_session_config(
         }
     }
 
+    // Agents that expose a `reasoning_effort` select option (Grok) get the
+    // composer's effort choice applied here. An effort the agent does not
+    // advertise is dropped rather than silently remapped, so the session
+    // keeps the agent's own default.
+    if let Some(requested) = options.reasoning_effort.as_deref() {
+        let requested = requested.trim();
+        if let Some(effort_opt) = config_options
+            .iter()
+            .find(|o| o.id.0.as_ref() == "reasoning_effort")
+        {
+            let choices = select_values(effort_opt);
+            if !requested.is_empty() && choices.iter().any(|v| v == requested) {
+                tracing::info!(session_id = %session_id, effort = %requested, "setting acp reasoning effort");
+                if let Err(e) = connection
+                    .send_request(SetSessionConfigOptionRequest::new(
+                        session_id.clone(),
+                        SessionConfigId::new("reasoning_effort"),
+                        SessionConfigOptionValue::value_id(requested.to_string()),
+                    ))
+                    .block_task()
+                    .await
+                {
+                    tracing::warn!(session_id = %session_id, error = %e, "failed to set acp reasoning effort");
+                }
+            } else if !requested.is_empty() {
+                tracing::warn!(
+                    session_id = %session_id,
+                    requested = %requested,
+                    "reasoning effort not in ACP choices, keeping agent default"
+                );
+            }
+        }
+    }
+
     if let Some(option_id) = kind.interaction_mode_option() {
         if let Some(interaction_opt) = config_options.iter().find(|o| o.id.0.as_ref() == option_id)
         {
@@ -247,6 +281,18 @@ mod tests {
         assert!(AgentKind::Opencode.session_mode_id("plan").is_none());
         assert_eq!(AgentKind::Opencode.interaction_mode_option(), Some("mode"));
         assert!(AgentKind::Opencode.permission_mode_option().is_none());
+    }
+
+    #[test]
+    fn grok_has_no_mode_options_and_stdio_args() {
+        assert_eq!(AgentKind::Grok.id(), "grok");
+        assert_eq!(AgentKind::Grok.name(), "Grok Code");
+        assert_eq!(AgentKind::Grok.default_command(), "grok");
+        assert_eq!(AgentKind::Grok.acp_args(), &["agent", "stdio"]);
+        assert!(AgentKind::Grok.interaction_mode_option().is_none());
+        assert!(AgentKind::Grok.permission_mode_option().is_none());
+        assert!(AgentKind::Grok.session_mode_id("plan").is_none());
+        assert!(AgentKind::Grok.version_manifest_url().is_none());
     }
 
     #[test]
