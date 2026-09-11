@@ -71,8 +71,8 @@ Database migrations run automatically on startup.
 Desktop builds bundle the `devinorium` server binary inside the app package
 (`server/` next to the app executable). On launch the app spawns it on a
 random loopback port with a fresh `DEVINORIUM_LOCAL_TOKEN`, so no login is
-needed while other processes on the machine still cannot use the API. The
-server exits automatically when the app closes.
+needed and other user accounts on the machine cannot use the API. The server
+exits automatically when the app closes.
 
 Remote servers still work: use "Add server" in Settings → Servers to connect
 to a Devinorium instance running on another machine, and switch between it
