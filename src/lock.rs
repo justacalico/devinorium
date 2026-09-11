@@ -7,10 +7,13 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 /// Holds an exclusive advisory lock on the instance lock file.
+///
+/// Field order matters on Windows: the guard must drop first so
+/// `UnlockFileEx` runs while the file handle is still valid.
 pub struct SingleInstance {
-    _file: File,
     #[cfg(windows)]
     _guard: platform::LockGuard,
+    _file: File,
 }
 
 impl SingleInstance {
@@ -111,6 +114,11 @@ mod platform {
 
     use super::SingleInstance;
 
+    /// Byte offset the lock is taken on. Windows locks are mandatory and
+    /// range-scoped, so locking a byte past where the PID lives keeps the PID
+    /// readable for the "another instance is running" hint.
+    const LOCK_OFFSET: u32 = 4096;
+
     /// Keeps the LockFileEx region held until dropped.
     pub struct LockGuard {
         handle: HANDLE,
@@ -120,7 +128,8 @@ mod platform {
         fn drop(&mut self) {
             unsafe {
                 let mut overlapped: OVERLAPPED = std::mem::zeroed();
-                UnlockFileEx(self.handle, 0, u32::MAX, u32::MAX, &mut overlapped);
+                overlapped.Anonymous.Anonymous.Offset = LOCK_OFFSET;
+                UnlockFileEx(self.handle, 0, 1, 0, &mut overlapped);
             }
         }
     }
@@ -140,13 +149,14 @@ mod platform {
 
         let handle = file.as_raw_handle() as HANDLE;
         let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+        overlapped.Anonymous.Anonymous.Offset = LOCK_OFFSET;
         let locked = unsafe {
             LockFileEx(
                 handle,
                 LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
                 0,
-                u32::MAX,
-                u32::MAX,
+                1,
+                0,
                 &mut overlapped,
             )
         };
