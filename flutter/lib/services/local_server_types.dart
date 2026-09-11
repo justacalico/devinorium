@@ -16,6 +16,10 @@ abstract class LocalServerController {
   /// Whether this platform can run a bundled server.
   bool get isSupported;
 
+  /// Whether a bundled server binary exists next to the app executable.
+  /// Distinguishes "not packaged" (dev builds) from "failed to start".
+  bool get hasBinary;
+
   /// The live endpoint, or `null` when no server is currently running.
   LocalServerEndpoint? get endpoint;
 

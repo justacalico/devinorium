@@ -12,6 +12,9 @@ class LocalServerManager implements LocalServerController {
   bool get isSupported => false;
 
   @override
+  bool get hasBinary => false;
+
+  @override
   LocalServerEndpoint? get endpoint => null;
 
   /// Called when the spawned server process exits unexpectedly.
