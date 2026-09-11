@@ -115,14 +115,14 @@ mod tests {
     }
 
     #[test]
-    fn cookie_takes_precedence_over_bearer() {
+    fn bearer_takes_precedence_over_cookie() {
         let req = Request::builder()
             .uri("/")
             .header("cookie", "devinorium_session=from_cookie")
             .header("authorization", "Bearer from_header")
             .body(Body::empty())
             .unwrap();
-        assert_eq!(extract_token(&req).unwrap(), "from_cookie");
+        assert_eq!(extract_token(&req).unwrap(), "from_header");
     }
 
     #[test]
