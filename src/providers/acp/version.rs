@@ -1,9 +1,11 @@
 //! Version detection and update checks for ACP providers.
 
 use once_cell::sync::Lazy;
+use serde::Deserialize;
 use tokio::process::Command;
 
 use super::provider::AcpProvider;
+use super::spec::AgentKind;
 use crate::providers::version::{fetch_latest_version, parse_version_output, ProviderVersion};
 
 /// `--version` results keyed by command, so revisiting Settings does not
@@ -20,8 +22,42 @@ impl AcpProvider {
     /// version. Both are best effort: a missing binary or an unreachable
     /// manifest leaves the field empty rather than failing.
     pub async fn check_version(&self) -> ProviderVersion {
+        if self.kind == AgentKind::Grok {
+            // Grok has no published manifest; `grok update --check --json`
+            // reports the latest release for the configured channel.
+            let (installed, latest) =
+                tokio::join!(self.installed_version(), self.grok_latest_version());
+            return ProviderVersion { installed, latest };
+        }
         self.check_version_at(self.kind.version_manifest_url())
             .await
+    }
+
+    async fn grok_latest_version(&self) -> Option<String> {
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            Command::new(&self.bin)
+                .args(["update", "--check", "--json"])
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        #[derive(Deserialize)]
+        struct UpdateCheck {
+            #[serde(default, rename = "latestVersion")]
+            latest_version: Option<String>,
+        }
+
+        serde_json::from_slice::<UpdateCheck>(&output.stdout)
+            .ok()
+            .and_then(|u| u.latest_version)
+            .filter(|v| !v.is_empty())
     }
 
     /// Same as [`check_version`] but against an explicit manifest URL, so
