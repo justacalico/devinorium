@@ -103,9 +103,17 @@ impl Config {
         })
     }
 
-    /// The bind address (`host:port`).
+    /// The bind address (`host:port`, with IPv6 hosts bracketed).
     pub fn bind_addr(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+        if self
+            .host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_ipv6())
+        {
+            format!("[{}]:{}", self.host, self.port)
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
     }
 
     /// Whether the server runs in bundled local mode (fixed bearer token
