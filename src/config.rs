@@ -78,10 +78,11 @@ impl Config {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
         if local_token.is_some() && !is_loopback_host(&host) {
-            tracing::warn!(
-                host,
-                "DEVINORIUM_LOCAL_TOKEN is set but DEVINORIUM_HOST is not a loopback \
-                 address; the bundled-server token mode is meant for local-only binds"
+            // A fixed bearer token bound to a non-loopback interface would
+            // give every host that can reach it owner-level API access.
+            bail!(
+                "DEVINORIUM_LOCAL_TOKEN requires DEVINORIUM_HOST to be a loopback \
+                 address (got {host:?}); refusing to start"
             );
         }
 
@@ -140,4 +141,27 @@ fn rand_key(n: usize) -> Vec<u8> {
     let mut buf = vec![0u8; n];
     rand::thread_rng().fill_bytes(&mut buf);
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_detection_accepts_local_addresses() {
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("127.0.0.2"));
+        assert!(is_loopback_host("::1"));
+        assert!(is_loopback_host("localhost"));
+        assert!(is_loopback_host("LOCALHOST"));
+    }
+
+    #[test]
+    fn loopback_detection_rejects_remote_and_wildcard_addresses() {
+        assert!(!is_loopback_host("0.0.0.0"));
+        assert!(!is_loopback_host("::"));
+        assert!(!is_loopback_host("192.168.1.10"));
+        assert!(!is_loopback_host("example.com"));
+        assert!(!is_loopback_host(""));
+    }
 }
