@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.59.0 - 2026-09-11
+#### Features
+- 为 Linux 构建添加 RPM 安装包 - (13ac7cc) - HttpAnimations
+
+- - -
+
 ## v0.58.1 - 2026-09-11
 #### Bug Fixes
 - 编辑器文件操作跟随线程 worktree 工作目录 - (ff8e80b) - HttpAnimations
