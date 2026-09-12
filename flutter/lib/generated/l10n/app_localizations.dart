@@ -1778,6 +1778,24 @@ abstract class AppLocalizations {
   /// **'worktree'**
   String get worktreeModeShort;
 
+  /// No description provided for @deleteWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete worktree'**
+  String get deleteWorktree;
+
+  /// No description provided for @deleteWorktreeConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the worktree at {path}? Any uncommitted changes in it will be lost.'**
+  String deleteWorktreeConfirm(String path);
+
+  /// No description provided for @deleteWorktreeThreadsConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The thread \"{names}\" uses this worktree. Deleting it will delete the thread too. Are you sure?} other{{count} threads use this worktree ({names}). Deleting it will delete them too. Are you sure?}}'**
+  String deleteWorktreeThreadsConfirm(int count, String names);
+
   /// No description provided for @git.
   ///
   /// In en, this message translates to:

@@ -561,6 +561,26 @@
   "localModeShort": "本地",
   "worktreeMode": "工作树",
   "worktreeModeShort": "工作树",
+  "deleteWorktree": "删除工作树",
+  "deleteWorktreeConfirm": "删除位于 {path} 的工作树？其中未提交的修改将丢失。",
+  "@deleteWorktreeConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteWorktreeThreadsConfirm": "{count, plural, =1{会话「{names}」正在使用此工作树。删除工作树将同时删除该会话。确定吗？} other{{count} 个会话正在使用此工作树（{names}）。删除工作树将同时删除这些会话。确定吗？}}",
+  "@deleteWorktreeThreadsConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "git": "Git",
   "gitConnections": "连接",
   "gitlab": "GitLab",

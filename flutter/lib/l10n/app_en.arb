@@ -582,6 +582,26 @@
   "localModeShort": "local",
   "worktreeMode": "Worktree",
   "worktreeModeShort": "worktree",
+  "deleteWorktree": "Delete worktree",
+  "deleteWorktreeConfirm": "Delete the worktree at {path}? Any uncommitted changes in it will be lost.",
+  "@deleteWorktreeConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteWorktreeThreadsConfirm": "{count, plural, =1{The thread \"{names}\" uses this worktree. Deleting it will delete the thread too. Are you sure?} other{{count} threads use this worktree ({names}). Deleting it will delete them too. Are you sure?}}",
+  "@deleteWorktreeThreadsConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "git": "Git",
   "gitConnections": "Connections",
   "gitlab": "GitLab",
