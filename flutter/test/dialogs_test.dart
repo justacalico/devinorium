@@ -6,6 +6,7 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/dialogs.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -295,6 +296,151 @@ void main() {
 
       final save = find.widgetWithText(FilledButton, 'Save');
       expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    });
+  });
+
+  group('Escape dismissal', () {
+    testWidgets('escape closes rename dialog while its field has focus',
+        (tester) async {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'old', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      state.openRenameProjectDialog(1, 'old');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rename project'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.none);
+      expect(find.text('Rename project'), findsNothing);
+    });
+
+    testWidgets('autofocused field keeps focus when the dialog opens',
+        (tester) async {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'old', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      state.openRenameProjectDialog(1, 'old');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final focused = FocusManager.instance.primaryFocus;
+      expect(focused, isNotNull);
+      expect(
+        focused!.context!.findAncestorWidgetOfExactType<TextField>(),
+        isNotNull,
+      );
+    });
+
+    testWidgets('escape does not close the web login prompt', (tester) async {
+      final state = AppState.test(dialog: DialogKind.webLogin);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.webLogin);
+    });
+
+    testWidgets('escape pops a covering route before the dialog',
+        (tester) async {
+      final state = AppState.test(
+        projects: [
+          Project(id: 1, name: 'old', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+      );
+      state.openRenameProjectDialog(1, 'old');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      showDialog<void>(
+        context: tester.element(find.byType(DialogLayer)),
+        builder: (_) => const AlertDialog(content: Text('route dialog')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('route dialog'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      // The route popped; the dialog underneath stays open.
+      expect(find.text('route dialog'), findsNothing);
+      expect(state.dialog, DialogKind.renameProject);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(state.dialog, DialogKind.none);
+    });
+
+    testWidgets('escape rejects a pending permission request', (tester) async {
+      final client = _clientFor([_json(200, {})]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        activeThreadId: 'a',
+        dialog: DialogKind.permissionRequest,
+        pendingPermissionRequest: PermissionRequest(
+          requestId: 'r1',
+          scope: 'Exec(curl)',
+          title: 'Run?',
+          options: [PermissionOption(id: 'once', kind: 'AllowOnce')],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Run?'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(state.pendingPermissionRequest, isNull);
+      expect(state.dialog, DialogKind.none);
     });
   });
 }
