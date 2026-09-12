@@ -112,6 +112,22 @@ void main() {
       expect(snapshot.thinkingActive, isFalse);
     });
 
+    test('ignores trailing whitespace-only parts', () {
+      var snapshot = StreamingSnapshot.empty;
+      for (final (seq, payload) in [
+        (1, '{"type":"thinking","content":"hmm"}'),
+        (2, '{"type":"text","content":" "}'),
+      ]) {
+        final res = reduceStreamingEvent(
+          detail: null,
+          snapshot: snapshot,
+          event: SseEvent('part', payload, id: '$seq'),
+        );
+        snapshot = res.snapshot;
+      }
+      expect(snapshot.thinkingActive, isTrue);
+    });
+
     test('is false for an empty snapshot', () {
       expect(StreamingSnapshot.empty.thinkingActive, isFalse);
     });

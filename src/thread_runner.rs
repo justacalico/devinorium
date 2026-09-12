@@ -214,7 +214,17 @@ impl RunState {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let plan = self.plan.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let thinking_active = matches!(parts.last(), Some(MessagePart::Thinking { .. }));
+        // Whitespace-only parts render nothing, so the flag tracks the last
+        // visible part rather than the raw tail.
+        let thinking_active = matches!(
+            parts.iter().rev().find(|p| match p {
+                MessagePart::Text { content } | MessagePart::Thinking { content } => {
+                    !content.trim().is_empty()
+                }
+                MessagePart::ToolCall { .. } => true,
+            }),
+            Some(MessagePart::Thinking { .. })
+        );
 
         let last_seq = self.next_seq.load(std::sync::atomic::Ordering::SeqCst);
 
@@ -496,6 +506,33 @@ mod tests {
             .parts
             .iter()
             .any(|p| matches!(p, MessagePart::ToolCall { .. })));
+    }
+
+    #[tokio::test]
+    async fn run_state_thinking_active_ignores_whitespace_tail() {
+        let state = RunState {
+            run_id: "r1".into(),
+            thread_id: "t1".into(),
+            events: std::sync::Mutex::new(None),
+            initial_receiver: std::sync::Mutex::new(None),
+            next_seq: std::sync::atomic::AtomicU64::new(0),
+            status: RwLock::new(RunStatus::Running),
+            error: RwLock::new(None),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
+            abort: std::sync::Mutex::new(None),
+            task_done: std::sync::atomic::AtomicBool::new(false),
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            parts: std::sync::Mutex::new(vec![
+                MessagePart::thinking("hmm"),
+                MessagePart::text(" "),
+            ]),
+            permission_request: std::sync::Mutex::new(None),
+            ask_request: std::sync::Mutex::new(None),
+            plan: std::sync::Mutex::new(None),
+        };
+
+        assert!(state.snapshot().await.thinking_active);
     }
 
     #[tokio::test]

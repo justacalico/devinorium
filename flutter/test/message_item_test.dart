@@ -164,6 +164,135 @@ void main() {
     expect(find.text('Show more'), findsNothing);
   });
 
+  testWidgets('thinking runs separated by tools render as distinct blocks', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            id: 1,
+            role: 'assistant',
+            content: 'done',
+            parts: [
+              MessagePart.thinking(content: 'Let me look at the repo.'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 't1',
+                  title: 'list files',
+                  kind: 'execute',
+                  status: 'completed',
+                ),
+              ),
+              MessagePart.thinking(content: 'Now I know the layout.'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 't2',
+                  title: 'edit main.rs',
+                  kind: 'search',
+                  status: 'completed',
+                ),
+              ),
+              MessagePart.text(content: 'done'),
+            ],
+          ),
+        ],
+        totalMessages: 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const ThreadPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Show thinking'), findsNWidgets(2));
+    expect(find.text('list files'), findsOneWidget);
+    expect(find.text('edit main.rs'), findsOneWidget);
+  });
+
+  testWidgets('consecutive finished tools collapse into a group row', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(
+            id: 1,
+            role: 'assistant',
+            content: 'done',
+            parts: [
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'r1',
+                  title: 'read a',
+                  kind: 'read',
+                  status: 'completed',
+                  command: '{"file_path": "/repo/a.rs"}',
+                ),
+              ),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'r2',
+                  title: 'read b',
+                  kind: 'read',
+                  status: 'completed',
+                  command: '{"file_path": "/repo/b.rs"}',
+                ),
+              ),
+              MessagePart.text(content: 'done'),
+            ],
+          ),
+        ],
+        totalMessages: 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const ThreadPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Read 2 files'), findsOneWidget);
+    expect(find.text('Read a.rs'), findsNothing);
+
+    await tester.tap(find.text('Read 2 files'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Read a.rs'), findsOneWidget);
+    expect(find.text('Read b.rs'), findsOneWidget);
+  });
+
   testWidgets('truncated assistant message loads chunks on visibility', (
     tester,
   ) async {

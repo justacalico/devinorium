@@ -404,10 +404,17 @@ StreamingSnapshot _applyRunSnapshot({
 }
 
 StreamingSnapshot _recomputeThinking(StreamingSnapshot snapshot) {
-  return snapshot.copyWith(
-    thinkingActive:
-        snapshot.parts.isNotEmpty && snapshot.parts.last.type == 'thinking',
-  );
+  // Whitespace-only parts render nothing, so the flag tracks the last
+  // visible part rather than the raw tail.
+  var lastVisible = '';
+  for (var i = snapshot.parts.length - 1; i >= 0; i--) {
+    final p = snapshot.parts[i];
+    if (p.type == 'tool_call' || (p.content?.trim().isNotEmpty ?? false)) {
+      lastVisible = p.type;
+      break;
+    }
+  }
+  return snapshot.copyWith(thinkingActive: lastVisible == 'thinking');
 }
 
 StreamingSnapshot _finishSnapshot(StreamingSnapshot snapshot) {
