@@ -13,6 +13,7 @@ import '../services/window_actions.dart';
 import '../state/app_state.dart';
 import '../theme/semantic_colors.dart';
 import '../utils/thread_status.dart';
+import '../utils/time_ago.dart';
 import '../widgets/message_view.dart';
 import '../widgets/owner_badge.dart';
 import '../widgets/provider_icons.dart';
@@ -66,14 +67,7 @@ bool _isDesktop(BuildContext context) {
 String _timeAgo(String iso, AppLocalizations l) {
   final dt = DateTime.tryParse(iso);
   if (dt == null) return '';
-  final now = DateTime.now().toUtc();
-  final diff = now.difference(dt.toUtc());
-  if (diff.inSeconds < 60) return l.timeAgoJustNow;
-  if (diff.inMinutes < 60) return l.timeAgoMinutes(diff.inMinutes);
-  if (diff.inHours < 24) return l.timeAgoHours(diff.inHours);
-  if (diff.inDays < 30) return l.timeAgoDays(diff.inDays);
-  if (diff.inDays < 365) return l.timeAgoMonths((diff.inDays / 30).floor());
-  return l.timeAgoYears((diff.inDays / 365).floor());
+  return timeAgo(dt, l);
 }
 
 ({Color color, String label})? _threadStatus(

@@ -193,10 +193,14 @@ mixin GitStore on AppStateBase {
         switchBranch: switchBranch,
       );
       _globalError = '';
+      if (switchBranch) {
+        // Switching branches moves HEAD; loaded history is stale.
+        invalidateGitHistory();
+        unawaited(refreshLinkedMergeRequest());
+      }
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
-      if (switchBranch) unawaited(refreshLinkedMergeRequest());
       return true;
     } catch (e) {
       _globalError = '$e';
@@ -214,6 +218,8 @@ mixin GitStore on AppStateBase {
     try {
       await api.gitCheckout(projectId, refName, track: track);
       _globalError = '';
+      // A checkout moves HEAD; the panel's loaded history is stale.
+      invalidateGitHistory();
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
@@ -231,6 +237,7 @@ mixin GitStore on AppStateBase {
     try {
       await api.gitPull(projectId);
       _globalError = '';
+      invalidateGitHistory();
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
@@ -248,6 +255,8 @@ mixin GitStore on AppStateBase {
     try {
       await api.gitPullBranch(projectId, name);
       _globalError = '';
+      // Pulling the current branch moves HEAD.
+      invalidateGitHistory();
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();

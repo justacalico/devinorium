@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/views/diff_view.dart';
 import 'package:devinorium_frontend/views/git_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,6 +56,18 @@ class _Harness {
         if (path == '/api/projects/1/git') {
           return _json(200, repoResponse);
         }
+        if (path == '/api/projects/1/git/diff') {
+          if (legacyBackend) return http.Response('not found', 404);
+          return _json(200, diffResponse);
+        }
+        if (path == '/api/projects/1/git/log') {
+          if (legacyBackend) return http.Response('not found', 404);
+          return _json(200, logResponse(req.url));
+        }
+        if (path == '/api/projects/1/git/discard') {
+          if (legacyBackend) return http.Response('not found', 404);
+          return _json(204, {});
+        }
         if (path == '/api/projects/1/git/stage' ||
             path == '/api/projects/1/git/unstage' ||
             path == '/api/projects/1/git/pull' ||
@@ -71,19 +85,50 @@ class _Harness {
   Map<String, dynamic> changesResponse;
   Map<String, dynamic> repoResponse;
 
-  _Harness({Map<String, dynamic>? changes, Map<String, dynamic>? repo})
-    : changesResponse = changes ?? _changes(),
-      repoResponse = repo ?? _repoInfo();
+  /// The whole `{"diff": ...}` body for `/git/diff`; `{'diff': null}` means
+  /// "nothing renderable".
+  Map<String, dynamic> diffResponse;
+
+  /// `/git/log` response factory — receives the request URI so tests can
+  /// answer differently per page.
+  Map<String, dynamic> Function(Uri url) logResponse;
+
+  /// Simulates a backend that predates the diff/discard/log routes: they
+  /// answer with the SPA fallback's plain-text 404.
+  bool legacyBackend = false;
+
+  _Harness({
+    Map<String, dynamic>? changes,
+    Map<String, dynamic>? repo,
+    Map<String, dynamic>? diff,
+    Map<String, dynamic> Function(Uri url)? log,
+  }) : changesResponse = changes ?? _changes(),
+       repoResponse = repo ?? _repoInfo(),
+       diffResponse = diff ?? const {'diff': null},
+       logResponse =
+           log ??
+           ((_) => {'commits': <Map<String, dynamic>>[], 'has_more': false});
 
   http.Request lastTo(String path, [String method = 'GET']) =>
-      requests.lastWhere(
-        (r) => r.url.path == path && r.method == method,
-      );
+      requests.lastWhere((r) => r.url.path == path && r.method == method);
 }
+
+Map<String, dynamic> _commit(String sha, String subject, {String body = ''}) =>
+    {
+      'sha': sha.padRight(40, '0'),
+      'subject': subject,
+      'body': body,
+      'author': 'Test',
+      'email': 'test@example.com',
+      'timestamp': 1700000000,
+      'refs': '',
+    };
 
 AppState _state(ApiService api, {Thread? thread}) => AppState.test(
   api: api,
-  projects: [Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: '')],
+  projects: [
+    Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+  ],
   activeProjectId: 1,
   activeThreadId: thread?.id,
   activeThreadDetail: thread == null
@@ -406,6 +451,456 @@ void main() {
       expect(state.gitPanelOpen, isFalse);
       expect(state.filesPanelOpen, isTrue);
     });
+
+    test('toggleGitDiff fetches an unstaged diff and caches it', () async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+        diff: {
+          'diff': {
+            'path': '/x/a.txt',
+            'old_text': 'old\n',
+            'new_text': 'new\n',
+          },
+        },
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      final entry = state.gitPanelChanges!.unstaged.first;
+      await state.toggleGitDiff(entry, staged: false);
+
+      final req = h.lastTo('/api/projects/1/git/diff');
+      expect(req.url.queryParameters['path'], 'a.txt');
+      expect(req.url.queryParameters.containsKey('staged'), isFalse);
+      expect(req.url.queryParameters.containsKey('orig_path'), isFalse);
+      expect(state.gitDiffExpanded('u:a.txt'), isTrue);
+      expect(state.gitDiffFor('u:a.txt')?.newText, 'new\n');
+
+      // Collapsing removes it from the expanded set without another fetch.
+      final before = h.requests.length;
+      await state.toggleGitDiff(entry, staged: false);
+      expect(state.gitDiffExpanded('u:a.txt'), isFalse);
+      expect(h.requests.length, before);
+    });
+
+    test('a staged diff sends staged and orig_path', () async {
+      final h = _Harness(
+        changes: _changes(staged: [
+          {'path': 'b.txt', 'status': 'renamed', 'orig_path': 'a.txt'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await state.toggleGitDiff(
+        state.gitPanelChanges!.staged.first,
+        staged: true,
+      );
+
+      final req = h.lastTo('/api/projects/1/git/diff');
+      expect(req.url.queryParameters['path'], 'b.txt');
+      expect(req.url.queryParameters['staged'], 'true');
+      expect(req.url.queryParameters['orig_path'], 'a.txt');
+      expect(state.gitDiffExpanded('s:b.txt'), isTrue);
+    });
+
+    test('a failed diff fetch leaves a null preview, not an error', () async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      // The default harness answers {'diff': null} — a binary or oversized
+      // file, or a backend that found nothing to compare.
+      await state.toggleGitDiff(
+        state.gitPanelChanges!.unstaged.first,
+        staged: false,
+      );
+      expect(state.gitDiffExpanded('u:a.txt'), isTrue);
+      expect(state.gitDiffLoading('u:a.txt'), isFalse);
+      expect(state.gitDiffFor('u:a.txt'), isNull);
+      expect(state.gitPanelError, isEmpty);
+    });
+
+    test('a reload drops previews whose file left the change list', () async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+        diff: {
+          'diff': {'path': '/x/a.txt', 'old_text': 'o\n', 'new_text': 'n\n'},
+        },
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await state.toggleGitDiff(
+        state.gitPanelChanges!.unstaged.first,
+        staged: false,
+      );
+      expect(state.gitDiffFor('u:a.txt'), isNotNull);
+
+      // The file got committed or reverted elsewhere.
+      h.changesResponse = _changes();
+      await state.reloadGitChanges();
+      expect(state.gitDiffExpanded('u:a.txt'), isFalse);
+      expect(state.gitDiffFor('u:a.txt'), isNull);
+    });
+
+    test('a reload re-fetches still-expanded diffs', () async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+        diff: {
+          'diff': {'path': '/x/a.txt', 'old_text': 'o\n', 'new_text': 'n\n'},
+        },
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await state.toggleGitDiff(
+        state.gitPanelChanges!.unstaged.first,
+        staged: false,
+      );
+      final before = h.requests
+          .where((r) => r.url.path.endsWith('/git/diff'))
+          .length;
+
+      h.diffResponse = {
+        'diff': {'path': '/x/a.txt', 'old_text': 'o\n', 'new_text': 'n2\n'},
+      };
+      await state.reloadGitChanges();
+      // The refresh refetches in the background; give it a turn.
+      for (var i = 0; i < 50 && state.gitDiffLoading('u:a.txt'); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect(state.gitDiffFor('u:a.txt')?.newText, 'n2\n');
+      final after = h.requests
+          .where((r) => r.url.path.endsWith('/git/diff'))
+          .length;
+      expect(after, greaterThan(before));
+    });
+
+    test('gitDiscardPaths posts the paths then reloads', () async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      h.changesResponse = _changes();
+      expect(await state.gitDiscardPaths(['a.txt'], staged: false), isTrue);
+
+      final req = h.lastTo('/api/projects/1/git/discard', 'POST');
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      expect(body['paths'], ['a.txt']);
+      expect(body['staged'], isFalse);
+      expect(state.gitPanelChanges?.unstaged, isEmpty);
+    });
+
+    test('discard and diff carry thread_id in a worktree scope', () async {
+      final h = _Harness(
+        changes: _changes(
+          branch: 'wt-branch',
+          unstaged: [
+            {'path': 'a.txt', 'status': 'modified'},
+          ],
+        ),
+      );
+      final thread = Thread(
+        id: 't1',
+        title: 't',
+        projectId: 1,
+        model: 'm',
+        permissionMode: 'normal',
+        envMode: 'worktree',
+        worktreePath: '/repo/wt',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final state = _state(h.api, thread: thread);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await state.toggleGitDiff(
+        state.gitPanelChanges!.unstaged.first,
+        staged: false,
+      );
+      expect(
+        h.lastTo('/api/projects/1/git/diff').url.queryParameters['thread_id'],
+        't1',
+      );
+
+      await state.gitDiscardPaths(['a.txt'], staged: false);
+      final body =
+          jsonDecode(h.lastTo('/api/projects/1/git/discard', 'POST').body)
+              as Map<String, dynamic>;
+      expect(body['thread_id'], 't1');
+    });
+
+    test(
+      'history loads the first page on open and appends on loadMore',
+      () async {
+        final h = _Harness(
+          log: (url) {
+            final offset =
+                int.tryParse(url.queryParameters['offset'] ?? '0') ?? 0;
+            if (offset == 0) {
+              return {
+                'commits': [_commit('aaaa', 'newer commit')],
+                'has_more': true,
+              };
+            }
+            return {
+              'commits': [_commit('bbbb', 'older commit')],
+              'has_more': false,
+            };
+          },
+        );
+        final state = _state(h.api);
+        addTearDown(state.dispose);
+        await state.openGitPanel();
+
+        await state.toggleGitHistory();
+        expect(state.gitHistoryOpen, isTrue);
+        expect(state.gitHistory, hasLength(1));
+        expect(state.gitHistory.first.subject, 'newer commit');
+        expect(state.gitHistoryHasMore, isTrue);
+
+        await state.loadMoreGitHistory();
+        expect(state.gitHistory, hasLength(2));
+        expect(state.gitHistory.last.subject, 'older commit');
+        expect(state.gitHistoryHasMore, isFalse);
+
+        final req = h.requests.lastWhere(
+          (r) =>
+              r.url.path == '/api/projects/1/git/log' &&
+              r.url.queryParameters['offset'] == '1',
+        );
+        expect(req, isNotNull);
+
+        // Closing the section keeps the loaded commits for next open.
+        await state.toggleGitHistory();
+        expect(state.gitHistoryOpen, isFalse);
+        expect(state.gitHistory, hasLength(2));
+      },
+    );
+
+    test('history sends thread_id in a worktree scope', () async {
+      final h = _Harness(
+        log: (_) => {
+          'commits': [_commit('aaaa', 'wt commit')],
+          'has_more': false,
+        },
+      );
+      final thread = Thread(
+        id: 't1',
+        title: 't',
+        projectId: 1,
+        model: 'm',
+        permissionMode: 'normal',
+        envMode: 'worktree',
+        worktreePath: '/repo/wt',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final state = _state(h.api, thread: thread);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await state.toggleGitHistory();
+      expect(state.gitHistory, hasLength(1));
+      expect(
+        h.lastTo('/api/projects/1/git/log').url.queryParameters['thread_id'],
+        't1',
+      );
+    });
+
+    test('a missing log endpoint leaves an empty quiet history', () async {
+      final h = _Harness()..legacyBackend = true;
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await state.toggleGitHistory();
+      expect(state.gitHistory, isEmpty);
+      expect(state.gitHistoryError, isEmpty);
+      expect(state.gitHistoryHasMore, isFalse);
+
+      // The legacy endpoint is marked loaded so the periodic refresh does
+      // not keep polling a route that will never appear.
+      await state.refreshGitPanel();
+      expect(
+        h.requests.where((r) => r.url.path.endsWith('/git/log')).length,
+        1,
+      );
+    });
+
+    test('legacy backend diff and discard fail quietly', () async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      )..legacyBackend = true;
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      // The preview expands, fails to load, and shows the placeholder —
+      // no error surfaces for a route that does not exist.
+      await state.toggleGitDiff(
+        state.gitPanelChanges!.unstaged.first,
+        staged: false,
+      );
+      expect(state.gitDiffExpanded('u:a.txt'), isTrue);
+      expect(state.gitDiffFor('u:a.txt'), isNull);
+      expect(state.gitPanelError, isEmpty);
+
+      expect(await state.gitDiscardPaths(['a.txt'], staged: false), isFalse);
+    });
+
+    test(
+      'loadMore drops commits already shown after an offset shift',
+      () async {
+        // A commit landing between page loads shifts the offset window, so
+        // the boundary commit can be returned twice; it must not repeat.
+        final h = _Harness(
+          log: (url) {
+            final offset =
+                int.tryParse(url.queryParameters['offset'] ?? '0') ?? 0;
+            if (offset == 0) {
+              return {
+                'commits': [_commit('aaaa', 'newest')],
+                'has_more': true,
+              };
+            }
+            return {
+              'commits': [_commit('aaaa', 'newest'), _commit('bbbb', 'older')],
+              'has_more': false,
+            };
+          },
+        );
+        final state = _state(h.api);
+        addTearDown(state.dispose);
+        await state.openGitPanel();
+        await state.toggleGitHistory();
+        expect(state.gitHistory, hasLength(1));
+
+        await state.loadMoreGitHistory();
+        expect(state.gitHistory.map((c) => c.sha), [
+          'aaaa'.padRight(40, '0'),
+          'bbbb'.padRight(40, '0'),
+        ]);
+      },
+    );
+
+    test('a history load finishing after a scope change is dropped', () async {
+      final wt = Thread(
+        id: 't1',
+        title: 't',
+        projectId: 1,
+        model: 'm',
+        permissionMode: 'normal',
+        envMode: 'worktree',
+        worktreePath: '/repo/wt',
+        createdAt: '',
+        updatedAt: '',
+      );
+      final gate = Completer<http.Response>();
+      var logCalls = 0;
+      final api = ApiService(
+        client: ApiClient.withClient(
+          MockClient((req) async {
+            final path = req.url.path;
+            if (path == '/api/projects/1/git/changes') {
+              return _json(200, _changes());
+            }
+            if (path == '/api/projects/1/git') {
+              return _json(200, _repoInfo());
+            }
+            if (path == '/api/projects/1/git/log') {
+              logCalls++;
+              // The first page stays in flight until the scope has moved.
+              if (logCalls == 1) return gate.future;
+              return _json(200, {
+                'commits': [_commit('cccc', 'new scope commit')],
+                'has_more': false,
+              });
+            }
+            return _json(404, {'error': 'unexpected $path'});
+          }),
+        ),
+      );
+      final state = AppState.test(
+        api: api,
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        activeProjectId: 1,
+        threads: [wt],
+      );
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      expect(state.gitPanelScopeKey, 'project:1');
+
+      unawaited(state.toggleGitHistory());
+      // Move the active thread into its worktree, then refresh the panel
+      // so it picks up the new scope before the first page returns.
+      await state.openThread('t1');
+      await state.reloadGitChanges();
+      expect(state.gitPanelScopeKey, 'worktree:/repo/wt');
+
+      gate.complete(
+        _json(200, {
+          'commits': [_commit('aaaa', 'stale commit')],
+          'has_more': false,
+        }),
+      );
+      // Let the in-flight load resolve and try to write its stale page.
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(state.gitHistory.map((c) => c.subject), ['new scope commit']);
+    });
+
+    test('a mutation while history is closed reloads it on reopen', () async {
+      final h = _Harness(
+        log: (_) => {
+          'commits': [_commit('aaaa', 'first page')],
+          'has_more': false,
+        },
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await state.toggleGitHistory();
+      expect(state.gitHistory.map((c) => c.subject), ['first page']);
+
+      await state.toggleGitHistory(); // close
+      await state.gitStagePaths(['a.txt']); // a commit/stage moves HEAD
+      expect(
+        h.requests.where((r) => r.url.path == '/api/projects/1/git/log'),
+        hasLength(1),
+      );
+
+      await state.toggleGitHistory(); // reopen fetches a fresh page
+      expect(
+        h.requests.where((r) => r.url.path == '/api/projects/1/git/log'),
+        hasLength(2),
+      );
+    });
   });
 
   group('GitPanel widget', () {
@@ -706,6 +1201,260 @@ void main() {
           .where((r) => r.url.path.endsWith('/git/changes'))
           .length;
       expect(after, greaterThan(before));
+    });
+
+    testWidgets('tapping a change row expands an inline diff', (tester) async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+        diff: {
+          'diff': {
+            'path': '/x/a.txt',
+            'old_text': 'old line\n',
+            'new_text': 'new line\n',
+          },
+        },
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+      expect(find.byType(DiffView), findsNothing);
+
+      await tester.tap(find.text('a.txt', findRichText: true));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DiffView), findsOneWidget);
+      expect(
+        find.textContaining('- old line', findRichText: true),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('+ new line', findRichText: true),
+        findsOneWidget,
+      );
+
+      // Tapping again collapses it.
+      await tester.tap(find.text('a.txt', findRichText: true));
+      await tester.pumpAndSettle();
+      expect(find.byType(DiffView), findsNothing);
+    });
+
+    testWidgets('a null diff shows the placeholder text', (tester) async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('a.txt', findRichText: true));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No diff preview available'), findsOneWidget);
+    });
+
+    testWidgets('discard asks for confirmation and posts the paths', (
+      tester,
+    ) async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Discard all changes to a.txt? This cannot be undone.'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Discard'));
+      await tester.pumpAndSettle();
+
+      final req = h.lastTo('/api/projects/1/git/discard', 'POST');
+      expect((jsonDecode(req.body) as Map)['paths'], ['a.txt']);
+    });
+
+    testWidgets('cancelling discard sends no request', (tester) async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'a.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Discard'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(
+        h.requests.any((r) => r.url.path.endsWith('/git/discard')),
+        isFalse,
+      );
+    });
+
+    testWidgets('untracked discard confirmation offers Delete', (tester) async {
+      final h = _Harness(
+        changes: _changes(unstaged: [
+          {'path': 'scratch.txt', 'status': 'untracked'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Permanently delete scratch.txt? This cannot be undone.'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+      final req = h.lastTo('/api/projects/1/git/discard', 'POST');
+      expect((jsonDecode(req.body) as Map)['paths'], ['scratch.txt']);
+    });
+
+    testWidgets('a staged rename discard covers both paths', (tester) async {
+      final h = _Harness(
+        changes: _changes(staged: [
+          {'path': 'b.txt', 'status': 'renamed', 'orig_path': 'a.txt'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Discard'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Discard'));
+      await tester.pumpAndSettle();
+
+      final req = h.lastTo('/api/projects/1/git/discard', 'POST');
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      expect(body['paths'], ['b.txt', 'a.txt']);
+      // A staged row resets the index and worktree to HEAD.
+      expect(body['staged'], isTrue);
+    });
+
+    testWidgets('discard all posts every unstaged path', (tester) async {
+      final h = _Harness(
+        changes: _changes(
+          unstaged: [
+            {'path': 'a.txt', 'status': 'modified'},
+            {'path': 'b.txt', 'status': 'untracked'},
+          ],
+        ),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Discard all'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard all 2 changed files? This cannot be undone.'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Discard all'));
+      await tester.pumpAndSettle();
+      final req = h.lastTo('/api/projects/1/git/discard', 'POST');
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      expect(body['paths'], ['a.txt', 'b.txt']);
+      expect(body['staged'], isFalse);
+    });
+
+    testWidgets('staged discard all sends the staged flag', (tester) async {
+      final h = _Harness(
+        changes: _changes(staged: [
+          {'path': 's.txt', 'status': 'modified'},
+        ]),
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Discard all'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Discard all'));
+      await tester.pumpAndSettle();
+
+      final req = h.lastTo('/api/projects/1/git/discard', 'POST');
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      expect(body['paths'], ['s.txt']);
+      expect(body['staged'], isTrue);
+    });
+
+    testWidgets('history section lists commits and loads more', (tester) async {
+      final h = _Harness(
+        log: (url) {
+          final offset =
+              int.tryParse(url.queryParameters['offset'] ?? '0') ?? 0;
+          if (offset == 0) {
+            return {
+              'commits': [_commit('aaaa', 'newer commit', body: 'details\n')],
+              'has_more': true,
+            };
+          }
+          return {
+            'commits': [_commit('bbbb', 'older commit')],
+            'has_more': false,
+          };
+        },
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('HISTORY'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('aaaa000'), findsOneWidget);
+      expect(find.text('newer commit'), findsOneWidget);
+      expect(find.textContaining('Test ·'), findsOneWidget);
+
+      // Expanding a commit shows its body and full sha.
+      await tester.tap(find.text('newer commit'));
+      await tester.pumpAndSettle();
+      expect(find.text('details'), findsOneWidget);
+      await tester.tap(find.text('newer commit'));
+      await tester.pumpAndSettle();
+      expect(find.text('details'), findsNothing);
+
+      await tester.tap(find.text('Load more'));
+      await tester.pumpAndSettle();
+      expect(find.text('older commit'), findsOneWidget);
+      expect(find.text('Load more'), findsNothing);
     });
   });
 }

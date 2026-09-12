@@ -804,6 +804,42 @@ class AppLocalizationsZh extends AppLocalizations {
   String get gitCommitAllConfirm => '没有已暂存的更改。是否暂存全部更改并提交？';
 
   @override
+  String get discard => '丢弃';
+
+  @override
+  String get discardAll => '丢弃全部';
+
+  @override
+  String discardFileConfirm(String path) {
+    return '丢弃对 $path 的全部更改？此操作无法撤销。';
+  }
+
+  @override
+  String discardUntrackedConfirm(String path) {
+    return '永久删除 $path？此操作无法撤销。';
+  }
+
+  @override
+  String discardAllConfirm(int count) {
+    return '丢弃全部 $count 个已更改的文件？此操作无法撤销。';
+  }
+
+  @override
+  String get history => '历史记录';
+
+  @override
+  String get noCommits => '还没有提交';
+
+  @override
+  String get noDiffAvailable => '无可用差异预览';
+
+  @override
+  String get openFile => '打开文件';
+
+  @override
+  String get copySha => '复制提交 SHA';
+
+  @override
   String get createBranch => '创建分支';
 
   @override

@@ -13,5 +13,6 @@ pub use remote::{
     RemoteError,
 };
 pub use service::{
-    Branch, ChangeEntry, ChangeList, CommitResult, GitError, GitService, RepoStatus, Worktree,
+    Branch, ChangeEntry, ChangeList, CommitEntry, CommitPage, CommitResult, GitError, GitService,
+    RepoStatus, Worktree,
 };

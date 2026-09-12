@@ -815,6 +815,42 @@ class AppLocalizationsEn extends AppLocalizations {
       'There are no staged changes. Stage all changes and commit?';
 
   @override
+  String get discard => 'Discard';
+
+  @override
+  String get discardAll => 'Discard all';
+
+  @override
+  String discardFileConfirm(String path) {
+    return 'Discard all changes to $path? This cannot be undone.';
+  }
+
+  @override
+  String discardUntrackedConfirm(String path) {
+    return 'Permanently delete $path? This cannot be undone.';
+  }
+
+  @override
+  String discardAllConfirm(int count) {
+    return 'Discard all $count changed files? This cannot be undone.';
+  }
+
+  @override
+  String get history => 'History';
+
+  @override
+  String get noCommits => 'No commits yet';
+
+  @override
+  String get noDiffAvailable => 'No diff preview available';
+
+  @override
+  String get openFile => 'Open file';
+
+  @override
+  String get copySha => 'Copy commit SHA';
+
+  @override
   String get createBranch => 'Create branch';
 
   @override

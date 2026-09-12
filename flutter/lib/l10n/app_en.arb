@@ -524,6 +524,37 @@
   "notGitRepo": "Not a git repository",
   "gitUnsupportedBackend": "This server is too old for the Git panel. Update the backend and restart the app.",
   "gitCommitAllConfirm": "There are no staged changes. Stage all changes and commit?",
+  "discard": "Discard",
+  "discardAll": "Discard all",
+  "discardFileConfirm": "Discard all changes to {path}? This cannot be undone.",
+  "@discardFileConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "discardUntrackedConfirm": "Permanently delete {path}? This cannot be undone.",
+  "@discardUntrackedConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "discardAllConfirm": "Discard all {count} changed files? This cannot be undone.",
+  "@discardAllConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "history": "History",
+  "noCommits": "No commits yet",
+  "noDiffAvailable": "No diff preview available",
+  "openFile": "Open file",
+  "copySha": "Copy commit SHA",
   "createBranch": "Create branch",
   "branchName": "Branch name",
   "baseBranchOptional": "Base branch (optional)",
