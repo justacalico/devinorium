@@ -89,7 +89,19 @@ async fn build_info(state: &AppState) -> TailscaleInfo {
         }
     };
 
-    let serve_enabled = state.tailscale.serve_enabled(&cfg.host, cfg.port).await;
+    // The port the mapping actually listens on wins over the configured
+    // default so the advertised URL and the disable path stay in sync with
+    // whatever tailscaled has stored. Errors count as "not enabled": a host
+    // where `serve status` fails cannot serve anyway.
+    let detected_port = match state.tailscale.serve_https_ports(&cfg.host, cfg.port).await {
+        Ok(ports) => ports.ours.first().copied(),
+        Err(e) => {
+            tracing::debug!("tailscale serve status failed: {e}");
+            None
+        }
+    };
+    let serve_enabled = detected_port.is_some();
+    let serve_port = detected_port.unwrap_or(serve_port);
     let https_url = if serve_enabled {
         status
             .magic_dns_name
@@ -158,8 +170,6 @@ async fn status(State(state): State<AppState>, CurrentUser(_user): CurrentUser) 
 #[derive(Debug, Deserialize)]
 struct SetServeRequest {
     enabled: bool,
-    /// Tailnet-side HTTPS port; defaults to the configured serve port.
-    port: Option<u16>,
 }
 
 async fn set_serve(
@@ -180,22 +190,22 @@ async fn set_serve(
             .into_response();
     }
 
-    let ts_status = match state.tailscale.read_status().await {
-        Ok(s) => s,
-        Err(TailscaleError::NotInstalled) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ApiError::new("tailscale CLI is not installed")),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string()))).into_response();
-        }
-    };
-
-    let serve_port = req.port.unwrap_or(state.config.tailscale_serve_port);
+    let mut serve_port = state.config.tailscale_serve_port;
     if req.enabled {
+        let ts_status = match state.tailscale.read_status().await {
+            Ok(s) => s,
+            Err(TailscaleError::NotInstalled) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(ApiError::new("tailscale CLI is not installed")),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+                    .into_response();
+            }
+        };
         if ts_status.magic_dns_name.is_none() {
             return (
                 StatusCode::BAD_REQUEST,
@@ -206,12 +216,60 @@ async fn set_serve(
                 .into_response();
         }
         let target = tailscale::local_serve_target(&state.config.host, state.config.port);
-        if let Err(e) = state.tailscale.ensure_serve(&target, serve_port).await {
-            return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string()))).into_response();
+        match state
+            .tailscale
+            .serve_https_ports(&state.config.host, state.config.port)
+            .await
+        {
+            // Already proxying to this listener: report the port tailscaled
+            // has rather than stacking a second mapping.
+            Ok(ports) if !ports.ours.is_empty() => serve_port = ports.ours[0],
+            // The configured port is claimed by a mapping that is not ours;
+            // enabling would silently hijack it.
+            Ok(ports) if ports.all.contains(&serve_port) => {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(ApiError::new(
+                        "the configured tailscale serve port is in use by another mapping",
+                    )),
+                )
+                    .into_response();
+            }
+            // Nothing mapped, or serve status is unreadable: create it.
+            _ => {
+                if let Err(e) = state.tailscale.ensure_serve(&target, serve_port).await {
+                    return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+                        .into_response();
+                }
+            }
         }
         tracing::info!(%target, serve_port, user_id = user.id, "tailscale serve enabled");
-    } else if let Err(e) = state.tailscale.disable_serve(serve_port).await {
-        return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string()))).into_response();
+    } else {
+        // Remove every mapping that proxies to our listener, and nothing
+        // else: a foreign mapping on the configured port stays untouched.
+        // Only when serve status is unreadable do we fall back to the
+        // configured port.
+        match state
+            .tailscale
+            .serve_https_ports(&state.config.host, state.config.port)
+            .await
+        {
+            Ok(ports) => {
+                for port in &ports.ours {
+                    if let Err(e) = state.tailscale.disable_serve(*port).await {
+                        return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+                            .into_response();
+                    }
+                }
+                serve_port = ports.ours.first().copied().unwrap_or(serve_port);
+            }
+            Err(_) => {
+                if let Err(e) = state.tailscale.disable_serve(serve_port).await {
+                    return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+                        .into_response();
+                }
+            }
+        }
     }
 
     let _ = state

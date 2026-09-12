@@ -19,7 +19,12 @@ use devinorium::{
 
 const MISSING_BIN: &str = "definitely-not-a-tailscale-binary-xyz";
 
-async fn make_app(tailscale_bin: &str, local_token: Option<&str>, port: u16) -> (Router, db::Db) {
+async fn make_app(
+    tailscale_bin: &str,
+    local_token: Option<&str>,
+    port: u16,
+    serve_port: u16,
+) -> (Router, db::Db) {
     let dir = tempfile::tempdir().expect("tempdir").keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("tailscale.db").display());
     let database = db::Db::connect(&db_url).await.expect("db connect");
@@ -48,7 +53,7 @@ async fn make_app(tailscale_bin: &str, local_token: Option<&str>, port: u16) -> 
         local_token: local_token.map(str::to_string),
         tailscale_bin: tailscale_bin.into(),
         tailscale_serve: false,
-        tailscale_serve_port: 443,
+        tailscale_serve_port: serve_port,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -146,7 +151,7 @@ async fn put_serve(app: &Router, bearer: &str, enabled: bool) -> (StatusCode, se
 
 #[tokio::test]
 async fn status_requires_auth() {
-    let (app, _db) = make_app(MISSING_BIN, None, 7878).await;
+    let (app, _db) = make_app(MISSING_BIN, None, 7878, 443).await;
     let resp = app
         .oneshot(
             Request::builder()
@@ -161,7 +166,7 @@ async fn status_requires_auth() {
 
 #[tokio::test]
 async fn status_reports_missing_cli() {
-    let (app, _db) = make_app(MISSING_BIN, None, 7878).await;
+    let (app, _db) = make_app(MISSING_BIN, None, 7878, 443).await;
     let token = login_token(&app).await;
     let (status, json) = get_status(&app, &token).await;
     assert_eq!(status, StatusCode::OK);
@@ -173,7 +178,7 @@ async fn status_reports_missing_cli() {
 
 #[tokio::test]
 async fn serve_toggle_requires_owner() {
-    let (app, db) = make_app(MISSING_BIN, None, 7878).await;
+    let (app, db) = make_app(MISSING_BIN, None, 7878, 443).await;
     db.create_user(db::NewUser {
         username: "member".into(),
         password_hash: auth::password::hash("memberpass123").unwrap(),
@@ -211,7 +216,7 @@ async fn serve_toggle_requires_owner() {
 
 #[tokio::test]
 async fn serve_enable_returns_404_without_cli() {
-    let (app, _db) = make_app(MISSING_BIN, None, 7878).await;
+    let (app, _db) = make_app(MISSING_BIN, None, 7878, 443).await;
     let token = login_token(&app).await;
     let (status, json) = put_serve(&app, &token, true).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -220,7 +225,7 @@ async fn serve_enable_returns_404_without_cli() {
 
 #[tokio::test]
 async fn local_mode_disables_the_feature() {
-    let (app, _db) = make_app(MISSING_BIN, Some("test-local-token-0123456789"), 7878).await;
+    let (app, _db) = make_app(MISSING_BIN, Some("test-local-token-0123456789"), 7878, 443).await;
     let bearer = "test-local-token-0123456789";
 
     let (status, json) = get_status(&app, bearer).await;
@@ -238,6 +243,10 @@ mod fake_cli {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
 
+    /// A serve port nothing listens on, so the HTTPS probe is refused
+    /// instantly instead of depending on whatever runs on 443.
+    const SERVE_PORT: u16 = 45999;
+
     /// A `tailscale` stand-in that answers `status`, remembers whether a
     /// serve mapping was installed, and proxies `serve status` accordingly.
     /// The MagicDNS name is `devbox.localhost` so the HTTPS probe resolves
@@ -253,7 +262,8 @@ mod fake_cli {
              elif [ \"$1\" = serve ] && [ \"$3\" = off ]; then\n\
                rm -f '{0}'\n\
              elif [ \"$1\" = serve ]; then\n\
-               echo '{{\"Web\":{{\"devbox.localhost:443\":{{\"Handlers\":{{\"/\":{{\"Proxy\":\"'$4'\"}}}}}}}}}}' > '{0}'\n\
+               port=${{3#--https=}}\n\
+               echo '{{\"Web\":{{\"devbox.localhost:'\"$port\"'\":{{\"Handlers\":{{\"/\":{{\"Proxy\":\"'$4'\"}}}}}}}}}}' > '{0}'\n\
              fi\n\
              exit 0\n",
             state_file.display()
@@ -271,7 +281,7 @@ mod fake_cli {
     async fn status_reports_identity_and_endpoints() {
         let dir = tempfile::tempdir().unwrap();
         let bin = make_fake(dir.path());
-        let (app, _db) = make_app(&bin.to_string_lossy(), None, 7878).await;
+        let (app, _db) = make_app(&bin.to_string_lossy(), None, 7878, SERVE_PORT).await;
         let token = login_token(&app).await;
 
         let (status, json) = get_status(&app, &token).await;
@@ -295,24 +305,105 @@ mod fake_cli {
     async fn serve_toggle_on_and_off() {
         let dir = tempfile::tempdir().unwrap();
         let bin = make_fake(dir.path());
-        let (app, _db) = make_app(&bin.to_string_lossy(), None, 7878).await;
+        let (app, _db) = make_app(&bin.to_string_lossy(), None, 7878, SERVE_PORT).await;
         let token = login_token(&app).await;
 
         let (status, json) = put_serve(&app, &token, true).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["serve_enabled"], true);
-        assert_eq!(json["https_url"], "https://devbox.localhost/");
-        // Nothing answers on devbox.localhost:443, so the probe fails fast.
+        assert_eq!(json["serve_port"], SERVE_PORT as i64);
+        assert_eq!(
+            json["https_url"],
+            format!("https://devbox.localhost:{SERVE_PORT}/")
+        );
+        // Nothing answers on devbox.localhost:SERVE_PORT, so the probe fails fast.
         assert_eq!(json["https_reachable"], false);
         assert!(json["endpoints"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|e| e["kind"] == "tailscale-https" && e["url"] == "https://devbox.localhost/"));
+            .any(|e| e["kind"] == "tailscale-https"
+                && e["url"] == format!("https://devbox.localhost:{SERVE_PORT}/")));
 
         let (status, json) = put_serve(&app, &token, false).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["serve_enabled"], false);
         assert_eq!(json["https_url"], serde_json::Value::Null);
+    }
+
+    /// Seed the fake tailscaled with a mapping that does not proxy to this
+    /// server, the shape `tailscale serve status --json` would report.
+    fn seed_foreign_mapping(dir: &std::path::Path, https_port: u16) {
+        let mut web = serde_json::Map::new();
+        web.insert(
+            format!("devbox.localhost:{https_port}"),
+            serde_json::json!({"Handlers": {"/": {"Proxy": "http://127.0.0.1:9999"}}}),
+        );
+        let state = serde_json::json!({"Web": web});
+        std::fs::write(dir.join("serve-state.json"), state.to_string()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn serve_enable_refuses_a_foreign_mapping_on_the_configured_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = make_fake(dir.path());
+        seed_foreign_mapping(dir.path(), SERVE_PORT);
+        let (app, _db) = make_app(&bin.to_string_lossy(), None, 7878, SERVE_PORT).await;
+        let token = login_token(&app).await;
+
+        let (status, json) = put_serve(&app, &token, true).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(json["error"].as_str().unwrap().contains("in use"));
+        // The foreign mapping is still there.
+        assert!(dir.path().join("serve-state.json").exists());
+    }
+
+    #[tokio::test]
+    async fn serve_disable_leaves_foreign_mappings_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = make_fake(dir.path());
+        seed_foreign_mapping(dir.path(), SERVE_PORT);
+        let (app, _db) = make_app(&bin.to_string_lossy(), None, 7878, SERVE_PORT).await;
+        let token = login_token(&app).await;
+
+        let (status, json) = put_serve(&app, &token, false).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["serve_enabled"], false);
+        // `serve off` was never invoked: somebody else's mapping survives.
+        assert!(dir.path().join("serve-state.json").exists());
+    }
+
+    #[tokio::test]
+    async fn serve_errors_never_leak_stderr() {
+        // `serve` fails with a secret-looking stderr; the API must return the
+        // classified diagnostic, not the raw output.
+        let dir = tempfile::tempdir().unwrap();
+        let script = "#!/bin/sh\n\
+            if [ \"$1\" = status ]; then\n\
+              echo '{\"BackendState\":\"Running\",\"Self\":{\"DNSName\":\"devbox.localhost.\",\"TailscaleIPs\":[\"100.96.1.2\"]}}'\n\
+            elif [ \"$1\" = serve ]; then\n\
+              echo 'tskey-auth-SECRET-1234' >&2\n\
+              exit 1\n\
+            fi\n\
+            exit 0\n";
+        let path = dir.path().join("tailscale");
+        std::fs::write(&path, script).unwrap();
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+
+        let (app, _db) = make_app(&path.to_string_lossy(), None, 7878, 443).await;
+        let token = login_token(&app).await;
+        let (status, json) = put_serve(&app, &token, true).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        let body = json.to_string();
+        assert!(
+            !body.contains("tskey-auth-SECRET-1234"),
+            "stderr leaked: {body}"
+        );
+        assert!(
+            body.contains("unknown"),
+            "expected classified diagnostic: {body}"
+        );
     }
 }

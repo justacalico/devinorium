@@ -80,7 +80,9 @@ async fn main() -> Result<()> {
     if cfg.tailscale_serve && cfg.is_local_mode() {
         tracing::warn!("DEVINORIUM_TAILSCALE_SERVE is ignored in bundled local mode");
     }
-    if env_managed_serve {
+    // The handle is awaited before the shutdown disable so a SIGTERM during
+    // the (10s-capped) enable cannot leave a mapping behind.
+    let serve_enable_task = env_managed_serve.then(|| {
         let ts = tailscale.clone();
         let target = devinorium::tailscale::local_serve_target(&cfg.host, cfg.port);
         let https_port = cfg.tailscale_serve_port;
@@ -89,8 +91,8 @@ async fn main() -> Result<()> {
                 Ok(()) => tracing::info!(%target, https_port, "tailscale serve enabled"),
                 Err(e) => tracing::warn!("failed to enable tailscale serve: {e}"),
             }
-        });
-    }
+        })
+    });
 
     let secure_cookie = cfg.secure_cookie;
     let cfg = Arc::new(cfg);
@@ -124,9 +126,21 @@ async fn main() -> Result<()> {
     // Only the env-flag-managed mapping is removed on shutdown; a mapping the
     // owner toggled through the API persists in tailscaled on its own.
     if env_managed_serve {
-        match tailscale.disable_serve(cfg.tailscale_serve_port).await {
-            Ok(()) => tracing::info!("tailscale serve disabled"),
-            Err(e) => tracing::warn!("failed to disable tailscale serve: {e}"),
+        if let Some(task) = serve_enable_task {
+            let _ = task.await;
+        }
+        // Remove whatever ports proxy to this listener; the configured port
+        // is only a fallback for when serve status cannot be read at all, so
+        // a foreign mapping is never torn down by mistake.
+        let ports = match tailscale.serve_https_ports(&cfg.host, cfg.port).await {
+            Ok(ports) => ports.ours,
+            Err(_) => vec![cfg.tailscale_serve_port],
+        };
+        for port in ports {
+            match tailscale.disable_serve(port).await {
+                Ok(()) => tracing::info!(https_port = port, "tailscale serve disabled"),
+                Err(e) => tracing::warn!("failed to disable tailscale serve: {e}"),
+            }
         }
     }
     Ok(())
