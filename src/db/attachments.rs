@@ -15,6 +15,15 @@ pub struct MessageAttachmentRow {
     pub data: Vec<u8>,
 }
 
+/// Attachment blob with its position in the message's file list.
+#[derive(Debug, sqlx::FromRow)]
+pub struct IndexedAttachmentRow {
+    pub idx: i64,
+    pub filename: String,
+    pub mime: String,
+    pub data: Vec<u8>,
+}
+
 impl super::Db {
     /// Persist the uploaded attachments of a message, keyed by their position
     /// in the message's attachment metadata list.
@@ -63,6 +72,22 @@ impl super::Db {
         .bind(message_id)
         .bind(idx)
         .fetch_optional(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
+    /// Every blob stored for a message, ordered by position. Used when a
+    /// message is rewritten so its attachments can be carried over.
+    pub async fn list_message_attachments(
+        &self,
+        message_id: i64,
+    ) -> anyhow::Result<Vec<IndexedAttachmentRow>> {
+        sqlx::query_as::<_, IndexedAttachmentRow>(
+            "SELECT idx, filename, mime, data FROM message_attachments
+             WHERE message_id = ? ORDER BY idx",
+        )
+        .bind(message_id)
+        .fetch_all(self.pool())
         .await
         .map_err(Into::into)
     }

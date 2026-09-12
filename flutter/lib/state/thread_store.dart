@@ -28,6 +28,11 @@ class _PendingSend {
   final String clientMessageId;
   final ComposerMode composerMode;
 
+  /// True when the pending send is an edit-and-resend. On failure the
+  /// edited text only goes back into the composer if it is empty; a draft
+  /// the user typed meanwhile is never clobbered.
+  final bool resendEdit;
+
   _PendingSend({
     required this.prompt,
     required this.composerText,
@@ -36,6 +41,7 @@ class _PendingSend {
     required this.threadReferences,
     required this.clientMessageId,
     required this.composerMode,
+    this.resendEdit = false,
   });
 }
 
@@ -110,6 +116,12 @@ class ThreadStore {
   /// Snapshot of the composer at send time so we can restore it if the turn
   /// fails before the server acknowledges the user message.
   _PendingSend? _pendingSend;
+
+  // Pending resend truncation: the server deletes the anchor and everything
+  // after it when the run starts, so the rows stay visible until the stream
+  // acknowledges the run with its first committed event.
+  int? _resendAnchorId;
+  bool _resendInclusive = false;
 
   // Stream lifecycle.
   StreamSubscription? _subscription;
@@ -426,6 +438,104 @@ class ThreadStore {
     });
   }
 
+  /// Edit a user message or regenerate a reply. The server replays the
+  /// thread from the turn [message] belongs to: with [editedPrompt] the
+  /// stored user message is replaced by the new text, without it the turn's
+  /// reply is regenerated.
+  Future<void> resendMessage(Message message, {String? editedPrompt}) async {
+    final d = _detail.valueOrNull;
+    final messageId = message.id;
+    if (d == null || messageId == null || _streaming.isActive) return;
+
+    final editing = editedPrompt != null;
+    final anchor = editing
+        ? (message.role == 'user' ? message : null)
+        : _turnAnchor(d.messages, message);
+    final anchorId = anchor?.id;
+    if (anchor == null || anchorId == null) return;
+    _globalError = '';
+
+    await _scheduler.run('stream', () async {
+      final token = _nextStreamToken();
+      try {
+        await saveSettings();
+      } catch (_) {
+        return;
+      }
+      if (token != _streamToken || onStateChanged == null) return;
+
+      _resendAnchorId = anchorId;
+      _resendInclusive = editing;
+
+      String? clientMessageId;
+      if (editing) {
+        clientMessageId = _newClientMessageId();
+        _pendingSend = _PendingSend(
+          prompt: editedPrompt,
+          composerText: editedPrompt,
+          attachments: const [],
+          pathRefs: const [],
+          threadReferences: const [],
+          clientMessageId: clientMessageId,
+          composerMode: composerMode,
+          resendEdit: true,
+        );
+        _optimisticMessages.add(
+          _buildOptimisticMessage(
+            editedPrompt,
+            const [],
+            const [],
+            const [],
+            clientMessageId,
+          ),
+        );
+      }
+
+      _clearStreamingState();
+      _streaming = _streaming.copyWith(phase: StreamPhase.sending);
+      _lastRunStatus = 'running';
+      _runFinishedFired = false;
+      if (_detail.valueOrNull != null) {
+        _detail = AsyncValue.ready(
+          _detail.valueOrNull!.copyWith(clearPlan: true),
+        );
+      }
+      _emit();
+
+      try {
+        _subscription = api
+            .resendMessageStream(
+              threadId: threadId,
+              messageId: messageId,
+              editedPrompt: editedPrompt,
+              mode: composerMode.name,
+              clientMessageId: clientMessageId,
+            )
+            .listen(
+              (ev) => _handleEvent(ev, token),
+              onError: (e) => _handleStreamError(e, token),
+              onDone: () => _handleStreamDone(token),
+            );
+      } catch (e) {
+        debugLogFailure('thread.resendMessage.listen', e, threadId: threadId);
+        _resendAnchorId = null;
+        _finishStream(error: '$e', phase: StreamPhase.failed);
+      }
+    });
+  }
+
+  /// The user message anchoring the turn [message] belongs to: the latest
+  /// user message at or before its position in the list.
+  static Message? _turnAnchor(List<Message> messages, Message message) {
+    if (message.role == 'user') return message;
+    final idx = messages.indexWhere((m) => m.id == message.id);
+    if (idx == -1) return null;
+    for (var i = idx; i >= 0; i--) {
+      if (messages[i].role == 'user') return messages[i];
+    }
+    return null;
+  }
+
   /// Persist the selected model and permission mode for this thread.
   /// Only fetches the persisted detail when the local detail has never been
   /// loaded, so sending a message does not flash an empty thread and race the
@@ -679,6 +789,7 @@ class ThreadStore {
     _streamToken += 1;
     _subscription?.cancel();
     _subscription = null;
+    _resendAnchorId = null;
   }
 
   void _clearStreamingState() {
@@ -705,7 +816,23 @@ class ThreadStore {
 
   void _handleEvent(SseEvent ev, int token) {
     if (token != _streamToken) return;
-    final d = _detail.valueOrNull;
+    // A resend on another client deleted this thread's tail server-side;
+    // resync the loaded window instead of keeping ghost rows around.
+    if (ev.event == 'messages_truncated') {
+      unawaited(_resyncMessages());
+      return;
+    }
+    var d = _detail.valueOrNull;
+    // A resend deletes the tail server-side when the run starts; mirror that
+    // here once the stream's first committed event arrives so a request that
+    // was rejected before the run started never touches the list.
+    if (_resendAnchorId != null &&
+        (ev.event == 'user_message' ||
+            ev.event == 'done' ||
+            ev.event == 'error' ||
+            ev.event == 'stopped')) {
+      d = _truncateForResend(d);
+    }
     final result = reduceStreamingEvent(
       detail: d,
       snapshot: _streaming,
@@ -855,12 +982,88 @@ class ThreadStore {
     _emit();
   }
 
+  /// Drop the tail rows a resend run deleted server-side. Returns the
+  /// updated detail so the caller can feed it to the reducer for the event
+  /// that triggered the truncation.
+  ThreadDetail? _truncateForResend(ThreadDetail? d) {
+    final anchor = _resendAnchorId;
+    _resendAnchorId = null;
+    if (d == null || anchor == null) return d;
+    final inclusive = _resendInclusive;
+    final kept = d.messages
+        .where(
+          (m) =>
+              m.id == null || (inclusive ? m.id! < anchor : m.id! <= anchor),
+        )
+        .toList();
+    if (kept.length == d.messages.length) return d;
+    final next = d.copyWith(
+      messages: kept,
+      totalMessages: max(
+        0,
+        d.totalMessages - (d.messages.length - kept.length),
+      ),
+    );
+    _detail = AsyncValue.ready(next);
+    return next;
+  }
+
+  /// Replace the loaded messages with a fresh tail page. Used when a resend
+  /// request may or may not have deleted rows server-side and the local
+  /// list can no longer be trusted. A second delayed fetch covers the race
+  /// where the stream died before the server's run task committed the
+  /// deletion.
+  Future<void> _resyncMessages() async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+      final d = _detail.valueOrNull;
+      if (d == null) return;
+      try {
+        final page = await api.getThreadMessages(
+          threadId,
+          turnLimit: d.turnLimit ?? 50,
+        );
+        final current = _detail.valueOrNull;
+        if (current == null || current.thread.id != d.thread.id) return;
+        _detail = AsyncValue.ready(
+          current.copyWith(
+            messages: page.messages,
+            totalMessages: page.total,
+            beforeCursor: page.beforeCursor,
+            hasMore: page.hasMore,
+            turnLimit: page.turnLimit ?? current.turnLimit,
+            rawCount: page.rawCount,
+          ),
+        );
+        _emit();
+      } catch (e) {
+        debugLogFailure('thread.resyncMessages', e, threadId: threadId);
+        return;
+      }
+    }
+  }
+
   void _handleStreamError(Object e, int token) {
     if (token != _streamToken) return;
+    if (_resendAnchorId != null) {
+      _resendAnchorId = null;
+      if (e is! ApiException || e.statusCode < 400 || e.statusCode >= 500) {
+        // Not a clean rejection: the run may have started and deleted rows
+        // before the connection dropped, so resync rather than trusting the
+        // local tail.
+        unawaited(_resyncMessages());
+      }
+    }
     if (e is ApiException && e.statusCode == 409) {
       // Another client is running this thread; restore our composer and then
       // try to resume the existing run so the user can see what's happening.
+      // The stream still emits onDone after this error; dropping the phase
+      // to idle keeps that from reporting a spurious "completed".
       _restorePendingSend();
+      _streaming = _streaming.copyWith(phase: StreamPhase.idle);
+      _lastRunStatus = null;
       _emit();
       unawaited(resume());
       return;
@@ -871,6 +1074,12 @@ class ThreadStore {
 
   void _handleStreamDone(int token) {
     if (token != _streamToken) return;
+    if (_resendAnchorId != null) {
+      // The stream closed before the run was acknowledged; the tail may
+      // have been deleted anyway.
+      _resendAnchorId = null;
+      unawaited(_resyncMessages());
+    }
     // Stream closed without an explicit done/error event. If we are still
     // waiting for a user message acknowledgement, treat it as a failure and
     // restore the composer so the user can retry.
@@ -1103,7 +1312,11 @@ class ThreadStore {
       _optimisticMessages.clear();
       return;
     }
-    composerText = pending.composerText;
+    // A resend edit only reclaims the composer when it is empty; the text
+    // stays retriable from the original message and a live draft wins.
+    if (!pending.resendEdit || composerText.trim().isEmpty) {
+      composerText = pending.composerText;
+    }
     attachments = List.of(pending.attachments);
     pathRefs = List.of(pending.pathRefs);
     threadReferences = List.of(pending.threadReferences);

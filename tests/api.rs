@@ -2719,6 +2719,444 @@ async fn thread_send_stream_normalizes_unknown_interaction_mode() {
     assert_eq!(done_json["content"], "echo: Hello world (code)");
 }
 
+/// POST a multipart body to a message's resend endpoint. `fields` are the
+/// form fields; an empty slice still posts a valid empty multipart body.
+async fn resend_message(
+    app: &Router,
+    cookie: &str,
+    tid: &str,
+    message_id: i64,
+    fields: &[(&str, &str)],
+) -> axum::response::Response {
+    let boundary = "----resendboundary";
+    let mut body = String::new();
+    for (name, value) in fields {
+        body.push_str(&format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+        ));
+    }
+    body.push_str(&format!("--{boundary}--\r\n"));
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/messages/{message_id}/resend"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+/// Send a prompt through the SSE endpoint and wait for the run to finish.
+async fn send_and_wait(app: &Router, cookie: &str, tid: &str, prompt: &str) -> String {
+    send_fields_and_wait(app, cookie, tid, &[("prompt", prompt)]).await
+}
+
+/// POST arbitrary form fields to the send stream endpoint.
+async fn send_fields_and_wait(
+    app: &Router,
+    cookie: &str,
+    tid: &str,
+    fields: &[(&str, &str)],
+) -> String {
+    let boundary = "----sendwaitboundary";
+    let mut body = String::new();
+    for (name, value) in fields {
+        body.push_str(&format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+        ));
+    }
+    body.push_str(&format!("--{boundary}--\r\n"));
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await
+}
+
+fn sse_block<'a>(body: &'a str, event: &str) -> &'a str {
+    body.split("\n\n")
+        .find(|b| b.contains(&format!("event: {event}")))
+        .unwrap_or_else(|| panic!("missing {event} event; body: {body}"))
+}
+
+fn sse_json(body: &str, event: &str) -> serde_json::Value {
+    let data = sse_block(body, event)
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("event data");
+    serde_json::from_str(&data[6..]).expect("valid event json")
+}
+
+#[tokio::test]
+async fn resend_edit_replaces_user_message_and_tail() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    send_and_wait(&app, &cookie, &tid, "first").await;
+    send_and_wait(&app, &cookie, &tid, "second").await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 4);
+    let first_user = msgs[0].id;
+    assert_eq!(msgs[0].role, "user");
+
+    let resp = resend_message(
+        &app,
+        &cookie,
+        &tid,
+        first_user,
+        &[("prompt", "edited first")],
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers()["content-type"].to_str().unwrap(),
+        "text/event-stream"
+    );
+
+    let body = body_str(resp.into_body()).await;
+    let user_json = sse_json(&body, "user_message");
+    assert_eq!(user_json["role"], "user");
+    assert_eq!(user_json["content"], "edited first");
+    assert_ne!(user_json["id"].as_i64().unwrap(), first_user);
+    let done_json = sse_json(&body, "done");
+    assert_eq!(done_json["content"], "echo: edited first (code)");
+
+    // The old turn and everything after it are gone; only the edited
+    // message and its fresh reply remain.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(
+        msgs.len(),
+        2,
+        "messages: {:?}",
+        msgs.iter().map(|m| (m.id, &m.role)).collect::<Vec<_>>()
+    );
+    assert_eq!(msgs[0].role, "user");
+    assert_eq!(msgs[0].content, "edited first");
+    assert_eq!(msgs[1].role, "assistant");
+}
+
+#[tokio::test]
+async fn resend_regenerate_keeps_user_message() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    send_and_wait(&app, &cookie, &tid, "hello").await;
+    send_and_wait(&app, &cookie, &tid, "again").await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 4);
+    let last_user = msgs[2].clone();
+    let old_assistant = msgs[3].id;
+    assert_eq!(last_user.role, "user");
+    assert_eq!(msgs[3].role, "assistant");
+
+    // No prompt field: regenerate the reply for the last user message.
+    let resp = resend_message(&app, &cookie, &tid, msgs[3].id, &[]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let user_json = sse_json(&body, "user_message");
+    assert_eq!(user_json["id"].as_i64().unwrap(), last_user.id);
+    let done_json = sse_json(&body, "done");
+    assert_eq!(done_json["content"], "echo: again (code)");
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 4);
+    assert_eq!(msgs[2].id, last_user.id);
+    assert_eq!(msgs[2].content, "again");
+    assert_ne!(msgs[3].id, old_assistant);
+    assert_eq!(msgs[3].role, "assistant");
+}
+
+#[tokio::test]
+async fn resend_edit_rejects_non_user_message() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    send_and_wait(&app, &cookie, &tid, "hello").await;
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let assistant_id = msgs[1].id;
+    assert_eq!(msgs[1].role, "assistant");
+
+    let resp = resend_message(
+        &app,
+        &cookie,
+        &tid,
+        assistant_id,
+        &[("prompt", "edit the reply")],
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+}
+
+#[tokio::test]
+async fn resend_returns_not_found_for_unknown_message() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = resend_message(&app, &cookie, &tid, 999999, &[]).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // A message id belonging to another thread is also a 404.
+    let tid2 = make_thread(&app, &cookie, pid, "T2").await;
+    send_and_wait(&app, &cookie, &tid2, "other").await;
+    let resp = resend_message(&app, &cookie, &tid, 1, &[]).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn resend_edit_preserves_stored_path_refs() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // Give the project a real file so the path ref resolves.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    let projects: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let project_path = projects
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"].as_i64() == Some(pid))
+        .unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    std::fs::create_dir_all(&project_path).unwrap();
+    std::fs::write(format!("{project_path}/note.txt"), "hi").unwrap();
+
+    let context_paths = serde_json::json!([{"path": "note.txt", "is_dir": false}]);
+    send_fields_and_wait(
+        &app,
+        &cookie,
+        &tid,
+        &[
+            ("prompt", "read the note"),
+            ("context_paths", &context_paths.to_string()),
+        ],
+    )
+    .await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    let user_id = msgs[0].id;
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    assert_eq!(atts[0]["filename"], "note.txt");
+
+    let resp = resend_message(&app, &cookie, &tid, user_id, &[("prompt", "edited")]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let done_json = sse_json(&body, "done");
+    // The provider prompt still carries the resolved context block.
+    let reply = done_json["content"].as_str().unwrap();
+    let canonical = std::fs::canonicalize(format!("{project_path}/note.txt")).unwrap();
+    assert!(
+        reply.contains(&format!("note.txt: {} (file)", canonical.display())),
+        "reply: {reply}"
+    );
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[0].content, "edited");
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    assert_eq!(atts[0]["kind"], "path");
+    assert_eq!(atts[0]["filename"], "note.txt");
+}
+
+#[tokio::test]
+async fn resend_edit_keeps_file_attachments() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // A message carrying one uploaded file.
+    let png: &[u8] = &[137, 80, 78, 71, 13, 10, 26, 10];
+    let boundary = "----resendfile";
+    let mut body: Vec<u8> = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nwith file\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"shot.png\"\r\nContent-Type: image/png\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(png);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let old_id = msgs[0].id;
+
+    let resp = resend_message(&app, &cookie, &tid, old_id, &[("prompt", "edited")]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+
+    // The rewritten row is new but keeps the chip metadata.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let new_id = msgs[0].id;
+    assert_ne!(new_id, old_id);
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    assert_eq!(atts[0]["filename"], "shot.png");
+    assert_eq!(atts[0]["mime"], "image/png");
+    assert_eq!(atts[0]["index"], 0);
+
+    // The blob moved to the new message and is still fetchable.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{new_id}/attachments/0"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let j: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(j["filename"], "shot.png");
+
+    // Nothing lingers under the deleted row's id.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{old_id}/attachments/0"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn resend_new_rows_get_fresh_seq() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    send_and_wait(&app, &cookie, &tid, "first").await;
+    send_and_wait(&app, &cookie, &tid, "second").await;
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let max_seq = msgs.iter().map(|m| m.seq).max().unwrap();
+
+    let resp = resend_message(&app, &cookie, &tid, msgs[0].id, &[("prompt", "edited")]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+
+    // Rewritten rows must not reuse the deleted rows' sequence numbers,
+    // or since_seq consumers would miss them.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    for m in &msgs {
+        assert!(m.seq > max_seq, "seq {} reused after truncation", m.seq);
+        assert_eq!(m.seq, m.id);
+    }
+}
+
+#[tokio::test]
+async fn resend_rejects_while_run_active_and_keeps_messages() {
+    let (app, db) = make_app_with_delay(5000).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    seed_messages(&db, &tid, 2, "seed ").await;
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let user_id = msgs[0].id;
+
+    // Occupy the runner with a slow turn.
+    let running_app = app.clone();
+    let running_cookie = cookie.clone();
+    let running_tid = tid.clone();
+    tokio::spawn(async move {
+        send_and_wait(&running_app, &running_cookie, &running_tid, "slow").await
+    });
+    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
+
+    let resp = resend_message(
+        &app,
+        &cookie,
+        &tid,
+        user_id,
+        &[("prompt", "should not apply")],
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+    // The conflict must not have deleted the tail.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 3, "tail deleted despite 409");
+    assert_eq!(msgs[0].id, user_id);
+}
+
 #[tokio::test]
 async fn thread_runs_in_backend_with_zero_frontends() {
     let (app, db) = make_app_with_delay(300).await;

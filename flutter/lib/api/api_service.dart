@@ -895,6 +895,26 @@ class ApiService {
     );
   }
 
+  /// Resend a turn anchored at [messageId]. With [editedPrompt] the stored
+  /// user message is replaced by the new text; without it the turn's reply
+  /// is regenerated. Events are the same SSE stream as a normal send.
+  Stream<SseEvent> resendMessageStream({
+    required String threadId,
+    required int messageId,
+    String? editedPrompt,
+    String? mode,
+    String? clientMessageId,
+  }) {
+    return _client.postStream(
+      path: '/api/threads/$threadId/messages/$messageId/resend',
+      fields: buildSendFields(
+        prompt: editedPrompt,
+        mode: mode,
+        clientMessageId: clientMessageId,
+      ),
+    );
+  }
+
   /// Build a path with optional query parameters, encoding values safely.
   static String _buildPath(String path, Map<String, String> params) {
     if (params.isEmpty) return path;

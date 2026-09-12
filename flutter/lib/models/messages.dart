@@ -204,6 +204,7 @@ class Message {
   final List<MessagePart>? parts;
   final String model;
   final String? clientMessageId;
+  final DateTime? createdAt;
   final int? turnId;
   final int? seq;
   final bool truncated;
@@ -221,6 +222,7 @@ class Message {
     this.parts,
     this.model = '',
     this.clientMessageId,
+    this.createdAt,
     this.turnId,
     this.seq,
     this.truncated = false,
@@ -246,6 +248,7 @@ class Message {
         .toList(),
     model: j['model'] as String? ?? '',
     clientMessageId: j['client_message_id'] as String?,
+    createdAt: DateTime.tryParse(j['created_at'] as String? ?? ''),
     turnId: (j['turn_id'] as num?)?.toInt(),
     seq: (j['seq'] as num?)?.toInt(),
     truncated: j['truncated'] as bool? ?? false,
@@ -278,6 +281,7 @@ class Message {
     List<MessagePart>? parts,
     String? model,
     String? clientMessageId,
+    DateTime? createdAt,
     int? turnId,
     int? seq,
     bool? truncated,
@@ -299,6 +303,7 @@ class Message {
       partsDigest: identical(nextParts, this.parts) ? _partsDigest : null,
       model: model ?? this.model,
       clientMessageId: clientMessageId ?? this.clientMessageId,
+      createdAt: createdAt ?? this.createdAt,
       turnId: turnId ?? this.turnId,
       seq: seq ?? this.seq,
       truncated: truncated ?? this.truncated,
@@ -324,6 +329,7 @@ class Message {
         thinking == other.thinking &&
         model == other.model &&
         clientMessageId == other.clientMessageId &&
+        createdAt == other.createdAt &&
         turnId == other.turnId &&
         seq == other.seq &&
         truncated == other.truncated &&
@@ -342,6 +348,7 @@ class Message {
       thinking,
       model,
       clientMessageId,
+      createdAt,
       turnId,
       seq,
       truncated,
