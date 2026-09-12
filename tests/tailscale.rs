@@ -19,11 +19,7 @@ use devinorium::{
 
 const MISSING_BIN: &str = "definitely-not-a-tailscale-binary-xyz";
 
-async fn make_app(
-    tailscale_bin: &str,
-    local_token: Option<&str>,
-    port: u16,
-) -> (Router, db::Db) {
+async fn make_app(tailscale_bin: &str, local_token: Option<&str>, port: u16) -> (Router, db::Db) {
     let dir = tempfile::tempdir().expect("tempdir").keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("tailscale.db").display());
     let database = db::Db::connect(&db_url).await.expect("db connect");
@@ -312,8 +308,7 @@ mod fake_cli {
             .as_array()
             .unwrap()
             .iter()
-            .any(|e| e["kind"] == "tailscale-https"
-                && e["url"] == "https://devbox.localhost/"));
+            .any(|e| e["kind"] == "tailscale-https" && e["url"] == "https://devbox.localhost/"));
 
         let (status, json) = put_serve(&app, &token, false).await;
         assert_eq!(status, StatusCode::OK);
