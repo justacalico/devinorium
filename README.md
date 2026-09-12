@@ -63,6 +63,9 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `DEVINORIUM_MAX_BODY_BYTES` | `16777216` | Max request body size in bytes |
 | `DEVINORIUM_SECURE_COOKIE` | `false` | Set the `Secure` cookie flag (enable over HTTPS) |
 | `DEVINORIUM_ALLOWED_ORIGIN` | (unset or empty) | Explicit allowed origin for CSRF checks |
+| `DEVINORIUM_TAILSCALE_BIN` | `tailscale` | Path to the tailscale CLI |
+| `DEVINORIUM_TAILSCALE_SERVE` | `false` | Publish the server over `tailscale serve` at startup |
+| `DEVINORIUM_TAILSCALE_SERVE_PORT` | `443` | Tailnet-side HTTPS port for the serve mapping |
 | `DEVINORIUM_LOCAL_TOKEN` | (unset) | Bundled desktop mode: requests bearing this token map onto the passwordless `local` owner account, and the process exits when stdin closes. Set automatically by the desktop app; not for normal servers |
 
 Database migrations run automatically on startup.
@@ -77,7 +80,9 @@ exits automatically when the app closes.
 
 Remote servers still work: use "Add server" in Settings → Servers to connect
 to a Devinorium instance running on another machine, and switch between it
-and the bundled "This device" server from the sidebar.
+and the bundled "This device" server from the sidebar. Tailscale remote
+access is unavailable on the bundled server (it binds to loopback only), so
+the Tailscale card in Settings → Servers is greyed out there.
 
 For development, the bundled server is only found inside packaged builds. To
 run it under `flutter run`, point the app at a binary you built yourself:
