@@ -173,7 +173,7 @@ class _NarrowEditor extends StatelessWidget {
                 tooltip: l10n(context).files,
                 onPressed: () {
                   unawaited(state.openFilesPanel());
-                  Scaffold.maybeOf(context)?.openDrawer();
+                  state.openSidebar();
                 },
               ),
             ),

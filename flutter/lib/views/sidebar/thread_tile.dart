@@ -135,7 +135,7 @@ class _ThreadTileState extends State<_ThreadTile>
                 onTap: _deleting
                     ? null
                     : () {
-                        Scaffold.of(context).closeDrawer();
+                        context.read<AppState>().closeSidebar();
                         widget.onTap();
                       },
               ),
@@ -151,6 +151,9 @@ class _ThreadTileState extends State<_ThreadTile>
       data: widget.thread,
       affinity: Axis.horizontal,
       maxSimultaneousDrags: 1,
+      // On narrow screens the sidebar is a slide-over covering the composer;
+      // sliding it closed exposes the drop target while the drag continues.
+      onDragStarted: () => context.read<AppState>().closeSidebar(),
       feedback: Opacity(
         opacity: 0.85,
         child: Material(

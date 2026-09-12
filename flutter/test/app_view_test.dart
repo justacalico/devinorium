@@ -157,6 +157,108 @@ void main() {
     });
   });
 
+  group('AppShell sidebar overlay on narrow screens', () {
+    testWidgets('menu state opens and closes the slide-over sidebar',
+        (tester) async {
+      tester.view.physicalSize = const Size(600, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final state = _baseState(api: _clientFor([_json(200, [])]));
+      addTearDown(state.dispose);
+      await tester.pumpWidget(_buildWithState(state, size: const Size(600, 800)));
+      await tester.pumpAndSettle();
+
+      expect(state.sidebarOpen, isFalse);
+      expect(find.byType(Drawer), findsNothing);
+
+      state.openSidebar();
+      await tester.pumpAndSettle();
+      expect(state.sidebarOpen, isTrue);
+
+      // Tapping the scrim closes the overlay.
+      await tester.tapAt(const Offset(500, 400));
+      await tester.pumpAndSettle();
+      expect(state.sidebarOpen, isFalse);
+    });
+
+    testWidgets(
+        'thread dragged out of the sidebar overlay reaches the composer',
+        (tester) async {
+      tester.view.physicalSize = const Size(600, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final state = AppState.test(
+        api: ApiService(client: _clientFor([_json(200, [])])),
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        projects: [
+          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+        ],
+        threads: [
+          Thread(
+            id: 'a',
+            title: 'Active thread',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          Thread(
+            id: 'b',
+            title: 'Other thread',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 'a',
+      );
+      addTearDown(state.dispose);
+      await tester.pumpWidget(_buildWithState(state, size: const Size(600, 800)));
+      await tester.pumpAndSettle();
+
+      state.openSidebar();
+      await tester.pumpAndSettle();
+
+      final tile = find.text('Other thread');
+      expect(tile, findsOneWidget);
+      final tileCenter = tester.getCenter(tile);
+
+      // A horizontal pull starts the drag; the overlay slides away while the
+      // drag is still in progress so the composer becomes a valid target.
+      final gesture = await tester.startGesture(tileCenter);
+      await gesture.moveBy(const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      expect(state.sidebarOpen, isFalse);
+
+      final composer = find.byKey(const Key('composer_input'));
+      expect(composer, findsOneWidget);
+      await gesture.moveTo(tester.getCenter(composer));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        state.threadReferences.any((ref) => ref.id == 'b'),
+        isTrue,
+      );
+    });
+  });
+
   group('AppShell resize preserves state', () {
     testWidgets('composer text survives narrow <-> wide layout switch',
         (tester) async {

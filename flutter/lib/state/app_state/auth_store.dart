@@ -622,6 +622,7 @@ mixin AuthStore on AppStateBase {
     _loadingMoreProjectThreads.clear();
     _filesTreeRoot = FileTreeNode.root();
     _filesPanelOpen = false;
+    _sidebarOpen = false;
     _filesError = '';
     _gitPanelOpen = false;
     _gitPanelChanges = null;

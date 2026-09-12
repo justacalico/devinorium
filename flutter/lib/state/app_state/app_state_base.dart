@@ -72,6 +72,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _users(List<User> value);
   bool get _userMenuOpen;
   set _userMenuOpen(bool value);
+  bool get _sidebarOpen;
+  set _sidebarOpen(bool value);
   bool get _filesPanelOpen;
   set _filesPanelOpen(bool value);
   bool get _gitPanelOpen;
@@ -221,6 +223,7 @@ abstract class AppStateBase extends ChangeNotifier {
   List<User> get users;
   bool get isOwner;
   bool get userMenuOpen;
+  bool get sidebarOpen;
   bool get filesPanelOpen;
   bool get gitPanelOpen;
   GitChanges? get gitPanelChanges;
@@ -320,6 +323,8 @@ abstract class AppStateBase extends ChangeNotifier {
   void setSettingsTopicIndex(int index);
   void toggleUserMenu();
   void setUserMenuOpen(bool v);
+  void openSidebar();
+  void closeSidebar();
   void setComposerText(String t);
   void addAttachments(
     List<({String filename, String mime, Uint8List bytes})> files,

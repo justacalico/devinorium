@@ -63,7 +63,7 @@ class _SettingsNav extends StatelessWidget {
                   onTap: enabled(i)
                       ? () {
                           state.setSettingsTopicIndex(i);
-                          Scaffold.of(context).closeDrawer();
+                          state.closeSidebar();
                         }
                       : null,
                 ),
