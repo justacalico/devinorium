@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.66.0 - 2026-09-12
+#### Features
+- 统一新建项目和克隆仓库为单个添加项目按钮 - (5f61b10) - HttpAnimations
+
+- - -
+
 ## v0.65.0 - 2026-09-12
 #### Features
 - 消息附件支持图片缩略图 - (c3a7266) - HttpAnimations
