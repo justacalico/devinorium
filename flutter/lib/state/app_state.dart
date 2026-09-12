@@ -63,6 +63,7 @@ enum ConnectionStatus { connected, disconnected, checking }
 enum DialogKind {
   none,
   totpSetup,
+  addProject,
   newProject,
   cloneRepo,
   permissionRequest,

@@ -185,6 +185,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _cloningRepo(bool value);
   String? get _cloneRepoResult;
   set _cloneRepoResult(String? value);
+  int get _cloneRepoSeq;
+  set _cloneRepoSeq(int value);
   ConnectionStatus get _connectionStatus;
   set _connectionStatus(ConnectionStatus value);
   String? get _serverVersion;
@@ -419,6 +421,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
   Future<void> createProject({required String name, required String path});
+  void openAddProjectDialog();
   void openCloneRepoDialog();
   Future<String?> cloneRepo(String url);
   Future<void> openClonedProjectByPath(String path);

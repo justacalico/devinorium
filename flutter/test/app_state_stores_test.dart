@@ -76,8 +76,30 @@ void main() {
       expect(state.projects, isEmpty);
       expect(state.hasMoreProjects, false);
 
+      state.openAddProjectDialog();
+      expect(state.dialog, DialogKind.addProject);
+
       await state.openNewProjectDialog();
       expect(state.dialog, DialogKind.newProject);
+
+      state.closeDialog();
+      expect(state.dialog, DialogKind.none);
+    });
+
+    test('openAddProjectDialog resets clone and error state', () {
+      final state = AppState.test(
+        cloningRepo: true,
+        cloneRepoResult: '/cloned/path',
+        globalError: 'stale error',
+      );
+      addTearDown(state.dispose);
+
+      state.openAddProjectDialog();
+
+      expect(state.dialog, DialogKind.addProject);
+      expect(state.cloningRepo, false);
+      expect(state.cloneRepoResult, isNull);
+      expect(state.globalError, isEmpty);
 
       state.closeDialog();
       expect(state.dialog, DialogKind.none);

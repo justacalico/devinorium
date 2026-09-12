@@ -590,6 +590,30 @@ abstract class AppLocalizations {
   /// **'New project'**
   String get newProject;
 
+  /// No description provided for @addProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Add project'**
+  String get addProject;
+
+  /// No description provided for @addProjectLocalTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local folder'**
+  String get addProjectLocalTitle;
+
+  /// No description provided for @addProjectLocalDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse a folder on disk'**
+  String get addProjectLocalDescription;
+
+  /// No description provided for @addProjectCloneDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone from a remote URL'**
+  String get addProjectCloneDescription;
+
   /// No description provided for @cloneRepo.
   ///
   /// In en, this message translates to:

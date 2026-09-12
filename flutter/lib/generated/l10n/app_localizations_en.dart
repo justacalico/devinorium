@@ -269,6 +269,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newProject => 'New project';
 
   @override
+  String get addProject => 'Add project';
+
+  @override
+  String get addProjectLocalTitle => 'Local folder';
+
+  @override
+  String get addProjectLocalDescription => 'Browse a folder on disk';
+
+  @override
+  String get addProjectCloneDescription => 'Clone from a remote URL';
+
+  @override
   String get cloneRepo => 'Clone repository';
 
   @override
