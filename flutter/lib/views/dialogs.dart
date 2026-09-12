@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -25,34 +28,105 @@ class DialogLayer extends StatelessWidget {
         issueUrl: s.issueUrl,
       ),
       builder: (context, model, _) {
-        switch (model.dialog) {
-          case DialogKind.none:
-            return const SizedBox.shrink();
-          case DialogKind.totpSetup:
-            return const _TotpSetupDialog();
-          case DialogKind.newProject:
-            return const _NewProjectDialog();
-          case DialogKind.cloneRepo:
-            return const _CloneRepoDialog();
-          case DialogKind.permissionRequest:
-            return const _PermissionRequestDialog();
-          case DialogKind.mergeRequest:
-            final url = model.mergeRequestUrl;
-            if (url == null || url.isEmpty) return const SizedBox.shrink();
-            return MergeRequestPanel(url: url);
-          case DialogKind.issue:
-            final issueUrl = model.issueUrl;
-            if (issueUrl == null || issueUrl.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return IssuePanel(url: issueUrl);
-          case DialogKind.renameProject:
-          case DialogKind.renameThread:
-            return const _RenameDialog();
-          case DialogKind.webLogin:
-            return const WebLoginDialog();
-        }
+        final Widget dialog = switch (model.dialog) {
+          DialogKind.none => const SizedBox.shrink(),
+          DialogKind.totpSetup => const _TotpSetupDialog(),
+          DialogKind.newProject => const _NewProjectDialog(),
+          DialogKind.cloneRepo => const _CloneRepoDialog(),
+          DialogKind.permissionRequest => const _PermissionRequestDialog(),
+          DialogKind.mergeRequest =>
+            (model.mergeRequestUrl == null || model.mergeRequestUrl!.isEmpty)
+                ? const SizedBox.shrink()
+                : MergeRequestPanel(url: model.mergeRequestUrl!),
+          DialogKind.issue =>
+            (model.issueUrl == null || model.issueUrl!.isEmpty)
+                ? const SizedBox.shrink()
+                : IssuePanel(url: model.issueUrl!),
+          DialogKind.renameProject ||
+          DialogKind.renameThread =>
+            const _RenameDialog(),
+          DialogKind.webLogin => const WebLoginDialog(),
+        };
+        // Remount per dialog kind so focus is re-established for each dialog.
+        return _EscapeToDismiss(key: ValueKey(model.dialog), child: dialog);
       },
+    );
+  }
+}
+
+/// Dismisses the active dialog on Escape.
+///
+/// These dialogs are plain widgets in a [Stack], not routes, so Escape never
+/// reaches them through the navigator. A hardware key handler is used instead
+/// of focus propagation because text fields swallow Escape on Apple
+/// platforms. The [Focus] node anchors the handler to this dialog and grabs
+/// focus when nothing inside claimed it, so Escape keeps working even if
+/// focus was sitting elsewhere in the app when the dialog opened.
+class _EscapeToDismiss extends StatefulWidget {
+  final Widget child;
+
+  const _EscapeToDismiss({super.key, required this.child});
+
+  @override
+  State<_EscapeToDismiss> createState() => _EscapeToDismissState();
+}
+
+class _EscapeToDismissState extends State<_EscapeToDismiss> {
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKey);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Pending autofocus requests resolve in a microtask, so wait for that
+      // before deciding: the dialog's own autofocused field keeps focus when
+      // it got one.
+      scheduleMicrotask(() {
+        if (!mounted || _focusNode.hasFocus) return;
+        // Do not steal focus from a route covering this dialog.
+        if (ModalRoute.of(context)?.isCurrent == false) return;
+        _focusNode.requestFocus();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKey);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  bool _handleKey(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.escape ||
+        !_focusNode.hasFocus) {
+      return false;
+    }
+    final state = context.read<AppState>();
+    switch (state.dialog) {
+      case DialogKind.none:
+      case DialogKind.webLogin:
+        // The web sign-in prompt has no cancel path; keep it on screen.
+        return false;
+      case DialogKind.permissionRequest:
+        // Reject the request, not just close: the dialog reopens while a
+        // permission request stays pending.
+        unawaited(state.respondToPermissionRequest(null));
+      default:
+        state.closeDialog();
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _focusNode,
+      skipTraversal: true,
+      includeSemantics: false,
+      child: widget.child,
     );
   }
 }
