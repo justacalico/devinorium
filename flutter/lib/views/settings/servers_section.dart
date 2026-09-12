@@ -9,11 +9,14 @@ class _ServersSection extends StatelessWidget {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({
-      String? serverVersion,
-      List<ServerProfile> serverProfiles,
-      String? activeServerId,
-    })>(
+    return Selector<
+      AppState,
+      ({
+        String? serverVersion,
+        List<ServerProfile> serverProfiles,
+        String? activeServerId,
+      })
+    >(
       selector: (_, s) => (
         serverVersion: s.serverVersion,
         serverProfiles: s.serverProfiles,
@@ -23,106 +26,120 @@ class _ServersSection extends StatelessWidget {
         final version = model.serverVersion;
         final versionWidgets = version != null && version.isNotEmpty
             ? <Widget>[
-                _SettingsRow(
-                  label: l.serverVersion,
-                  value: version,
-                ),
+                _SettingsRow(label: l.serverVersion, value: version),
                 const Divider(),
               ]
             : <Widget>[];
 
         if (kIsWeb) {
-          return _SectionCard(
-            title: l.servers,
+          return Column(
             children: [
-              ...versionWidgets,
-              Text(
-                l.serverSwitchNotAvailableWeb,
-                style: theme.textTheme.bodyMedium,
+              _SectionCard(
+                title: l.servers,
+                children: [
+                  ...versionWidgets,
+                  Text(
+                    l.serverSwitchNotAvailableWeb,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
               ),
+              const _TailscaleSection(),
             ],
           );
         }
 
-        return _SectionCard(
-          title: l.servers,
+        return Column(
           children: [
-            ...versionWidgets,
-            if (model.serverProfiles.isEmpty)
-              Text(
-                l.noServersConfigured,
-                style: theme.textTheme.bodyMedium,
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: model.serverProfiles.length,
-                separatorBuilder: (context, index) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final profile = model.serverProfiles[index];
-                  final isActive = profile.id == model.activeServerId;
-                  final leading = isActive
-                      ? Icon(Icons.check_circle,
-                          color: theme.colorScheme.primary)
-                      : const Icon(Icons.circle_outlined);
-                  var displayUrl =
-                      profile.baseUrl.isEmpty ? l.web : profile.baseUrl;
-                  for (final scheme in ['https://', 'http://']) {
-                    if (displayUrl.startsWith(scheme)) {
-                      displayUrl = displayUrl.substring(scheme.length);
-                      break;
-                    }
-                  }
-                  final title = profile.isLocal
-                      ? l.thisDevice
-                      : (profile.username.isEmpty
-                          ? profile.label
-                          : profile.username);
-                  final subtitle =
-                      profile.isLocal ? l.bundledServer : displayUrl;
-                  return ListTile(
-                    leading: leading,
-                    title: Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false),
-                    subtitle: Tooltip(
-                      message: profile.baseUrl.isEmpty
-                          ? displayUrl
-                          : profile.baseUrl,
-                      child: Text(subtitle,
+            _SectionCard(
+              title: l.servers,
+              children: [
+                ...versionWidgets,
+                if (model.serverProfiles.isEmpty)
+                  Text(l.noServersConfigured, style: theme.textTheme.bodyMedium)
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: model.serverProfiles.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final profile = model.serverProfiles[index];
+                      final isActive = profile.id == model.activeServerId;
+                      final leading = isActive
+                          ? Icon(
+                              Icons.check_circle,
+                              color: theme.colorScheme.primary,
+                            )
+                          : const Icon(Icons.circle_outlined);
+                      var displayUrl = profile.baseUrl.isEmpty
+                          ? l.web
+                          : profile.baseUrl;
+                      for (final scheme in ['https://', 'http://']) {
+                        if (displayUrl.startsWith(scheme)) {
+                          displayUrl = displayUrl.substring(scheme.length);
+                          break;
+                        }
+                      }
+                      final title = profile.isLocal
+                          ? l.thisDevice
+                          : (profile.username.isEmpty
+                                ? profile.label
+                                : profile.username);
+                      final subtitle = profile.isLocal
+                          ? l.bundledServer
+                          : displayUrl;
+                      return ListTile(
+                        leading: leading,
+                        title: Text(
+                          title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          softWrap: false),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (!isActive)
-                          TextButton(
-                            onPressed: () =>
-                                unawaited(state.switchServer(profile.id)),
-                            child: Text(l.switchServerLabel),
+                          softWrap: false,
+                        ),
+                        subtitle: Tooltip(
+                          message: profile.baseUrl.isEmpty
+                              ? displayUrl
+                              : profile.baseUrl,
+                          child: Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
                           ),
-                        if (!profile.isLocal)
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: l.delete,
-                            onPressed: () => unawaited(
-                                _confirmAndRemove(context, state, profile)),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            const SizedBox(height: 16),
-            FilledButton.tonal(
-              onPressed: () =>
-                  unawaited(_showAddServerDialog(context, state)),
-              child: Text(l.addServer),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (!isActive)
+                              TextButton(
+                                onPressed: () =>
+                                    unawaited(state.switchServer(profile.id)),
+                                child: Text(l.switchServerLabel),
+                              ),
+                            if (!profile.isLocal)
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                tooltip: l.delete,
+                                onPressed: () => unawaited(
+                                  _confirmAndRemove(context, state, profile),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                const SizedBox(height: 16),
+                FilledButton.tonal(
+                  onPressed: () =>
+                      unawaited(_showAddServerDialog(context, state)),
+                  child: Text(l.addServer),
+                ),
+              ],
             ),
+            const _TailscaleSection(),
           ],
         );
       },
@@ -156,7 +173,10 @@ class _ServersSection extends StatelessWidget {
     }
   }
 
-  Future<void> _showAddServerDialog(BuildContext context, AppState state) async {
+  Future<void> _showAddServerDialog(
+    BuildContext context,
+    AppState state,
+  ) async {
     await showDialog<void>(
       context: context,
       builder: (_) => _AddServerDialog(state: state),
@@ -324,9 +344,7 @@ class _AddServerDialogState extends State<_AddServerDialog> {
                 const SizedBox(height: 12),
                 Text(
                   _error,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
             ],

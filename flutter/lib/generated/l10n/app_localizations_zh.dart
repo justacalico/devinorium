@@ -1183,6 +1183,33 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get tailscaleDescription => '从同一 Tailnet 中的其他设备访问此服务器';
+
+  @override
+  String get tailscaleBundledHint =>
+      '内置服务器不支持 Tailscale。请运行独立服务器以通过 Tailnet 共享。';
+
+  @override
+  String get tailscaleNotInstalled => '此服务器未安装 tailscale 命令行工具';
+
+  @override
+  String get tailscaleNotConnected =>
+      'Tailscale 已安装但未连接。请在服务器上运行 \"tailscale up\"。';
+
+  @override
+  String get tailscaleHttps => 'Tailscale HTTPS';
+
+  @override
+  String get tailscaleHttpsHint =>
+      '通过 tailscale serve 将此服务器发布为 Tailnet 上的 HTTPS 端点';
+
+  @override
+  String get tailscaleOnlyOwner => '只有所有者可以更改 Tailscale 设置';
+
+  @override
+  String get tailscaleUnreachable => '不可达';
+
+  @override
   String get serverUrlWithSchemeHint => 'http://localhost:7878';
 
   @override

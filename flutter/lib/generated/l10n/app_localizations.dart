@@ -2270,6 +2270,54 @@ abstract class AppLocalizations {
   /// **'Remove \"{name}\" from Devinorium? This will delete the saved connection.'**
   String deleteServerConfirm(String name);
 
+  /// Help text in the Tailscale settings card
+  ///
+  /// In en, this message translates to:
+  /// **'Access this server from other devices on your Tailnet.'**
+  String get tailscaleDescription;
+
+  /// Explanation shown when the active server is the bundled desktop server
+  ///
+  /// In en, this message translates to:
+  /// **'Tailscale is not available on the bundled server. Run a standalone server to share it over your Tailnet.'**
+  String get tailscaleBundledHint;
+
+  /// Shown when the server has no tailscale binary
+  ///
+  /// In en, this message translates to:
+  /// **'The tailscale CLI is not installed on this server.'**
+  String get tailscaleNotInstalled;
+
+  /// Shown when tailscale reports no tailnet identity
+  ///
+  /// In en, this message translates to:
+  /// **'Tailscale is installed but not connected. Run \"tailscale up\" on the server.'**
+  String get tailscaleNotConnected;
+
+  /// Label for the tailscale serve toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Tailscale HTTPS'**
+  String get tailscaleHttps;
+
+  /// Description under the tailscale serve toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Serve this server as a HTTPS endpoint on your Tailnet.'**
+  String get tailscaleHttpsHint;
+
+  /// Hint shown to non-owner users
+  ///
+  /// In en, this message translates to:
+  /// **'Only the owner can change Tailscale settings.'**
+  String get tailscaleOnlyOwner;
+
+  /// Badge shown next to an endpoint that did not answer
+  ///
+  /// In en, this message translates to:
+  /// **'unreachable'**
+  String get tailscaleUnreachable;
+
   /// Hint for the add-server URL field, which requires a scheme
   ///
   /// In en, this message translates to:

@@ -1203,6 +1203,36 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get tailscaleDescription =>
+      'Access this server from other devices on your Tailnet.';
+
+  @override
+  String get tailscaleBundledHint =>
+      'Tailscale is not available on the bundled server. Run a standalone server to share it over your Tailnet.';
+
+  @override
+  String get tailscaleNotInstalled =>
+      'The tailscale CLI is not installed on this server.';
+
+  @override
+  String get tailscaleNotConnected =>
+      'Tailscale is installed but not connected. Run \"tailscale up\" on the server.';
+
+  @override
+  String get tailscaleHttps => 'Tailscale HTTPS';
+
+  @override
+  String get tailscaleHttpsHint =>
+      'Serve this server as a HTTPS endpoint on your Tailnet.';
+
+  @override
+  String get tailscaleOnlyOwner =>
+      'Only the owner can change Tailscale settings.';
+
+  @override
+  String get tailscaleUnreachable => 'unreachable';
+
+  @override
   String get serverUrlWithSchemeHint => 'http://localhost:7878';
 
   @override

@@ -733,6 +733,38 @@
       }
     }
   },
+  "tailscaleDescription": "从同一 Tailnet 中的其他设备访问此服务器",
+  "@tailscaleDescription": {
+    "description": "Tailscale 设置卡片中的帮助文本"
+  },
+  "tailscaleBundledHint": "内置服务器不支持 Tailscale。请运行独立服务器以通过 Tailnet 共享。",
+  "@tailscaleBundledHint": {
+    "description": "当前服务器为桌面内置服务器时显示的说明"
+  },
+  "tailscaleNotInstalled": "此服务器未安装 tailscale 命令行工具",
+  "@tailscaleNotInstalled": {
+    "description": "服务器上没有 tailscale 可执行文件时显示"
+  },
+  "tailscaleNotConnected": "Tailscale 已安装但未连接。请在服务器上运行 \"tailscale up\"。",
+  "@tailscaleNotConnected": {
+    "description": "tailscale 未报告 Tailnet 身份时显示"
+  },
+  "tailscaleHttps": "Tailscale HTTPS",
+  "@tailscaleHttps": {
+    "description": "tailscale serve 开关的标签"
+  },
+  "tailscaleHttpsHint": "通过 tailscale serve 将此服务器发布为 Tailnet 上的 HTTPS 端点",
+  "@tailscaleHttpsHint": {
+    "description": "tailscale serve 开关下方的说明"
+  },
+  "tailscaleOnlyOwner": "只有所有者可以更改 Tailscale 设置",
+  "@tailscaleOnlyOwner": {
+    "description": "向非所有者用户显示的提示"
+  },
+  "tailscaleUnreachable": "不可达",
+  "@tailscaleUnreachable": {
+    "description": "端点无响应时显示的标记"
+  },
   "serverUrlWithSchemeHint": "http://localhost:7878",
   "@serverUrlWithSchemeHint": {
     "description": "Hint for the add-server URL field, which requires a scheme"
