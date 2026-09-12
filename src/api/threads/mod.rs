@@ -48,6 +48,10 @@ pub fn router() -> Router<AppState> {
             "/api/threads/:id/messages/:message_id/full",
             get(routes::get_message_full),
         )
+        .route(
+            "/api/threads/:id/messages/:message_id/attachments/:idx",
+            get(routes::get_message_attachment),
+        )
         .route("/api/threads/:id/send/stream", post(send::send_stream))
         .route("/api/threads/:id/run", get(runs::get_run))
         .route("/api/threads/:id/stop", post(runs::stop))

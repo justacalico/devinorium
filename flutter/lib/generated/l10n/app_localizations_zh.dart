@@ -407,6 +407,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get attachSourceBrowse => '浏览';
 
   @override
+  String get removeAttachment => '移除附件';
+
+  @override
   String get files => '文件';
 
   @override

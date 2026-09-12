@@ -195,6 +195,9 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
                 "filename": filename,
                 "mime": mime,
                 "size": bytes.len(),
+                // Position in `attachments`; lets clients fetch the stored
+                // blob from the attachment endpoint.
+                "index": attachments.len(),
             }));
             attachments.push(Attachment {
                 filename: filename.clone(),
@@ -382,6 +385,9 @@ mod tests {
         assert_eq!(input.attachments[0].filename, "note.txt");
         assert_eq!(input.attachments[0].data, b"file body");
         assert_eq!(input.att_meta[0]["filename"], "note.txt");
+        // The metadata index is the upload's position among sent files; the
+        // attachment endpoint serves the blob under that key.
+        assert_eq!(input.att_meta[0]["index"], 0);
     }
 
     #[tokio::test]

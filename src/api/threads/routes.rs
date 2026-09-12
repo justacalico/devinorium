@@ -701,6 +701,46 @@ pub(super) async fn get_message(
     }
 }
 
+pub(super) async fn get_message_attachment(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path((thread_id, message_id, idx)): Path<(String, i64, i64)>,
+) -> Response {
+    match state.db.get_thread(&thread_id, user.id).await {
+        Ok(Some(_)) => {}
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+    }
+
+    match state
+        .db
+        .get_message_attachment(&thread_id, message_id, idx)
+        .await
+    {
+        Ok(Some(att)) => {
+            use base64::Engine;
+            Json(serde_json::json!({
+                "filename": att.filename,
+                "mime": att.mime,
+                "size": att.data.len(),
+                "base64": base64::engine::general_purpose::STANDARD.encode(&att.data),
+            }))
+            .into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
+        Err(e) => map_err_internal(e).into_response(),
+    }
+}
+
 pub(super) async fn get_message_full(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,

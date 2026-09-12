@@ -802,6 +802,20 @@ class ApiService {
     await _client.post('/api/threads/$id/stop', {});
   }
 
+  /// Fetch a stored message attachment. [index] is the attachment's `index`
+  /// from the message metadata (its position among the uploaded files).
+  Future<({String filename, String mime, Uint8List bytes})>
+  getMessageAttachment(String threadId, int messageId, int index) async {
+    final j = await _client.get(
+      '/api/threads/$threadId/messages/$messageId/attachments/$index',
+    );
+    return (
+      filename: j['filename'] as String? ?? '',
+      mime: j['mime'] as String? ?? 'application/octet-stream',
+      bytes: base64Decode(j['base64'] as String? ?? ''),
+    );
+  }
+
   /// Stream a message send. Returns a stream of [SseEvent] records with
   /// `event` ∈ {`user_message`, `permission_request`, `plan_update`, `part`, `part_update`, `done`, `stopped`, `error`}.
   Stream<SseEvent> sendMessageStream({

@@ -207,4 +207,43 @@ void main() {
       expect(a == c, isFalse);
     });
   });
+
+  group('Attachment', () {
+    test('fromJson parses mime and index', () {
+      final a = Attachment.fromJson({
+        'filename': 'shot.png',
+        'size': 11,
+        'mime': 'image/png',
+        'index': 0,
+      });
+      expect(a.filename, 'shot.png');
+      expect(a.mime, 'image/png');
+      expect(a.index, 0);
+      expect(a.isImage, isTrue);
+      expect(a.isPathRef, isFalse);
+      expect(a.isThreadRef, isFalse);
+    });
+
+    test('refs have no index and are not images', () {
+      final path = Attachment.fromJson({
+        'filename': 'src/main.rs',
+        'size': 0,
+        'mime': 'application/x-devinorium-path',
+        'kind': 'path',
+        'is_dir': false,
+      });
+      expect(path.isPathRef, isTrue);
+      expect(path.index, isNull);
+      expect(path.isImage, isFalse);
+    });
+
+    test('isImageMime excludes svg and non-images', () {
+      expect(isImageMime('image/png'), isTrue);
+      expect(isImageMime('image/jpeg'), isTrue);
+      expect(isImageMime('image/gif'), isTrue);
+      expect(isImageMime('image/svg+xml'), isFalse);
+      expect(isImageMime('text/plain'), isFalse);
+      expect(isImageMime(''), isFalse);
+    });
+  });
 }

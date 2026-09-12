@@ -5,6 +5,7 @@ import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/utils/media_picker.dart';
 import 'package:devinorium_frontend/views/drop_zone.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
+import 'package:devinorium_frontend/widgets/attachment_thumbnail.dart';
 import 'package:flutter/cupertino.dart' show CupertinoActionSheet;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -143,6 +144,58 @@ void main() {
       // The attachment chip should render as soon as the file is added.
       expect(find.text('image_picker_62424085.png'), findsOneWidget);
       expect(state.attachments, hasLength(1));
+    });
+
+    testWidgets('image attachments render thumbnails instead of chips', (
+      tester,
+    ) async {
+      final state = _testState();
+      addTearDown(state.dispose);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      state.addAttachments([
+        (
+          filename: 'photo.png',
+          mime: 'image/png',
+          bytes: Uint8List.fromList(_pngBytes),
+        ),
+        (filename: 'notes.txt', mime: 'text/plain', bytes: Uint8List(3)),
+      ]);
+      await tester.pump();
+
+      // The image gets a thumbnail tile; the text file keeps its chip.
+      expect(find.byType(AttachmentThumb), findsOneWidget);
+      expect(find.text('photo.png'), findsOneWidget);
+      expect(find.widgetWithText(Chip, 'notes.txt'), findsOneWidget);
+    });
+
+    testWidgets('thumbnail delete button removes the attachment', (
+      tester,
+    ) async {
+      final state = _testState();
+      addTearDown(state.dispose);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      state.addAttachments([
+        (
+          filename: 'photo.png',
+          mime: 'image/png',
+          bytes: Uint8List.fromList(_pngBytes),
+        ),
+      ]);
+      await tester.pump();
+
+      expect(find.byType(AttachmentThumb), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+
+      expect(state.attachments, isEmpty);
+      expect(find.byType(AttachmentThumb), findsNothing);
     });
   });
 }

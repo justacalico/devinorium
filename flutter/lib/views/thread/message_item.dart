@@ -2,10 +2,12 @@ part of '../thread_page.dart';
 
 class _MessageItem extends StatefulWidget {
   final Message message;
+  final String threadId;
   final bool thinkingActive;
   const _MessageItem({
     super.key,
     required this.message,
+    required this.threadId,
     this.thinkingActive = false,
   });
 
@@ -456,6 +458,35 @@ class _MessageItemState extends State<_MessageItem> {
     );
   }
 
+  Widget _buildAttachment(BuildContext context, Attachment a) {
+    if (!a.isImage || a.isPathRef || a.isThreadRef) {
+      return _attachmentChip(Theme.of(context), a);
+    }
+    final bytes = a.bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      return AttachmentThumb(
+        bytes: bytes,
+        filename: a.filename,
+        onTap: () => showAttachmentPreview(
+          context,
+          bytes: bytes,
+          filename: a.filename,
+        ),
+      );
+    }
+    final messageId = _message.id;
+    final index = a.index;
+    if (messageId == null || index == null) {
+      return _attachmentChip(Theme.of(context), a);
+    }
+    return _RemoteAttachmentThumb(
+      key: ValueKey('attachment-thumb-$messageId-$index'),
+      attachment: a,
+      threadId: widget.threadId,
+      messageId: messageId,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -572,33 +603,7 @@ class _MessageItemState extends State<_MessageItem> {
                     runSpacing: 6,
                     children: [
                       for (final a in message.attachments!)
-                        Chip(
-                          avatar: Icon(
-                            a.isThreadRef
-                                ? Icons.chat_bubble_outline
-                                : a.isPathRef
-                                ? (a.isDir
-                                    ? Icons.folder_outlined
-                                    : Icons.insert_drive_file_outlined)
-                                : Icons.attach_file,
-                            size: 14,
-                          ),
-                          label: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 360),
-                            child: Text(
-                              a.filename,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 0,
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          backgroundColor:
-                              theme.colorScheme.surfaceContainerHigh,
-                        ),
+                        _buildAttachment(context, a),
                     ],
                   ),
                 ],
@@ -698,6 +703,90 @@ class _MessageContextMenu extends StatelessWidget {
       onSecondaryTapUp: (details) => _show(context, details.localPosition),
       onLongPressStart: (details) => _show(context, details.localPosition),
       child: child,
+    );
+  }
+}
+
+/// Filename chip used for non-image attachments and as the fallback while an
+/// image blob is still loading or cannot be fetched.
+Widget _attachmentChip(ThemeData theme, Attachment a) {
+  return Chip(
+    avatar: Icon(
+      a.isThreadRef
+          ? Icons.chat_bubble_outline
+          : a.isPathRef
+          ? (a.isDir
+                ? Icons.folder_outlined
+                : Icons.insert_drive_file_outlined)
+          : Icons.attach_file,
+      size: 14,
+    ),
+    label: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: Text(a.filename, maxLines: 1, overflow: TextOverflow.ellipsis),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+    visualDensity: VisualDensity.compact,
+    backgroundColor: theme.colorScheme.surfaceContainerHigh,
+  );
+}
+
+/// Image attachment tile that pulls the stored blob from the backend. Shows
+/// the filename chip until the bytes arrive, and permanently when the request
+/// fails (e.g. messages sent before attachments were persisted).
+class _RemoteAttachmentThumb extends StatefulWidget {
+  final Attachment attachment;
+  final String threadId;
+  final int messageId;
+
+  const _RemoteAttachmentThumb({
+    super.key,
+    required this.attachment,
+    required this.threadId,
+    required this.messageId,
+  });
+
+  @override
+  State<_RemoteAttachmentThumb> createState() => _RemoteAttachmentThumbState();
+}
+
+class _RemoteAttachmentThumbState extends State<_RemoteAttachmentThumb> {
+  Uint8List? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final att = await context.read<AppState>().api.getMessageAttachment(
+        widget.threadId,
+        widget.messageId,
+        widget.attachment.index!,
+      );
+      if (!mounted || att.bytes.isEmpty) return;
+      setState(() => _bytes = att.bytes);
+    } catch (_) {
+      // The chip stays; missing or unreadable blobs are not fatal.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    if (bytes == null) {
+      return _attachmentChip(Theme.of(context), widget.attachment);
+    }
+    return AttachmentThumb(
+      bytes: bytes,
+      filename: widget.attachment.filename,
+      onTap: () => showAttachmentPreview(
+        context,
+        bytes: bytes,
+        filename: widget.attachment.filename,
+      ),
     );
   }
 }

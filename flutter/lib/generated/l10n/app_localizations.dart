@@ -854,6 +854,12 @@ abstract class AppLocalizations {
   /// **'Browse'**
   String get attachSourceBrowse;
 
+  /// No description provided for @removeAttachment.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove attachment'**
+  String get removeAttachment;
+
   /// No description provided for @files.
   ///
   /// In en, this message translates to:
