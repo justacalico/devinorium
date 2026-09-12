@@ -145,6 +145,40 @@ impl super::Db {
             .await?;
         Ok(())
     }
+
+    /// Return the worktree root for this user, or the first owner if the
+    /// caller is not an owner. Non-owner users can see where worktrees will
+    /// land but cannot change it. The column defaults to `~` (the server
+    /// home directory), which is also the fallback when no owner row exists.
+    pub async fn get_worktree_root(&self, user_id: i64) -> anyhow::Result<String> {
+        if let Some(user) = self.get_user_by_id(user_id).await? {
+            if user.is_owner {
+                return Ok(user.worktree_root);
+            }
+        }
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT worktree_root FROM users WHERE is_owner = 1 ORDER BY id LIMIT 1",
+        )
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.map(|r| r.0).unwrap_or_else(|| "~".to_string()))
+    }
+
+    pub async fn set_worktree_root(&self, user_id: i64, path: &str) -> anyhow::Result<()> {
+        if let Some(user) = self.get_user_by_id(user_id).await? {
+            if !user.is_owner {
+                anyhow::bail!("only the owner can set the worktree root");
+            }
+        } else {
+            anyhow::bail!("user not found");
+        }
+        sqlx::query("UPDATE users SET worktree_root = ? WHERE id = ?")
+            .bind(path)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]

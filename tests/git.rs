@@ -291,8 +291,11 @@ async fn auto_worktree_uses_slashed_branch_and_external_path() {
     git_cli(&["checkout", "-b", "main"], tmp.path());
     let svc = GitService::new();
     let branch = devinorium::git::service::worktree::temporary_worktree_branch_name();
-    let worktree_path =
-        devinorium::git::service::worktree::managed_worktree_path(tmp.path(), &branch);
+    let worktree_path = devinorium::git::service::worktree::managed_worktree_path(
+        tmp.path(),
+        &branch,
+        tmp.path().parent().unwrap(),
+    );
     let wt = svc
         .create_worktree_at(tmp.path(), &branch, "HEAD", &worktree_path, true)
         .await
