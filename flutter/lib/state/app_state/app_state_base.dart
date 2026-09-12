@@ -489,6 +489,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadMoreMessages();
   Future<void> resumeThread(String id);
   Future<void> sendMessage();
+  Future<void> resendMessage(Message message, {String? editedPrompt});
   Future<void> stopThread();
   Future<void> openTotpSetup();
   Future<void> verifyTotp(String code);

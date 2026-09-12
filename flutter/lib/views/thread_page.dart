@@ -43,6 +43,7 @@ import 'syntax_highlighter.dart';
 part 'thread/chat_view.dart';
 part 'thread/messages_panel.dart';
 part 'thread/message_item.dart';
+part 'thread/message_actions.dart';
 part 'thread/thinking_block.dart';
 part 'thread/thinking_dots.dart';
 part 'thread/composer.dart';

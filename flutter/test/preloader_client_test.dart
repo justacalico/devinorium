@@ -84,6 +84,15 @@ class _FakeClient implements BaseApiClient {
   Stream<SseEvent> getStream({required String path}) => const Stream.empty();
 
   @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) =>
+      throw UnimplementedError();
+
+  @override
   Stream<SseEvent> sendStream({
     required String path,
     required String prompt,

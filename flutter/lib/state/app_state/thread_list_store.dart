@@ -484,6 +484,13 @@ mixin ThreadListStore on AppStateBase {
   }
 
   @override
+  Future<void> resendMessage(Message message, {String? editedPrompt}) async {
+    final store = _activeStore;
+    if (store == null) return;
+    await store.resendMessage(message, editedPrompt: editedPrompt);
+  }
+
+  @override
   Future<void> stopThread() async {
     final store = _activeStore;
     if (store == null || !store.sending) return;

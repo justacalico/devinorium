@@ -95,9 +95,25 @@ impl super::Db {
         .await;
 
         match result {
-            Ok(row) => {
-                sqlx::query("COMMIT").execute(&mut *conn).await?;
-                Ok(row)
+            Ok(mut row) => {
+                // seq tracks the row id rather than MAX(seq)+1 so deleted
+                // sequence numbers are never reused; a since_seq consumer
+                // still sees rows written after a tail truncation.
+                let seq_update = sqlx::query("UPDATE messages SET seq = id WHERE id = ?")
+                    .bind(row.id)
+                    .execute(&mut *conn)
+                    .await;
+                match seq_update {
+                    Ok(_) => {
+                        row.seq = row.id;
+                        sqlx::query("COMMIT").execute(&mut *conn).await?;
+                        Ok(row)
+                    }
+                    Err(e) => {
+                        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                        Err(e.into())
+                    }
+                }
             }
             Err(e) => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
@@ -117,6 +133,58 @@ impl super::Db {
             .await
             .map_err(Into::into)
             .map(|_| ())
+    }
+
+    /// Delete `from_id` and every later message in the thread, except
+    /// `keep_id`. Edit-and-resend persists the replacement message first
+    /// (it lands at the end with a fresh turn) and then deletes the old
+    /// tail, so a delete failure never loses the new message.
+    pub async fn delete_messages_from_except(
+        &self,
+        thread_id: &str,
+        from_id: i64,
+        keep_id: i64,
+    ) -> anyhow::Result<u64> {
+        sqlx::query("DELETE FROM messages WHERE thread_id = ? AND id >= ? AND id != ?")
+            .bind(thread_id)
+            .bind(from_id)
+            .bind(keep_id)
+            .execute(self.pool())
+            .await
+            .map(|r| r.rows_affected())
+            .map_err(Into::into)
+    }
+
+    /// Delete every message after `id`, keeping the anchor itself. Used by
+    /// regenerate, which replays the anchoring user message.
+    pub async fn delete_messages_after(&self, thread_id: &str, id: i64) -> anyhow::Result<u64> {
+        sqlx::query("DELETE FROM messages WHERE thread_id = ? AND id > ?")
+            .bind(thread_id)
+            .bind(id)
+            .execute(self.pool())
+            .await
+            .map(|r| r.rows_affected())
+            .map_err(Into::into)
+    }
+
+    /// The user message anchoring a turn. Each user message starts a new
+    /// turn, so a turn has at most one; the `id DESC` guard just picks the
+    /// newest if legacy data disagrees.
+    pub async fn turn_user_message(
+        &self,
+        thread_id: &str,
+        turn_id: i64,
+    ) -> anyhow::Result<Option<MessageRow>> {
+        sqlx::query_as::<_, MessageRow>(
+            "SELECT * FROM messages
+             WHERE thread_id = ? AND turn_id = ? AND role = 'user'
+             ORDER BY id DESC LIMIT 1",
+        )
+        .bind(thread_id)
+        .bind(turn_id)
+        .fetch_optional(self.pool())
+        .await
+        .map_err(Into::into)
     }
 
     pub async fn list_messages_since(

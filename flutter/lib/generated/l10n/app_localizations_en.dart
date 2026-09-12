@@ -660,6 +660,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageRoleError => 'Error';
 
   @override
+  String get copyMessage => 'Copy message';
+
+  @override
+  String get regenerate => 'Regenerate';
+
+  @override
+  String get editMessageTitle => 'Edit message';
+
+  @override
+  String get editAndResend => 'Edit and resend';
+
+  @override
+  String get resend => 'Resend';
+
+  @override
+  String get today => 'Today';
+
+  @override
+  String get yesterday => 'Yesterday';
+
+  @override
   String get thinking => 'Thinking';
 
   @override

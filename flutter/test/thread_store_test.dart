@@ -158,6 +158,27 @@ class _ControlledApiService extends _TestApiService {
   }) => _controller.stream;
 }
 
+class _ResendApiService extends _ControlledApiService {
+  final resendController = StreamController<SseEvent>();
+  var resendCalls = 0;
+  int? lastResendMessageId;
+  String? lastEditedPrompt;
+
+  @override
+  Stream<SseEvent> resendMessageStream({
+    required String threadId,
+    required int messageId,
+    String? editedPrompt,
+    String? mode,
+    String? clientMessageId,
+  }) {
+    resendCalls++;
+    lastResendMessageId = messageId;
+    lastEditedPrompt = editedPrompt;
+    return resendController.stream;
+  }
+}
+
 void main() {
   providerSelectionTests();
   test('saveSettings reloads detail when none is loaded', () async {
@@ -1932,6 +1953,162 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 10));
 
       expect(opened, ['src/b.rs']);
+    });
+  });
+
+  group('resendMessage', () {
+    ThreadDetail detailWith(List<Message> messages) => ThreadDetail(
+      thread: Thread(
+        id: 't1',
+        title: 'Test',
+        projectId: 1,
+        model: 'm1',
+        permissionMode: 'normal',
+        createdAt: '',
+        updatedAt: '',
+      ),
+      messages: messages,
+      totalMessages: messages.length,
+    );
+
+    test('regenerate drops the tail once the run commits', () async {
+      final api = _ResendApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          detailWith([
+            Message(id: 1, role: 'user', content: 'one'),
+            Message(id: 2, role: 'assistant', content: 'r1'),
+            Message(id: 3, role: 'user', content: 'two'),
+            Message(id: 4, role: 'assistant', content: 'r2'),
+          ]),
+        ),
+      );
+      store.onStateChanged = () {};
+
+      await store.resendMessage(
+        Message(id: 2, role: 'assistant', content: 'r1'),
+      );
+
+      expect(api.resendCalls, 1);
+      expect(api.lastResendMessageId, 2);
+      expect(api.lastEditedPrompt, isNull);
+      // Nothing is dropped until the server commits the run.
+      expect(store.displayDetail?.messages, hasLength(4));
+
+      api.resendController.add(
+        SseEvent('user_message', '{"id": 1, "role": "user", "content": "one"}'),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(store.displayDetail?.messages.map((m) => m.id), [1]);
+
+      api.resendController.add(
+        SseEvent('done', '{"id": 5, "role": "assistant", "content": "new"}'),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(store.displayDetail?.messages.map((m) => m.id), [1, 5]);
+    });
+
+    test('edit resends the new prompt and drops the old turn', () async {
+      final api = _ResendApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          detailWith([
+            Message(id: 1, role: 'user', content: 'one'),
+            Message(id: 2, role: 'assistant', content: 'r1'),
+            Message(id: 3, role: 'user', content: 'two'),
+            Message(id: 4, role: 'assistant', content: 'r2'),
+          ]),
+        ),
+      );
+      store.onStateChanged = () {};
+
+      await store.resendMessage(
+        Message(id: 3, role: 'user', content: 'two'),
+        editedPrompt: 'two edited',
+      );
+
+      expect(api.resendCalls, 1);
+      expect(api.lastResendMessageId, 3);
+      expect(api.lastEditedPrompt, 'two edited');
+      // The edited prompt shows up optimistically right away.
+      final clientId =
+          store.displayDetail?.messages.last.clientMessageId;
+      expect(clientId, isNotNull);
+
+      api.resendController.add(
+        SseEvent(
+          'user_message',
+          '{"id": 6, "role": "user", "content": "two edited", '
+              '"client_message_id": "$clientId"}',
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(store.displayDetail?.messages.map((m) => m.id), [1, 2, 6]);
+      expect(store.displayDetail?.messages.last.content, 'two edited');
+
+      api.resendController.add(
+        SseEvent('done', '{"id": 7, "role": "assistant", "content": "new"}'),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
+      expect(store.displayDetail?.messages.map((m) => m.id), [1, 2, 6, 7]);
+    });
+
+    test('ignores resend while a send is in flight', () async {
+      final api = _ResendApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'busy',
+        detail: AsyncValue.ready(
+          detailWith([
+            Message(id: 1, role: 'user', content: 'one'),
+            Message(id: 2, role: 'assistant', content: 'r1'),
+          ]),
+        ),
+      );
+      store.onStateChanged = () {};
+
+      await store.sendMessage();
+      await store.resendMessage(
+        Message(id: 2, role: 'assistant', content: 'r1'),
+      );
+
+      expect(api.resendCalls, 0);
+    });
+
+    test('409 keeps the tail and restores the edited composer', () async {
+      final api = _ResendApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        detail: AsyncValue.ready(
+          detailWith([
+            Message(id: 1, role: 'user', content: 'one'),
+            Message(id: 2, role: 'assistant', content: 'r1'),
+            Message(id: 3, role: 'user', content: 'two'),
+            Message(id: 4, role: 'assistant', content: 'r2'),
+          ]),
+        ),
+      );
+      store.onStateChanged = () {};
+
+      await store.resendMessage(
+        Message(id: 3, role: 'user', content: 'two'),
+        editedPrompt: 'two edited',
+      );
+      api.resendController.addError(ApiException('thread is running', 409));
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(store.displayDetail?.messages.map((m) => m.id), [1, 2, 3, 4]);
+      expect(store.composerText, 'two edited');
     });
   });
 }

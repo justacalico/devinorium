@@ -221,21 +221,33 @@ class NativeApiClient implements BaseApiClient {
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
   }) {
-    final fields = <String, String>{'prompt': prompt};
-    if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
-    if (clientMessageId != null && clientMessageId.isNotEmpty) {
-      fields['client_message_id'] = clientMessageId;
-    }
-    if (contextPaths.isNotEmpty) {
-      fields['context_paths'] = jsonEncode([
-        for (final r in contextPaths) {'path': r.path, 'is_dir': r.isDir},
-      ]);
-    }
-    if (referencedThreadIds.isNotEmpty) {
-      fields['referenced_thread_ids'] = jsonEncode(referencedThreadIds);
-    }
+    final fields = buildSendFields(
+      prompt: prompt,
+      mode: mode,
+      clientMessageId: clientMessageId,
+      contextPaths: contextPaths,
+      referencedThreadIds: referencedThreadIds,
+    );
     // Each SSE stream uses its own client because nativeSseStream closes it
     // when the stream ends or is cancelled.
+    return nativeSseStream(
+      client: http.Client(),
+      baseUrl: _baseUrl,
+      token: _token,
+      path: path,
+      method: 'POST',
+      fields: fields,
+      attachments: attachments,
+    );
+  }
+
+  @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) {
     return nativeSseStream(
       client: http.Client(),
       baseUrl: _baseUrl,

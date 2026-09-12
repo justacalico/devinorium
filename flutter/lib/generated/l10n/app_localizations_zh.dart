@@ -651,6 +651,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get messageRoleError => '错误';
 
   @override
+  String get copyMessage => '复制消息';
+
+  @override
+  String get regenerate => '重新生成';
+
+  @override
+  String get editMessageTitle => '编辑消息';
+
+  @override
+  String get editAndResend => '编辑并重新发送';
+
+  @override
+  String get resend => '重新发送';
+
+  @override
+  String get today => '今天';
+
+  @override
+  String get yesterday => '昨天';
+
+  @override
   String get thinking => '思考中';
 
   @override

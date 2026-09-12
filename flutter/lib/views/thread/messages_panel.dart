@@ -96,6 +96,22 @@ class _MessagesPanel extends StatelessWidget {
       );
     }
 
+    // Interleave date separators: each marks the start of a new calendar day
+    // in chronological order. Messages without a timestamp join whatever day
+    // the previous dated message belongs to.
+    final items = <Object>[];
+    DateTime? lastDay;
+    for (final m in messages) {
+      final created = m.createdAt?.toLocal();
+      if (created != null) {
+        final day = DateTime(created.year, created.month, created.day);
+        if (day != lastDay) items.add(day);
+        lastDay = day;
+      }
+      items.add(m);
+    }
+    final lastMessage = messages.isEmpty ? null : messages.last;
+
     return SelectionArea(
       child: ListView.builder(
         controller: controller,
@@ -105,7 +121,7 @@ class _MessagesPanel extends StatelessWidget {
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
         scrollCacheExtent: const ScrollCacheExtent.pixels(200),
-        itemCount: messages.length + (hasStreaming ? 1 : 0),
+        itemCount: items.length + (hasStreaming ? 1 : 0),
         itemBuilder: (context, index) {
           if (hasStreaming && index == 0) {
             return _MessageItem(
@@ -120,16 +136,64 @@ class _MessagesPanel extends StatelessWidget {
               ),
               threadId: detail!.thread.id,
               thinkingActive: streamingThinkingActive,
+              sending: true,
             );
           }
           final offset = hasStreaming ? 1 : 0;
-          final message = messages[messages.length - 1 - (index - offset)];
+          final item = items[items.length - 1 - (index - offset)];
+          if (item is DateTime) {
+            return _DateSeparator(day: item);
+          }
+          final message = item as Message;
           return _MessageItem(
-            key: ValueKey(message.id ?? message.content),
+            key: ValueKey(
+              message.id ??
+                  message.clientMessageId ??
+                  identityHashCode(message),
+            ),
             message: message,
             threadId: detail!.thread.id,
+            isLastMessage: identical(message, lastMessage),
+            sending: sending,
           );
         },
+      ),
+    );
+  }
+}
+
+/// A day divider between messages from different calendar dates.
+class _DateSeparator extends StatelessWidget {
+  final DateTime day;
+  const _DateSeparator({required this.day});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final label = day == today
+        ? l.today
+        : day == today.subtract(const Duration(days: 1))
+        ? l.yesterday
+        : MaterialLocalizations.of(context).formatMediumDate(day);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: theme.dividerColor.withAlpha(80))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: theme.dividerColor.withAlpha(80))),
+        ],
       ),
     );
   }

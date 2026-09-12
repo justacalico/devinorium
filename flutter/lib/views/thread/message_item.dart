@@ -4,11 +4,15 @@ class _MessageItem extends StatefulWidget {
   final Message message;
   final String threadId;
   final bool thinkingActive;
+  final bool isLastMessage;
+  final bool sending;
   const _MessageItem({
     super.key,
     required this.message,
     required this.threadId,
     this.thinkingActive = false,
+    this.isLastMessage = false,
+    this.sending = false,
   });
 
   @override
@@ -516,6 +520,14 @@ class _MessageItemState extends State<_MessageItem> {
       ),
     };
 
+    final created = message.createdAt?.toLocal();
+    final timeText = created == null
+        ? null
+        : MaterialLocalizations.of(
+            context,
+          ).formatTimeOfDay(TimeOfDay.fromDateTime(created));
+    final labelText = timeText == null ? label : '$label · $timeText';
+
     final groups = _partGroups;
     final showLoading =
         message.role == 'assistant' &&
@@ -546,7 +558,7 @@ class _MessageItemState extends State<_MessageItem> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
+                  labelText,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w500,
@@ -557,6 +569,8 @@ class _MessageItemState extends State<_MessageItem> {
                   SelectionArea(
                     child: _MessageContextMenu(
                       message: _message,
+                      isLastMessage: widget.isLastMessage,
+                      sending: widget.sending,
                       child: _buildPartWidgets(context, groups),
                     ),
                   ),
@@ -607,6 +621,11 @@ class _MessageItemState extends State<_MessageItem> {
                     ],
                   ),
                 ],
+                _MessageActions(
+                  message: _message,
+                  isLastMessage: widget.isLastMessage,
+                  sending: widget.sending,
+                ),
               ],
             ),
           ),
@@ -618,10 +637,14 @@ class _MessageItemState extends State<_MessageItem> {
 
 class _MessageContextMenu extends StatelessWidget {
   final Message message;
+  final bool isLastMessage;
+  final bool sending;
   final Widget child;
 
   const _MessageContextMenu({
     required this.message,
+    this.isLastMessage = false,
+    this.sending = false,
     required this.child,
   });
 
@@ -649,12 +672,17 @@ class _MessageContextMenu extends StatelessWidget {
 
   void _show(BuildContext context, Offset position) {
     final ref = _firstLink;
-    if (ref == null) return;
+    final canCopy = message.content.isNotEmpty;
+    final canEdit = message.role == 'user' && message.id != null && !sending;
+    final canRegenerate =
+        (message.role == 'assistant' || message.role == 'error') &&
+        message.id != null &&
+        isLastMessage &&
+        !sending;
+    if (ref == null && !canCopy && !canEdit && !canRegenerate) return;
 
     final state = context.read<AppState>();
     final l = l10n(context);
-    final isLinked = _isLinkedToActiveThread(ref, state);
-    final threadId = state.activeThreadId;
     final renderBox = context.findRenderObject() as RenderBox?;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (renderBox == null || overlay == null || overlay.size.isEmpty) return;
@@ -665,10 +693,28 @@ class _MessageContextMenu extends StatelessWidget {
       overlay.size,
     );
 
-    showMenu(
-      context: context,
-      position: relative,
-      items: [
+    final items = <PopupMenuEntry<void>>[
+      if (canCopy)
+        PopupMenuItem(
+          child: Text(l.copyMessage),
+          onTap: () => _copyMessage(context, message.content),
+        ),
+      if (canEdit)
+        PopupMenuItem(
+          child: Text(l.editAndResend),
+          onTap: () => _editAndResend(context, message),
+        ),
+      if (canRegenerate)
+        PopupMenuItem(
+          child: Text(l.regenerate),
+          onTap: () => state.resendMessage(message),
+        ),
+    ];
+
+    if (ref != null) {
+      final isLinked = _isLinkedToActiveThread(ref, state);
+      final threadId = state.activeThreadId;
+      items.addAll([
         PopupMenuItem(
           child: Text(l.openLink),
           onTap: () => state.openLink(ref.webUrl),
@@ -692,8 +738,11 @@ class _MessageContextMenu extends StatelessWidget {
               }
             },
           ),
-      ],
-    );
+      ]);
+    }
+    if (items.isEmpty) return;
+
+    showMenu(context: context, position: relative, items: items);
   }
 
   @override

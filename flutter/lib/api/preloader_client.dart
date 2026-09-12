@@ -116,6 +116,14 @@ class PreloaderClient implements BaseApiClient {
     referencedThreadIds: referencedThreadIds,
   );
 
+  @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) => _inner.postStream(path: path, fields: fields, attachments: attachments);
+
   Future<T> _mutate<T>(Future<T> Function() action) async {
     final result = await action();
     _preloader.invalidate('GETLIST:');

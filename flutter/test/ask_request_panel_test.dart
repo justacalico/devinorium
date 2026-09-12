@@ -26,6 +26,15 @@ class _ThrowingClient extends BaseApiClient {
       throw UnimplementedError();
 
   @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) =>
+      throw UnimplementedError();
+
+  @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       throw UnimplementedError();
 
