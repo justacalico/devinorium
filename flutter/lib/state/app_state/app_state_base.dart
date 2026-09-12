@@ -484,7 +484,7 @@ abstract class AppStateBase extends ChangeNotifier {
     required String command,
   });
   Future<void> saveThreadSettings();
-  Future<void> deleteThread(String id);
+  Future<bool> deleteThread(String id);
   Future<void> deleteThreadGroup(int id);
   Future<void> loadMoreMessages();
   Future<void> resumeThread(String id);
@@ -522,6 +522,11 @@ abstract class AppStateBase extends ChangeNotifier {
     bool newBranch = false,
   });
   Future<void> gitDeleteWorktree(int projectId, String worktreePath);
+  Future<List<Thread>?> threadsUsingWorktree(
+    int projectId,
+    String worktreePath,
+  );
+  Future<void> deleteWorktree(int projectId, String worktreePath);
   Future<void> setThreadGit(
     String threadId, {
     String? branch,

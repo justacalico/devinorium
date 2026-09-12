@@ -123,6 +123,9 @@ class _FakeApiService extends ApiService {
     ),
   ];
   List<GitWorktree> worktrees = [];
+  List<Thread> projectThreads = [];
+  List<String> runningThreadIds = [];
+  bool deleteThreadRemovesWorktree = false;
 
   String? threadBranch;
   String? threadWorktreePath;
@@ -299,6 +302,49 @@ class _FakeApiService extends ApiService {
   Future<List<Thread>> listThreads({int? limit, int? offset}) async {
     calls.add('listThreads');
     return [];
+  }
+
+  @override
+  Future<List<Thread>> listThreadsForProject(
+    int id, {
+    int? limit,
+    int? offset,
+  }) async {
+    calls.add('listThreadsForProject:$id');
+    final start = (offset ?? 0).clamp(0, projectThreads.length);
+    final end = limit != null
+        ? (start + limit).clamp(0, projectThreads.length)
+        : projectThreads.length;
+    return projectThreads.sublist(start, end);
+  }
+
+  @override
+  Future<List<String>> getThreadRuns() async {
+    calls.add('getThreadRuns');
+    return runningThreadIds;
+  }
+
+  @override
+  Future<void> deleteThread(String id) async {
+    calls.add('deleteThread:$id');
+    final removed = projectThreads.where((t) => t.id == id).toList();
+    projectThreads.removeWhere((t) => t.id == id);
+    // Mirrors the backend: deleting a thread removes the managed worktree
+    // it referenced, so the git delete call becomes unnecessary.
+    if (deleteThreadRemovesWorktree) {
+      for (final t in removed) {
+        final path = t.worktreePath;
+        if (path != null) {
+          worktrees = worktrees.where((w) => w.path != path).toList();
+        }
+      }
+    }
+  }
+
+  @override
+  Future<void> gitDeleteWorktree(int projectId, String worktreePath) async {
+    calls.add('gitDeleteWorktree:$projectId:$worktreePath');
+    worktrees = worktrees.where((w) => w.path != worktreePath).toList();
   }
 
   @override
@@ -848,6 +894,246 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls, contains('updateThreadSettings:t1:worktree'));
+    });
+
+    testWidgets('worktree menu deletes a worktree no thread uses', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      api.worktrees = [
+        GitWorktree(
+          path: '/x/wt',
+          head: 'abc',
+          branch: 'wt-branch',
+          isMain: false,
+        ),
+      ];
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('worktree_delete_/x/wt')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.textContaining('/x/wt'), findsOneWidget);
+      expect(
+        api.calls.where((c) => c.startsWith('gitDeleteWorktree')),
+        isEmpty,
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls, contains('gitDeleteWorktree:1:/x/wt'));
+      // Deleting never selected the worktree for the thread.
+      expect(api.calls.where((c) => c.startsWith('updateThreadGit')), isEmpty);
+    });
+
+    testWidgets('a thread back in local mode is not a dependent', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      api.worktrees = [
+        GitWorktree(
+          path: '/x/wt',
+          head: 'abc',
+          branch: 'wt-branch',
+          isMain: false,
+        ),
+      ];
+      // worktree_path stays on the row after a thread leaves worktree mode;
+      // envMode local means it does not actually use the worktree.
+      api.projectThreads = [
+        Thread(
+          id: 't9',
+          title: 'stale thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          worktreePath: '/x/wt',
+          envMode: 'local',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ];
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('worktree_delete_/x/wt')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.textContaining('stale thread'), findsNothing);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls.where((c) => c.startsWith('deleteThread')), isEmpty);
+      expect(api.calls, contains('gitDeleteWorktree:1:/x/wt'));
+      expect(api.projectThreads, hasLength(1));
+    });
+
+    testWidgets('the main worktree has no delete button', (tester) async {
+      final api = _FakeApiService();
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.delete_outline), findsNothing);
+    });
+
+    testWidgets('deleting a worktree used by a thread asks first', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      api.worktrees = [
+        GitWorktree(
+          path: '/x/wt',
+          head: 'abc',
+          branch: 'wt-branch',
+          isMain: false,
+        ),
+      ];
+      api.projectThreads = [
+        Thread(
+          id: 't9',
+          title: 'wt thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          worktreePath: '/x/wt',
+          envMode: 'worktree',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ];
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('worktree_delete_/x/wt')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.textContaining('wt thread'), findsOneWidget);
+      expect(api.calls.where((c) => c.startsWith('deleteThread')), isEmpty);
+      expect(
+        api.calls.where((c) => c.startsWith('gitDeleteWorktree')),
+        isEmpty,
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls, contains('deleteThread:t9'));
+      expect(api.calls, contains('gitDeleteWorktree:1:/x/wt'));
+    });
+
+    testWidgets('cancelling the dialog keeps the worktree and thread', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      api.worktrees = [
+        GitWorktree(
+          path: '/x/wt',
+          head: 'abc',
+          branch: 'wt-branch',
+          isMain: false,
+        ),
+      ];
+      api.projectThreads = [
+        Thread(
+          id: 't9',
+          title: 'wt thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          worktreePath: '/x/wt',
+          envMode: 'worktree',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ];
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('worktree_delete_/x/wt')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls.where((c) => c.startsWith('deleteThread')), isEmpty);
+      expect(
+        api.calls.where((c) => c.startsWith('gitDeleteWorktree')),
+        isEmpty,
+      );
+      expect(api.projectThreads, hasLength(1));
+      expect(api.worktrees, hasLength(1));
+    });
+
+    testWidgets('skips the git delete when the thread cleanup removed it', (
+      tester,
+    ) async {
+      final api = _FakeApiService();
+      api.worktrees = [
+        GitWorktree(
+          path: '/x/wt',
+          head: 'abc',
+          branch: 'devinorium/abc12345',
+          isMain: false,
+        ),
+      ];
+      api.projectThreads = [
+        Thread(
+          id: 't9',
+          title: 'wt thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          worktreePath: '/x/wt',
+          envMode: 'worktree',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ];
+      api.deleteThreadRemovesWorktree = true;
+      final state = _testState(api);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('branch_toolbar_worktree')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('worktree_delete_/x/wt')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      expect(api.calls, contains('deleteThread:t9'));
+      expect(
+        api.calls.where((c) => c.startsWith('gitDeleteWorktree')),
+        isEmpty,
+      );
     });
   });
 }

@@ -900,6 +900,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get worktreeModeShort => '工作树';
 
   @override
+  String get deleteWorktree => '删除工作树';
+
+  @override
+  String deleteWorktreeConfirm(String path) {
+    return '删除位于 $path 的工作树？其中未提交的修改将丢失。';
+  }
+
+  @override
+  String deleteWorktreeThreadsConfirm(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 个会话正在使用此工作树（$names）。删除工作树将同时删除这些会话。确定吗？',
+      one: '会话「$names」正在使用此工作树。删除工作树将同时删除该会话。确定吗？',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get git => 'Git';
 
   @override

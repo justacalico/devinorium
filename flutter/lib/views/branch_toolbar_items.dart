@@ -32,10 +32,7 @@ class _BranchItem extends StatelessWidget {
           ),
         ),
         if (behind > 0 || ahead > 0)
-          Text(
-            '↓$behind ↑$ahead',
-            style: theme.textTheme.bodySmall,
-          ),
+          Text('↓$behind ↑$ahead', style: theme.textTheme.bodySmall),
       ],
     );
   }
@@ -47,6 +44,9 @@ class _WorktreeItem extends StatelessWidget {
   final bool isMain;
   final bool isCurrent;
   final ThemeData theme;
+  final VoidCallback? onDelete;
+  final String? deleteTooltip;
+  final Key? deleteKey;
 
   const _WorktreeItem({
     required this.label,
@@ -54,12 +54,22 @@ class _WorktreeItem extends StatelessWidget {
     this.isMain = false,
     this.isCurrent = false,
     required this.theme,
+    this.onDelete,
+    this.deleteTooltip,
+    this.deleteKey,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
+        SizedBox(
+          width: 20,
+          child: isCurrent
+              ? Icon(Icons.done, size: 16, color: theme.colorScheme.primary)
+              : null,
+        ),
+        const SizedBox(width: 6),
         Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -83,6 +93,20 @@ class _WorktreeItem extends StatelessWidget {
             ],
           ),
         ),
+        if (onDelete != null)
+          IconButton(
+            key: deleteKey,
+            tooltip: deleteTooltip,
+            icon: Icon(
+              Icons.delete_outline,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            onPressed: onDelete,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
       ],
     );
   }

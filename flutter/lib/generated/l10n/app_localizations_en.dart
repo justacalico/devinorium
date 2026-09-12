@@ -912,6 +912,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get worktreeModeShort => 'worktree';
 
   @override
+  String get deleteWorktree => 'Delete worktree';
+
+  @override
+  String deleteWorktreeConfirm(String path) {
+    return 'Delete the worktree at $path? Any uncommitted changes in it will be lost.';
+  }
+
+  @override
+  String deleteWorktreeThreadsConfirm(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count threads use this worktree ($names). Deleting it will delete them too. Are you sure?',
+      one:
+          'The thread \"$names\" uses this worktree. Deleting it will delete the thread too. Are you sure?',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get git => 'Git';
 
   @override

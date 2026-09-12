@@ -91,21 +91,23 @@ class _BranchToolbarState extends State<BranchToolbar> {
         final thread = model.thread;
         final branches = model.branches ?? const [];
         final worktrees = model.worktrees ?? const [];
-        final mainWorktreePath =
-            repo.worktreePath.isNotEmpty ? repo.worktreePath : repo.toplevel;
+        final mainWorktreePath = repo.worktreePath.isNotEmpty
+            ? repo.worktreePath
+            : repo.toplevel;
         final activeWorktreePath = thread?.worktreePath;
         final activeWorktree = activeWorktreePath != null
             ? _findWorktree(worktrees, activeWorktreePath)
             : null;
-        final isOnMainWorktree = activeWorktreePath == null ||
+        final isOnMainWorktree =
+            activeWorktreePath == null ||
             activeWorktreePath == mainWorktreePath ||
             (activeWorktree != null && activeWorktree.isMain);
         final worktreeBranch = activeWorktree?.branch;
         final effectiveBranch = isOnMainWorktree
             ? repo.branch
             : (worktreeBranch?.isNotEmpty == true
-                ? worktreeBranch!
-                : (activeWorktree?.head ?? repo.branch));
+                  ? worktreeBranch!
+                  : (activeWorktree?.head ?? repo.branch));
 
         return SafeArea(
           top: false,
@@ -229,11 +231,8 @@ class _BranchToolbarState extends State<BranchToolbar> {
       tooltip: l.envModeTooltip,
       offset: const Offset(0, -4),
       onSelected: (value) => _onEnvModeMenuSelected(state, threadId, value),
-      itemBuilder: (context) => _buildEnvModeMenuItems(
-        currentMode: envMode,
-        l: l,
-        theme: theme,
-      ),
+      itemBuilder: (context) =>
+          _buildEnvModeMenuItems(currentMode: envMode, l: l, theme: theme),
       child: _ToolbarButton(
         icon: active ? Icons.fork_right : Icons.terminal,
         label: label,
@@ -306,13 +305,8 @@ class _BranchToolbarState extends State<BranchToolbar> {
         enabled: enabled,
         tooltip: '',
         offset: const Offset(0, -4),
-        onSelected: (value) => _onBranchMenuSelected(
-          state,
-          projectId,
-          threadId,
-          branches,
-          value,
-        ),
+        onSelected: (value) =>
+            _onBranchMenuSelected(state, projectId, threadId, branches, value),
         itemBuilder: (context) => _buildBranchMenuItems(
           branches: branches,
           currentBranch: effectiveBranch,
@@ -361,11 +355,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
         CheckedPopupMenuItem(
           value: b.name,
           checked: isCurrent,
-          child: _BranchItem(
-            branch: b,
-            isCurrent: isCurrent,
-            theme: theme,
-          ),
+          child: _BranchItem(branch: b, isCurrent: isCurrent, theme: theme),
         ),
       );
     }
@@ -415,12 +405,22 @@ class _BranchToolbarState extends State<BranchToolbar> {
     if (value == null) return;
     if (value == _kCreateBranch) {
       if (!mounted) return;
-      await _showCreateBranchDialog(context, state, projectId, threadId, branches);
+      await _showCreateBranchDialog(
+        context,
+        state,
+        projectId,
+        threadId,
+        branches,
+      );
       return;
     }
     final branch = _findBranch(branches, value);
     if (branch == null) return;
-    final ok = await state.gitCheckout(projectId, branch.name, track: branch.isRemote);
+    final ok = await state.gitCheckout(
+      projectId,
+      branch.name,
+      track: branch.isRemote,
+    );
     if (!ok) return;
     final repo = state.gitRepoInfo(projectId);
     final current = repo?.branch ?? branch.name;
@@ -444,14 +444,15 @@ class _BranchToolbarState extends State<BranchToolbar> {
     required AppLocalizations l,
   }) {
     final currentValue = activeWorktreePath ?? mainWorktreePath;
-    final isOnMainWorktree = activeWorktreePath == null ||
+    final isOnMainWorktree =
+        activeWorktreePath == null ||
         activeWorktreePath == mainWorktreePath ||
         (activeWorktree != null && activeWorktree.isMain);
     final label = isOnMainWorktree
         ? l.mainWorktree
         : (activeWorktree?.branch ??
-            activeWorktree?.head ??
-            activeWorktreePath.split('/').last);
+              activeWorktree?.head ??
+              activeWorktreePath.split('/').last);
     final icon = isOnMainWorktree ? Icons.folder : Icons.folder_copy;
 
     return PopupMenuButton<String?>(
@@ -467,13 +468,17 @@ class _BranchToolbarState extends State<BranchToolbar> {
         mainWorktreePath,
         value,
       ),
-      itemBuilder: (context) => _buildWorktreeMenuItems(
+      itemBuilder: (menuContext) => _buildWorktreeMenuItems(
         worktrees: worktrees,
         repo: repo,
         mainWorktreePath: mainWorktreePath,
         currentValue: currentValue,
         l: l,
         theme: theme,
+        onDeleteWorktree: (worktree) {
+          Navigator.of(menuContext).pop();
+          unawaited(_deleteWorktree(state, projectId, worktree));
+        },
       ),
       child: _ToolbarButton(
         icon: icon,
@@ -492,6 +497,7 @@ class _BranchToolbarState extends State<BranchToolbar> {
     required String currentValue,
     required AppLocalizations l,
     required ThemeData theme,
+    required void Function(GitWorktree worktree) onDeleteWorktree,
   }) {
     final items = <PopupMenuEntry<String?>>[];
     items.add(
@@ -510,9 +516,8 @@ class _BranchToolbarState extends State<BranchToolbar> {
 
     final isCurrent = currentValue == mainWorktreePath;
     items.add(
-      CheckedPopupMenuItem(
+      PopupMenuItem<String?>(
         value: mainWorktreePath,
-        checked: isCurrent,
         child: _WorktreeItem(
           label: l.mainWorktree,
           sublabel: repo.branch,
@@ -527,23 +532,25 @@ class _BranchToolbarState extends State<BranchToolbar> {
       if (w.isMain && w.path == mainWorktreePath) continue;
       final isCurrent = w.path == currentValue;
       items.add(
-        CheckedPopupMenuItem(
+        PopupMenuItem<String?>(
           value: w.path,
-          checked: isCurrent,
           child: _WorktreeItem(
             label: w.branch ?? w.head,
             sublabel: w.path.split('/').last,
             isMain: w.isMain,
             isCurrent: isCurrent,
             theme: theme,
+            onDelete: w.isMain ? null : () => onDeleteWorktree(w),
+            deleteTooltip: l.deleteWorktree,
+            deleteKey: Key('worktree_delete_${w.path}'),
           ),
         ),
       );
     }
 
-    if (!items
-            .whereType<PopupMenuItem<String?>>()
-            .any((i) => i.value == currentValue) &&
+    if (!items.whereType<PopupMenuItem<String?>>().any(
+          (i) => i.value == currentValue,
+        ) &&
         currentValue != mainWorktreePath) {
       items.add(
         PopupMenuItem<String?>(
@@ -608,6 +615,50 @@ class _BranchToolbarState extends State<BranchToolbar> {
       worktreePath: worktree.path,
     );
     await state.setThreadEnvMode(threadId, 'worktree');
+  }
+
+  /// Confirm and delete [worktree]. Dependent threads are deleted too once
+  /// confirmed; the backend stops any active run before the row goes away.
+  Future<void> _deleteWorktree(
+    AppState state,
+    int projectId,
+    GitWorktree worktree,
+  ) async {
+    final dependents = await state.threadsUsingWorktree(
+      projectId,
+      worktree.path,
+    );
+    if (!mounted || dependents == null) return;
+    final l = l10n(context);
+    final String message;
+    if (dependents.isEmpty) {
+      message = l.deleteWorktreeConfirm(worktree.path);
+    } else {
+      final names = dependents
+          .map((t) => t.title.isEmpty ? t.id : t.title)
+          .join(', ');
+      message = l.deleteWorktreeThreadsConfirm(dependents.length, names);
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.deleteWorktree),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l.delete),
+          ),
+        ],
+      ),
+    );
+    // The AppState call needs no context; run it even if the widget is gone.
+    if (confirmed != true) return;
+    await state.deleteWorktree(projectId, worktree.path);
   }
 
   Future<void> _showCreateBranchDialog(
@@ -724,7 +775,9 @@ class _BranchToolbarState extends State<BranchToolbar> {
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: Text(l.close),
                 ),
                 OutlinedButton(
@@ -887,13 +940,13 @@ class _BranchToolbarState extends State<BranchToolbar> {
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: Text(l.close),
                 ),
                 FilledButton(
-                  onPressed: submitting ||
-                          base == null ||
-                          name.trim().isEmpty
+                  onPressed: submitting || base == null || name.trim().isEmpty
                       ? null
                       : submit,
                   child: submitting
