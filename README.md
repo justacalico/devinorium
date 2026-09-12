@@ -63,10 +63,10 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `DEVINORIUM_MAX_BODY_BYTES` | `16777216` | Max request body size in bytes |
 | `DEVINORIUM_SECURE_COOKIE` | `false` | Set the `Secure` cookie flag (enable over HTTPS) |
 | `DEVINORIUM_ALLOWED_ORIGIN` | (unset or empty) | Explicit allowed origin for CSRF checks |
-| `DEVINORIUM_TAILSCALE_BIN` | `tailscale` | Path to the tailscale CLI |
-| `DEVINORIUM_TAILSCALE_SERVE` | `false` | Publish the server over `tailscale serve` at startup |
-| `DEVINORIUM_TAILSCALE_SERVE_PORT` | `443` | Tailnet-side HTTPS port for the serve mapping |
 | `DEVINORIUM_LOCAL_TOKEN` | (unset) | Bundled desktop mode: requests bearing this token map onto the passwordless `local` owner account, and the process exits when stdin closes. Set automatically by the desktop app; not for normal servers |
+
+Tailscale serve is configured from the UI instead of env vars: Settings →
+Servers → Tailscale (owner only). See `docs/deployment.md` Option D.
 
 Database migrations run automatically on startup.
 

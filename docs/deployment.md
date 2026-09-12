@@ -176,18 +176,19 @@ Requirements:
 - `tailscaled` running on the server host with the node logged in
   (`tailscale up`).
 - MagicDNS enabled on the tailnet (Tailscale admin console → DNS).
-- The `tailscale` CLI on `PATH`, or set `DEVINORIUM_TAILSCALE_BIN`.
+- The `tailscale` CLI on `PATH`.
 
-Enable it at startup in `.env`:
+Enable it at runtime via Settings → Servers → Tailscale → "Tailscale HTTPS"
+(owner only). The tailnet-side HTTPS port can be changed in the port field
+next to the toggle (default 443). The card also lists the tailnet IP and
+MagicDNS HTTP endpoints that other devices on the tailnet can use to reach
+the server.
 
-```
-DEVINORIUM_TAILSCALE_SERVE=true
-DEVINORIUM_TAILSCALE_SERVE_PORT=443
-```
-
-or at runtime via Settings → Servers → Tailscale → "Tailscale HTTPS"
-(owner only). The card also lists the tailnet IP and MagicDNS HTTP
-endpoints that other devices on the tailnet can use to reach the server.
+The setting is stored in the server database: an enabled mapping is
+re-applied on startup, and it is removed again on graceful shutdown.
+Disabling the toggle removes every serve mapping that points at this server
+without touching mappings other services own, and the server refuses to
+enable serve on a port already mapped by something else.
 
 Notes:
 
@@ -196,9 +197,6 @@ Notes:
   loopback bind: `tailscale serve` proxies to localhost. The plain HTTP
   tailnet-IP endpoints only answer when the bind covers the tailnet
   interface (`0.0.0.0` or the `100.x` address).
-- A mapping created through `DEVINORIUM_TAILSCALE_SERVE=true` is removed
-  again on graceful shutdown. A mapping toggled through the settings UI is
-  stored by tailscaled and persists until it is switched off.
 - Because browsers see a real HTTPS URL, `DEVINORIUM_SECURE_COOKIE=true` is
   compatible with tailscale-serve access and recommended when you do not
   also log in over plain LAN HTTP.
