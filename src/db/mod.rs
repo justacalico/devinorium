@@ -63,11 +63,23 @@ impl Db {
         sqlx::query("ROLLBACK").execute(&mut probe).await?;
         probe.close().await?;
 
-        let pool = SqlitePoolOptions::new()
-            .max_connections(8)
-            .connect_with(opts)
-            .await
-            .with_context(|| format!("connecting to sqlite at {url}"))?;
+        let pool_opts = SqlitePoolOptions::new();
+        let pool = if is_in_memory_url(url) {
+            // Each fresh `sqlite::memory:` connection is a separate empty
+            // database, so pin the pool to a single permanent connection.
+            // The default lifetime limits would recycle it and silently
+            // wipe all data.
+            pool_opts
+                .max_connections(1)
+                .min_connections(1)
+                .max_lifetime(None)
+                .idle_timeout(None)
+                .connect_with(opts)
+                .await
+        } else {
+            pool_opts.max_connections(8).connect_with(opts).await
+        }
+        .with_context(|| format!("connecting to sqlite at {url}"))?;
 
         sqlx::migrate!("./migrations")
             .run(&pool)
@@ -79,6 +91,40 @@ impl Db {
 
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+}
+
+/// Whether a SQLite URL points at a database that lives only in process
+/// memory (`sqlite::memory:` or a `mode=memory` query parameter).
+pub(crate) fn is_in_memory_url(url: &str) -> bool {
+    let rest = url.strip_prefix("sqlite:").unwrap_or(url);
+    let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+    if path.eq_ignore_ascii_case(":memory:") || path.eq_ignore_ascii_case("file::memory:") {
+        return true;
+    }
+    query
+        .split('&')
+        .any(|param| param.eq_ignore_ascii_case("mode=memory"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_in_memory_url;
+
+    #[test]
+    fn detects_in_memory_urls() {
+        assert!(is_in_memory_url("sqlite::memory:"));
+        assert!(is_in_memory_url("sqlite::memory:?cache=shared"));
+        assert!(is_in_memory_url("sqlite:file::memory:?cache=shared"));
+        assert!(is_in_memory_url("sqlite:file:dev?mode=memory&cache=shared"));
+    }
+
+    #[test]
+    fn rejects_on_disk_urls() {
+        assert!(!is_in_memory_url("sqlite:data/devinorium.db?mode=rwc"));
+        assert!(!is_in_memory_url("sqlite:data/mode=memory.db?mode=rwc"));
+        assert!(!is_in_memory_url("sqlite:data/app.db?xmode=memory"));
+        assert!(!is_in_memory_url("not-a-sqlite-url"));
     }
 }
 

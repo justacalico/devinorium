@@ -73,6 +73,25 @@ fn origin_ok_explicit(headers: &HeaderMap, allowed: &str) -> bool {
     false
 }
 
+/// Middleware (dev mode only): require the request's `Host` header to name a
+/// loopback address. `--dev` serves the API with no credentials; a remote web
+/// page could otherwise reach the loopback socket through DNS rebinding,
+/// where Origin and Host both read the attacker's domain and the same-host
+/// CSRF check above folds. Requests without a Host header (non-browser
+/// clients) are unaffected.
+pub async fn dev_host_check(req: Request, next: Next) -> Response {
+    if let Some(host) = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+    {
+        if !crate::config::is_loopback_host(hostname(host)) {
+            return (StatusCode::FORBIDDEN, "dev mode only serves loopback").into_response();
+        }
+    }
+    next.run(req).await
+}
+
 fn has_bearer_auth(headers: &HeaderMap) -> bool {
     headers
         .get(header::AUTHORIZATION)
@@ -80,19 +99,20 @@ fn has_bearer_auth(headers: &HeaderMap) -> bool {
         .is_some_and(|s| s.trim().starts_with("Bearer "))
 }
 
-fn origin_ok_same_host(headers: &HeaderMap, host: &str) -> bool {
-    /// Extract the hostname (without port) from a `host:port` string.
-    fn hostname(s: &str) -> &str {
-        // Strip port if present (e.g. "127.0.0.1:7878" -> "127.0.0.1").
-        // Also handles IPv6 brackets like "[::1]:8080".
-        if let Some(idx) = s.rfind(':') {
-            // Don't strip if this looks like an IPv6 address without port.
-            if !s.starts_with('[') || s[idx..].starts_with("]:") {
-                return &s[..idx];
-            }
+/// Extract the hostname (without port) from a `host:port` string.
+fn hostname(s: &str) -> &str {
+    // Strip port if present (e.g. "127.0.0.1:7878" -> "127.0.0.1").
+    // Also handles IPv6 brackets like "[::1]:8080".
+    if let Some(idx) = s.rfind(':') {
+        // Don't strip if this looks like an IPv6 address without port.
+        if !s.starts_with('[') || s[idx..].starts_with("]:") {
+            return &s[..idx];
         }
-        s
     }
+    s
+}
+
+fn origin_ok_same_host(headers: &HeaderMap, host: &str) -> bool {
     let check = |uri_str: &str| -> bool {
         let uri = match uri_str.parse::<axum::http::Uri>() {
             Ok(u) => u,

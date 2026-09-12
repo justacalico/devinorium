@@ -412,6 +412,7 @@ async fn app_state() -> (AppState, db::Db) {
         secure_cookie: false,
         allowed_origin: None,
         local_token: None,
+        dev_mode: false,
     };
 
     let state = AppState {

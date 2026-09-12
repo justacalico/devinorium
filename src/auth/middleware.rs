@@ -27,23 +27,19 @@ use super::session::{extract_bearer_token, extract_cookie_token, CurrentUser};
 /// account's `disabled` flag is ignored on this path: the token is only known
 /// to the desktop app that spawned the server, so disabling the account would
 /// brick the app with no way back in.
+///
+/// In `--dev` mode every request is mapped onto `local` unconditionally, so
+/// the UI is usable with no login at all.
 pub async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    if state.config.dev_mode {
+        return run_as_local(state, req, next).await;
+    }
+
     let bearer = extract_bearer_token(&req);
     if let Some(expected) = state.config.local_token.as_deref() {
         if let Some(token) = bearer.as_deref() {
             if constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes()) {
-                return match state
-                    .db
-                    .get_user_by_username(super::bootstrap::LOCAL_USERNAME)
-                    .await
-                {
-                    Ok(Some(user)) => {
-                        let mut req = req;
-                        req.extensions_mut().insert(CurrentUser(user));
-                        next.run(req).await
-                    }
-                    _ => unauthorized("local user missing"),
-                };
+                return run_as_local(state, req, next).await;
             }
         }
     }
@@ -91,6 +87,23 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
     let mut req = req;
     req.extensions_mut().insert(CurrentUser(user));
     next.run(req).await
+}
+
+/// Run the request as the passwordless `local` owner account, bypassing
+/// session lookup and the account's disabled flag.
+async fn run_as_local(state: AppState, req: Request, next: Next) -> Response {
+    match state
+        .db
+        .get_user_by_username(super::bootstrap::LOCAL_USERNAME)
+        .await
+    {
+        Ok(Some(user)) => {
+            let mut req = req;
+            req.extensions_mut().insert(CurrentUser(user));
+            next.run(req).await
+        }
+        _ => unauthorized("local user missing"),
+    }
 }
 
 fn unauthorized(reason: &'static str) -> Response {
