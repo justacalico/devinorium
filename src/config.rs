@@ -25,9 +25,9 @@ pub struct Config {
     /// requests never need a login while random processes still cannot call
     /// the API without knowing the token.
     pub local_token: Option<String>,
-    /// `--dev` mode: every request runs as the passwordless `local` account
-    /// with no credentials at all, on a random port with a throwaway
-    /// in-memory database.
+    /// `--dev`/`--local` mode: every request runs as the passwordless
+    /// `local` account with no credentials at all, on a random port with a
+    /// throwaway in-memory database.
     pub dev_mode: bool,
 }
 
@@ -81,14 +81,6 @@ impl Config {
             .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        if local_token.is_some() && !is_loopback_host(&host) {
-            // A fixed bearer token bound to a non-loopback interface would
-            // give every host that can reach it owner-level API access.
-            bail!(
-                "DEVINORIUM_LOCAL_TOKEN requires DEVINORIUM_HOST to be a loopback \
-                 address (got {host:?}); refusing to start"
-            );
-        }
 
         Ok(Self {
             host,
@@ -111,19 +103,32 @@ impl Config {
     /// Switch into `--dev` mode: bind a random OS-assigned port and use a
     /// throwaway in-memory database that vanishes when the process exits.
     ///
-    /// Dev mode serves the API with no authentication, so it is restricted
-    /// to loopback the same way `DEVINORIUM_LOCAL_TOKEN` is.
-    pub fn apply_dev_mode(&mut self) -> Result<()> {
-        if !is_loopback_host(&self.host) {
+    /// Dev mode serves the API with no authentication. It binds all
+    /// interfaces so the UI can be reached from another machine; pass
+    /// `local_only` (`--local`) to confine it to loopback.
+    pub fn apply_dev_mode(&mut self, local_only: bool) -> Result<()> {
+        self.host = if local_only { "127.0.0.1" } else { "0.0.0.0" }.to_string();
+        self.port = 0;
+        self.db_url = "sqlite::memory:".to_string();
+        // An explicit allowed origin would pin CSRF/CORS to one origin,
+        // which breaks browser access to the random dev port.
+        self.allowed_origin = None;
+        self.dev_mode = true;
+        Ok(())
+    }
+
+    /// Refuse to start when the passwordless bearer token would be bound to
+    /// a non-loopback interface: every host that can reach it would get
+    /// owner-level API access. Dev mode ignores the token entirely, so the
+    /// check does not apply there.
+    pub fn check_local_token_bind(&self) -> Result<()> {
+        if !self.dev_mode && self.local_token.is_some() && !is_loopback_host(&self.host) {
             bail!(
-                "--dev requires DEVINORIUM_HOST to be a loopback \
+                "DEVINORIUM_LOCAL_TOKEN requires DEVINORIUM_HOST to be a loopback \
                  address (got {:?}); refusing to start",
                 self.host
             );
         }
-        self.port = 0;
-        self.db_url = "sqlite::memory:".to_string();
-        self.dev_mode = true;
         Ok(())
     }
 
@@ -162,6 +167,27 @@ fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
+/// Parse the dev-mode CLI flags, returning `(dev_mode, local_only)`.
+/// `--dev` (or `-dev`) enables dev mode on all interfaces; `--local` (or
+/// `-local`) implies dev mode and confines it to loopback.
+pub fn parse_dev_args<I, S>(args: I) -> (bool, bool)
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut dev_mode = false;
+    let mut local_only = false;
+    for arg in args {
+        let arg = arg.as_ref();
+        if arg == "--dev" || arg == "-dev" {
+            dev_mode = true;
+        } else if arg == "--local" || arg == "-local" {
+            local_only = true;
+        }
+    }
+    (dev_mode || local_only, local_only)
+}
+
 pub fn default_home_dir() -> Option<PathBuf> {
     // Prefer $HOME on Unix, $USERPROFILE on Windows.
     env::var_os("HOME")
@@ -197,5 +223,58 @@ mod tests {
         assert!(!is_loopback_host("192.168.1.10"));
         assert!(!is_loopback_host("example.com"));
         assert!(!is_loopback_host(""));
+    }
+
+    fn cfg_with(host: &str, token: Option<&str>, dev_mode: bool) -> Config {
+        Config {
+            host: host.into(),
+            port: 7878,
+            session_key: vec![0; 48],
+            db_url: "sqlite::memory:".into(),
+            bootstrap_username: "owner".into(),
+            bootstrap_password: "x".into(),
+            home_dir: PathBuf::from("."),
+            default_model: "m".into(),
+            trust_proxy: false,
+            max_body_bytes: 1024,
+            secure_cookie: false,
+            allowed_origin: None,
+            local_token: token.map(str::to_string),
+            dev_mode,
+        }
+    }
+
+    #[test]
+    fn local_token_bind_check_rejects_public_host() {
+        assert!(cfg_with("0.0.0.0", Some("tok"), false)
+            .check_local_token_bind()
+            .is_err());
+    }
+
+    #[test]
+    fn local_token_bind_check_allows_loopback_dev_and_no_token() {
+        assert!(cfg_with("127.0.0.1", Some("tok"), false)
+            .check_local_token_bind()
+            .is_ok());
+        // Dev mode ignores the token, so a public bind is fine.
+        assert!(cfg_with("0.0.0.0", Some("tok"), true)
+            .check_local_token_bind()
+            .is_ok());
+        assert!(cfg_with("0.0.0.0", None, false)
+            .check_local_token_bind()
+            .is_ok());
+    }
+
+    #[test]
+    fn dev_args_parse_flag_combinations() {
+        let parse = |args: &[&str]| parse_dev_args(args.iter().copied());
+        assert_eq!(parse(&[]), (false, false));
+        assert_eq!(parse(&["--dev"]), (true, false));
+        assert_eq!(parse(&["-dev"]), (true, false));
+        assert_eq!(parse(&["--local"]), (true, true));
+        assert_eq!(parse(&["-local"]), (true, true));
+        assert_eq!(parse(&["--dev", "--local"]), (true, true));
+        assert_eq!(parse(&["-dev", "-local"]), (true, true));
+        assert_eq!(parse(&["--other"]), (false, false));
     }
 }
