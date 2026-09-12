@@ -997,7 +997,9 @@ void main() {
     expect(state.language, 'system');
     expect(find.text('System'), findsWidgets);
 
-    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.tap(find.byWidgetPredicate(
+      (w) => w is DropdownButton<String> && w.value == state.language,
+    ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('English').last);
     await tester.pumpAndSettle();
@@ -1024,7 +1026,9 @@ void main() {
     state.setSettingsTopicIndex(2);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.tap(find.byWidgetPredicate(
+      (w) => w is DropdownButton<String> && w.value == state.language,
+    ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Simplified Chinese'));
     await tester.pumpAndSettle();
@@ -1054,7 +1058,9 @@ void main() {
 
     expect(state.language, 'zh');
 
-    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.tap(find.byWidgetPredicate(
+      (w) => w is DropdownButton<String> && w.value == state.language,
+    ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('系统').last);
     await tester.pumpAndSettle();
