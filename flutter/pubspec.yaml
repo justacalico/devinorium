@@ -1,7 +1,7 @@
 name: devinorium_frontend
 description: "Devinorium — Flutter web frontend."
 publish_to: "none"
-version: 0.69.0+90
+version: 0.70.0+91
 
 environment:
   sdk: ^3.12.2

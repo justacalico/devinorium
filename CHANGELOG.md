@@ -2,6 +2,22 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.70.0 - 2026-09-12
+#### Features
+- Tailscale 卡片添加 HTTPS 端口设置并接入持久化接口 - (b84431e) - HttpAnimations
+- Tailscale serve 设置持久化到数据库并支持自定义端口 - (135f99d) - HttpAnimations
+- 添加设置页 Tailscale 卡片 - (45706e8) - HttpAnimations
+- 添加 Tailscale 前端模型与状态 - (e952d99) - HttpAnimations
+- 添加 Tailscale 配置项与接口 - (69b3922) - HttpAnimations
+- 添加 Tailscale CLI 封装模块 - (019737b) - HttpAnimations
+#### Bug Fixes
+- 切换服务器后刷新 Tailscale 卡片 - (904ac7e) - HttpAnimations
+- 按 tailscaled 实际映射管理 serve 端口 - (27546b6) - HttpAnimations
+- 更新会话清理测试使用 send/stream 接口 - (278f771) - HttpAnimations
+- 修复 tailscale 端点检查的 clippy 警告 - (f3595f5) - HttpAnimations
+
+- - -
+
 ## v0.69.0 - 2026-09-12
 #### Features
 - 工作树下拉菜单支持删除工作树 - (b20a246) - HttpAnimations
