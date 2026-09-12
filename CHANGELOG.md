@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.67.0 - 2026-09-12
+#### Features
+- 添加 --dev 免登录开发模式 - (82f32c8) - HttpAnimations
+- git 面板支持内联 diff、丢弃更改和提交历史 - (5502182) - HttpAnimations
+#### Bug Fixes
+- 修复请求已删除 /send 接口的测试 - (1df2100) - HttpAnimations
+
+- - -
+
 ## v0.66.0 - 2026-09-12
 #### Features
 - 统一新建项目和克隆仓库为单个添加项目按钮 - (5f61b10) - HttpAnimations
