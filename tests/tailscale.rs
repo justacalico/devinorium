@@ -58,6 +58,7 @@ async fn make_app(
         allowed_origin: None,
         local_token: local_token.map(str::to_string),
         tailscale_bin: tailscale_bin.into(),
+        dev_mode: false,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {

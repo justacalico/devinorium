@@ -171,6 +171,10 @@
   "home": "Home",
   "up": "Up",
   "newProject": "New project",
+  "addProject": "Add project",
+  "addProjectLocalTitle": "Local folder",
+  "addProjectLocalDescription": "Browse a folder on disk",
+  "addProjectCloneDescription": "Clone from a remote URL",
   "cloneRepo": "Clone repository",
   "cloneRepoDescription": "Clone a remote repository into the configured clone root.",
   "cloneRepoUrlLabel": "Remote URL",
@@ -243,6 +247,7 @@
   "attachSourceTakePhoto": "Take Photo",
   "attachSourceRecordVideo": "Record Video",
   "attachSourceBrowse": "Browse",
+  "removeAttachment": "Remove attachment",
   "files": "Files",
   "emptyFolder": "Empty folder",
   "folderNameHint": "Folder name",
@@ -404,9 +409,21 @@
   "messageRoleYou": "You",
   "messageRoleAssistant": "Assistant",
   "messageRoleError": "Error",
+  "copyMessage": "Copy message",
+  "regenerate": "Regenerate",
+  "editMessageTitle": "Edit message",
+  "editAndResend": "Edit and resend",
+  "resend": "Resend",
+  "today": "Today",
+  "yesterday": "Yesterday",
   "thinking": "Thinking",
   "hideThinking": "Hide thinking",
   "showThinking": "Show thinking",
+  "toolGroupReadFiles": "{count, plural, =1{Read {count} file} other{Read {count} files}}",
+  "toolGroupChangedFiles": "{count, plural, =1{Changed {count} file} other{Changed {count} files}}",
+  "toolGroupRanCommands": "{count, plural, =1{Ran {count} command} other{Ran {count} commands}}",
+  "toolGroupSearched": "{count, plural, =1{Searched {count} time} other{Searched {count} times}}",
+  "toolGroupUsedTools": "{count, plural, =1{Used {count} tool} other{Used {count} tools}}",
   "composerHint": "Ask a question or drop files here",
   "permissionModeNormal": "Ask every time",
   "permissionModeAcceptEdits": "Confirm edits",
@@ -524,6 +541,37 @@
   "notGitRepo": "Not a git repository",
   "gitUnsupportedBackend": "This server is too old for the Git panel. Update the backend and restart the app.",
   "gitCommitAllConfirm": "There are no staged changes. Stage all changes and commit?",
+  "discard": "Discard",
+  "discardAll": "Discard all",
+  "discardFileConfirm": "Discard all changes to {path}? This cannot be undone.",
+  "@discardFileConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "discardUntrackedConfirm": "Permanently delete {path}? This cannot be undone.",
+  "@discardUntrackedConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "discardAllConfirm": "Discard all {count} changed files? This cannot be undone.",
+  "@discardAllConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "history": "History",
+  "noCommits": "No commits yet",
+  "noDiffAvailable": "No diff preview available",
+  "openFile": "Open file",
+  "copySha": "Copy commit SHA",
   "createBranch": "Create branch",
   "branchName": "Branch name",
   "baseBranchOptional": "Base branch (optional)",
@@ -539,6 +587,26 @@
   "localModeShort": "local",
   "worktreeMode": "Worktree",
   "worktreeModeShort": "worktree",
+  "deleteWorktree": "Delete worktree",
+  "deleteWorktreeConfirm": "Delete the worktree at {path}? Any uncommitted changes in it will be lost.",
+  "@deleteWorktreeConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteWorktreeThreadsConfirm": "{count, plural, =1{The thread \"{names}\" uses this worktree. Deleting it will delete the thread too. Are you sure?} other{{count} threads use this worktree ({names}). Deleting it will delete them too. Are you sure?}}",
+  "@deleteWorktreeThreadsConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "git": "Git",
   "gitConnections": "Connections",
   "gitlab": "GitLab",

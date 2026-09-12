@@ -8,6 +8,12 @@ use devinorium::{auth, config, db, git, lock, providers, tailscale::Tailscale, A
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // `--dev` runs a throwaway instance: random port, no login, and an
+    // in-memory database that disappears when the process exits. It binds
+    // all interfaces so the UI can be tested from another machine;
+    // `--local` confines it to loopback.
+    let (dev_mode, local_only) = config::parse_dev_args(std::env::args_os().skip(1));
+
     // Load .env file if present (ignored if not found). In bundled local
     // mode the launcher already controls the environment; a .env in the
     // server's working directory must not reintroduce DEVINORIUM_* settings
@@ -26,7 +32,11 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let cfg = config::Config::from_env()?;
+    let mut cfg = config::Config::from_env()?;
+    if dev_mode {
+        cfg.apply_dev_mode(local_only)?;
+    }
+    cfg.check_local_token_bind()?;
 
     let _guard = lock::lock_path_from_db_url(&cfg.db_url)
         .map(|p| lock::SingleInstance::acquire(&p))
@@ -35,16 +45,25 @@ async fn main() -> Result<()> {
     let bind = cfg.bind_addr();
     let database = db::Db::connect(&cfg.db_url).await?;
 
-    // First-run bootstrap: create the initial owner account if none exist.
-    auth::bootstrap::run(&database, &cfg.bootstrap_username, &cfg.bootstrap_password).await?;
-
-    if cfg.is_local_mode() {
-        // Bundled mode: the passwordless local account backs every request
-        // carrying the configured token.
+    if cfg.dev_mode {
+        // Dev mode needs no interactive accounts; the passwordless local
+        // account backs every request.
         auth::bootstrap::run_local(&database).await?;
-        // The desktop app holds our stdin pipe; when it exits or crashes the
-        // pipe closes and we shut down instead of lingering as an orphan.
-        spawn_stdin_watchdog();
+        if cfg.is_local_mode() {
+            tracing::warn!("--dev ignores DEVINORIUM_LOCAL_TOKEN; requests need no credentials");
+        }
+    } else {
+        // First-run bootstrap: create the initial owner account if none exist.
+        auth::bootstrap::run(&database, &cfg.bootstrap_username, &cfg.bootstrap_password).await?;
+        if cfg.is_local_mode() {
+            // Bundled mode: the passwordless local account backs every request
+            // carrying the configured token.
+            auth::bootstrap::run_local(&database).await?;
+            // The desktop app holds our stdin pipe; when it exits or crashes
+            // the pipe closes and we shut down instead of lingering as an
+            // orphan. Not wanted in dev mode: a detached run has no stdin.
+            spawn_stdin_watchdog();
+        }
     }
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -136,7 +155,15 @@ async fn main() -> Result<()> {
     let app = devinorium::build_app(state);
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    tracing::info!(%bind, secure_cookie, "Devinorium listening");
+    let addr = listener.local_addr()?;
+    if dev_mode {
+        if local_only {
+            tracing::info!("--dev --local: serving http://{addr} (loopback only) with no authentication and a throwaway in-memory database");
+        } else {
+            tracing::warn!("--dev: serving http://{addr} on all interfaces with no authentication; anyone who can reach this port has full access (pass --local for loopback only)");
+        }
+    }
+    tracing::info!(%addr, secure_cookie, "Devinorium listening");
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),

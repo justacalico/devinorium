@@ -171,6 +171,10 @@
   "home": "主页",
   "up": "上级",
   "newProject": "新建项目",
+  "addProject": "添加项目",
+  "addProjectLocalTitle": "本地文件夹",
+  "addProjectLocalDescription": "浏览磁盘上的文件夹",
+  "addProjectCloneDescription": "从远程 URL 克隆",
   "cloneRepo": "克隆存储库",
   "cloneRepoDescription": "将远程仓库克隆到配置的克隆根目录",
   "cloneRepoUrlLabel": "远程 URL",
@@ -243,6 +247,7 @@
   "attachSourceTakePhoto": "拍照",
   "attachSourceRecordVideo": "录像",
   "attachSourceBrowse": "浏览",
+  "removeAttachment": "移除附件",
   "files": "文件",
   "emptyFolder": "空文件夹",
   "folderNameHint": "文件夹名称",
@@ -404,9 +409,21 @@
   "messageRoleYou": "你",
   "messageRoleAssistant": "助手",
   "messageRoleError": "错误",
+  "copyMessage": "复制消息",
+  "regenerate": "重新生成",
+  "editMessageTitle": "编辑消息",
+  "editAndResend": "编辑并重新发送",
+  "resend": "重新发送",
+  "today": "今天",
+  "yesterday": "昨天",
   "thinking": "思考中",
   "hideThinking": "隐藏思考",
   "showThinking": "显示思考",
+  "toolGroupReadFiles": "读取了 {count} 个文件",
+  "toolGroupChangedFiles": "修改了 {count} 个文件",
+  "toolGroupRanCommands": "运行了 {count} 条命令",
+  "toolGroupSearched": "搜索了 {count} 次",
+  "toolGroupUsedTools": "使用了 {count} 个工具",
   "composerHint": "在此提问或拖放文件",
   "permissionModeNormal": "每次都询问",
   "permissionModeAcceptEdits": "确认编辑",
@@ -524,6 +541,16 @@
   "notGitRepo": "不是 git 仓库",
   "gitUnsupportedBackend": "当前服务器版本过旧，不支持 Git 面板。请更新后端并重启应用。",
   "gitCommitAllConfirm": "没有已暂存的更改。是否暂存全部更改并提交？",
+  "discard": "丢弃",
+  "discardAll": "丢弃全部",
+  "discardFileConfirm": "丢弃对 {path} 的全部更改？此操作无法撤销。",
+  "discardUntrackedConfirm": "永久删除 {path}？此操作无法撤销。",
+  "discardAllConfirm": "丢弃全部 {count} 个已更改的文件？此操作无法撤销。",
+  "history": "历史记录",
+  "noCommits": "还没有提交",
+  "noDiffAvailable": "无可用差异预览",
+  "openFile": "打开文件",
+  "copySha": "复制提交 SHA",
   "createBranch": "创建分支",
   "branchName": "分支名称",
   "baseBranchOptional": "基础分支（可选）",
@@ -539,6 +566,26 @@
   "localModeShort": "本地",
   "worktreeMode": "工作树",
   "worktreeModeShort": "工作树",
+  "deleteWorktree": "删除工作树",
+  "deleteWorktreeConfirm": "删除位于 {path} 的工作树？其中未提交的修改将丢失。",
+  "@deleteWorktreeConfirm": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteWorktreeThreadsConfirm": "{count, plural, =1{会话「{names}」正在使用此工作树。删除工作树将同时删除该会话。确定吗？} other{{count} 个会话正在使用此工作树（{names}）。删除工作树将同时删除这些会话。确定吗？}}",
+  "@deleteWorktreeThreadsConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "git": "Git",
   "gitConnections": "连接",
   "gitlab": "GitLab",

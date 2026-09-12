@@ -269,6 +269,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newProject => 'New project';
 
   @override
+  String get addProject => 'Add project';
+
+  @override
+  String get addProjectLocalTitle => 'Local folder';
+
+  @override
+  String get addProjectLocalDescription => 'Browse a folder on disk';
+
+  @override
+  String get addProjectCloneDescription => 'Clone from a remote URL';
+
+  @override
   String get cloneRepo => 'Clone repository';
 
   @override
@@ -409,6 +421,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get attachSourceBrowse => 'Browse';
+
+  @override
+  String get removeAttachment => 'Remove attachment';
 
   @override
   String get files => 'Files';
@@ -645,6 +660,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageRoleError => 'Error';
 
   @override
+  String get copyMessage => 'Copy message';
+
+  @override
+  String get regenerate => 'Regenerate';
+
+  @override
+  String get editMessageTitle => 'Edit message';
+
+  @override
+  String get editAndResend => 'Edit and resend';
+
+  @override
+  String get resend => 'Resend';
+
+  @override
+  String get today => 'Today';
+
+  @override
+  String get yesterday => 'Yesterday';
+
+  @override
   String get thinking => 'Thinking';
 
   @override
@@ -652,6 +688,61 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get showThinking => 'Show thinking';
+
+  @override
+  String toolGroupReadFiles(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Read $count files',
+      one: 'Read $count file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupChangedFiles(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Changed $count files',
+      one: 'Changed $count file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupRanCommands(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Ran $count commands',
+      one: 'Ran $count command',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupSearched(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Searched $count times',
+      one: 'Searched $count time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupUsedTools(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Used $count tools',
+      one: 'Used $count tool',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get composerHint => 'Ask a question or drop files here';
@@ -815,6 +906,42 @@ class AppLocalizationsEn extends AppLocalizations {
       'There are no staged changes. Stage all changes and commit?';
 
   @override
+  String get discard => 'Discard';
+
+  @override
+  String get discardAll => 'Discard all';
+
+  @override
+  String discardFileConfirm(String path) {
+    return 'Discard all changes to $path? This cannot be undone.';
+  }
+
+  @override
+  String discardUntrackedConfirm(String path) {
+    return 'Permanently delete $path? This cannot be undone.';
+  }
+
+  @override
+  String discardAllConfirm(int count) {
+    return 'Discard all $count changed files? This cannot be undone.';
+  }
+
+  @override
+  String get history => 'History';
+
+  @override
+  String get noCommits => 'No commits yet';
+
+  @override
+  String get noDiffAvailable => 'No diff preview available';
+
+  @override
+  String get openFile => 'Open file';
+
+  @override
+  String get copySha => 'Copy commit SHA';
+
+  @override
   String get createBranch => 'Create branch';
 
   @override
@@ -859,6 +986,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get worktreeModeShort => 'worktree';
+
+  @override
+  String get deleteWorktree => 'Delete worktree';
+
+  @override
+  String deleteWorktreeConfirm(String path) {
+    return 'Delete the worktree at $path? Any uncommitted changes in it will be lost.';
+  }
+
+  @override
+  String deleteWorktreeThreadsConfirm(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count threads use this worktree ($names). Deleting it will delete them too. Are you sure?',
+      one:
+          'The thread \"$names\" uses this worktree. Deleting it will delete the thread too. Are you sure?',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get git => 'Git';

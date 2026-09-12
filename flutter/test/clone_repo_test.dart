@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
@@ -35,6 +37,15 @@ class _ThrowingClient extends BaseApiClient {
   @override
   Stream<SseEvent> getStream({required String path}) =>
       throw UnimplementedError();
+
+  @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) =>
+      throw UnimplementedError();
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       throw UnimplementedError();
@@ -67,6 +78,18 @@ class _ThrowingClient extends BaseApiClient {
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
   }) => throw UnimplementedError();
+}
+
+class _PendingCloneApi extends _FakeApiService {
+  final Completer<String> completer;
+
+  _PendingCloneApi(this.completer);
+
+  @override
+  Future<String> cloneRepo(String url) {
+    _cloneRepoCalls.add(url);
+    return completer.future;
+  }
 }
 
 class _FakeApiService extends ApiService {
@@ -198,6 +221,43 @@ void main() {
 
     expect(state.globalError, contains('502'));
     expect(_findTextContaining('502'), findsOneWidget);
+  });
+
+  testWidgets('a clone finishing after the dialog was abandoned does not leak its result',
+      (tester) async {
+    final completer = Completer<String>();
+    final api = _PendingCloneApi(completer);
+    const url = 'https://gitlab.com/owner/repo.git';
+    final state = AppState.test(api: api, dialog: DialogKind.cloneRepo);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), url);
+    await tester.tap(find.text('Clone'));
+    await tester.pump();
+
+    expect(state.cloningRepo, true);
+
+    // Back to the picker, then into the clone dialog again.
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clone repository'));
+    await tester.pumpAndSettle();
+
+    completer.complete('/clone/$url');
+    await tester.pumpAndSettle();
+
+    // The abandoned clone must not overwrite the reopened dialog's state.
+    expect(state.cloneRepoResult, isNull);
+    expect(state.cloningRepo, false);
+    expect(find.text('/clone/$url'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Remote URL',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('open project button selects the cloned project', (tester) async {

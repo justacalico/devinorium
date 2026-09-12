@@ -590,6 +590,30 @@ abstract class AppLocalizations {
   /// **'New project'**
   String get newProject;
 
+  /// No description provided for @addProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Add project'**
+  String get addProject;
+
+  /// No description provided for @addProjectLocalTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local folder'**
+  String get addProjectLocalTitle;
+
+  /// No description provided for @addProjectLocalDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse a folder on disk'**
+  String get addProjectLocalDescription;
+
+  /// No description provided for @addProjectCloneDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone from a remote URL'**
+  String get addProjectCloneDescription;
+
   /// No description provided for @cloneRepo.
   ///
   /// In en, this message translates to:
@@ -853,6 +877,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Browse'**
   String get attachSourceBrowse;
+
+  /// No description provided for @removeAttachment.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove attachment'**
+  String get removeAttachment;
 
   /// No description provided for @files.
   ///
@@ -1268,6 +1298,48 @@ abstract class AppLocalizations {
   /// **'Error'**
   String get messageRoleError;
 
+  /// No description provided for @copyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy message'**
+  String get copyMessage;
+
+  /// No description provided for @regenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Regenerate'**
+  String get regenerate;
+
+  /// No description provided for @editMessageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit message'**
+  String get editMessageTitle;
+
+  /// No description provided for @editAndResend.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit and resend'**
+  String get editAndResend;
+
+  /// No description provided for @resend.
+  ///
+  /// In en, this message translates to:
+  /// **'Resend'**
+  String get resend;
+
+  /// No description provided for @today.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get today;
+
+  /// No description provided for @yesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get yesterday;
+
   /// No description provided for @thinking.
   ///
   /// In en, this message translates to:
@@ -1285,6 +1357,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show thinking'**
   String get showThinking;
+
+  /// No description provided for @toolGroupReadFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Read {count} file} other{Read {count} files}}'**
+  String toolGroupReadFiles(num count);
+
+  /// No description provided for @toolGroupChangedFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Changed {count} file} other{Changed {count} files}}'**
+  String toolGroupChangedFiles(num count);
+
+  /// No description provided for @toolGroupRanCommands.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Ran {count} command} other{Ran {count} commands}}'**
+  String toolGroupRanCommands(num count);
+
+  /// No description provided for @toolGroupSearched.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Searched {count} time} other{Searched {count} times}}'**
+  String toolGroupSearched(num count);
+
+  /// No description provided for @toolGroupUsedTools.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Used {count} tool} other{Used {count} tools}}'**
+  String toolGroupUsedTools(num count);
 
   /// No description provided for @composerHint.
   ///
@@ -1556,6 +1658,66 @@ abstract class AppLocalizations {
   /// **'There are no staged changes. Stage all changes and commit?'**
   String get gitCommitAllConfirm;
 
+  /// No description provided for @discard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get discard;
+
+  /// No description provided for @discardAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard all'**
+  String get discardAll;
+
+  /// No description provided for @discardFileConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard all changes to {path}? This cannot be undone.'**
+  String discardFileConfirm(String path);
+
+  /// No description provided for @discardUntrackedConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Permanently delete {path}? This cannot be undone.'**
+  String discardUntrackedConfirm(String path);
+
+  /// No description provided for @discardAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard all {count} changed files? This cannot be undone.'**
+  String discardAllConfirm(int count);
+
+  /// No description provided for @history.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get history;
+
+  /// No description provided for @noCommits.
+  ///
+  /// In en, this message translates to:
+  /// **'No commits yet'**
+  String get noCommits;
+
+  /// No description provided for @noDiffAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No diff preview available'**
+  String get noDiffAvailable;
+
+  /// No description provided for @openFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Open file'**
+  String get openFile;
+
+  /// No description provided for @copySha.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy commit SHA'**
+  String get copySha;
+
   /// No description provided for @createBranch.
   ///
   /// In en, this message translates to:
@@ -1645,6 +1807,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'worktree'**
   String get worktreeModeShort;
+
+  /// No description provided for @deleteWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete worktree'**
+  String get deleteWorktree;
+
+  /// No description provided for @deleteWorktreeConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the worktree at {path}? Any uncommitted changes in it will be lost.'**
+  String deleteWorktreeConfirm(String path);
+
+  /// No description provided for @deleteWorktreeThreadsConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The thread \"{names}\" uses this worktree. Deleting it will delete the thread too. Are you sure?} other{{count} threads use this worktree ({names}). Deleting it will delete them too. Are you sure?}}'**
+  String deleteWorktreeThreadsConfirm(int count, String names);
 
   /// No description provided for @git.
   ///

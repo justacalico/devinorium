@@ -31,6 +31,7 @@ class DialogLayer extends StatelessWidget {
         final Widget dialog = switch (model.dialog) {
           DialogKind.none => const SizedBox.shrink(),
           DialogKind.totpSetup => const _TotpSetupDialog(),
+          DialogKind.addProject => const _AddProjectDialog(),
           DialogKind.newProject => const _NewProjectDialog(),
           DialogKind.cloneRepo => const _CloneRepoDialog(),
           DialogKind.permissionRequest => const _PermissionRequestDialog(),
@@ -227,6 +228,170 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
   }
 }
 
+/// Entry point for adding a project: offers the sources (local folder or
+/// remote clone) and forwards to the matching dialog.
+class _AddProjectDialog extends StatelessWidget {
+  const _AddProjectDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final state = context.read<AppState>();
+
+    return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l.addProject, style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 16),
+                    _AddProjectSourceTile(
+                      icon: Icons.create_new_folder_outlined,
+                      title: l.addProjectLocalTitle,
+                      description: l.addProjectLocalDescription,
+                      onTap: () => unawaited(state.openNewProjectDialog()),
+                    ),
+                    const SizedBox(height: 8),
+                    _AddProjectSourceTile(
+                      icon: Icons.cloud_download_outlined,
+                      title: l.cloneRepo,
+                      description: l.addProjectCloneDescription,
+                      onTap: state.openCloneRepoDialog,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: state.closeDialog,
+                          child: Text(l.cancel),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dialog title with a back arrow that returns to the add-project source
+/// picker.
+class _AddProjectDialogTitle extends StatelessWidget {
+  final String title;
+
+  const _AddProjectDialogTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = context.read<AppState>();
+
+    return Row(
+      children: [
+        IconButton(
+          onPressed: state.openAddProjectDialog,
+          icon: const Icon(Icons.arrow_back, size: 20),
+          tooltip: l10n(context).back,
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.all(4),
+          style: IconButton.styleFrom(
+            foregroundColor: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            title,
+            style: theme.textTheme.headlineSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddProjectSourceTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  const _AddProjectSourceTile({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _NewProjectDialog extends StatefulWidget {
   const _NewProjectDialog();
 
@@ -271,9 +436,11 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
       await state.createProject(name: name, path: path);
       if (mounted) {
         setState(() => _submitting = false);
-        if (state.globalError.isEmpty) {
-          state.closeDialog();
-        }
+      }
+      // Close whichever add-project dialog is showing: the user may have
+      // navigated back to the source picker while the create was in flight.
+      if (state.globalError.isEmpty) {
+        state.closeDialog();
       }
     } catch (e) {
       if (mounted) {
@@ -315,8 +482,7 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(l10n(context).newProject,
-                        style: theme.textTheme.headlineSmall),
+                    _AddProjectDialogTitle(title: l10n(context).newProject),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _nameController,
@@ -695,7 +861,7 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(l.cloneRepo, style: theme.textTheme.headlineSmall),
+                    _AddProjectDialogTitle(title: l.cloneRepo),
                     const SizedBox(height: 8),
                     Text(l.cloneRepoDescription),
                     const SizedBox(height: 16),

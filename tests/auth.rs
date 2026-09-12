@@ -51,6 +51,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         allowed_origin: None,
         local_token: None,
         tailscale_bin: "tailscale".into(),
+        dev_mode: false,
     });
     cfg.db_url = db_url;
     cfg.bootstrap_username = bootstrap_user.into();

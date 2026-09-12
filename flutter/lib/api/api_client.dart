@@ -39,6 +39,13 @@ abstract class BaseApiClient {
     List<String> referencedThreadIds,
   });
 
+  /// POST a multipart body and read the response as an SSE stream.
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields,
+    List<({String filename, String mime, Uint8List bytes})> attachments,
+  });
+
   Stream<SseEvent> getStream({required String path});
 
   /// Release any resources held by the client. Default is a no-op.
@@ -252,19 +259,29 @@ class ApiClient implements BaseApiClient {
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
   }) {
-    final fields = <String, String>{'prompt': prompt};
-    if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
-    if (clientMessageId != null && clientMessageId.isNotEmpty) {
-      fields['client_message_id'] = clientMessageId;
-    }
-    if (contextPaths.isNotEmpty) {
-      fields['context_paths'] = jsonEncode([
-        for (final r in contextPaths) {'path': r.path, 'is_dir': r.isDir},
-      ]);
-    }
-    if (referencedThreadIds.isNotEmpty) {
-      fields['referenced_thread_ids'] = jsonEncode(referencedThreadIds);
-    }
+    final fields = buildSendFields(
+      prompt: prompt,
+      mode: mode,
+      clientMessageId: clientMessageId,
+      contextPaths: contextPaths,
+      referencedThreadIds: referencedThreadIds,
+    );
+    return fetchSseStream(
+      client: _client,
+      path: path,
+      method: 'POST',
+      fields: fields,
+      attachments: attachments,
+    );
+  }
+
+  @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) {
     return fetchSseStream(
       client: _client,
       path: path,
@@ -278,4 +295,29 @@ class ApiClient implements BaseApiClient {
   Stream<SseEvent> getStream({required String path}) {
     return fetchSseStream(client: _client, path: path, method: 'GET');
   }
+}
+
+/// Build the multipart fields shared by `send` and `resend` requests.
+Map<String, String> buildSendFields({
+  String? prompt,
+  String? mode,
+  String? clientMessageId,
+  List<PathRef> contextPaths = const [],
+  List<String> referencedThreadIds = const [],
+}) {
+  final fields = <String, String>{};
+  if (prompt != null) fields['prompt'] = prompt;
+  if (mode != null && mode.isNotEmpty) fields['mode'] = mode;
+  if (clientMessageId != null && clientMessageId.isNotEmpty) {
+    fields['client_message_id'] = clientMessageId;
+  }
+  if (contextPaths.isNotEmpty) {
+    fields['context_paths'] = jsonEncode([
+      for (final r in contextPaths) {'path': r.path, 'is_dir': r.isDir},
+    ]);
+  }
+  if (referencedThreadIds.isNotEmpty) {
+    fields['referenced_thread_ids'] = jsonEncode(referencedThreadIds);
+  }
+  return fields;
 }

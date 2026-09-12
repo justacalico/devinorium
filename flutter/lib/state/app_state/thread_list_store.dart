@@ -412,7 +412,7 @@ mixin ThreadListStore on AppStateBase {
   }
 
   @override
-  Future<void> deleteThread(String id) async {
+  Future<bool> deleteThread(String id) async {
     try {
       await api.deleteThread(id);
       final store = _threadStores.remove(id);
@@ -421,10 +421,12 @@ mixin ThreadListStore on AppStateBase {
         _setActiveStore(null);
       }
       await refreshThreadsAndGroups();
+      return true;
     } catch (e) {
       debugLogFailure('threadList.deleteThread', e, threadId: id);
       _globalError = '$e';
       notifyListeners();
+      return false;
     }
   }
 
@@ -481,6 +483,13 @@ mixin ThreadListStore on AppStateBase {
       return;
     }
     await store.sendMessage();
+  }
+
+  @override
+  Future<void> resendMessage(Message message, {String? editedPrompt}) async {
+    final store = _activeStore;
+    if (store == null) return;
+    await store.resendMessage(message, editedPrompt: editedPrompt);
   }
 
   @override

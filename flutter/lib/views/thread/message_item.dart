@@ -2,35 +2,21 @@ part of '../thread_page.dart';
 
 class _MessageItem extends StatefulWidget {
   final Message message;
+  final String threadId;
   final bool thinkingActive;
+  final bool isLastMessage;
+  final bool sending;
   const _MessageItem({
     super.key,
     required this.message,
+    required this.threadId,
     this.thinkingActive = false,
+    this.isLastMessage = false,
+    this.sending = false,
   });
 
   @override
   State<_MessageItem> createState() => _MessageItemState();
-}
-
-class _ThinkingItem {
-  final String type;
-  final String? content;
-  final ToolCallData? tool;
-  _ThinkingItem({required this.type, this.content, this.tool});
-}
-
-class _PartGroup {
-  final String type;
-  final String? content;
-  final List<_ThinkingItem> thinkingItems;
-  final ToolCallData? tool;
-  _PartGroup({
-    required this.type,
-    this.content,
-    this.thinkingItems = const [],
-    this.tool,
-  });
 }
 
 class _MessageItemState extends State<_MessageItem> {
@@ -41,7 +27,7 @@ class _MessageItemState extends State<_MessageItem> {
 
   late Message _message;
   late Message _previewMessage;
-  List<_PartGroup> _partGroups = [];
+  List<MessageRun> _rows = [];
   SyntaxHighlighter? _syntaxHighlighter;
   bool _expanded = false;
   bool _isFull = false;
@@ -61,7 +47,7 @@ class _MessageItemState extends State<_MessageItem> {
     _previewMessage = widget.message;
     _message = widget.message;
     _isFull = !_message.truncated;
-    _partGroups = _buildGroups(_effectiveMessage.allParts);
+    _rows = buildMessageRuns(_effectiveMessage.allParts);
   }
 
   @override
@@ -95,7 +81,7 @@ class _MessageItemState extends State<_MessageItem> {
       _isFull = !incoming.truncated;
       _loadingMore = false;
       _error = '';
-      _partGroups = _buildGroups(_effectiveMessage.allParts);
+      _rows = buildMessageRuns(_effectiveMessage.allParts);
       _maybeScheduleVisibilityCheck();
     }
   }
@@ -120,7 +106,7 @@ class _MessageItemState extends State<_MessageItem> {
   }
 
   bool get _hasText => _message.allParts.any(
-    (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
+    (p) => p.type == 'text' && (p.content?.trim().isNotEmpty ?? false),
   );
 
   bool get _shouldCollapse {
@@ -218,7 +204,7 @@ class _MessageItemState extends State<_MessageItem> {
       _isFull = !_previewMessage.truncated;
       _error = '';
       _loadingMore = false;
-      _partGroups = _buildGroups(_effectiveMessage.allParts);
+      _rows = buildMessageRuns(_effectiveMessage.allParts);
     });
   }
 
@@ -287,7 +273,7 @@ class _MessageItemState extends State<_MessageItem> {
           _error = '';
           _isFull =
               _message.content.runes.length >= (_message.totalChars ?? total);
-          _partGroups = _buildGroups(_effectiveMessage.allParts);
+          _rows = buildMessageRuns(_effectiveMessage.allParts);
         });
       } catch (e) {
         if (!mounted) return;
@@ -307,65 +293,6 @@ class _MessageItemState extends State<_MessageItem> {
         return;
       }
     }
-  }
-
-  List<_PartGroup> _buildGroups(List<MessagePart> parts) {
-    final groups = <_PartGroup>[];
-
-    for (final part in parts) {
-      if (part.type == 'thinking') {
-        final text = part.content ?? '';
-        if (groups.isNotEmpty && groups.last.type == 'thinking') {
-          final items = groups.last.thinkingItems;
-          if (items.isNotEmpty && items.last.type == 'thinking') {
-            final merged = items.last.content ?? '';
-            items[items.length - 1] = _ThinkingItem(
-              type: 'thinking',
-              content: merged + text,
-            );
-          } else {
-            items.add(_ThinkingItem(type: 'thinking', content: text));
-          }
-        } else {
-          groups.add(
-            _PartGroup(
-              type: 'thinking',
-              thinkingItems: [_ThinkingItem(type: 'thinking', content: text)],
-            ),
-          );
-        }
-      } else if (part.type == 'tool_call') {
-        final tool = part.toolCall;
-        if (tool == null) continue;
-        if (tool.kind == 'edit' || tool.kind == 'execute') {
-          groups.add(_PartGroup(type: 'tool_call', tool: tool));
-        } else if (groups.isNotEmpty && groups.last.type == 'thinking') {
-          groups.last.thinkingItems.add(
-            _ThinkingItem(type: 'tool_call', tool: tool),
-          );
-        } else {
-          groups.add(
-            _PartGroup(
-              type: 'thinking',
-              thinkingItems: [_ThinkingItem(type: 'tool_call', tool: tool)],
-            ),
-          );
-        }
-      } else if (part.type == 'text') {
-        final text = part.content ?? '';
-        if (groups.isNotEmpty && groups.last.type == 'text') {
-          final merged = groups.last.content ?? '';
-          groups[groups.length - 1] = _PartGroup(
-            type: 'text',
-            content: merged + text,
-          );
-        } else {
-          groups.add(_PartGroup(type: 'text', content: text));
-        }
-      }
-    }
-
-    return groups;
   }
 
   Widget _buildTextContent(BuildContext context, String text, String role) {
@@ -421,38 +348,67 @@ class _MessageItemState extends State<_MessageItem> {
     );
   }
 
-  Widget _buildPartWidgets(BuildContext context, List<_PartGroup> groups) {
+  Widget _buildRows(BuildContext context, List<MessageRun> rows) {
     final children = <Widget>[];
     final hasText = _hasText;
-    for (var i = 0; i < groups.length; i++) {
-      final group = groups[i];
-      if (group.type == 'text') {
-        children.add(
-          _buildTextContent(context, group.content ?? '', _message.role),
-        );
-      } else if (group.type == 'tool_call') {
-        final tool = group.tool;
-        if (tool != null) {
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      switch (row) {
+        case TextRun(:final text):
           children.add(
-            _ToolCallItem(key: ValueKey('tool-group-$i'), tool: tool),
+            KeyedSubtree(
+              key: ValueKey(row.id),
+              child: _buildTextContent(context, text, _message.role),
+            ),
           );
-        }
-      } else if (group.type == 'thinking') {
-        final isLast = i == groups.length - 1;
-        children.add(
-          _ThinkingBlock(
-            key: ValueKey('thinking-group-$i'),
-            items: group.thinkingItems,
-            working: isLast && _working,
-            hasText: hasText,
-          ),
-        );
+        case ThinkingRun(:final text):
+          children.add(
+            _ThinkingBlock(
+              key: ValueKey(row.id),
+              text: text,
+              working: i == rows.length - 1 && _working,
+              hasText: hasText,
+            ),
+          );
+        case ToolRun(:final tool):
+          children.add(_ToolCallItem(key: ValueKey(row.id), tool: tool));
+        case ToolGroupRun(:final tools):
+          children.add(_ToolGroupRow(key: ValueKey(row.id), tools: tools));
       }
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: children,
+    );
+  }
+
+  Widget _buildAttachment(BuildContext context, Attachment a) {
+    if (!a.isImage || a.isPathRef || a.isThreadRef) {
+      return _attachmentChip(Theme.of(context), a);
+    }
+    final bytes = a.bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      return AttachmentThumb(
+        bytes: bytes,
+        filename: a.filename,
+        onTap: () => showAttachmentPreview(
+          context,
+          bytes: bytes,
+          filename: a.filename,
+        ),
+      );
+    }
+    final messageId = _message.id;
+    final index = a.index;
+    if (messageId == null || index == null) {
+      return _attachmentChip(Theme.of(context), a);
+    }
+    return _RemoteAttachmentThumb(
+      key: ValueKey('attachment-thumb-$messageId-$index'),
+      attachment: a,
+      threadId: widget.threadId,
+      messageId: messageId,
     );
   }
 
@@ -485,11 +441,17 @@ class _MessageItemState extends State<_MessageItem> {
       ),
     };
 
-    final groups = _partGroups;
+    final created = message.createdAt?.toLocal();
+    final timeText = created == null
+        ? null
+        : MaterialLocalizations.of(
+            context,
+          ).formatTimeOfDay(TimeOfDay.fromDateTime(created));
+    final labelText = timeText == null ? label : '$label · $timeText';
+
+    final rows = _rows;
     final showLoading =
-        message.role == 'assistant' &&
-        message.content.isEmpty &&
-        groups.isEmpty;
+        message.role == 'assistant' && message.content.isEmpty && rows.isEmpty;
     final showShowMore = _shouldCollapse;
     final showLoadingMore = _isAssistant && _message.truncated && _loadingMore;
     final showLoadError =
@@ -515,18 +477,20 @@ class _MessageItemState extends State<_MessageItem> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
+                  labelText,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 4),
-                if (groups.isNotEmpty)
+                if (rows.isNotEmpty)
                   SelectionArea(
                     child: _MessageContextMenu(
                       message: _message,
-                      child: _buildPartWidgets(context, groups),
+                      isLastMessage: widget.isLastMessage,
+                      sending: widget.sending,
+                      child: _buildRows(context, rows),
                     ),
                   ),
                 if (showLoading)
@@ -541,7 +505,7 @@ class _MessageItemState extends State<_MessageItem> {
                   TextButton(
                     onPressed: () => setState(() {
                       _expanded = true;
-                      _partGroups = _buildGroups(_effectiveMessage.allParts);
+                      _rows = buildMessageRuns(_effectiveMessage.allParts);
                     }),
                     child: Text(l10n(context).showMore),
                   ),
@@ -572,36 +536,15 @@ class _MessageItemState extends State<_MessageItem> {
                     runSpacing: 6,
                     children: [
                       for (final a in message.attachments!)
-                        Chip(
-                          avatar: Icon(
-                            a.isThreadRef
-                                ? Icons.chat_bubble_outline
-                                : a.isPathRef
-                                ? (a.isDir
-                                    ? Icons.folder_outlined
-                                    : Icons.insert_drive_file_outlined)
-                                : Icons.attach_file,
-                            size: 14,
-                          ),
-                          label: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 360),
-                            child: Text(
-                              a.filename,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 0,
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          backgroundColor:
-                              theme.colorScheme.surfaceContainerHigh,
-                        ),
+                        _buildAttachment(context, a),
                     ],
                   ),
                 ],
+                _MessageActions(
+                  message: _message,
+                  isLastMessage: widget.isLastMessage,
+                  sending: widget.sending,
+                ),
               ],
             ),
           ),
@@ -613,10 +556,14 @@ class _MessageItemState extends State<_MessageItem> {
 
 class _MessageContextMenu extends StatelessWidget {
   final Message message;
+  final bool isLastMessage;
+  final bool sending;
   final Widget child;
 
   const _MessageContextMenu({
     required this.message,
+    this.isLastMessage = false,
+    this.sending = false,
     required this.child,
   });
 
@@ -644,14 +591,20 @@ class _MessageContextMenu extends StatelessWidget {
 
   void _show(BuildContext context, Offset position) {
     final ref = _firstLink;
-    if (ref == null) return;
+    final canCopy = message.content.isNotEmpty;
+    final canEdit = message.role == 'user' && message.id != null && !sending;
+    final canRegenerate =
+        (message.role == 'assistant' || message.role == 'error') &&
+        message.id != null &&
+        isLastMessage &&
+        !sending;
+    if (ref == null && !canCopy && !canEdit && !canRegenerate) return;
 
     final state = context.read<AppState>();
     final l = l10n(context);
-    final isLinked = _isLinkedToActiveThread(ref, state);
-    final threadId = state.activeThreadId;
     final renderBox = context.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (renderBox == null || overlay == null || overlay.size.isEmpty) return;
 
     final global = renderBox.localToGlobal(position);
@@ -660,10 +613,28 @@ class _MessageContextMenu extends StatelessWidget {
       overlay.size,
     );
 
-    showMenu(
-      context: context,
-      position: relative,
-      items: [
+    final items = <PopupMenuEntry<void>>[
+      if (canCopy)
+        PopupMenuItem(
+          child: Text(l.copyMessage),
+          onTap: () => _copyMessage(context, message.content),
+        ),
+      if (canEdit)
+        PopupMenuItem(
+          child: Text(l.editAndResend),
+          onTap: () => _editAndResend(context, message),
+        ),
+      if (canRegenerate)
+        PopupMenuItem(
+          child: Text(l.regenerate),
+          onTap: () => state.resendMessage(message),
+        ),
+    ];
+
+    if (ref != null) {
+      final isLinked = _isLinkedToActiveThread(ref, state);
+      final threadId = state.activeThreadId;
+      items.addAll([
         PopupMenuItem(
           child: Text(l.openLink),
           onTap: () => state.openLink(ref.webUrl),
@@ -676,9 +647,7 @@ class _MessageContextMenu extends StatelessWidget {
         ),
         if (threadId != null)
           PopupMenuItem(
-            child: Text(
-              isLinked ? l.unlinkFromThread : l.linkToThread,
-            ),
+            child: Text(isLinked ? l.unlinkFromThread : l.linkToThread),
             onTap: () {
               if (isLinked) {
                 state.unlinkThreadLinkedMr(threadId);
@@ -687,8 +656,11 @@ class _MessageContextMenu extends StatelessWidget {
               }
             },
           ),
-      ],
-    );
+      ]);
+    }
+    if (items.isEmpty) return;
+
+    showMenu(context: context, position: relative, items: items);
   }
 
   @override
@@ -698,6 +670,90 @@ class _MessageContextMenu extends StatelessWidget {
       onSecondaryTapUp: (details) => _show(context, details.localPosition),
       onLongPressStart: (details) => _show(context, details.localPosition),
       child: child,
+    );
+  }
+}
+
+/// Filename chip used for non-image attachments and as the fallback while an
+/// image blob is still loading or cannot be fetched.
+Widget _attachmentChip(ThemeData theme, Attachment a) {
+  return Chip(
+    avatar: Icon(
+      a.isThreadRef
+          ? Icons.chat_bubble_outline
+          : a.isPathRef
+          ? (a.isDir
+                ? Icons.folder_outlined
+                : Icons.insert_drive_file_outlined)
+          : Icons.attach_file,
+      size: 14,
+    ),
+    label: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: Text(a.filename, maxLines: 1, overflow: TextOverflow.ellipsis),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+    visualDensity: VisualDensity.compact,
+    backgroundColor: theme.colorScheme.surfaceContainerHigh,
+  );
+}
+
+/// Image attachment tile that pulls the stored blob from the backend. Shows
+/// the filename chip until the bytes arrive, and permanently when the request
+/// fails (e.g. messages sent before attachments were persisted).
+class _RemoteAttachmentThumb extends StatefulWidget {
+  final Attachment attachment;
+  final String threadId;
+  final int messageId;
+
+  const _RemoteAttachmentThumb({
+    super.key,
+    required this.attachment,
+    required this.threadId,
+    required this.messageId,
+  });
+
+  @override
+  State<_RemoteAttachmentThumb> createState() => _RemoteAttachmentThumbState();
+}
+
+class _RemoteAttachmentThumbState extends State<_RemoteAttachmentThumb> {
+  Uint8List? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final att = await context.read<AppState>().api.getMessageAttachment(
+        widget.threadId,
+        widget.messageId,
+        widget.attachment.index!,
+      );
+      if (!mounted || att.bytes.isEmpty) return;
+      setState(() => _bytes = att.bytes);
+    } catch (_) {
+      // The chip stays; missing or unreadable blobs are not fatal.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    if (bytes == null) {
+      return _attachmentChip(Theme.of(context), widget.attachment);
+    }
+    return AttachmentThumb(
+      bytes: bytes,
+      filename: widget.attachment.filename,
+      onTap: () => showAttachmentPreview(
+        context,
+        bytes: bytes,
+        filename: widget.attachment.filename,
+      ),
     );
   }
 }

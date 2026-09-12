@@ -1,6 +1,6 @@
 [package]
 name = "devinorium"
-version = "0.64.1"
+version = "0.69.0"
 edition = "2021"
 rust-version = "1.88.0"
 license = "AGPL-3.0-only"

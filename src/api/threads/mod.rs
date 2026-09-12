@@ -8,6 +8,7 @@ pub(crate) mod context_refs;
 pub(crate) mod permissions;
 pub(crate) mod persistence;
 pub(crate) mod plan;
+pub(crate) mod resend;
 pub(crate) mod routes;
 pub(crate) mod runs;
 pub(crate) mod send;
@@ -47,6 +48,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/threads/:id/messages/:message_id/full",
             get(routes::get_message_full),
+        )
+        .route(
+            "/api/threads/:id/messages/:message_id/attachments/:idx",
+            get(routes::get_message_attachment),
+        )
+        .route(
+            "/api/threads/:id/messages/:message_id/resend",
+            post(resend::resend),
         )
         .route("/api/threads/:id/send/stream", post(send::send_stream))
         .route("/api/threads/:id/run", get(runs::get_run))

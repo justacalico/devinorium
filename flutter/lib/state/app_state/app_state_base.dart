@@ -99,6 +99,27 @@ abstract class AppStateBase extends ChangeNotifier {
   set _gitPanelProjectId(int? value);
   int get _gitPanelSeq;
   set _gitPanelSeq(int value);
+  Map<String, FileDiff?> get _gitDiffs;
+  Set<String> get _gitDiffsLoading;
+  Set<String> get _gitDiffsExpanded;
+  int get _gitDiffsSeq;
+  set _gitDiffsSeq(int value);
+  List<GitCommit> get _gitHistory;
+  set _gitHistory(List<GitCommit> value);
+  int get _gitHistoryOffset;
+  set _gitHistoryOffset(int value);
+  bool get _gitHistoryOpen;
+  set _gitHistoryOpen(bool value);
+  bool get _gitHistoryLoading;
+  set _gitHistoryLoading(bool value);
+  bool get _gitHistoryHasMore;
+  set _gitHistoryHasMore(bool value);
+  bool get _gitHistoryLoaded;
+  set _gitHistoryLoaded(bool value);
+  int get _gitHistorySeq;
+  set _gitHistorySeq(int value);
+  String get _gitHistoryError;
+  set _gitHistoryError(String value);
   bool get _planOverlayVisible;
   set _planOverlayVisible(bool value);
   bool get _planOverlayExpanded;
@@ -192,6 +213,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _cloningRepo(bool value);
   String? get _cloneRepoResult;
   set _cloneRepoResult(String? value);
+  int get _cloneRepoSeq;
+  set _cloneRepoSeq(int value);
   ConnectionStatus get _connectionStatus;
   set _connectionStatus(ConnectionStatus value);
   String? get _serverVersion;
@@ -243,6 +266,17 @@ abstract class AppStateBase extends ChangeNotifier {
   String get gitPanelError;
   String? get gitPanelScopeKey;
   String? get gitApiThreadId;
+  int? get gitPanelProjectId;
+  int get gitDiffsSeq;
+  FileDiff? gitDiffFor(String key);
+  bool gitDiffExpanded(String key);
+  bool gitDiffLoading(String key);
+  List<GitCommit> get gitHistory;
+  void invalidateGitHistory();
+  bool get gitHistoryOpen;
+  bool get gitHistoryLoading;
+  bool get gitHistoryHasMore;
+  String get gitHistoryError;
   bool get planOverlayVisible;
   bool get planOverlayExpanded;
   bool get planOverlayDismissed;
@@ -382,6 +416,10 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<bool> gitCommitChanges(String message);
   Future<bool> gitPanelPull();
   Future<bool> gitPanelPush();
+  Future<void> toggleGitDiff(GitChangeEntry entry, {required bool staged});
+  Future<bool> gitDiscardPaths(List<String> paths, {required bool staged});
+  Future<void> toggleGitHistory();
+  Future<void> loadMoreGitHistory();
   Future<void> _loadPlanOverlayState();
   Future<void> _savePlanOverlayState();
   void openPlanOverlay();
@@ -428,6 +466,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
   Future<void> createProject({required String name, required String path});
+  void openAddProjectDialog();
   void openCloneRepoDialog();
   Future<String?> cloneRepo(String url);
   Future<void> openClonedProjectByPath(String path);
@@ -453,11 +492,12 @@ abstract class AppStateBase extends ChangeNotifier {
     required String command,
   });
   Future<void> saveThreadSettings();
-  Future<void> deleteThread(String id);
+  Future<bool> deleteThread(String id);
   Future<void> deleteThreadGroup(int id);
   Future<void> loadMoreMessages();
   Future<void> resumeThread(String id);
   Future<void> sendMessage();
+  Future<void> resendMessage(Message message, {String? editedPrompt});
   Future<void> stopThread();
   Future<void> openTotpSetup();
   Future<void> verifyTotp(String code);
@@ -491,6 +531,11 @@ abstract class AppStateBase extends ChangeNotifier {
     bool newBranch = false,
   });
   Future<void> gitDeleteWorktree(int projectId, String worktreePath);
+  Future<List<Thread>?> threadsUsingWorktree(
+    int projectId,
+    String worktreePath,
+  );
+  Future<void> deleteWorktree(int projectId, String worktreePath);
   Future<void> setThreadGit(
     String threadId, {
     String? branch,

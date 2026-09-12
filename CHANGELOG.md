@@ -2,6 +2,44 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.69.0 - 2026-09-12
+#### Features
+- 工作树下拉菜单支持删除工作树 - (b20a246) - HttpAnimations
+- --dev 监听所有接口，新增 --local 仅监听本机 - (2d49be9) - HttpAnimations
+
+- - -
+
+## v0.68.0 - 2026-09-12
+#### Features
+- 消息支持复制、时间戳、日期分隔与重新生成/编辑重发 - (4be7887) - HttpAnimations
+
+- - -
+
+## v0.67.0 - 2026-09-12
+#### Features
+- 添加 --dev 免登录开发模式 - (82f32c8) - HttpAnimations
+- git 面板支持内联 diff、丢弃更改和提交历史 - (5502182) - HttpAnimations
+#### Bug Fixes
+- 修复请求已删除 /send 接口的测试 - (1df2100) - HttpAnimations
+
+- - -
+
+## v0.66.0 - 2026-09-12
+#### Features
+- 统一新建项目和克隆仓库为单个添加项目按钮 - (5f61b10) - HttpAnimations
+
+- - -
+
+## v0.65.0 - 2026-09-12
+#### Features
+- 消息附件支持图片缩略图 - (c3a7266) - HttpAnimations
+- 添加审计日志查看接口和设置页面 - (63a0383) - HttpAnimations
+#### Bug Fixes
+- 修复空 worktree 清扫测试仍调用已删除的发送接口 - (8c72399) - HttpAnimations
+- 修复对话框按 Esc 无法关闭的问题 - (6b2b784) - HttpAnimations
+
+- - -
+
 ## v0.64.1 - 2026-09-12
 #### Bug Fixes
 - 删除线程时清理托管 worktree 和分支 - (d06a445) - HttpAnimations

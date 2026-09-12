@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 pub mod branch;
 pub mod changes;
 pub mod diff;
+pub mod log;
 pub mod runner;
 pub mod status;
 pub mod sync;
@@ -18,6 +19,7 @@ pub mod worktree;
 
 pub use branch::Branch;
 pub use changes::{ChangeEntry, ChangeList, CommitResult};
+pub use log::{CommitEntry, CommitPage};
 pub use status::RepoStatus;
 pub use worktree::Worktree;
 

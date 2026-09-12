@@ -267,6 +267,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get newProject => '新建项目';
 
   @override
+  String get addProject => '添加项目';
+
+  @override
+  String get addProjectLocalTitle => '本地文件夹';
+
+  @override
+  String get addProjectLocalDescription => '浏览磁盘上的文件夹';
+
+  @override
+  String get addProjectCloneDescription => '从远程 URL 克隆';
+
+  @override
   String get cloneRepo => '克隆存储库';
 
   @override
@@ -405,6 +417,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get attachSourceBrowse => '浏览';
+
+  @override
+  String get removeAttachment => '移除附件';
 
   @override
   String get files => '文件';
@@ -636,6 +651,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get messageRoleError => '错误';
 
   @override
+  String get copyMessage => '复制消息';
+
+  @override
+  String get regenerate => '重新生成';
+
+  @override
+  String get editMessageTitle => '编辑消息';
+
+  @override
+  String get editAndResend => '编辑并重新发送';
+
+  @override
+  String get resend => '重新发送';
+
+  @override
+  String get today => '今天';
+
+  @override
+  String get yesterday => '昨天';
+
+  @override
   String get thinking => '思考中';
 
   @override
@@ -643,6 +679,31 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get showThinking => '显示思考';
+
+  @override
+  String toolGroupReadFiles(num count) {
+    return '读取了 $count 个文件';
+  }
+
+  @override
+  String toolGroupChangedFiles(num count) {
+    return '修改了 $count 个文件';
+  }
+
+  @override
+  String toolGroupRanCommands(num count) {
+    return '运行了 $count 条命令';
+  }
+
+  @override
+  String toolGroupSearched(num count) {
+    return '搜索了 $count 次';
+  }
+
+  @override
+  String toolGroupUsedTools(num count) {
+    return '使用了 $count 个工具';
+  }
 
   @override
   String get composerHint => '在此提问或拖放文件';
@@ -804,6 +865,42 @@ class AppLocalizationsZh extends AppLocalizations {
   String get gitCommitAllConfirm => '没有已暂存的更改。是否暂存全部更改并提交？';
 
   @override
+  String get discard => '丢弃';
+
+  @override
+  String get discardAll => '丢弃全部';
+
+  @override
+  String discardFileConfirm(String path) {
+    return '丢弃对 $path 的全部更改？此操作无法撤销。';
+  }
+
+  @override
+  String discardUntrackedConfirm(String path) {
+    return '永久删除 $path？此操作无法撤销。';
+  }
+
+  @override
+  String discardAllConfirm(int count) {
+    return '丢弃全部 $count 个已更改的文件？此操作无法撤销。';
+  }
+
+  @override
+  String get history => '历史记录';
+
+  @override
+  String get noCommits => '还没有提交';
+
+  @override
+  String get noDiffAvailable => '无可用差异预览';
+
+  @override
+  String get openFile => '打开文件';
+
+  @override
+  String get copySha => '复制提交 SHA';
+
+  @override
   String get createBranch => '创建分支';
 
   @override
@@ -847,6 +944,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get worktreeModeShort => '工作树';
+
+  @override
+  String get deleteWorktree => '删除工作树';
+
+  @override
+  String deleteWorktreeConfirm(String path) {
+    return '删除位于 $path 的工作树？其中未提交的修改将丢失。';
+  }
+
+  @override
+  String deleteWorktreeThreadsConfirm(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 个会话正在使用此工作树（$names）。删除工作树将同时删除这些会话。确定吗？',
+      one: '会话「$names」正在使用此工作树。删除工作树将同时删除该会话。确定吗？',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get git => 'Git';

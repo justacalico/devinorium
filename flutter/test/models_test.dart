@@ -352,6 +352,41 @@ void main() {
       expect(m.model, isEmpty);
     });
 
+    test('parses created_at as a timestamp', () {
+      final m = Message.fromJson({
+        'role': 'user',
+        'content': 'hi',
+        'created_at': '2025-01-02T03:04:05.000Z',
+      });
+      expect(m.createdAt, DateTime.utc(2025, 1, 2, 3, 4, 5));
+    });
+
+    test('missing created_at leaves createdAt null', () {
+      final m = Message.fromJson({'role': 'user', 'content': 'hi'});
+      expect(m.createdAt, isNull);
+    });
+
+    test('createdAt participates in equality and hashing', () {
+      final a = Message(
+        role: 'user',
+        content: 'hi',
+        createdAt: DateTime.utc(2025, 1, 1),
+      );
+      final b = Message(
+        role: 'user',
+        content: 'hi',
+        createdAt: DateTime.utc(2025, 1, 1),
+      );
+      final c = Message(
+        role: 'user',
+        content: 'hi',
+        createdAt: DateTime.utc(2025, 1, 2),
+      );
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a, isNot(c));
+    });
+
     test('copyWith updates content', () {
       final m = Message(role: 'user', content: 'hi');
       final updated = m.copyWith(content: 'hello');

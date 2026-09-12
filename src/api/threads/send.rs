@@ -130,16 +130,38 @@ pub(crate) fn sanitize_sse_data(s: &str) -> String {
     s.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<SendInput, Response> {
-    let mut prompt: Option<String> = None;
-    let mut mode: String = "code".to_string();
-    let mut client_message_id: Option<String> = None;
-    let mut attachments: Vec<Attachment> = Vec::new();
-    let mut att_meta: Vec<serde_json::Value> = Vec::new();
-    let mut context_paths: Vec<ContextPathIn> = Vec::new();
-    let mut referenced_thread_ids: Vec<String> = Vec::new();
+/// Raw result of reading a send-style multipart body. `prompt` stays an
+/// `Option` so callers can tell "field absent" (regenerate) apart from
+/// "field present but empty".
+#[derive(Debug, Default)]
+pub(crate) struct SendFields {
+    pub prompt: Option<String>,
+    pub mode: String,
+    pub client_message_id: Option<String>,
+    pub attachments: Vec<Attachment>,
+    pub att_meta: Vec<serde_json::Value>,
+    pub context_paths: Vec<ContextPathIn>,
+    pub referenced_thread_ids: Vec<String>,
+}
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFields, Response> {
+    let mut fields = SendFields::default();
+
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            // A truncated body must not be mistaken for missing fields; on
+            // the resend endpoint "no prompt" means regenerate and deletes
+            // the tail.
+            Err(e) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiError::new(format!("malformed multipart body: {e}"))),
+                )
+                    .into_response())
+            }
+        };
         let name = field.name().unwrap_or("").to_string();
         let filename = field.file_name().unwrap_or("").to_string();
         let mime = field
@@ -151,10 +173,10 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
             Err(e) => return Err(map_err_internal(e).into_response()),
         };
         if name == "prompt" {
-            prompt = Some(String::from_utf8_lossy(&bytes).to_string());
+            fields.prompt = Some(String::from_utf8_lossy(&bytes).to_string());
         } else if name == "mode" {
             let raw = String::from_utf8_lossy(&bytes).to_string();
-            mode = normalize_mode(&raw);
+            fields.mode = normalize_mode(&raw);
         } else if name == "client_message_id" {
             let s = String::from_utf8_lossy(&bytes).to_string();
             if s.len() > MAX_CLIENT_MESSAGE_ID_LEN {
@@ -165,12 +187,12 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
                     .into_response());
             }
             if !s.is_empty() {
-                client_message_id = Some(s);
+                fields.client_message_id = Some(s);
             }
         } else if name == "context_paths" {
             let raw = String::from_utf8_lossy(&bytes).to_string();
             match super::context_refs::parse_context_paths(&raw) {
-                Ok(paths) => context_paths.extend(paths),
+                Ok(paths) => fields.context_paths.extend(paths),
                 Err(e) => {
                     return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
                 }
@@ -178,7 +200,7 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
         } else if name == "referenced_thread_ids" {
             let raw = String::from_utf8_lossy(&bytes).to_string();
             match super::thread_refs::parse_referenced_thread_ids(&raw) {
-                Ok(ids) => referenced_thread_ids.extend(ids),
+                Ok(ids) => fields.referenced_thread_ids.extend(ids),
                 Err(e) => {
                     return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
                 }
@@ -191,23 +213,38 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
                 )
                     .into_response());
             }
-            att_meta.push(serde_json::json!({
+            fields.att_meta.push(serde_json::json!({
                 "filename": filename,
                 "mime": mime,
                 "size": bytes.len(),
+                // Position in `attachments`; lets clients fetch the stored
+                // blob from the attachment endpoint.
+                "index": fields.attachments.len(),
             }));
-            attachments.push(Attachment {
+            fields.attachments.push(Attachment {
                 filename: filename.clone(),
                 mime,
                 data: bytes.to_vec(),
             });
         }
     }
-    let prompt = match prompt {
+    if fields.mode.is_empty() {
+        fields.mode = "code".to_string();
+    }
+    Ok(fields)
+}
+
+/// Validate raw send fields into a [SendInput]. Requires a non-empty prompt
+/// or at least one context/thread reference.
+#[allow(clippy::result_large_err)]
+pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Response> {
+    let prompt = match fields.prompt {
         Some(p) if !p.trim().is_empty() => p,
         // References alone are a valid message: the context block makes up
         // the effective prompt sent to the provider.
-        _ if !context_paths.is_empty() || !referenced_thread_ids.is_empty() => String::new(),
+        _ if !fields.context_paths.is_empty() || !fields.referenced_thread_ids.is_empty() => {
+            String::new()
+        }
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -225,15 +262,19 @@ pub(crate) async fn parse_send_multipart(mut multipart: Multipart) -> Result<Sen
     }
     Ok(SendInput {
         prompt,
-        mode,
-        attachments,
-        att_meta,
-        client_message_id,
-        context_paths,
+        mode: fields.mode,
+        attachments: fields.attachments,
+        att_meta: fields.att_meta,
+        client_message_id: fields.client_message_id,
+        context_paths: fields.context_paths,
         context_refs: Vec::new(),
-        referenced_thread_ids,
+        referenced_thread_ids: fields.referenced_thread_ids,
         thread_refs: Vec::new(),
     })
+}
+
+pub(crate) async fn parse_send_multipart(multipart: Multipart) -> Result<SendInput, Response> {
+    send_input_from_fields(read_send_fields(multipart).await?)
 }
 
 /// What a completed provider call produced, beyond the message parts.
@@ -382,6 +423,9 @@ mod tests {
         assert_eq!(input.attachments[0].filename, "note.txt");
         assert_eq!(input.attachments[0].data, b"file body");
         assert_eq!(input.att_meta[0]["filename"], "note.txt");
+        // The metadata index is the upload's position among sent files; the
+        // attachment endpoint serves the blob under that key.
+        assert_eq!(input.att_meta[0]["index"], 0);
     }
 
     #[tokio::test]

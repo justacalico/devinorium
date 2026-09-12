@@ -161,6 +161,55 @@ class GitChanges {
   );
 }
 
+/// A commit in `GET /api/projects/:id/git/log` output.
+class GitCommit {
+  final String sha;
+  final String subject;
+  final String body;
+  final String author;
+  final String email;
+  final int timestamp;
+  final String refs;
+
+  GitCommit({
+    this.sha = '',
+    this.subject = '',
+    this.body = '',
+    this.author = '',
+    this.email = '',
+    this.timestamp = 0,
+    this.refs = '',
+  });
+
+  String get shortSha => sha.length > 7 ? sha.substring(0, 7) : sha;
+
+  factory GitCommit.fromJson(Map<String, dynamic> j) => GitCommit(
+    sha: j['sha'] as String? ?? '',
+    subject: j['subject'] as String? ?? '',
+    body: j['body'] as String? ?? '',
+    author: j['author'] as String? ?? '',
+    email: j['email'] as String? ?? '',
+    timestamp: (j['timestamp'] as num?)?.toInt() ?? 0,
+    refs: j['refs'] as String? ?? '',
+  );
+}
+
+/// One page of `GET /api/projects/:id/git/log` results.
+class GitLogPage {
+  final List<GitCommit> commits;
+  final bool hasMore;
+
+  GitLogPage({this.commits = const [], this.hasMore = false});
+
+  factory GitLogPage.fromJson(Map<String, dynamic> j) => GitLogPage(
+    commits: (j['commits'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(GitCommit.fromJson)
+        .toList(),
+    hasMore: j['has_more'] as bool? ?? false,
+  );
+}
+
 /// The result of `POST /api/projects/:id/git/commit`.
 class GitCommitResult {
   final String sha;

@@ -26,6 +26,16 @@ mixin DialogStore on AppStateBase {
   @override
   String get renameInitialName => _renameInitialName;
   @override
+  void openAddProjectDialog() {
+    _dialog = DialogKind.addProject;
+    _cloneRepoSeq++;
+    _cloningRepo = false;
+    _cloneRepoResult = null;
+    _globalError = '';
+    _userMenuOpen = false;
+    notifyListeners();
+  }
+  @override
   void closeDialog() {
     _dialog = DialogKind.none;
     _mergeRequestUrl = null;
@@ -33,6 +43,9 @@ mixin DialogStore on AppStateBase {
     _renameProjectId = null;
     _renameThreadId = null;
     _renameInitialName = '';
+    _cloneRepoSeq++;
+    _cloningRepo = false;
+    _cloneRepoResult = null;
     notifyListeners();
   }
   @override

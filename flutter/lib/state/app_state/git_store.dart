@@ -31,6 +31,8 @@ mixin GitStore on AppStateBase {
   @override
   String? _cloneRepoResult;
   @override
+  int _cloneRepoSeq = 0;
+  @override
   MergeRequestLink? get linkedMergeRequest => _linkedMergeRequest;
   @override
   bool get loadingLinkedMergeRequest => _loadingLinkedMergeRequest;
@@ -76,6 +78,7 @@ mixin GitStore on AppStateBase {
   @override
   void openCloneRepoDialog() {
     _dialog = DialogKind.cloneRepo;
+    _cloneRepoSeq++;
     _cloningRepo = false;
     _cloneRepoResult = null;
     _globalError = '';
@@ -84,23 +87,30 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<String?> cloneRepo(String url) async {
+    final seq = ++_cloneRepoSeq;
     _cloningRepo = true;
     _cloneRepoResult = null;
     _globalError = '';
     notifyListeners();
     try {
       final path = await api.cloneRepo(url);
-      _cloneRepoResult = path;
+      // The clone already landed on the server, so the project list refresh
+      // runs even if the user navigated away mid-request.
       await loadProjects();
+      if (seq != _cloneRepoSeq) return null;
+      _cloneRepoResult = path;
       return path;
     } catch (e) {
+      if (seq != _cloneRepoSeq) return null;
       _globalError = '$e';
       _cloneRepoResult = null;
       notifyListeners();
       return null;
     } finally {
-      _cloningRepo = false;
-      notifyListeners();
+      if (seq == _cloneRepoSeq) {
+        _cloningRepo = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -193,10 +203,14 @@ mixin GitStore on AppStateBase {
         switchBranch: switchBranch,
       );
       _globalError = '';
+      if (switchBranch) {
+        // Switching branches moves HEAD; loaded history is stale.
+        invalidateGitHistory();
+        unawaited(refreshLinkedMergeRequest());
+      }
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
-      if (switchBranch) unawaited(refreshLinkedMergeRequest());
       return true;
     } catch (e) {
       _globalError = '$e';
@@ -214,6 +228,8 @@ mixin GitStore on AppStateBase {
     try {
       await api.gitCheckout(projectId, refName, track: track);
       _globalError = '';
+      // A checkout moves HEAD; the panel's loaded history is stale.
+      invalidateGitHistory();
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
@@ -231,6 +247,7 @@ mixin GitStore on AppStateBase {
     try {
       await api.gitPull(projectId);
       _globalError = '';
+      invalidateGitHistory();
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
@@ -248,6 +265,8 @@ mixin GitStore on AppStateBase {
     try {
       await api.gitPullBranch(projectId, name);
       _globalError = '';
+      // Pulling the current branch moves HEAD.
+      invalidateGitHistory();
       await loadGitRepoInfo(projectId, force: true);
       await _loadGitBranchesAndWorktrees(projectId);
       await loadProjects();
@@ -315,6 +334,91 @@ mixin GitStore on AppStateBase {
       _globalError = '$e';
       notifyListeners();
     }
+  }
+
+  @override
+  Future<List<Thread>?> threadsUsingWorktree(
+    int projectId,
+    String worktreePath,
+  ) async {
+    try {
+      return await _threadsUsingWorktree(projectId, worktreePath);
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  @override
+  Future<void> deleteWorktree(int projectId, String worktreePath) async {
+    final dependents = await threadsUsingWorktree(projectId, worktreePath);
+    if (dependents == null) return;
+    for (final thread in dependents) {
+      // The backend stops a running session and waits for it before the
+      // thread row is gone, so this also kills an in-flight run.
+      if (!await deleteThread(thread.id)) return;
+    }
+    // Deleting a thread may already have removed a managed worktree; only
+    // call the git endpoint when the path is still registered. The cached
+    // list cannot be trusted for the check because a failed load clears it,
+    // so refresh directly and let the error surface.
+    final List<GitWorktree> current;
+    try {
+      current = await api.gitWorktrees(projectId, force: true);
+      _gitWorktrees[projectId] = current;
+      _gitBranches[projectId] = await api.gitBranches(projectId, force: true);
+      notifyListeners();
+    } catch (e) {
+      _globalError = '$e';
+      notifyListeners();
+      return;
+    }
+    if (current.any((w) => w.path == worktreePath)) {
+      await gitDeleteWorktree(projectId, worktreePath);
+    } else {
+      await loadGitRepoInfo(projectId, force: true);
+      await loadProjects();
+    }
+  }
+
+  /// Threads of [projectId] that actually run inside [worktreePath]. The
+  /// sidebar's thread list is paged, so dependents are fetched from the API
+  /// rather than read from [_threads]; missing one would delete the worktree
+  /// out from under a thread that still points at it. worktree_path stays on
+  /// the row after a thread switches back to local mode, so only threads
+  /// still in worktree mode count.
+  Future<List<Thread>> _threadsUsingWorktree(
+    int projectId,
+    String worktreePath,
+  ) async {
+    bool usesWorktree(Thread t) =>
+        t.worktreePath == worktreePath && t.envMode == 'worktree';
+    final found = <String, Thread>{};
+    final seen = <String>{};
+    var offset = 0;
+    while (true) {
+      final page = await api.listThreadsForProject(
+        projectId,
+        limit: 200,
+        offset: offset,
+      );
+      var fresh = 0;
+      for (final t in page) {
+        if (seen.add(t.id)) fresh++;
+        if (t.projectId == projectId && usesWorktree(t)) found[t.id] = t;
+      }
+      // fresh == 0 means the server ignored the offset and is replaying ids.
+      if (page.length < 200 || fresh == 0) break;
+      offset += page.length;
+    }
+    for (final t in _threads) {
+      if (seen.contains(t.id)) continue;
+      if (t.projectId == projectId && usesWorktree(t)) {
+        found[t.id] = t;
+      }
+    }
+    return found.values.toList();
   }
 
   @override

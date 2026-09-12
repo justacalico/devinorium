@@ -105,6 +105,8 @@ impl AppState {
 /// This is shared by the binary target and the integration tests so that
 /// tests exercise the exact same middleware stack as production.
 pub fn build_app(state: AppState) -> Router {
+    let dev_mode = state.config.dev_mode;
+    let dev_loopback = dev_mode && config::is_loopback_host(&state.config.host);
     let trust_proxy = state.config.trust_proxy;
     let csrf_allowed = state.config.allowed_origin.clone();
     let cors_allowed = state.config.allowed_origin.clone();
@@ -198,6 +200,15 @@ pub fn build_app(state: AppState) -> Router {
     // sets DEVINORIUM_ALLOWED_ORIGIN. Same-origin web requests are unaffected.
     if let Some(cors) = security::cors::build_cors_layer(&cors_allowed) {
         app = app.layer(cors);
+    }
+
+    // Dev mode serves every request as the local owner with no credentials.
+    // On a loopback bind (`--local`), confine Host headers to loopback as
+    // the outermost layer: DNS rebinding would otherwise let a remote web
+    // page drive the API. On a public bind the check cannot tell a
+    // rebinding browser from a real remote client, so it is skipped.
+    if dev_loopback {
+        app = app.layer(from_fn(security::dev_host_check));
     }
 
     app.with_state(state)

@@ -40,6 +40,7 @@ async fn make_app() -> (Router, db::Db) {
         allowed_origin: None,
         local_token: None,
         tailscale_bin: "tailscale".into(),
+        dev_mode: false,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {

@@ -39,6 +39,15 @@ class _ThrowingClient extends BaseApiClient {
   @override
   Stream<SseEvent> getStream({required String path}) =>
       throw UnimplementedError();
+
+  @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) =>
+      throw UnimplementedError();
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       throw UnimplementedError();
@@ -453,6 +462,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.settingsTopicIndex, 6);
+  });
+
+  testWidgets('Projects header has a single add project button', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.byTooltip('Add project'), findsOneWidget);
+    expect(find.byTooltip('New project'), findsNothing);
+    expect(find.byTooltip('Clone repository'), findsNothing);
+
+    await tester.tap(find.byTooltip('Add project'));
+    await tester.pumpAndSettle();
+
+    expect(state.dialog, DialogKind.addProject);
   });
 
   testWidgets('Sidebar thread tiles do not show status tags', (tester) async {
@@ -2691,8 +2728,7 @@ void main() {
 
     expect(find.byKey(const Key('sidebar_search')), findsOneWidget);
     expect(find.text('PROJECTS'), findsOneWidget);
-    expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.add), findsOneWidget);
   });
 
   testWidgets('Project with more than five threads shows a Show more button', (

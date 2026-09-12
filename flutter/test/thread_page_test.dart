@@ -30,6 +30,15 @@ class _ThrowingClient extends BaseApiClient {
       throw UnimplementedError();
 
   @override
+  Stream<SseEvent> postStream({
+    required String path,
+    Map<String, String> fields = const {},
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+  }) =>
+      throw UnimplementedError();
+
+  @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       throw UnimplementedError();
 
@@ -525,7 +534,7 @@ void main() {
     expect(tester.widget<MarkdownBody>(markdowns.at(1)).data, ' done');
   });
 
-  testWidgets('tool calls render inside the expanded thinking block', (
+  testWidgets('finished tool streaks collapse into a summary row', (
     tester,
   ) async {
     final state = AppState.test(
@@ -583,6 +592,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('hmm'), findsOneWidget);
+    expect(find.text('Searched 2 times'), findsOneWidget);
+    expect(find.text('Run cmd'), findsNothing);
+
+    await tester.tap(find.text('Searched 2 times'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Run cmd'), findsOneWidget);
     expect(find.text('Run another'), findsOneWidget);
   });
@@ -1123,7 +1138,7 @@ void main() {
   });
 
   testWidgets(
-    'keeps tool calls with their preceding thinking group when interleaved',
+    'tool calls render as their own rows when interleaved',
     (tester) async {
       final state = AppState.test(
         user: User(
@@ -1184,22 +1199,14 @@ void main() {
       expect(find.byType(AnimatedCrossFade), findsNWidgets(2));
       expect(find.byType(MarkdownBody), findsOneWidget);
 
-      final firstBlock = tester.getCenter(
-        find.ancestor(
-          of: find.text('Run a'),
-          matching: find.byType(AnimatedCrossFade),
-        ),
-      );
+      final firstPill = tester.getCenter(find.text('Show thinking').first);
+      final runA = tester.getCenter(find.text('Run a'));
       final textCenter = tester.getCenter(find.byType(MarkdownBody));
-      final secondBlock = tester.getCenter(
-        find.ancestor(
-          of: find.text('Run b'),
-          matching: find.byType(AnimatedCrossFade),
-        ),
-      );
+      final runB = tester.getCenter(find.text('Run b'));
 
-      expect(firstBlock.dy, lessThan(textCenter.dy));
-      expect(textCenter.dy, lessThan(secondBlock.dy));
+      expect(firstPill.dy, lessThan(runA.dy));
+      expect(runA.dy, lessThan(textCenter.dy));
+      expect(textCenter.dy, lessThan(runB.dy));
     },
   );
 
