@@ -29,7 +29,7 @@ pub use status::{ProviderStatus, ProviderStatusCache};
 pub use version::ProviderVersion;
 
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -275,14 +275,6 @@ pub trait Provider: Send + Sync {
 
     /// Continue an existing conversation by session id.
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse>;
-
-    /// Best-effort: export the full conversation for a session as JSON.
-    /// Providers that cannot export should return an empty object.
-    async fn export(
-        &self,
-        session_id: &str,
-        working_dir: &Path,
-    ) -> anyhow::Result<serde_json::Value>;
 
     /// Verify the provider is reachable without running a prompt.
     /// For the Devin CLI this opens an ACP session, sends `Initialize`,

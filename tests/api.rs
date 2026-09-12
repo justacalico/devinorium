@@ -175,13 +175,6 @@ impl Provider for StubProvider {
             usage: None,
         })
     }
-    async fn export(
-        &self,
-        _session_id: &str,
-        _working_dir: &std::path::Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
-    }
 
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
@@ -236,13 +229,6 @@ impl Provider for LinkingStubProvider {
             parts,
             usage: None,
         })
-    }
-    async fn export(
-        &self,
-        _session_id: &str,
-        _working_dir: &std::path::Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
     }
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
@@ -329,13 +315,6 @@ impl Provider for StreamingStubProvider {
             usage: None,
         })
     }
-    async fn export(
-        &self,
-        _session_id: &str,
-        _working_dir: &std::path::Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
-    }
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -394,13 +373,6 @@ impl Provider for FailingProvider {
             }
         }
         anyhow::bail!("provider crashed")
-    }
-    async fn export(
-        &self,
-        _session_id: &str,
-        _working_dir: &std::path::Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
     }
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
@@ -960,7 +932,7 @@ async fn assistant_message_inherits_updated_model() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -974,6 +946,10 @@ async fn assistant_message_inherits_updated_model() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    // The SSE stream ends when the run closes, so draining it waits for the
+    // provider turn to finish before we check persisted state.
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let msgs = db.list_messages(&tid).await.unwrap();
     assert_eq!(msgs.len(), 2);
@@ -1168,7 +1144,7 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -1227,7 +1203,7 @@ async fn thread_send_persists_partial_output_on_provider_error() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -1240,7 +1216,11 @@ async fn thread_send_persists_partial_output_on_provider_error() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    // A mid-run provider failure surfaces as an error event on the stream.
+    assert!(body.contains("event: error"), "body: {body}");
+    assert!(body.contains("provider crashed"), "body: {body}");
 
     let msgs = db.list_messages(&tid).await.unwrap();
     assert_eq!(
@@ -1592,19 +1572,15 @@ async fn thread_send_context_paths_only_is_a_valid_message() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-
-    // The SSE stream can end before the run fully completes; poll the run
-    // status until it settles before checking the persisted messages.
-    wait_for_run(&app, &cookie, &tid, |body| {
-        body.contains(r#""status":"completed""#)
-            || body.contains(r#""status":"failed""#)
-            || body.contains(r#""status":"stopped""#)
-    })
-    .await;
+    // Draining the SSE body waits for the run to close; done proves the
+    // provider turn succeeded rather than failing into an error message.
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let msgs = db.list_messages(&tid).await.unwrap();
     assert_eq!(msgs.len(), 2);
     assert_eq!(msgs[0].content, "");
+    assert_eq!(msgs[1].role, "assistant");
     let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
     assert_eq!(atts[0]["filename"], "src");
 
@@ -2022,17 +1998,13 @@ async fn thread_send_referenced_thread_only_is_a_valid_message() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-
-    wait_for_run(&app, &cookie, &tid, |body| {
-        body.contains(r#""status":"completed""#)
-            || body.contains(r#""status":"failed""#)
-            || body.contains(r#""status":"stopped""#)
-    })
-    .await;
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let msgs = db.list_messages(&tid).await.unwrap();
     assert_eq!(msgs.len(), 2);
     assert_eq!(msgs[0].content, "");
+    assert_eq!(msgs[1].role, "assistant");
     let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
     assert_eq!(atts[0]["kind"], "thread");
 
@@ -2085,7 +2057,7 @@ async fn thread_send_all_dropped_thread_refs_is_rejected() {
 
 #[tokio::test]
 async fn thread_send_includes_client_message_id() {
-    let (app, _db) = make_app().await;
+    let (app, db) = make_app().await;
     let cookie = login(&app).await;
 
     let pid = create_project(&app, &cookie).await;
@@ -2106,7 +2078,7 @@ async fn thread_send_includes_client_message_id() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -2120,88 +2092,12 @@ async fn thread_send_includes_client_message_id() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-
     let body = body_str(resp.into_body()).await;
-    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(json["user_message"]["client_message_id"], "cm-abc-456");
-    assert_eq!(json["assistant_message"]["role"], "assistant");
-}
+    assert!(body.contains("event: done"), "body: {body}");
 
-#[tokio::test]
-async fn thread_send_rejects_duplicate_client_message_id() {
-    let (app, _db) = make_app().await;
-    let cookie = login(&app).await;
-
-    let pid = create_project(&app, &cookie).await;
-    let tid = make_thread(&app, &cookie, pid, "T").await;
-
-    let (boundary, body) = {
-        let boundary = "----dupboundary";
-        let client_id = "cm-dup-1";
-        let body = format!(
-            "--{boundary}\r\n\
-            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
-            Hello world\r\n\
-            --{boundary}\r\n\
-            Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
-            {client_id}\r\n\
-            --{boundary}--\r\n"
-        );
-        (boundary.to_string(), body)
-    };
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                .header(
-                    "content-type",
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    let (boundary, body) = {
-        let boundary = "----dupboundary";
-        let client_id = "cm-dup-1";
-        let body = format!(
-            "--{boundary}\r\n\
-            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
-            Hello world\r\n\
-            --{boundary}\r\n\
-            Content-Disposition: form-data; name=\"client_message_id\"\r\n\r\n\
-            {client_id}\r\n\
-            --{boundary}--\r\n"
-        );
-        (boundary.to_string(), body)
-    };
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                .header(
-                    "content-type",
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs[0].client_message_id.as_deref(), Some("cm-abc-456"));
+    assert_eq!(msgs[1].role, "assistant");
 }
 
 #[tokio::test]
@@ -2270,82 +2166,6 @@ async fn thread_send_stream_rejects_duplicate_client_message_id() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn thread_send_rolls_back_user_message_on_already_running() {
-    let (app, db) = make_app_with_delay(5000).await;
-    let cookie = login(&app).await;
-
-    let pid = create_project(&app, &cookie).await;
-    let tid = make_thread(&app, &cookie, pid, "T").await;
-
-    let first_cookie = cookie.clone();
-    let first_tid = tid.clone();
-    let first_app = app.clone();
-    let first = tokio::spawn(async move {
-        let boundary = "----firstboundary";
-        let body = format!(
-            "--{boundary}\r\n\
-            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
-            First\r\n\
-            --{boundary}--\r\n"
-        );
-        first_app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/api/threads/{first_tid}/send"))
-                    .header(header::HOST, "localhost")
-                    .header(header::ORIGIN, "http://localhost")
-                    .header("cookie", &first_cookie)
-                    .header(
-                        "content-type",
-                        format!("multipart/form-data; boundary={boundary}"),
-                    )
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-    });
-
-    // Wait for the first run to start and persist its user message.
-    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
-
-    let boundary = "----secondboundary";
-    let body = format!(
-        "--{boundary}\r\n\
-        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
-        Second\r\n\
-        --{boundary}--\r\n"
-    );
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                .header(
-                    "content-type",
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-
-    // Only the first user message should be persisted; the second was rolled back.
-    let msgs = db.list_messages(&tid).await.unwrap();
-    assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].content, "First");
-
-    first.abort();
 }
 
 #[tokio::test]
@@ -2448,7 +2268,7 @@ async fn thread_stop_ends_active_run() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/api/threads/{send_tid}/send"))
+                    .uri(format!("/api/threads/{send_tid}/send/stream"))
                     .header(header::HOST, "localhost")
                     .header(header::ORIGIN, "http://localhost")
                     .header("cookie", &send_cookie)
@@ -2483,7 +2303,7 @@ async fn thread_stop_ends_active_run() {
     let resp = send_task.await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains(r#""stopped":true"#), "body: {body}");
+    assert!(body.contains("event: stopped"), "body: {body}");
 
     // The thread should still show a stopped run for a while.
     let resp = app
@@ -2543,7 +2363,7 @@ async fn thread_stop_persists_partial_output() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/api/threads/{send_tid}/send"))
+                    .uri(format!("/api/threads/{send_tid}/send/stream"))
                     .header(header::HOST, "localhost")
                     .header(header::ORIGIN, "http://localhost")
                     .header("cookie", &send_cookie)
@@ -4020,17 +3840,6 @@ async fn file_manager_rejects_hidden_paths() {
         .await,
         StatusCode::BAD_REQUEST,
     );
-    assert_eq!(
-        request_status(
-            app.clone(),
-            &cookie,
-            "POST",
-            "/api/files/move",
-            &format!(r#"{{"from":"{path}/readme.txt","to":".devinorium-attachments/readme.txt"}}"#),
-        )
-        .await,
-        StatusCode::BAD_REQUEST,
-    );
 
     // Uploading into .git should also be rejected.
     let boundary = "----fmboundary";
@@ -4288,7 +4097,7 @@ async fn file_manager_thread_scope_confines_traversal_to_worktree() {
 
 #[tokio::test]
 async fn thread_send_context_paths_resolve_in_worktree() {
-    let (app, _db) = make_app().await;
+    let (app, db) = make_app().await;
     let cookie = login(&app).await;
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
@@ -4321,7 +4130,7 @@ async fn thread_send_context_paths_resolve_in_worktree() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -4336,8 +4145,10 @@ async fn thread_send_context_paths_resolve_in_worktree() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_str(resp.into_body()).await;
-    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
-    let reply = v["reply"].as_str().unwrap();
+    assert!(body.contains("event: done"), "body: {body}");
+
+    let msgs = db.list_messages(tid).await.unwrap();
+    let reply = msgs.last().unwrap().content.as_str();
 
     let resp = app
         .clone()
@@ -5489,7 +5300,7 @@ async fn send_rejects_oversized_attachment() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -5521,7 +5332,7 @@ async fn send_rejects_empty_prompt() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -5761,7 +5572,7 @@ async fn custom_provider_command_is_used() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{id}/send"))
+                .uri(format!("/api/threads/{id}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -5774,7 +5585,9 @@ async fn custom_provider_command_is_used() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: error"), "body: {body}");
 }
 
 fn init_git_repo(path: &std::path::Path) {
@@ -6124,7 +5937,7 @@ async fn thread_send_worktree_mode_creates_auto_worktree() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -6138,6 +5951,8 @@ async fn thread_send_worktree_mode_creates_auto_worktree() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -6188,11 +6003,12 @@ async fn thread_send_worktree_mode_reuses_existing_worktree() {
         let body = format!(
             "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHi\r\n--{boundary}--\r\n"
         );
-        app.clone()
+        let resp = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/api/threads/{tid}/send"))
+                    .uri(format!("/api/threads/{tid}/send/stream"))
                     .header(header::HOST, "localhost")
                     .header(header::ORIGIN, "http://localhost")
                     .header("cookie", &cookie)
@@ -6204,11 +6020,15 @@ async fn thread_send_worktree_mode_reuses_existing_worktree() {
                     .unwrap(),
             )
             .await
-            .unwrap()
+            .unwrap();
+        let status = resp.status();
+        let body = body_str(resp.into_body()).await;
+        (status, body)
     };
 
-    let resp = send().await;
-    assert_eq!(resp.status(), StatusCode::OK);
+    let (status, body) = send().await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -6220,8 +6040,9 @@ async fn thread_send_worktree_mode_reuses_existing_worktree() {
     let first = serde_json::from_str::<serde_json::Value>(&body).unwrap();
     let first_wt = first["thread"]["worktree_path"].as_str().unwrap();
 
-    let resp = send().await;
-    assert_eq!(resp.status(), StatusCode::OK);
+    let (status, body) = send().await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -6274,7 +6095,7 @@ async fn thread_local_mode_detects_agent_created_worktree() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -6288,11 +6109,8 @@ async fn thread_local_mode_detects_agent_created_worktree() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-
-    wait_for_run(&app, &cookie, tid, |b| {
-        b.contains(r#""status":"completed""#)
-    })
-    .await;
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -6496,9 +6314,6 @@ impl Provider for WorktreeCreatingProvider {
             usage: None,
         })
     }
-    async fn export(&self, _sid: &str, _wd: &std::path::Path) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
-    }
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -6541,7 +6356,7 @@ async fn thread_send_worktree_mode_is_idempotent_under_concurrency() {
             app.oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/api/threads/{tid}/send"))
+                    .uri(format!("/api/threads/{tid}/send/stream"))
                     .header(header::HOST, "localhost")
                     .header(header::ORIGIN, "http://localhost")
                     .header("cookie", &cookie)
@@ -6563,6 +6378,13 @@ async fn thread_send_worktree_mode_is_idempotent_under_concurrency() {
         "expected at least one send to succeed: {:?} {:?}",
         a.status(),
         b.status()
+    );
+    // Drain the SSE bodies so the winning run finishes before we inspect it.
+    let a_body = body_str(a.into_body()).await;
+    let b_body = body_str(b.into_body()).await;
+    assert!(
+        a_body.contains("event: done") || b_body.contains("event: done"),
+        "a: {a_body}\nb: {b_body}"
     );
 
     let resp = app
@@ -8810,13 +8632,6 @@ impl Provider for PlanStubProvider {
             usage: None,
         })
     }
-    async fn export(
-        &self,
-        _session_id: &str,
-        _working_dir: &std::path::Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
-    }
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -8938,9 +8753,7 @@ async fn thread_send_stream_emits_plan_update_and_persists_plan() {
     assert!(body.contains(r#""step":"A""#), "body: {body}");
     assert!(body.contains(r#""step":"B""#), "body: {body}");
 
-    // Allow the spawned persistence task to finish.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
+    // The drained stream already closed after persistence completed.
     let resp = app
         .clone()
         .oneshot(authed(
@@ -9621,7 +9434,7 @@ async fn thread_title_derived_from_first_send() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -9635,6 +9448,8 @@ async fn thread_title_derived_from_first_send() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -9678,7 +9493,7 @@ async fn thread_title_does_not_overwrite_user_rename() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -9692,6 +9507,8 @@ async fn thread_title_does_not_overwrite_user_rename() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -9774,7 +9591,7 @@ async fn thread_title_only_changes_on_first_send() {
         app.clone().oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -9789,9 +9606,13 @@ async fn thread_title_only_changes_on_first_send() {
 
     let resp = send("First message").await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = send("Second message").await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -9839,7 +9660,7 @@ async fn thread_title_preserves_custom_creation_title() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -9853,6 +9674,8 @@ async fn thread_title_preserves_custom_creation_title() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 
     let resp = app
         .clone()
@@ -10190,7 +10013,7 @@ async fn thread_send_uses_thread_provider_command() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{id}/send"))
+                .uri(format!("/api/threads/{id}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
@@ -10203,7 +10026,9 @@ async fn thread_send_uses_thread_provider_command() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: error"), "body: {body}");
 }
 
 /// Provider that reports cumulative token usage growing by
@@ -10261,13 +10086,6 @@ impl Provider for UsageStubProvider {
             }),
         })
     }
-    async fn export(
-        &self,
-        _session_id: &str,
-        _working_dir: &std::path::Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
-    }
     async fn health_check(&self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -10283,7 +10101,7 @@ async fn send_prompt(app: &Router, cookie: &str, tid: &str, prompt: &str) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", cookie)
@@ -10297,6 +10115,9 @@ async fn send_prompt(app: &Router, cookie: &str, tid: &str, prompt: &str) {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    // Drain the SSE stream so the run has finished when this returns.
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("event: done"), "body: {body}");
 }
 
 #[tokio::test]

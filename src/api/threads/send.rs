@@ -1,8 +1,7 @@
-//! Send pipeline: parse multipart input, persist the user message, start the
-//! provider run, and build the reply payload.
+//! Send pipeline: parse multipart input, persist the user message, and start
+//! the provider run whose events stream back over SSE.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
@@ -13,12 +12,11 @@ use crate::api::map_err_internal;
 use crate::api::ApiError;
 use crate::auth::session::CurrentUser;
 use crate::db::messages::MAX_CLIENT_MESSAGE_ID_LEN;
-use crate::db::{DuplicateClientMessageId, MessageRow, ThreadRow};
+use crate::db::{DuplicateClientMessageId, ThreadRow};
 use crate::providers::{
     AskCallback, Attachment, MessagePart, PartCallback, PermissionCallback, SendOptions,
     SendRequest, SessionCallback, StartRequest, UsageSnapshot,
 };
-use crate::thread_runner::{RunEvent, RunStatus};
 use crate::AppState;
 
 use super::context_refs::{prompt_with_refs, resolve_context_refs, ContextPathIn, ContextRef};
@@ -27,199 +25,6 @@ use super::plan::{normalize_mode, project_working_dir_for_thread};
 use super::runs::{events_stream, run_thread};
 use super::thread_refs::{prompt_with_thread_refs, resolve_thread_refs, ThreadRef};
 use super::worktree::ensure_thread_worktree;
-use super::MessageOut;
-
-pub(super) async fn send(
-    State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(id): Path<String>,
-    multipart: Multipart,
-) -> Response {
-    let mut thread = match state.db.get_thread(&id, user.id).await {
-        Ok(Some(t)) => t,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
-        }
-        Err(e) => return map_err_internal(e).into_response(),
-    };
-
-    if let Err(e) = ensure_thread_worktree(&state, &user, &mut thread).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError::new(format!("worktree setup failed: {e}"))),
-        )
-            .into_response();
-    }
-
-    let mut input = match parse_send_multipart(multipart).await {
-        Ok(parsed) => parsed,
-        Err(resp) => return resp,
-    };
-    resolve_context_refs(&state, &thread, &mut input).await;
-    resolve_thread_refs(&state, user.id, &thread, &mut input).await;
-    if input.prompt.trim().is_empty()
-        && input.context_refs.is_empty()
-        && input.thread_refs.is_empty()
-    {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("prompt is required")),
-        )
-            .into_response();
-    }
-
-    let user_msg = match persist_user_message(&state, &thread, &input).await {
-        Ok(m) => m,
-        Err(e) => {
-            if e.downcast_ref::<DuplicateClientMessageId>().is_some() {
-                return (
-                    StatusCode::CONFLICT,
-                    Json(ApiError::new("message with this client id already exists")),
-                )
-                    .into_response();
-            }
-            return map_err_internal(e).into_response();
-        }
-    };
-    let user_msg_id = user_msg.id;
-
-    let run = match state
-        .thread_runner
-        .start(id.clone(), {
-            let state = state.clone();
-            move |run| run_thread(state, run, user, thread, input, user_msg)
-        })
-        .await
-    {
-        Ok(run) => run,
-        Err(crate::thread_runner::StartError::AlreadyRunning) => {
-            // Roll back the user message we just inserted; the client will
-            // restore its composer and retry/resume instead.
-            if let Err(e) = state.db.delete_message(user_msg_id).await {
-                tracing::error!(error = %e, "failed to roll back optimistic user message");
-                return map_err_internal(e).into_response();
-            }
-            return (
-                StatusCode::CONFLICT,
-                Json(ApiError::new("thread is already running")),
-            )
-                .into_response();
-        }
-    };
-
-    let mut rx = match run.subscribe() {
-        Some(rx) => rx,
-        None => {
-            // The run finished before we could subscribe. Return the final
-            // result based on the run status and any persisted messages.
-            let status = *run.status.read().await;
-            return match status {
-                RunStatus::Stopped => Json(serde_json::json!({ "stopped": true })).into_response(),
-                RunStatus::Completed => {
-                    let messages = state
-                        .db
-                        .list_messages_full(&id, 2)
-                        .await
-                        .unwrap_or_default();
-                    if let Some(reply) = build_send_reply(&messages) {
-                        return reply;
-                    }
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(ApiError::new("provider error")),
-                    )
-                        .into_response()
-                }
-                RunStatus::Failed => {
-                    let error = run
-                        .error
-                        .read()
-                        .await
-                        .clone()
-                        .unwrap_or_else(|| "provider error".into());
-                    (StatusCode::BAD_GATEWAY, Json(ApiError::new(&error))).into_response()
-                }
-                RunStatus::Running | RunStatus::Idle => (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(ApiError::new("run already closed")),
-                )
-                    .into_response(),
-            };
-        }
-    };
-    let mut stopped = false;
-    let mut permission_request = None;
-    let mut ask_request = None;
-    loop {
-        match tokio::time::timeout(Duration::from_secs(30 * 60), rx.recv()).await {
-            Ok(Ok(RunEvent { event, .. })) if event == "done" => break,
-            Ok(Ok(RunEvent { event, .. })) if event == "stopped" => {
-                stopped = true;
-                break;
-            }
-            Ok(Ok(RunEvent { event, data, .. })) if event == "error" => {
-                return (StatusCode::BAD_GATEWAY, Json(ApiError::new(&data))).into_response();
-            }
-            Ok(Ok(RunEvent { event, data, .. })) if event == "permission_request" => {
-                permission_request = Some(data);
-                break;
-            }
-            Ok(Ok(RunEvent { event, data, .. })) if event == "ask_request" => {
-                ask_request = Some(data);
-                break;
-            }
-            Ok(Ok(_)) => continue,
-            Ok(Err(_)) => break,
-            Err(_) => {
-                return (
-                    StatusCode::GATEWAY_TIMEOUT,
-                    Json(ApiError::new("run did not finish in time")),
-                )
-                    .into_response();
-            }
-        }
-    }
-
-    if stopped {
-        return Json(serde_json::json!({ "stopped": true })).into_response();
-    }
-
-    let status = *run.status.read().await;
-    if status == RunStatus::Stopped {
-        return Json(serde_json::json!({ "stopped": true })).into_response();
-    }
-
-    if let Some(data) = permission_request {
-        return (
-            StatusCode::ACCEPTED,
-            Json(serde_json::json!({ "permission_request": data })),
-        )
-            .into_response();
-    }
-
-    if let Some(data) = ask_request {
-        return (
-            StatusCode::ACCEPTED,
-            Json(serde_json::json!({ "ask_request": data })),
-        )
-            .into_response();
-    }
-
-    let messages = state
-        .db
-        .list_messages_full(&id, 2)
-        .await
-        .unwrap_or_default();
-    if let Some(reply) = build_send_reply(&messages) {
-        return reply;
-    }
-
-    (
-        StatusCode::BAD_GATEWAY,
-        Json(ApiError::new("provider error")),
-    )
-        .into_response()
-}
 
 pub(super) async fn send_stream(
     State(state): State<AppState>,
@@ -319,26 +124,6 @@ pub(crate) struct SendInput {
     /// Referenced threads with their recent history; filled in by
     /// `thread_refs::resolve_thread_refs` before the message is persisted.
     pub thread_refs: Vec<ThreadRef>,
-}
-
-pub(crate) fn build_send_reply(messages: &[MessageRow]) -> Option<Response> {
-    if messages.len() < 2 {
-        return None;
-    }
-    let user_msg = &messages[messages.len() - 2];
-    let assistant_msg = &messages[messages.len() - 1];
-    if user_msg.role != "user" || assistant_msg.role != "assistant" {
-        return None;
-    }
-    Some(
-        Json(serde_json::json!({
-            "user_message": MessageOut::from(user_msg.clone()),
-            "assistant_message": MessageOut::from(assistant_msg.clone()),
-            "reply": assistant_msg.content,
-            "thinking": assistant_msg.thinking,
-        }))
-        .into_response(),
-    )
 }
 
 pub(crate) fn sanitize_sse_data(s: &str) -> String {
@@ -553,10 +338,8 @@ pub(crate) async fn call_provider(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_send_reply, parse_send_multipart, sanitize_sse_data};
-    use crate::db::MessageRow;
-    use crate::providers::MessagePart;
-    use axum::body::{to_bytes, Body};
+    use super::{parse_send_multipart, sanitize_sse_data};
+    use axum::body::Body;
     use axum::extract::{FromRequest, Multipart};
     use axum::http::{Request, StatusCode};
 
@@ -567,90 +350,6 @@ mod tests {
             "line1\nline2\nline3"
         );
         assert_eq!(sanitize_sse_data("plain\n"), "plain\n");
-    }
-
-    #[test]
-    fn build_send_reply_requires_user_then_assistant() {
-        let user = MessageRow {
-            id: 1,
-            thread_id: "t1".into(),
-            role: "user".into(),
-            content: "hello".into(),
-            thinking: None,
-            parts: Some(serde_json::to_string(&[MessagePart::text("hello")]).unwrap()),
-            attachments: "[]".into(),
-            model: "m".into(),
-            client_message_id: None,
-            created_at: "now".into(),
-            turn_id: 1,
-            seq: 1,
-            content_length: 5,
-            parts_length: Some(0),
-        };
-        let assistant = MessageRow {
-            id: 2,
-            thread_id: "t1".into(),
-            role: "assistant".into(),
-            content: "reply".into(),
-            thinking: Some("thinking".into()),
-            parts: Some(serde_json::to_string(&[MessagePart::text("reply")]).unwrap()),
-            attachments: "[]".into(),
-            model: "m".into(),
-            client_message_id: None,
-            created_at: "now".into(),
-            turn_id: 1,
-            seq: 2,
-            content_length: 5,
-            parts_length: Some(0),
-        };
-        assert!(build_send_reply(std::slice::from_ref(&user)).is_none());
-        assert!(build_send_reply(&[assistant.clone(), user.clone()]).is_none());
-
-        let response = build_send_reply(&[user, assistant]).unwrap();
-        assert_eq!(response.status(), axum::http::StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn build_send_reply_body_contains_roles_and_reply() {
-        let user = MessageRow {
-            id: 1,
-            thread_id: "t1".into(),
-            role: "user".into(),
-            content: "hello".into(),
-            thinking: None,
-            parts: Some(serde_json::to_string(&[MessagePart::text("hello")]).unwrap()),
-            attachments: "[]".into(),
-            model: "m".into(),
-            client_message_id: None,
-            created_at: "now".into(),
-            turn_id: 1,
-            seq: 1,
-            content_length: 5,
-            parts_length: Some(0),
-        };
-        let assistant = MessageRow {
-            id: 2,
-            thread_id: "t1".into(),
-            role: "assistant".into(),
-            content: "reply".into(),
-            thinking: Some("thinking".into()),
-            parts: Some(serde_json::to_string(&[MessagePart::text("reply")]).unwrap()),
-            attachments: "[]".into(),
-            model: "m".into(),
-            client_message_id: None,
-            created_at: "now".into(),
-            turn_id: 1,
-            seq: 2,
-            content_length: 5,
-            parts_length: Some(0),
-        };
-        let response = build_send_reply(&[user, assistant]).unwrap();
-        let body = to_bytes(response.into_body(), 4096).await.unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["user_message"]["role"], "user");
-        assert_eq!(json["assistant_message"]["role"], "assistant");
-        assert_eq!(json["reply"], "reply");
-        assert_eq!(json["thinking"], "thinking");
     }
 
     #[tokio::test]

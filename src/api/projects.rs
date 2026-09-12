@@ -22,7 +22,6 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/:id", delete(delete_one).patch(rename))
         .route("/api/projects/:id/pin", post(pin))
         .route("/api/projects/:id/threads", get(list_threads))
-        .route("/api/projects/:id/detect-type", post(detect_type))
 }
 
 #[derive(Debug, Serialize)]
@@ -425,30 +424,4 @@ async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<
 
     // Canonicalize so the stored path is stable.
     Ok(tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved))
-}
-
-async fn detect_type(
-    State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Path(id): Path<i64>,
-) -> Response {
-    let project = match state.db.get_project(id, user.id).await {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(crate::api::ApiError::new("project not found")),
-            )
-                .into_response()
-        }
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
-    };
-
-    let ty = crate::projects::detect::detect_project_type(std::path::Path::new(&project.path));
-
-    if let Err(e) = state.db.set_project_type(id, user.id, ty).await {
-        return crate::api::map_err_internal(e).into_response();
-    }
-
-    Json(serde_json::json!({ "project_type": ty })).into_response()
 }

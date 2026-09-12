@@ -41,7 +41,6 @@ pub fn router() -> Router<AppState> {
         .route("/api/files", get(list_dir).post(upload))
         .route("/api/files/content", get(read_file).put(write_file))
         .route("/api/files/dir", post(mkdir))
-        .route("/api/files/move", post(mv))
         .route("/api/files/delete", axum::routing::delete(delete))
 }
 
@@ -615,62 +614,6 @@ async fn mkdir(
         Err(r) => return r,
     };
     if let Err(e) = tokio::fs::create_dir_all(&target).await {
-        return crate::api::map_err_internal(e).into_response();
-    }
-    Json(serde_json::json!({"ok": true})).into_response()
-}
-
-#[derive(Debug, Deserialize)]
-struct MoveReq {
-    from: String,
-    to: String,
-    #[serde(default)]
-    project_id: Option<i64>,
-    #[serde(default)]
-    thread_id: Option<String>,
-}
-
-async fn mv(
-    State(state): State<AppState>,
-    CurrentUser(user): CurrentUser,
-    Json(req): Json<MoveReq>,
-) -> Response {
-    let (from, root) = match resolve(
-        &state,
-        user.id,
-        Some(&req.from),
-        req.project_id,
-        req.thread_id.as_deref(),
-    )
-    .await
-    {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let to_target = if std::path::Path::new(&req.to).is_absolute() {
-        PathBuf::from(&req.to)
-    } else {
-        root.join(&req.to)
-    };
-    let to = if std::path::Path::new(&req.to).is_absolute() {
-        paths::resolve(&to_target, None, None)
-    } else {
-        paths::resolve_within(&to_target, Some(&root), std::slice::from_ref(&root))
-    };
-    let to = match to {
-        Some(p) if !paths::is_hidden_within(&root, &p) => p,
-        _ => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("invalid destination path")),
-            )
-                .into_response()
-        }
-    };
-    if let Some(parent) = to.parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
-    }
-    if let Err(e) = tokio::fs::rename(&from, &to).await {
         return crate::api::map_err_internal(e).into_response();
     }
     Json(serde_json::json!({"ok": true})).into_response()

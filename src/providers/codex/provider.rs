@@ -449,15 +449,6 @@ impl Provider for CodexProvider {
         })
     }
 
-    async fn export(
-        &self,
-        _session_id: &str,
-        _working_dir: &Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        // Codex sessions live under ~/.codex; there is no export RPC.
-        Ok(json!({}))
-    }
-
     async fn health_check(&self) -> anyhow::Result<()> {
         if which::which(&self.bin).is_err() {
             anyhow::bail!("provider command not found: {}", self.bin);

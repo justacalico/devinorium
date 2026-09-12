@@ -158,26 +158,6 @@ impl super::Db {
             .map_err(Into::into)
     }
 
-    pub async fn list_messages_full(
-        &self,
-        thread_id: &str,
-        limit: i64,
-    ) -> anyhow::Result<Vec<MessageRow>> {
-        sqlx::query_as::<_, MessageRow>(
-            "SELECT * FROM (
-                SELECT * FROM messages
-                WHERE thread_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-            ) ORDER BY id ASC",
-        )
-        .bind(thread_id)
-        .bind(limit)
-        .fetch_all(self.pool())
-        .await
-        .map_err(Into::into)
-    }
-
     /// Recent messages with `content` capped to `max_chars` per row, for
     /// building thread-reference transcripts without reading full bodies.
     /// `content_length` still reports the true length so callers can tell a
