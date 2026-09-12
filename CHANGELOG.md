@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.64.0 - 2026-09-12
+#### Features
+- 设置页新增默认权限级别 - (349e2d1) - HttpAnimations
+- 语言设置新增跟随系统选项并设为默认 - (d22b514) - HttpAnimations
+- 添加 iOS 主屏幕 PWA 支持 - (de666cf) - HttpAnimations
+#### Bug Fixes
+- 修复设置页语言下拉框测试的歧义查找 - (effaa28) - HttpAnimations
+
+- - -
+
 ## v0.63.0 - 2026-09-12
 #### Features
 - 支持拖拽会话到输入框作为上下文引用 - (a835f7c) - HttpAnimations
