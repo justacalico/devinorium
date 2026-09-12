@@ -6,6 +6,10 @@ class Attachment {
   /// (dragged in from the files panel) rather than an uploaded file.
   final bool isPathRef;
 
+  /// True when this entry references another thread (dragged in from the
+  /// sidebar) whose history was sent as context.
+  final bool isThreadRef;
+
   /// For path refs: whether the referenced path is a directory.
   final bool isDir;
 
@@ -13,6 +17,7 @@ class Attachment {
     required this.filename,
     required this.size,
     this.isPathRef = false,
+    this.isThreadRef = false,
     this.isDir = false,
   });
 
@@ -20,6 +25,7 @@ class Attachment {
     filename: j['filename'] as String,
     size: (j['size'] as num).toInt(),
     isPathRef: j['kind'] == 'path',
+    isThreadRef: j['kind'] == 'thread',
     isDir: j['is_dir'] as bool? ?? false,
   );
 
@@ -30,9 +36,10 @@ class Attachment {
     return filename == other.filename &&
         size == other.size &&
         isPathRef == other.isPathRef &&
+        isThreadRef == other.isThreadRef &&
         isDir == other.isDir;
   }
 
   @override
-  int get hashCode => Object.hash(filename, size, isPathRef, isDir);
+  int get hashCode => Object.hash(filename, size, isPathRef, isThreadRef, isDir);
 }

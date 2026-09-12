@@ -173,10 +173,7 @@ class _FilesPanelBody extends StatelessWidget {
       } else {
         state.openEditorFile(node.fullPathString);
       }
-      final scaffold = Scaffold.maybeOf(context);
-      if (scaffold?.isDrawerOpen ?? false) {
-        scaffold!.closeDrawer();
-      }
+      state.closeSidebar();
       return;
     }
     Navigator.of(context).push(
@@ -300,6 +297,7 @@ class _FilesPanelBody extends StatelessWidget {
         data: node,
         affinity: Axis.horizontal,
         maxSimultaneousDrags: 1,
+        onDragStarted: () => state.closeSidebar(),
         feedback: Material(
           color: Colors.transparent,
           child: Chip(

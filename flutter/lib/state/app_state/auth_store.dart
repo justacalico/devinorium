@@ -622,6 +622,7 @@ mixin AuthStore on AppStateBase {
     _loadingMoreProjectThreads.clear();
     _filesTreeRoot = FileTreeNode.root();
     _filesPanelOpen = false;
+    _sidebarOpen = false;
     _filesError = '';
     _gitPanelOpen = false;
     _gitPanelChanges = null;
@@ -650,6 +651,8 @@ mixin AuthStore on AppStateBase {
     _linkedMergeRequest = null;
     _composerText = '';
     _attachments = [];
+    _pathRefs = [];
+    _threadReferences = [];
     _selectedModel = '';
     _selectedPermission = 'normal';
     _selectedProvider = '';

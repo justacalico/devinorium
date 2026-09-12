@@ -123,7 +123,8 @@ class _ThreadPageState extends State<ThreadPage> {
             leading: isNarrow
                 ? IconButton(
                     icon: const Icon(Icons.menu),
-                    onPressed: () => Scaffold.of(context).openDrawer(),
+                    onPressed: () =>
+                        context.read<AppState>().openSidebar(),
                   )
                 : null,
             title: WindowTitleDrag(

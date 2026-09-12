@@ -1698,6 +1698,392 @@ async fn thread_send_rejects_invalid_context_paths() {
 }
 
 #[tokio::test]
+async fn thread_send_referenced_thread_adds_transcript_context() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let ref_tid = make_thread(&app, &cookie, pid, "Design notes").await;
+    seed_messages(&db, &ref_tid, 4, "design fact ").await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----trefboundary";
+    // The target thread's own id is included on purpose: a self-reference
+    // must be dropped, not echoed back as context.
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Summarize\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"referenced_thread_ids\"\r\n\r\n\
+        [\"{ref_tid}\",\"{tid}\"]\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    let reply = done_json["content"].as_str().unwrap();
+
+    // The stub echoes the effective prompt: the referenced thread's title
+    // and transcript must be in there.
+    assert!(reply.contains("Thread \"Design notes\""), "reply: {reply}");
+    assert!(reply.contains("user: design fact 0"), "reply: {reply}");
+    assert!(reply.contains("assistant: design fact 1"), "reply: {reply}");
+
+    wait_for_run(&app, &cookie, &tid, |body| {
+        body.contains(r#""status":"completed""#)
+            || body.contains(r#""status":"failed""#)
+            || body.contains(r#""status":"stopped""#)
+    })
+    .await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    // The stored user message keeps only the original prompt.
+    assert_eq!(msgs[0].content, "Summarize");
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    let atts = atts.as_array().unwrap();
+    // Only the real reference survives; the self-reference was dropped.
+    assert_eq!(atts.len(), 1);
+    assert_eq!(atts[0]["kind"], "thread");
+    assert_eq!(atts[0]["filename"], "Design notes");
+    assert_eq!(atts[0]["thread_id"], ref_tid);
+}
+
+#[tokio::test]
+async fn thread_send_referenced_thread_of_other_user_is_dropped() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    create_user(&app, &cookie, "alice", "alice-secret-123").await;
+    let alice_cookie = login_as(&app, "alice", "alice-secret-123").await;
+    let alice_pid = create_project(&app, &alice_cookie).await;
+    let alice_tid = make_thread(&app, &alice_cookie, alice_pid, "Alice secret").await;
+    seed_messages(&db, &alice_tid, 2, "secret payload ").await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----trefotherboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hello\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"referenced_thread_ids\"\r\n\r\n\
+        [\"{alice_tid}\"]\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    let reply = done_json["content"].as_str().unwrap();
+
+    // Nothing from the other user's thread may leak into the prompt.
+    assert!(!reply.contains("secret"), "reply: {reply}");
+    assert!(
+        !reply.contains("referenced these threads"),
+        "reply: {reply}"
+    );
+
+    wait_for_run(&app, &cookie, &tid, |body| {
+        body.contains(r#""status":"completed""#)
+            || body.contains(r#""status":"failed""#)
+            || body.contains(r#""status":"stopped""#)
+    })
+    .await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    assert!(atts
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|a| a["kind"] != "thread"));
+}
+
+#[tokio::test]
+async fn thread_send_referenced_thread_caps_context_budget() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let ref_tid = make_thread(&app, &cookie, pid, "Verbose").await;
+
+    // Ten ~600-char messages: ~6k of context, over the 4000-char budget.
+    // The tail must survive while the oldest messages are cut.
+    let mut conn = db.pool().acquire().await.unwrap();
+    for i in 0..10 {
+        let role = if i % 2 == 0 { "user" } else { "assistant" };
+        sqlx::query(
+            "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, turn_id, seq)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&ref_tid)
+        .bind(role)
+        .bind(format!("msg{i}-{}", "b".repeat(600)))
+        .bind::<Option<String>>(None)
+        .bind("[]")
+        .bind("[]")
+        .bind("")
+        .bind(i as i64 + 1)
+        .bind(i as i64 + 1)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    }
+    drop(conn);
+
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----trefcapboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Summarize\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"referenced_thread_ids\"\r\n\r\n\
+        [\"{ref_tid}\"]\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let done_block = body
+        .split("\n\n")
+        .find(|b| b.contains("event: done"))
+        .expect("done block");
+    let done_data = done_block
+        .lines()
+        .find(|l| l.starts_with("data: "))
+        .expect("done data");
+    let done_json: serde_json::Value =
+        serde_json::from_str(&done_data[6..]).expect("valid done json");
+    let reply = done_json["content"].as_str().unwrap();
+
+    assert!(reply.contains("msg9-"), "reply tail lost: {reply}");
+    assert!(!reply.contains("msg0-"), "budget not applied: {reply}");
+
+    wait_for_run(&app, &cookie, &tid, |body| {
+        body.contains(r#""status":"completed""#)
+            || body.contains(r#""status":"failed""#)
+            || body.contains(r#""status":"stopped""#)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn thread_send_rejects_invalid_referenced_thread_ids() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----trefbadboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+        Hi\r\n\
+        --{boundary}\r\n\
+        Content-Disposition: form-data; name=\"referenced_thread_ids\"\r\n\r\n\
+        not json\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn thread_send_referenced_thread_only_is_a_valid_message() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let ref_tid = make_thread(&app, &cookie, pid, "Prior work").await;
+    seed_messages(&db, &ref_tid, 2, "earlier ").await;
+    let tid = make_thread(&app, &cookie, pid, "New thread").await;
+
+    let boundary = "----trefonlyboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"referenced_thread_ids\"\r\n\r\n\
+        [\"{ref_tid}\"]\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    wait_for_run(&app, &cookie, &tid, |body| {
+        body.contains(r#""status":"completed""#)
+            || body.contains(r#""status":"failed""#)
+            || body.contains(r#""status":"stopped""#)
+    })
+    .await;
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(msgs[0].content, "");
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    assert_eq!(atts[0]["kind"], "thread");
+
+    // The thread is titled after the referenced thread.
+    let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
+    assert_eq!(thread.title, "Prior work");
+}
+
+#[tokio::test]
+async fn thread_send_all_dropped_thread_refs_is_rejected() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // No prompt and the only reference is a thread that does not exist:
+    // everything is dropped, so the send is rejected rather than running a
+    // blank turn.
+    let boundary = "----trefdropboundary";
+    let body = format!(
+        "--{boundary}\r\n\
+        Content-Disposition: form-data; name=\"referenced_thread_ids\"\r\n\r\n\
+        [\"does-not-exist\"]\r\n\
+        --{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert!(msgs.is_empty());
+}
+
+#[tokio::test]
 async fn thread_send_includes_client_message_id() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

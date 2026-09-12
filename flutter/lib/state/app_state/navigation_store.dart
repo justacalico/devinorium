@@ -10,6 +10,8 @@ mixin NavigationStore on AppStateBase {
   @override
   bool _userMenuOpen = false;
   @override
+  bool _sidebarOpen = false;
+  @override
   AppView get view => _view;
   @override
   AppMode get appMode => _appMode;
@@ -17,6 +19,8 @@ mixin NavigationStore on AppStateBase {
   MainPage get page => _page;
   @override
   bool get userMenuOpen => _userMenuOpen;
+  @override
+  bool get sidebarOpen => _sidebarOpen;
   @override
   void setView(AppView v) {
     _view = v;
@@ -44,6 +48,18 @@ mixin NavigationStore on AppStateBase {
   @override
   void setUserMenuOpen(bool v) {
     _userMenuOpen = v;
+    notifyListeners();
+  }
+  @override
+  void openSidebar() {
+    if (_sidebarOpen) return;
+    _sidebarOpen = true;
+    notifyListeners();
+  }
+  @override
+  void closeSidebar() {
+    if (!_sidebarOpen) return;
+    _sidebarOpen = false;
     notifyListeners();
   }
 }

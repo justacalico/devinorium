@@ -99,6 +99,7 @@ class _TestApiService extends ApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => Stream.fromIterable([
     SseEvent(
       'user_message',
@@ -118,6 +119,7 @@ class _RecordingApiService extends _TestApiService {
   String? lastPrompt;
   String? lastMode;
   String? lastClientMessageId;
+  List<String> lastReferencedThreadIds = const [];
 
   @override
   Stream<SseEvent> sendMessageStream({
@@ -128,10 +130,12 @@ class _RecordingApiService extends _TestApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) {
     lastPrompt = prompt;
     lastMode = mode;
     lastClientMessageId = clientMessageId;
+    lastReferencedThreadIds = referencedThreadIds;
     return const Stream.empty();
   }
 }
@@ -150,6 +154,7 @@ class _ControlledApiService extends _TestApiService {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => _controller.stream;
 }
 
@@ -462,6 +467,44 @@ void main() {
       expect(messages.first.clientMessageId, api.lastClientMessageId);
     });
 
+    test('sendMessage forwards thread reference ids', () async {
+      final api = _RecordingApiService();
+      final store = ThreadStore(
+        api: api,
+        threadId: 't1',
+        projectId: 1,
+        composerText: 'look at that thread',
+        threadReferences: const [
+          ThreadReference(id: 'other', title: 'Other thread'),
+        ],
+        detail: AsyncValue.ready(
+          ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+          ),
+        ),
+      );
+
+      store.onStateChanged = () {};
+      await store.sendMessage();
+
+      expect(api.lastPrompt, 'look at that thread');
+      expect(api.lastReferencedThreadIds, ['other']);
+      expect(store.threadReferences, isEmpty);
+      // The optimistic message carries the reference chip.
+      final chip = store.displayDetail?.messages.first.attachments?.single;
+      expect(chip?.isThreadRef, isTrue);
+      expect(chip?.filename, 'Other thread');
+    });
+
     test(
       'sendMessage removes optimistic message when server echoes it',
       () async {
@@ -552,6 +595,47 @@ void main() {
 
         expect(store.composerText, '/ask  hello');
         expect(store.attachments, hasLength(1));
+        expect(store.displayDetail?.messages ?? [], isEmpty);
+      },
+    );
+
+    test(
+      'sendMessage restores thread references when send fails',
+      () async {
+        final api = _ControlledApiService();
+        final store = ThreadStore(
+          api: api,
+          threadId: 't1',
+          projectId: 1,
+          composerText: 'hello',
+          threadReferences: const [
+            ThreadReference(id: 'other', title: 'Other thread'),
+          ],
+          detail: AsyncValue.ready(
+            ThreadDetail(
+              thread: Thread(
+                id: 't1',
+                title: 'Test',
+                projectId: 1,
+                model: 'm1',
+                permissionMode: 'normal',
+                createdAt: '',
+                updatedAt: '',
+              ),
+              messages: const [],
+            ),
+          ),
+        );
+
+        store.onStateChanged = () {};
+        await store.sendMessage();
+        expect(store.threadReferences, isEmpty);
+
+        await api.controller.close();
+        await Future.delayed(const Duration(milliseconds: 10));
+
+        expect(store.composerText, 'hello');
+        expect(store.threadReferences.single.id, 'other');
         expect(store.displayDetail?.messages ?? [], isEmpty);
       },
     );

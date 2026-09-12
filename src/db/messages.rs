@@ -178,6 +178,47 @@ impl super::Db {
         .map_err(Into::into)
     }
 
+    /// Recent messages with `content` capped to `max_chars` per row, for
+    /// building thread-reference transcripts without reading full bodies.
+    /// `content_length` still reports the true length so callers can tell a
+    /// truncated excerpt from a complete message.
+    pub async fn list_recent_message_excerpts(
+        &self,
+        thread_id: &str,
+        limit: i64,
+        max_chars: i64,
+    ) -> anyhow::Result<Vec<MessageRow>> {
+        sqlx::query_as::<_, MessageRow>(
+            "SELECT
+                id,
+                thread_id,
+                role,
+                SUBSTR(content, 1, ?) AS content,
+                NULL AS thinking,
+                NULL AS parts,
+                '' AS attachments,
+                model,
+                client_message_id,
+                created_at,
+                turn_id,
+                seq,
+                content_length,
+                parts_length
+            FROM (
+                SELECT * FROM messages
+                WHERE thread_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            ) ORDER BY id ASC",
+        )
+        .bind(max_chars)
+        .bind(thread_id)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await
+        .map_err(Into::into)
+    }
+
     pub async fn count_messages(&self, thread_id: &str) -> anyhow::Result<i64> {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM messages WHERE thread_id = ?")
             .bind(thread_id)

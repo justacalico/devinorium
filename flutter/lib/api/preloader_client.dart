@@ -105,6 +105,7 @@ class PreloaderClient implements BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => _inner.sendStream(
     path: path,
     prompt: prompt,
@@ -112,6 +113,7 @@ class PreloaderClient implements BaseApiClient {
     clientMessageId: clientMessageId,
     attachments: attachments,
     contextPaths: contextPaths,
+    referencedThreadIds: referencedThreadIds,
   );
 
   Future<T> _mutate<T>(Future<T> Function() action) async {

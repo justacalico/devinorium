@@ -532,10 +532,7 @@ class _GitPanelState extends State<GitPanel> {
     final path = p.join(toplevel, entry.path);
     if (state.appMode == AppMode.editor) {
       unawaited(state.openEditorFile(path));
-      final scaffold = Scaffold.maybeOf(context);
-      if (scaffold?.isDrawerOpen ?? false) {
-        scaffold!.closeDrawer();
-      }
+      state.closeSidebar();
       return;
     }
     Navigator.of(context).push(

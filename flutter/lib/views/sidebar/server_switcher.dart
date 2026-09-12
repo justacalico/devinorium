@@ -28,8 +28,6 @@ class _ServerSwitcher extends StatelessWidget {
           orElse: () => profiles.first,
         );
 
-        final scaffold = Scaffold.maybeOf(context);
-
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: MenuAnchor(
@@ -61,7 +59,7 @@ class _ServerSwitcher extends StatelessWidget {
                     topics.indexWhere((t) => t.topic == SettingsTopic.servers),
                   );
                   state.setPage(MainPage.settings);
-                  scaffold?.closeDrawer();
+                  state.closeSidebar();
                 },
                 child: Text(l.manageServers),
               ),

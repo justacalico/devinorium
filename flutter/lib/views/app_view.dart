@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,7 +12,7 @@ import 'thread_page.dart';
 
 /// The main authenticated layout: sidebar + main content area.
 /// Uses a Row with a fixed-width sidebar (300px) and a flexible main area.
-/// On narrow screens, the sidebar becomes a drawer.
+/// On narrow screens, the sidebar becomes a slide-over panel.
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -19,20 +21,27 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _mainKey = GlobalKey();
   bool _wasSidePanelOpen = false;
+  bool _wasSidebarOpen = false;
   double _sidebarWidth = 300;
+  double _edgeDragDx = 0;
+  double _panelDragDx = 0;
 
   static const double _minSidebarWidth = 240;
   static const double _maxSidebarWidth = 420;
+  static const double _overlayWidth = 300;
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, bool>(
-      selector: (_, state) => state.filesPanelOpen || state.gitPanelOpen,
-      builder: (context, sidePanelOpen, _) {
+    return Selector<AppState, ({bool sidePanelOpen, bool sidebarOpen})>(
+      selector: (_, state) => (
+        sidePanelOpen: state.filesPanelOpen || state.gitPanelOpen,
+        sidebarOpen: state.sidebarOpen,
+      ),
+      builder: (context, model, _) {
         final isNarrow = MediaQuery.of(context).size.width < 768;
+        final state = context.read<AppState>();
 
         // A stable key lets Flutter reparent this subtree (and preserve all
         // stateful descendants such as text controllers) when the layout
@@ -41,28 +50,108 @@ class _AppShellState extends State<AppShell> {
 
         if (isNarrow) {
           // Side panels live inside the unified sidebar, so opening one on a
-          // narrow screen opens the sidebar drawer instead of a second panel.
-          if (sidePanelOpen && !_wasSidePanelOpen) {
+          // narrow screen opens the sidebar overlay instead of a second panel.
+          if (model.sidePanelOpen && !_wasSidePanelOpen) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _scaffoldKey.currentState?.openDrawer();
+              state.openSidebar();
             });
           }
-          _wasSidePanelOpen = sidePanelOpen;
+          _wasSidePanelOpen = model.sidePanelOpen;
 
+          if (_wasSidebarOpen && !model.sidebarOpen && model.sidePanelOpen) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (state.filesPanelOpen) state.closeFilesPanel();
+              if (state.gitPanelOpen) state.closeGitPanel();
+            });
+          }
+          _wasSidebarOpen = model.sidebarOpen;
+
+          final overlayWidth =
+              math.min(_overlayWidth, MediaQuery.of(context).size.width * 0.85);
+
+          // The sidebar is a slide-over inside the body rather than a
+          // Scaffold drawer: a drawer unmounts its subtree when it closes,
+          // which would cancel drags started in it. Here the panel stays
+          // mounted while sliding off-screen, so a thread dragged out of the
+          // sidebar survives long enough to reach the composer drop target.
           return Scaffold(
-            key: _scaffoldKey,
-            drawer: const Drawer(width: 300, child: Sidebar()),
-            body: main,
-            onDrawerChanged: (opened) {
-              if (opened) return;
-              final s = context.read<AppState>();
-              if (s.filesPanelOpen) s.closeFilesPanel();
-              if (s.gitPanelOpen) s.closeGitPanel();
-            },
+            body: PopScope(
+              canPop: !model.sidebarOpen,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!didPop) state.closeSidebar();
+              },
+              child: Stack(
+                children: [
+                  main,
+                  if (model.sidebarOpen)
+                    Positioned.fill(
+                      key: const ValueKey('sidebar-scrim'),
+                      child: GestureDetector(
+                        onTap: state.closeSidebar,
+                        child: const ColoredBox(color: Colors.black38),
+                      ),
+                    ),
+                  // Keys keep the panel element (and the whole Sidebar
+                  // subtree, including in-progress Draggables) alive when the
+                  // scrim and edge strip appear and disappear around it.
+                  AnimatedPositioned(
+                    key: const ValueKey('sidebar-panel'),
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    left: model.sidebarOpen ? 0 : -overlayWidth,
+                    top: 0,
+                    bottom: 0,
+                    width: overlayWidth,
+                    child: GestureDetector(
+                      onHorizontalDragStart: (_) => _panelDragDx = 0,
+                      onHorizontalDragUpdate: (details) {
+                        _panelDragDx += details.delta.dx;
+                        if (_panelDragDx < -60) {
+                          _panelDragDx = 0;
+                          state.closeSidebar();
+                        }
+                      },
+                      onHorizontalDragEnd: (_) => _panelDragDx = 0,
+                      onHorizontalDragCancel: () => _panelDragDx = 0,
+                      child: const Material(elevation: 16, child: Sidebar()),
+                    ),
+                  ),
+                  if (!model.sidebarOpen)
+                    Positioned(
+                      key: const ValueKey('sidebar-edge'),
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 24,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onHorizontalDragStart: (_) => _edgeDragDx = 0,
+                        onHorizontalDragUpdate: (details) {
+                          _edgeDragDx += details.delta.dx;
+                          if (_edgeDragDx > 60) {
+                            _edgeDragDx = 0;
+                            state.openSidebar();
+                          }
+                        },
+                        onHorizontalDragEnd: (_) => _edgeDragDx = 0,
+                        onHorizontalDragCancel: () => _edgeDragDx = 0,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           );
         }
 
-        _wasSidePanelOpen = sidePanelOpen;
+        _wasSidePanelOpen = model.sidePanelOpen;
+        _wasSidebarOpen = model.sidebarOpen;
+        if (model.sidebarOpen) {
+          // The overlay flag only means something on narrow screens; clear it
+          // so coming back to a narrow layout doesn't reopen it unexpectedly.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            state.closeSidebar();
+          });
+        }
 
         return Scaffold(
           body: Row(

@@ -37,6 +37,7 @@ part 'app_state/thread_list_store.dart';
 part 'app_state/composer_store.dart';
 part 'app_state/attachment_store.dart';
 part 'app_state/path_refs_store.dart';
+part 'app_state/thread_refs_store.dart';
 part 'app_state/model_store.dart';
 part 'app_state/plan_overlay_store.dart';
 part 'app_state/files_panel_store.dart';
@@ -81,6 +82,7 @@ class AppState extends AppStateBase
         ComposerStore,
         AttachmentStore,
         PathRefsStore,
+        ThreadRefsStore,
         ModelStore,
         PlanOverlayStore,
         FilesPanelStore,
@@ -174,6 +176,7 @@ class AppState extends AppStateBase
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> pathRefs = const [],
+    List<ThreadReference> threadReferences = const [],
     String? selectedModel,
     String? selectedReasoning,
     String? selectedPermission,
@@ -267,6 +270,7 @@ class AppState extends AppStateBase
         composerText: composerText ?? '',
         attachments: attachments,
         pathRefs: pathRefs,
+        threadReferences: threadReferences,
         composerMode: composerMode,
         selectedModel: selectedModel ?? '',
         selectedReasoning:
@@ -282,6 +286,7 @@ class AppState extends AppStateBase
       _composerText = composerText ?? '';
       _attachments = List.of(attachments);
       _pathRefs = List.of(pathRefs);
+      _threadReferences = List.of(threadReferences);
       _selectedModel = selectedModel ?? '';
       _selectedReasoning = selectedReasoning ?? '';
       _selectedPermission = selectedPermission ?? 'normal';
@@ -425,6 +430,7 @@ class AppState extends AppStateBase
     String? composerText,
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     List<PathRef>? pathRefs,
+    List<ThreadReference>? threadReferences,
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedReasoning,
@@ -440,6 +446,7 @@ class AppState extends AppStateBase
       composerText: composerText,
       attachments: attachments,
       pathRefs: pathRefs,
+      threadReferences: threadReferences,
       composerMode: composerMode,
       selectedModel: selectedModel,
       selectedReasoning: selectedReasoning,

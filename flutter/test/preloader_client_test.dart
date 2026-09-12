@@ -92,6 +92,7 @@ class _FakeClient implements BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
     List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
   }) => const Stream.empty();
 
   @override

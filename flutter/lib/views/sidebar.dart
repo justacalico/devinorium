@@ -524,7 +524,7 @@ class _SettingsHeader extends StatelessWidget {
           if (isDesktop) ...[const WindowControls(), const SizedBox(width: 12)],
           IconButton(
             onPressed: () {
-              Scaffold.of(context).closeDrawer();
+              state.closeSidebar();
               state.setPage(MainPage.threads);
             },
             icon: const Icon(Icons.arrow_back),

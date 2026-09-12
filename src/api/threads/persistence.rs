@@ -49,12 +49,19 @@ pub(crate) async fn update_thread_title_from_send(
     input: &SendInput,
 ) -> anyhow::Result<bool> {
     // A refs-only message has no prompt text; title the thread after the
-    // first referenced path instead of burning the title as "New thread".
+    // first referenced path or thread instead of burning the title as
+    // "New thread".
     let title = if input.prompt.trim().is_empty() {
         input
             .context_refs
             .first()
             .map(|r| title_from_prompt(&r.rel))
+            .or_else(|| {
+                input
+                    .thread_refs
+                    .first()
+                    .map(|r| title_from_prompt(&r.title))
+            })
             .unwrap_or_else(|| "New thread".into())
     } else {
         title_from_prompt(&input.prompt)

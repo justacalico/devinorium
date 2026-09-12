@@ -161,7 +161,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                     activeThreadId: activeThreadId,
                     onToggle: () => _onToggle(p.id),
                     onNewThread: () {
-                      Scaffold.of(context).closeDrawer();
+                      state.closeSidebar();
                       state.createNewThread(projectId: p.id);
                     },
                     onThreadTap: (id) => state.openThread(id),
