@@ -51,8 +51,6 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         allowed_origin,
         local_token: None,
         tailscale_bin: "tailscale".into(),
-        tailscale_serve: false,
-        tailscale_serve_port: 443,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -275,8 +273,6 @@ async fn body_size_limit_rejects_oversized() {
         allowed_origin: None,
         local_token: None,
         tailscale_bin: "tailscale".into(),
-        tailscale_serve: false,
-        tailscale_serve_port: 443,
     };
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),

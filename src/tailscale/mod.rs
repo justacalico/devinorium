@@ -156,11 +156,7 @@ impl Tailscale {
         let out = self
             .run("serve", &["serve", "status", "--json"], STATUS_TIMEOUT)
             .await?;
-        Ok(serve_status_https_ports(
-            &out.stdout,
-            local_host,
-            local_port,
-        ))
+        serve_status_https_ports(&out.stdout, local_host, local_port)
     }
 
     /// Publish `target` (e.g. `http://127.0.0.1:7878`) over Tailscale Serve
@@ -295,70 +291,94 @@ pub fn build_https_base_url(magic_dns_name: &str, serve_port: u16) -> String {
     }
 }
 
-/// The loopback URL `tailscale serve` should proxy to. A specific non-loopback
-/// bind address is used as-is; wildcard and loopback binds collapse to
-/// 127.0.0.1 since tailscaled runs on the same host.
+/// The loopback URL `tailscale serve` should proxy to. Wildcard and empty
+/// binds collapse to 127.0.0.1 since tailscaled runs on the same host; an
+/// explicit bind address is used as-is so an IPv6-only loopback (`::1`)
+/// still matches the socket the listener actually bound.
 pub fn local_serve_target(host: &str, port: u16) -> String {
     let bare = host.trim_start_matches('[').trim_end_matches(']');
-    let is_wildcard = bare
-        .parse::<std::net::IpAddr>()
-        .map(|ip| ip.is_unspecified())
-        .unwrap_or(false);
-    let is_loopback = bare
-        .parse::<std::net::IpAddr>()
-        .map(|ip| ip.is_loopback())
-        .unwrap_or_else(|_| bare.eq_ignore_ascii_case("localhost"));
-    let target_host = if is_wildcard || is_loopback || bare.is_empty() {
+    let parsed = bare.parse::<std::net::IpAddr>().ok();
+    let wildcard = bare.is_empty() || parsed.map(|ip| ip.is_unspecified()).unwrap_or(false);
+    let target_host = if wildcard {
         "127.0.0.1".to_string()
+    } else if matches!(parsed, Some(std::net::IpAddr::V6(_))) {
+        format!("[{bare}]")
     } else {
-        match bare.parse::<std::net::IpAddr>() {
-            Ok(std::net::IpAddr::V6(_)) => format!("[{bare}]"),
-            _ => bare.to_string(),
-        }
+        bare.to_string()
     };
     format!("http://{target_host}:{port}")
 }
 
-/// The `tailscale serve` HTTPS port split: `ours` are `Web` ports whose
-/// proxy handler forwards to our listener, `all` is every `Web` port with a
-/// mapping. `all` lets the enable path refuse to clobber a foreign mapping
-/// on the configured port.
+/// The `tailscale serve` HTTPS port split: `ours` are background `Web`
+/// ports whose proxy handler forwards to our listener, `all` is every
+/// claimed tailnet port (Web mounts, foreground mounts, raw TCP forwards).
+/// `all` lets the enable path refuse to clobber a foreign mapping on the
+/// configured port; `ours` is what `serve --https=N off` can actually
+/// remove, since we only ever create background Web mappings.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ServePorts {
     pub ours: Vec<u16>,
     pub all: Vec<u16>,
 }
 
-/// Walk `tailscale serve status --json` and bucket the `Web` https ports by
-/// whether their `Proxy` handler forwards to `host:port`, so the reported
-/// URL and the disable path use the ports mappings actually listen on
-/// rather than assuming the configured one.
-fn serve_status_https_ports(raw: &[u8], local_host: &str, local_port: u16) -> ServePorts {
+/// Walk `tailscale serve status --json` and bucket the tailnet ports by
+/// whether they proxy to `host:port`, so the reported URL and the disable
+/// path use the ports mappings actually listen on rather than assuming the
+/// configured one. Foreground mounts and raw `TCP` forwards claim a port
+/// too, so they count towards `all`; `serve off` cannot remove them, so
+/// they never count towards `ours`.
+fn serve_status_https_ports(
+    raw: &[u8],
+    local_host: &str,
+    local_port: u16,
+) -> Result<ServePorts, TailscaleError> {
+    let json: serde_json::Value = serde_json::from_slice(raw).map_err(|_| TailscaleError::Parse)?;
     let mut out = ServePorts::default();
-    let Ok(json) = serde_json::from_slice::<serde_json::Value>(raw) else {
-        return out;
-    };
-    let Some(web) = json.get("Web").and_then(|w| w.as_object()) else {
-        return out;
-    };
-    for (key, entry) in web {
-        let Some(port) = key
-            .rsplit_once(':')
-            .and_then(|(_, p)| p.parse::<u16>().ok())
-        else {
-            continue;
-        };
-        out.all.push(port);
-        let mut targets = Vec::new();
-        collect_proxy_targets(entry, &mut targets);
-        if targets
-            .iter()
-            .any(|t| proxy_target_matches(t, local_host, local_port))
-        {
-            out.ours.push(port);
+    if let Some(web) = json.get("Web").and_then(|w| w.as_object()) {
+        for (key, entry) in web {
+            let Some(port) = key
+                .rsplit_once(':')
+                .and_then(|(_, p)| p.parse::<u16>().ok())
+            else {
+                continue;
+            };
+            out.all.push(port);
+            let mut targets = Vec::new();
+            collect_proxy_targets(entry, &mut targets);
+            if targets
+                .iter()
+                .any(|t| proxy_target_matches(t, local_host, local_port))
+            {
+                out.ours.push(port);
+            }
         }
     }
-    out
+    if let Some(foreground) = json
+        .get("Foreground")
+        .and_then(|f| f.get("Web"))
+        .and_then(|w| w.as_object())
+    {
+        for key in foreground.keys() {
+            if let Some(port) = key
+                .rsplit_once(':')
+                .and_then(|(_, p)| p.parse::<u16>().ok())
+            {
+                out.all.push(port);
+            }
+        }
+    }
+    if let Some(tcp) = json.get("TCP").and_then(|t| t.as_object()) {
+        for key in tcp.keys() {
+            if let Ok(port) = key.parse::<u16>() {
+                out.all.push(port);
+            }
+        }
+    }
+    out.all.sort_unstable();
+    out.all.dedup();
+    out.ours.sort_unstable();
+    out.ours.dedup();
+    Ok(out)
 }
 
 fn collect_proxy_targets<'a>(v: &'a serde_json::Value, out: &mut Vec<&'a str>) {
@@ -476,13 +496,18 @@ mod tests {
     fn serve_target_prefers_loopback_for_wildcard_and_loopback_binds() {
         assert_eq!(local_serve_target("0.0.0.0", 7878), "http://127.0.0.1:7878");
         assert_eq!(local_serve_target("::", 7878), "http://127.0.0.1:7878");
+        assert_eq!(local_serve_target("", 7878), "http://127.0.0.1:7878");
+        // Explicit binds pass through: an IPv6-only loopback socket would
+        // never answer a 127.0.0.1 proxy.
         assert_eq!(
             local_serve_target("127.0.0.1", 7878),
             "http://127.0.0.1:7878"
         );
+        assert_eq!(local_serve_target("::1", 7878), "http://[::1]:7878");
+        assert_eq!(local_serve_target("[::1]", 7878), "http://[::1]:7878");
         assert_eq!(
             local_serve_target("localhost", 7878),
-            "http://127.0.0.1:7878"
+            "http://localhost:7878"
         );
         assert_eq!(
             local_serve_target("192.168.1.5", 7878),
@@ -509,14 +534,14 @@ mod tests {
             }
         }"#;
         assert_eq!(
-            serve_status_https_ports(raw, "127.0.0.1", 7878),
+            serve_status_https_ports(raw, "127.0.0.1", 7878).unwrap(),
             ServePorts {
                 ours: vec![443],
                 all: vec![443]
             }
         );
         assert_eq!(
-            serve_status_https_ports(raw, "127.0.0.1", 9999),
+            serve_status_https_ports(raw, "127.0.0.1", 9999).unwrap(),
             ServePorts {
                 ours: vec![],
                 all: vec![443]
@@ -534,7 +559,9 @@ mod tests {
             }
         }"#;
         assert_eq!(
-            serve_status_https_ports(raw, "127.0.0.1", 7878).ours,
+            serve_status_https_ports(raw, "127.0.0.1", 7878)
+                .unwrap()
+                .ours,
             vec![8443]
         );
     }
@@ -544,16 +571,19 @@ mod tests {
         let raw =
             br#"{"Web":{"h.t.ts.net:443":{"Handlers":{"/":{"Proxy":"http://localhost:7878/"}}}}}"#;
         assert_eq!(
-            serve_status_https_ports(raw, "0.0.0.0", 7878).ours,
+            serve_status_https_ports(raw, "0.0.0.0", 7878).unwrap().ours,
             vec![443]
         );
         let raw =
             br#"{"Web":{"h.t.ts.net:443":{"Handlers":{"/":{"Proxy":"http://192.168.1.5:7878"}}}}}"#;
         assert_eq!(
-            serve_status_https_ports(raw, "192.168.1.5", 7878).ours,
+            serve_status_https_ports(raw, "192.168.1.5", 7878)
+                .unwrap()
+                .ours,
             vec![443]
         );
         assert!(serve_status_https_ports(raw, "127.0.0.1", 7878)
+            .unwrap()
             .ours
             .is_empty());
     }
@@ -568,11 +598,13 @@ mod tests {
             }
         }"#;
         assert_eq!(
-            serve_status_https_ports(raw, "[fd7a::1]", 7878).ours,
+            serve_status_https_ports(raw, "[fd7a::1]", 7878)
+                .unwrap()
+                .ours,
             vec![443]
         );
         assert_eq!(
-            serve_status_https_ports(raw, "fd7a::1", 7878).ours,
+            serve_status_https_ports(raw, "fd7a::1", 7878).unwrap().ours,
             vec![443]
         );
     }
@@ -585,7 +617,7 @@ mod tests {
                 "h.t.ts.net:8443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:7878"}}}
             }
         }"#;
-        let ports = serve_status_https_ports(raw, "127.0.0.1", 7878);
+        let ports = serve_status_https_ports(raw, "127.0.0.1", 7878).unwrap();
         assert_eq!(ports.ours, vec![443, 8443]);
         assert_eq!(ports.all, vec![443, 8443]);
     }
@@ -593,19 +625,44 @@ mod tests {
     #[test]
     fn serve_status_ignores_unrelated_json() {
         assert_eq!(
-            serve_status_https_ports(br#"{}"#, "127.0.0.1", 7878),
+            serve_status_https_ports(br#"{}"#, "127.0.0.1", 7878).unwrap(),
             ServePorts::default()
         );
-        assert_eq!(
+        // Unparseable output is an error, not an empty config: treating it
+        // as empty would let enable clobber a foreign mapping.
+        assert!(matches!(
             serve_status_https_ports(b"garbage", "127.0.0.1", 7878),
-            ServePorts::default()
-        );
+            Err(TailscaleError::Parse)
+        ));
         // A Proxy outside a Web entry has no https port to report.
         let raw = br#"{"Proxy":"http://127.0.0.1:7878"}"#;
         assert_eq!(
-            serve_status_https_ports(raw, "127.0.0.1", 7878),
+            serve_status_https_ports(raw, "127.0.0.1", 7878).unwrap(),
             ServePorts::default()
         );
+    }
+
+    #[test]
+    fn serve_status_counts_foreground_and_tcp_ports_as_claimed() {
+        let raw = br#"{
+            "Web": {
+                "h.t.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:7878"}}}
+            },
+            "Foreground": {
+                "Web": {
+                    "h.t.ts.net:8443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:7878"}}}
+                }
+            },
+            "TCP": {
+                "443": {"HTTPS": true},
+                "2222": {"TCPForward": "tcp://127.0.0.1:22"}
+            }
+        }"#;
+        let ports = serve_status_https_ports(raw, "127.0.0.1", 7878).unwrap();
+        // Only the background Web mount is ours; the foreground mount and
+        // raw TCP forward still claim their ports.
+        assert_eq!(ports.ours, vec![443]);
+        assert_eq!(ports.all, vec![443, 2222, 8443]);
     }
 
     #[test]

@@ -18,6 +18,7 @@ pub mod audit;
 pub mod messages;
 pub mod plans;
 pub mod projects;
+pub mod server_settings;
 pub mod sessions;
 pub mod thread_groups;
 pub mod threads;

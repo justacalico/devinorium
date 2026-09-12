@@ -15,7 +15,7 @@ use axum::routing::{get, put, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::api::ApiError;
+use crate::api::{map_err_internal, ApiError};
 use crate::auth::session::CurrentUser;
 use crate::tailscale::{self, TailscaleError};
 use crate::AppState;
@@ -49,8 +49,11 @@ struct TailscaleInfo {
     backend_state: Option<String>,
     magic_dns_name: Option<String>,
     tailnet_ipv4: Vec<String>,
+    /// tailscaled currently proxies to this listener.
     serve_enabled: bool,
-    /// Tailnet-side HTTPS port the serve mapping uses.
+    /// The persisted preference; the mapping is re-applied on startup.
+    serve_desired: bool,
+    /// Tailnet-side HTTPS port the serve mapping uses (or will request).
     serve_port: u16,
     /// `https://<magicdns>/` URL when serve is enabled.
     https_url: Option<String>,
@@ -59,7 +62,12 @@ struct TailscaleInfo {
     endpoints: Vec<EndpointInfo>,
 }
 
-fn empty_info(local_mode: bool, serve_port: u16, installed: bool) -> TailscaleInfo {
+fn empty_info(
+    local_mode: bool,
+    serve_desired: bool,
+    serve_port: u16,
+    installed: bool,
+) -> TailscaleInfo {
     TailscaleInfo {
         local_mode,
         installed,
@@ -67,6 +75,7 @@ fn empty_info(local_mode: bool, serve_port: u16, installed: bool) -> TailscaleIn
         magic_dns_name: None,
         tailnet_ipv4: vec![],
         serve_enabled: false,
+        serve_desired,
         serve_port,
         https_url: None,
         https_reachable: None,
@@ -76,23 +85,28 @@ fn empty_info(local_mode: bool, serve_port: u16, installed: bool) -> TailscaleIn
 
 async fn build_info(state: &AppState) -> TailscaleInfo {
     let cfg = &state.config;
-    let serve_port = cfg.tailscale_serve_port;
+    let (serve_desired, stored_port) = state.db.get_tailscale_serve().await.unwrap_or_else(|e| {
+        tracing::debug!("failed to read tailscale serve setting: {e}");
+        (false, tailscale::DEFAULT_SERVE_PORT)
+    });
     if cfg.is_local_mode() {
-        return empty_info(true, serve_port, false);
+        return empty_info(true, serve_desired, stored_port, false);
     }
     let status = match state.tailscale.read_status().await {
         Ok(s) => s,
-        Err(TailscaleError::NotInstalled) => return empty_info(false, serve_port, false),
+        Err(TailscaleError::NotInstalled) => {
+            return empty_info(false, serve_desired, stored_port, false)
+        }
         Err(e) => {
             tracing::debug!("tailscale status failed: {e}");
-            return empty_info(false, serve_port, true);
+            return empty_info(false, serve_desired, stored_port, true);
         }
     };
 
-    // The port the mapping actually listens on wins over the configured
-    // default so the advertised URL and the disable path stay in sync with
-    // whatever tailscaled has stored. Errors count as "not enabled": a host
-    // where `serve status` fails cannot serve anyway.
+    // The port the mapping actually listens on wins over the stored
+    // preference so the advertised URL and the disable path stay in sync
+    // with whatever tailscaled has stored. Errors count as "not enabled":
+    // a host where `serve status` fails cannot serve anyway.
     let detected_port = match state.tailscale.serve_https_ports(&cfg.host, cfg.port).await {
         Ok(ports) => ports.ours.first().copied(),
         Err(e) => {
@@ -101,7 +115,7 @@ async fn build_info(state: &AppState) -> TailscaleInfo {
         }
     };
     let serve_enabled = detected_port.is_some();
-    let serve_port = detected_port.unwrap_or(serve_port);
+    let serve_port = detected_port.unwrap_or(stored_port);
     let https_url = if serve_enabled {
         status
             .magic_dns_name
@@ -156,6 +170,7 @@ async fn build_info(state: &AppState) -> TailscaleInfo {
         magic_dns_name: status.magic_dns_name,
         tailnet_ipv4: status.tailnet_ipv4,
         serve_enabled,
+        serve_desired,
         serve_port,
         https_url,
         https_reachable,
@@ -170,6 +185,14 @@ async fn status(State(state): State<AppState>, CurrentUser(_user): CurrentUser) 
 #[derive(Debug, Deserialize)]
 struct SetServeRequest {
     enabled: bool,
+    /// Tailnet HTTPS port to request. When absent the stored port (or 443)
+    /// is used; enabling on a different port than the current mapping moves
+    /// it.
+    port: Option<u16>,
+}
+
+fn internal_error(e: anyhow::Error) -> Response {
+    map_err_internal(e).into_response()
 }
 
 async fn set_serve(
@@ -189,8 +212,19 @@ async fn set_serve(
         )
             .into_response();
     }
+    if req.port == Some(0) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("port must be between 1 and 65535")),
+        )
+            .into_response();
+    }
 
-    let mut serve_port = state.config.tailscale_serve_port;
+    let (_, stored_port) = state.db.get_tailscale_serve().await.unwrap_or_else(|e| {
+        tracing::debug!("failed to read tailscale serve setting: {e}");
+        (false, tailscale::DEFAULT_SERVE_PORT)
+    });
+    let mut serve_port = req.port.unwrap_or(stored_port);
     if req.enabled {
         let ts_status = match state.tailscale.read_status().await {
             Ok(s) => s,
@@ -221,34 +255,52 @@ async fn set_serve(
             .serve_https_ports(&state.config.host, state.config.port)
             .await
         {
-            // Already proxying to this listener: report the port tailscaled
-            // has rather than stacking a second mapping.
-            Ok(ports) if !ports.ours.is_empty() => serve_port = ports.ours[0],
-            // The configured port is claimed by a mapping that is not ours;
-            // enabling would silently hijack it.
-            Ok(ports) if ports.all.contains(&serve_port) => {
-                return (
-                    StatusCode::CONFLICT,
-                    Json(ApiError::new(
-                        "the configured tailscale serve port is in use by another mapping",
-                    )),
-                )
-                    .into_response();
-            }
-            // Nothing mapped, or serve status is unreadable: create it.
-            _ => {
-                if let Err(e) = state.tailscale.ensure_serve(&target, serve_port).await {
-                    return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+            Ok(ports) => {
+                // The requested port is claimed by a mapping that is not
+                // ours; enabling would silently hijack it.
+                if !ports.ours.contains(&serve_port) && ports.all.contains(&serve_port) {
+                    return (
+                        StatusCode::CONFLICT,
+                        Json(ApiError::new(
+                            "the requested tailscale serve port is in use by another mapping",
+                        )),
+                    )
                         .into_response();
                 }
+                // Create the new mapping before dropping the old ones so a
+                // failed enable cannot leave the server unexposed.
+                if !ports.ours.contains(&serve_port) {
+                    if let Err(e) = state.tailscale.ensure_serve(&target, serve_port).await {
+                        return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+                            .into_response();
+                    }
+                }
+                // Drop mappings on other ports so a port change moves the
+                // listener instead of stacking.
+                for port in ports.ours.iter().filter(|p| **p != serve_port) {
+                    if let Err(e) = state.tailscale.disable_serve(*port).await {
+                        return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+                            .into_response();
+                    }
+                }
+            }
+            // Serve status is unreadable: there is no way to tell whether
+            // the requested port is foreign-claimed, so refuse rather than
+            // risk clobbering somebody else's mapping.
+            Err(e) => {
+                return (StatusCode::BAD_GATEWAY, Json(ApiError::new(e.to_string())))
+                    .into_response();
             }
         }
         tracing::info!(%target, serve_port, user_id = user.id, "tailscale serve enabled");
+        if let Err(e) = state.db.set_tailscale_serve(true, Some(serve_port)).await {
+            return internal_error(e);
+        }
     } else {
         // Remove every mapping that proxies to our listener, and nothing
-        // else: a foreign mapping on the configured port stays untouched.
+        // else: a foreign mapping on the requested port stays untouched.
         // Only when serve status is unreadable do we fall back to the
-        // configured port.
+        // stored port.
         match state
             .tailscale
             .serve_https_ports(&state.config.host, state.config.port)
@@ -269,6 +321,9 @@ async fn set_serve(
                         .into_response();
                 }
             }
+        }
+        if let Err(e) = state.db.set_tailscale_serve(false, None).await {
+            return internal_error(e);
         }
     }
 

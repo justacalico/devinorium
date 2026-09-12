@@ -19,6 +19,8 @@ use devinorium::{
 
 const MISSING_BIN: &str = "definitely-not-a-tailscale-binary-xyz";
 
+/// `serve_port` seeds the persisted setting, matching what an owner stored
+/// through the API on a previous run.
 async fn make_app(
     tailscale_bin: &str,
     local_token: Option<&str>,
@@ -31,6 +33,10 @@ async fn make_app(
     auth::bootstrap::run(&database, "owner", "supersecret123")
         .await
         .expect("bootstrap");
+    database
+        .set_tailscale_serve(false, Some(serve_port))
+        .await
+        .expect("seed serve port");
     if local_token.is_some() {
         auth::bootstrap::run_local(&database)
             .await
@@ -52,8 +58,6 @@ async fn make_app(
         allowed_origin: None,
         local_token: local_token.map(str::to_string),
         tailscale_bin: tailscale_bin.into(),
-        tailscale_serve: false,
-        tailscale_serve_port: serve_port,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -128,6 +132,19 @@ async fn get_status(app: &Router, bearer: &str) -> (StatusCode, serde_json::Valu
 }
 
 async fn put_serve(app: &Router, bearer: &str, enabled: bool) -> (StatusCode, serde_json::Value) {
+    put_serve_with_port(app, bearer, enabled, None).await
+}
+
+async fn put_serve_with_port(
+    app: &Router,
+    bearer: &str,
+    enabled: bool,
+    port: Option<u16>,
+) -> (StatusCode, serde_json::Value) {
+    let body = match port {
+        Some(p) => format!(r#"{{"enabled":{enabled},"port":{p}}}"#),
+        None => format!(r#"{{"enabled":{enabled}}}"#),
+    };
     let resp = app
         .clone()
         .oneshot(
@@ -136,7 +153,7 @@ async fn put_serve(app: &Router, bearer: &str, enabled: bool) -> (StatusCode, se
                 .uri("/api/tailscale/serve")
                 .header("content-type", "application/json")
                 .header("authorization", format!("Bearer {bearer}"))
-                .body(Body::from(format!(r#"{{"enabled":{enabled}}}"#)))
+                .body(Body::from(body))
                 .unwrap(),
         )
         .await
@@ -247,26 +264,34 @@ mod fake_cli {
     /// instantly instead of depending on whatever runs on 443.
     const SERVE_PORT: u16 = 45999;
 
-    /// A `tailscale` stand-in that answers `status`, remembers whether a
-    /// serve mapping was installed, and proxies `serve status` accordingly.
-    /// The MagicDNS name is `devbox.localhost` so the HTTPS probe resolves
-    /// instantly instead of waiting on real DNS for a .ts.net name.
+    /// A `tailscale` stand-in that answers `status`, tracks one serve
+    /// mapping per https port under `serve.d/`, and renders them as the
+    /// `Web` map `serve status --json` would produce. The MagicDNS name is
+    /// `devbox.localhost` so the HTTPS probe resolves instantly instead of
+    /// waiting on real DNS for a .ts.net name.
     fn make_fake(dir: &std::path::Path) -> std::path::PathBuf {
-        let state_file = dir.join("serve-state.json");
+        let state_dir = dir.join("serve.d");
+        std::fs::create_dir_all(&state_dir).unwrap();
         let script = format!(
             "#!/bin/sh\n\
              if [ \"$1\" = status ]; then\n\
                echo '{{\"BackendState\":\"Running\",\"Self\":{{\"DNSName\":\"devbox.localhost.\",\"TailscaleIPs\":[\"100.96.1.2\",\"fd7a::1\"]}}}}'\n\
              elif [ \"$1\" = serve ] && [ \"$2\" = status ]; then\n\
-               if [ -f '{0}' ]; then cat '{0}'; else echo '{{}}'; fi\n\
+               printf '{{\"Web\":{{'\n\
+               sep=''\n\
+               for f in '{0}'/*; do\n\
+                 [ -f \"$f\" ] || continue\n\
+                 printf '%s\"devbox.localhost:%s\":{{\"Handlers\":{{\"/\":{{\"Proxy\":\"%s\"}}}}}}' \"$sep\" \"${{f##*/}}\" \"$(cat \"$f\")\"\n\
+                 sep=','\n\
+               done\n\
+               printf '}}}}'\n\
              elif [ \"$1\" = serve ] && [ \"$3\" = off ]; then\n\
-               rm -f '{0}'\n\
+               rm -f '{0}'/\"${{2#--https=}}\"\n\
              elif [ \"$1\" = serve ]; then\n\
-               port=${{3#--https=}}\n\
-               echo '{{\"Web\":{{\"devbox.localhost:'\"$port\"'\":{{\"Handlers\":{{\"/\":{{\"Proxy\":\"'$4'\"}}}}}}}}}}' > '{0}'\n\
+               echo \"$4\" > '{0}'/\"${{3#--https=}}\"\n\
              fi\n\
              exit 0\n",
-            state_file.display()
+            state_dir.display()
         );
         let path = dir.join("tailscale");
         let mut f = std::fs::File::create(&path).unwrap();
@@ -275,6 +300,11 @@ mod fake_cli {
         perms.set_mode(0o755);
         std::fs::set_permissions(&path, perms).unwrap();
         path
+    }
+
+    /// Whether the fake tailscaled has a serve mapping on `https_port`.
+    fn mapping_exists(dir: &std::path::Path, https_port: u16) -> bool {
+        dir.join("serve.d").join(https_port.to_string()).exists()
     }
 
     #[tokio::test]
@@ -331,16 +361,72 @@ mod fake_cli {
         assert_eq!(json["https_url"], serde_json::Value::Null);
     }
 
-    /// Seed the fake tailscaled with a mapping that does not proxy to this
-    /// server, the shape `tailscale serve status --json` would report.
-    fn seed_foreign_mapping(dir: &std::path::Path, https_port: u16) {
-        let mut web = serde_json::Map::new();
-        web.insert(
-            format!("devbox.localhost:{https_port}"),
-            serde_json::json!({"Handlers": {"/": {"Proxy": "http://127.0.0.1:9999"}}}),
+    #[tokio::test]
+    async fn serve_toggle_persists_the_desired_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = make_fake(dir.path());
+        let (app, db) = make_app(&bin.to_string_lossy(), None, 7878, SERVE_PORT).await;
+        let token = login_token(&app).await;
+
+        let (status, json) = put_serve(&app, &token, true).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["serve_desired"], true);
+        assert_eq!(
+            db.get_tailscale_serve().await.unwrap(),
+            (true, SERVE_PORT),
+            "enable must persist so a restart re-applies the mapping"
         );
-        let state = serde_json::json!({"Web": web});
-        std::fs::write(dir.join("serve-state.json"), state.to_string()).unwrap();
+
+        let (status, json) = put_serve(&app, &token, false).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["serve_desired"], false);
+        // Disabling keeps the stored port for the next enable.
+        assert_eq!(db.get_tailscale_serve().await.unwrap(), (false, SERVE_PORT));
+    }
+
+    #[tokio::test]
+    async fn serve_enable_with_another_port_moves_the_mapping() {
+        const NEW_PORT: u16 = SERVE_PORT - 1;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = make_fake(dir.path());
+        let (app, db) = make_app(&bin.to_string_lossy(), None, 7878, SERVE_PORT).await;
+        let token = login_token(&app).await;
+
+        let (status, _) = put_serve(&app, &token, true).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, json) = put_serve_with_port(&app, &token, true, Some(NEW_PORT)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["serve_enabled"], true);
+        assert_eq!(json["serve_port"], NEW_PORT as i64);
+        assert_eq!(
+            json["https_url"],
+            format!("https://devbox.localhost:{NEW_PORT}/")
+        );
+        assert_eq!(db.get_tailscale_serve().await.unwrap(), (true, NEW_PORT));
+        // The move swapped ports instead of stacking them.
+        assert!(mapping_exists(dir.path(), NEW_PORT));
+        assert!(!mapping_exists(dir.path(), SERVE_PORT));
+    }
+
+    #[tokio::test]
+    async fn serve_enable_rejects_port_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = make_fake(dir.path());
+        let (app, _db) = make_app(&bin.to_string_lossy(), None, 7878, SERVE_PORT).await;
+        let token = login_token(&app).await;
+        let (status, _) = put_serve_with_port(&app, &token, true, Some(0)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    /// Seed the fake tailscaled with a mapping that does not proxy to this
+    /// server.
+    fn seed_foreign_mapping(dir: &std::path::Path, https_port: u16) {
+        std::fs::write(
+            dir.join("serve.d").join(https_port.to_string()),
+            "http://127.0.0.1:9999",
+        )
+        .unwrap();
     }
 
     #[tokio::test]
@@ -355,7 +441,7 @@ mod fake_cli {
         assert_eq!(status, StatusCode::CONFLICT);
         assert!(json["error"].as_str().unwrap().contains("in use"));
         // The foreign mapping is still there.
-        assert!(dir.path().join("serve-state.json").exists());
+        assert!(mapping_exists(dir.path(), SERVE_PORT));
     }
 
     #[tokio::test]
@@ -370,7 +456,43 @@ mod fake_cli {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["serve_enabled"], false);
         // `serve off` was never invoked: somebody else's mapping survives.
-        assert!(dir.path().join("serve-state.json").exists());
+        assert!(mapping_exists(dir.path(), SERVE_PORT));
+    }
+
+    #[tokio::test]
+    async fn serve_enable_fails_when_serve_status_is_unreadable() {
+        // `serve status` fails while `serve` itself would succeed; enabling
+        // must refuse rather than guess the port is free and clobber a
+        // foreign mapping it cannot see.
+        let dir = tempfile::tempdir().unwrap();
+        let state_file = dir.path().join("serve-state.json");
+        let script = format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = status ]; then\n\
+               echo '{{\"BackendState\":\"Running\",\"Self\":{{\"DNSName\":\"devbox.localhost.\",\"TailscaleIPs\":[\"100.96.1.2\"]}}}}'\n\
+             elif [ \"$1\" = serve ] && [ \"$2\" = status ]; then\n\
+               echo 'broken pipe' >&2; exit 1\n\
+             elif [ \"$1\" = serve ]; then\n\
+               echo '{{}}' > '{0}'\n\
+             fi\n\
+             exit 0\n",
+            state_file.display()
+        );
+        let path = dir.path().join("tailscale");
+        std::fs::write(&path, script).unwrap();
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+
+        let (app, _db) = make_app(&path.to_string_lossy(), None, 7878, SERVE_PORT).await;
+        let token = login_token(&app).await;
+        let (status, json) = put_serve(&app, &token, true).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert!(
+            !state_file.exists(),
+            "enable must not create a mapping it cannot verify"
+        );
+        assert!(!json.to_string().contains("broken pipe"));
     }
 
     #[tokio::test]

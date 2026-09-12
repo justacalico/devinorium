@@ -413,8 +413,6 @@ async fn app_state() -> (AppState, db::Db) {
         allowed_origin: None,
         local_token: None,
         tailscale_bin: "tailscale".into(),
-        tailscale_serve: false,
-        tailscale_serve_port: 443,
     };
 
     let state = AppState {
