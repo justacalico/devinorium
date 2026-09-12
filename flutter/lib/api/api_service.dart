@@ -896,14 +896,8 @@ class ApiService {
 
   /// Enable or disable the `tailscale serve` HTTPS mapping (owner only).
   /// Returns the refreshed status.
-  Future<TailscaleInfo> setTailscaleServe({
-    required bool enabled,
-    int? port,
-  }) async {
-    final j = await _client.put('/api/tailscale/serve', {
-      'enabled': enabled,
-      'port': ?port,
-    });
+  Future<TailscaleInfo> setTailscaleServe({required bool enabled}) async {
+    final j = await _client.put('/api/tailscale/serve', {'enabled': enabled});
     return TailscaleInfo.fromJson(j);
   }
 
