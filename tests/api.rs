@@ -6543,7 +6543,7 @@ async fn thread_create_sweeps_empty_worktree_thread() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/threads/{tid}/send"))
+                .uri(format!("/api/threads/{tid}/send/stream"))
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("cookie", &cookie)
