@@ -42,6 +42,17 @@ class _FakeApiService extends ApiService {
   }
 
   @override
+  Future<User> me() async => User(
+    id: 1,
+    username: 'owner',
+    role: 'user',
+    totpEnabled: false,
+    isOwner: true,
+    providerId: 'devin-cli',
+    providerCommand: 'devin',
+  );
+
+  @override
   Future<List<GitConnection>> listGitConnections() async => [];
 
   @override
@@ -55,10 +66,7 @@ class _FakeApiService extends ApiService {
   }
 
   @override
-  Future<TailscaleInfo> setTailscaleServe({
-    required bool enabled,
-    int? port,
-  }) async {
+  Future<TailscaleInfo> setTailscaleServe({required bool enabled}) async {
     lastServeEnabled = enabled;
     final error = tailscaleServeError;
     if (error != null) throw ApiException(error, 502);
@@ -669,6 +677,63 @@ void main() {
         );
         expect(sw.value, isFalse);
         expect(sw.onChanged, isNull);
+      });
+
+      testWidgets('repopulates after switching servers', (tester) async {
+        final apiWithTs = _FakeApiService()..tailscaleInfo = tsInfo;
+        final multi = MultiServerState();
+        multi.addTestConnection(
+          ServerProfile(
+            id: 'ts-server',
+            label: 'ts',
+            baseUrl: 'http://ts:7878',
+            token: 'tb',
+            username: 'owner',
+            createdAt: DateTime(2024, 1, 2).toUtc(),
+          ),
+          apiWithTs,
+        );
+        multi.addTestConnection(
+          ServerProfile(
+            id: 'plain',
+            label: 'plain',
+            baseUrl: 'http://plain:7878',
+            token: 'ta',
+            username: 'u',
+            createdAt: DateTime(2024, 1, 1).toUtc(),
+            isPrimary: true,
+          ),
+          _FakeApiService(),
+        );
+        final state = AppState.test(
+          multiServerState: multi,
+          user: User(
+            id: 1,
+            username: 'owner',
+            role: 'user',
+            totpEnabled: false,
+            isOwner: true,
+            providerId: 'devin-cli',
+            providerCommand: 'devin',
+          ),
+          settingsTopicIndex: 7,
+        );
+        addTearDown(state.dispose);
+
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+        // The active server has no tailscale status: card stays hidden.
+        expect(find.text('Tailscale'), findsNothing);
+
+        await state.switchServer('ts-server');
+        await tester.pumpAndSettle();
+
+        expect(state.activeServerId, 'ts-server');
+        expect(state.tailscaleInfo?.magicDnsName, 'devbox.tail-abc.ts.net');
+        expect(find.text('Tailscale'), findsOneWidget);
+        expect(find.text('Tailnet IP'), findsOneWidget);
+        state.stopHealthChecks();
+        state.stopGitRefresh();
       });
     });
   });
