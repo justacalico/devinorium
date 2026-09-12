@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.69.0 - 2026-09-12
+#### Features
+- 工作树下拉菜单支持删除工作树 - (b20a246) - HttpAnimations
+- --dev 监听所有接口，新增 --local 仅监听本机 - (2d49be9) - HttpAnimations
+
+- - -
+
 ## v0.68.0 - 2026-09-12
 #### Features
 - 消息支持复制、时间戳、日期分隔与重新生成/编辑重发 - (4be7887) - HttpAnimations
