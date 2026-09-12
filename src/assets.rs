@@ -42,23 +42,47 @@ async fn spa_fallback(uri: Uri) -> Response {
 
 fn try_serve_file(path: &str) -> Option<Response> {
     let file = FRONTEND_DIST.get_file(path)?;
-    let mime = mime_guess::from_path(path).first_or_octet_stream();
     let mut resp = Response::new(Body::from(file.contents()));
     *resp.status_mut() = StatusCode::OK;
     resp.headers_mut().insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_str(mime.as_ref()).unwrap(),
+        HeaderValue::from_str(&content_type_for(path)).unwrap(),
     );
-    // Hashed assets can be cached aggressively; index.html should not.
-    let cache = if path == "index.html" {
-        "no-cache"
-    } else {
-        "public, max-age=31536000, immutable"
-    };
-    if let Ok(val) = HeaderValue::from_str(cache) {
+    if let Ok(val) = HeaderValue::from_str(cache_control_for(path)) {
         resp.headers_mut().insert(header::CACHE_CONTROL, val);
     }
     Some(resp)
+}
+
+fn content_type_for(path: &str) -> String {
+    // mime_guess has no application/manifest+json mapping; Safari accepts a
+    // plain JSON type but the registered type is more correct.
+    if path == "manifest.json" {
+        "application/manifest+json".to_string()
+    } else {
+        mime_guess::from_path(path)
+            .first_or_octet_stream()
+            .to_string()
+    }
+}
+
+fn cache_control_for(path: &str) -> &'static str {
+    // index.html is the SPA entry point and must revalidate on every load.
+    if path == "index.html" {
+        return "no-cache";
+    }
+    // These filenames are stable across builds rather than content-hashed, so
+    // an immutable year-long cache would serve stale copies after an upgrade.
+    // iOS in particular caches home-screen icons and the manifest at install.
+    if path == "manifest.json"
+        || path == "version.json"
+        || path == "favicon.png"
+        || path == "flutter_service_worker.js"
+        || path.starts_with("icons/")
+    {
+        return "public, max-age=3600";
+    }
+    "public, max-age=31536000, immutable"
 }
 
 fn serve_file(path: &str) -> Response {
@@ -73,4 +97,66 @@ fn serve_file(path: &str) -> Response {
 #[allow(dead_code)]
 fn _encode_uri(s: &str) -> String {
     utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn index_html_declares_ios_pwa_support() {
+        let file = FRONTEND_DIST
+            .get_file("index.html")
+            .expect("index.html must be embedded");
+        let html = std::str::from_utf8(file.contents()).unwrap();
+        assert!(html.contains(r#"<link rel="manifest" href="manifest.json">"#));
+        assert!(html.contains(r#"name="apple-mobile-web-app-capable""#));
+        assert!(html.contains(r#"rel="apple-touch-icon""#));
+        assert!(html.contains(r#"rel="apple-touch-startup-image""#));
+    }
+
+    #[test]
+    fn manifest_json_uses_pwa_content_type() {
+        assert_eq!(
+            content_type_for("manifest.json"),
+            "application/manifest+json"
+        );
+        // frontend/dist/manifest.json only exists after scripts/build-flutter.sh
+        // has run, so skip rather than fail on a bare checkout.
+        let Some(resp) = try_serve_file("manifest.json") else {
+            return;
+        };
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()[header::CONTENT_TYPE],
+            "application/manifest+json"
+        );
+    }
+
+    #[test]
+    fn pwa_assets_use_short_lived_cache() {
+        assert_eq!(cache_control_for("index.html"), "no-cache");
+        for path in [
+            "manifest.json",
+            "version.json",
+            "favicon.png",
+            "flutter_service_worker.js",
+            "icons/apple-touch-icon.png",
+            "icons/splash/apple-splash-1125x2436.png",
+        ] {
+            assert_eq!(cache_control_for(path), "public, max-age=3600", "{path}");
+        }
+        assert_eq!(
+            cache_control_for("main.dart.wasm"),
+            "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[test]
+    fn touch_icons_serve_as_png() {
+        let Some(resp) = try_serve_file("icons/apple-touch-icon.png") else {
+            return;
+        };
+        assert_eq!(resp.headers()[header::CONTENT_TYPE], "image/png");
+    }
 }
