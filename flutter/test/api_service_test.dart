@@ -1237,4 +1237,84 @@ void main() {
       expect(mr, isNull);
     });
   });
+
+  group('Tailscale', () {
+    final statusBody = {
+      'local_mode': false,
+      'installed': true,
+      'backend_state': 'Running',
+      'magic_dns_name': 'devbox.tail-abc.ts.net',
+      'tailnet_ipv4': ['100.64.1.2'],
+      'serve_enabled': false,
+      'serve_port': 443,
+      'https_url': null,
+      'https_reachable': null,
+      'endpoints': [
+        {
+          'kind': 'tailnet-ip',
+          'label': 'Tailnet IP',
+          'url': 'http://100.64.1.2:7878',
+          'reachable': true,
+        },
+      ],
+    };
+
+    test('tailscaleStatus GETs /api/tailscale and parses the info', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/tailscale'));
+        return _json(200, statusBody);
+      });
+      final service = _serviceFor(mock);
+      final info = await service.tailscaleStatus();
+      expect(info.installed, isTrue);
+      expect(info.localMode, isFalse);
+      expect(info.magicDnsName, 'devbox.tail-abc.ts.net');
+      expect(info.tailnetIpv4, ['100.64.1.2']);
+      expect(info.serveEnabled, isFalse);
+      expect(info.endpoints.single.url, 'http://100.64.1.2:7878');
+      expect(info.endpoints.single.reachable, isTrue);
+    });
+
+    test('setTailscaleServe PUTs the toggle and parses the response', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('PUT', '/api/tailscale/serve'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['enabled'], isTrue);
+        expect(body.containsKey('port'), isFalse);
+        return _json(200, {
+          ...statusBody,
+          'serve_enabled': true,
+          'https_url': 'https://devbox.tail-abc.ts.net/',
+          'https_reachable': true,
+        });
+      });
+      final service = _serviceFor(mock);
+      final info = await service.setTailscaleServe(enabled: true);
+      expect(info.serveEnabled, isTrue);
+      expect(info.httpsUrl, 'https://devbox.tail-abc.ts.net/');
+      expect(info.httpsReachable, isTrue);
+    });
+
+    test('setTailscaleServe sends an explicit port when given', () async {
+      final mock = MockClient((req) async {
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['port'], 8443);
+        return _json(200, {...statusBody, 'serve_port': 8443});
+      });
+      final service = _serviceFor(mock);
+      final info = await service.setTailscaleServe(enabled: true, port: 8443);
+      expect(info.servePort, 8443);
+    });
+
+    test('tailscaleStatus surfaces ApiException on errors', () async {
+      final mock = MockClient((req) async {
+        return _json(404, {'error': 'tailscale CLI is not installed'});
+      });
+      final service = _serviceFor(mock);
+      await expectLater(
+        service.tailscaleStatus(),
+        throwsA(isA<ApiException>()),
+      );
+    });
+  });
 }

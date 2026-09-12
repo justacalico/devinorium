@@ -1791,4 +1791,69 @@ void main() {
       expect(defaultProviderCommand('devin-cli'), 'devin');
     });
   });
+
+  group('TailscaleInfo', () {
+    test('parses a full status payload', () {
+      final info = TailscaleInfo.fromJson({
+        'local_mode': false,
+        'installed': true,
+        'backend_state': 'Running',
+        'magic_dns_name': 'devbox.tail-abc.ts.net',
+        'tailnet_ipv4': ['100.64.1.2', '100.64.1.3'],
+        'serve_enabled': true,
+        'serve_port': 8443,
+        'https_url': 'https://devbox.tail-abc.ts.net:8443/',
+        'https_reachable': true,
+        'endpoints': [
+          {
+            'kind': 'tailnet-ip',
+            'label': 'Tailnet IP',
+            'url': 'http://100.64.1.2:7878',
+            'reachable': true,
+          },
+          {
+            'kind': 'tailscale-https',
+            'label': 'Tailscale HTTPS',
+            'url': 'https://devbox.tail-abc.ts.net:8443/',
+            'reachable': false,
+          },
+        ],
+      });
+
+      expect(info.localMode, isFalse);
+      expect(info.installed, isTrue);
+      expect(info.backendState, 'Running');
+      expect(info.magicDnsName, 'devbox.tail-abc.ts.net');
+      expect(info.tailnetIpv4, ['100.64.1.2', '100.64.1.3']);
+      expect(info.serveEnabled, isTrue);
+      expect(info.servePort, 8443);
+      expect(info.httpsUrl, 'https://devbox.tail-abc.ts.net:8443/');
+      expect(info.httpsReachable, isTrue);
+      expect(info.endpoints, hasLength(2));
+      expect(info.endpoints[1].kind, 'tailscale-https');
+      expect(info.endpoints[1].reachable, isFalse);
+    });
+
+    test('parses a local-mode payload', () {
+      final info = TailscaleInfo.fromJson({
+        'local_mode': true,
+        'installed': false,
+        'serve_port': 443,
+      });
+      expect(info.localMode, isTrue);
+      expect(info.installed, isFalse);
+      expect(info.magicDnsName, isNull);
+      expect(info.endpoints, isEmpty);
+    });
+
+    test('tolerates missing fields', () {
+      final info = TailscaleInfo.fromJson({});
+      expect(info.localMode, isFalse);
+      expect(info.installed, isFalse);
+      expect(info.serveEnabled, isFalse);
+      expect(info.servePort, 443);
+      expect(info.tailnetIpv4, isEmpty);
+      expect(info.httpsReachable, isNull);
+    });
+  });
 }
