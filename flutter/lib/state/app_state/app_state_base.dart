@@ -149,6 +149,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _lastThreadError(String value);
   Locale get _locale;
   set _locale(Locale value);
+  String get _language;
+  set _language(String value);
   int get _settingsTopicIndex;
   set _settingsTopicIndex(int value);
   NotificationService get _notifications;
@@ -275,6 +277,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get serverVersion;
   AppUpdate? get appUpdate;
   Locale get locale;
+  String get language;
   int get settingsTopicIndex;
   bool get notificationsEnabled;
   bool get hasMoreProjects;
@@ -395,6 +398,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _refreshGitForProject(int projectId);
   Future<void> checkConnection();
   void handleAppResumed();
+  void handleLocalesChanged(List<Locale>? locales);
   void _onConnectionRestored();
   Future<void> loadProjects();
   Future<void> loadMoreProjects();

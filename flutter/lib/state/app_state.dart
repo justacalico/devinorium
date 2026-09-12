@@ -208,6 +208,7 @@ class AppState extends AppStateBase
     }
 
     _locale = locale ?? const Locale('en');
+    _language = locale?.toLanguageTag() ?? 'system';
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;

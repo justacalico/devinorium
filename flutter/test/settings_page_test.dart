@@ -855,11 +855,12 @@ void main() {
 
     expect(find.text('Theme'), findsOneWidget);
     // The dropdown shows the active choice (System by default) and exposes
-    // the rest of the built-in themes when opened.
-    expect(find.text('System'), findsOneWidget);
+    // the rest of the built-in themes when opened. The language selector
+    // shows a second "System", so scope to the theme row's copy.
+    expect(find.text('System'), findsNWidgets(2));
     expect(find.text('Import custom'), findsOneWidget);
 
-    await tester.tap(find.text('System'));
+    await tester.tap(find.text('System').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Light'), findsOneWidget);
@@ -887,7 +888,9 @@ void main() {
     state.setSettingsTopicIndex(2);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('System'));
+    // Two "System" labels are on screen (theme and language); the theme
+    // selector's copy comes first.
+    await tester.tap(find.text('System').first);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Light').last);
@@ -990,10 +993,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Language'), findsOneWidget);
-    expect(find.text('English'), findsOneWidget);
+    // Language defaults to following the system locale.
+    expect(state.language, 'system');
+    expect(find.text('System'), findsWidgets);
 
-    await tester.tap(find.text('English'));
+    await tester.tap(find.byType(DropdownButton<String>));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('English').last);
+    await tester.pumpAndSettle();
+    expect(state.language, 'en');
     expect(state.locale, const Locale('en'));
   });
 
@@ -1016,11 +1024,41 @@ void main() {
     state.setSettingsTopicIndex(2);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('English'));
+    await tester.tap(find.byType(DropdownButton<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Simplified Chinese'));
     await tester.pumpAndSettle();
+    expect(state.language, 'zh');
     expect(state.locale, const Locale('zh'));
+  });
+
+  testWidgets('Language selector can switch back to System', (tester) async {
+    final state = AppState.test(
+      locale: const Locale('zh'),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    expect(state.language, 'zh');
+
+    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('系统').last);
+    await tester.pumpAndSettle();
+    expect(state.language, 'system');
   });
 
   testWidgets('Personalization tab renders in Simplified Chinese', (tester) async {
