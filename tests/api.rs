@@ -412,6 +412,9 @@ async fn app_state() -> (AppState, db::Db) {
         secure_cookie: false,
         allowed_origin: None,
         local_token: None,
+        tailscale_bin: "tailscale".into(),
+        tailscale_serve: false,
+        tailscale_serve_port: 443,
     };
 
     let state = AppState {
@@ -430,6 +433,7 @@ async fn app_state() -> (AppState, db::Db) {
         ),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
     };
     (state, database)
 }

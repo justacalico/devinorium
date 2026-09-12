@@ -14,6 +14,7 @@ pub mod plan;
 pub mod projects;
 pub mod providers;
 pub mod security;
+pub mod tailscale;
 pub mod terminal;
 pub mod thread_runner;
 
@@ -55,6 +56,8 @@ pub struct AppState {
     pub git: Arc<crate::git::GitService>,
     pub git_remote: Arc<crate::git::GitRemoteService>,
     pub terminal_manager: crate::terminal::manager::TerminalManager,
+    /// `tailscale` CLI client used by the Tailscale endpoints.
+    pub tailscale: crate::tailscale::Tailscale,
 }
 
 impl AppState {
@@ -136,6 +139,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::accounts::router())
         .merge(api::audit::router())
         .merge(api::settings::router())
+        .merge(api::tailscale::router())
         .merge(api::models::router())
         .merge(api::providers::router())
         .merge(api::usage::router())

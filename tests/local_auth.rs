@@ -54,6 +54,9 @@ async fn make_app(local_token: Option<&str>) -> (axum::Router, db::Db) {
         secure_cookie: false,
         allowed_origin: None,
         local_token: local_token.map(str::to_string),
+        tailscale_bin: "tailscale".into(),
+        tailscale_serve: false,
+        tailscale_serve_port: 443,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -79,6 +82,7 @@ async fn make_app(local_token: Option<&str>) -> (axum::Router, db::Db) {
         ),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
     };
     (devinorium::build_app(state), database)
 }

@@ -25,6 +25,12 @@ pub struct Config {
     /// requests never need a login while random processes still cannot call
     /// the API without knowing the token.
     pub local_token: Option<String>,
+    /// Path or name of the `tailscale` binary.
+    pub tailscale_bin: String,
+    /// Publish the backend over Tailscale Serve HTTPS at startup.
+    pub tailscale_serve: bool,
+    /// HTTPS port `tailscale serve` listens on (tailnet-side).
+    pub tailscale_serve_port: u16,
 }
 
 impl Config {
@@ -86,6 +92,13 @@ impl Config {
             );
         }
 
+        let tailscale_bin = env_or("DEVINORIUM_TAILSCALE_BIN", "tailscale");
+        let tailscale_serve =
+            env_or("DEVINORIUM_TAILSCALE_SERVE", "false").eq_ignore_ascii_case("true");
+        let tailscale_serve_port = env_or("DEVINORIUM_TAILSCALE_SERVE_PORT", "443")
+            .parse::<u16>()
+            .context("DEVINORIUM_TAILSCALE_SERVE_PORT must be a valid u16")?;
+
         Ok(Self {
             host,
             port,
@@ -100,6 +113,9 @@ impl Config {
             secure_cookie,
             allowed_origin,
             local_token,
+            tailscale_bin,
+            tailscale_serve,
+            tailscale_serve_port,
         })
     }
 

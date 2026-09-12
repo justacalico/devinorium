@@ -50,6 +50,9 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         secure_cookie: false,
         allowed_origin: None,
         local_token: None,
+        tailscale_bin: "tailscale".into(),
+        tailscale_serve: false,
+        tailscale_serve_port: 443,
     });
     cfg.db_url = db_url;
     cfg.bootstrap_username = bootstrap_user.into();
@@ -78,6 +81,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         ),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
     };
     (state, database)
 }

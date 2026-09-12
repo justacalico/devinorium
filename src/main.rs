@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use devinorium::{auth, config, db, git, lock, providers, AppState};
+use devinorium::{auth, config, db, git, lock, providers, tailscale::Tailscale, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -73,6 +73,25 @@ async fn main() -> Result<()> {
         });
     }
 
+    // Tailscale Serve lifecycle. The env flag is ignored in bundled local
+    // mode: that server must stay loopback-only.
+    let tailscale = Tailscale::new(cfg.tailscale_bin.clone());
+    let env_managed_serve = cfg.tailscale_serve && !cfg.is_local_mode();
+    if cfg.tailscale_serve && cfg.is_local_mode() {
+        tracing::warn!("DEVINORIUM_TAILSCALE_SERVE is ignored in bundled local mode");
+    }
+    if env_managed_serve {
+        let ts = tailscale.clone();
+        let target = devinorium::tailscale::local_serve_target(&cfg.host, cfg.port);
+        let https_port = cfg.tailscale_serve_port;
+        tokio::spawn(async move {
+            match ts.ensure_serve(&target, https_port).await {
+                Ok(()) => tracing::info!(%target, https_port, "tailscale serve enabled"),
+                Err(e) => tracing::warn!("failed to enable tailscale serve: {e}"),
+            }
+        });
+    }
+
     let secure_cookie = cfg.secure_cookie;
     let cfg = Arc::new(cfg);
     let state = AppState {
@@ -88,6 +107,7 @@ async fn main() -> Result<()> {
         terminal_manager: devinorium::terminal::manager::TerminalManager::default_manager(),
         git: Arc::new(git::GitService::new()),
         git_remote: Arc::new(git::GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: tailscale.clone(),
     };
 
     let app = devinorium::build_app(state);
@@ -98,8 +118,41 @@ async fn main() -> Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await?;
+
+    // Only the env-flag-managed mapping is removed on shutdown; a mapping the
+    // owner toggled through the API persists in tailscaled on its own.
+    if env_managed_serve {
+        match tailscale.disable_serve(cfg.tailscale_serve_port).await {
+            Ok(()) => tracing::info!("tailscale serve disabled"),
+            Err(e) => tracing::warn!("failed to disable tailscale serve: {e}"),
+        }
+    }
     Ok(())
+}
+
+/// Resolve on Ctrl-C or SIGTERM so `axum::serve` can drain and the
+/// env-managed tailscale mapping can be removed.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 /// Exit the process once stdin reaches EOF. Used in bundled local mode, where
