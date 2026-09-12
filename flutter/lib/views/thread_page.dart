@@ -23,6 +23,7 @@ import '../utils/path_attachment.dart';
 import '../utils/permission_modes.dart';
 import '../utils/plan_markup.dart';
 import '../utils/thread_status.dart';
+import '../widgets/attachment_thumbnail.dart';
 import '../widgets/message_view.dart';
 import '../widgets/provider_icons.dart';
 import '../widgets/thread_tag.dart';

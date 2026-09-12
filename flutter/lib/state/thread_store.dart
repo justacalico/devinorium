@@ -734,6 +734,9 @@ class ThreadStore {
 
     if (ev.event == 'user_message') {
       final msg = parseSseMessage(ev.data);
+      if (msg != null) {
+        _mergeOptimisticAttachmentBytes(msg);
+      }
       if (msg?.clientMessageId != null) {
         _removeOptimisticMessage(msg!.clientMessageId!);
       } else if (msg != null) {
@@ -1015,8 +1018,14 @@ class ThreadStore {
       // Match the backend's att_meta order: uploads, then path refs, then
       // thread references.
       attachments: [
-        for (final a in attachments)
-          Attachment(filename: a.filename, size: a.bytes.length),
+        for (var i = 0; i < attachments.length; i++)
+          Attachment(
+            filename: attachments[i].filename,
+            size: attachments[i].bytes.length,
+            mime: attachments[i].mime,
+            index: i,
+            bytes: attachments[i].bytes,
+          ),
         for (final r in pathRefs)
           Attachment(
             filename: r.path,
@@ -1027,6 +1036,55 @@ class ThreadStore {
         for (final r in threadReferences)
           Attachment(filename: r.title, size: 0, isThreadRef: true),
       ],
+    );
+  }
+
+  /// Copy in-memory attachment bytes from the matching optimistic message
+  /// onto the acknowledged server message, keyed by attachment index, so
+  /// image thumbnails survive the swap without refetching their blobs.
+  void _mergeOptimisticAttachmentBytes(Message msg) {
+    final serverAtts = msg.attachments;
+    if (serverAtts == null || msg.id == null) return;
+    Message? opt;
+    if (msg.clientMessageId != null) {
+      for (final m in _optimisticMessages) {
+        if (m.clientMessageId == msg.clientMessageId) {
+          opt = m;
+          break;
+        }
+      }
+    } else {
+      final idx = _optimisticMessages.indexWhere(
+        (m) => m.role == msg.role && m.content == msg.content,
+      );
+      if (idx != -1) opt = _optimisticMessages[idx];
+    }
+    final bytesByIndex = <int, Uint8List>{
+      for (final a in opt?.attachments ?? const <Attachment>[])
+        if (a.index != null && a.bytes != null) a.index!: a.bytes!,
+    };
+    if (bytesByIndex.isEmpty) return;
+    var changed = false;
+    final merged = <Attachment>[];
+    for (final a in serverAtts) {
+      final b = a.index != null && a.bytes == null
+          ? bytesByIndex[a.index]
+          : null;
+      if (b != null) {
+        merged.add(a.withBytes(b));
+        changed = true;
+      } else {
+        merged.add(a);
+      }
+    }
+    if (!changed) return;
+    final patched = msg.copyWith(attachments: merged);
+    final d = _detail.valueOrNull;
+    if (d == null) return;
+    _detail = AsyncValue.ready(
+      d.copyWith(
+        messages: [for (final m in d.messages) m.id == msg.id ? patched : m],
+      ),
     );
   }
 

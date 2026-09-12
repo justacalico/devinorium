@@ -14,6 +14,7 @@ use sqlx::{
     Connection as _, SqliteConnection, SqlitePool,
 };
 
+pub mod attachments;
 pub mod audit;
 pub mod messages;
 pub mod plans;

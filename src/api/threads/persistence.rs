@@ -24,7 +24,7 @@ pub(crate) async fn persist_user_message(
 ) -> anyhow::Result<MessageRow> {
     let user_parts = serde_json::to_string(&[MessagePart::text(input.prompt.as_str())])
         .unwrap_or_else(|_| "[]".into());
-    state
+    let msg = state
         .db
         .add_message(NewMessage {
             thread_id: thread.id.clone(),
@@ -36,7 +36,17 @@ pub(crate) async fn persist_user_message(
             model: String::new(),
             client_message_id: input.client_message_id.clone(),
         })
+        .await?;
+    // Blobs are display data only: if storing them fails the message still
+    // went out, so log and keep the metadata chips.
+    if let Err(e) = state
+        .db
+        .add_message_attachments(msg.id, &input.attachments)
         .await
+    {
+        tracing::warn!(error = %e, "failed to persist message attachments");
+    }
+    Ok(msg)
 }
 
 /// Derive a title from the first user message and persist it, but only if the

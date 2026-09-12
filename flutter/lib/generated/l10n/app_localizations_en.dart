@@ -411,6 +411,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachSourceBrowse => 'Browse';
 
   @override
+  String get removeAttachment => 'Remove attachment';
+
+  @override
   String get files => 'Files';
 
   @override

@@ -497,25 +497,51 @@ class _ComposerState extends State<_Composer> {
                                     i < model.attachments.length;
                                     i++
                                   )
-                                    Chip(
-                                      avatar: const Icon(
-                                        Icons.attach_file,
-                                        size: 14,
+                                    if (isImageMime(
+                                          model.attachments[i].mime,
+                                        ) &&
+                                        model.attachments[i].bytes.isNotEmpty)
+                                      AttachmentThumb(
+                                        key: Key('composer_attachment_$i'),
+                                        bytes: model.attachments[i].bytes,
+                                        filename:
+                                            model.attachments[i].filename,
+                                        onDelete: () =>
+                                            state.removeAttachment(i),
+                                        onTap: () => showAttachmentPreview(
+                                          context,
+                                          bytes: model.attachments[i].bytes,
+                                          filename:
+                                              model.attachments[i].filename,
+                                        ),
+                                      )
+                                    else
+                                      Chip(
+                                        avatar: const Icon(
+                                          Icons.attach_file,
+                                          size: 14,
+                                        ),
+                                        label: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 280,
+                                          ),
+                                          child: Text(
+                                            model.attachments[i].filename,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 0,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                        backgroundColor: theme
+                                            .colorScheme
+                                            .surfaceContainerHigh,
+                                        onDeleted: () =>
+                                            state.removeAttachment(i),
                                       ),
-                                      label: Text(
-                                        model.attachments[i].filename,
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 0,
-                                      ),
-                                      visualDensity: VisualDensity.compact,
-                                      backgroundColor: theme
-                                          .colorScheme
-                                          .surfaceContainerHigh,
-                                      onDeleted: () =>
-                                          state.removeAttachment(i),
-                                    ),
                                 ],
                               ),
                             ),

@@ -243,6 +243,7 @@
   "attachSourceTakePhoto": "拍照",
   "attachSourceRecordVideo": "录像",
   "attachSourceBrowse": "浏览",
+  "removeAttachment": "移除附件",
   "files": "文件",
   "emptyFolder": "空文件夹",
   "folderNameHint": "文件夹名称",

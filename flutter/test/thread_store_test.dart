@@ -553,6 +553,64 @@ void main() {
     );
 
     test(
+      'sendMessage carries optimistic attachment bytes onto the echoed message',
+      () async {
+        final api = _ControlledApiService();
+        final png = Uint8List.fromList(const [137, 80, 78, 71]);
+        final store = ThreadStore(
+          api: api,
+          threadId: 't1',
+          projectId: 1,
+          composerText: 'look',
+          attachments: [
+            (filename: 'shot.png', mime: 'image/png', bytes: png),
+          ],
+          detail: AsyncValue.ready(
+            ThreadDetail(
+              thread: Thread(
+                id: 't1',
+                title: 'Test',
+                projectId: 1,
+                model: 'm1',
+                permissionMode: 'normal',
+                createdAt: '',
+                updatedAt: '',
+              ),
+              messages: const [],
+            ),
+          ),
+        );
+
+        store.onStateChanged = () {};
+        await store.sendMessage();
+
+        // Optimistic message shows the in-memory bytes immediately.
+        var att = store.displayDetail!.messages.last.attachments!.single;
+        expect(att.bytes, png);
+        final clientId =
+            store.displayDetail?.messages.last.clientMessageId;
+
+        // The server echo has metadata only; bytes must be merged in.
+        api.controller.add(
+          SseEvent(
+            'user_message',
+            '{"id": 2, "role": "user", "content": "look", '
+                '"client_message_id": "$clientId", '
+                '"attachments": [{"filename": "shot.png", "size": 4, '
+                '"mime": "image/png", "index": 0}]}',
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 10));
+
+        final messages = store.displayDetail?.messages ?? [];
+        expect(messages, hasLength(1));
+        att = messages.first.attachments!.single;
+        expect(att.index, 0);
+        expect(att.bytes, png);
+      },
+    );
+
+    test(
       'sendMessage restores composer when send fails before acknowledgement',
       () async {
         final api = _ControlledApiService();

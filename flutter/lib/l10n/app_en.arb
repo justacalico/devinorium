@@ -243,6 +243,7 @@
   "attachSourceTakePhoto": "Take Photo",
   "attachSourceRecordVideo": "Record Video",
   "attachSourceBrowse": "Browse",
+  "removeAttachment": "Remove attachment",
   "files": "Files",
   "emptyFolder": "Empty folder",
   "folderNameHint": "Folder name",

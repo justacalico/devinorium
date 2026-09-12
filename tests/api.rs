@@ -1187,6 +1187,157 @@ async fn thread_send_uses_stub_provider_and_persists_messages() {
 }
 
 #[tokio::test]
+async fn message_attachments_are_stored_and_served() {
+    use base64::Engine;
+
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let png: &[u8] = &[137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3];
+    let boundary = "----attachmentboundary";
+    let mut body: Vec<u8> = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nwith image\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"shot.png\"\r\nContent-Type: image/png\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(png);
+    body.extend_from_slice(
+        format!(
+            "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"note.txt\"\r\nContent-Type: text/plain\r\n\r\nhello note\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The user message metadata carries filename, mime, and blob index for
+    // each uploaded file, in upload order.
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let atts: serde_json::Value = serde_json::from_str(&msgs[0].attachments).unwrap();
+    assert_eq!(atts[0]["filename"], "shot.png");
+    assert_eq!(atts[0]["mime"], "image/png");
+    assert_eq!(atts[0]["index"], 0);
+    assert_eq!(atts[1]["filename"], "note.txt");
+    assert_eq!(atts[1]["index"], 1);
+    let mid = msgs[0].id;
+
+    // The attachment endpoint returns the stored bytes as base64.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{mid}/attachments/0"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let j: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(j["filename"], "shot.png");
+    assert_eq!(j["mime"], "image/png");
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(j["base64"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(decoded, png);
+
+    // Index 1 serves the second upload's bytes.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{mid}/attachments/1"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let j: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(j["filename"], "note.txt");
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(j["base64"].as_str().unwrap())
+            .unwrap(),
+        b"hello note"
+    );
+
+    // Unknown index, unknown message, and another thread all 404.
+    for uri in [
+        format!("/api/threads/{tid}/messages/{mid}/attachments/9"),
+        format!("/api/threads/{tid}/messages/999999/attachments/0"),
+        format!("/api/threads/other/messages/{mid}/attachments/0"),
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(authed("GET", &uri, &cookie, ""))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "uri: {uri}");
+    }
+
+    // Another user cannot read the blob even with a valid thread/message.
+    create_user(&app, &cookie, "bob", "bobpass12345").await;
+    let bob_cookie = login_as(&app, "bob", "bobpass12345").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{mid}/attachments/0"),
+            &bob_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // Deleting the message cascades the blob away.
+    db.delete_message(mid).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/messages/{mid}/attachments/0"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn thread_send_persists_partial_output_on_provider_error() {
     let (app, db) = make_app_with_provider(Arc::new(FailingProvider) as Arc<dyn Provider>).await;
     let cookie = login(&app).await;

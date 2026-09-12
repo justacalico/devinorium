@@ -118,6 +118,7 @@ class _MessagesPanel extends StatelessWidget {
                 partsDigest: streamingDigest,
                 model: detail?.thread.model ?? '',
               ),
+              threadId: detail!.thread.id,
               thinkingActive: streamingThinkingActive,
             );
           }
@@ -126,6 +127,7 @@ class _MessagesPanel extends StatelessWidget {
           return _MessageItem(
             key: ValueKey(message.id ?? message.content),
             message: message,
+            threadId: detail!.thread.id,
           );
         },
       ),
