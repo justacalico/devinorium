@@ -14,10 +14,14 @@
 //!   this penalizes probing/scanning behavior.
 //!
 //! Not a distributed limiter — appropriate for a single-instance deployment.
+//!
+//! Buckets are evicted lazily during `check`: entries that have refilled to
+//! capacity or sat idle past `MAX_IDLE` are dropped, and `MAX_ENTRIES` caps
+//! the table so a flood of unique keys cannot grow memory without bound.
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::extract::Request;
 use axum::http::{header, Method, StatusCode};
@@ -63,12 +67,28 @@ impl EndpointClass {
     }
 }
 
+/// How often `check` sweeps the table for evictable buckets.
+const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Buckets idle longer than this are dropped even if they have not fully
+/// refilled, so a key seen once cannot sit in the table forever.
+const MAX_IDLE: Duration = Duration::from_secs(60 * 60);
+
+/// Hard cap on tracked (bucket, key) pairs. Past this point unseen keys are
+/// rejected until a sweep frees space.
+const MAX_ENTRIES: usize = 50_000;
+
 /// A shared weighted rate limiter.
 #[derive(Clone)]
 pub struct RateLimiter {
-    inner: Arc<Mutex<HashMap<(String, String), Bucket>>>,
+    inner: Arc<Mutex<State>>,
     capacity: f64,
     refill_per_sec: f64,
+}
+
+struct State {
+    map: HashMap<(String, String), Bucket>,
+    next_sweep: Instant,
 }
 
 struct Bucket {
@@ -76,11 +96,36 @@ struct Bucket {
     last: Instant,
 }
 
+/// Drop buckets that are no longer worth tracking: they have either refilled
+/// back to capacity (a fresh entry behaves identically) or sat idle past
+/// `MAX_IDLE`.
+fn evict_stale(
+    map: &mut HashMap<(String, String), Bucket>,
+    now: Instant,
+    capacity: f64,
+    refill_per_sec: f64,
+) {
+    let max_idle = MAX_IDLE.as_secs_f64();
+    map.retain(|_, b| {
+        let idle = now.duration_since(b.last).as_secs_f64();
+        idle < max_idle && b.tokens + idle * refill_per_sec < capacity
+    });
+    // retain drops the entries but keeps the slot array — hand back the
+    // high-water allocation after a big drop.
+    if map.capacity() > 4096 && map.len() * 4 < map.capacity() {
+        map.shrink_to_fit();
+    }
+}
+
 impl RateLimiter {
     /// Create a limiter with a given bucket capacity and refill rate (tokens/sec).
     pub fn new(capacity: u32, refill_per_sec: f64) -> Self {
+        assert!(refill_per_sec.is_finite() && refill_per_sec >= 0.0);
         Self {
-            inner: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(Mutex::new(State {
+                map: HashMap::new(),
+                next_sweep: Instant::now() + SWEEP_INTERVAL,
+            })),
             capacity: capacity as f64,
             refill_per_sec,
         }
@@ -92,14 +137,26 @@ impl RateLimiter {
         if cost <= 0.0 {
             return true;
         }
-        let mut map = self.inner.lock().await;
+        let mut state = self.inner.lock().await;
         let now = Instant::now();
-        let entry = map
-            .entry((bucket.to_string(), key.to_string()))
-            .or_insert(Bucket {
-                tokens: self.capacity,
-                last: now,
-            });
+        if now >= state.next_sweep {
+            evict_stale(&mut state.map, now, self.capacity, self.refill_per_sec);
+            state.next_sweep = now + SWEEP_INTERVAL;
+        }
+        let map_key = (bucket.to_string(), key.to_string());
+        if !state.map.contains_key(&map_key) && state.map.len() >= MAX_ENTRIES {
+            // The table may be full of entries that are already evictable —
+            // sweep now and re-check before failing closed for unseen keys.
+            evict_stale(&mut state.map, now, self.capacity, self.refill_per_sec);
+            state.next_sweep = now + SWEEP_INTERVAL;
+            if state.map.len() >= MAX_ENTRIES {
+                return false;
+            }
+        }
+        let entry = state.map.entry(map_key).or_insert(Bucket {
+            tokens: self.capacity,
+            last: now,
+        });
         let elapsed = now.duration_since(entry.last).as_secs_f64();
         entry.tokens = (entry.tokens + elapsed * self.refill_per_sec).min(self.capacity);
         entry.last = now;
@@ -307,6 +364,156 @@ mod tests {
         assert!(!lim.check("b", "2.2.2.2", 1.0).await);
         // Different bucket for same IP is also independent.
         assert!(lim.check("other", "1.1.1.1", 20.0).await);
+    }
+
+    #[test]
+    fn evict_stale_drops_refilled_buckets() {
+        let now = Instant::now();
+        let mut map = HashMap::new();
+        // Back at capacity — indistinguishable from a fresh key.
+        map.insert(
+            ("b".to_string(), "full".to_string()),
+            Bucket {
+                tokens: 100.0,
+                last: now,
+            },
+        );
+        map.insert(
+            ("b".to_string(), "partial".to_string()),
+            Bucket {
+                tokens: 10.0,
+                last: now,
+            },
+        );
+        evict_stale(&mut map, now, 100.0, 1.0);
+        assert!(!map.contains_key(&("b".to_string(), "full".to_string())));
+        assert!(map.contains_key(&("b".to_string(), "partial".to_string())));
+    }
+
+    #[test]
+    fn evict_stale_drops_long_idle_buckets() {
+        let now = Instant::now();
+        let later = now + MAX_IDLE + Duration::from_secs(1);
+        let mut map = HashMap::new();
+        map.insert(
+            ("b".to_string(), "old".to_string()),
+            Bucket {
+                tokens: 50.0,
+                last: now,
+            },
+        );
+        map.insert(
+            ("b".to_string(), "recent".to_string()),
+            Bucket {
+                tokens: 50.0,
+                last: later,
+            },
+        );
+        // Zero refill — only the idle bound can evict "old".
+        evict_stale(&mut map, later, 100.0, 0.0);
+        assert!(!map.contains_key(&("b".to_string(), "old".to_string())));
+        assert!(map.contains_key(&("b".to_string(), "recent".to_string())));
+    }
+
+    #[tokio::test]
+    async fn check_sweeps_stale_entries() {
+        let lim = RateLimiter::new(100, 1.0);
+        {
+            let mut state = lim.inner.lock().await;
+            state.map.insert(
+                ("b".to_string(), "full".to_string()),
+                Bucket {
+                    tokens: 100.0,
+                    last: Instant::now(),
+                },
+            );
+            state.map.insert(
+                ("b".to_string(), "partial".to_string()),
+                Bucket {
+                    tokens: 10.0,
+                    last: Instant::now(),
+                },
+            );
+            // Force the next check to run the sweep.
+            state.next_sweep = Instant::now();
+        }
+        lim.check("b", "new", 1.0).await;
+        let state = lim.inner.lock().await;
+        assert!(!state
+            .map
+            .contains_key(&("b".to_string(), "full".to_string())));
+        assert!(state
+            .map
+            .contains_key(&("b".to_string(), "partial".to_string())));
+        assert!(state
+            .map
+            .contains_key(&("b".to_string(), "new".to_string())));
+        assert!(state.next_sweep > Instant::now(), "sweep reschedules");
+    }
+
+    #[tokio::test]
+    async fn table_cap_rejects_unseen_keys() {
+        let lim = RateLimiter::new(100, 0.0);
+        {
+            let mut state = lim.inner.lock().await;
+            for i in 0..MAX_ENTRIES {
+                state.map.insert(
+                    ("b".to_string(), format!("ip{i}")),
+                    Bucket {
+                        tokens: 50.0,
+                        last: Instant::now(),
+                    },
+                );
+            }
+            state.map.insert(
+                ("b".to_string(), "known".to_string()),
+                Bucket {
+                    tokens: 50.0,
+                    last: Instant::now(),
+                },
+            );
+        }
+        assert!(
+            !lim.check("b", "unseen", 1.0).await,
+            "unseen key past cap should be rejected"
+        );
+        assert!(
+            lim.check("b", "known", 1.0).await,
+            "existing key must still work when the table is full"
+        );
+        let state = lim.inner.lock().await;
+        assert!(
+            !state
+                .map
+                .contains_key(&("b".to_string(), "unseen".to_string())),
+            "rejected key must not be inserted"
+        );
+        assert_eq!(state.map.len(), MAX_ENTRIES + 1);
+    }
+
+    #[tokio::test]
+    async fn table_cap_sweeps_evictable_entries_first() {
+        let lim = RateLimiter::new(100, 1.0);
+        {
+            let mut state = lim.inner.lock().await;
+            // Fill the table with buckets that have already refilled — a
+            // fresh entry behaves identically, so they are dead weight.
+            for i in 0..MAX_ENTRIES {
+                state.map.insert(
+                    ("b".to_string(), format!("ip{i}")),
+                    Bucket {
+                        tokens: 100.0,
+                        last: Instant::now(),
+                    },
+                );
+            }
+        }
+        assert!(
+            lim.check("b", "unseen", 1.0).await,
+            "unseen key should be admitted after evicting dead entries"
+        );
+        let state = lim.inner.lock().await;
+        assert_eq!(state.map.len(), 1, "dead entries should be swept");
     }
 
     #[test]
