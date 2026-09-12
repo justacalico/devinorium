@@ -204,6 +204,8 @@ mixin ProjectStore on AppStateBase {
   @override
   Future<void> openNewProjectDialog() async {
     _dialog = DialogKind.newProject;
+    _cloneRepoSeq++;
+    _globalError = '';
     _userMenuOpen = false;
     notifyListeners();
   }

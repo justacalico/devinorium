@@ -31,6 +31,8 @@ mixin GitStore on AppStateBase {
   @override
   String? _cloneRepoResult;
   @override
+  int _cloneRepoSeq = 0;
+  @override
   MergeRequestLink? get linkedMergeRequest => _linkedMergeRequest;
   @override
   bool get loadingLinkedMergeRequest => _loadingLinkedMergeRequest;
@@ -76,6 +78,7 @@ mixin GitStore on AppStateBase {
   @override
   void openCloneRepoDialog() {
     _dialog = DialogKind.cloneRepo;
+    _cloneRepoSeq++;
     _cloningRepo = false;
     _cloneRepoResult = null;
     _globalError = '';
@@ -84,23 +87,30 @@ mixin GitStore on AppStateBase {
 
   @override
   Future<String?> cloneRepo(String url) async {
+    final seq = ++_cloneRepoSeq;
     _cloningRepo = true;
     _cloneRepoResult = null;
     _globalError = '';
     notifyListeners();
     try {
       final path = await api.cloneRepo(url);
-      _cloneRepoResult = path;
+      // The clone already landed on the server, so the project list refresh
+      // runs even if the user navigated away mid-request.
       await loadProjects();
+      if (seq != _cloneRepoSeq) return null;
+      _cloneRepoResult = path;
       return path;
     } catch (e) {
+      if (seq != _cloneRepoSeq) return null;
       _globalError = '$e';
       _cloneRepoResult = null;
       notifyListeners();
       return null;
     } finally {
-      _cloningRepo = false;
-      notifyListeners();
+      if (seq == _cloneRepoSeq) {
+        _cloningRepo = false;
+        notifyListeners();
+      }
     }
   }
 

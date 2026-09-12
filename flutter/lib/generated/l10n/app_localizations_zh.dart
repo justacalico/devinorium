@@ -267,6 +267,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get newProject => '新建项目';
 
   @override
+  String get addProject => '添加项目';
+
+  @override
+  String get addProjectLocalTitle => '本地文件夹';
+
+  @override
+  String get addProjectLocalDescription => '浏览磁盘上的文件夹';
+
+  @override
+  String get addProjectCloneDescription => '从远程 URL 克隆';
+
+  @override
   String get cloneRepo => '克隆存储库';
 
   @override

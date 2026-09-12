@@ -29,6 +29,170 @@ ApiClient _clientFor(List<http.Response> responses) {
 }
 
 void main() {
+  group('AddProjectDialog', () {
+    testWidgets('offers local folder and clone sources', (tester) async {
+      final state = AppState.test(dialog: DialogKind.addProject);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add project'), findsOneWidget);
+      expect(find.text('Local folder'), findsOneWidget);
+      expect(find.text('Browse a folder on disk'), findsOneWidget);
+      expect(find.text('Clone repository'), findsOneWidget);
+      expect(find.text('Clone from a remote URL'), findsOneWidget);
+    });
+
+    testWidgets('local folder source opens the new project form',
+        (tester) async {
+      final client = _clientFor([_json(200, [])]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.addProject,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Local folder'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.newProject);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Name',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('clone source opens the clone repository form',
+        (tester) async {
+      final state = AppState.test(dialog: DialogKind.addProject);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Clone repository'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.cloneRepo);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Remote URL',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('sub-dialogs navigate back to the source picker',
+        (tester) async {
+      final client = _clientFor([_json(200, [])]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.cloneRepo,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.addProject);
+      expect(find.text('Local folder'), findsOneWidget);
+
+      await tester.tap(find.text('Local folder'));
+      await tester.pumpAndSettle();
+      expect(state.dialog, DialogKind.newProject);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.addProject);
+    });
+
+    testWidgets('a finished clone result does not leak into a reopened dialog',
+        (tester) async {
+      final state = AppState.test(
+        dialog: DialogKind.addProject,
+        cloneRepoResult: '/cloned/repo',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Clone repository'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.cloneRepo);
+      expect(state.cloneRepoResult, isNull);
+      expect(find.text('/cloned/repo'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Remote URL',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('escape closes the source picker', (tester) async {
+      final state = AppState.test(dialog: DialogKind.addProject);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add project'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.none);
+      expect(find.text('Add project'), findsNothing);
+    });
+  });
+
   group('NewProjectDialog', () {
     testWidgets('selects home root as . and submits', (tester) async {
       final client = _clientFor([
