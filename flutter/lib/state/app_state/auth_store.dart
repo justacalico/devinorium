@@ -23,6 +23,7 @@ mixin AuthStore on AppStateBase {
     await _loadLanguage();
     await _loadComposerMode();
     await _loadNotificationPrefs();
+    await _loadDefaultEnvMode();
     await _loadPlanOverlayState();
     setAppL10n(_locale);
     try {

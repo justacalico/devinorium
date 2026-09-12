@@ -1634,6 +1634,18 @@ abstract class AppLocalizations {
   /// **'worktree'**
   String get worktreeModeShort;
 
+  /// No description provided for @defaultRunMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Default run mode'**
+  String get defaultRunMode;
+
+  /// No description provided for @defaultRunModeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose whether new threads run in the project directory or a separate worktree'**
+  String get defaultRunModeDescription;
+
   /// No description provided for @git.
   ///
   /// In en, this message translates to:

@@ -54,17 +54,24 @@ class _GitSectionState extends State<_GitSection> {
       List<GitConnection> connections,
       bool loading,
       String globalError,
+      String defaultEnvMode,
     })>(
       selector: (_, s) => (
         connections: s.gitConnections,
         loading: s.loadingGitConnections,
         globalError: s.globalError,
+        defaultEnvMode: s.defaultEnvMode,
       ),
       builder: (context, model, _) {
         final connections = model.connections;
         final isLoading = model.loading;
 
-        List<Widget> children = [];
+        List<Widget> children = [
+          _buildDefaultEnvModeRow(context, theme, l, model.defaultEnvMode),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+        ];
 
         if (model.globalError.isNotEmpty && !model.loading) {
           children.add(
@@ -99,6 +106,52 @@ class _GitSectionState extends State<_GitSection> {
           children: children,
         );
       },
+    );
+  }
+
+  Widget _buildDefaultEnvModeRow(
+    BuildContext context,
+    ThemeData theme,
+    AppLocalizations l,
+    String defaultEnvMode,
+  ) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l.defaultRunMode,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                l.defaultRunModeDescription,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        DropdownButton<String>(
+          value: defaultEnvMode,
+          underline: const SizedBox.shrink(),
+          items: [
+            DropdownMenuItem(value: 'local', child: Text(l.localMode)),
+            DropdownMenuItem(value: 'worktree', child: Text(l.worktreeMode)),
+          ],
+          onChanged: (value) {
+            if (value != null) {
+              widget.state.setDefaultEnvMode(value);
+            }
+          },
+        ),
+      ],
     );
   }
 

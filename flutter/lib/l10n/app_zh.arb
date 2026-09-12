@@ -531,6 +531,8 @@
   "localModeShort": "本地",
   "worktreeMode": "工作树",
   "worktreeModeShort": "工作树",
+  "defaultRunMode": "默认运行模式",
+  "defaultRunModeDescription": "选择新线程在项目目录中运行还是在单独的工作树中运行",
   "git": "Git",
   "gitConnections": "连接",
   "gitlab": "GitLab",

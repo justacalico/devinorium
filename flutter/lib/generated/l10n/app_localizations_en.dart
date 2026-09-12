@@ -855,6 +855,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get worktreeModeShort => 'worktree';
 
   @override
+  String get defaultRunMode => 'Default run mode';
+
+  @override
+  String get defaultRunModeDescription =>
+      'Choose whether new threads run in the project directory or a separate worktree';
+
+  @override
   String get git => 'Git';
 
   @override

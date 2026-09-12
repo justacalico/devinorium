@@ -294,6 +294,7 @@ mixin ThreadListStore on AppStateBase {
         model: model.isEmpty ? null : model,
         permissionMode: _selectedPermission,
         reasoningEffort: reasoning.isEmpty ? null : reasoning,
+        envMode: _defaultEnvMode,
       );
       final store = _createStore(
         t.id,

@@ -843,6 +843,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get worktreeModeShort => '工作树';
 
   @override
+  String get defaultRunMode => '默认运行模式';
+
+  @override
+  String get defaultRunModeDescription => '选择新线程在项目目录中运行还是在单独的工作树中运行';
+
+  @override
   String get git => 'Git';
 
   @override

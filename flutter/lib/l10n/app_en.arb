@@ -531,6 +531,8 @@
   "localModeShort": "local",
   "worktreeMode": "Worktree",
   "worktreeModeShort": "worktree",
+  "defaultRunMode": "Default run mode",
+  "defaultRunModeDescription": "Choose whether new threads run in the project directory or a separate worktree",
   "git": "Git",
   "gitConnections": "Connections",
   "gitlab": "GitLab",

@@ -189,6 +189,47 @@ void main() {
       state.setSettingsTopicIndex(2);
       expect(state.settingsTopicIndex, 2);
     });
+
+    test('default env mode is local', () {
+      final state = AppState.test();
+      expect(state.defaultEnvMode, 'local');
+    });
+
+    test('default env mode is persisted', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test();
+      await state.setDefaultEnvMode('worktree');
+      expect(state.defaultEnvMode, 'worktree');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_default_env_mode'), 'worktree');
+    });
+
+    test('setDefaultEnvMode rejects unknown modes', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test();
+      await state.setDefaultEnvMode('bogus');
+      expect(state.defaultEnvMode, 'local');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('devinorium_default_env_mode'), isNull);
+    });
+
+    test('default env mode is loaded from shared preferences', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_default_env_mode': 'worktree',
+      });
+      final state = AppState.test();
+      await state.bootstrap();
+      expect(state.defaultEnvMode, 'worktree');
+    });
+
+    test('invalid persisted env mode falls back to local', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_default_env_mode': 'bogus',
+      });
+      final state = AppState.test();
+      await state.bootstrap();
+      expect(state.defaultEnvMode, 'local');
+    });
   });
 
   group('Auth flow', () {

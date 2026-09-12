@@ -178,6 +178,7 @@ class AppState extends AppStateBase
     String? selectedReasoning,
     String? selectedPermission,
     String? selectedProvider,
+    String? defaultEnvMode,
     String? startedAt,
     bool threadLoading = false,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
@@ -205,6 +206,7 @@ class AppState extends AppStateBase
     }
 
     _locale = locale ?? const Locale('en');
+    _defaultEnvMode = defaultEnvMode ?? 'local';
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;

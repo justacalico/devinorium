@@ -19,6 +19,7 @@ class _ProviderApi extends ApiService {
   String? lastCreateModel;
   String? lastCreatePermission;
   String? lastCreateReasoning;
+  String? lastCreateEnvMode;
   String? lastSettingsProvider;
   String? lastSettingsReasoning;
   final modelsProviders = <String?>[];
@@ -57,6 +58,7 @@ class _ProviderApi extends ApiService {
     lastCreateModel = model;
     lastCreatePermission = permissionMode;
     lastCreateReasoning = reasoningEffort;
+    lastCreateEnvMode = envMode;
     return Future.value(_thread());
   }
 
@@ -185,6 +187,39 @@ void main() {
     expect(api.lastCreateProvider, 'opencode');
     expect(api.lastCreateModel, 'oc-m1');
     expect(api.lastCreatePermission, 'bypass');
+  });
+
+  test('createNewThread defaults the env mode to local', () async {
+    final api = _ProviderApi();
+    final state = AppState.test(
+      api: api,
+      projects: [
+        Project(id: 1, name: 'p', path: '/tmp/p', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
+    addTearDown(state.dispose);
+
+    await state.createNewThread();
+
+    expect(api.lastCreateEnvMode, 'local');
+  });
+
+  test('createNewThread passes the configured default env mode', () async {
+    final api = _ProviderApi();
+    final state = AppState.test(
+      api: api,
+      defaultEnvMode: 'worktree',
+      projects: [
+        Project(id: 1, name: 'p', path: '/tmp/p', createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 1,
+    );
+    addTearDown(state.dispose);
+
+    await state.createNewThread();
+
+    expect(api.lastCreateEnvMode, 'worktree');
   });
 
   test('opening a thread seeds its provider and loads its models', () async {

@@ -145,6 +145,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _lastThreadError(String value);
   Locale get _locale;
   set _locale(Locale value);
+  String get _defaultEnvMode;
+  set _defaultEnvMode(String value);
   int get _settingsTopicIndex;
   set _settingsTopicIndex(int value);
   NotificationService get _notifications;
@@ -271,6 +273,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Locale get locale;
   int get settingsTopicIndex;
   bool get notificationsEnabled;
+  String get defaultEnvMode;
   bool get hasMoreProjects;
   bool get isLoadingMoreProjects;
   bool get hasMoreThreads;
@@ -343,6 +346,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _loadLanguage();
   Future<void> setNotificationsEnabled(bool enabled);
   Future<void> _loadNotificationPrefs();
+  Future<void> setDefaultEnvMode(String mode);
+  Future<void> _loadDefaultEnvMode();
   Future<void> openFilesPanel();
   void closeFilesPanel();
   Future<void> openGitPanel();
