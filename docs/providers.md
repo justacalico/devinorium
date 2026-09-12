@@ -11,7 +11,6 @@ pub trait Provider: Send + Sync {
     async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>>;
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse>;
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse>;
-    async fn export(&self, session_id: &str, working_dir: &Path) -> anyhow::Result<serde_json::Value>;
     async fn health_check(&self) -> anyhow::Result<()>;
     // Optional: report installed/latest versions for the Settings card.
     // The default implementation reports nothing.
@@ -38,9 +37,6 @@ impl Provider for MyProvider {
     async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> { /* ... */ }
     async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> { /* ... */ }
     async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> { /* ... */ }
-    async fn export(&self, _: &str, _: &Path) -> anyhow::Result<serde_json::Value> {
-        Ok(serde_json::json!({}))
-    }
     async fn health_check(&self) -> anyhow::Result<()> { /* ... */ }
 }
 ```
@@ -50,14 +46,21 @@ impl Provider for MyProvider {
 In `src/providers/mod.rs`:
 
 - Add `pub mod my_provider;` at the top.
-- Add one match arm in `build_provider`:
+- Return it early in `build_provider` (ACP-speaking providers instead add one
+  `AgentKind` arm to the match):
 
 ```rust
-match cfg.id.as_str() {
-    "devin-cli" => Ok(Box::new(acp::AcpProvider::new(AgentKind::Devin, cfg))),
-    "opencode" => Ok(Box::new(acp::AcpProvider::new(AgentKind::Opencode, cfg))),
-    "my-provider" => Ok(Box::new(my_provider::MyProvider)),   // <- one line
-    other => anyhow::bail!("unknown provider: {other}"),
+pub fn build_provider(cfg: ProviderConfig) -> anyhow::Result<Box<dyn Provider>> {
+    if cfg.id == "my-provider" {
+        return Ok(Box::new(my_provider::MyProvider));   // <- two lines
+    }
+    let kind = match cfg.id.as_str() {
+        "devin-cli" => acp::AgentKind::Devin,
+        "opencode" => acp::AgentKind::Opencode,
+        "grok" => acp::AgentKind::Grok,
+        other => anyhow::bail!("unknown provider: {other}"),
+    };
+    Ok(Box::new(acp::AcpProvider::new(kind, cfg.command, cfg.default_model)))
 }
 ```
 

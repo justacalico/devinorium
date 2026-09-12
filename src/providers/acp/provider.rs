@@ -541,39 +541,6 @@ impl Provider for AcpProvider {
         })
     }
 
-    async fn export(
-        &self,
-        session_id: &str,
-        working_dir: &Path,
-    ) -> anyhow::Result<serde_json::Value> {
-        if self.kind != AgentKind::Opencode {
-            return Ok(serde_json::json!({}));
-        }
-        // `opencode export` prints an "Exporting session: ..." banner before
-        // the JSON document, so parse from the first '{'.
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(15),
-            Command::new(&self.bin)
-                .args(["export", session_id])
-                .current_dir(working_dir)
-                .kill_on_drop(true)
-                .output(),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("opencode export timed out"))??;
-        if !output.status.success() {
-            anyhow::bail!(
-                "opencode export failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let start = stdout
-            .find('{')
-            .ok_or_else(|| anyhow::anyhow!("opencode export produced no JSON"))?;
-        Ok(serde_json::from_str(&stdout[start..])?)
-    }
-
     async fn health_check(&self) -> anyhow::Result<()> {
         self.do_health_check().await
     }
