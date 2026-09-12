@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.65.0 - 2026-09-12
+#### Features
+- 消息附件支持图片缩略图 - (c3a7266) - HttpAnimations
+- 添加审计日志查看接口和设置页面 - (63a0383) - HttpAnimations
+#### Bug Fixes
+- 修复空 worktree 清扫测试仍调用已删除的发送接口 - (8c72399) - HttpAnimations
+- 修复对话框按 Esc 无法关闭的问题 - (6b2b784) - HttpAnimations
+
+- - -
+
 ## v0.64.1 - 2026-09-12
 #### Bug Fixes
 - 删除线程时清理托管 worktree 和分支 - (d06a445) - HttpAnimations
