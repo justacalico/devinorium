@@ -10,6 +10,7 @@ export 'messages.dart';
 export 'permissions.dart';
 export 'provider.dart';
 export 'reasoning_effort.dart';
+export 'tailscale.dart';
 export 'thread.dart';
 export 'totp.dart';
 export 'usage.dart';

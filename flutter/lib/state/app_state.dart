@@ -49,6 +49,7 @@ part 'app_state/git_store.dart';
 part 'app_state/git_refresh_store.dart';
 part 'app_state/dialog_store.dart';
 part 'app_state/settings_store.dart';
+part 'app_state/tailscale_store.dart';
 part 'app_state/version_store.dart';
 part 'app_state/editor_store.dart';
 
@@ -95,6 +96,7 @@ class AppState extends AppStateBase
         GitRefreshStore,
         DialogStore,
         SettingsStore,
+        TailscaleStore,
         VersionStore,
         EditorStore {
   @override
@@ -118,8 +120,8 @@ class AppState extends AppStateBase
     ApiService? api,
     VersionChecker? versionChecker,
     LocalServerController? localServerManager,
-  })  : multiServerState = multiServerState ?? MultiServerState(),
-        localServerManager = localServerManager ?? LocalServerManager() {
+  }) : multiServerState = multiServerState ?? MultiServerState(),
+       localServerManager = localServerManager ?? LocalServerManager() {
     _versionChecker = versionChecker;
     this.multiServerState.addListener(notifyListeners);
     this.localServerManager.onExit = _onLocalServerExit;
@@ -153,6 +155,7 @@ class AppState extends AppStateBase
     Map<String, ProviderVersion> providerVersions = const {},
     List<GitConnection> gitConnections = const [],
     bool loadingGitConnections = false,
+    TailscaleInfo? tailscaleInfo,
     String? cloneRoot,
     bool cloningRepo = false,
     String? cloneRepoResult,
@@ -188,9 +191,9 @@ class AppState extends AppStateBase
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
     String? serverVersion,
     LocalServerController? localServerManager,
-  })  : multiServerState = multiServerState ?? MultiServerState(),
-        localServerManager =
-            localServerManager ?? LocalServerManager.disabled() {
+  }) : multiServerState = multiServerState ?? MultiServerState(),
+       localServerManager =
+           localServerManager ?? LocalServerManager.disabled() {
     this.multiServerState.addListener(notifyListeners);
     this.localServerManager.onExit = _onLocalServerExit;
     _versionChecker = versionChecker ?? _NoNetworkVersionChecker();
@@ -214,6 +217,7 @@ class AppState extends AppStateBase
     _settingsTopicIndex = settingsTopicIndex ?? 0;
     _gitConnections = List<GitConnection>.from(gitConnections);
     _loadingGitConnections = loadingGitConnections;
+    _tailscaleInfo = tailscaleInfo;
     _cloneRoot = cloneRoot;
     _cloningRepo = cloningRepo;
     _cloneRepoResult = cloneRepoResult;

@@ -50,6 +50,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         secure_cookie: false,
         allowed_origin,
         local_token: None,
+        tailscale_bin: "tailscale".into(),
         dev_mode: false,
     };
 
@@ -76,6 +77,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         ),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
     };
     (devinorium::build_app(state), database)
 }
@@ -271,6 +273,7 @@ async fn body_size_limit_rejects_oversized() {
         secure_cookie: false,
         allowed_origin: None,
         local_token: None,
+        tailscale_bin: "tailscale".into(),
         dev_mode: false,
     };
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -295,6 +298,7 @@ async fn body_size_limit_rejects_oversized() {
         ),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
     };
     let app = devinorium::build_app(state);
 

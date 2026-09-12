@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
@@ -34,6 +35,7 @@ part 'settings/git_section.dart';
 part 'settings/clone_root_section.dart';
 part 'settings/usage_section.dart';
 part 'settings/servers_section.dart';
+part 'settings/tailscale_section.dart';
 part 'settings/section_card.dart';
 part 'settings/settings_row.dart';
 
@@ -74,15 +76,17 @@ class _SettingsPageState extends State<SettingsPage> {
     final isNarrow = MediaQuery.of(context).size.width < 768;
     final state = context.read<AppState>();
 
-    return Selector<AppState,
-        ({
-          bool isOwner,
-          int settingsTopicIndex,
-          bool hasServer,
-          Locale locale,
-          String language,
-          bool notificationsEnabled,
-        })>(
+    return Selector<
+      AppState,
+      ({
+        bool isOwner,
+        int settingsTopicIndex,
+        bool hasServer,
+        Locale locale,
+        String language,
+        bool notificationsEnabled,
+      })
+    >(
       selector: (_, s) => (
         isOwner: s.isOwner,
         settingsTopicIndex: s.settingsTopicIndex,
@@ -96,12 +100,9 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (context, model, _) {
         final l = l10n(context);
         final topics = settingsTopics(model.isOwner, l);
-        final sections = [
-          for (final t in topics) _sectionFor(t.topic, state),
-        ];
+        final sections = [for (final t in topics) _sectionFor(t.topic, state)];
         var index = model.settingsTopicIndex.clamp(0, sections.length - 1);
-        int indexOf(SettingsTopic t) =>
-            topics.indexWhere((e) => e.topic == t);
+        int indexOf(SettingsTopic t) => topics.indexWhere((e) => e.topic == t);
         final serversIndex = indexOf(SettingsTopic.servers);
         if (!model.hasServer &&
             index != indexOf(SettingsTopic.personalization) &&
@@ -115,8 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
             leading: isNarrow
                 ? IconButton(
                     icon: const Icon(Icons.menu),
-                    onPressed: () =>
-                        context.read<AppState>().openSidebar(),
+                    onPressed: () => context.read<AppState>().openSidebar(),
                   )
                 : null,
             title: WindowTitleDrag(

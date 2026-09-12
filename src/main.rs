@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use devinorium::{auth, config, db, git, lock, providers, AppState};
+use devinorium::{auth, config, db, git, lock, providers, tailscale::Tailscale, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -92,6 +92,48 @@ async fn main() -> Result<()> {
         });
     }
 
+    // Tailscale Serve lifecycle. The owner-managed setting lives in the
+    // database so no env file is needed; it is ignored in bundled local
+    // mode where the server must stay loopback-only.
+    let tailscale = Tailscale::new(cfg.tailscale_bin.clone());
+    let (startup_serve, startup_serve_port) = if cfg.is_local_mode() {
+        (false, devinorium::tailscale::DEFAULT_SERVE_PORT)
+    } else {
+        database.get_tailscale_serve().await.unwrap_or_else(|e| {
+            tracing::warn!("failed to read tailscale serve setting: {e}");
+            (false, devinorium::tailscale::DEFAULT_SERVE_PORT)
+        })
+    };
+    // The handle is awaited before the shutdown disable so a SIGTERM during
+    // the (10s-capped) enable cannot leave a mapping behind.
+    let serve_enable_task = startup_serve.then(|| {
+        let ts = tailscale.clone();
+        let target = devinorium::tailscale::local_serve_target(&cfg.host, cfg.port);
+        let host = cfg.host.clone();
+        let port = cfg.port;
+        tokio::spawn(async move {
+            // If something else claimed the stored port while we were down,
+            // leave it alone; the owner can move the mapping from the UI.
+            if let Ok(ports) = ts.serve_https_ports(&host, port).await {
+                if !ports.ours.contains(&startup_serve_port)
+                    && ports.all.contains(&startup_serve_port)
+                {
+                    tracing::warn!(
+                        https_port = startup_serve_port,
+                        "stored tailscale serve port is claimed by another mapping; skipping"
+                    );
+                    return;
+                }
+            }
+            match ts.ensure_serve(&target, startup_serve_port).await {
+                Ok(()) => {
+                    tracing::info!(%target, https_port = startup_serve_port, "tailscale serve enabled")
+                }
+                Err(e) => tracing::warn!("failed to enable tailscale serve: {e}"),
+            }
+        })
+    });
+
     let secure_cookie = cfg.secure_cookie;
     let cfg = Arc::new(cfg);
     let state = AppState {
@@ -107,6 +149,7 @@ async fn main() -> Result<()> {
         terminal_manager: devinorium::terminal::manager::TerminalManager::default_manager(),
         git: Arc::new(git::GitService::new()),
         git_remote: Arc::new(git::GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: tailscale.clone(),
     };
 
     let app = devinorium::build_app(state);
@@ -125,8 +168,54 @@ async fn main() -> Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await?;
+
+    // When the stored setting was enabled at startup the mapping is removed
+    // again on shutdown; a mapping the owner toggled at runtime without the
+    // stored flag stays under tailscaled's own persistence.
+    if startup_serve {
+        if let Some(task) = serve_enable_task {
+            let _ = task.await;
+        }
+        // Remove whatever ports proxy to this listener; the stored port is
+        // only a fallback for when serve status cannot be read at all, so a
+        // foreign mapping is never torn down by mistake.
+        let ports = match tailscale.serve_https_ports(&cfg.host, cfg.port).await {
+            Ok(ports) => ports.ours,
+            Err(_) => vec![startup_serve_port],
+        };
+        for port in ports {
+            match tailscale.disable_serve(port).await {
+                Ok(()) => tracing::info!(https_port = port, "tailscale serve disabled"),
+                Err(e) => tracing::warn!("failed to disable tailscale serve: {e}"),
+            }
+        }
+    }
     Ok(())
+}
+
+/// Resolve on Ctrl-C or SIGTERM so `axum::serve` can drain and the
+/// startup-managed tailscale mapping can be removed.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 /// Exit the process once stdin reaches EOF. Used in bundled local mode, where

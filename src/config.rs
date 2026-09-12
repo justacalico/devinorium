@@ -25,6 +25,8 @@ pub struct Config {
     /// requests never need a login while random processes still cannot call
     /// the API without knowing the token.
     pub local_token: Option<String>,
+    /// Path or name of the `tailscale` binary.
+    pub tailscale_bin: String,
     /// `--dev`/`--local` mode: every request runs as the passwordless
     /// `local` account with no credentials at all, on a random port with a
     /// throwaway in-memory database.
@@ -96,6 +98,7 @@ impl Config {
             secure_cookie,
             allowed_origin,
             local_token,
+            tailscale_bin: "tailscale".into(),
             dev_mode: false,
         })
     }
@@ -240,6 +243,7 @@ mod tests {
             secure_cookie: false,
             allowed_origin: None,
             local_token: token.map(str::to_string),
+            tailscale_bin: "tailscale".into(),
             dev_mode,
         }
     }

@@ -39,6 +39,7 @@ async fn make_app() -> (Router, db::Db) {
         secure_cookie: false,
         allowed_origin: None,
         local_token: None,
+        tailscale_bin: "tailscale".into(),
         dev_mode: false,
     };
 
@@ -65,6 +66,7 @@ async fn make_app() -> (Router, db::Db) {
         ),
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
+        tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
     };
     (devinorium::build_app(state), database)
 }

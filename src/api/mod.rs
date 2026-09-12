@@ -13,6 +13,7 @@ pub mod projects;
 pub mod providers;
 pub mod server;
 pub mod settings;
+pub mod tailscale;
 pub mod terminal;
 pub mod thread_groups;
 pub mod threads;

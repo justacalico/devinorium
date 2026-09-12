@@ -163,6 +163,46 @@ If you must forward a port directly from your router:
 - [ ] `DEVINORIUM_BOOTSTRAP_PASSWORD` is strong and changed after first login.
 - [ ] Only the owner account can create and manage other user accounts.
 
+### Option D: Tailscale (private tailnet access)
+
+When every device that needs access is on the same
+[Tailscale](https://tailscale.com) tailnet, Devinorium can publish itself as
+`https://<machine>.<tailnet>.ts.net` via `tailscale serve`. Tailscale
+provisions the certificate and WireGuard encrypts the traffic, so no reverse
+proxy, open inbound port, or public DNS record is needed.
+
+Requirements:
+
+- `tailscaled` running on the server host with the node logged in
+  (`tailscale up`).
+- MagicDNS enabled on the tailnet (Tailscale admin console → DNS).
+- The `tailscale` CLI on `PATH`.
+
+Enable it at runtime via Settings → Servers → Tailscale → "Tailscale HTTPS"
+(owner only). The tailnet-side HTTPS port can be changed in the port field
+next to the toggle (default 443). The card also lists the tailnet IP and
+MagicDNS HTTP endpoints that other devices on the tailnet can use to reach
+the server.
+
+The setting is stored in the server database: an enabled mapping is
+re-applied on startup, and it is removed again on graceful shutdown.
+Disabling the toggle removes every serve mapping that points at this server
+without touching mappings other services own, and the server refuses to
+enable serve on a port already mapped by something else.
+
+Notes:
+
+- Both the server and the connecting device must be on the same tailnet.
+- The HTTPS endpoint works with the default `DEVINORIUM_HOST=127.0.0.1`
+  loopback bind: `tailscale serve` proxies to localhost. The plain HTTP
+  tailnet-IP endpoints only answer when the bind covers the tailnet
+  interface (`0.0.0.0` or the `100.x` address).
+- Because browsers see a real HTTPS URL, `DEVINORIUM_SECURE_COOKIE=true` is
+  compatible with tailscale-serve access and recommended when you do not
+  also log in over plain LAN HTTP.
+- The bundled desktop server cannot use Tailscale; its loopback-only server
+  must not be republished, and the settings card is greyed out there.
+
 ## 5. Run as a systemd service
 
 ```ini
