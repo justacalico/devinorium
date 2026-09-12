@@ -108,7 +108,7 @@ async fn build_info(state: &AppState) -> TailscaleInfo {
     let bare_host = cfg.host.trim_start_matches('[').trim_end_matches(']');
     let bound_ip = bare_host.parse::<std::net::IpAddr>().ok();
     let lan_reachable = bound_ip
-        .map(|ip| ip.is_unspecified() || status.tailnet_ipv4.iter().any(|t| t == &bare_host))
+        .map(|ip| ip.is_unspecified() || status.tailnet_ipv4.iter().any(|t| t == bare_host))
         .unwrap_or(false);
 
     let mut endpoints = Vec::new();
