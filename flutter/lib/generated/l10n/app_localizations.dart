@@ -2702,6 +2702,42 @@ abstract class AppLocalizations {
   /// **'Failed to load usage'**
   String get usageLoadFailed;
 
+  /// Audit log section title in settings
+  ///
+  /// In en, this message translates to:
+  /// **'Audit log'**
+  String get auditLog;
+
+  /// Short description shown under the Audit log section title
+  ///
+  /// In en, this message translates to:
+  /// **'Security-relevant actions recorded by this server, newest first.'**
+  String get auditLogDescription;
+
+  /// No description provided for @auditLogEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No audit entries yet.'**
+  String get auditLogEmpty;
+
+  /// No description provided for @auditLogLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load the audit log'**
+  String get auditLogLoadFailed;
+
+  /// No description provided for @auditLogLoadMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Load more'**
+  String get auditLogLoadMore;
+
+  /// Shown as the actor for audit entries that have no user
+  ///
+  /// In en, this message translates to:
+  /// **'system'**
+  String get auditLogSystem;
+
   /// Title of the dialog shown on builds from a merge request
   ///
   /// In en, this message translates to:

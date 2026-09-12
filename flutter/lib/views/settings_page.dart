@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ part 'settings/account_section.dart';
 part 'settings/provider_card.dart';
 part 'settings/personalization_section.dart';
 part 'settings/accounts_section.dart';
+part 'settings/audit_section.dart';
 part 'settings/about_section.dart';
 part 'settings/git_section.dart';
 part 'settings/clone_root_section.dart';
@@ -45,6 +47,7 @@ Widget _sectionFor(SettingsTopic topic, AppState state) => switch (topic) {
   SettingsTopic.cloneRoot => _CloneRootSection(state: state),
   SettingsTopic.usage => _UsageSection(state: state),
   SettingsTopic.manage => _AccountsSection(state: state),
+  SettingsTopic.audit => _AuditSection(state: state),
   SettingsTopic.about => _AboutSection(state: state),
   SettingsTopic.servers => const _ServersSection(),
 };

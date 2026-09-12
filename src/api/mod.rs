@@ -1,6 +1,7 @@
 //! HTTP API routes.
 
 pub mod accounts;
+pub mod audit;
 pub mod auth;
 pub mod clones;
 pub mod files;

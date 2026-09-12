@@ -6,6 +6,9 @@ use serde::Serialize;
 pub struct AuditRow {
     pub id: i64,
     pub user_id: Option<i64>,
+    /// Username of the acting user, resolved with a LEFT JOIN. Stays `None`
+    /// for system events and for users deleted after the entry was written.
+    pub username: Option<String>,
     pub action: String,
     pub detail: String,
     pub ip_hash: Option<String>,
@@ -32,11 +35,24 @@ impl super::Db {
         Ok(())
     }
 
-    pub async fn list_audit(&self, limit: i64) -> anyhow::Result<Vec<AuditRow>> {
-        sqlx::query_as::<_, AuditRow>("SELECT * FROM audit_logs ORDER BY id DESC LIMIT ?")
-            .bind(limit)
-            .fetch_all(self.pool())
-            .await
-            .map_err(Into::into)
+    /// Newest entries first. `None` limit returns everything.
+    pub async fn list_audit(
+        &self,
+        limit: Option<i64>,
+        offset: i64,
+    ) -> anyhow::Result<Vec<AuditRow>> {
+        sqlx::query_as::<_, AuditRow>(
+            "SELECT a.id, a.user_id, u.username, a.action, a.detail, a.ip_hash, a.created_at
+             FROM audit_logs a
+             LEFT JOIN users u ON u.id = a.user_id
+             ORDER BY a.id DESC
+             LIMIT ? OFFSET ?",
+        )
+        // SQLite treats LIMIT -1 as "no limit".
+        .bind(limit.unwrap_or(-1))
+        .bind(offset)
+        .fetch_all(self.pool())
+        .await
+        .map_err(Into::into)
     }
 }

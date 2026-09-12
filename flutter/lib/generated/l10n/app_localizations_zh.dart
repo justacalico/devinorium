@@ -1439,6 +1439,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String get usageLoadFailed => '加载用量失败';
 
   @override
+  String get auditLog => '审计日志';
+
+  @override
+  String get auditLogDescription => '本服务器记录的安全相关操作，按时间倒序排列。';
+
+  @override
+  String get auditLogEmpty => '还没有审计记录。';
+
+  @override
+  String get auditLogLoadFailed => '加载审计日志失败';
+
+  @override
+  String get auditLogLoadMore => '加载更多';
+
+  @override
+  String get auditLogSystem => '系统';
+
+  @override
   String get devMergeRequestTitle => '开发合并请求';
 
   @override

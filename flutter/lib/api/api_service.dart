@@ -737,6 +737,18 @@ class ApiService {
     await _client.patch('/api/users/$id', {'disabled': disabled});
   }
 
+  // ---- Audit log ----
+
+  /// List audit log entries, newest first. Owner-only on the server.
+  Future<List<AuditEntry>> listAudit({int? limit, int? offset}) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    if (offset != null && offset > 0) params['offset'] = offset.toString();
+    final uri = _buildPath('/api/audit', params);
+    final list = await _client.getList(uri);
+    return list.map(AuditEntry.fromJson).toList();
+  }
+
   // ---- Streaming send ----
 
   /// Get the current run status for a thread.
