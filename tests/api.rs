@@ -6237,6 +6237,473 @@ async fn thread_send_worktree_mode_reuses_existing_worktree() {
     );
 }
 
+fn devinorium_branches(repo: &std::path::Path) -> String {
+    let out = std::process::Command::new("git")
+        .args(["branch", "--list", "devinorium/*"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    String::from_utf8(out.stdout).unwrap()
+}
+
+fn worktree_count(repo: &std::path::Path) -> usize {
+    let out = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| l.starts_with("worktree "))
+        .count()
+}
+
+async fn get_thread_json(app: &Router, cookie: &str, tid: &str) -> serde_json::Value {
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["thread"].clone()
+}
+
+#[tokio::test]
+async fn thread_delete_removes_managed_worktree_and_branch() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"del-wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    send_prompt(&app, &cookie, &tid, "hello").await;
+
+    let thread = get_thread_json(&app, &cookie, &tid).await;
+    let branch = thread["branch"].as_str().unwrap().to_string();
+    let worktree_path = thread["worktree_path"].as_str().unwrap().to_string();
+    assert!(branch.starts_with("devinorium/"));
+    assert!(std::path::Path::new(&worktree_path).exists());
+    assert_eq!(worktree_count(&repo), 2);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    assert!(!std::path::Path::new(&worktree_path).exists());
+    assert_eq!(worktree_count(&repo), 1);
+    assert!(
+        devinorium_branches(&repo).trim().is_empty(),
+        "temp branch leaked: {}",
+        devinorium_branches(&repo)
+    );
+}
+
+#[tokio::test]
+async fn thread_delete_leaves_non_managed_worktree() {
+    // A worktree the user or agent set up on its own branch is not ours to
+    // delete; removing the thread must leave it on disk.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let wt = tmp.path().join("custom-wt");
+    let out = std::process::Command::new("git")
+        .args(["worktree", "add", "-b", "custom-branch"])
+        .arg(&wt)
+        .arg("HEAD")
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git worktree add failed: {out:?}");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(
+                r#"{{"project_id":{pid},"title":"custom-wt","branch":"custom-branch","worktree_path":"{}"}}"#,
+                wt.display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    assert!(wt.exists());
+    assert_eq!(worktree_count(&repo), 2);
+    let branches = std::process::Command::new("git")
+        .args(["branch", "--list", "custom-branch"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8(branches.stdout)
+        .unwrap()
+        .trim()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn thread_delete_leaves_foreign_branch_worktree() {
+    // The row claims a generated branch name but its worktree path points at
+    // a worktree checked out on a different branch, even at the managed
+    // location. `branch`/`worktree_path` are client-writable, so only a
+    // worktree actually on the thread's branch may be removed.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let wt = tmp.path().join(".repo-worktrees/devinorium-abc12345");
+    std::fs::create_dir_all(wt.parent().unwrap()).unwrap();
+    let out = std::process::Command::new("git")
+        .args(["worktree", "add", "-b", "user-topic"])
+        .arg(&wt)
+        .arg("HEAD")
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git worktree add failed: {out:?}");
+    let out = std::process::Command::new("git")
+        .args(["branch", "devinorium/abc12345"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(
+                r#"{{"project_id":{pid},"title":"foreign","branch":"devinorium/abc12345","worktree_path":"{}"}}"#,
+                wt.display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    assert!(wt.exists());
+    assert_eq!(worktree_count(&repo), 2);
+    let branches = std::process::Command::new("git")
+        .args(["branch", "--list", "user-topic"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8(branches.stdout)
+        .unwrap()
+        .trim()
+        .is_empty());
+    // The generated-name branch is backend namespace and gets removed.
+    assert!(devinorium_branches(&repo).trim().is_empty());
+}
+
+#[tokio::test]
+async fn thread_delete_removes_moved_worktree() {
+    // `git worktree move` changes the registered path; cleanup must find the
+    // worktree by its branch, not only by the stored path.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"moved-wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    send_prompt(&app, &cookie, &tid, "hello").await;
+
+    let thread = get_thread_json(&app, &cookie, &tid).await;
+    let worktree_path = thread["worktree_path"].as_str().unwrap().to_string();
+    let moved = tmp.path().join("moved-elsewhere");
+    let out = std::process::Command::new("git")
+        .args(["worktree", "move"])
+        .arg(&worktree_path)
+        .arg(&moved)
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git worktree move failed: {out:?}");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    assert!(!moved.exists());
+    assert_eq!(worktree_count(&repo), 1);
+    assert!(devinorium_branches(&repo).trim().is_empty());
+}
+
+#[tokio::test]
+async fn project_delete_leaves_non_managed_worktree() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let wt = tmp.path().join("custom-wt");
+    let out = std::process::Command::new("git")
+        .args(["worktree", "add", "-b", "custom-branch"])
+        .arg(&wt)
+        .arg("HEAD")
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git worktree add failed: {out:?}");
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(
+                r#"{{"project_id":{pid},"title":"custom-wt","branch":"custom-branch","worktree_path":"{}"}}"#,
+                wt.display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/projects/{pid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    assert!(wt.exists());
+    assert_eq!(worktree_count(&repo), 2);
+    let branches = std::process::Command::new("git")
+        .args(["branch", "--list", "custom-branch"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8(branches.stdout)
+        .unwrap()
+        .trim()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn thread_create_sweeps_empty_worktree_thread() {
+    // The worktree is created before the first message is persisted, so a
+    // failed send leaves an empty thread still pointing at one. The next
+    // create sweeps empty threads and must clean the worktree up too.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"empty-wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // A send with no prompt fails after the worktree has been created.
+    let boundary = "----emptysweep";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"mode\"\r\n\r\ncode\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let thread = get_thread_json(&app, &cookie, &tid).await;
+    let worktree_path = thread["worktree_path"].as_str().unwrap().to_string();
+    assert!(std::path::Path::new(&worktree_path).exists());
+
+    // Creating a new thread sweeps the empty one.
+    let _ = make_thread(&app, &cookie, pid, "next").await;
+
+    assert!(!std::path::Path::new(&worktree_path).exists());
+    assert_eq!(worktree_count(&repo), 1);
+    assert!(devinorium_branches(&repo).trim().is_empty());
+}
+
+#[tokio::test]
+async fn project_delete_removes_thread_worktrees() {
+    // Deleting a project cascade-deletes its threads; their managed
+    // worktrees and branches must be cleaned up too.
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"proj-wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    send_prompt(&app, &cookie, &tid, "hello").await;
+
+    let thread = get_thread_json(&app, &cookie, &tid).await;
+    let worktree_path = thread["worktree_path"].as_str().unwrap().to_string();
+    assert!(std::path::Path::new(&worktree_path).exists());
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/projects/{pid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    assert!(!std::path::Path::new(&worktree_path).exists());
+    assert_eq!(worktree_count(&repo), 1);
+    assert!(devinorium_branches(&repo).trim().is_empty());
+}
+
 #[tokio::test]
 async fn thread_local_mode_detects_agent_created_worktree() {
     // The agent runs shell commands from the project's working directory and

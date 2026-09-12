@@ -359,10 +359,39 @@ async fn delete_one(
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
 ) -> Response {
-    match state.db.delete_project(id, user.id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => crate::api::map_err_internal(e).into_response(),
+    let project_path = state
+        .db
+        .get_project(id, user.id)
+        .await
+        .ok()
+        .flatten()
+        .map(|p| PathBuf::from(p.path));
+
+    // Threads are deleted in the same transaction as the project, so the
+    // returned rows are exactly the ones that went away.
+    let threads = match state.db.delete_project(id, user.id).await {
+        Ok(t) => t,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
+    // Stop every run first so their cancel grace periods overlap, then wait
+    // and clean up each thread's managed worktree.
+    for thread in &threads {
+        let _ = state.thread_runner.stop(&thread.id).await;
     }
+    for thread in &threads {
+        state
+            .thread_runner
+            .wait_finished(&thread.id, std::time::Duration::from_secs(15))
+            .await;
+        crate::api::threads::worktree::cleanup_thread_worktree(
+            &state,
+            thread,
+            project_path.as_deref(),
+        )
+        .await;
+    }
+    StatusCode::NO_CONTENT.into_response()
 }
 
 async fn list_threads(

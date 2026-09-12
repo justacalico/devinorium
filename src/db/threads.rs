@@ -268,15 +268,18 @@ impl super::Db {
         Ok(())
     }
 
+    /// Update a thread's git fields. Returns the number of rows updated; a
+    /// zero means the thread was deleted, which callers creating resources
+    /// on its behalf use to roll back.
     pub async fn update_thread_git(
         &self,
         id: &str,
         user_id: i64,
         branch: Option<&str>,
         worktree_path: Option<&str>,
-    ) -> anyhow::Result<()> {
-        sqlx::query(
-            "UPDATE threads SET branch = ?, worktree_path = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?",
+    ) -> anyhow::Result<u64> {
+        let result = sqlx::query(
+            "UPDATE threads SET branch = COALESCE(?, branch), worktree_path = COALESCE(?, worktree_path), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?",
         )
         .bind(branch)
         .bind(worktree_path)
@@ -284,7 +287,7 @@ impl super::Db {
         .bind(user_id)
         .execute(self.pool())
         .await?;
-        Ok(())
+        Ok(result.rows_affected())
     }
 
     /// Flip a thread's env_mode without touching the other settings columns.
@@ -308,13 +311,18 @@ impl super::Db {
         Ok(())
     }
 
-    pub async fn delete_thread(&self, id: &str, user_id: i64) -> anyhow::Result<()> {
-        sqlx::query("DELETE FROM threads WHERE id = ? AND user_id = ?")
-            .bind(id)
-            .bind(user_id)
-            .execute(self.pool())
-            .await?;
-        Ok(())
+    /// Delete a thread, returning the removed row so callers can clean up
+    /// resources it referenced (worktree, branch). `None` means no thread
+    /// matched.
+    pub async fn delete_thread(&self, id: &str, user_id: i64) -> anyhow::Result<Option<ThreadRow>> {
+        sqlx::query_as::<_, ThreadRow>(
+            "DELETE FROM threads WHERE id = ? AND user_id = ? RETURNING *",
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(self.pool())
+        .await
+        .map_err(Into::into)
     }
 
     /// Return the subset of `thread_ids` that belong to the user.
@@ -337,17 +345,23 @@ impl super::Db {
     }
 
     /// Delete all threads for a user+project that have zero messages.
-    /// Returns the number of threads deleted.
-    pub async fn delete_empty_threads(&self, user_id: i64, project_id: i64) -> anyhow::Result<u64> {
-        let result = sqlx::query(
+    /// Returns the deleted rows so callers can clean up resources they
+    /// referenced (worktree, branch).
+    pub async fn delete_empty_threads(
+        &self,
+        user_id: i64,
+        project_id: i64,
+    ) -> anyhow::Result<Vec<ThreadRow>> {
+        sqlx::query_as::<_, ThreadRow>(
             "DELETE FROM threads
              WHERE user_id = ? AND project_id = ?
-               AND id NOT IN (SELECT DISTINCT thread_id FROM messages)",
+               AND id NOT IN (SELECT DISTINCT thread_id FROM messages)
+             RETURNING *",
         )
         .bind(user_id)
         .bind(project_id)
-        .execute(self.pool())
-        .await?;
-        Ok(result.rows_affected())
+        .fetch_all(self.pool())
+        .await
+        .map_err(Into::into)
     }
 }

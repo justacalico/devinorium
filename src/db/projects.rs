@@ -125,13 +125,37 @@ impl Db {
             .map_err(Into::into)
     }
 
-    pub async fn delete_project(&self, id: i64, user_id: i64) -> anyhow::Result<()> {
+    /// Delete a project and its threads in one transaction, returning the
+    /// deleted thread rows so callers can clean up resources they
+    /// referenced (worktree, branch). An empty vec means no project matched.
+    pub async fn delete_project(
+        &self,
+        id: i64,
+        user_id: i64,
+    ) -> anyhow::Result<Vec<super::ThreadRow>> {
+        let mut tx = self.pool().begin().await?;
+        let owned: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM projects WHERE id = ? AND user_id = ?")
+                .bind(id)
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if owned == 0 {
+            return Ok(Vec::new());
+        }
+        let threads = sqlx::query_as::<_, super::ThreadRow>(
+            "DELETE FROM threads WHERE project_id = ? RETURNING *",
+        )
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
         sqlx::query("DELETE FROM projects WHERE id = ? AND user_id = ?")
             .bind(id)
             .bind(user_id)
-            .execute(self.pool())
+            .execute(&mut *tx)
             .await?;
-        Ok(())
+        tx.commit().await?;
+        Ok(threads)
     }
 
     pub async fn rename_project(&self, id: i64, user_id: i64, name: &str) -> anyhow::Result<()> {
