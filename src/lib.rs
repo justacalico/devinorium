@@ -102,6 +102,7 @@ impl AppState {
 /// This is shared by the binary target and the integration tests so that
 /// tests exercise the exact same middleware stack as production.
 pub fn build_app(state: AppState) -> Router {
+    let dev_mode = state.config.dev_mode;
     let trust_proxy = state.config.trust_proxy;
     let csrf_allowed = state.config.allowed_origin.clone();
     let cors_allowed = state.config.allowed_origin.clone();
@@ -194,6 +195,13 @@ pub fn build_app(state: AppState) -> Router {
     // sets DEVINORIUM_ALLOWED_ORIGIN. Same-origin web requests are unaffected.
     if let Some(cors) = security::cors::build_cors_layer(&cors_allowed) {
         app = app.layer(cors);
+    }
+
+    // `--dev` serves every request as the local owner with no credentials,
+    // so confine it to loopback Host headers as the outermost layer: DNS
+    // rebinding would otherwise let a remote web page drive the API.
+    if dev_mode {
+        app = app.layer(from_fn(security::dev_host_check));
     }
 
     app.with_state(state)

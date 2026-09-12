@@ -39,6 +39,7 @@ async fn make_app() -> (Router, db::Db) {
         secure_cookie: false,
         allowed_origin: None,
         local_token: None,
+        dev_mode: false,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {

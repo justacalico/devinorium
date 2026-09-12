@@ -50,6 +50,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         secure_cookie: false,
         allowed_origin: None,
         local_token: None,
+        dev_mode: false,
     });
     cfg.db_url = db_url;
     cfg.bootstrap_username = bootstrap_user.into();

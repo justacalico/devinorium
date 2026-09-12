@@ -232,7 +232,7 @@ mod platform {
 ///
 /// Returns `None` for in-memory databases.
 pub fn lock_path_from_db_url(db_url: &str) -> Option<PathBuf> {
-    if db_url == "sqlite::memory:" || db_url.starts_with("sqlite::memory:") {
+    if crate::db::is_in_memory_url(db_url) {
         return None;
     }
 

@@ -54,6 +54,7 @@ async fn make_app(local_token: Option<&str>) -> (axum::Router, db::Db) {
         secure_cookie: false,
         allowed_origin: None,
         local_token: local_token.map(str::to_string),
+        dev_mode: false,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {

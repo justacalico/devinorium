@@ -25,6 +25,10 @@ pub struct Config {
     /// requests never need a login while random processes still cannot call
     /// the API without knowing the token.
     pub local_token: Option<String>,
+    /// `--dev` mode: every request runs as the passwordless `local` account
+    /// with no credentials at all, on a random port with a throwaway
+    /// in-memory database.
+    pub dev_mode: bool,
 }
 
 impl Config {
@@ -100,7 +104,27 @@ impl Config {
             secure_cookie,
             allowed_origin,
             local_token,
+            dev_mode: false,
         })
+    }
+
+    /// Switch into `--dev` mode: bind a random OS-assigned port and use a
+    /// throwaway in-memory database that vanishes when the process exits.
+    ///
+    /// Dev mode serves the API with no authentication, so it is restricted
+    /// to loopback the same way `DEVINORIUM_LOCAL_TOKEN` is.
+    pub fn apply_dev_mode(&mut self) -> Result<()> {
+        if !is_loopback_host(&self.host) {
+            bail!(
+                "--dev requires DEVINORIUM_HOST to be a loopback \
+                 address (got {:?}); refusing to start",
+                self.host
+            );
+        }
+        self.port = 0;
+        self.db_url = "sqlite::memory:".to_string();
+        self.dev_mode = true;
+        Ok(())
     }
 
     /// The bind address (`host:port`, with IPv6 hosts bracketed).
@@ -123,7 +147,7 @@ impl Config {
     }
 }
 
-fn is_loopback_host(host: &str) -> bool {
+pub(crate) fn is_loopback_host(host: &str) -> bool {
     // Accept bracketed IPv6 too — `bind_addr` tolerates either form.
     let host = host.trim_start_matches('[').trim_end_matches(']');
     if host.eq_ignore_ascii_case("localhost") {
