@@ -31,15 +31,17 @@ mixin TailscaleStore on AppStateBase {
     notifyListeners();
   }
 
-  /// Flip the `tailscale serve` mapping. Returns an error string on failure.
+  /// Flip the `tailscale serve` mapping; `port` chooses the tailnet HTTPS
+  /// port when enabling and is persisted by the server. Returns an error
+  /// string on failure.
   @override
-  Future<String?> setTailscaleServe(bool enabled) async {
+  Future<String?> setTailscaleServe(bool enabled, {int? port}) async {
     if (_tailscaleBusy) return null;
     final seq = _tailscaleSeq;
     _tailscaleBusy = true;
     notifyListeners();
     try {
-      final info = await api.setTailscaleServe(enabled: enabled);
+      final info = await api.setTailscaleServe(enabled: enabled, port: port);
       if (seq == _tailscaleSeq) _tailscaleInfo = info;
       return null;
     } on ApiException catch (e) {

@@ -753,9 +753,17 @@
   "@tailscaleHttps": {
     "description": "tailscale serve 开关的标签"
   },
-  "tailscaleHttpsHint": "通过 tailscale serve 将此服务器发布为 Tailnet 上的 HTTPS 端点",
+  "tailscaleHttpsHint": "通过 tailscale serve 将此服务器发布为 Tailnet 上的 HTTPS 端点，设置会被保存并在服务器重启后自动恢复",
   "@tailscaleHttpsHint": {
     "description": "tailscale serve 开关下方的说明"
+  },
+  "tailscaleServePort": "Tailnet HTTPS 端口",
+  "@tailscaleServePort": {
+    "description": "tailscale serve 端口输入框的标签"
+  },
+  "tailscaleInvalidPort": "请输入 1 到 65535 之间的端口",
+  "@tailscaleInvalidPort": {
+    "description": "端口输入不合法时显示的错误"
   },
   "tailscaleOnlyOwner": "只有所有者可以更改 Tailscale 设置",
   "@tailscaleOnlyOwner": {

@@ -1201,7 +1201,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get tailscaleHttpsHint =>
-      '通过 tailscale serve 将此服务器发布为 Tailnet 上的 HTTPS 端点';
+      '通过 tailscale serve 将此服务器发布为 Tailnet 上的 HTTPS 端点，设置会被保存并在服务器重启后自动恢复';
+
+  @override
+  String get tailscaleServePort => 'Tailnet HTTPS 端口';
+
+  @override
+  String get tailscaleInvalidPort => '请输入 1 到 65535 之间的端口';
 
   @override
   String get tailscaleOnlyOwner => '只有所有者可以更改 Tailscale 设置';

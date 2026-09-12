@@ -753,9 +753,17 @@
   "@tailscaleHttps": {
     "description": "Label for the tailscale serve toggle"
   },
-  "tailscaleHttpsHint": "Serve this server as a HTTPS endpoint on your Tailnet.",
+  "tailscaleHttpsHint": "Serve this server as a HTTPS endpoint on your Tailnet. The choice is remembered and re-applied when the server restarts.",
   "@tailscaleHttpsHint": {
     "description": "Description under the tailscale serve toggle"
+  },
+  "tailscaleServePort": "Tailnet HTTPS port",
+  "@tailscaleServePort": {
+    "description": "Label for the tailscale serve port field"
+  },
+  "tailscaleInvalidPort": "Enter a port between 1 and 65535.",
+  "@tailscaleInvalidPort": {
+    "description": "Error shown when the serve port field is not a valid port"
   },
   "tailscaleOnlyOwner": "Only the owner can change Tailscale settings.",
   "@tailscaleOnlyOwner": {

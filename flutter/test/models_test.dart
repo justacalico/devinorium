@@ -1801,6 +1801,7 @@ void main() {
         'magic_dns_name': 'devbox.tail-abc.ts.net',
         'tailnet_ipv4': ['100.64.1.2', '100.64.1.3'],
         'serve_enabled': true,
+        'serve_desired': true,
         'serve_port': 8443,
         'https_url': 'https://devbox.tail-abc.ts.net:8443/',
         'https_reachable': true,
@@ -1826,6 +1827,7 @@ void main() {
       expect(info.magicDnsName, 'devbox.tail-abc.ts.net');
       expect(info.tailnetIpv4, ['100.64.1.2', '100.64.1.3']);
       expect(info.serveEnabled, isTrue);
+      expect(info.serveDesired, isTrue);
       expect(info.servePort, 8443);
       expect(info.httpsUrl, 'https://devbox.tail-abc.ts.net:8443/');
       expect(info.httpsReachable, isTrue);
@@ -1851,6 +1853,7 @@ void main() {
       expect(info.localMode, isFalse);
       expect(info.installed, isFalse);
       expect(info.serveEnabled, isFalse);
+      expect(info.serveDesired, isFalse);
       expect(info.servePort, 443);
       expect(info.tailnetIpv4, isEmpty);
       expect(info.httpsReachable, isNull);

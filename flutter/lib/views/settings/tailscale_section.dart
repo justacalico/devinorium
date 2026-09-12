@@ -2,17 +2,45 @@ part of '../settings_page.dart';
 
 /// Tailscale card under the Servers topic. Shows the tailnet identity and
 /// advertised endpoints of the active server plus the `tailscale serve`
-/// toggle. The bundled desktop profile renders it greyed out: that server
-/// binds to loopback and must not be republished onto a tailnet.
-class _TailscaleSection extends StatelessWidget {
+/// toggle and its tailnet HTTPS port; the owner-managed choice is persisted
+/// on the server and re-applied on restart. The bundled desktop profile
+/// renders it greyed out: that server binds to loopback and must not be
+/// republished onto a tailnet.
+class _TailscaleSection extends StatefulWidget {
   const _TailscaleSection();
+
+  @override
+  State<_TailscaleSection> createState() => _TailscaleSectionState();
+}
+
+class _TailscaleSectionState extends State<_TailscaleSection> {
+  final TextEditingController _portCtrl = TextEditingController();
+
+  /// The last port the server reported, so the field re-syncs when the
+  /// server-side value changes without clobbering an in-progress edit.
+  int? _syncedPort;
+
+  @override
+  void dispose() {
+    _portCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _setServe(
     BuildContext context,
     AppState state,
     bool enabled,
   ) async {
-    final error = await state.setTailscaleServe(enabled);
+    int? port;
+    if (enabled) {
+      final parsed = int.tryParse(_portCtrl.text);
+      if (parsed == null || parsed < 1 || parsed > 65535) {
+        state.setGlobalError(l10n(context).tailscaleInvalidPort);
+        return;
+      }
+      port = parsed;
+    }
+    final error = await state.setTailscaleServe(enabled, port: port);
     if (error != null && context.mounted) {
       state.setGlobalError(error);
     }
@@ -37,10 +65,17 @@ class _TailscaleSection extends StatelessWidget {
       builder: (context, model, _) {
         final info = model.info;
         final bundled = model.isLocal || (info?.localMode ?? false);
+        final ts = bundled ? null : info;
+        // Drop the sync marker while no live info is shown so a server
+        // switch cannot carry an unsaved edit into the next server's field.
+        if (ts == null) _syncedPort = null;
         // Hidden until the server answers, except on the bundled profile
         // where the greyed-out card explains why the feature is missing.
         if (info == null && !bundled) return const SizedBox.shrink();
-        final ts = bundled ? null : info;
+        if (ts != null && ts.servePort != _syncedPort) {
+          _syncedPort = ts.servePort;
+          _portCtrl.text = '${ts.servePort}';
+        }
 
         final canToggle =
             ts != null &&
@@ -144,6 +179,38 @@ class _TailscaleSection extends StatelessWidget {
                   ),
               ],
             ),
+            if (ts != null && ts.installed && ts.magicDnsName != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      l.tailscaleServePort,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 96,
+                    child: TextField(
+                      key: const Key('tailscale_serve_port'),
+                      controller: _portCtrl,
+                      enabled: canToggle && !ts.serveEnabled,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (ts != null && ts.installed && !model.isOwner)
               Padding(
                 padding: const EdgeInsets.only(top: 4),

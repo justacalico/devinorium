@@ -18,6 +18,7 @@ class _FakeApiService extends ApiService {
   TailscaleInfo? tailscaleInfo;
   String? tailscaleServeError;
   bool? lastServeEnabled;
+  int? lastServePort;
 
   _FakeApiService()
     : super(
@@ -66,8 +67,12 @@ class _FakeApiService extends ApiService {
   }
 
   @override
-  Future<TailscaleInfo> setTailscaleServe({required bool enabled}) async {
+  Future<TailscaleInfo> setTailscaleServe({
+    required bool enabled,
+    int? port,
+  }) async {
     lastServeEnabled = enabled;
+    lastServePort = port;
     final error = tailscaleServeError;
     if (error != null) throw ApiException(error, 502);
     final info = tailscaleInfo;
@@ -79,7 +84,8 @@ class _FakeApiService extends ApiService {
       magicDnsName: info.magicDnsName,
       tailnetIpv4: info.tailnetIpv4,
       serveEnabled: enabled,
-      servePort: info.servePort,
+      serveDesired: enabled,
+      servePort: port ?? info.servePort,
       httpsUrl: info.httpsUrl,
       httpsReachable: info.httpsReachable,
       endpoints: info.endpoints,
@@ -586,6 +592,72 @@ void main() {
         expect(state.tailscaleInfo?.serveEnabled, isTrue);
       });
 
+      testWidgets('sends the edited port when enabling serve', (tester) async {
+        final api = _FakeApiService()..tailscaleInfo = tsInfo;
+        final state = AppState.test(
+          api: api,
+          user: User(
+            id: 1,
+            username: 'owner',
+            role: 'user',
+            totpEnabled: false,
+            isOwner: true,
+            providerId: 'devin-cli',
+            providerCommand: 'devin',
+          ),
+          settingsTopicIndex: 7,
+        );
+        addTearDown(state.dispose);
+
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        final field = find.byKey(const Key('tailscale_serve_port'));
+        expect(field, findsOneWidget);
+        expect(tester.widget<TextField>(field).controller?.text, '443');
+
+        await tester.enterText(field, '8443');
+        await tester.tap(find.byKey(const Key('tailscale_serve_switch')));
+        await tester.pumpAndSettle();
+
+        expect(api.lastServeEnabled, isTrue);
+        expect(api.lastServePort, 8443);
+        expect(state.tailscaleInfo?.servePort, 8443);
+      });
+
+      testWidgets('rejects an invalid port without calling the api', (
+        tester,
+      ) async {
+        final api = _FakeApiService()..tailscaleInfo = tsInfo;
+        final state = AppState.test(
+          api: api,
+          user: User(
+            id: 1,
+            username: 'owner',
+            role: 'user',
+            totpEnabled: false,
+            isOwner: true,
+            providerId: 'devin-cli',
+            providerCommand: 'devin',
+          ),
+          settingsTopicIndex: 7,
+        );
+        addTearDown(state.dispose);
+
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('tailscale_serve_port')),
+          '70000',
+        );
+        await tester.tap(find.byKey(const Key('tailscale_serve_switch')));
+        await tester.pumpAndSettle();
+
+        expect(api.lastServeEnabled, isNull);
+        expect(state.globalError, isNotEmpty);
+      });
+
       testWidgets('shows the toggle disabled for non-owners', (tester) async {
         final state = tsState(isOwner: false, info: tsInfo);
         addTearDown(state.dispose);
@@ -732,6 +804,69 @@ void main() {
         expect(state.tailscaleInfo?.magicDnsName, 'devbox.tail-abc.ts.net');
         expect(find.text('Tailscale'), findsOneWidget);
         expect(find.text('Tailnet IP'), findsOneWidget);
+        state.stopHealthChecks();
+        state.stopGitRefresh();
+      });
+
+      testWidgets('drops an unsaved port edit when switching servers', (
+        tester,
+      ) async {
+        final apiWithTs = _FakeApiService()..tailscaleInfo = tsInfo;
+        final multi = MultiServerState();
+        multi.addTestConnection(
+          ServerProfile(
+            id: 'ts-server',
+            label: 'ts',
+            baseUrl: 'http://ts:7878',
+            token: 'tb',
+            username: 'owner',
+            createdAt: DateTime(2024, 1, 2).toUtc(),
+          ),
+          apiWithTs,
+        );
+        multi.addTestConnection(
+          ServerProfile(
+            id: 'plain',
+            label: 'plain',
+            baseUrl: 'http://plain:7878',
+            token: 'ta',
+            username: 'u',
+            createdAt: DateTime(2024, 1, 1).toUtc(),
+            isPrimary: true,
+          ),
+          _FakeApiService(),
+        );
+        final state = AppState.test(
+          multiServerState: multi,
+          user: User(
+            id: 1,
+            username: 'owner',
+            role: 'user',
+            totpEnabled: false,
+            isOwner: true,
+            providerId: 'devin-cli',
+            providerCommand: 'devin',
+          ),
+          settingsTopicIndex: 7,
+        );
+        addTearDown(state.dispose);
+
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+        await state.switchServer('ts-server');
+        await tester.pumpAndSettle();
+
+        final field = find.byKey(const Key('tailscale_serve_port'));
+        await tester.enterText(field, '9999');
+
+        // Round-trip through a server with no status: the edit must not
+        // survive into the same server's field on return.
+        await state.switchServer('plain');
+        await tester.pumpAndSettle();
+        await state.switchServer('ts-server');
+        await tester.pumpAndSettle();
+
+        expect(tester.widget<TextField>(field).controller?.text, '443');
         state.stopHealthChecks();
         state.stopGitRefresh();
       });

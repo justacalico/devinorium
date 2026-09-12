@@ -46,6 +46,9 @@ class TailscaleInfo {
   /// Whether a `tailscale serve` mapping points at this server.
   final bool serveEnabled;
 
+  /// The persisted owner preference; the mapping is re-applied on startup.
+  final bool serveDesired;
+
   /// Tailnet-side HTTPS port the serve mapping listens on.
   final int servePort;
 
@@ -65,6 +68,7 @@ class TailscaleInfo {
     this.magicDnsName,
     this.tailnetIpv4 = const [],
     this.serveEnabled = false,
+    this.serveDesired = false,
     this.servePort = 443,
     this.httpsUrl,
     this.httpsReachable,
@@ -81,6 +85,7 @@ class TailscaleInfo {
           .whereType<String>()
           .toList(),
       serveEnabled: json['serve_enabled'] as bool? ?? false,
+      serveDesired: json['serve_desired'] as bool? ?? false,
       servePort: json['serve_port'] as int? ?? 443,
       httpsUrl: json['https_url'] as String?,
       httpsReachable: json['https_reachable'] as bool?,

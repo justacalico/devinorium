@@ -512,7 +512,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> connectGitLab({String? hostname});
   Future<void> disconnectGitLab({String? hostname});
   Future<void> loadTailscaleStatus();
-  Future<String?> setTailscaleServe(bool enabled);
+  Future<String?> setTailscaleServe(bool enabled, {int? port});
   Future<String?> addServer({
     required String serverUrl,
     required String username,

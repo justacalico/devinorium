@@ -1295,20 +1295,23 @@ void main() {
       expect(info.httpsReachable, isTrue);
     });
 
-    test('setTailscaleServe reports the port the mapping listens on', () async {
+    test('setTailscaleServe sends an explicit port when given', () async {
       final mock = MockClient((req) async {
         final body = jsonDecode(_readBody(req)!);
         expect(body['enabled'], isTrue);
+        expect(body['port'], 8443);
         return _json(200, {
           ...statusBody,
           'serve_enabled': true,
+          'serve_desired': true,
           'serve_port': 8443,
           'https_url': 'https://devbox.tail-abc.ts.net:8443/',
         });
       });
       final service = _serviceFor(mock);
-      final info = await service.setTailscaleServe(enabled: true);
+      final info = await service.setTailscaleServe(enabled: true, port: 8443);
       expect(info.servePort, 8443);
+      expect(info.serveDesired, isTrue);
       expect(info.httpsUrl, 'https://devbox.tail-abc.ts.net:8443/');
     });
 

@@ -1223,7 +1223,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tailscaleHttpsHint =>
-      'Serve this server as a HTTPS endpoint on your Tailnet.';
+      'Serve this server as a HTTPS endpoint on your Tailnet. The choice is remembered and re-applied when the server restarts.';
+
+  @override
+  String get tailscaleServePort => 'Tailnet HTTPS port';
+
+  @override
+  String get tailscaleInvalidPort => 'Enter a port between 1 and 65535.';
 
   @override
   String get tailscaleOnlyOwner =>

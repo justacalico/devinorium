@@ -2303,8 +2303,20 @@ abstract class AppLocalizations {
   /// Description under the tailscale serve toggle
   ///
   /// In en, this message translates to:
-  /// **'Serve this server as a HTTPS endpoint on your Tailnet.'**
+  /// **'Serve this server as a HTTPS endpoint on your Tailnet. The choice is remembered and re-applied when the server restarts.'**
   String get tailscaleHttpsHint;
+
+  /// Label for the tailscale serve port field
+  ///
+  /// In en, this message translates to:
+  /// **'Tailnet HTTPS port'**
+  String get tailscaleServePort;
+
+  /// Error shown when the serve port field is not a valid port
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a port between 1 and 65535.'**
+  String get tailscaleInvalidPort;
 
   /// Hint shown to non-owner users
   ///
