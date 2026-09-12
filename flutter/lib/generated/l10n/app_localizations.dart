@@ -1316,6 +1316,18 @@ abstract class AppLocalizations {
   /// **'Auto-run'**
   String get permissionModeBypass;
 
+  /// Label for the settings dropdown picking the permission level new threads start with
+  ///
+  /// In en, this message translates to:
+  /// **'Default permission level'**
+  String get defaultPermissionLevel;
+
+  /// Hint under the default permission level setting clarifying it does not change the open thread
+  ///
+  /// In en, this message translates to:
+  /// **'Applied to new threads'**
+  String get defaultPermissionLevelHint;
+
   /// No description provided for @preview.
   ///
   /// In en, this message translates to:

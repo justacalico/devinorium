@@ -12,6 +12,7 @@ import '../services/version_checker.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../utils/link_opener.dart';
+import '../utils/permission_modes.dart';
 import '../widgets/git_provider_icons.dart';
 import '../widgets/git_provider_tile.dart';
 import '../widgets/message_view.dart';

@@ -263,6 +263,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String get selectedModel;
   String get selectedReasoning;
   String get selectedPermission;
+  String get defaultPermission;
   String get selectedProvider;
   ComposerMode get composerMode;
   ComposerMode get defaultComposerMode;
@@ -342,6 +343,7 @@ abstract class AppStateBase extends ChangeNotifier {
   void setSelectedModel(String m);
   void setSelectedReasoning(String effort);
   void setSelectedPermission(String p);
+  void setDefaultPermission(String p);
   Future<void> setSelectedProvider(String id);
   Future<void> ensureModelsFor(String providerId);
   void setComposerMode(ComposerMode m, {bool persist});

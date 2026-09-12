@@ -1083,6 +1083,80 @@ void main() {
 
     expect(find.text('语言'), findsOneWidget);
     expect(find.text('简体中文'), findsOneWidget);
+    expect(find.text('默认权限级别'), findsOneWidget);
+    expect(find.text('应用于新会话'), findsOneWidget);
+  });
+
+  testWidgets('Personalization tab sets the default permission level',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Default permission level'), findsOneWidget);
+    expect(find.text('Ask every time'), findsOneWidget);
+
+    await tester.tap(find.text('Ask every time'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Smart confirm').last);
+    await tester.pumpAndSettle();
+
+    expect(state.defaultPermission, 'smart');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('devinorium_selected_permission'), 'smart');
+  });
+
+  testWidgets('Default permission dropdown does not touch the active thread',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      selectedPermission: 'bypass',
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    // The dropdown shows the default, not the active thread's mode.
+    expect(find.text('Ask every time'), findsOneWidget);
+    expect(find.text('Auto-run'), findsNothing);
+
+    await tester.tap(find.text('Ask every time'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirm edits').last);
+    await tester.pumpAndSettle();
+
+    expect(state.defaultPermission, 'accept-edits');
+    expect(state.selectedPermission, 'bypass');
   });
 
   testWidgets('Git section lists GitLab and GitHub', (tester) async {

@@ -412,6 +412,14 @@
   "permissionModeAcceptEdits": "确认编辑",
   "permissionModeSmart": "智能确认",
   "permissionModeBypass": "自动运行",
+  "defaultPermissionLevel": "默认权限级别",
+  "@defaultPermissionLevel": {
+    "description": "Label for the settings dropdown picking the permission level new threads start with"
+  },
+  "defaultPermissionLevelHint": "应用于新会话",
+  "@defaultPermissionLevelHint": {
+    "description": "Hint under the default permission level setting clarifying it does not change the open thread"
+  },
   "preview": "预览",
   "output": "输出",
   "changed": "已更改",

@@ -84,6 +84,37 @@ class _PersonalizationSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l.defaultPermissionLevel,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    l.defaultPermissionLevelHint,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Selector<AppState, String>(
+              selector: (_, s) => s.defaultPermission,
+              builder: (context, permission, _) =>
+                  _DefaultPermissionDropdown(value: permission, state: state),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
         Text(l.notifications, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         SwitchListTile(
@@ -133,6 +164,34 @@ class _PersonalizationSection extends StatelessWidget {
         kind: MessageKind.error,
       );
     }
+  }
+}
+
+class _DefaultPermissionDropdown extends StatelessWidget {
+  final String value;
+  final AppState state;
+
+  const _DefaultPermissionDropdown({required this.value, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = l10n(context);
+    final modes = permissionModeLabels(l);
+    final items = [
+      for (final (id, label) in modes)
+        DropdownMenuItem<String>(value: id, child: Text(label)),
+      if (!modes.any((m) => m.$1 == value))
+        DropdownMenuItem<String>(value: value, child: Text(value)),
+    ];
+
+    return DropdownButton<String>(
+      value: value,
+      underline: const SizedBox.shrink(),
+      items: items,
+      onChanged: (v) {
+        if (v != null) state.setDefaultPermission(v);
+      },
+    );
   }
 }
 

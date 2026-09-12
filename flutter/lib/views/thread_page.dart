@@ -20,6 +20,7 @@ import '../theme/semantic_colors.dart';
 import '../utils/attachment_reader.dart';
 import '../utils/clipboard_image.dart';
 import '../utils/path_attachment.dart';
+import '../utils/permission_modes.dart';
 import '../utils/plan_markup.dart';
 import '../utils/thread_status.dart';
 import '../widgets/message_view.dart';
