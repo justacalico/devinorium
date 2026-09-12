@@ -19,26 +19,6 @@ class _MessageItem extends StatefulWidget {
   State<_MessageItem> createState() => _MessageItemState();
 }
 
-class _ThinkingItem {
-  final String type;
-  final String? content;
-  final ToolCallData? tool;
-  _ThinkingItem({required this.type, this.content, this.tool});
-}
-
-class _PartGroup {
-  final String type;
-  final String? content;
-  final List<_ThinkingItem> thinkingItems;
-  final ToolCallData? tool;
-  _PartGroup({
-    required this.type,
-    this.content,
-    this.thinkingItems = const [],
-    this.tool,
-  });
-}
-
 class _MessageItemState extends State<_MessageItem> {
   static const _maxPreviewChars = 600;
   static const _maxPreviewLines = 8;
@@ -47,7 +27,7 @@ class _MessageItemState extends State<_MessageItem> {
 
   late Message _message;
   late Message _previewMessage;
-  List<_PartGroup> _partGroups = [];
+  List<MessageRun> _rows = [];
   SyntaxHighlighter? _syntaxHighlighter;
   bool _expanded = false;
   bool _isFull = false;
@@ -67,7 +47,7 @@ class _MessageItemState extends State<_MessageItem> {
     _previewMessage = widget.message;
     _message = widget.message;
     _isFull = !_message.truncated;
-    _partGroups = _buildGroups(_effectiveMessage.allParts);
+    _rows = buildMessageRuns(_effectiveMessage.allParts);
   }
 
   @override
@@ -101,7 +81,7 @@ class _MessageItemState extends State<_MessageItem> {
       _isFull = !incoming.truncated;
       _loadingMore = false;
       _error = '';
-      _partGroups = _buildGroups(_effectiveMessage.allParts);
+      _rows = buildMessageRuns(_effectiveMessage.allParts);
       _maybeScheduleVisibilityCheck();
     }
   }
@@ -126,7 +106,7 @@ class _MessageItemState extends State<_MessageItem> {
   }
 
   bool get _hasText => _message.allParts.any(
-    (p) => p.type == 'text' && (p.content?.isNotEmpty ?? false),
+    (p) => p.type == 'text' && (p.content?.trim().isNotEmpty ?? false),
   );
 
   bool get _shouldCollapse {
@@ -224,7 +204,7 @@ class _MessageItemState extends State<_MessageItem> {
       _isFull = !_previewMessage.truncated;
       _error = '';
       _loadingMore = false;
-      _partGroups = _buildGroups(_effectiveMessage.allParts);
+      _rows = buildMessageRuns(_effectiveMessage.allParts);
     });
   }
 
@@ -293,7 +273,7 @@ class _MessageItemState extends State<_MessageItem> {
           _error = '';
           _isFull =
               _message.content.runes.length >= (_message.totalChars ?? total);
-          _partGroups = _buildGroups(_effectiveMessage.allParts);
+          _rows = buildMessageRuns(_effectiveMessage.allParts);
         });
       } catch (e) {
         if (!mounted) return;
@@ -313,65 +293,6 @@ class _MessageItemState extends State<_MessageItem> {
         return;
       }
     }
-  }
-
-  List<_PartGroup> _buildGroups(List<MessagePart> parts) {
-    final groups = <_PartGroup>[];
-
-    for (final part in parts) {
-      if (part.type == 'thinking') {
-        final text = part.content ?? '';
-        if (groups.isNotEmpty && groups.last.type == 'thinking') {
-          final items = groups.last.thinkingItems;
-          if (items.isNotEmpty && items.last.type == 'thinking') {
-            final merged = items.last.content ?? '';
-            items[items.length - 1] = _ThinkingItem(
-              type: 'thinking',
-              content: merged + text,
-            );
-          } else {
-            items.add(_ThinkingItem(type: 'thinking', content: text));
-          }
-        } else {
-          groups.add(
-            _PartGroup(
-              type: 'thinking',
-              thinkingItems: [_ThinkingItem(type: 'thinking', content: text)],
-            ),
-          );
-        }
-      } else if (part.type == 'tool_call') {
-        final tool = part.toolCall;
-        if (tool == null) continue;
-        if (tool.kind == 'edit' || tool.kind == 'execute') {
-          groups.add(_PartGroup(type: 'tool_call', tool: tool));
-        } else if (groups.isNotEmpty && groups.last.type == 'thinking') {
-          groups.last.thinkingItems.add(
-            _ThinkingItem(type: 'tool_call', tool: tool),
-          );
-        } else {
-          groups.add(
-            _PartGroup(
-              type: 'thinking',
-              thinkingItems: [_ThinkingItem(type: 'tool_call', tool: tool)],
-            ),
-          );
-        }
-      } else if (part.type == 'text') {
-        final text = part.content ?? '';
-        if (groups.isNotEmpty && groups.last.type == 'text') {
-          final merged = groups.last.content ?? '';
-          groups[groups.length - 1] = _PartGroup(
-            type: 'text',
-            content: merged + text,
-          );
-        } else {
-          groups.add(_PartGroup(type: 'text', content: text));
-        }
-      }
-    }
-
-    return groups;
   }
 
   Widget _buildTextContent(BuildContext context, String text, String role) {
@@ -427,32 +348,32 @@ class _MessageItemState extends State<_MessageItem> {
     );
   }
 
-  Widget _buildPartWidgets(BuildContext context, List<_PartGroup> groups) {
+  Widget _buildRows(BuildContext context, List<MessageRun> rows) {
     final children = <Widget>[];
     final hasText = _hasText;
-    for (var i = 0; i < groups.length; i++) {
-      final group = groups[i];
-      if (group.type == 'text') {
-        children.add(
-          _buildTextContent(context, group.content ?? '', _message.role),
-        );
-      } else if (group.type == 'tool_call') {
-        final tool = group.tool;
-        if (tool != null) {
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      switch (row) {
+        case TextRun(:final text):
           children.add(
-            _ToolCallItem(key: ValueKey('tool-group-$i'), tool: tool),
+            KeyedSubtree(
+              key: ValueKey(row.id),
+              child: _buildTextContent(context, text, _message.role),
+            ),
           );
-        }
-      } else if (group.type == 'thinking') {
-        final isLast = i == groups.length - 1;
-        children.add(
-          _ThinkingBlock(
-            key: ValueKey('thinking-group-$i'),
-            items: group.thinkingItems,
-            working: isLast && _working,
-            hasText: hasText,
-          ),
-        );
+        case ThinkingRun(:final text):
+          children.add(
+            _ThinkingBlock(
+              key: ValueKey(row.id),
+              text: text,
+              working: i == rows.length - 1 && _working,
+              hasText: hasText,
+            ),
+          );
+        case ToolRun(:final tool):
+          children.add(_ToolCallItem(key: ValueKey(row.id), tool: tool));
+        case ToolGroupRun(:final tools):
+          children.add(_ToolGroupRow(key: ValueKey(row.id), tools: tools));
       }
     }
     return Column(
@@ -528,11 +449,9 @@ class _MessageItemState extends State<_MessageItem> {
           ).formatTimeOfDay(TimeOfDay.fromDateTime(created));
     final labelText = timeText == null ? label : '$label · $timeText';
 
-    final groups = _partGroups;
+    final rows = _rows;
     final showLoading =
-        message.role == 'assistant' &&
-        message.content.isEmpty &&
-        groups.isEmpty;
+        message.role == 'assistant' && message.content.isEmpty && rows.isEmpty;
     final showShowMore = _shouldCollapse;
     final showLoadingMore = _isAssistant && _message.truncated && _loadingMore;
     final showLoadError =
@@ -565,13 +484,13 @@ class _MessageItemState extends State<_MessageItem> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                if (groups.isNotEmpty)
+                if (rows.isNotEmpty)
                   SelectionArea(
                     child: _MessageContextMenu(
                       message: _message,
                       isLastMessage: widget.isLastMessage,
                       sending: widget.sending,
-                      child: _buildPartWidgets(context, groups),
+                      child: _buildRows(context, rows),
                     ),
                   ),
                 if (showLoading)
@@ -586,7 +505,7 @@ class _MessageItemState extends State<_MessageItem> {
                   TextButton(
                     onPressed: () => setState(() {
                       _expanded = true;
-                      _partGroups = _buildGroups(_effectiveMessage.allParts);
+                      _rows = buildMessageRuns(_effectiveMessage.allParts);
                     }),
                     child: Text(l10n(context).showMore),
                   ),
@@ -684,7 +603,8 @@ class _MessageContextMenu extends StatelessWidget {
     final state = context.read<AppState>();
     final l = l10n(context);
     final renderBox = context.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (renderBox == null || overlay == null || overlay.size.isEmpty) return;
 
     final global = renderBox.localToGlobal(position);
@@ -727,9 +647,7 @@ class _MessageContextMenu extends StatelessWidget {
         ),
         if (threadId != null)
           PopupMenuItem(
-            child: Text(
-              isLinked ? l.unlinkFromThread : l.linkToThread,
-            ),
+            child: Text(isLinked ? l.unlinkFromThread : l.linkToThread),
             onTap: () {
               if (isLinked) {
                 state.unlinkThreadLinkedMr(threadId);

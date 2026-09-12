@@ -1,12 +1,12 @@
 part of '../thread_page.dart';
 
 class _ThinkingBlock extends StatefulWidget {
-  final List<_ThinkingItem> items;
+  final String text;
   final bool working;
   final bool hasText;
   const _ThinkingBlock({
     super.key,
-    required this.items,
+    required this.text,
     required this.working,
     required this.hasText,
   });
@@ -32,7 +32,9 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
       if (_expanded) setState(() => _expanded = false);
       return;
     }
-    if (widget.working && !_expanded) {
+    // Auto-expand only when working flips on without reply text, matching
+    // initState; a later chunk must not re-open a block the user collapsed.
+    if (!old.working && widget.working && !widget.hasText && !_expanded) {
       setState(() => _expanded = true);
     }
   }
@@ -45,45 +47,7 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
         ? l.thinking
         : (_expanded ? l.hideThinking : l.showThinking);
 
-    Widget expandedContent() {
-      final children = <Widget>[];
-      for (final item in widget.items) {
-        if (item.type == 'thinking' && (item.content?.isNotEmpty ?? false)) {
-          children.add(
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.access_time,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    stripPlanMarkup(item.content!),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      height: 1.5,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        } else if (item.type == 'tool_call') {
-          final tool = item.tool;
-          if (tool != null) {
-            children.add(_ToolCallItem(tool: tool));
-          }
-        }
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
-      );
-    }
+    final text = stripPlanMarkup(widget.text);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,17 +85,41 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
         ),
         AnimatedCrossFade(
           firstChild: const SizedBox.shrink(),
-          secondChild: Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
-            decoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(color: theme.colorScheme.outline, width: 2),
-              ),
-            ),
-            child: expandedContent(),
-          ),
+          secondChild: text.isEmpty
+              ? const SizedBox.shrink(key: ValueKey('empty'))
+              : Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(
+                        color: theme.colorScheme.outline,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          text,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            height: 1.5,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
           crossFadeState: _expanded
               ? CrossFadeState.showSecond
               : CrossFadeState.showFirst,

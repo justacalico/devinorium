@@ -1358,6 +1358,36 @@ abstract class AppLocalizations {
   /// **'Show thinking'**
   String get showThinking;
 
+  /// No description provided for @toolGroupReadFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Read {count} file} other{Read {count} files}}'**
+  String toolGroupReadFiles(num count);
+
+  /// No description provided for @toolGroupChangedFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Changed {count} file} other{Changed {count} files}}'**
+  String toolGroupChangedFiles(num count);
+
+  /// No description provided for @toolGroupRanCommands.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Ran {count} command} other{Ran {count} commands}}'**
+  String toolGroupRanCommands(num count);
+
+  /// No description provided for @toolGroupSearched.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Searched {count} time} other{Searched {count} times}}'**
+  String toolGroupSearched(num count);
+
+  /// No description provided for @toolGroupUsedTools.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Used {count} tool} other{Used {count} tools}}'**
+  String toolGroupUsedTools(num count);
+
   /// No description provided for @composerHint.
   ///
   /// In en, this message translates to:

@@ -690,6 +690,61 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showThinking => 'Show thinking';
 
   @override
+  String toolGroupReadFiles(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Read $count files',
+      one: 'Read $count file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupChangedFiles(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Changed $count files',
+      one: 'Changed $count file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupRanCommands(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Ran $count commands',
+      one: 'Ran $count command',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupSearched(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Searched $count times',
+      one: 'Searched $count time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String toolGroupUsedTools(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Used $count tools',
+      one: 'Used $count tool',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get composerHint => 'Ask a question or drop files here';
 
   @override

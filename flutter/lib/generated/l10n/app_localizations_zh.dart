@@ -681,6 +681,31 @@ class AppLocalizationsZh extends AppLocalizations {
   String get showThinking => '显示思考';
 
   @override
+  String toolGroupReadFiles(num count) {
+    return '读取了 $count 个文件';
+  }
+
+  @override
+  String toolGroupChangedFiles(num count) {
+    return '修改了 $count 个文件';
+  }
+
+  @override
+  String toolGroupRanCommands(num count) {
+    return '运行了 $count 条命令';
+  }
+
+  @override
+  String toolGroupSearched(num count) {
+    return '搜索了 $count 次';
+  }
+
+  @override
+  String toolGroupUsedTools(num count) {
+    return '使用了 $count 个工具';
+  }
+
+  @override
   String get composerHint => '在此提问或拖放文件';
 
   @override
