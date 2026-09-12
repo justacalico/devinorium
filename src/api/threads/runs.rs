@@ -169,6 +169,12 @@ pub(crate) async fn run_thread(
     input: SendInput,
     user_msg: MessageRow,
 ) -> anyhow::Result<()> {
+    // The thread may have been deleted between the send being accepted and
+    // this task starting; bail before the provider can touch the worktree.
+    if state.db.get_thread(&thread.id, user.id).await?.is_none() {
+        return Ok(());
+    }
+
     match update_thread_title_from_send(&state, user.id, &mut thread, &input).await {
         Ok(true) => {
             if let Ok(json) = serde_json::to_string(&serde_json::json!({

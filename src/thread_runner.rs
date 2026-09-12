@@ -75,6 +75,10 @@ pub struct RunState {
     pub started_at: String,
     pub updated_at: RwLock<String>,
     pub abort: std::sync::Mutex<Option<AbortHandle>>,
+    /// Set once the run's provider task has returned. The wrapping task may
+    /// keep the run record alive afterwards, so status alone cannot be used
+    /// to tell when the worktree is safe to remove.
+    pub task_done: AtomicBool,
     pub cancelled: Arc<AtomicBool>,
     pub parts: std::sync::Mutex<Vec<MessagePart>>,
     pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
@@ -165,6 +169,19 @@ impl RunState {
         if let Ok(mut guard) = self.initial_receiver.lock() {
             guard.take();
         }
+    }
+
+    /// Whether the provider task has ended: returned, panicked, or aborted.
+    /// The wrapping task outlives it (retention tail), so the join handle is
+    /// consulted through its abort handle too.
+    pub fn task_finished(&self) -> bool {
+        self.task_done.load(Ordering::SeqCst)
+            || self
+                .abort
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .is_some_and(|h| h.is_finished())
     }
 
     pub async fn set_status(&self, status: RunStatus) {
@@ -299,6 +316,7 @@ impl ThreadRunner {
             started_at: now.clone(),
             updated_at: RwLock::new(now),
             abort: std::sync::Mutex::new(None),
+            task_done: AtomicBool::new(false),
             cancelled: Arc::new(AtomicBool::new(false)),
             parts: std::sync::Mutex::new(Vec::new()),
             permission_request: std::sync::Mutex::new(None),
@@ -312,6 +330,7 @@ impl ThreadRunner {
         let thread_id_for_cleanup = thread_id.clone();
         let handle = tokio::spawn(async move {
             let result = f(state_for_task.clone()).await;
+            state_for_task.task_done.store(true, Ordering::SeqCst);
             if !state_for_task.cancelled.load(Ordering::SeqCst) {
                 match result {
                     Ok(()) => {
@@ -363,8 +382,9 @@ impl ThreadRunner {
         run.close();
 
         // Hard-abort the task after a grace period in case the agent
-        // doesn't respond to cancellation.
-        let abort_handle = run.abort.lock().unwrap().take();
+        // doesn't respond to cancellation. The handle stays on the run so
+        // `wait_finished` can observe the task actually ending.
+        let abort_handle = run.abort.lock().unwrap().clone();
         let state = run.clone();
         let runs_for_cleanup = self.runs.clone();
         let id = thread_id.to_string();
@@ -386,6 +406,29 @@ impl ThreadRunner {
         drop(runs);
         Some(run.snapshot().await)
     }
+
+    /// Wait until the run's provider task has actually ended, gracefully or
+    /// via the hard abort `stop` schedules, up to `timeout`. Returns early
+    /// when the thread has no run. A run that was displaced in the map by a
+    /// newer `start` is watched too, so a still-draining cancelled run is
+    /// not lost sight of. Used before removing a thread's worktree so the
+    /// agent is not left writing inside a deleted directory.
+    pub async fn wait_finished(&self, thread_id: &str, timeout: std::time::Duration) {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut watched: Vec<Arc<RunState>> = Vec::new();
+        loop {
+            if let Some(run) = self.runs.lock().await.get(thread_id).cloned() {
+                if !watched.iter().any(|r| Arc::ptr_eq(r, &run)) {
+                    watched.push(run);
+                }
+            }
+            if watched.iter().all(|r| r.task_finished()) || tokio::time::Instant::now() >= deadline
+            {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -406,6 +449,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
+            task_done: std::sync::atomic::AtomicBool::new(false),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![
                 MessagePart::text("Hello "),
@@ -467,6 +511,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
+            task_done: std::sync::atomic::AtomicBool::new(false),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
@@ -524,6 +569,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
+            task_done: std::sync::atomic::AtomicBool::new(false),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![MessagePart::text("first ")]),
             permission_request: std::sync::Mutex::new(None),
@@ -555,6 +601,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
+            task_done: std::sync::atomic::AtomicBool::new(false),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),
@@ -586,6 +633,7 @@ mod tests {
             started_at: chrono::Utc::now().to_rfc3339(),
             updated_at: RwLock::new(chrono::Utc::now().to_rfc3339()),
             abort: std::sync::Mutex::new(None),
+            task_done: std::sync::atomic::AtomicBool::new(false),
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             parts: std::sync::Mutex::new(vec![]),
             permission_request: std::sync::Mutex::new(None),

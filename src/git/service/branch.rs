@@ -146,6 +146,27 @@ impl GitService {
         Ok(ref_name.to_string())
     }
 
+    /// Delete a local branch with `git branch -D`. A branch that is already
+    /// gone is not an error so cleanup can be retried.
+    pub async fn delete_branch(&self, path: &Path, name: &str) -> Result<(), GitError> {
+        self.repo_status(path, false).await?;
+
+        if !is_safe_branch_name(name) {
+            return Err(GitError::Other("invalid branch name".to_string()));
+        }
+
+        let mut cmd = self.git_cmd(path);
+        cmd.arg("branch").arg("-D").arg(name);
+        match self.run(&mut cmd, Duration::from_secs(10)).await {
+            Ok(_) => {}
+            Err(GitError::Other(msg)) if msg.contains("not found") => {}
+            Err(e) => return Err(e),
+        }
+
+        self.invalidate(path);
+        Ok(())
+    }
+
     async fn list_branches(&self, path: &Path) -> Result<Vec<Branch>, GitError> {
         let current = self
             .run_with(

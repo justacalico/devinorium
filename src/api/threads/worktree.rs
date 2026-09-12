@@ -1,7 +1,7 @@
 //! Auto worktree creation for threads.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::db::{ThreadRow, UserRow};
 use crate::git::service::worktree as wt;
@@ -86,10 +86,35 @@ pub(crate) async fn ensure_thread_worktree(
     let branch = worktree.0;
     let worktree_path = worktree.1.path.to_string_lossy().to_string();
 
-    state
+    match state
         .db
         .update_thread_git(&thread.id, user.id, Some(&branch), Some(&worktree_path))
-        .await?;
+        .await
+    {
+        Ok(0) => {
+            // The thread was deleted while `git worktree add` was in
+            // flight; undo the worktree and its branch so they do not leak.
+            let _ = state
+                .git
+                .remove_worktree(&status.toplevel, &worktree.1.path)
+                .await;
+            let _ = state.git.prune_worktrees(&status.toplevel).await;
+            let _ = state.git.delete_branch(&status.toplevel, &branch).await;
+            anyhow::bail!("thread was deleted");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            // Same rollback: the row never learned about the worktree, so
+            // no cleanup path would ever find it again.
+            let _ = state
+                .git
+                .remove_worktree(&status.toplevel, &worktree.1.path)
+                .await;
+            let _ = state.git.prune_worktrees(&status.toplevel).await;
+            let _ = state.git.delete_branch(&status.toplevel, &branch).await;
+            return Err(e);
+        }
+    }
 
     // Refresh the worktree list under the project path so the UI picks it up.
     let _ = state.git.worktrees(&project_path, true).await;
@@ -222,4 +247,110 @@ pub(crate) async fn sync_agent_created_worktree(
     thread.branch = branch;
     thread.env_mode = "worktree".into();
     Ok(true)
+}
+
+/// Best-effort removal of the worktree and branch a deleted thread leaves
+/// behind.
+///
+/// Only resources this backend created are touched, identified by the
+/// generated `devinorium/*` branch name: a worktree still checked out on
+/// the thread's branch is removed wherever it lives, a leftover directory
+/// inside the managed worktrees root is deleted, and the branch itself is
+/// deleted. A worktree on any other branch is left alone, even when the
+/// thread row points at it: `branch` and `worktree_path` are writable
+/// through the API and cannot be trusted on their own. Errors are logged,
+/// never returned; the thread row is already gone by the time this runs.
+pub(crate) async fn cleanup_thread_worktree(
+    state: &AppState,
+    thread: &ThreadRow,
+    repo_hint: Option<&Path>,
+) {
+    let branch = thread
+        .branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty());
+    let Some(branch) = branch else { return };
+    if !wt::is_temporary_worktree_branch(branch) {
+        return;
+    }
+    let wt_path = thread
+        .worktree_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from);
+
+    // The repo to run cleanup in: the project checkout while the project
+    // row still resolves, then the caller's hint, then the thread's stored
+    // worktree path. `git worktree list` yields the main checkout as its
+    // first entry, which anchors the managed root for linked worktrees.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(project_id) = thread.project_id {
+        if let Ok(Some(project)) = state.db.get_project(project_id, thread.user_id).await {
+            candidates.push(PathBuf::from(project.path));
+        }
+    }
+    if let Some(hint) = repo_hint {
+        candidates.push(hint.to_path_buf());
+    }
+    if let Some(path) = &wt_path {
+        candidates.push(path.clone());
+    }
+    let mut resolved = None;
+    for cand in candidates {
+        if let Ok(worktrees) = state.git.worktrees(&cand, true).await {
+            if let Some(main) = worktrees.iter().find(|w| w.is_main) {
+                resolved = Some((main.path.clone(), worktrees));
+                break;
+            }
+        }
+    }
+    let Some((repo, worktrees)) = resolved else {
+        return;
+    };
+    // Git commands run from the main checkout: a linked worktree cannot
+    // remove itself, and the main path always resolves.
+    let managed_root = wt::managed_worktrees_root(&repo);
+
+    // A worktree checked out on the thread's temp branch is provably ours:
+    // remove it wherever it is, covering `git worktree move` and a stored
+    // path that diverged from the deterministic managed location.
+    for w in &worktrees {
+        if !w.is_main && w.branch.as_deref() == Some(branch) {
+            if let Err(e) = state.git.remove_worktree(&repo, &w.path).await {
+                tracing::warn!(error = %e, thread_id = %thread.id, path = %w.path.display(), "thread worktree removal failed");
+            }
+        }
+    }
+
+    // Directories inside the managed root that are not registered worktrees
+    // are leftovers, for example a registration pruned while the directory
+    // stayed behind. Re-list first: a worktree registered at the same path
+    // since the snapshot above belongs to someone else and must survive.
+    let worktrees_now = state
+        .git
+        .worktrees(&repo, true)
+        .await
+        .unwrap_or_else(|_| worktrees.clone());
+    let managed_path = wt::managed_worktree_path(&repo, branch);
+    for candidate in [wt_path.as_deref(), Some(managed_path.as_path())] {
+        let Some(path) = candidate else { continue };
+        if path.parent() != Some(managed_root.as_path())
+            || worktrees_now.iter().any(|w| w.path == path)
+            || !matches!(tokio::fs::try_exists(path).await, Ok(true))
+        {
+            continue;
+        }
+        let _ = tokio::fs::remove_dir_all(path).await;
+    }
+
+    // Clear stale registrations so the branch delete cannot fail with
+    // "checked out at" for a worktree whose directory is already gone.
+    let _ = state.git.prune_worktrees(&repo).await;
+    if let Err(e) = state.git.delete_branch(&repo, branch).await {
+        tracing::warn!(error = %e, thread_id = %thread.id, "thread branch removal failed");
+    }
+
+    let _ = state.git.worktrees(&repo, true).await;
 }

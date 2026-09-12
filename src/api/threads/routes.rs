@@ -15,6 +15,7 @@ use crate::db::{NewThread, ThreadSettingsUpdate};
 use crate::AppState;
 
 use super::persistence::active_run_plan;
+use super::worktree::cleanup_thread_worktree;
 use super::{
     CreateThread, GetThread, ListMessages, MessageOut, PinThread, ThreadOut, UpdateThread,
 };
@@ -49,8 +50,13 @@ pub(super) async fn create(
         }
     }
 
-    // Remove empty threads for this user+project before creating a new one.
-    let _ = state.db.delete_empty_threads(user.id, req.project_id).await;
+    // Remove empty threads for this user+project before creating a new one,
+    // cleaning up any managed worktrees they still reference.
+    if let Ok(empties) = state.db.delete_empty_threads(user.id, req.project_id).await {
+        for thread in &empties {
+            cleanup_thread_worktree(&state, thread, None).await;
+        }
+    }
 
     // Validate group ownership if provided.
     if let Some(gid) = req.thread_group_id {
@@ -553,8 +559,22 @@ pub(super) async fn delete(
     CurrentUser(user): CurrentUser,
     Path(id): Path<String>,
 ) -> Response {
+    // The row goes first: a worktree creation still in flight rolls back
+    // when its update hits zero rows, and no new run can attach once the
+    // thread is gone.
     match state.db.delete_thread(&id, user.id).await {
-        Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(Some(thread)) => {
+            // Stop the current run and wait for the task to actually end so
+            // the agent is not left writing inside the removed worktree.
+            let _ = state.thread_runner.stop(&id).await;
+            state
+                .thread_runner
+                .wait_finished(&id, std::time::Duration::from_secs(15))
+                .await;
+            cleanup_thread_worktree(&state, &thread, None).await;
+            Json(serde_json::json!({"ok": true})).into_response()
+        }
+        Ok(None) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => map_err_internal(e).into_response(),
     }
 }

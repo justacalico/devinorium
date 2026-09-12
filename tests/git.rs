@@ -247,6 +247,45 @@ async fn worktree_create_and_remove() {
 }
 
 #[tokio::test]
+async fn delete_branch_removes_and_tolerates_missing() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    svc.create_branch(tmp.path(), "gone", None, false)
+        .await
+        .unwrap();
+    svc.delete_branch(tmp.path(), "gone").await.unwrap();
+
+    let out = Command::new("git")
+        .args(["rev-parse", "--verify", "gone"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+
+    // Deleting twice is not an error.
+    svc.delete_branch(tmp.path(), "gone").await.unwrap();
+
+    // An unsafe name is still rejected.
+    let err = svc.delete_branch(tmp.path(), "../bad").await.unwrap_err();
+    assert!(matches!(err, devinorium::git::GitError::Other(_)));
+}
+
+#[tokio::test]
+async fn prune_worktrees_drops_stale_registration() {
+    let tmp = make_repo();
+    let svc = GitService::new();
+    let wt = svc
+        .create_worktree(tmp.path(), "wt-stale", "HEAD", true)
+        .await
+        .unwrap();
+    std::fs::remove_dir_all(&wt.path).unwrap();
+
+    svc.prune_worktrees(tmp.path()).await.unwrap();
+    let worktrees = svc.worktrees(tmp.path(), true).await.unwrap();
+    assert!(!worktrees.iter().any(|w| w.path == wt.path));
+}
+
+#[tokio::test]
 async fn auto_worktree_uses_slashed_branch_and_external_path() {
     let tmp = make_repo();
     git_cli(&["checkout", "-b", "main"], tmp.path());
