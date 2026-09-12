@@ -234,9 +234,10 @@ void main() {
     expect(find.text('Git'), findsOneWidget);
     expect(find.text('Clone root'), findsOneWidget);
     expect(find.text('Manage'), findsOneWidget);
+    expect(find.text('Audit log'), findsOneWidget);
     expect(find.text('About'), findsOneWidget);
     expect(find.text('Servers'), findsOneWidget);
-    expect(find.text('Owner'), findsOneWidget);
+    expect(find.text('Owner'), findsNWidgets(2));
   });
 
   testWidgets('Sidebar hides Manage topic for non-owners', (tester) async {
@@ -261,6 +262,7 @@ void main() {
     expect(find.text('Personalization'), findsOneWidget);
     expect(find.text('Clone root'), findsOneWidget);
     expect(find.text('Manage'), findsNothing);
+    expect(find.text('Audit log'), findsNothing);
   });
 
   testWidgets('Settings topic selection updates AppState', (tester) async {

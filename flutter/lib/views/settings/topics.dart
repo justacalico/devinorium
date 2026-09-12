@@ -12,11 +12,13 @@ enum SettingsTopic {
   cloneRoot,
   usage,
   manage,
+  audit,
   about,
   servers,
 }
 
-/// The sidebar topic list, in display order. `manage` is owner-only.
+/// The sidebar topic list, in display order. `manage` and `audit` are
+/// owner-only.
 List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
   bool isOwner,
   AppLocalizations l,
@@ -47,7 +49,13 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
       ),
     (topic: SettingsTopic.about, icon: Icons.info_outlined, label: l.about),
     (topic: SettingsTopic.servers, icon: Icons.dns_outlined, label: l.servers),
-    // Usage stays last so existing topic positions do not shift.
     (topic: SettingsTopic.usage, icon: Icons.bar_chart_outlined, label: l.usage),
+    // New topics go last so existing topic positions do not shift.
+    if (isOwner)
+      (
+        topic: SettingsTopic.audit,
+        icon: Icons.receipt_long_outlined,
+        label: l.auditLog,
+      ),
   ];
 }

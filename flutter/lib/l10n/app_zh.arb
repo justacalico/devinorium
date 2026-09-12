@@ -1041,6 +1041,21 @@
   "usageByModel": "按模型",
   "usageEmpty": "暂无使用记录",
   "usageLoadFailed": "加载用量失败",
+  "auditLog": "审计日志",
+  "@auditLog": {
+    "description": "Audit log section title in settings"
+  },
+  "auditLogDescription": "本服务器记录的安全相关操作，按时间倒序排列。",
+  "@auditLogDescription": {
+    "description": "Short description shown under the Audit log section title"
+  },
+  "auditLogEmpty": "还没有审计记录。",
+  "auditLogLoadFailed": "加载审计日志失败",
+  "auditLogLoadMore": "加载更多",
+  "auditLogSystem": "系统",
+  "@auditLogSystem": {
+    "description": "Shown as the actor for audit entries that have no user"
+  },
   "devMergeRequestTitle": "开发合并请求",
   "@devMergeRequestTitle": {
     "description": "Title of the dialog shown on builds from a merge request"

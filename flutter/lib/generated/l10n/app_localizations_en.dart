@@ -1464,6 +1464,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get usageLoadFailed => 'Failed to load usage';
 
   @override
+  String get auditLog => 'Audit log';
+
+  @override
+  String get auditLogDescription =>
+      'Security-relevant actions recorded by this server, newest first.';
+
+  @override
+  String get auditLogEmpty => 'No audit entries yet.';
+
+  @override
+  String get auditLogLoadFailed => 'Failed to load the audit log';
+
+  @override
+  String get auditLogLoadMore => 'Load more';
+
+  @override
+  String get auditLogSystem => 'system';
+
+  @override
   String get devMergeRequestTitle => 'Development merge request';
 
   @override

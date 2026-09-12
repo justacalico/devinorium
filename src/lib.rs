@@ -135,6 +135,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::thread_groups::router())
         .merge(api::terminal::router())
         .merge(api::accounts::router())
+        .merge(api::audit::router())
         .merge(api::settings::router())
         .merge(api::models::router())
         .merge(api::providers::router())

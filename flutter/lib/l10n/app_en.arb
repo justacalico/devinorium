@@ -1041,6 +1041,21 @@
   "usageByModel": "By model",
   "usageEmpty": "No usage recorded yet.",
   "usageLoadFailed": "Failed to load usage",
+  "auditLog": "Audit log",
+  "@auditLog": {
+    "description": "Audit log section title in settings"
+  },
+  "auditLogDescription": "Security-relevant actions recorded by this server, newest first.",
+  "@auditLogDescription": {
+    "description": "Short description shown under the Audit log section title"
+  },
+  "auditLogEmpty": "No audit entries yet.",
+  "auditLogLoadFailed": "Failed to load the audit log",
+  "auditLogLoadMore": "Load more",
+  "auditLogSystem": "system",
+  "@auditLogSystem": {
+    "description": "Shown as the actor for audit entries that have no user"
+  },
   "devMergeRequestTitle": "Development merge request",
   "@devMergeRequestTitle": {
     "description": "Title of the dialog shown on builds from a merge request"

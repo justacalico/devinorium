@@ -1,5 +1,6 @@
 export 'app_update.dart';
 export 'attachment.dart';
+export 'audit.dart';
 export 'auth.dart';
 export 'file_tree_node.dart';
 export 'files.dart';

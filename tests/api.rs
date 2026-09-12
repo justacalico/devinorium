@@ -3097,6 +3097,98 @@ async fn accounts_owner_create_and_list() {
 }
 
 #[tokio::test]
+async fn audit_owner_can_list_entries() {
+    let (app, _db) = make_app().await;
+    // Logging in writes a "login" audit row.
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/audit", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let entries = serde_json::from_str::<Vec<serde_json::Value>>(&body).unwrap();
+    let login_entry = entries
+        .iter()
+        .find(|e| e["action"] == "login")
+        .expect("login audit entry");
+    assert_eq!(login_entry["username"], "owner");
+    assert!(login_entry["detail"].is_object(), "entry: {login_entry}");
+    assert!(login_entry["created_at"].is_string());
+}
+
+#[tokio::test]
+async fn audit_non_owner_forbidden() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    create_user(&app, &cookie, "bob", "bobpass12345").await;
+    let bob_cookie = login_as(&app, "bob", "bobpass12345").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/audit", &bob_cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn audit_requires_auth() {
+    let (app, _db) = make_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/audit")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn audit_paginates_newest_first() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    for i in 0..5 {
+        db.audit(None, "test.action", &serde_json::json!({"i": i}), None)
+            .await
+            .unwrap();
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/audit?limit=2", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let page1 =
+        serde_json::from_str::<Vec<serde_json::Value>>(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(page1.len(), 2);
+    assert_eq!(page1[0]["detail"]["i"], 4);
+    assert_eq!(page1[1]["detail"]["i"], 3);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/audit?limit=2&offset=2", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let page2 =
+        serde_json::from_str::<Vec<serde_json::Value>>(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(page2.len(), 2);
+    assert_eq!(page2[0]["detail"]["i"], 2);
+    assert_eq!(page2[1]["detail"]["i"], 1);
+}
+
+#[tokio::test]
 async fn file_manager_list_upload_read_delete() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

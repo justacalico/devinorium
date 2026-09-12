@@ -50,7 +50,8 @@ class _SettingsNav extends StatelessWidget {
                   title: Row(
                     children: [
                       Text(topics[i].label),
-                      if (topics[i].topic == SettingsTopic.manage) ...[
+                      if (topics[i].topic == SettingsTopic.manage ||
+                          topics[i].topic == SettingsTopic.audit) ...[
                         const SizedBox(width: 6),
                         const OwnerBadge(),
                       ],
