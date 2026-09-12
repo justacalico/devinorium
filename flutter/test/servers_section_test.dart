@@ -60,6 +60,9 @@ class _FakeApiService extends ApiService {
   Future<String?> getCloneRoot() async => null;
 
   @override
+  Future<String?> getWorktreeRoot() async => null;
+
+  @override
   Future<TailscaleInfo> tailscaleStatus() async {
     final info = tailscaleInfo;
     if (info == null) throw ApiException('not found', 404);

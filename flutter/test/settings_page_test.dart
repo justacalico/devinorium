@@ -28,25 +28,30 @@ class _FakeApiService extends ApiService {
   int createUserCalls = 0;
   int getCloneRootCalls = 0;
   int setCloneRootCalls = 0;
+  int getWorktreeRootCalls = 0;
+  int setWorktreeRootCalls = 0;
   String? savedProviderCommand;
   String? testedCommand;
   String? savedCloneRoot;
   String? cloneRootToReturn;
+  String? savedWorktreeRoot;
+  String? worktreeRootToReturn;
   ProviderVersion? providerVersionToReturn;
   Map<String, ProviderVersion> providerVersionsToReturn = const {};
   Completer<ProviderVersion>? providerVersionGate;
   bool throwOnTest = false;
   Exception? cloneRootError;
+  Exception? worktreeRootError;
   List<DirEntry> listFilesToReturn = const [];
 
   final List<User> _users;
   final List<GitConnection> _gitConnections;
 
-  _FakeApiService({
-    List<User>? users,
-    List<GitConnection>? gitConnections,
-  })  : _users = users ??
-            [User(
+  _FakeApiService({List<User>? users, List<GitConnection>? gitConnections})
+    : _users =
+          users ??
+          [
+            User(
               id: 1,
               username: 'owner',
               role: 'user',
@@ -54,13 +59,19 @@ class _FakeApiService extends ApiService {
               isOwner: true,
               providerId: 'devin-cli',
               providerCommand: 'devin',
-            )],
-        _gitConnections = gitConnections ??
-            const [
-              GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
-              GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
-            ],
-        super(client: ApiClient.withClient(MockClient((_) async => http.Response('{}', 200))));
+            ),
+          ],
+      _gitConnections =
+          gitConnections ??
+          const [
+            GitConnection(id: 'gitlab', name: 'GitLab', enabled: true),
+            GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+          ],
+      super(
+        client: ApiClient.withClient(
+          MockClient((_) async => http.Response('{}', 200)),
+        ),
+      );
 
   @override
   Future<User> updateMe({
@@ -112,14 +123,16 @@ class _FakeApiService extends ApiService {
     required String password,
   }) async {
     createUserCalls++;
-    _users.add(User(
-      id: _users.length + 1,
-      username: username,
-      role: 'user',
-      totpEnabled: false,
-      providerId: 'devin-cli',
-      providerCommand: 'devin',
-    ));
+    _users.add(
+      User(
+        id: _users.length + 1,
+        username: username,
+        role: 'user',
+        totpEnabled: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
   }
 
   @override
@@ -128,7 +141,13 @@ class _FakeApiService extends ApiService {
 
   @override
   Future<GitConnection> connectGitLab({String? hostname}) async =>
-      const GitConnection(id: 'gitlab', name: 'GitLab', enabled: true, authed: true, account: 'owner');
+      const GitConnection(
+        id: 'gitlab',
+        name: 'GitLab',
+        enabled: true,
+        authed: true,
+        account: 'owner',
+      );
 
   @override
   Future<void> disconnectGitLab({String? hostname}) async {}
@@ -145,6 +164,21 @@ class _FakeApiService extends ApiService {
     setCloneRootCalls++;
     savedCloneRoot = path;
     if (cloneRootError != null) throw cloneRootError!;
+    return path;
+  }
+
+  @override
+  Future<String?> getWorktreeRoot() async {
+    getWorktreeRootCalls++;
+    if (worktreeRootError != null) throw worktreeRootError!;
+    return worktreeRootToReturn;
+  }
+
+  @override
+  Future<String?> setWorktreeRoot(String? path) async {
+    setWorktreeRootCalls++;
+    savedWorktreeRoot = path;
+    if (worktreeRootError != null) throw worktreeRootError!;
     return path;
   }
 
@@ -197,19 +231,19 @@ class _FakeVersionChecker extends VersionChecker {
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: state.locale,
-      home: MultiProvider(
-        providers: [
-          ChangeNotifierProvider<AppState>.value(value: state),
-          ChangeNotifierProvider<ThemeProvider>(
-            create: (_) => ThemeProvider()..loadInitial(),
-          ),
-        ],
-        child: const SettingsPage(),
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
+  locale: state.locale,
+  home: MultiProvider(
+    providers: [
+      ChangeNotifierProvider<AppState>.value(value: state),
+      ChangeNotifierProvider<ThemeProvider>(
+        create: (_) => ThemeProvider()..loadInitial(),
       ),
-    );
+    ],
+    child: const SettingsPage(),
+  ),
+);
 
 void main() {
   setUpAll(() {
@@ -283,7 +317,9 @@ void main() {
     expect(state.user?.providerCommand, 'devin-cli');
   });
 
-  testWidgets('Provider test button normalizes empty command to devin', (tester) async {
+  testWidgets('Provider test button normalizes empty command to devin', (
+    tester,
+  ) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -344,7 +380,9 @@ void main() {
     expect(find.text('Provider is reachable'), findsOneWidget);
   });
 
-  testWidgets('Provider test button shows error snackbar on failure', (tester) async {
+  testWidgets('Provider test button shows error snackbar on failure', (
+    tester,
+  ) async {
     final fake = _FakeApiService()..throwOnTest = true;
     final state = AppState.test(
       api: fake,
@@ -439,8 +477,9 @@ void main() {
     expect(find.text('Up to date'), findsNothing);
   });
 
-  testWidgets('Provider card shows a version row for each provider',
-      (tester) async {
+  testWidgets('Provider card shows a version row for each provider', (
+    tester,
+  ) async {
     final api = _FakeApiService()
       ..providerVersionsToReturn = const {
         'devin-cli': ProviderVersion(
@@ -491,8 +530,9 @@ void main() {
     expect(find.text('Update available: 1.19.0'), findsOneWidget);
   });
 
-  testWidgets('Provider version row repaints when the fetch resolves',
-      (tester) async {
+  testWidgets('Provider version row repaints when the fetch resolves', (
+    tester,
+  ) async {
     final gate = Completer<ProviderVersion>();
     final api = _FakeApiService()..providerVersionGate = gate;
     final state = AppState.test(
@@ -519,20 +559,23 @@ void main() {
     expect(find.text('—'), findsOneWidget);
     expect(find.text('Up to date'), findsNothing);
 
-    gate.complete(const ProviderVersion(
-      providerId: 'devin-cli',
-      providerName: 'Devin CLI',
-      installedVersion: '3000.6.14',
-      latestVersion: '3000.6.14',
-    ));
+    gate.complete(
+      const ProviderVersion(
+        providerId: 'devin-cli',
+        providerName: 'Devin CLI',
+        installedVersion: '3000.6.14',
+        latestVersion: '3000.6.14',
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('3000.6.14'), findsOneWidget);
     expect(find.text('Up to date'), findsOneWidget);
   });
 
-  testWidgets('Provider card shows placeholder when version is unknown',
-      (tester) async {
+  testWidgets('Provider card shows placeholder when version is unknown', (
+    tester,
+  ) async {
     final state = AppState.test(
       api: _FakeApiService(),
       user: User(
@@ -560,8 +603,9 @@ void main() {
     expect(find.textContaining('Update available'), findsNothing);
   });
 
-  testWidgets('Opening settings refreshes the provider version',
-      (tester) async {
+  testWidgets('Opening settings refreshes the provider version', (
+    tester,
+  ) async {
     final fake = _FakeApiService()
       ..providerVersionToReturn = const ProviderVersion(
         providerId: 'devin-cli',
@@ -592,14 +636,12 @@ void main() {
       state.providerVersionFor('devin-cli')?.installedVersion,
       '3000.6.13',
     );
-    expect(
-      state.providerVersionFor('devin-cli')?.updateAvailable,
-      isTrue,
-    );
+    expect(state.providerVersionFor('devin-cli')?.updateAvailable, isTrue);
   });
 
-  testWidgets('Saving the provider command re-checks the version',
-      (tester) async {
+  testWidgets('Saving the provider command re-checks the version', (
+    tester,
+  ) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -630,8 +672,9 @@ void main() {
     expect(fake.providerVersionCalls, 2);
   });
 
-  testWidgets('Saving another provider\'s command re-checks that provider',
-      (tester) async {
+  testWidgets('Saving another provider\'s command re-checks that provider', (
+    tester,
+  ) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -667,40 +710,41 @@ void main() {
   });
 
   testWidgets(
-      'Provider card shows the user provider version when the list is empty',
-      (tester) async {
-    final api = _FakeApiService()
-      ..providerVersionToReturn = const ProviderVersion(
-        providerId: 'devin-cli',
-        providerName: 'Devin CLI',
-        installedVersion: '3000.6.14',
-        latestVersion: '3000.6.14',
+    'Provider card shows the user provider version when the list is empty',
+    (tester) async {
+      final api = _FakeApiService()
+        ..providerVersionToReturn = const ProviderVersion(
+          providerId: 'devin-cli',
+          providerName: 'Devin CLI',
+          installedVersion: '3000.6.14',
+          latestVersion: '3000.6.14',
+        );
+      final state = AppState.test(
+        api: api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
       );
-    final state = AppState.test(
-      api: api,
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-    );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(1);
-    await tester.pumpAndSettle();
+      state.setSettingsTopicIndex(1);
+      await tester.pumpAndSettle();
 
-    // With no provider list loaded the endpoint reports the configured
-    // provider, and the single row still shows it.
-    expect(api.providerVersionArgs, [null]);
-    expect(find.text('Version'), findsOneWidget);
-    expect(find.text('3000.6.14'), findsOneWidget);
-  });
+      // With no provider list loaded the endpoint reports the configured
+      // provider, and the single row still shows it.
+      expect(api.providerVersionArgs, [null]);
+      expect(find.text('Version'), findsOneWidget);
+      expect(find.text('3000.6.14'), findsOneWidget);
+    },
+  );
 
   testWidgets('Manage section appears for owners', (tester) async {
     final fake = _FakeApiService();
@@ -906,40 +950,43 @@ void main() {
     expect(find.text('Light'), findsOneWidget);
   });
 
-  testWidgets('Theme dropdown shows custom hint when a custom theme is loaded',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    const css = ':root { --primary: #ff0000; }';
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-    );
+  testWidgets(
+    'Theme dropdown shows custom hint when a custom theme is loaded',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      const css = ':root { --primary: #ff0000; }';
+      final state = AppState.test(
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(2);
-    await tester.pumpAndSettle();
+      state.setSettingsTopicIndex(2);
+      await tester.pumpAndSettle();
 
-    final provider = Provider.of<ThemeProvider>(
-      tester.element(find.byType(SettingsPage)),
-      listen: false,
-    );
-    await provider.loadCustom(css, name: 'Sunset');
-    await tester.pumpAndSettle();
+      final provider = Provider.of<ThemeProvider>(
+        tester.element(find.byType(SettingsPage)),
+        listen: false,
+      );
+      await provider.loadCustom(css, name: 'Sunset');
+      await tester.pumpAndSettle();
 
-    expect(find.text('Custom: Sunset'), findsOneWidget);
-  });
+      expect(find.text('Custom: Sunset'), findsOneWidget);
+    },
+  );
 
-  testWidgets('Theme dropdown falls back to bare Custom label without a name',
-      (tester) async {
+  testWidgets('Theme dropdown falls back to bare Custom label without a name', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     const css = ':root { --primary: #ff0000; }';
     final state = AppState.test(
@@ -997,9 +1044,11 @@ void main() {
     expect(state.language, 'system');
     expect(find.text('System'), findsWidgets);
 
-    await tester.tap(find.byWidgetPredicate(
-      (w) => w is DropdownButton<String> && w.value == state.language,
-    ));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is DropdownButton<String> && w.value == state.language,
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('English').last);
     await tester.pumpAndSettle();
@@ -1007,7 +1056,9 @@ void main() {
     expect(state.locale, const Locale('en'));
   });
 
-  testWidgets('Language selector can switch to Simplified Chinese', (tester) async {
+  testWidgets('Language selector can switch to Simplified Chinese', (
+    tester,
+  ) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -1026,9 +1077,11 @@ void main() {
     state.setSettingsTopicIndex(2);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byWidgetPredicate(
-      (w) => w is DropdownButton<String> && w.value == state.language,
-    ));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is DropdownButton<String> && w.value == state.language,
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Simplified Chinese'));
     await tester.pumpAndSettle();
@@ -1058,16 +1111,20 @@ void main() {
 
     expect(state.language, 'zh');
 
-    await tester.tap(find.byWidgetPredicate(
-      (w) => w is DropdownButton<String> && w.value == state.language,
-    ));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is DropdownButton<String> && w.value == state.language,
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('系统').last);
     await tester.pumpAndSettle();
     expect(state.language, 'system');
   });
 
-  testWidgets('Personalization tab renders in Simplified Chinese', (tester) async {
+  testWidgets('Personalization tab renders in Simplified Chinese', (
+    tester,
+  ) async {
     final state = AppState.test(
       locale: const Locale('zh'),
       user: User(
@@ -1093,8 +1150,9 @@ void main() {
     expect(find.text('应用于新会话'), findsOneWidget);
   });
 
-  testWidgets('Personalization tab sets the default permission level',
-      (tester) async {
+  testWidgets('Personalization tab sets the default permission level', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final state = AppState.test(
       user: User(
@@ -1128,8 +1186,9 @@ void main() {
     expect(prefs.getString('devinorium_selected_permission'), 'smart');
   });
 
-  testWidgets('Default permission dropdown does not touch the active thread',
-      (tester) async {
+  testWidgets('Default permission dropdown does not touch the active thread', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final state = AppState.test(
       user: User(
@@ -1243,7 +1302,9 @@ void main() {
     expect(find.byType(GitProviderTile), findsNWidgets(2));
   });
 
-  testWidgets('Git section shows Disconnect when GitLab is connected', (tester) async {
+  testWidgets('Git section shows Disconnect when GitLab is connected', (
+    tester,
+  ) async {
     final fake = _FakeApiService(
       gitConnections: const [
         GitConnection(
@@ -1280,41 +1341,44 @@ void main() {
     expect(find.text('Connected as owner'), findsOneWidget);
   });
 
-  testWidgets('Git section shows not installed hint when GitLab is unavailable', (tester) async {
+  testWidgets(
+    'Git section shows not installed hint when GitLab is unavailable',
+    (tester) async {
+      final fake = _FakeApiService(
+        gitConnections: const [
+          GitConnection(id: 'gitlab', name: 'GitLab'),
+          GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
+        ],
+      );
+      final state = AppState.test(
+        api: fake,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      state.setSettingsTopicIndex(3);
+      await tester.pumpAndSettle();
+
+      expect(find.text('GitLab CLI (glab) is not installed'), findsOneWidget);
+      expect(find.text('Connect'), findsNothing);
+    },
+  );
+
+  testWidgets('Git section falls back to a generic row for unknown providers', (
+    tester,
+  ) async {
     final fake = _FakeApiService(
-      gitConnections: const [
-        GitConnection(id: 'gitlab', name: 'GitLab'),
-        GitConnection(id: 'github', name: 'GitHub', comingSoon: true),
-      ],
-    );
-    final state = AppState.test(
-      api: fake,
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-    );
-
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
-
-    state.setSettingsTopicIndex(3);
-    await tester.pumpAndSettle();
-
-    expect(find.text('GitLab CLI (glab) is not installed'), findsOneWidget);
-    expect(find.text('Connect'), findsNothing);
-  });
-
-  testWidgets('Git section falls back to a generic row for unknown providers', (tester) async {
-    final fake = _FakeApiService(
-      gitConnections: const [
-        GitConnection(id: 'bitbucket', name: 'Bitbucket'),
-      ],
+      gitConnections: const [GitConnection(id: 'bitbucket', name: 'Bitbucket')],
     );
     final state = AppState.test(
       api: fake,
@@ -1340,7 +1404,9 @@ void main() {
     expect(find.byType(GitProviderTile), findsOneWidget);
   });
 
-  testWidgets('Clone root section loads current value for owners', (tester) async {
+  testWidgets('Clone root section loads current value for owners', (
+    tester,
+  ) async {
     final fake = _FakeApiService()..cloneRootToReturn = '/srv/clones';
     final state = AppState.test(
       api: fake,
@@ -1363,7 +1429,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Clone root'), findsOneWidget);
-    expect(find.text('Directory where cloned repositories are placed.'), findsOneWidget);
+    expect(
+      find.text('Directory where cloned repositories are placed.'),
+      findsOneWidget,
+    );
     expect(find.byType(TextField), findsOneWidget);
     expect(state.cloneRoot, '/srv/clones');
     expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
@@ -1393,12 +1462,17 @@ void main() {
 
     expect(find.text('Clone root'), findsOneWidget);
     expect(find.text('/srv/clones'), findsOneWidget);
-    expect(find.text('Only the owner can change the clone root.'), findsOneWidget);
+    expect(
+      find.text('Only the owner can change the clone root.'),
+      findsOneWidget,
+    );
     expect(find.byType(TextField), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
   });
 
-  testWidgets('Clone root save propagates to the API and updates state', (tester) async {
+  testWidgets('Clone root save propagates to the API and updates state', (
+    tester,
+  ) async {
     final fake = _FakeApiService();
     final state = AppState.test(
       api: fake,
@@ -1433,7 +1507,8 @@ void main() {
   });
 
   testWidgets('Clone root save shows an error on failure', (tester) async {
-    final fake = _FakeApiService()..cloneRootError = Exception('path must be absolute');
+    final fake = _FakeApiService()
+      ..cloneRootError = Exception('path must be absolute');
     final state = AppState.test(
       api: fake,
       user: User(
@@ -1488,6 +1563,155 @@ void main() {
     await tester.tap(browse);
     await tester.pumpAndSettle();
 
+    expect(find.text('Select current folder'), findsOneWidget);
+  });
+
+  testWidgets('Worktree root section loads current value for owners', (
+    tester,
+  ) async {
+    final fake = _FakeApiService()..worktreeRootToReturn = '/srv/worktrees';
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      worktreeRoot: '/srv/worktrees',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Owner topic list: account, providers, personalization, git, cloneRoot,
+    // manage, about, servers, usage, audit, worktreeRoot.
+    state.setSettingsTopicIndex(10);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Worktree root'), findsOneWidget);
+    expect(
+      find.text(
+        'Parent directory where worktrees are created. Defaults to the home '
+        'directory.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    expect(find.byTooltip('Browse...'), findsOneWidget);
+    expect(state.worktreeRoot, '/srv/worktrees');
+    expect(fake.getWorktreeRootCalls, greaterThan(0));
+  });
+
+  testWidgets('Worktree root section is read-only for non-owners', (
+    tester,
+  ) async {
+    final fake = _FakeApiService()..worktreeRootToReturn = '/srv/worktrees';
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 2,
+        username: 'member',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      worktreeRoot: '/srv/worktrees',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    // Non-owner topic list: account, providers, personalization, git,
+    // cloneRoot, about, servers, usage, worktreeRoot.
+    state.setSettingsTopicIndex(8);
+    await tester.pumpAndSettle();
+
+    expect(find.text('/srv/worktrees'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
+    expect(
+      find.text('Only the owner can change the worktree root.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Worktree root save propagates to the API and updates state', (
+    tester,
+  ) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      worktreeRoot: '/old/worktrees',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(10);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '/srv/new-worktrees');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(fake.setWorktreeRootCalls, 1);
+    expect(fake.savedWorktreeRoot, '/srv/new-worktrees');
+    expect(state.worktreeRoot, '/srv/new-worktrees');
+    expect(state.globalError, isEmpty);
+  });
+
+  testWidgets('Worktree root browse opens folder picker with custom title', (
+    tester,
+  ) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(10);
+    await tester.pumpAndSettle();
+
+    final browse = find.byTooltip('Browse...');
+    expect(browse, findsOneWidget);
+    await tester.tap(browse);
+    await tester.pumpAndSettle();
+
+    // The dialog is titled after the worktree root setting, not clone root.
+    expect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.text('Worktree root'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Select current folder'), findsOneWidget);
   });
 
@@ -1548,13 +1772,18 @@ void main() {
     expect(find.text('Source code'), findsOneWidget);
     expect(find.text('Support'), findsOneWidget);
     expect(find.text('Privacy policy'), findsOneWidget);
-    expect(find.text('https://gitlab.com/HttpAnimations/devinorium'), findsOneWidget);
+    expect(
+      find.text('https://gitlab.com/HttpAnimations/devinorium'),
+      findsOneWidget,
+    );
     expect(
       find.text('https://gitlab.com/HttpAnimations/devinorium/-/work_items'),
       findsOneWidget,
     );
     expect(
-      find.text('https://gitlab.com/HttpAnimations/devinorium/-/blob/main/privacy_policy.md'),
+      find.text(
+        'https://gitlab.com/HttpAnimations/devinorium/-/blob/main/privacy_policy.md',
+      ),
       findsOneWidget,
     );
   });
@@ -1617,9 +1846,7 @@ void main() {
     expect(find.text('0.21.0'), findsOneWidget);
   });
 
-  testWidgets('About section falls back when version is empty', (
-    tester,
-  ) async {
+  testWidgets('About section falls back when version is empty', (tester) async {
     final state = _FakeAppState.test(
       settingsTopicIndex: 6,
       user: User(
@@ -1685,16 +1912,16 @@ void main() {
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      switch (call.method) {
-        case 'canLaunch':
-          return true;
-        case 'launch':
-          final args = call.arguments as Map<dynamic, dynamic>;
-          launched.add(args['url'] as String);
-          return true;
-      }
-      return null;
-    });
+          switch (call.method) {
+            case 'canLaunch':
+              return true;
+            case 'launch':
+              final args = call.arguments as Map<dynamic, dynamic>;
+              launched.add(args['url'] as String);
+              return true;
+          }
+          return null;
+        });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -1720,10 +1947,7 @@ void main() {
     await tester.tap(find.text('Source code'));
     await tester.pumpAndSettle();
 
-    expect(
-      launched,
-      contains('https://gitlab.com/HttpAnimations/devinorium'),
-    );
+    expect(launched, contains('https://gitlab.com/HttpAnimations/devinorium'));
 
     await tester.tap(find.text('Support'));
     await tester.pumpAndSettle();
@@ -1734,23 +1958,21 @@ void main() {
     );
   });
 
-  testWidgets('About section opens the privacy policy link', (
-    tester,
-  ) async {
+  testWidgets('About section opens the privacy policy link', (tester) async {
     final launched = <String>[];
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      switch (call.method) {
-        case 'canLaunch':
-          return true;
-        case 'launch':
-          final args = call.arguments as Map<dynamic, dynamic>;
-          launched.add(args['url'] as String);
-          return true;
-      }
-      return null;
-    });
+          switch (call.method) {
+            case 'canLaunch':
+              return true;
+            case 'launch':
+              final args = call.arguments as Map<dynamic, dynamic>;
+              launched.add(args['url'] as String);
+              return true;
+          }
+          return null;
+        });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -1780,13 +2002,13 @@ void main() {
 
     expect(
       launched,
-      contains('https://gitlab.com/HttpAnimations/devinorium/-/blob/main/privacy_policy.md'),
+      contains(
+        'https://gitlab.com/HttpAnimations/devinorium/-/blob/main/privacy_policy.md',
+      ),
     );
   });
 
-  testWidgets('About section shows the current version', (
-    tester,
-  ) async {
+  testWidgets('About section shows the current version', (tester) async {
     final state = _FakeAppState.test(
       settingsTopicIndex: 6,
       user: User(
@@ -1815,51 +2037,52 @@ void main() {
     expect(find.text('0.40.2'), findsOneWidget);
   });
 
-  testWidgets('About section shows an update chip when a newer release exists', (
-    tester,
-  ) async {
-    final checker = _FakeVersionChecker(
-      AppUpdate(
-        latestVersion: '0.40.3',
-        updateAvailable: true,
-        releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
-      ),
-    );
-    final state = _FakeAppState.test(
-      settingsTopicIndex: 6,
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      packageInfoFuture: Future.value(
-        PackageInfo(
-          appName: 'Devinorium',
-          packageName: 'devinorium_frontend',
-          version: '0.40.2',
-          buildNumber: '51',
-          buildSignature: '',
+  testWidgets(
+    'About section shows an update chip when a newer release exists',
+    (tester) async {
+      final checker = _FakeVersionChecker(
+        AppUpdate(
+          latestVersion: '0.40.3',
+          updateAvailable: true,
+          releaseUrl: '${VersionChecker.releasesUrl}/v0.40.3',
         ),
-      ),
-      versionChecker: checker,
-    );
+      );
+      final state = _FakeAppState.test(
+        settingsTopicIndex: 6,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        packageInfoFuture: Future.value(
+          PackageInfo(
+            appName: 'Devinorium',
+            packageName: 'devinorium_frontend',
+            version: '0.40.2',
+            buildNumber: '51',
+            buildSignature: '',
+          ),
+        ),
+        versionChecker: checker,
+      );
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Update available: 0.40.3'), findsNothing);
-    expect(checker.calls, 0);
+      expect(find.text('Update available: 0.40.3'), findsNothing);
+      expect(checker.calls, 0);
 
-    await tester.tap(find.text('Check for updates'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Check for updates'));
+      await tester.pumpAndSettle();
 
-    expect(checker.calls, 1);
-    expect(find.text('Update available: 0.40.3'), findsOneWidget);
-  });
+      expect(checker.calls, 1);
+      expect(find.text('Update available: 0.40.3'), findsOneWidget);
+    },
+  );
 
   testWidgets('About section reports up to date when no update is found', (
     tester,
@@ -1975,23 +2198,21 @@ void main() {
 
   testWidgets(
     'About section opens the release page when the version row is tapped and an update is available',
-    (
-      tester,
-    ) async {
+    (tester) async {
       final launched = <String>[];
       const channel = MethodChannel('plugins.flutter.io/url_launcher');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
-        switch (call.method) {
-          case 'canLaunch':
-            return true;
-          case 'launch':
-            final args = call.arguments as Map<dynamic, dynamic>;
-            launched.add(args['url'] as String);
-            return true;
-        }
-        return null;
-      });
+            switch (call.method) {
+              case 'canLaunch':
+                return true;
+              case 'launch':
+                final args = call.arguments as Map<dynamic, dynamic>;
+                launched.add(args['url'] as String);
+                return true;
+            }
+            return null;
+          });
       addTearDown(() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null);
@@ -2040,23 +2261,21 @@ void main() {
     },
   );
 
-  testWidgets('About section opens the releases link', (
-    tester,
-  ) async {
+  testWidgets('About section opens the releases link', (tester) async {
     final launched = <String>[];
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      switch (call.method) {
-        case 'canLaunch':
-          return true;
-        case 'launch':
-          final args = call.arguments as Map<dynamic, dynamic>;
-          launched.add(args['url'] as String);
-          return true;
-      }
-      return null;
-    });
+          switch (call.method) {
+            case 'canLaunch':
+              return true;
+            case 'launch':
+              final args = call.arguments as Map<dynamic, dynamic>;
+              launched.add(args['url'] as String);
+              return true;
+          }
+          return null;
+        });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
@@ -2093,14 +2312,14 @@ void main() {
     const channel = MethodChannel('plugins.flutter.io/url_launcher');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      switch (call.method) {
-        case 'canLaunch':
-          return true;
-        case 'launch':
-          return false;
-      }
-      return null;
-    });
+          switch (call.method) {
+            case 'canLaunch':
+              return true;
+            case 'launch':
+              return false;
+          }
+          return null;
+        });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
