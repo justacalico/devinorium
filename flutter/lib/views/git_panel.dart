@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,8 @@ import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/git_status.dart';
+import '../utils/time_ago.dart';
+import 'diff_view.dart';
 import 'file_viewer.dart';
 
 typedef _GitPanelModel = ({
@@ -22,6 +25,12 @@ typedef _GitPanelModel = ({
   String error,
   String? scopeKey,
   String? loadedScopeKey,
+  int diffsSeq,
+  List<GitCommit> history,
+  bool historyOpen,
+  bool historyLoading,
+  bool historyHasMore,
+  String historyError,
 });
 
 /// The sidebar Git panel: working-tree changes, staging, commit, pull, push.
@@ -37,6 +46,7 @@ class GitPanel extends StatefulWidget {
 
 class _GitPanelState extends State<GitPanel> {
   final TextEditingController _commitController = TextEditingController();
+  final Set<String> _expandedCommits = {};
 
   @override
   void initState() {
@@ -84,6 +94,12 @@ class _GitPanelState extends State<GitPanel> {
         error: s.gitPanelError,
         scopeKey: s.activeFilesScopeKey,
         loadedScopeKey: s.gitPanelScopeKey,
+        diffsSeq: s.gitDiffsSeq,
+        history: s.gitHistory,
+        historyOpen: s.gitHistoryOpen,
+        historyLoading: s.gitHistoryLoading,
+        historyHasMore: s.gitHistoryHasMore,
+        historyError: s.gitHistoryError,
       ),
       builder: (context, model, _) {
         final showPanel =
@@ -221,8 +237,23 @@ class _GitPanelState extends State<GitPanel> {
             l.stagedChanges,
             staged.length,
             theme,
-            actionLabel: l.unstageAll,
-            onAction: busy ? null : () => state.gitUnstageAll(),
+            actions: [
+              (
+                label: l.unstageAll,
+                onTap: busy ? null : () => state.gitUnstageAll(),
+              ),
+              (
+                label: l.discardAll,
+                onTap: busy
+                    ? null
+                    : () => _confirmDiscardAll(
+                        context,
+                        state,
+                        staged,
+                        staged: true,
+                      ),
+              ),
+            ],
           ),
           for (final e in staged)
             _changeRow(context, state, e, staged: true, busy: busy),
@@ -232,8 +263,23 @@ class _GitPanelState extends State<GitPanel> {
             l.changes,
             unstaged.length,
             theme,
-            actionLabel: l.stageAll,
-            onAction: busy ? null : () => state.gitStageAll(),
+            actions: [
+              (
+                label: l.stageAll,
+                onTap: busy ? null : () => state.gitStageAll(),
+              ),
+              (
+                label: l.discardAll,
+                onTap: busy
+                    ? null
+                    : () => _confirmDiscardAll(
+                        context,
+                        state,
+                        unstaged,
+                        staged: false,
+                      ),
+              ),
+            ],
           ),
           for (final e in unstaged)
             _changeRow(context, state, e, staged: false, busy: busy),
@@ -248,6 +294,7 @@ class _GitPanelState extends State<GitPanel> {
               ),
             ),
           ),
+        _historySection(context, state, model, l, theme),
       ],
     );
   }
@@ -415,8 +462,7 @@ class _GitPanelState extends State<GitPanel> {
     String title,
     int count,
     ThemeData theme, {
-    String? actionLabel,
-    VoidCallback? onAction,
+    List<({String label, VoidCallback? onTap})> actions = const [],
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 8, 2),
@@ -431,19 +477,16 @@ class _GitPanelState extends State<GitPanel> {
               ),
             ),
           ),
-          if (actionLabel != null)
+          for (final action in actions)
             InkWell(
-              onTap: onAction,
+              onTap: action.onTap,
               borderRadius: BorderRadius.circular(4),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 child: Text(
-                  actionLabel,
+                  action.label,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: onAction == null
+                    color: action.onTap == null
                         ? theme.colorScheme.onSurfaceVariant
                         : theme.colorScheme.primary,
                   ),
@@ -455,6 +498,8 @@ class _GitPanelState extends State<GitPanel> {
     );
   }
 
+  /// A change row plus its inline diff preview when expanded. Tapping the
+  /// row toggles the preview; the file can still be opened via its icon.
   Widget _changeRow(
     BuildContext context,
     AppState state,
@@ -463,66 +508,431 @@ class _GitPanelState extends State<GitPanel> {
     required bool busy,
   }) {
     final theme = Theme.of(context);
+    final l = l10n(context);
     final color = gitStatusColor(entry.status, theme);
     // Git paths are always posix-separated, even on Windows.
     final posix = p.Context(style: p.Style.posix);
     final name = posix.basename(entry.path);
     final dir = posix.dirname(entry.path);
     final openable = entry.status != 'deleted';
+    final key = GitPanelStore.gitDiffKey(staged, entry.path);
+    final expanded = state.gitDiffExpanded(key);
 
-    return InkWell(
-      onTap: openable ? () => _openChange(context, state, entry) : null,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 3, 8, 3),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 16,
+    return Column(
+      children: [
+        InkWell(
+          onTap: () => unawaited(state.toggleGitDiff(entry, staged: staged)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+            child: Row(
+              children: [
+                Icon(
+                  expanded ? Icons.expand_more : Icons.chevron_right,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                SizedBox(
+                  width: 16,
+                  child: Text(
+                    gitStatusLetter(entry.status),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: name),
+                        if (dir != '.')
+                          TextSpan(
+                            text: '  $dir',
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                if (openable)
+                  IconButton(
+                    tooltip: l.openFile,
+                    icon: const Icon(Icons.open_in_new, size: 15),
+                    onPressed: () => _openChange(context, state, entry),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(4),
+                  ),
+                IconButton(
+                  tooltip: l.discard,
+                  icon: const Icon(Icons.undo, size: 15),
+                  onPressed: busy
+                      ? null
+                      : () => _confirmDiscard(
+                          context,
+                          state,
+                          entry,
+                          staged: staged,
+                        ),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(4),
+                ),
+                IconButton(
+                  tooltip: staged ? l.unstage : l.stage,
+                  icon: Icon(
+                    staged ? Icons.remove_outlined : Icons.add,
+                    size: 16,
+                  ),
+                  onPressed: busy
+                      ? null
+                      : () => staged
+                            ? state.gitUnstagePaths([entry.path])
+                            : state.gitStagePaths([entry.path]),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(4),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (expanded) _diffPreview(context, state, key),
+      ],
+    );
+  }
+
+  Widget _diffPreview(BuildContext context, AppState state, String key) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final diff = state.gitDiffFor(key);
+    final loading = state.gitDiffLoading(key);
+
+    Widget child;
+    if (loading && diff == null) {
+      child = const Padding(
+        padding: EdgeInsets.all(10),
+        child: Center(
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    } else if (diff == null) {
+      child = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Text(
+          l.noDiffAvailable,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    } else {
+      child = DiffView(diff: diff, maxHeight: 280);
+    }
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLowest,
+        border: Border(
+          top: BorderSide(color: theme.dividerColor),
+          bottom: BorderSide(color: theme.dividerColor),
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  /// The paths a discard call must cover: for a staged rename both the new
+  /// path and the original need restoring/removing.
+  List<String> _discardPaths(GitChangeEntry entry) => [
+    entry.path,
+    if (entry.origPath != null && entry.origPath!.isNotEmpty) entry.origPath!,
+  ];
+
+  Future<void> _confirmDiscard(
+    BuildContext context,
+    AppState state,
+    GitChangeEntry entry, {
+    required bool staged,
+  }) async {
+    final l = l10n(context);
+    // Untracked and staged-add files are deleted outright; everything else
+    // is restored from HEAD.
+    final deletes =
+        entry.status == 'untracked' || (staged && entry.status == 'added');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: Text(
+          deletes
+              ? l.discardUntrackedConfirm(entry.path)
+              : l.discardFileConfirm(entry.path),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(deletes ? l.delete : l.discard),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await state.gitDiscardPaths(_discardPaths(entry), staged: staged);
+  }
+
+  Future<void> _confirmDiscardAll(
+    BuildContext context,
+    AppState state,
+    List<GitChangeEntry> entries, {
+    required bool staged,
+  }) async {
+    final l = l10n(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: Text(l.discardAllConfirm(entries.length)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l.discardAll),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await state.gitDiscardPaths([
+      for (final e in entries) ..._discardPaths(e),
+    ], staged: staged);
+  }
+
+  Widget _historySection(
+    BuildContext context,
+    AppState state,
+    _GitPanelModel model,
+    AppLocalizations l,
+    ThemeData theme,
+  ) {
+    final open = model.historyOpen;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => unawaited(state.toggleGitHistory()),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 2),
+            child: Row(
+              children: [
+                Icon(
+                  open ? Icons.expand_more : Icons.chevron_right,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                Expanded(
+                  child: Text(
+                    l.history.toUpperCase(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (open && model.historyLoading)
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (open) ...[
+          if (model.historyError.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
               child: Text(
-                gitStatusLetter(entry.status),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
+                model.historyError,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
                 ),
               ),
             ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text.rich(
-                TextSpan(
+          for (final c in model.history) _commitRow(context, c, l, theme),
+          if (!model.historyLoading &&
+              model.history.isEmpty &&
+              model.historyError.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+              child: Text(
+                l.noCommits,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          if (model.historyHasMore)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 2, 14, 8),
+              child: InkWell(
+                onTap: model.historyLoading
+                    ? null
+                    : () => unawaited(state.loadMoreGitHistory()),
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    model.historyLoading ? l.loadingMore : l.loadMore,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _commitRow(
+    BuildContext context,
+    GitCommit commit,
+    AppLocalizations l,
+    ThemeData theme,
+  ) {
+    final expanded = _expandedCommits.contains(commit.sha);
+    final when = timeAgo(
+      DateTime.fromMillisecondsSinceEpoch(commit.timestamp * 1000),
+      l,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() {
+            if (expanded) {
+              _expandedCommits.remove(commit.sha);
+            } else {
+              _expandedCommits.add(commit.sha);
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    TextSpan(text: name),
-                    if (dir != '.')
-                      TextSpan(
-                        text: '  $dir',
-                        style: TextStyle(
+                    Text(
+                      commit.shortSha,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontFamily: 'monospace',
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        commit.subject,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  [commit.author, when].where((s) => s.isNotEmpty).join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (expanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (commit.body.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: SelectableText(
+                      commit.body.trim(),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                if (commit.refs.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      commit.refs,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        commit.sha,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontFamily: 'monospace',
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                    ),
+                    InkWell(
+                      onTap: () => unawaited(
+                        Clipboard.setData(ClipboardData(text: commit.sha)),
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Tooltip(
+                          message: l.copySha,
+                          child: Icon(
+                            Icons.copy_outlined,
+                            size: 13,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
+              ],
             ),
-            IconButton(
-              tooltip: staged ? l10n(context).unstage : l10n(context).stage,
-              icon: Icon(
-                staged ? Icons.remove_outlined : Icons.add,
-                size: 16,
-              ),
-              onPressed: busy
-                  ? null
-                  : () => staged
-                      ? state.gitUnstagePaths([entry.path])
-                      : state.gitStagePaths([entry.path]),
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(4),
-            ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 
@@ -539,7 +949,7 @@ class _GitPanelState extends State<GitPanel> {
       MaterialPageRoute<void>(
         builder: (_) => FileViewerPage(
           path: path,
-          projectId: state.activeProjectId,
+          projectId: state.gitPanelProjectId,
           threadId: state.gitApiThreadId,
           gitStatus: entry.status,
         ),

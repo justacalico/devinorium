@@ -31,6 +31,9 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/:id/git/worktrees", delete(delete_worktree))
         .route("/api/projects/:id/git/status", get(status_summary))
         .route("/api/projects/:id/git/changes", get(changes))
+        .route("/api/projects/:id/git/diff", get(change_diff))
+        .route("/api/projects/:id/git/discard", post(discard))
+        .route("/api/projects/:id/git/log", get(log))
         .route("/api/projects/:id/git/stage", post(stage))
         .route("/api/projects/:id/git/unstage", post(unstage))
         .route("/api/projects/:id/git/commit", post(commit))
@@ -185,6 +188,51 @@ pub struct CommitRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DiffQuery {
+    pub path: Option<String>,
+    #[serde(default)]
+    pub staged: bool,
+    #[serde(default)]
+    pub orig_path: Option<String>,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default)]
+    pub thread_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DiscardRequest {
+    #[serde(default)]
+    pub paths: Vec<String>,
+    /// True when discarding staged entries (index and worktree reset to
+    /// `HEAD`); false restores the worktree from the index.
+    #[serde(default)]
+    pub staged: bool,
+    #[serde(default)]
+    pub thread_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LogQuery {
+    #[serde(default = "default_log_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default)]
+    pub thread_id: Option<String>,
+}
+
+fn default_log_limit() -> usize {
+    30
+}
+
+/// Largest single log page; keeps `limit=999999` clients from dumping the
+/// whole history into one response.
+const MAX_LOG_LIMIT: usize = 200;
+
+#[derive(Debug, Deserialize)]
 pub struct MergeRequestQuery {
     pub branch: Option<String>,
     pub iid: Option<i64>,
@@ -268,6 +316,114 @@ async fn changes(
 
     match state.git.changes(path.as_path(), q.force).await {
         Ok(v) => Json(v).into_response(),
+        Err(GitError::NotEnabled) => not_enabled(),
+        Err(GitError::NotRepo) => not_repo(),
+        Err(e) => error_response(e),
+    }
+}
+
+/// Inline diff for one change-list entry, for the panel's expanded row.
+///
+/// `staged` selects the comparison base (index vs HEAD for staged entries,
+/// working tree vs index for unstaged ones). Returns `{"diff": null}` when
+/// there is nothing renderable — binary files, oversized content, or an
+/// unchanged pair.
+async fn change_diff(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Query(q): Query<DiffQuery>,
+) -> Response {
+    let rel = q.path.as_deref().unwrap_or("");
+    if rel.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("path is required")),
+        )
+            .into_response();
+    }
+    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+
+    match state
+        .git
+        .change_diff(
+            path.as_path(),
+            rel,
+            q.orig_path.as_deref(),
+            q.staged,
+            q.force,
+        )
+        .await
+    {
+        Ok(diff) => Json(serde_json::json!({"diff": diff})).into_response(),
+        Err(GitError::NotEnabled) => not_enabled(),
+        Err(GitError::NotRepo) => not_repo(),
+        Err(e) => error_response(e),
+    }
+}
+
+/// Largest path list a single discard accepts; each path costs a few git
+/// subprocesses, so an unbounded list could occupy a request slot for a
+/// very long time.
+const MAX_DISCARD_PATHS: usize = 256;
+
+/// Discard changes for a list of repo-relative paths.
+///
+/// Staged entries reset index and worktree to `HEAD`; unstaged entries
+/// restore the worktree from the index. Untracked files are deleted either
+/// way. The frontend confirms with the user first — this is irreversible.
+async fn discard(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Json(req): Json<DiscardRequest>,
+) -> Response {
+    if req.paths.is_empty() || req.paths.len() > MAX_DISCARD_PATHS {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid paths")),
+        )
+            .into_response();
+    }
+    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+
+    match state
+        .git
+        .discard(path.as_path(), &req.paths, req.staged)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(GitError::NotEnabled) => not_enabled(),
+        Err(GitError::NotRepo) => not_repo(),
+        Err(e) => error_response(e),
+    }
+}
+
+/// Commit history for the panel's history section, newest first.
+async fn log(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Query(q): Query<LogQuery>,
+) -> Response {
+    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let limit = q.limit.clamp(1, MAX_LOG_LIMIT);
+
+    match state
+        .git
+        .log(path.as_path(), limit, q.offset, q.force)
+        .await
+    {
+        Ok(page) => Json(page).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
         Err(e) => error_response(e),

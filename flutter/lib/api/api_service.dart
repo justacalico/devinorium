@@ -99,6 +99,62 @@ class ApiService {
     return GitChanges.fromJson(j);
   }
 
+  /// Inline diff for one change-list entry, used by the git panel's
+  /// expanded row. Staged entries diff index vs HEAD; unstaged entries diff
+  /// the working tree vs the index. Returns null when there is nothing
+  /// renderable (binary, oversized, or unchanged).
+  Future<FileDiff?> gitDiff(
+    int projectId,
+    String path, {
+    bool staged = false,
+    String? origPath,
+    String? threadId,
+  }) async {
+    final params = <String, String>{'path': path};
+    if (staged) params['staged'] = 'true';
+    if (origPath != null && origPath.isNotEmpty) {
+      params['orig_path'] = origPath;
+    }
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
+    final uri = _buildPath('/api/projects/$projectId/git/diff', params);
+    final j = await _client.get(uri);
+    final diff = j['diff'];
+    if (diff is! Map<String, dynamic>) return null;
+    return FileDiff.fromJson(diff);
+  }
+
+  /// Discard the changes for [paths]. When [staged] is true the index and
+  /// working tree reset to HEAD; otherwise the working tree is restored
+  /// from the index. Untracked files are deleted either way. Irreversible —
+  /// the caller confirms with the user first.
+  Future<void> gitDiscard(
+    int projectId, {
+    required List<String> paths,
+    bool staged = false,
+    String? threadId,
+  }) async {
+    await _client.post('/api/projects/$projectId/git/discard', {
+      'paths': paths,
+      'staged': staged,
+      if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
+    });
+  }
+
+  /// Commit history for the panel's history section, newest first.
+  Future<GitLogPage> gitLog(
+    int projectId, {
+    int limit = 30,
+    int offset = 0,
+    String? threadId,
+  }) async {
+    final params = <String, String>{'limit': limit.toString()};
+    if (offset > 0) params['offset'] = offset.toString();
+    if (threadId != null && threadId.isNotEmpty) params['thread_id'] = threadId;
+    final uri = _buildPath('/api/projects/$projectId/git/log', params);
+    final j = await _client.get(uri);
+    return GitLogPage.fromJson(j);
+  }
+
   Future<void> gitStage(
     int projectId, {
     List<String> paths = const [],

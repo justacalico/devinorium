@@ -1586,6 +1586,66 @@ abstract class AppLocalizations {
   /// **'There are no staged changes. Stage all changes and commit?'**
   String get gitCommitAllConfirm;
 
+  /// No description provided for @discard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get discard;
+
+  /// No description provided for @discardAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard all'**
+  String get discardAll;
+
+  /// No description provided for @discardFileConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard all changes to {path}? This cannot be undone.'**
+  String discardFileConfirm(String path);
+
+  /// No description provided for @discardUntrackedConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Permanently delete {path}? This cannot be undone.'**
+  String discardUntrackedConfirm(String path);
+
+  /// No description provided for @discardAllConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard all {count} changed files? This cannot be undone.'**
+  String discardAllConfirm(int count);
+
+  /// No description provided for @history.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get history;
+
+  /// No description provided for @noCommits.
+  ///
+  /// In en, this message translates to:
+  /// **'No commits yet'**
+  String get noCommits;
+
+  /// No description provided for @noDiffAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No diff preview available'**
+  String get noDiffAvailable;
+
+  /// No description provided for @openFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Open file'**
+  String get openFile;
+
+  /// No description provided for @copySha.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy commit SHA'**
+  String get copySha;
+
   /// No description provided for @createBranch.
   ///
   /// In en, this message translates to:
