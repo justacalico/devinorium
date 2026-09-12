@@ -175,8 +175,9 @@ pub fn build_app(state: AppState) -> Router {
             let ao = csrf_allowed.clone();
             async move { security::csrf_origin_check(ao, req, next).await }
         }))
-        // Global weighted rate limiter — runs after IP extraction (so it can
-        // read the client IP from extensions) but before body limit/trace.
+        // Global weighted rate limiter — runs after IP extraction (so it
+        // can read the client IP from extensions). Layers registered later
+        // run first, so body limit and trace have already run by now.
         .layer(from_fn(move |req, next| {
             let lim = limiter.clone();
             async move { security::global_weighted_rate_limit(lim, req, next).await }
