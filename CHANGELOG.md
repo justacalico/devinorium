@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.64.1 - 2026-09-12
+#### Bug Fixes
+- 删除线程时清理托管 worktree 和分支 - (d06a445) - HttpAnimations
+- 修复限流器 IP 桶不淘汰导致的内存增长 - (cbc3877) - HttpAnimations
+
+- - -
+
 ## v0.64.0 - 2026-09-12
 #### Features
 - 设置页新增默认权限级别 - (349e2d1) - HttpAnimations
