@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.68.0 - 2026-09-12
+#### Features
+- 消息支持复制、时间戳、日期分隔与重新生成/编辑重发 - (4be7887) - HttpAnimations
+
+- - -
+
 ## v0.67.0 - 2026-09-12
 #### Features
 - 添加 --dev 免登录开发模式 - (82f32c8) - HttpAnimations
