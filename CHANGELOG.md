@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.63.0 - 2026-09-12
+#### Features
+- 支持拖拽会话到输入框作为上下文引用 - (a835f7c) - HttpAnimations
+#### Bug Fixes
+- 修复窄屏侧栏拖拽线程到输入框失效的问题 - (64e2cee) - HttpAnimations
+
+- - -
+
 ## v0.62.0 - 2026-09-11
 #### Features
 - 侧边栏新增 Git 面板，支持暂存、提交、拉取与推送 - (58229a5) - HttpAnimations
