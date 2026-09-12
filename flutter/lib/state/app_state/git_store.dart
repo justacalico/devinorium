@@ -25,7 +25,11 @@ mixin GitStore on AppStateBase {
   @override
   String? _cloneRoot;
   @override
+  String? _worktreeRoot;
+  @override
   bool _loadingCloneRoot = false;
+  @override
+  bool _loadingWorktreeRoot = false;
   @override
   bool _cloningRepo = false;
   @override
@@ -39,7 +43,11 @@ mixin GitStore on AppStateBase {
   @override
   String? get cloneRoot => _cloneRoot;
   @override
+  String? get worktreeRoot => _worktreeRoot;
+  @override
   bool get loadingCloneRoot => _loadingCloneRoot;
+  @override
+  bool get loadingWorktreeRoot => _loadingWorktreeRoot;
   @override
   bool get cloningRepo => _cloningRepo;
   @override
@@ -590,6 +598,36 @@ mixin GitStore on AppStateBase {
       _globalError = '$e';
     } finally {
       _loadingCloneRoot = false;
+      notifyListeners();
+    }
+  }
+
+  @override
+  Future<void> loadWorktreeRoot() async {
+    _loadingWorktreeRoot = true;
+    notifyListeners();
+    try {
+      _worktreeRoot = await api.getWorktreeRoot();
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    } finally {
+      _loadingWorktreeRoot = false;
+      notifyListeners();
+    }
+  }
+
+  @override
+  Future<void> setWorktreeRoot(String? path) async {
+    _loadingWorktreeRoot = true;
+    notifyListeners();
+    try {
+      _worktreeRoot = await api.setWorktreeRoot(path?.trim());
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    } finally {
+      _loadingWorktreeRoot = false;
       notifyListeners();
     }
   }

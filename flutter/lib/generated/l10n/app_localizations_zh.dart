@@ -1223,6 +1223,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String get cloneRootOnlyOwner => '只有所有者可以更改克隆根目录';
 
   @override
+  String get worktreeRoot => '工作树根目录';
+
+  @override
+  String get worktreeRootDescription => '工作树所在的父目录，默认为主目录。';
+
+  @override
+  String get worktreeRootNotSet => '尚未设置';
+
+  @override
+  String get worktreeRootSave => '保存';
+
+  @override
+  String get worktreeRootBrowse => '浏览…';
+
+  @override
+  String get worktreeRootOnlyOwner => '只有所有者可以更改工作树根目录';
+
+  @override
   String get search => '搜索';
 
   @override
