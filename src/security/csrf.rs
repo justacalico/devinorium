@@ -73,12 +73,14 @@ fn origin_ok_explicit(headers: &HeaderMap, allowed: &str) -> bool {
     false
 }
 
-/// Middleware (dev mode only): require the request's `Host` header to name a
-/// loopback address. `--dev` serves the API with no credentials; a remote web
-/// page could otherwise reach the loopback socket through DNS rebinding,
-/// where Origin and Host both read the attacker's domain and the same-host
-/// CSRF check above folds. Requests without a Host header (non-browser
-/// clients) are unaffected.
+/// Middleware (loopback-bound dev mode only): require the request's `Host`
+/// header to name a loopback address. Dev mode serves the API with no
+/// credentials; a remote web page could otherwise reach the loopback socket
+/// through DNS rebinding, where Origin and Host both read the attacker's
+/// domain and the same-host CSRF check above folds. Requests without a Host
+/// header (non-browser clients) are unaffected. On a public dev bind this
+/// layer is not installed: a remote client's Host legitimately names the
+/// machine's own address.
 pub async fn dev_host_check(req: Request, next: Next) -> Response {
     if let Some(host) = req
         .headers()

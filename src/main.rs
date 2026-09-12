@@ -8,11 +8,11 @@ use devinorium::{auth, config, db, git, lock, providers, AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // `--dev` runs a throwaway local instance: random port, no login, and
-    // an in-memory database that disappears when the process exits.
-    let dev_mode = std::env::args_os()
-        .skip(1)
-        .any(|arg| arg == "--dev" || arg == "-dev");
+    // `--dev` runs a throwaway instance: random port, no login, and an
+    // in-memory database that disappears when the process exits. It binds
+    // all interfaces so the UI can be tested from another machine;
+    // `--local` confines it to loopback.
+    let (dev_mode, local_only) = config::parse_dev_args(std::env::args_os().skip(1));
 
     // Load .env file if present (ignored if not found). In bundled local
     // mode the launcher already controls the environment; a .env in the
@@ -34,8 +34,9 @@ async fn main() -> Result<()> {
 
     let mut cfg = config::Config::from_env()?;
     if dev_mode {
-        cfg.apply_dev_mode()?;
+        cfg.apply_dev_mode(local_only)?;
     }
+    cfg.check_local_token_bind()?;
 
     let _guard = lock::lock_path_from_db_url(&cfg.db_url)
         .map(|p| lock::SingleInstance::acquire(&p))
@@ -113,7 +114,11 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     let addr = listener.local_addr()?;
     if dev_mode {
-        tracing::info!("--dev mode: serving http://{addr} with no authentication and a throwaway in-memory database");
+        if local_only {
+            tracing::info!("--dev --local: serving http://{addr} (loopback only) with no authentication and a throwaway in-memory database");
+        } else {
+            tracing::warn!("--dev: serving http://{addr} on all interfaces with no authentication; anyone who can reach this port has full access (pass --local for loopback only)");
+        }
     }
     tracing::info!(%addr, secure_cookie, "Devinorium listening");
     axum::serve(

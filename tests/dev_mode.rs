@@ -19,8 +19,12 @@ use devinorium::{
 };
 
 fn base_config(db_url: &str) -> Config {
+    base_config_with_host(db_url, "127.0.0.1")
+}
+
+fn base_config_with_host(db_url: &str, host: &str) -> Config {
     Config {
-        host: "127.0.0.1".into(),
+        host: host.into(),
         port: 7878,
         session_key: b"test-key-test-key-test-key-test-key".to_vec(),
         db_url: db_url.to_string(),
@@ -40,6 +44,10 @@ fn base_config(db_url: &str) -> Config {
 }
 
 async fn make_app(dev_mode: bool) -> (axum::Router, db::Db) {
+    make_app_on(dev_mode, "127.0.0.1").await
+}
+
+async fn make_app_on(dev_mode: bool, host: &str) -> (axum::Router, db::Db) {
     // `sqlite::memory:` exercises the same in-memory database path `--dev`
     // uses; the non-dev variant uses a temp file so session lookup is real.
     let db_url = if dev_mode {
@@ -58,7 +66,7 @@ async fn make_app(dev_mode: bool) -> (axum::Router, db::Db) {
         .await
         .unwrap();
 
-    let mut cfg = base_config(&db_url);
+    let mut cfg = base_config_with_host(&db_url, host);
     cfg.dev_mode = dev_mode;
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -145,10 +153,10 @@ async fn without_dev_mode_requests_still_require_auth() {
 }
 
 #[tokio::test]
-async fn dev_mode_rejects_non_loopback_host_header() {
+async fn dev_mode_loopback_bind_rejects_non_loopback_host_header() {
     // DNS rebinding makes a remote page send Host: attacker.com to the
     // loopback socket; dev mode refuses it before any route runs.
-    let (app, _db) = make_app(true).await;
+    let (app, _db) = make_app_on(true, "127.0.0.1").await;
     let resp = app
         .clone()
         .oneshot(
@@ -174,6 +182,65 @@ async fn dev_mode_rejects_non_loopback_host_header() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn dev_mode_public_bind_serves_remote_clients() {
+    // Bound to 0.0.0.0 the Host check is off: remote clients name the
+    // machine by its LAN IP or hostname, which is not loopback.
+    let (app, _db) = make_app_on(true, "0.0.0.0").await;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("host", "devbox.lan:42963")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // A remote browser write: Origin and Host match, so the same-host
+    // CSRF check passes and no credentials are needed.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/thread-groups")
+                .header("content-type", "application/json")
+                .header("host", "devbox.lan:42963")
+                .header("origin", "http://devbox.lan:42963")
+                .body(Body::from(r#"{"name":"remote group"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn dev_mode_public_bind_still_enforces_csrf_origin() {
+    // Dropping the loopback Host check must not take CSRF with it: a
+    // cross-origin browser write is still rejected on a public bind.
+    let (app, _db) = make_app_on(true, "0.0.0.0").await;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/thread-groups")
+                .header("content-type", "application/json")
+                .header("host", "devbox.lan:42963")
+                .header("origin", "http://evil.example.com")
+                .body(Body::from(r#"{"name":"x"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -216,18 +283,23 @@ async fn in_memory_dbs_do_not_share_state() {
 }
 
 #[test]
-fn apply_dev_mode_sets_random_port_and_memory_db() {
+fn apply_dev_mode_binds_all_interfaces_with_random_port_and_memory_db() {
     let mut cfg = base_config("sqlite:data/devinorium.db?mode=rwc");
-    cfg.apply_dev_mode().unwrap();
+    cfg.allowed_origin = Some("https://dev.example.com".into());
+    cfg.apply_dev_mode(false).unwrap();
+    assert_eq!(cfg.host, "0.0.0.0");
     assert_eq!(cfg.port, 0);
     assert_eq!(cfg.db_url, "sqlite::memory:");
+    assert!(cfg.allowed_origin.is_none());
     assert!(cfg.dev_mode);
 }
 
 #[test]
-fn apply_dev_mode_rejects_non_loopback_host() {
+fn apply_dev_mode_local_pins_loopback() {
     let mut cfg = base_config("sqlite::memory:");
     cfg.host = "0.0.0.0".into();
-    assert!(cfg.apply_dev_mode().is_err());
-    assert!(!cfg.dev_mode);
+    cfg.apply_dev_mode(true).unwrap();
+    assert_eq!(cfg.host, "127.0.0.1");
+    assert_eq!(cfg.port, 0);
+    assert!(cfg.dev_mode);
 }

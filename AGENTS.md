@@ -5,7 +5,7 @@
 - Add new tests for everything new. Every piece of new code must be testable, both in Dart (Flutter) and Rust (backend).
 - Do a final harsh subagent review of all changes before finishing.
 - Do not squash merge requests. Use a regular merge commit so each conventional commit is preserved for the changelog and history.
-- Only when the user asks to run a dev server, start the backend with the `--dev` flag (random port, no login, in-memory database). Never start a dev server any other way or on your own initiative.
+- Only when the user asks to run a dev server, start the backend with `--dev --local` (random port, no login, in-memory database, loopback only). Plain `--dev` binds all interfaces with no authentication; use it only when the user asks to reach the dev server from another machine. Never start a dev server any other way or on your own initiative.
 
 ## Local verification
 
