@@ -20,6 +20,7 @@ abstract class AppStateBase extends ChangeNotifier {
     if (_disposed) return;
     super.notifyListeners();
   }
+
   MultiServerState get multiServerState;
   LocalServerController get localServerManager;
   ApiService get api;
@@ -183,6 +184,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _tailscaleInfo(TailscaleInfo? value);
   bool get _tailscaleBusy;
   set _tailscaleBusy(bool value);
+  int get _tailscaleSeq;
+  set _tailscaleSeq(int value);
   bool get _loadingCloneRoot;
   set _loadingCloneRoot(bool value);
   bool get _cloningRepo;

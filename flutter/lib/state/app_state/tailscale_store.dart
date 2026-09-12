@@ -5,6 +5,8 @@ mixin TailscaleStore on AppStateBase {
   TailscaleInfo? _tailscaleInfo;
   @override
   bool _tailscaleBusy = false;
+  @override
+  int _tailscaleSeq = 0;
 
   @override
   TailscaleInfo? get tailscaleInfo => _tailscaleInfo;
@@ -12,13 +14,18 @@ mixin TailscaleStore on AppStateBase {
   bool get tailscaleBusy => _tailscaleBusy;
 
   /// Pull `GET /api/tailscale` for the active server. A missing endpoint
-  /// (older server) just leaves the card hidden.
+  /// (older server) just leaves the card hidden. The seq guard keeps a
+  /// response from the previous server from landing after a switch.
   @override
   Future<void> loadTailscaleStatus() async {
     if (multiServerState.activeApi == null) return;
+    final seq = _tailscaleSeq;
     try {
-      _tailscaleInfo = await api.tailscaleStatus();
+      final info = await api.tailscaleStatus();
+      if (seq != _tailscaleSeq) return;
+      _tailscaleInfo = info;
     } catch (_) {
+      if (seq != _tailscaleSeq) return;
       _tailscaleInfo = null;
     }
     notifyListeners();
@@ -28,17 +35,19 @@ mixin TailscaleStore on AppStateBase {
   @override
   Future<String?> setTailscaleServe(bool enabled) async {
     if (_tailscaleBusy) return null;
+    final seq = _tailscaleSeq;
     _tailscaleBusy = true;
     notifyListeners();
     try {
-      _tailscaleInfo = await api.setTailscaleServe(enabled: enabled);
+      final info = await api.setTailscaleServe(enabled: enabled);
+      if (seq == _tailscaleSeq) _tailscaleInfo = info;
       return null;
     } on ApiException catch (e) {
-      return e.message;
+      return seq != _tailscaleSeq ? null : e.message;
     } catch (e) {
-      return '$e';
+      return seq != _tailscaleSeq ? null : '$e';
     } finally {
-      _tailscaleBusy = false;
+      if (seq == _tailscaleSeq) _tailscaleBusy = false;
       notifyListeners();
     }
   }

@@ -411,6 +411,9 @@ mixin AuthStore on AppStateBase {
         await _ensureLocalServer();
       }
       await _resetServerState();
+      // Refresh the Tailscale card for the new server even if the rest of
+      // the user data load fails below.
+      unawaited(loadTailscaleStatus());
       await _loadUserAndData();
     } catch (e) {
       _globalError = '$e';
@@ -440,6 +443,7 @@ mixin AuthStore on AppStateBase {
       await multiServerState.removeServer(serverId);
       if (wasActive) {
         await _resetServerState();
+        unawaited(loadTailscaleStatus());
         if (multiServerState.activeProfile?.isLocal == true) {
           await _ensureLocalServer();
         }
@@ -652,6 +656,9 @@ mixin AuthStore on AppStateBase {
     _gitConnections = [];
     _tailscaleInfo = null;
     _tailscaleBusy = false;
+    // Invalidate in-flight status loads so a slow response from the old
+    // server cannot write back over the reset state.
+    _tailscaleSeq++;
     _linkedMergeRequest = null;
     _composerText = '';
     _attachments = [];
