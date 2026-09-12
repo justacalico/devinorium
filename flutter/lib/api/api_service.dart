@@ -188,7 +188,11 @@ class ApiService {
     });
   }
 
-  Future<void> gitPullBranch(int projectId, String name, {String? threadId}) async {
+  Future<void> gitPullBranch(
+    int projectId,
+    String name, {
+    String? threadId,
+  }) async {
     await _client.post('/api/projects/$projectId/git/branches/pull', {
       'name': name,
       if (threadId != null && threadId.isNotEmpty) 'thread_id': threadId,
@@ -880,6 +884,27 @@ class ApiService {
   Future<String?> setCloneRoot(String? path) async {
     final j = await _client.put('/api/settings/clone-root', {'path': path});
     return j['path'] as String?;
+  }
+
+  // ---- Tailscale ----
+
+  /// Read the server's Tailscale status and advertised endpoints.
+  Future<TailscaleInfo> tailscaleStatus() async {
+    final j = await _client.get('/api/tailscale');
+    return TailscaleInfo.fromJson(j);
+  }
+
+  /// Enable or disable the `tailscale serve` HTTPS mapping (owner only).
+  /// Returns the refreshed status.
+  Future<TailscaleInfo> setTailscaleServe({
+    required bool enabled,
+    int? port,
+  }) async {
+    final j = await _client.put('/api/tailscale/serve', {
+      'enabled': enabled,
+      'port': ?port,
+    });
+    return TailscaleInfo.fromJson(j);
   }
 
   // ---- Usage ----

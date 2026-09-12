@@ -253,8 +253,9 @@ mixin AuthStore on AppStateBase {
       final endpoint = await manager.ensureRunning();
       if (_isDisposed) return;
       if (endpoint != null) {
-        final previous =
-            multiServerState.profileById(MultiServerState.localProfileId);
+        final previous = multiServerState.profileById(
+          MultiServerState.localProfileId,
+        );
         await multiServerState.upsertLocalProfile(
           baseUrl: endpoint.baseUrl,
           token: endpoint.token,
@@ -279,8 +280,8 @@ mixin AuthStore on AppStateBase {
         // The bundled binary vanished (e.g. a dev run without it); drop the
         // stale profile so it does not linger as a dead entry. A transient
         // start failure keeps the profile — health checks retry ensure.
-        final wasActive = multiServerState.activeServerId ==
-            MultiServerState.localProfileId;
+        final wasActive =
+            multiServerState.activeServerId == MultiServerState.localProfileId;
         await multiServerState.removeServer(
           MultiServerState.localProfileId,
           force: true,
@@ -323,6 +324,7 @@ mixin AuthStore on AppStateBase {
       loadGitConnections(),
       loadCloneRoot(),
       refreshProviderVersion(),
+      loadTailscaleStatus(),
     ];
     if (isOwner) {
       futures.add(loadUsers());
@@ -648,6 +650,8 @@ mixin AuthStore on AppStateBase {
     _gitBranches.clear();
     _gitWorktrees.clear();
     _gitConnections = [];
+    _tailscaleInfo = null;
+    _tailscaleBusy = false;
     _linkedMergeRequest = null;
     _composerText = '';
     _attachments = [];
