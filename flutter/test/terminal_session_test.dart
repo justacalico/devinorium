@@ -269,6 +269,17 @@ void main() {
       expect(await api.terminalToken, isNull);
     });
 
+    test('uses wss for https servers', () async {
+      final client = _FakeBaseClient();
+      await client.setServerUrl('https://devinorium.example.com');
+      final api = ApiService(client: client);
+
+      final uri = await api.terminalWebSocketUri('sess-42');
+      expect(uri.scheme, 'wss');
+      expect(uri.host, 'devinorium.example.com');
+      expect(uri.path, '/api/terminal/sessions/sess-42/ws');
+    });
+
     test('exposes bearer token for native clients', () async {
       final client = _FakeBaseClient();
       await client.setServerUrl('http://localhost:3000');

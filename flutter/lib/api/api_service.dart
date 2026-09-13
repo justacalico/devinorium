@@ -1090,7 +1090,11 @@ class ApiService {
       // Web build: same origin, relative URL.
       return Uri.parse(path);
     }
-    return Uri.parse(base).replace(path: path).replace(scheme: 'ws');
+    final uri = Uri.parse(base);
+    return uri.replace(
+      path: path,
+      scheme: uri.scheme == 'https' ? 'wss' : 'ws',
+    );
   }
 
   /// Native bearer token for WebSocket auth headers.
