@@ -8,7 +8,7 @@ class LocalPtyBackend {
 
   final Terminal terminal;
 
-  void start() {
+  void start({String? workingDirectory}) {
     terminal.write('${appL10n.terminalLocalOnlyDesktop}\r\n');
   }
 

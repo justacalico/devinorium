@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
+import 'package:devinorium_frontend/servers/multi_server_state.dart';
+import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/terminal/terminal_panel.dart';
 import 'package:devinorium_frontend/views/app_view.dart';
 import 'package:devinorium_frontend/views/files_panel.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
@@ -289,6 +292,86 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('hello world'), findsOneWidget);
+    });
+  });
+
+  group('AppShell global terminal panel', () {
+    testWidgets('stays mounted across main page switches', (tester) async {
+      final state = _baseState(api: _clientFor([_json(200, [])]));
+      addTearDown(state.dispose);
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TerminalPanel), findsOneWidget);
+      expect(find.text('Terminal'), findsNothing);
+
+      state.terminalStore.setOpen(true);
+      await tester.pumpAndSettle();
+      expect(find.text('Terminal'), findsOneWidget);
+
+      // Switching to settings keeps the same panel alive.
+      state.setPage(MainPage.settings);
+      await tester.pumpAndSettle();
+      expect(find.byType(TerminalPanel), findsOneWidget);
+      expect(find.text('Terminal'), findsOneWidget);
+      expect(state.terminalStore.open, isTrue);
+
+      state.setPage(MainPage.threads);
+      await tester.pumpAndSettle();
+      expect(find.byType(TerminalPanel), findsOneWidget);
+      expect(find.text('Terminal'), findsOneWidget);
+    });
+
+    testWidgets('hides the cloud terminal button on the bundled server',
+        (tester) async {
+      final servers = MultiServerState();
+      servers.addTestConnection(
+        ServerProfile(
+          id: 'local',
+          label: 'This device',
+          baseUrl: 'http://localhost',
+          token: 'token',
+          username: 'owner',
+          createdAt: DateTime.now().toUtc(),
+          isPrimary: true,
+          isLocal: true,
+        ),
+        ApiService(),
+      );
+      final state = AppState.test(
+        multiServerState: servers,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      addTearDown(state.dispose);
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      state.terminalStore.setOpen(true);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('addRemoteTerminal')), findsNothing);
+      expect(find.byKey(const ValueKey('addTerminalTab')), findsOneWidget);
+    });
+
+    testWidgets('shows the cloud terminal button on remote servers',
+        (tester) async {
+      final state = _baseState(api: _clientFor([_json(200, [])]));
+      addTearDown(state.dispose);
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      state.terminalStore.setOpen(true);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('addRemoteTerminal')), findsOneWidget);
     });
   });
 

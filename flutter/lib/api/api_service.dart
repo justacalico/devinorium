@@ -1067,8 +1067,10 @@ class ApiService {
 
   // ---- Terminal ----
 
-  /// Create a remote terminal session for [threadId]. Returns the session id.
-  Future<String> createTerminalSession(String threadId) async {
+  /// Create a remote terminal session. [threadId] is optional bookkeeping —
+  /// the terminal workspace is global and may outlive the active thread.
+  /// Returns the session id.
+  Future<String> createTerminalSession(String? threadId) async {
     final j = await _client.post('/api/terminal/sessions', {
       'thread_id': threadId,
     });
@@ -1088,7 +1090,11 @@ class ApiService {
       // Web build: same origin, relative URL.
       return Uri.parse(path);
     }
-    return Uri.parse(base).replace(path: path).replace(scheme: 'ws');
+    final uri = Uri.parse(base);
+    return uri.replace(
+      path: path,
+      scheme: uri.scheme == 'https' ? 'wss' : 'ws',
+    );
   }
 
   /// Native bearer token for WebSocket auth headers.

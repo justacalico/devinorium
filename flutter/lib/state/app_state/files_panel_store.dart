@@ -60,6 +60,19 @@ mixin FilesPanelStore on AppStateBase {
     return null;
   }
 
+  /// Directory new terminal shells start in: the active thread's worktree
+  /// when it runs in one, otherwise its project path.
+  String? get _activeTerminalWorkingDir {
+    final thread = _activeFilesThread;
+    if (thread == null) return null;
+    final worktree = _activeFilesWorktreePath;
+    if (worktree != null) return worktree;
+    for (final project in _projects) {
+      if (project.id == thread.projectId) return project.path;
+    }
+    return null;
+  }
+
   /// Map a tree-relative path to the path the file APIs expect. Inside a
   /// worktree scope the absolute path is sent so the request stays pinned
   /// to the loaded tree root even if the active scope has moved on.

@@ -63,7 +63,12 @@ class _TerminalTile extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: TerminalViewWidget(session: session, autofocus: autofocus),
+              child: TerminalViewWidget(
+                session: session,
+                autofocus: autofocus,
+                controller: session.controller,
+                scrollController: session.scrollController,
+              ),
             ),
             Positioned(
               top: 0,

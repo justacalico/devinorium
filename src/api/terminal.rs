@@ -19,7 +19,10 @@ use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTerminal {
-    pub thread_id: String,
+    /// Optional thread the session is associated with. Terminals are global
+    /// in the UI, so a session may be created without an active thread.
+    #[serde(default)]
+    pub thread_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,21 +58,33 @@ async fn create(
         return forbidden();
     }
 
-    let thread = match state.db.get_thread(&req.thread_id, user.id).await {
-        Ok(Some(t)) => t,
-        Ok(None) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("invalid thread_id")),
-            )
-                .into_response();
-        }
-        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    let (thread_id, cwd) = match req.thread_id.as_deref().filter(|t| !t.is_empty()) {
+        Some(thread_id) => match state.db.get_thread(thread_id, user.id).await {
+            Ok(Some(t)) => {
+                // Open the shell where the thread's files are: its managed
+                // worktree when it runs in one, else the project checkout.
+                let dir =
+                    match super::threads::plan::project_working_dir_for_thread(&state, &t).await {
+                        Ok(dir) => dir,
+                        Err(e) => return crate::api::map_err_internal(e).into_response(),
+                    };
+                (t.id, dir)
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid thread_id")),
+                )
+                    .into_response();
+            }
+            Err(e) => return crate::api::map_err_internal(e).into_response(),
+        },
+        None => (String::new(), state.config.home_dir.clone()),
     };
 
     match state
         .terminal_manager
-        .spawn(user.id, thread.id.clone(), None)
+        .spawn(user.id, thread_id.clone(), None, Some(cwd))
         .await
     {
         Ok(session) => {
@@ -79,7 +94,7 @@ async fn create(
                     Some(user.id),
                     "terminal.create",
                     &serde_json::json!({
-                        "thread_id": thread.id,
+                        "thread_id": thread_id,
                         "terminal_id": session.id,
                     }),
                     None,

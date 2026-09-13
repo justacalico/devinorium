@@ -1,0 +1,372 @@
+import 'dart:async';
+
+import 'package:devinorium_frontend/api/api_client.dart';
+import 'package:devinorium_frontend/api/api_service.dart';
+import 'package:devinorium_frontend/terminal/terminal_session.dart';
+import 'package:devinorium_frontend/terminal/terminal_store.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+
+/// Records remote session kills without touching the network.
+class _RecordingApi extends ApiService {
+  _RecordingApi() : super(client: ApiClient.withClient(http.Client()));
+
+  final killed = <String>[];
+
+  @override
+  Future<void> killTerminalSession(String sessionId) async {
+    killed.add(sessionId);
+  }
+}
+
+TerminalStore _store({
+  String? Function()? activeThreadId,
+  String? Function()? activeWorkingDir,
+  TerminalSessionFactory? sessionFactory,
+}) => TerminalStore(
+  api: () => ApiService(),
+  activeThreadId: activeThreadId,
+  activeWorkingDir: activeWorkingDir,
+  sessionFactory: sessionFactory,
+);
+
+TerminalSessionFactory _fakeFactory({
+  void Function(String? threadId, String? workingDir)? onCall,
+}) {
+  var callCount = 0;
+  return ({
+    required ApiService api,
+    required String? threadId,
+    required bool local,
+    String? workingDir,
+  }) async {
+    callCount++;
+    onCall?.call(threadId, workingDir);
+    return TerminalSession(id: 's-$callCount', isLocal: local);
+  };
+}
+
+void main() {
+  group('TerminalStore', () {
+    test('addSession auto-creates a tab and appends the session', () async {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+
+      expect(store.tabs, hasLength(1));
+      expect(store.activeTabIndex, 0);
+      expect(store.tabs.single.sessions.single.id, 's-1');
+      expect(store.busy, isFalse);
+    });
+
+    test('passes the current active thread to the factory', () async {
+      var current = 't1';
+      final seen = <String?>[];
+      final store = _store(
+        activeThreadId: () => current,
+        sessionFactory: _fakeFactory(onCall: (threadId, _) => seen.add(threadId)),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+      current = 't2';
+      await store.addSession(local: false);
+
+      expect(seen, ['t1', 't2']);
+      // Both sessions live in the same global workspace.
+      expect(store.tabs.single.sessions, hasLength(2));
+    });
+
+    test('passes the active working directory to the factory', () async {
+      var current = '/repo';
+      final seen = <String?>[];
+      final store = _store(
+        activeWorkingDir: () => current,
+        sessionFactory:
+            _fakeFactory(onCall: (_, workingDir) => seen.add(workingDir)),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: true);
+      current = '/repo/.worktrees/t2';
+      await store.addSession(local: true);
+
+      expect(seen, ['/repo', '/repo/.worktrees/t2']);
+    });
+
+    test('works without an active thread', () async {
+      final seen = <String?>[];
+      final store = _store(
+        sessionFactory: _fakeFactory(onCall: (threadId, _) => seen.add(threadId)),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+
+      expect(seen, [isNull]);
+      expect(store.tabs.single.sessions, hasLength(1));
+    });
+
+    test('factory errors propagate and clear busy', () async {
+      final store = _store(
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+              String? workingDir,
+            }) async => throw StateError('nope'),
+      );
+      addTearDown(store.dispose);
+
+      await expectLater(store.addSession(local: false), throwsStateError);
+      expect(store.busy, isFalse);
+      expect(store.tabs.single.sessions, isEmpty);
+    });
+
+    test('concurrent addSession calls are ignored while busy', () async {
+      final gate = Completer<void>();
+      var calls = 0;
+      final store = _store(
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+              String? workingDir,
+            }) async {
+              calls++;
+              await gate.future;
+              return TerminalSession(id: 's-$calls', isLocal: local);
+            },
+      );
+      addTearDown(store.dispose);
+
+      final first = store.addSession(local: false);
+      final second = store.addSession(local: false);
+      gate.complete();
+      await first;
+      await second;
+
+      expect(calls, 1);
+      expect(store.tabs.single.sessions, hasLength(1));
+    });
+
+    test('tab management follows browser semantics', () async {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      store.addTab();
+      store.addTab();
+      expect(store.tabs, hasLength(2));
+      expect(store.activeTabIndex, 1);
+
+      store.setActiveTab(0);
+      expect(store.activeTabIndex, 0);
+      store.setActiveTab(9);
+      expect(store.activeTabIndex, 0);
+
+      store.removeTab(store.tabs[1]);
+      expect(store.tabs, hasLength(1));
+      expect(store.activeTabIndex, 0);
+
+      store.removeTab(store.tabs.single);
+      expect(store.tabs, isEmpty);
+      expect(store.activeTabIndex, 0);
+    });
+
+    test('removeSession disposes the session and notifies', () async {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+      final session = store.tabs.single.sessions.single;
+
+      var notified = 0;
+      store.addListener(() => notified++);
+      store.removeSession(session);
+
+      expect(notified, 1);
+      expect(store.tabs.single.sessions, isEmpty);
+      await expectLater(session.completed, completes);
+    });
+
+    test('removeTab disposes every session in the tab', () async {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+      await store.addSession(local: false);
+      final tab = store.tabs.single;
+      final sessions = List.of(tab.sessions);
+
+      store.removeTab(tab);
+
+      expect(store.tabs, isEmpty);
+      for (final session in sessions) {
+        await expectLater(session.completed, completes);
+      }
+    });
+
+    test('open state and height are shared', () {
+      final store = _store();
+      addTearDown(store.dispose);
+
+      expect(store.open, isFalse);
+      store.toggleOpen();
+      expect(store.open, isTrue);
+      store.setOpen(false);
+      expect(store.open, isFalse);
+
+      expect(store.height, TerminalStore.defaultHeight);
+      store.setHeight(400);
+      expect(store.height, 400);
+      store.setHeight(10);
+      expect(store.height, TerminalStore.minHeight);
+    });
+
+    test('removeSession kills remote sessions through their owning api', () async {
+      final api = _RecordingApi();
+      final store = TerminalStore(
+        api: () => api,
+        sessionFactory: _fakeFactory(),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+      store.removeSession(store.tabs.single.sessions.single);
+
+      expect(api.killed, ['s-1']);
+    });
+
+    test('clear kills sessions through the api they were created with', () async {
+      final api1 = _RecordingApi();
+      final api2 = _RecordingApi();
+      var active = api1;
+      final store = TerminalStore(
+        api: () => active,
+        sessionFactory: _fakeFactory(),
+      );
+      addTearDown(store.dispose);
+
+      // Created while api1 is active, then the active server switches.
+      await store.addSession(local: false);
+      active = api2;
+
+      await store.clear();
+
+      expect(api1.killed, ['s-1']);
+      expect(api2.killed, isEmpty);
+    });
+
+    test('local sessions are not killed remotely', () async {
+      final api = _RecordingApi();
+      final store = TerminalStore(
+        api: () => api,
+        sessionFactory: _fakeFactory(),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: true);
+      store.removeSession(store.tabs.single.sessions.single);
+
+      expect(api.killed, isEmpty);
+    });
+
+    test('drops a session created before clear while in flight', () async {
+      final gate = Completer<void>();
+      final api = _RecordingApi();
+      var calls = 0;
+      final store = TerminalStore(
+        api: () => api,
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+              String? workingDir,
+            }) async {
+              calls++;
+              await gate.future;
+              return TerminalSession(id: 's-$calls', isLocal: local);
+            },
+      );
+      addTearDown(store.dispose);
+
+      final pending = store.addSession(local: false);
+      expect(store.busy, isTrue);
+
+      await store.clear();
+      gate.complete();
+      await pending;
+
+      // The stale session is dropped and its backend PTY is still killed.
+      expect(store.tabs, isEmpty);
+      expect(api.killed, ['s-1']);
+    });
+
+    test('addSession is a no-op after dispose', () async {
+      var calls = 0;
+      final store = TerminalStore(
+        api: () => ApiService(),
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+              String? workingDir,
+            }) async {
+              calls++;
+              return TerminalSession(id: 's', isLocal: local);
+            },
+      );
+
+      store.dispose();
+      await store.addSession(local: false);
+
+      expect(calls, 0);
+    });
+
+    test('removeTab keeps the active tab when an earlier tab closes', () {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      store.addTab();
+      store.addTab();
+      store.addTab();
+      store.setActiveTab(2);
+      store.removeTab(store.tabs[0]);
+
+      expect(store.tabs, hasLength(2));
+      expect(store.activeTabIndex, 1);
+    });
+
+    test('clear kills all sessions and closes the panel', () async {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      store.setOpen(true);
+      await store.addSession(local: false);
+      final session = store.tabs.single.sessions.single;
+
+      await store.clear();
+
+      expect(store.tabs, isEmpty);
+      expect(store.open, isFalse);
+      await expectLater(session.completed, completes);
+    });
+
+    test('dispose kills all sessions', () async {
+      final store = _store(sessionFactory: _fakeFactory());
+
+      await store.addSession(local: false);
+      final session = store.tabs.single.sessions.single;
+
+      store.dispose();
+
+      expect(store.tabs, isEmpty);
+      await expectLater(session.completed, completes);
+    });
+  });
+}

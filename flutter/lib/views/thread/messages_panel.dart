@@ -36,7 +36,7 @@ class _MessagesPanel extends StatelessWidget {
       if (!hasServer) {
         final state = context.read<AppState>();
         return Center(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(48),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -64,6 +64,7 @@ class _MessagesPanel extends StatelessWidget {
           ),
         );
       }
+
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(48),

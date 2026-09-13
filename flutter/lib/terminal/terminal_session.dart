@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show ScrollController;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xterm/xterm.dart';
 
@@ -23,6 +24,11 @@ class TerminalSession extends ChangeNotifier {
   final String id;
   final bool isLocal;
   final Terminal terminal;
+
+  /// Shared with [TerminalViewWidget] so view state (selection, scroll
+  /// position) survives the panel being hidden or remounted in another view.
+  final controller = TerminalController();
+  final scrollController = ScrollController();
 
   TerminalStatus _status = TerminalStatus.idle;
   TerminalStatus get status => _status;
@@ -57,16 +63,23 @@ class TerminalSession extends ChangeNotifier {
   void dispose() {
     terminal.onOutput = null;
     terminal.onResize = null;
+    controller.dispose();
+    scrollController.dispose();
     _complete();
     super.dispose();
   }
 }
 
 class LocalTerminalSession extends TerminalSession {
-  LocalTerminalSession({required super.id}) : super(isLocal: true) {
+  LocalTerminalSession({required super.id, this.workingDir})
+    : super(isLocal: true) {
     _setStatus(TerminalStatus.connected);
-    _backend.start();
+    _backend.start(workingDirectory: workingDir);
   }
+
+  /// Directory the local shell starts in — the thread's working directory
+  /// when it resolves on this device.
+  final String? workingDir;
 
   late final _backend = LocalPtyBackend(terminal);
 
@@ -108,6 +121,7 @@ class RemoteTerminalSession extends TerminalSession {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
   int _reconnectAttempts = 0;
+  bool _disposed = false;
   static const _maxReconnectAttempts = 5;
 
   @override
@@ -135,6 +149,7 @@ class RemoteTerminalSession extends TerminalSession {
   }
 
   void _onMessage(dynamic message) {
+    if (_disposed) return;
     if (message is List<int>) {
       final text = utf8.decode(message, allowMalformed: true);
       terminal.write(text);
@@ -154,6 +169,7 @@ class RemoteTerminalSession extends TerminalSession {
   }
 
   void _onError(Object error) {
+    if (_disposed) return;
     _setStatus(TerminalStatus.disconnected);
     _sub?.cancel();
     _channel = null;
@@ -166,11 +182,13 @@ class RemoteTerminalSession extends TerminalSession {
     final delay = Duration(
       milliseconds: 500 * (pow(2, _reconnectAttempts - 1).toInt()),
     );
-    Future.delayed(delay, _connect);
+    Future.delayed(delay, () {
+      if (!_disposed) _connect();
+    });
   }
 
   void _onDone() {
-    if (_status == TerminalStatus.exited) return;
+    if (_disposed || _status == TerminalStatus.exited) return;
     _onError('WebSocket closed');
   }
 
@@ -185,6 +203,7 @@ class RemoteTerminalSession extends TerminalSession {
   }
 
   void _send(String data) {
+    if (_disposed) return;
     if (_channel != null && _status == TerminalStatus.connected) {
       _channel!.sink.add(data);
     }
@@ -192,35 +211,43 @@ class RemoteTerminalSession extends TerminalSession {
 
   @override
   void dispose() {
+    _disposed = true;
     _sub?.cancel();
     _channel?.sink.close();
     super.dispose();
   }
 }
 
-/// Factory signature for creating a [TerminalSession] for a thread.
+/// Factory signature for creating a [TerminalSession].
 ///
-/// This is the default factory used by [ThreadTerminalPanel] so tests can
-/// inject a fake session without starting a real PTY or WebSocket.
+/// This is the default factory used by [TerminalStore] so tests can inject a
+/// fake session without starting a real PTY or WebSocket. [threadId] is the
+/// currently active thread, if any — remote sessions may be created without
+/// one since the terminal workspace is global.
 ///
 /// Non-test callers should pass [createTerminalSession] and let it handle the
 /// actual local/remote backend.
 typedef TerminalSessionFactory =
     Future<TerminalSession> Function({
       required ApiService api,
-      required String threadId,
+      required String? threadId,
       required bool local,
+      String? workingDir,
     });
 
-/// Create a local or remote terminal session for [threadId].
+/// Create a local or remote terminal session. [workingDir] only applies to
+/// local sessions — remote shells start in the thread's working directory,
+/// resolved by the backend from [threadId].
 Future<TerminalSession> createTerminalSession({
   required ApiService api,
-  required String threadId,
+  required String? threadId,
   required bool local,
+  String? workingDir,
 }) async {
   if (local) {
     return LocalTerminalSession(
       id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+      workingDir: workingDir,
     );
   }
   final sessionId = await api.createTerminalSession(threadId);

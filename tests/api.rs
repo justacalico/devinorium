@@ -11253,6 +11253,224 @@ async fn terminal_create_kill_and_ws_round_trip() {
     let _ = shutdown.send(());
 }
 
+#[tokio::test]
+async fn terminal_create_without_thread_id_is_allowed() {
+    let (app, _db) = make_app().await;
+    let (port, shutdown) = spawn_router(app).await;
+    let base = format!("http://127.0.0.1:{port}");
+    let origin = base.clone();
+    let client = reqwest::Client::new();
+
+    let login = client
+        .post(format!("{base}/api/auth/login"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .json(&serde_json::json!({
+            "username": "owner",
+            "password": "supersecret123",
+        }))
+        .send()
+        .await
+        .unwrap();
+    let cookie = session_cookie(&login);
+
+    // A global terminal does not require a thread; missing, null, and empty
+    // thread_id values are all accepted.
+    for body in [
+        serde_json::json!({}),
+        serde_json::json!({"thread_id": null}),
+        serde_json::json!({"thread_id": ""}),
+    ] {
+        let resp = client
+            .post(format!("{base}/api/terminal/sessions"))
+            .header(axum::http::header::ORIGIN, &origin)
+            .header(axum::http::header::COOKIE, &cookie)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+        let term: serde_json::Value = resp.json().await.unwrap();
+        let terminal_id = term["id"].as_str().unwrap().to_string();
+        assert!(!terminal_id.is_empty());
+
+        let kill = client
+            .delete(format!("{base}/api/terminal/sessions/{terminal_id}"))
+            .header(axum::http::header::ORIGIN, &origin)
+            .header(axum::http::header::COOKIE, &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert!(kill.status().is_success());
+    }
+
+    let _ = shutdown.send(());
+}
+
+#[tokio::test]
+async fn terminal_create_with_unknown_thread_id_is_rejected() {
+    let (app, _db) = make_app().await;
+    let (port, shutdown) = spawn_router(app).await;
+    let base = format!("http://127.0.0.1:{port}");
+    let origin = base.clone();
+    let client = reqwest::Client::new();
+
+    let login = client
+        .post(format!("{base}/api/auth/login"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .json(&serde_json::json!({
+            "username": "owner",
+            "password": "supersecret123",
+        }))
+        .send()
+        .await
+        .unwrap();
+    let cookie = session_cookie(&login);
+
+    let resp = client
+        .post(format!("{base}/api/terminal/sessions"))
+        .header(axum::http::header::ORIGIN, &origin)
+        .header(axum::http::header::COOKIE, &cookie)
+        .json(&serde_json::json!({"thread_id": "no-such-thread"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let _ = shutdown.send(());
+}
+
+/// Spawn a terminal for `tid`, run `pwd`, and report whether the shell's
+/// output ever contained `want`.
+async fn terminal_pwd_shows(port: u16, origin: &str, cookie: &str, tid: &str, want: &str) -> bool {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://127.0.0.1:{port}/api/terminal/sessions"))
+        .header(axum::http::header::ORIGIN, origin)
+        .header(axum::http::header::COOKIE, cookie)
+        .json(&serde_json::json!({"thread_id": tid}))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let term: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        status,
+        reqwest::StatusCode::CREATED,
+        "terminal create failed: {term}"
+    );
+    let terminal_id = term["id"].as_str().unwrap().to_string();
+
+    let ws_url = format!("ws://127.0.0.1:{port}/api/terminal/sessions/{terminal_id}/ws");
+    let ws_key = tokio_tungstenite::tungstenite::handshake::client::generate_key();
+    let req = Request::builder()
+        .uri(&ws_url)
+        .header("Host", format!("127.0.0.1:{port}"))
+        .header("Connection", "Upgrade")
+        .header("Upgrade", "websocket")
+        .header("Sec-WebSocket-Version", "13")
+        .header("Sec-WebSocket-Key", &ws_key)
+        .header("Cookie", cookie)
+        .header("Origin", origin)
+        .body(())
+        .unwrap();
+    let (mut ws, _resp) = tokio_tungstenite::connect_async(req).await.unwrap();
+
+    let _ = ws
+        .send(Message::Text(
+            r#"{"type":"input","data":"pwd\n"}"#.to_string(),
+        ))
+        .await;
+
+    let mut out = String::new();
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
+    while tokio::time::Instant::now() < deadline && !out.contains(want) {
+        match tokio::time::timeout(tokio::time::Duration::from_millis(200), ws.next()).await {
+            Ok(Some(Ok(Message::Binary(bytes)))) => {
+                out.push_str(&String::from_utf8_lossy(&bytes));
+            }
+            Ok(Some(Ok(_))) => {}
+            Ok(Some(Err(_))) | Ok(None) => break,
+            Err(_) => {}
+        }
+    }
+    let found = out.contains(want);
+
+    let kill = client
+        .delete(format!(
+            "http://127.0.0.1:{port}/api/terminal/sessions/{terminal_id}"
+        ))
+        .header(axum::http::header::ORIGIN, origin)
+        .header(axum::http::header::COOKIE, cookie)
+        .send()
+        .await
+        .unwrap();
+    assert!(kill.status().is_success());
+
+    found
+}
+
+#[tokio::test]
+async fn terminal_shell_starts_in_thread_working_dir() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // init before creating the project so the repo_status cache does not
+    // memorise is_repo=false for the project path.
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+    let path = repo.to_string_lossy().to_string();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"plain"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let tid = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await).unwrap()
+        ["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (port, shutdown) = spawn_router(app.clone()).await;
+    let origin = format!("http://127.0.0.1:{port}");
+
+    let project_dir = std::fs::canonicalize(&path).unwrap();
+    assert!(
+        terminal_pwd_shows(port, &origin, &cookie, &tid, &project_dir.to_string_lossy()).await,
+        "expected shell in {}",
+        project_dir.display()
+    );
+
+    // A worktree in the same repo must resolve to the worktree, not the
+    // project root. The same thread is switched in place so creating a second
+    // empty thread cannot delete it first.
+    let wt_path = format!("{path}-wt");
+    let out = std::process::Command::new("git")
+        .current_dir(&path)
+        .args(["worktree", "add", "-b", "wt-branch", &wt_path, "HEAD"])
+        .output()
+        .expect("git worktree add");
+    assert!(out.status.success(), "{out:?}");
+    patch_thread_git(&app, &cookie, &tid, std::path::Path::new(&wt_path)).await;
+
+    let wt_dir = std::fs::canonicalize(&wt_path).unwrap();
+    assert!(
+        terminal_pwd_shows(port, &origin, &cookie, &tid, &wt_dir.to_string_lossy()).await,
+        "expected shell in {}",
+        wt_dir.display()
+    );
+
+    let _ = shutdown.send(());
+}
+
 // ---- git clone ----
 
 fn run_git_checked(cwd: &std::path::Path, args: &[&str]) {

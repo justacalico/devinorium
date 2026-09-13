@@ -271,6 +271,8 @@ mixin AuthStore on AppStateBase {
           }
           _threadStores.clear();
           _setActiveStore(null);
+          // Remote terminal sessions point at the dead process as well.
+          await terminalStore.clear();
         }
       } else if (!manager.hasBinary &&
           multiServerState
@@ -369,6 +371,9 @@ mixin AuthStore on AppStateBase {
     }
     _threadStores.clear();
     _setActiveStore(null);
+    // Kill terminals while the old connection is still authenticated —
+    // after logout/server removal the kills would be rejected.
+    await terminalStore.clear();
     try {
       await api.logout();
     } catch (_) {}
@@ -404,6 +409,9 @@ mixin AuthStore on AppStateBase {
     stopHealthChecks();
     stopGitRefresh();
     try {
+      // Terminals belong to the current server — kill them before the
+      // active connection changes underneath us.
+      await terminalStore.clear();
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
       // The bundled server may have died while a remote profile was active;
@@ -440,6 +448,7 @@ mixin AuthStore on AppStateBase {
       if (wasActive) {
         stopHealthChecks();
         stopGitRefresh();
+        await terminalStore.clear();
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
@@ -657,6 +666,7 @@ mixin AuthStore on AppStateBase {
     }
     _threadStores.clear();
     _setActiveStore(null);
+    await terminalStore.clear();
     _gitRepoInfo.clear();
     _gitBranches.clear();
     _gitWorktrees.clear();

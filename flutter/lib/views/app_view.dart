@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import '../terminal/terminal_panel.dart';
 import 'drop_zone.dart';
 import 'editor/editor_page.dart';
 import 'settings_page.dart';
@@ -175,16 +176,34 @@ class _AppShellState extends State<AppShell> {
 class _MainArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, ({AppMode appMode, MainPage page})>(
-      selector: (_, state) => (appMode: state.appMode, page: state.page),
+    final state = context.read<AppState>();
+    return Selector<
+      AppState,
+      ({AppMode appMode, MainPage page, bool localServer})
+    >(
+      selector: (_, state) => (
+        appMode: state.appMode,
+        page: state.page,
+        // The bundled "This device" server is the machine the app runs on, so
+        // a "remote" terminal there is just a slower local one — hide it.
+        localServer: state.multiServerState.activeProfile?.isLocal ?? false,
+      ),
       builder: (context, model, _) {
-        if (model.appMode == AppMode.editor) {
-          return const EditorPage();
-        }
-        return switch (model.page) {
-          MainPage.threads => const ThreadPage(),
-          MainPage.settings => const SettingsPage(),
-        };
+        final page = model.appMode == AppMode.editor
+            ? const EditorPage()
+            : switch (model.page) {
+                MainPage.threads => const ThreadPage(),
+                MainPage.settings => const SettingsPage(),
+              };
+        return Column(
+          children: [
+            Expanded(child: page),
+            TerminalPanel(
+              store: state.terminalStore,
+              allowRemote: !model.localServer,
+            ),
+          ],
+        );
       },
     );
   }

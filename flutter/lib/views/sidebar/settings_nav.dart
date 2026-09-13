@@ -49,7 +49,13 @@ class _SettingsNav extends StatelessWidget {
                   leading: Icon(topics[i].icon, size: 20),
                   title: Row(
                     children: [
-                      Text(topics[i].label),
+                      Flexible(
+                        child: Text(
+                          topics[i].label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       if (topics[i].topic == SettingsTopic.manage ||
                           topics[i].topic == SettingsTopic.audit) ...[
                         const SizedBox(width: 6),

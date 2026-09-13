@@ -4,6 +4,7 @@
 //! they are idle longer than the configured TTL.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -70,12 +71,15 @@ impl TerminalManager {
 
     /// Spawn a new PTY session for `user_id` and `thread_id`. If `shell` is
     /// provided it is used as the shell program; otherwise `bash` is preferred
-    /// with a fallback to `sh`.
+    /// with a fallback to `sh`. `cwd` sets the shell's starting directory —
+    /// pass the thread's working directory so the terminal opens where the
+    /// files are.
     pub async fn spawn(
         &self,
         user_id: i64,
         thread_id: String,
         shell: Option<&str>,
+        cwd: Option<PathBuf>,
     ) -> Result<Arc<TerminalSession>> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
@@ -91,7 +95,10 @@ impl TerminalManager {
             .map(String::from)
             .unwrap_or_else(default_shell_program);
 
-        let cmd = CommandBuilder::new(&program);
+        let mut cmd = CommandBuilder::new(&program);
+        if let Some(dir) = cwd {
+            cmd.cwd(dir);
+        }
         let child = pair.slave.spawn_command(cmd).context("spawn shell")?;
 
         let writer = pair.master.take_writer().context("take pty writer")?;
@@ -159,7 +166,7 @@ mod tests {
     async fn lifecycle_spawn_write_resize_kill() {
         let manager = TerminalManager::new(Duration::from_secs(60), Duration::from_secs(10));
         let session = manager
-            .spawn(1, "t1".into(), Some("cat"))
+            .spawn(1, "t1".into(), Some("cat"), None)
             .await
             .expect("spawn cat");
         assert_eq!(session.user_id, 1);
@@ -192,10 +199,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn spawn_starts_shell_in_given_working_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let want = dir
+            .path()
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        let manager = TerminalManager::new(Duration::from_secs(60), Duration::from_secs(10));
+        let session = manager
+            .spawn(1, "t1".into(), Some("sh"), Some(dir.path().to_path_buf()))
+            .await
+            .expect("spawn sh");
+
+        let mut rx = session.subscribe();
+        session.write_input("pwd\n").expect("write");
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut saw_pwd = false;
+        while tokio::time::Instant::now() < deadline {
+            if let Ok(Ok(TerminalEvent::Output(bytes))) =
+                tokio::time::timeout(Duration::from_millis(100), rx.recv()).await
+            {
+                if String::from_utf8_lossy(&bytes).contains(&want) {
+                    saw_pwd = true;
+                    break;
+                }
+            }
+        }
+        let _ = manager.kill(&session.id).await;
+        assert!(saw_pwd, "expected pwd to print {want}");
+    }
+
+    #[tokio::test]
     async fn ttl_expires_session() {
         let manager = TerminalManager::new(Duration::from_millis(100), Duration::from_millis(50));
         let session = manager
-            .spawn(1, "t1".into(), Some("cat"))
+            .spawn(1, "t1".into(), Some("cat"), None)
             .await
             .expect("spawn cat");
 

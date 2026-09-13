@@ -12,13 +12,15 @@ class LocalPtyBackend {
   final Terminal terminal;
   PseudoTerminal? _pty;
 
-  void start() {
+  void start({String? workingDirectory}) {
     final shell = Platform.isWindows ? 'pwsh.exe' : 'bash';
+    final cwd = _resolveWorkingDirectory(workingDirectory);
     try {
       _pty = PseudoTerminal.start(
         shell,
         const <String>[],
         environment: Platform.environment,
+        workingDirectory: cwd,
         raw: false,
       );
       _pty!.out.listen(
@@ -44,4 +46,15 @@ class LocalPtyBackend {
   void dispose() {
     _pty?.kill();
   }
+}
+
+/// The directory a local shell should start in. A thread's working directory
+/// only exists on this device when the bundled server is active — remote
+/// project paths are on the server — so anything that does not resolve falls
+/// back to the user's home directory.
+String? _resolveWorkingDirectory(String? dir) {
+  if (dir != null && dir.isNotEmpty && Directory(dir).existsSync()) {
+    return dir;
+  }
+  return Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
 }
