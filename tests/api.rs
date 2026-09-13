@@ -6162,6 +6162,409 @@ async fn thread_group_with_threads() {
     assert!(body.contains(r#""thread_group_id":null"#), "body: {body}");
 }
 
+async fn create_project_group(app: &Router, cookie: &str, name: &str) -> i64 {
+    let body = format!(r#"{{"name":"{name}"}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/project-groups", cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_i64()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn project_group_create_list_rename_delete() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let gid = create_project_group(&app, &cookie, "facebook").await;
+
+    // Duplicate names are rejected.
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "POST",
+        "/api/project-groups",
+        r#"{"name":"facebook"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // List groups.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/project-groups", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("facebook"), "body: {body}");
+
+    // Rename.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/project-groups/{gid}"),
+            &cookie,
+            r#"{"name":"meta"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/project-groups/{gid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("meta"), "body: {body}");
+
+    // Empty names are rejected.
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "PATCH",
+        &format!("/api/project-groups/{gid}"),
+        r#"{"name":"  "}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Delete.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/project-groups/{gid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn project_group_assign_and_ungroup() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let gid = create_project_group(&app, &cookie, "work").await;
+
+    // Assign the project to the group.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/projects/{pid}/group"),
+            &cookie,
+            &format!(r#"{{"group_id":{gid}}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains(&format!(r#""group_id":{gid}"#)),
+        "body: {body}"
+    );
+
+    // The list payload carries the assignment too.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains(&format!(r#""group_id":{gid}"#)),
+        "body: {body}"
+    );
+
+    // Assigning to a group that does not exist fails.
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "PATCH",
+        &format!("/api/projects/{pid}/group"),
+        r#"{"group_id":99999}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Ungroup with null.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/projects/{pid}/group"),
+            &cookie,
+            r#"{"group_id":null}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""group_id":null"#), "body: {body}");
+}
+
+#[tokio::test]
+async fn project_group_create_with_project_ids() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid_a = create_project(&app, &cookie).await;
+    let pid_b = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/project-groups",
+            &cookie,
+            &format!(r#"{{"name":"batch","project_ids":[{pid_a},{pid_b}]}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let gid: i64 = serde_json::from_str::<serde_json::Value>(&body_str(resp.into_body()).await)
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    let projects: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let projects = projects.as_array().unwrap();
+    for pid in [pid_a, pid_b] {
+        let p = projects
+            .iter()
+            .find(|p| p["id"].as_i64().unwrap() == pid)
+            .unwrap();
+        assert_eq!(p["group_id"].as_i64().unwrap(), gid, "body: {body}");
+    }
+}
+
+#[tokio::test]
+async fn project_group_delete_ungroups_projects() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let gid = create_project_group(&app, &cookie, "temp").await;
+
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "PATCH",
+        &format!("/api/projects/{pid}/group"),
+        &format!(r#"{{"group_id":{gid}}}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/project-groups/{gid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The project survives and is ungrouped.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/projects", &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(r#""group_id":null"#), "body: {body}");
+}
+
+#[tokio::test]
+async fn project_group_is_isolated_between_users() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "password1234").await;
+    let alice_cookie = login_as(&app, "alice", "password1234").await;
+
+    // Owner's group must not be listable or assignable by alice.
+    let gid = create_project_group(&app, &owner_cookie, "owner-only").await;
+    let alice_pid = create_project(&app, &alice_cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/project-groups", &alice_cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(!body.contains("owner-only"), "body: {body}");
+
+    let status = request_status(
+        app.clone(),
+        &alice_cookie,
+        "PATCH",
+        &format!("/api/projects/{alice_pid}/group"),
+        &format!(r#"{{"group_id":{gid}}}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn project_group_rename_conflict_and_missing() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let gid = create_project_group(&app, &cookie, "one").await;
+    create_project_group(&app, &cookie, "two").await;
+
+    // Renaming onto an existing name is a conflict.
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "PATCH",
+        &format!("/api/project-groups/{gid}"),
+        r#"{"name":"two"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Renaming a group that does not exist is a 404.
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "PATCH",
+        "/api/project-groups/99999",
+        r#"{"name":"x"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn project_group_delete_unknown_returns_404() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("DELETE", "/api/project-groups/99999", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/project-groups/99999", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn project_group_create_rejects_foreign_project_ids() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "password1234").await;
+    let alice_cookie = login_as(&app, "alice", "password1234").await;
+
+    let owner_pid = create_project(&app, &owner_cookie).await;
+    let alice_pid = create_project(&app, &alice_cookie).await;
+
+    // Another user's project id is rejected outright.
+    let status = request_status(
+        app.clone(),
+        &alice_cookie,
+        "POST",
+        "/api/project-groups",
+        &format!(r#"{{"name":"x","project_ids":[{owner_pid}]}}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A mix of own and foreign ids is rejected too, and no group is made.
+    let status = request_status(
+        app.clone(),
+        &alice_cookie,
+        "POST",
+        "/api/project-groups",
+        &format!(r#"{{"name":"y","project_ids":[{alice_pid},{owner_pid}]}}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/project-groups", &alice_cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(!body.contains(r#""name":"#), "body: {body}");
+}
+
+#[tokio::test]
+async fn project_group_cross_user_rename_delete_and_assign() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "password1234").await;
+    let alice_cookie = login_as(&app, "alice", "password1234").await;
+
+    let gid = create_project_group(&app, &owner_cookie, "owner-g").await;
+    let owner_pid = create_project(&app, &owner_cookie).await;
+
+    // Alice cannot rename, delete, or read the owner's group.
+    let status = request_status(
+        app.clone(),
+        &alice_cookie,
+        "PATCH",
+        &format!("/api/project-groups/{gid}"),
+        r#"{"name":"stolen"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let status = request_status(
+        app.clone(),
+        &alice_cookie,
+        "DELETE",
+        &format!("/api/project-groups/{gid}"),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Alice cannot assign the owner's project into her own group.
+    let alice_gid = create_project_group(&app, &alice_cookie, "alice-g").await;
+    let status = request_status(
+        app.clone(),
+        &alice_cookie,
+        "PATCH",
+        &format!("/api/projects/{owner_pid}/group"),
+        &format!(r#"{{"group_id":{alice_gid}}}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn thread_isolation_between_users() {
     let (app, db) = make_app().await;
