@@ -201,6 +201,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _loadingGitConnections(bool value);
   String? get _cloneRoot;
   set _cloneRoot(String? value);
+  String? get _worktreeRoot;
+  set _worktreeRoot(String? value);
   TailscaleInfo? get _tailscaleInfo;
   set _tailscaleInfo(TailscaleInfo? value);
   bool get _tailscaleBusy;
@@ -209,6 +211,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _tailscaleSeq(int value);
   bool get _loadingCloneRoot;
   set _loadingCloneRoot(bool value);
+  bool get _loadingWorktreeRoot;
+  set _loadingWorktreeRoot(bool value);
   bool get _cloningRepo;
   set _cloningRepo(bool value);
   String? get _cloneRepoResult;
@@ -329,7 +333,9 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get hasMoreFiles;
   bool get isLoadingMoreFiles;
   String? get cloneRoot;
+  String? get worktreeRoot;
   bool get loadingCloneRoot;
+  bool get loadingWorktreeRoot;
   TailscaleInfo? get tailscaleInfo;
   bool get tailscaleBusy;
   bool get cloningRepo;
@@ -553,6 +559,8 @@ abstract class AppStateBase extends ChangeNotifier {
   );
   Future<void> loadCloneRoot();
   Future<void> setCloneRoot(String? path);
+  Future<void> loadWorktreeRoot();
+  Future<void> setWorktreeRoot(String? path);
   Future<void> loadGitConnections();
   Future<void> connectGitLab({String? hostname});
   Future<void> disconnectGitLab({String? hostname});

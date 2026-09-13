@@ -323,6 +323,7 @@ mixin AuthStore on AppStateBase {
     final futures = <Future<void>>[
       loadGitConnections(),
       loadCloneRoot(),
+      loadWorktreeRoot(),
       refreshProviderVersion(),
       loadTailscaleStatus(),
     ];

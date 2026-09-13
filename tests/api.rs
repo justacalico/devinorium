@@ -9441,6 +9441,402 @@ async fn clone_root_rejects_existing_file() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+async fn set_worktree_root(app: &axum::Router, cookie: &str, path: &std::path::Path) {
+    let body = serde_json::json!({"path": path.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/settings/worktree-root", cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+async fn get_worktree_root_path(app: &axum::Router, cookie: &str) -> String {
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/settings/worktree-root", cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[tokio::test]
+async fn worktree_root_defaults_to_home() {
+    // The migration stores `~`, which the API expands to the server home
+    // directory (the `files` dir in test apps).
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let stored: (String,) = sqlx::query_as("SELECT worktree_root FROM users WHERE is_owner = 1")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(stored.0, "~");
+
+    let path = get_worktree_root_path(&app, &cookie).await;
+    assert!(std::path::Path::new(&path).is_absolute(), "path: {path}");
+    assert!(
+        path.ends_with("files"),
+        "path should be the test home: {path}"
+    );
+}
+
+#[tokio::test]
+async fn worktree_root_owner_can_set_and_create_missing_directory() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let wt_dir = root.join("worktrees");
+    assert!(!wt_dir.exists());
+
+    let body = serde_json::json!({"path": wt_dir.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/settings/worktree-root", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), wt_dir.to_string_lossy());
+    assert!(tokio::fs::try_exists(&wt_dir).await.unwrap());
+    assert!(tokio::fs::metadata(&wt_dir).await.unwrap().is_dir());
+}
+
+#[tokio::test]
+async fn worktree_root_clear_resets_to_home() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_worktree_root(&app, &cookie, &root).await;
+    assert_eq!(
+        get_worktree_root_path(&app, &cookie).await,
+        root.to_string_lossy()
+    );
+
+    // Clearing restores the `~` default instead of NULL.
+    for clear_body in [r#"{"path":""}"#, r#"{"path":null}"#] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "PUT",
+                "/api/settings/worktree-root",
+                &cookie,
+                clear_body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "clear body: {clear_body}");
+
+        let stored: (String,) =
+            sqlx::query_as("SELECT worktree_root FROM users WHERE is_owner = 1")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert_eq!(stored.0, "~");
+
+        let path = get_worktree_root_path(&app, &cookie).await;
+        assert!(
+            path.ends_with("files"),
+            "path should be the test home: {path}"
+        );
+
+        set_worktree_root(&app, &cookie, &root).await;
+    }
+}
+
+#[tokio::test]
+async fn worktree_root_non_owner_can_get_but_not_set() {
+    let (app, db) = make_app().await;
+    let owner_cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_worktree_root(&app, &owner_cookie, &root).await;
+
+    let uid = create_user(&app, &owner_cookie, "member", "supersecret123").await;
+    let member_cookie = login_as(&app, "member", "supersecret123").await;
+
+    // Non-owner GET returns the owner's configured worktree root.
+    assert_eq!(
+        get_worktree_root_path(&app, &member_cookie).await,
+        root.to_string_lossy()
+    );
+
+    // Non-owner PUT is forbidden.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/worktree-root",
+            &member_cookie,
+            r#"{"path":"/another/path"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // The worktree root is unchanged (the owner value, not the attempted path).
+    assert_eq!(
+        get_worktree_root_path(&app, &member_cookie).await,
+        root.to_string_lossy()
+    );
+
+    // Sanity: the new user's own worktree_root is the `~` default.
+    let row: Option<(String,)> = sqlx::query_as("SELECT worktree_root FROM users WHERE id = ?")
+        .bind(uid)
+        .fetch_optional(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(row.unwrap().0, "~");
+}
+
+#[tokio::test]
+async fn worktree_root_rejects_relative_and_traversal_paths() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let cases = [
+        (r#"{"path":"relative/path"}"#, "relative"),
+        (r#"{"path":"../escape"}"#, "relative with parent"),
+        (r#"{"path":"/tmp/../etc"}"#, "traversal"),
+        (r#"{"path":"~/../../etc"}"#, "tilde traversal"),
+    ];
+
+    for (body, label) in cases {
+        let resp = app
+            .clone()
+            .oneshot(authed("PUT", "/api/settings/worktree-root", &cookie, body))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "{label} should be rejected"
+        );
+    }
+}
+
+#[tokio::test]
+async fn worktree_root_expands_tilde_path() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/worktree-root",
+            &cookie,
+            r#"{"path":"~/worktrees"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let resolved = v["path"].as_str().unwrap();
+    assert!(
+        resolved.contains("worktrees"),
+        "resolved path should contain 'worktrees': {resolved}"
+    );
+    assert!(tokio::fs::try_exists(resolved).await.unwrap());
+    assert_eq!(get_worktree_root_path(&app, &cookie).await, resolved);
+}
+
+#[tokio::test]
+async fn worktree_root_rejects_existing_file() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let file = root.join("not-a-dir");
+    tokio::fs::write(&file, b"nope").await.unwrap();
+
+    let body = serde_json::json!({"path": file.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/settings/worktree-root", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn worktree_root_controls_auto_worktree_location() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let root = tmp.path().join("wt-root");
+    set_worktree_root(&app, &cookie, &root).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    send_prompt(&app, &cookie, &tid, "hello").await;
+
+    let thread = get_thread_json(&app, &cookie, &tid).await;
+    let wt_path = thread["worktree_path"].as_str().unwrap();
+    let managed_root = root.canonicalize().unwrap().join(".repo-worktrees");
+    assert!(
+        std::path::Path::new(wt_path).starts_with(&managed_root),
+        "worktree should be under {}: {wt_path}",
+        managed_root.display()
+    );
+    assert!(std::path::Path::new(wt_path).exists());
+    // Nothing leaked next to the repo.
+    assert!(!tmp.path().join(".repo-worktrees").exists());
+}
+
+#[tokio::test]
+async fn worktree_root_inside_repo_fails_worktree_setup() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    // A root inside the repository would nest managed worktrees in the
+    // working tree, so worktree setup must refuse it.
+    set_worktree_root(&app, &cookie, &repo.join("nested")).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let boundary = "----testboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nhi\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("worktree setup failed"), "body: {body}");
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn thread_delete_does_not_sweep_through_symlinked_managed_root() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    init_git_repo(&repo);
+    let pid = create_git_project(&app, &cookie, &repo).await;
+
+    let root = tmp.path().join("wt-root");
+    set_worktree_root(&app, &cookie, &root).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/threads",
+            &cookie,
+            &format!(r#"{{"project_id":{pid},"title":"wt","env_mode":"worktree"}}"#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let tid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    send_prompt(&app, &cookie, &tid, "hello").await;
+
+    let thread = get_thread_json(&app, &cookie, &tid).await;
+    let branch = thread["branch"].as_str().unwrap();
+    let sanitized = branch.replace('/', "-");
+
+    // Replace the managed root with a symlink to a victim directory that
+    // holds a directory spelled like the thread's worktree. The cleanup
+    // sweep must not follow the link and delete it.
+    let managed = root.canonicalize().unwrap().join(".repo-worktrees");
+    let victim = tmp.path().join("victim");
+    let planted = victim.join(&sanitized);
+    std::fs::create_dir_all(&planted).unwrap();
+    std::fs::write(planted.join("keep.txt"), b"keep").unwrap();
+    std::fs::remove_dir_all(&managed).unwrap();
+    std::os::unix::fs::symlink(&victim, &managed).unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        planted.join("keep.txt").exists(),
+        "sweep followed the symlinked managed root"
+    );
+    assert!(
+        managed.is_symlink(),
+        "managed root link should be untouched"
+    );
+}
+
 fn write_fake_glab_with_branch_merge_requests(dir: &std::path::Path) -> std::path::PathBuf {
     let bin_dir = dir.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();

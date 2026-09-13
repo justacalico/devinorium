@@ -999,6 +999,18 @@ class ApiService {
     return TailscaleInfo.fromJson(j);
   }
 
+  // ---- Worktree root ----
+
+  Future<String?> getWorktreeRoot() async {
+    final j = await _client.get('/api/settings/worktree-root');
+    return j['path'] as String?;
+  }
+
+  Future<String?> setWorktreeRoot(String? path) async {
+    final j = await _client.put('/api/settings/worktree-root', {'path': path});
+    return j['path'] as String?;
+  }
+
   // ---- Usage ----
 
   /// Fetch the caller's usage summary for the last [days] local days. The

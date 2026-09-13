@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use crate::api::settings;
 use crate::db::{ThreadRow, UserRow};
 use crate::git::service::worktree as wt;
 use crate::git::GitError;
@@ -64,10 +65,32 @@ pub(crate) async fn ensure_thread_worktree(
         status.branch
     };
 
+    let worktree_root = settings::worktree_root(state, user.id).await?;
+
+    // A root inside the repository would nest managed worktrees in the
+    // working tree, where they show up as untracked noise and agent-visible
+    // checkouts.
+    let top_canon = status
+        .toplevel
+        .canonicalize()
+        .unwrap_or_else(|_| status.toplevel.clone());
+    if worktree_root == top_canon || worktree_root.starts_with(&top_canon) {
+        anyhow::bail!("worktree root must not be inside the repository");
+    }
+
+    // A planted `.<repo>-worktrees` symlink would redirect `git worktree add`
+    // into whatever it points at.
+    let managed_root = wt::managed_worktrees_root(&status.toplevel, &worktree_root);
+    if let Ok(meta) = tokio::fs::symlink_metadata(&managed_root).await {
+        if meta.file_type().is_symlink() {
+            anyhow::bail!("managed worktree root is a symlink");
+        }
+    }
+
     let mut attempts = 0;
     let worktree = loop {
         let branch = wt::temporary_worktree_branch_name();
-        let worktree_path = wt::managed_worktree_path(&status.toplevel, &branch);
+        let worktree_path = wt::managed_worktree_path(&status.toplevel, &branch, &worktree_root);
 
         match state
             .git
@@ -310,8 +333,41 @@ pub(crate) async fn cleanup_thread_worktree(
         return;
     };
     // Git commands run from the main checkout: a linked worktree cannot
-    // remove itself, and the main path always resolves.
-    let managed_root = wt::managed_worktrees_root(&repo);
+    // remove itself, and the main path always resolves. Leftover directories
+    // can sit under the configured root or the repo-sibling location used
+    // before the root became a setting.
+    let mut candidate_roots: Vec<PathBuf> = Vec::new();
+    match settings::worktree_root(state, thread.user_id).await {
+        Ok(root) => candidate_roots.push(wt::managed_worktrees_root(&repo, &root)),
+        Err(e) => {
+            tracing::warn!(error = %e, thread_id = %thread.id, "worktree root lookup failed during cleanup")
+        }
+    }
+    let legacy_root = wt::managed_worktrees_root(&repo, repo.parent().unwrap_or(repo.as_path()));
+    if !candidate_roots.contains(&legacy_root) {
+        candidate_roots.push(legacy_root);
+    }
+
+    // Only sweep real, non-symlink directories: `worktree_path` is writable
+    // through the API and `remove_dir_all` follows a symlinked parent, so a
+    // planted `.<repo>-worktrees` link would turn the sweep into arbitrary
+    // directory deletion. Roots are kept canonical so the containment check
+    // below compares resolved paths.
+    let mut managed_roots: Vec<PathBuf> = Vec::new();
+    for root in candidate_roots {
+        let is_real_dir = tokio::fs::symlink_metadata(&root)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        if !is_real_dir {
+            continue;
+        }
+        if let Ok(canon) = tokio::fs::canonicalize(&root).await {
+            if !managed_roots.contains(&canon) {
+                managed_roots.push(canon);
+            }
+        }
+    }
 
     // A worktree checked out on the thread's temp branch is provably ours:
     // remove it wherever it is, covering `git worktree move` and a stored
@@ -324,25 +380,34 @@ pub(crate) async fn cleanup_thread_worktree(
         }
     }
 
-    // Directories inside the managed root that are not registered worktrees
+    // Directories inside a managed root that are not registered worktrees
     // are leftovers, for example a registration pruned while the directory
     // stayed behind. Re-list first: a worktree registered at the same path
     // since the snapshot above belongs to someone else and must survive.
-    let worktrees_now = state
-        .git
-        .worktrees(&repo, true)
-        .await
-        .unwrap_or_else(|_| worktrees.clone());
-    let managed_path = wt::managed_worktree_path(&repo, branch);
-    for candidate in [wt_path.as_deref(), Some(managed_path.as_path())] {
-        let Some(path) = candidate else { continue };
-        if path.parent() != Some(managed_root.as_path())
-            || worktrees_now.iter().any(|w| w.path == path)
-            || !matches!(tokio::fs::try_exists(path).await, Ok(true))
-        {
-            continue;
+    // When the re-list fails the stale snapshot cannot tell them apart, so
+    // the sweep is skipped; the branch delete below still runs.
+    if let Ok(worktrees_now) = state.git.worktrees(&repo, true).await {
+        let managed_paths = managed_roots
+            .iter()
+            .map(|root| root.join(wt::sanitize_branch_for_path(branch)));
+        for candidate in wt_path.iter().cloned().chain(managed_paths) {
+            let path = candidate.as_path();
+            // Canonicalize the candidate: a stored path that reaches a
+            // managed root only through a symlinked component must not pass,
+            // and the registered-worktree check compares resolved paths so
+            // a differently spelled entry is still recognized.
+            let Ok(canon) = tokio::fs::canonicalize(path).await else {
+                continue;
+            };
+            if !managed_roots
+                .iter()
+                .any(|root| canon.parent() == Some(root.as_path()))
+                || worktrees_now.iter().any(|w| w.path == canon)
+            {
+                continue;
+            }
+            let _ = tokio::fs::remove_dir_all(path).await;
         }
-        let _ = tokio::fs::remove_dir_all(path).await;
     }
 
     // Clear stale registrations so the branch delete cannot fail with

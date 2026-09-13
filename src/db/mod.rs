@@ -142,6 +142,9 @@ pub struct UserRow {
     pub disabled: bool,
     pub is_owner: bool,
     pub clone_root: Option<String>,
+    /// Root directory managed worktrees are created under. `~` expands to
+    /// the server home directory at use time.
+    pub worktree_root: String,
     pub provider_id: String,
     pub provider_command: String,
     /// JSON object mapping provider id -> CLI command, e.g.

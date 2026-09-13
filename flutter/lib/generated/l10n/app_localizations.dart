@@ -2306,6 +2306,42 @@ abstract class AppLocalizations {
   /// **'Only the owner can change the clone root.'**
   String get cloneRootOnlyOwner;
 
+  /// No description provided for @worktreeRoot.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree root'**
+  String get worktreeRoot;
+
+  /// No description provided for @worktreeRootDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Parent directory where worktrees are created. Defaults to the home directory.'**
+  String get worktreeRootDescription;
+
+  /// No description provided for @worktreeRootNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set yet'**
+  String get worktreeRootNotSet;
+
+  /// No description provided for @worktreeRootSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get worktreeRootSave;
+
+  /// No description provided for @worktreeRootBrowse.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse...'**
+  String get worktreeRootBrowse;
+
+  /// No description provided for @worktreeRootOnlyOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the owner can change the worktree root.'**
+  String get worktreeRootOnlyOwner;
+
   /// No description provided for @search.
   ///
   /// In en, this message translates to:

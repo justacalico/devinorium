@@ -1974,6 +1974,115 @@ void main() {
     });
   });
 
+  group('Worktree root', () {
+    test('loadWorktreeRoot populates state and clears global error', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'path': '/srv/worktrees'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api);
+      await base.loadWorktreeRoot();
+      expect(base.worktreeRoot, '/srv/worktrees');
+      expect(base.loadingWorktreeRoot, isFalse);
+      expect(base.globalError, isEmpty);
+    });
+
+    test('loadWorktreeRoot sets global error on failure', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(500, {'error': 'database failed'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(api: state.api);
+      await base.loadWorktreeRoot();
+      expect(base.worktreeRoot, isNull);
+      expect(base.globalError, contains('database failed'));
+      expect(base.loadingWorktreeRoot, isFalse);
+    });
+
+    test('setWorktreeRoot updates state and clears global error', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'path': '/new/worktrees'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      await base.setWorktreeRoot('/new/worktrees');
+      expect(base.worktreeRoot, '/new/worktrees');
+      expect(base.globalError, isEmpty);
+      expect(base.loadingWorktreeRoot, isFalse);
+    });
+
+    test('setWorktreeRoot restores default when passed null', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(200, {'path': '/home/user'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        worktreeRoot: '/old',
+      );
+      await base.setWorktreeRoot(null);
+      expect(base.worktreeRoot, '/home/user');
+      expect(base.globalError, isEmpty);
+    });
+
+    test('setWorktreeRoot surfaces validation errors', () async {
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([
+            _json(400, {'error': 'path must be absolute'}),
+          ]),
+        ),
+      );
+      final base = AppState.test(
+        api: state.api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      await base.setWorktreeRoot('relative');
+      expect(base.worktreeRoot, isNull);
+      expect(base.globalError, contains('absolute'));
+    });
+  });
+
   group('Files', () {
     test('openFilesPanel loads entries', () async {
       final state = AppState(
@@ -2039,84 +2148,90 @@ void main() {
       expect(base.filesScopedPath('a.txt'), 'a.txt');
     });
 
-    test('mutations stay pinned to the loaded scope during transition', () async {
-      final requests = <http.Request>[];
-      var worktree = false;
-      final state = AppState.test(
-        api: ApiService(
-          client: ApiClient.withClient(
-            MockClient((req) async {
-              requests.add(req);
-              if (req.url.path == '/api/files' && req.method == 'GET') {
-                return _json(200, []);
-              }
-              if (req.url.path == '/api/threads/t1' && req.method == 'GET') {
-                return _json(200, {
-                  'thread': {
-                    'id': 't1',
-                    'title': 't',
-                    'project_id': 1,
-                    'model': 'm',
-                    'permission_mode': 'normal',
-                    'env_mode': worktree ? 'worktree' : 'local',
-                    'worktree_path': worktree ? '/wt' : null,
-                    'created_at': '',
-                    'updated_at': '',
-                  },
-                  'messages': [],
-                });
-              }
-              if (req.url.path == '/api/threads/runs') {
-                return _json(200, {'running_ids': []});
-              }
-              if (req.url.path.endsWith('/messages')) {
-                return _json(200, {'messages': []});
-              }
-              return _json(200, req.method == 'GET' ? [] : <String, dynamic>{});
-            }),
+    test(
+      'mutations stay pinned to the loaded scope during transition',
+      () async {
+        final requests = <http.Request>[];
+        var worktree = false;
+        final state = AppState.test(
+          api: ApiService(
+            client: ApiClient.withClient(
+              MockClient((req) async {
+                requests.add(req);
+                if (req.url.path == '/api/files' && req.method == 'GET') {
+                  return _json(200, []);
+                }
+                if (req.url.path == '/api/threads/t1' && req.method == 'GET') {
+                  return _json(200, {
+                    'thread': {
+                      'id': 't1',
+                      'title': 't',
+                      'project_id': 1,
+                      'model': 'm',
+                      'permission_mode': 'normal',
+                      'env_mode': worktree ? 'worktree' : 'local',
+                      'worktree_path': worktree ? '/wt' : null,
+                      'created_at': '',
+                      'updated_at': '',
+                    },
+                    'messages': [],
+                  });
+                }
+                if (req.url.path == '/api/threads/runs') {
+                  return _json(200, {'running_ids': []});
+                }
+                if (req.url.path.endsWith('/messages')) {
+                  return _json(200, {'messages': []});
+                }
+                return _json(
+                  200,
+                  req.method == 'GET' ? [] : <String, dynamic>{},
+                );
+              }),
+            ),
           ),
-        ),
-        projects: [
-          Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
-        ],
-        activeProjectId: 1,
-        activeThreadId: 't1',
-        activeThreadDetail: ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 't',
-            projectId: 1,
-            model: 'm',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+          projects: [
+            Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+          ],
+          activeProjectId: 1,
+          activeThreadId: 't1',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 't',
+              projectId: 1,
+              model: 'm',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
           ),
-          messages: const [],
-        ),
-      );
-      await state.openFilesPanel();
-      expect(state.filesScopeKey, 'project:1');
+        );
+        await state.openFilesPanel();
+        expect(state.filesScopeKey, 'project:1');
 
-      // The thread moves into a worktree but the loaded tree is still the
-      // project scope until the panel reloads.
-      worktree = true;
-      await state.setThreadEnvMode('t1', 'worktree');
-      expect(state.activeFilesScopeKey, 'worktree:/wt');
-      expect(state.filesScopeKey, 'project:1');
+        // The thread moves into a worktree but the loaded tree is still the
+        // project scope until the panel reloads.
+        worktree = true;
+        await state.setThreadEnvMode('t1', 'worktree');
+        expect(state.activeFilesScopeKey, 'worktree:/wt');
+        expect(state.filesScopeKey, 'project:1');
 
-      await state.deleteFile('a.txt');
-      var del = requests.lastWhere((r) => r.url.path == '/api/files/delete');
-      expect(del.url.queryParameters['path'], 'a.txt');
-      expect(del.url.queryParameters['thread_id'], isNull);
+        await state.deleteFile('a.txt');
+        var del = requests.lastWhere((r) => r.url.path == '/api/files/delete');
+        expect(del.url.queryParameters['path'], 'a.txt');
+        expect(del.url.queryParameters['thread_id'], isNull);
 
-      // Once reloaded under the worktree, deletes carry the absolute path.
-      await state.reloadFiles();
-      expect(state.filesScopeKey, 'worktree:/wt');
-      await state.deleteFile('b.txt');
-      del = requests.lastWhere((r) => r.url.path == '/api/files/delete');
-      expect(del.url.queryParameters['path'], '/wt/b.txt');
-      expect(del.url.queryParameters['thread_id'], 't1');
-    });
+        // Once reloaded under the worktree, deletes carry the absolute path.
+        await state.reloadFiles();
+        expect(state.filesScopeKey, 'worktree:/wt');
+        await state.deleteFile('b.txt');
+        del = requests.lastWhere((r) => r.url.path == '/api/files/delete');
+        expect(del.url.queryParameters['path'], '/wt/b.txt');
+        expect(del.url.queryParameters['thread_id'], 't1');
+      },
+    );
 
     test('filesScopedPath joins relative paths onto the worktree', () {
       final base = AppState.test(

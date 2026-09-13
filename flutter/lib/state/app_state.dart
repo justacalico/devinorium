@@ -157,6 +157,7 @@ class AppState extends AppStateBase
     bool loadingGitConnections = false,
     TailscaleInfo? tailscaleInfo,
     String? cloneRoot,
+    String? worktreeRoot,
     bool cloningRepo = false,
     String? cloneRepoResult,
     Map<int, GitRepoInfo> gitRepoInfo = const {},
@@ -219,6 +220,7 @@ class AppState extends AppStateBase
     _loadingGitConnections = loadingGitConnections;
     _tailscaleInfo = tailscaleInfo;
     _cloneRoot = cloneRoot;
+    _worktreeRoot = worktreeRoot;
     _cloningRepo = cloningRepo;
     _cloneRepoResult = cloneRepoResult;
     _gitRepoInfo.addAll(gitRepoInfo);

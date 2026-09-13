@@ -14,24 +14,21 @@ Future<String?> showFolderPickerDialog(
   BuildContext context, {
   required ApiService api,
   String? initialPath,
+  String? title,
 }) {
   return showDialog<String>(
     context: context,
-    builder: (context) => _FolderPickerDialog(
-      api: api,
-      initialPath: initialPath,
-    ),
+    builder: (context) =>
+        _FolderPickerDialog(api: api, initialPath: initialPath, title: title),
   );
 }
 
 class _FolderPickerDialog extends StatelessWidget {
   final ApiService api;
   final String? initialPath;
+  final String? title;
 
-  const _FolderPickerDialog({
-    required this.api,
-    this.initialPath,
-  });
+  const _FolderPickerDialog({required this.api, this.initialPath, this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +44,7 @@ class _FolderPickerDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(l.cloneRoot, style: theme.textTheme.headlineSmall),
+              Text(title ?? l.cloneRoot, style: theme.textTheme.headlineSmall),
               const SizedBox(height: 16),
               Expanded(
                 child: FolderPicker(

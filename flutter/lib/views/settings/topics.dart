@@ -10,6 +10,7 @@ enum SettingsTopic {
   personalization,
   git,
   cloneRoot,
+  worktreeRoot,
   usage,
   manage,
   audit,
@@ -24,7 +25,11 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
   AppLocalizations l,
 ) {
   return [
-    (topic: SettingsTopic.account, icon: Icons.person_outline, label: l.account),
+    (
+      topic: SettingsTopic.account,
+      icon: Icons.person_outline,
+      label: l.account,
+    ),
     (
       topic: SettingsTopic.providers,
       icon: Icons.cloud_outlined,
@@ -49,7 +54,11 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
       ),
     (topic: SettingsTopic.about, icon: Icons.info_outlined, label: l.about),
     (topic: SettingsTopic.servers, icon: Icons.dns_outlined, label: l.servers),
-    (topic: SettingsTopic.usage, icon: Icons.bar_chart_outlined, label: l.usage),
+    (
+      topic: SettingsTopic.usage,
+      icon: Icons.bar_chart_outlined,
+      label: l.usage,
+    ),
     // New topics go last so existing topic positions do not shift.
     if (isOwner)
       (
@@ -57,5 +66,10 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
         icon: Icons.receipt_long_outlined,
         label: l.auditLog,
       ),
+    (
+      topic: SettingsTopic.worktreeRoot,
+      icon: Icons.account_tree_outlined,
+      label: l.worktreeRoot,
+    ),
   ];
 }

@@ -1273,6 +1273,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cloneRootOnlyOwner => 'Only the owner can change the clone root.';
 
   @override
+  String get worktreeRoot => 'Worktree root';
+
+  @override
+  String get worktreeRootDescription =>
+      'Parent directory where worktrees are created. Defaults to the home directory.';
+
+  @override
+  String get worktreeRootNotSet => 'Not set yet';
+
+  @override
+  String get worktreeRootSave => 'Save';
+
+  @override
+  String get worktreeRootBrowse => 'Browse...';
+
+  @override
+  String get worktreeRootOnlyOwner =>
+      'Only the owner can change the worktree root.';
+
+  @override
   String get search => 'Search';
 
   @override
