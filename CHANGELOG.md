@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.73.0 - 2026-09-13
+#### Features
+- 添加 AUR 自动发布 - (c369ae0) - HttpAnimations
+- 消息列表显示登录用户名并用提供商图标作头像 - (4bf16d1) - HttpAnimations
+
+- - -
+
 ## v0.72.1 - 2026-09-13
 #### Bug Fixes
 - 避免菜单关闭回调中注册多余的焦点依赖 - (2487ccf) - HttpAnimations
