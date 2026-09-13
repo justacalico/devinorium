@@ -5,7 +5,6 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/app_view.dart';
-import 'package:devinorium_frontend/views/files_panel.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -291,8 +290,8 @@ void main() {
       await tester.pumpWidget(_shell(state));
       await tester.pumpAndSettle();
 
-      expect(_sidebarSize(tester).width, 64);
-      expect(find.text('My thread'), findsNothing);
+      expect(_sidebarSize(tester).width, 128);
+      expect(find.text('My thread'), findsOneWidget);
       expect(find.byKey(const Key('rail_project_1')), findsOneWidget);
       expect(find.byKey(const Key('sidebar_compact_toggle')), findsOneWidget);
     });
@@ -316,8 +315,37 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(state.sidebarCompact, isTrue);
-      expect(_sidebarSize(tester).width, 64);
-      expect(find.text('My thread'), findsNothing);
+      expect(_sidebarSize(tester).width, 128);
+      expect(find.text('My thread'), findsOneWidget);
+    });
+
+    testWidgets('collapse and expand animate the width', (tester) async {
+      final state = _state();
+      addTearDown(state.dispose);
+      await tester.pumpWidget(_shell(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('sidebar_compact_toggle')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final mid = _sidebarSize(tester).width;
+      expect(mid, greaterThan(128));
+      expect(mid, lessThan(300));
+
+      await tester.pumpAndSettle();
+      expect(_sidebarSize(tester).width, 128);
+
+      await tester.tap(find.byKey(const Key('sidebar_compact_toggle')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final midUp = _sidebarSize(tester).width;
+      expect(midUp, greaterThan(128));
+      expect(midUp, lessThan(300));
+
+      await tester.pumpAndSettle();
+      expect(_sidebarSize(tester).width, 300);
     });
 
     testWidgets('Ctrl+B toggles the rail on wide layouts', (tester) async {
@@ -333,7 +361,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(state.sidebarCompact, isTrue);
-      expect(_sidebarSize(tester).width, 64);
+      expect(_sidebarSize(tester).width, 128);
 
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.keyB);
@@ -385,7 +413,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(state.sidebarCompact, isTrue);
-      expect(_sidebarSize(tester).width, 64);
+      expect(_sidebarSize(tester).width, 128);
 
       await tester.pumpWidget(_shell(state, size: const Size(1200, 800)));
       await tester.pumpAndSettle();
@@ -412,7 +440,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(state.sidebarCompact, isTrue);
-      expect(_sidebarSize(tester).width, 64);
+      expect(_sidebarSize(tester).width, 128);
 
       // A small pull past the touch slop stays below the expand threshold.
       await tester.drag(
@@ -455,16 +483,22 @@ void main() {
     testWidgets('project icon opens a flyout with its threads', (tester) async {
       final state = _state(sidebarCompact: true);
       addTearDown(state.dispose);
-      await tester.pumpWidget(_sidebarAt(state, 64));
+      await tester.pumpWidget(_sidebarAt(state, 128));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('rail_project_1')));
       await tester.pumpAndSettle();
 
-      expect(find.text('My thread'), findsOneWidget);
+      // The title shows inline in the rail and again in the flyout.
+      expect(find.text('My thread'), findsNWidgets(2));
       expect(find.text('New thread in p'), findsOneWidget);
 
-      await tester.tap(find.text('My thread'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(MenuItemButton),
+          matching: find.text('My thread'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(state.activeThreadId, 'a');
     });
@@ -490,24 +524,22 @@ void main() {
       expect(field.focusNode.hasFocus, isTrue);
     });
 
-    testWidgets('files icon expands and opens the files panel', (tester) async {
+    testWidgets('rail hides mode and panel buttons, lists threads inline', (
+      tester,
+    ) async {
       final state = _state(sidebarCompact: true);
       addTearDown(state.dispose);
-      await tester.pumpWidget(_shell(state));
+      await tester.pumpWidget(_sidebarAt(state, 128));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Files'));
-      await tester.pumpAndSettle();
+      for (final tooltip in ['Agents', 'Editor', 'Chat', 'Files', 'Git']) {
+        expect(find.byTooltip(tooltip), findsNothing);
+      }
+      expect(find.byKey(const Key('rail_thread_a')), findsOneWidget);
 
-      expect(state.filesPanelOpen, isTrue);
-      expect(state.sidebarCompact, isFalse);
-      expect(
-        find.descendant(
-          of: find.byType(Sidebar),
-          matching: find.byType(FilesPanel),
-        ),
-        findsOneWidget,
-      );
+      await tester.tap(find.byKey(const Key('rail_thread_a')));
+      await tester.pumpAndSettle();
+      expect(state.activeThreadId, 'a');
     });
 
     testWidgets('settings page keeps icon navigation in the rail', (
@@ -516,7 +548,7 @@ void main() {
       final state = _state(sidebarCompact: true);
       addTearDown(state.dispose);
       state.setPage(MainPage.settings);
-      await tester.pumpWidget(_sidebarAt(state, 64));
+      await tester.pumpWidget(_sidebarAt(state, 128));
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('Account'), findsOneWidget);
@@ -532,7 +564,7 @@ void main() {
     ) async {
       final state = _state(sidebarCompact: true);
       addTearDown(state.dispose);
-      await tester.pumpWidget(_sidebarAt(state, 64));
+      await tester.pumpWidget(_sidebarAt(state, 128));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('rail_project_1')));
@@ -547,7 +579,7 @@ void main() {
     ) async {
       final state = _state(sidebarCompact: true);
       addTearDown(state.dispose);
-      await tester.pumpWidget(_sidebarAt(state, 64));
+      await tester.pumpWidget(_sidebarAt(state, 128));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('rail_running_1')), findsNothing);
@@ -561,7 +593,7 @@ void main() {
     testWidgets('user avatar opens the user menu', (tester) async {
       final state = _state(sidebarCompact: true);
       addTearDown(state.dispose);
-      await tester.pumpWidget(_sidebarAt(state, 64));
+      await tester.pumpWidget(_sidebarAt(state, 128));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('rail_user_menu')));

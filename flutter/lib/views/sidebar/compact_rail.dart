@@ -52,9 +52,6 @@ class _CompactRailState extends State<_CompactRail> {
       AppState,
       ({
         MainPage page,
-        AppMode appMode,
-        bool filesPanelOpen,
-        bool gitPanelOpen,
         User? user,
         bool hasServer,
         bool localActive,
@@ -72,9 +69,6 @@ class _CompactRailState extends State<_CompactRail> {
     >(
       selector: (_, s) => (
         page: s.page,
-        appMode: s.appMode,
-        filesPanelOpen: s.filesPanelOpen,
-        gitPanelOpen: s.gitPanelOpen,
         user: s.user,
         hasServer: s.multiServerState.hasAnyServer,
         localActive: s.multiServerState.activeProfile?.isLocal ?? false,
@@ -91,8 +85,6 @@ class _CompactRailState extends State<_CompactRail> {
       ),
       builder: (context, model, _) {
         final isSettings = model.page == MainPage.settings;
-        final filesOpen = !isSettings && model.filesPanelOpen;
-        final gitOpen = !isSettings && model.gitPanelOpen;
 
         // The expanded list applies the group filter; the rail shows the
         // same projects.
@@ -112,7 +104,8 @@ class _CompactRailState extends State<_CompactRail> {
         for (final list in threadsByProject.values) {
           list.sort((a, b) {
             if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-            return b.updatedAt.compareTo(a.updatedAt);
+            final byUpdated = b.updatedAt.compareTo(a.updatedAt);
+            return byUpdated != 0 ? byUpdated : b.id.compareTo(a.id);
           });
         }
 
@@ -158,20 +151,6 @@ class _CompactRailState extends State<_CompactRail> {
                 ),
               ),
             ),
-            if (!isSettings) ...[
-              _ActivityIcon(
-                icon: Icons.smart_toy_outlined,
-                tooltip: l.agentsMode,
-                active: model.appMode == AppMode.agents,
-                onPressed: () => state.setAppMode(AppMode.agents),
-              ),
-              _ActivityIcon(
-                icon: Icons.code,
-                tooltip: l.editorMode,
-                active: model.appMode == AppMode.editor,
-                onPressed: () => state.setAppMode(AppMode.editor),
-              ),
-            ],
             const _ServerSwitcher(compact: true),
             if (!isSettings) ...[
               _ActivityIcon(
@@ -206,21 +185,13 @@ class _CompactRailState extends State<_CompactRail> {
                             ),
                           ),
                         for (final p in projects)
-                          Center(
-                            child: _RailProject(
-                              key: Key('rail_project_${p.id}'),
-                              project: p,
-                              threads: threadsByProject[p.id] ?? const [],
-                              active: p.id == model.activeProjectId,
-                              activeThreadId: model.activeThreadId,
-                              hasRunning:
-                                  (threadsByProject[p.id] ?? const <Thread>[])
-                                      .any(
-                                        (t) => model.runningThreadIds.contains(
-                                          t.id,
-                                        ),
-                                      ),
-                            ),
+                          _RailProjectGroup(
+                            key: Key('rail_project_${p.id}'),
+                            project: p,
+                            threads: threadsByProject[p.id] ?? const [],
+                            active: p.id == model.activeProjectId,
+                            activeThreadId: model.activeThreadId,
+                            runningThreadIds: model.runningThreadIds,
                           ),
                         if (model.hasMoreProjects)
                           _ActivityIcon(
@@ -253,28 +224,6 @@ class _CompactRailState extends State<_CompactRail> {
                 isLocal: model.localActive,
               ),
             _ActivityIcon(
-              icon: Icons.chat_bubble_outline,
-              tooltip: l.chat,
-              active: !isSettings && !filesOpen && !gitOpen,
-              onPressed: () {
-                state.closeFilesPanel();
-                state.closeGitPanel();
-                state.setPage(MainPage.threads);
-              },
-            ),
-            _ActivityIcon(
-              icon: Icons.folder_outlined,
-              tooltip: l.files,
-              active: filesOpen,
-              onPressed: () => unawaited(state.openFilesPanel()),
-            ),
-            _ActivityIcon(
-              icon: Icons.account_tree_outlined,
-              tooltip: l.git,
-              active: gitOpen,
-              onPressed: () => unawaited(state.openGitPanel()),
-            ),
-            _ActivityIcon(
               icon: Icons.settings_outlined,
               tooltip: l.settings,
               active: isSettings,
@@ -295,6 +244,49 @@ class _CompactRailState extends State<_CompactRail> {
   }
 }
 
+/// One project in the rail: a header row (icon + name) that opens the
+/// thread flyout, followed by a mini list of its threads.
+class _RailProjectGroup extends StatelessWidget {
+  final Project project;
+  final List<Thread> threads;
+  final bool active;
+  final String? activeThreadId;
+  final Set<String> runningThreadIds;
+
+  /// Threads past this count stay reachable through the project's flyout.
+  static const int _maxInlineThreads = 5;
+
+  const _RailProjectGroup({
+    super.key,
+    required this.project,
+    required this.threads,
+    required this.active,
+    required this.activeThreadId,
+    required this.runningThreadIds,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _RailProject(
+          project: project,
+          threads: threads,
+          active: active,
+          activeThreadId: activeThreadId,
+          hasRunning: threads.any((t) => runningThreadIds.contains(t.id)),
+        ),
+        for (final t in threads.take(_maxInlineThreads))
+          _RailThread(
+            key: Key('rail_thread_${t.id}'),
+            thread: t,
+            active: t.id == activeThreadId,
+          ),
+      ],
+    );
+  }
+}
+
 class _RailProject extends StatelessWidget {
   final Project project;
   final List<Thread> threads;
@@ -307,7 +299,6 @@ class _RailProject extends StatelessWidget {
   static const int _maxMenuThreads = 8;
 
   const _RailProject({
-    super.key,
     required this.project,
     required this.threads,
     required this.active,
@@ -395,45 +386,140 @@ class _RailProject extends StatelessWidget {
                 }
               },
               child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Stack(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                child: Row(
                   children: [
-                    Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(8),
-                        border: project.pinned
-                            ? Border(
-                                left: BorderSide(
-                                  color: theme.colorScheme.primary,
-                                  width: 3,
-                                ),
-                              )
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: _ProjectIcon(project: project, color: color),
-                    ),
-                    if (hasRunning)
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Container(
-                          key: Key('rail_running_${project.id}'),
-                          width: 9,
-                          height: 9,
+                    Stack(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: theme.colorScheme.surfaceContainerLowest,
-                              width: 2,
+                            color: color,
+                            borderRadius: BorderRadius.circular(8),
+                            border: project.pinned
+                                ? Border(
+                                    left: BorderSide(
+                                      color: theme.colorScheme.primary,
+                                      width: 3,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: _ProjectIcon(project: project, color: color),
+                        ),
+                        if (hasRunning)
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Container(
+                              key: Key('rail_running_${project.id}'),
+                              width: 9,
+                              height: 9,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color:
+                                      theme.colorScheme.surfaceContainerLowest,
+                                  width: 2,
+                                ),
+                              ),
                             ),
                           ),
+                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        project.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: active
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A single thread row in the rail: provider icon, truncated title and a
+/// status dot. Tapping opens the thread.
+class _RailThread extends StatelessWidget {
+  final Thread thread;
+  final bool active;
+
+  const _RailThread({super.key, required this.thread, required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = context.read<AppState>();
+
+    // Re-derive the status per row like _ThreadTile does: the rail's
+    // Selector record omits the inputs _threadStatus reads for the
+    // active thread (sending, pending requests, run status), so without
+    // this the dot would freeze on stale states.
+    return Selector<AppState, ({Color? dotColor, String? dotLabel})>(
+      selector: (_, s) {
+        final status = _threadStatus(context, s, thread);
+        return (dotColor: status?.color, dotLabel: status?.label);
+      },
+      builder: (context, model, _) {
+        return Tooltip(
+          message: thread.title,
+          child: Material(
+            color: active
+                ? theme.colorScheme.surfaceContainerHigh
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => state.openThread(thread.id),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 5, 10, 5),
+                child: Row(
+                  children: [
+                    ProviderIcon(
+                      providerId: thread.providerId,
+                      size: 14,
+                      semanticLabel: providerName(thread.providerId),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        thread.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: active
+                              ? theme.colorScheme.onSurface
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    if (model.dotColor != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: model.dotColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -500,28 +586,36 @@ class _RailThreadStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = _threadStatus(context, context.read<AppState>(), thread);
-    if (status == null && !active) return const SizedBox.shrink();
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (status != null)
-          Tooltip(
-            message: status.label,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: status.color,
-                shape: BoxShape.circle,
+    return Selector<AppState, ({Color? dotColor, String? dotLabel})>(
+      selector: (_, s) {
+        final status = _threadStatus(context, s, thread);
+        return (dotColor: status?.color, dotLabel: status?.label);
+      },
+      builder: (context, model, _) {
+        final hasDot = model.dotColor != null && model.dotLabel != null;
+        if (!hasDot && !active) return const SizedBox.shrink();
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasDot)
+              Tooltip(
+                message: model.dotLabel!,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: model.dotColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
               ),
-            ),
-          ),
-        if (active) ...[
-          if (status != null) const SizedBox(width: 4),
-          const Icon(Icons.check, size: 16),
-        ],
-      ],
+            if (active) ...[
+              if (hasDot) const SizedBox(width: 4),
+              const Icon(Icons.check, size: 16),
+            ],
+          ],
+        );
+      },
     );
   }
 }

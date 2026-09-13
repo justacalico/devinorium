@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +45,15 @@ const double kWideLayoutMinWidth = 768;
 
 /// Sidebar widths at or below this render as the compact icon rail.
 const double kCompactRailMaxWidth = 160;
+
+/// Fixed width of the compact rail: wide enough for a project row plus a
+/// mini thread list under it.
+const double kCompactRailWidth = 128;
+
+/// Smallest width the expanded sidebar can take. The collapse animation
+/// pins the full content to at least this width so rows slide under the
+/// clip instead of squishing and overflowing mid-flight.
+const double kSidebarMinWidth = 240;
 
 Color _projectColor(String name) {
   final colors = [
@@ -243,8 +253,20 @@ class _SidebarState extends State<Sidebar> {
       return;
     }
     appState.expandSidebar();
+    _focusSearchWhenAttached();
+  }
+
+  /// The expand animation keeps the rail on screen for the first few
+  /// frames, so the field is not attached yet when the first post-frame
+  /// callback runs. Retry each frame until it mounts or gives up.
+  void _focusSearchWhenAttached([int attempts = 0]) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _searchFocus.requestFocus();
+      if (!mounted) return;
+      if (_searchFocus.context != null) {
+        _searchFocus.requestFocus();
+        return;
+      }
+      if (attempts < 30) _focusSearchWhenAttached(attempts + 1);
     });
   }
 
@@ -254,86 +276,115 @@ class _SidebarState extends State<Sidebar> {
 
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Rail mode only exists in the fixed wide layout. The slide-over
-          // sidebar on narrow screens always shows the regular list, even
-          // if the overlay itself ever shrinks below the rail width.
-          _railMode =
-              constraints.maxWidth <= kCompactRailMaxWidth &&
-              MediaQuery.sizeOf(context).width >= kWideLayoutMinWidth;
-          if (_railMode) {
-            return _CompactRail(onRevealSearch: _expandAndFocusSearch);
-          }
-          return Selector<
-            AppState,
-            ({
-              MainPage page,
-              bool filesPanelOpen,
-              bool gitPanelOpen,
-              User? user,
-              bool hasServer,
-              bool localActive,
-            })
-          >(
-            selector: (_, state) => (
-              page: state.page,
-              filesPanelOpen: state.filesPanelOpen,
-              gitPanelOpen: state.gitPanelOpen,
-              user: state.user,
-              hasServer: state.multiServerState.hasAnyServer,
-              localActive:
-                  state.multiServerState.activeProfile?.isLocal ?? false,
-            ),
-            builder: (context, model, _) {
-              final user = model.user;
-              final username = user?.username ?? '';
-              final avatar = username.isNotEmpty
-                  ? username[0].toUpperCase()
-                  : '?';
-              final isSettings = model.page == MainPage.settings;
-              final filesOpen = !isSettings && model.filesPanelOpen;
-              final gitOpen = !isSettings && model.gitPanelOpen;
+      child: ClipRect(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Rail mode only exists in the fixed wide layout. The
+            // slide-over sidebar on narrow screens always shows the
+            // regular list, even if the overlay itself ever shrinks
+            // below the rail width.
+            _railMode =
+                constraints.maxWidth <= kCompactRailMaxWidth &&
+                MediaQuery.sizeOf(context).width >= kWideLayoutMinWidth;
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // The active branch is laid out at its natural width and left
+            // aligned: while the outer width animates it slides under the
+            // clip edge instead of relayout at widths that would overflow
+            // its rows.
+            final width = _railMode
+                ? kCompactRailWidth
+                : math.max(constraints.maxWidth, kSidebarMinWidth);
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 150),
+              // The fading child must not take taps meant for the
+              // incoming one.
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.centerLeft,
                 children: [
-                  if (!isSettings) const _AppTitle(),
-                  if (isSettings) const _SettingsHeader(),
-                  if (!isSettings) const _ModeSwitch(),
-                  const _ServerSwitcher(),
-                  if (!isSettings && !filesOpen && !gitOpen) ...[
-                    _SearchField(
-                      controller: _searchController,
-                      focusNode: _searchFocus,
-                    ),
-                    const _GroupFilter(),
-                    _ProjectsHeader(),
-                  ],
-                  Expanded(
-                    child: isSettings
-                        ? const _SettingsNav()
-                        : gitOpen
-                        ? const GitPanel()
-                        : filesOpen
-                        ? const FilesPanel()
-                        : _ProjectThreadList(
-                            searchQuery: _searchController.text,
-                          ),
-                  ),
-                  if (model.hasServer)
-                    _UserChip(
-                      username: username,
-                      avatar: avatar,
-                      isLocal: model.localActive,
-                    ),
-                  const _ActivityBar(),
+                  for (final child in previous) IgnorePointer(child: child),
+                  ?current,
                 ],
-              );
-            },
-          );
-        },
+              ),
+              child: OverflowBox(
+                key: ValueKey<bool>(_railMode),
+                alignment: Alignment.centerLeft,
+                minWidth: width,
+                maxWidth: width,
+                minHeight: constraints.maxHeight,
+                maxHeight: constraints.maxHeight,
+                child: _railMode
+                    ? _CompactRail(onRevealSearch: _expandAndFocusSearch)
+                    : _fullContent(),
+              ),
+            );
+          },
+        ),
       ),
+    );
+  }
+
+  Widget _fullContent() {
+    return Selector<
+      AppState,
+      ({
+        MainPage page,
+        bool filesPanelOpen,
+        bool gitPanelOpen,
+        User? user,
+        bool hasServer,
+        bool localActive,
+      })
+    >(
+      selector: (_, state) => (
+        page: state.page,
+        filesPanelOpen: state.filesPanelOpen,
+        gitPanelOpen: state.gitPanelOpen,
+        user: state.user,
+        hasServer: state.multiServerState.hasAnyServer,
+        localActive: state.multiServerState.activeProfile?.isLocal ?? false,
+      ),
+      builder: (context, model, _) {
+        final user = model.user;
+        final username = user?.username ?? '';
+        final avatar = username.isNotEmpty ? username[0].toUpperCase() : '?';
+        final isSettings = model.page == MainPage.settings;
+        final filesOpen = !isSettings && model.filesPanelOpen;
+        final gitOpen = !isSettings && model.gitPanelOpen;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isSettings) const _AppTitle(),
+            if (isSettings) const _SettingsHeader(),
+            if (!isSettings) const _ModeSwitch(),
+            const _ServerSwitcher(),
+            if (!isSettings && !filesOpen && !gitOpen) ...[
+              _SearchField(
+                controller: _searchController,
+                focusNode: _searchFocus,
+              ),
+              const _GroupFilter(),
+              _ProjectsHeader(),
+            ],
+            Expanded(
+              child: isSettings
+                  ? const _SettingsNav()
+                  : gitOpen
+                  ? const GitPanel()
+                  : filesOpen
+                  ? const FilesPanel()
+                  : _ProjectThreadList(searchQuery: _searchController.text),
+            ),
+            if (model.hasServer)
+              _UserChip(
+                username: username,
+                avatar: avatar,
+                isLocal: model.localActive,
+              ),
+            const _ActivityBar(),
+          ],
+        );
+      },
     );
   }
 }

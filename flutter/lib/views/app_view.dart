@@ -25,17 +25,18 @@ class _AppShellState extends State<AppShell> {
   bool _wasSidePanelOpen = false;
   bool _wasSidebarOpen = false;
   bool _autoNarrow = false;
+  bool _sidebarDragging = false;
+  bool _wasCompact = false;
   double _sidebarWidth = 300;
   double _preDragWidth = 300;
   double _edgeDragDx = 0;
   double _panelDragDx = 0;
   double _dragOvershoot = 0;
 
-  static const double _minSidebarWidth = 240;
   static const double _maxSidebarWidth = 420;
   static const double _overlayWidth = 300;
-  static const double _compactSidebarWidth = 64;
   static const double _autoCollapseWindowWidth = 880;
+  static const Duration _sidebarAnimDuration = Duration(milliseconds: 200);
 
   /// Re-engagement gap: once collapsed, the window must grow past this
   /// before the auto-collapse can trigger again, so hovering near the
@@ -189,17 +190,30 @@ class _AppShellState extends State<AppShell> {
           });
         }
 
+        // Resize drags track the pointer 1:1; only mode flips ease,
+        // including the snap a drag itself triggers.
+        final animateWidth = !_sidebarDragging || _wasCompact != model.compact;
+        _wasCompact = model.compact;
+
         return Scaffold(
           body: Row(
             children: [
-              SizedBox(
-                width: model.compact ? _compactSidebarWidth : _sidebarWidth,
+              AnimatedContainer(
+                duration: animateWidth ? _sidebarAnimDuration : Duration.zero,
+                curve: Curves.easeOutCubic,
+                width: model.compact ? kCompactRailWidth : _sidebarWidth,
                 child: const Sidebar(),
               ),
               _ResizeHandle(
-                onDragStart: () => _preDragWidth = _sidebarWidth,
-                onDrag: (delta) => _onSidebarDrag(state, model.compact, delta),
-                onDragEnd: () => _dragOvershoot = 0,
+                onDragStart: () {
+                  _preDragWidth = _sidebarWidth;
+                  _sidebarDragging = true;
+                },
+                onDrag: (delta) => _onSidebarDrag(state, delta),
+                onDragEnd: () {
+                  _dragOvershoot = 0;
+                  _sidebarDragging = false;
+                },
                 onDoubleTap: state.toggleSidebarCompact,
               ),
               Expanded(child: main),
@@ -212,8 +226,10 @@ class _AppShellState extends State<AppShell> {
 
   /// Dragging past the minimum width snaps the sidebar into the rail;
   /// pulling right from the rail expands it back to the pre-drag width.
-  void _onSidebarDrag(AppState state, bool compact, double delta) {
-    if (compact) {
+  /// The compact state is read live rather than passed in, since the
+  /// gesture can outlive the build it started in.
+  void _onSidebarDrag(AppState state, double delta) {
+    if (state.sidebarCompact) {
       _dragOvershoot = math.max(0.0, _dragOvershoot + delta);
       if (_dragOvershoot >= _expandDragThreshold) {
         _dragOvershoot = 0;
@@ -222,8 +238,8 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     final next = _sidebarWidth + delta;
-    if (next < _minSidebarWidth) {
-      _dragOvershoot += _minSidebarWidth - next;
+    if (next < kSidebarMinWidth) {
+      _dragOvershoot += kSidebarMinWidth - next;
       if (_dragOvershoot >= _collapseOvershoot) {
         _dragOvershoot = 0;
         state.setSidebarCompact(true);
@@ -236,7 +252,7 @@ class _AppShellState extends State<AppShell> {
     } else {
       _dragOvershoot = 0;
       setState(() {
-        _sidebarWidth = next.clamp(_minSidebarWidth, _maxSidebarWidth);
+        _sidebarWidth = next.clamp(kSidebarMinWidth, _maxSidebarWidth);
       });
     }
   }
