@@ -212,6 +212,8 @@ Future<void> _openDrawer(WidgetTester tester) async {
 
 // The states carried by the tile's own ink well: hovered, focused, pressed.
 Set<WidgetState> _tileInkStates(WidgetTester tester, Finder tile) {
+  // The tile's own InkWell is visited first in depth-first order, before
+  // the ink responses of buttons nested inside the tile.
   final ink = find.descendant(
     of: tile,
     matching: find.byWidgetPredicate(

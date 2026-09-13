@@ -74,7 +74,7 @@ bool _isDesktop(BuildContext context) {
 /// Parking focus on the enclosing scope forces the missed notification.
 void _clearMenuFocus(BuildContext context) {
   if (!context.mounted) return;
-  FocusScope.of(context).requestScopeFocus();
+  FocusScope.of(context, createDependency: false).requestScopeFocus();
 }
 
 String _timeAgo(String iso, AppLocalizations l) {
