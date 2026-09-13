@@ -93,6 +93,8 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       String? activeThreadId,
       bool hasMoreProjects,
       bool isLoadingMoreProjects,
+      int? selectedGroupId,
+      List<ProjectGroup> groups,
     })>(
       selector: (_, s) => (
         projects: s.projects,
@@ -100,13 +102,25 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
         activeThreadId: s.activeThreadId,
         hasMoreProjects: s.hasMoreProjects,
         isLoadingMoreProjects: s.isLoadingMoreProjects,
+        selectedGroupId: s.selectedProjectGroupId,
+        groups: s.projectGroups,
       ),
       builder: (context, model, _) {
-        final projects = model.projects;
+        // A selection that no longer exists (deleted by another session)
+        // falls back to showing every project.
+        final groupId = model.groups.any((g) => g.id == model.selectedGroupId)
+            ? model.selectedGroupId
+            : null;
+        final projects = groupId == null
+            ? model.projects
+            : model.projects.where((p) => p.groupId == groupId).toList();
         final threads = model.threads;
         final activeThreadId = model.activeThreadId;
 
         if (projects.isEmpty) {
+          if (groupId != null) {
+            return _EmptyGroup(message: l10n(context).groupEmpty);
+          }
           return const _NoProjects();
         }
 
@@ -166,7 +180,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                     },
                     onThreadTap: (id) => state.openThread(id),
                     onShowMore: () => _onShowMore(p.id),
-                    reorderEnabled: query.isEmpty,
+                    reorderEnabled: query.isEmpty && groupId == null,
                   );
                 },
               ),
@@ -244,7 +258,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   void _onReorder(int oldIndex, int newIndex) {
     final state = context.read<AppState>();
     final query = widget.searchQuery.trim().toLowerCase();
-    if (query.isNotEmpty) return;
+    if (query.isNotEmpty || state.selectedProjectGroupId != null) return;
 
     final ids = state.projects.map((p) => p.id).toList();
     final moved = ids.removeAt(oldIndex);
@@ -277,6 +291,28 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       if (t.id == threadId) return t.projectId;
     }
     return null;
+  }
+}
+
+class _EmptyGroup extends StatelessWidget {
+  final String message;
+
+  const _EmptyGroup({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ),
+    );
   }
 }
 

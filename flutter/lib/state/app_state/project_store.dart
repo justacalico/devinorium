@@ -34,6 +34,10 @@ mixin ProjectStore on AppStateBase {
       _projectsOffset = 0;
       _projectsHasMore = false;
     }
+    // Older servers have no project-groups endpoint; keep the project list
+    // working and leave the filter empty.
+    await loadProjectGroups();
+    notifyListeners();
   }
   @override
   Future<void> loadMoreProjects() async {
@@ -106,6 +110,11 @@ mixin ProjectStore on AppStateBase {
     try {
       final p = await api.createProject(name: name, path: path);
       _projects = [..._projects, p];
+      // A project created while a group filter is active joins that group,
+      // otherwise it would be invisible in the sidebar.
+      if (_selectedProjectGroupId != null) {
+        await setProjectGroup(p.id, _selectedProjectGroupId);
+      }
       closeAllEditorTabs();
       _activeProjectId = p.id;
       _setActiveStore(null);

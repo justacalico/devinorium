@@ -290,6 +290,55 @@ class _ProjectOptionsMenu extends StatelessWidget {
           onPressed: () =>
               state.pinProject(project.id, !project.pinned),
         ),
+        Selector<AppState, ({List<ProjectGroup> groups, bool unsupported})>(
+          selector: (_, s) => (
+            groups: s.projectGroups,
+            unsupported: s.projectGroupsUnsupported,
+          ),
+          builder: (context, model, _) {
+            if (model.unsupported) {
+              return const SizedBox.shrink();
+            }
+            final groups = model.groups;
+            return SubmenuButton(
+              leadingIcon: Icon(Icons.folder_outlined,
+                  size: 18, color: theme.colorScheme.onSurface),
+              menuChildren: [
+                MenuItemButton(
+                  trailingIcon: project.groupId == null
+                      ? const Icon(Icons.check, size: 18)
+                      : null,
+                  onPressed: project.groupId == null
+                      ? null
+                      : () => state.setProjectGroup(project.id, null),
+                  child: Text(l.noGroup),
+                ),
+                for (final g in groups)
+                  MenuItemButton(
+                    trailingIcon: project.groupId == g.id
+                        ? const Icon(Icons.check, size: 18)
+                        : null,
+                    onPressed: project.groupId == g.id
+                        ? null
+                        : () => state.setProjectGroup(project.id, g.id),
+                    child: Text(
+                      g.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                const Divider(height: 1),
+                MenuItemButton(
+                  leadingIcon: const Icon(Icons.add, size: 18),
+                  onPressed: () =>
+                      state.openNewProjectGroupDialog(projectId: project.id),
+                  child: Text(l.newGroup),
+                ),
+              ],
+              child: Text(l.projectGroupMenu),
+            );
+          },
+        ),
         MenuItemButton(
           leadingIcon: Icon(Icons.edit_outlined,
               size: 18, color: theme.colorScheme.onSurface),

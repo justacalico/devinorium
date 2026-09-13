@@ -554,6 +554,78 @@ abstract class AppLocalizations {
   /// **'Projects'**
   String get projects;
 
+  /// Project groups feature label
+  ///
+  /// In en, this message translates to:
+  /// **'Groups'**
+  String get groups;
+
+  /// Default sidebar group filter showing every project
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get groupFilterAll;
+
+  /// No description provided for @newGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'New group'**
+  String get newGroup;
+
+  /// No description provided for @manageGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage groups'**
+  String get manageGroups;
+
+  /// No description provided for @groupNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Group name'**
+  String get groupNameHint;
+
+  /// No description provided for @renameGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename group'**
+  String get renameGroup;
+
+  /// No description provided for @deleteGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete group'**
+  String get deleteGroup;
+
+  /// No description provided for @deleteGroupConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete group \"{name}\"? Its projects stay in the list, ungrouped.'**
+  String deleteGroupConfirm(String name);
+
+  /// Menu item that removes a project from its group
+  ///
+  /// In en, this message translates to:
+  /// **'No group'**
+  String get noGroup;
+
+  /// No description provided for @groupEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No projects in this group.'**
+  String get groupEmpty;
+
+  /// Submenu label for assigning a project to a group
+  ///
+  /// In en, this message translates to:
+  /// **'Group'**
+  String get projectGroupMenu;
+
+  /// No description provided for @groupProjectsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 project} other{{count} projects}}'**
+  String groupProjectsCount(int count);
+
   /// No description provided for @language.
   ///
   /// In en, this message translates to:

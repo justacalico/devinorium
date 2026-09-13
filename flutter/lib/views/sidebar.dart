@@ -25,6 +25,7 @@ import 'settings/topics.dart';
 import 'window_controls.dart';
 
 part 'sidebar/project_thread_list.dart';
+part 'sidebar/group_filter.dart';
 part 'sidebar/project_icon.dart';
 part 'sidebar/project_expandable_tile.dart';
 part 'sidebar/connection_status_icon.dart';
@@ -233,6 +234,7 @@ class _SidebarState extends State<Sidebar> {
                       controller: _searchController,
                       focusNode: _searchFocus,
                     ),
+                    const _GroupFilter(),
                     _ProjectsHeader(),
                   ],
                   Expanded(

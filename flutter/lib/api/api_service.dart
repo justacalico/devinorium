@@ -396,6 +396,14 @@ class ApiService {
     return Project.fromJson(j);
   }
 
+  /// Assign a project to a group; `null` ungroups it.
+  Future<Project> setProjectGroup(int id, int? groupId) async {
+    final j = await _client.patch('/api/projects/$id/group', {
+      'group_id': groupId,
+    });
+    return Project.fromJson(j);
+  }
+
   Future<List<Thread>> listThreadsForProject(
     int id, {
     int? limit,
@@ -619,6 +627,38 @@ class ApiService {
 
   Future<void> deleteThreadGroup(int id) async {
     await _client.delete('/api/thread-groups/$id');
+  }
+
+  // ---- Project Groups ----
+
+  Future<List<ProjectGroup>> listProjectGroups({
+    int? limit,
+    int? offset,
+  }) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    if (offset != null && offset > 0) params['offset'] = offset.toString();
+    final uri = _buildPath('/api/project-groups', params);
+    final list = await _client.getList(uri);
+    return list.map(ProjectGroup.fromJson).toList();
+  }
+
+  Future<ProjectGroup> createProjectGroup({
+    required String name,
+    List<int>? projectIds,
+  }) async {
+    final body = <String, dynamic>{'name': name.trim()};
+    if (projectIds != null) body['project_ids'] = projectIds;
+    final j = await _client.post('/api/project-groups', body);
+    return ProjectGroup.fromJson(j);
+  }
+
+  Future<void> renameProjectGroup(int id, String name) async {
+    await _client.patch('/api/project-groups/$id', {'name': name.trim()});
+  }
+
+  Future<void> deleteProjectGroup(int id) async {
+    await _client.delete('/api/project-groups/$id');
   }
 
   // ---- Models ----

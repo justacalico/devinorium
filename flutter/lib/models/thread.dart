@@ -19,6 +19,7 @@ class Project {
   final bool isRepo;
   final String gitBranch;
   final String projectType;
+  final int? groupId;
   final String createdAt;
   final String updatedAt;
 
@@ -31,6 +32,7 @@ class Project {
     this.isRepo = false,
     this.gitBranch = '',
     this.projectType = 'generic',
+    this.groupId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -44,6 +46,7 @@ class Project {
     isRepo: j['is_repo'] as bool? ?? false,
     gitBranch: j['branch'] as String? ?? '',
     projectType: j['project_type'] as String? ?? 'generic',
+    groupId: (j['group_id'] as num?)?.toInt(),
     createdAt: j['created_at'] as String? ?? '',
     updatedAt: j['updated_at'] as String? ?? '',
   );
@@ -57,6 +60,7 @@ class Project {
     bool? isRepo,
     String? gitBranch,
     String? projectType,
+    Object? groupId = _unset,
     String? createdAt,
     String? updatedAt,
   }) => Project(
@@ -68,6 +72,7 @@ class Project {
     isRepo: isRepo ?? this.isRepo,
     gitBranch: gitBranch ?? this.gitBranch,
     projectType: projectType ?? this.projectType,
+    groupId: groupId is _Unset ? this.groupId : (groupId as int?),
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -84,6 +89,7 @@ class Project {
         isRepo == other.isRepo &&
         gitBranch == other.gitBranch &&
         projectType == other.projectType &&
+        groupId == other.groupId &&
         createdAt == other.createdAt &&
         updatedAt == other.updatedAt;
   }
@@ -98,6 +104,7 @@ class Project {
     isRepo,
     gitBranch,
     projectType,
+    groupId,
     createdAt,
     updatedAt,
   );
@@ -302,6 +309,48 @@ class ThreadGroup {
     position: (j['position'] as num).toInt(),
     createdAt: j['created_at'] as String? ?? '',
   );
+}
+
+/// A named group of projects shown in the sidebar filter dropdown.
+class ProjectGroup {
+  final int id;
+  final String name;
+  final int position;
+  final String createdAt;
+
+  ProjectGroup({
+    required this.id,
+    required this.name,
+    required this.position,
+    required this.createdAt,
+  });
+
+  factory ProjectGroup.fromJson(Map<String, dynamic> j) => ProjectGroup(
+    id: (j['id'] as num).toInt(),
+    name: j['name'] as String,
+    position: (j['position'] as num?)?.toInt() ?? 0,
+    createdAt: j['created_at'] as String? ?? '',
+  );
+
+  ProjectGroup copyWith({String? name}) => ProjectGroup(
+    id: id,
+    name: name ?? this.name,
+    position: position,
+    createdAt: createdAt,
+  );
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ProjectGroup) return false;
+    return id == other.id &&
+        name == other.name &&
+        position == other.position &&
+        createdAt == other.createdAt;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, position, createdAt);
 }
 
 class PlanStep {

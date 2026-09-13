@@ -44,8 +44,12 @@ class DialogLayer extends StatelessWidget {
                 ? const SizedBox.shrink()
                 : IssuePanel(url: model.issueUrl!),
           DialogKind.renameProject ||
-          DialogKind.renameThread =>
+          DialogKind.renameThread ||
+          DialogKind.renameProjectGroup =>
             const _RenameDialog(),
+          DialogKind.newProjectGroup => const _NewProjectGroupDialog(),
+          DialogKind.manageProjectGroups =>
+            const _ManageProjectGroupsDialog(),
           DialogKind.webLogin => const WebLoginDialog(),
         };
         // Remount per dialog kind so focus is re-established for each dialog.
@@ -706,6 +710,9 @@ class _RenameDialogState extends State<_RenameDialog> {
       await state.renameProject(state.renameProjectId!, value);
     } else if (state.dialog == DialogKind.renameThread && state.renameThreadId != null) {
       await state.renameThread(state.renameThreadId!, value);
+    } else if (state.dialog == DialogKind.renameProjectGroup &&
+        state.renameProjectGroupId != null) {
+      await state.renameProjectGroup(state.renameProjectGroupId!, value);
     }
     if (mounted) setState(() => _submitting = false);
   }
@@ -727,8 +734,11 @@ class _RenameDialogState extends State<_RenameDialog> {
         globalError: s.globalError,
       ),
       builder: (context, model, _) {
-        final isProject = model.dialog == DialogKind.renameProject;
-        final title = isProject ? l.renameProject : l.renameThread;
+        final title = switch (model.dialog) {
+          DialogKind.renameProject => l.renameProject,
+          DialogKind.renameProjectGroup => l.renameGroup,
+          _ => l.renameThread,
+        };
         final value = _controller.text.trim();
         final canSubmit = value.isNotEmpty &&
             value != model.renameInitialName &&
@@ -935,5 +945,277 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
     final url = _urlController.text.trim();
     if (url.isEmpty) return;
     await state.cloneRepo(url);
+  }
+}
+
+class _NewProjectGroupDialog extends StatefulWidget {
+  const _NewProjectGroupDialog();
+
+  @override
+  State<_NewProjectGroupDialog> createState() => _NewProjectGroupDialogState();
+}
+
+class _NewProjectGroupDialogState extends State<_NewProjectGroupDialog> {
+  final _controller = TextEditingController();
+  var _submitting = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit(AppState state) async {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    setState(() => _submitting = true);
+    await state.createProjectGroup(name);
+    if (mounted) setState(() => _submitting = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final state = context.read<AppState>();
+    final globalError = context.select((AppState s) => s.globalError);
+    final canSubmit = _controller.text.trim().isNotEmpty && !_submitting;
+
+    return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l.newGroup, style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 16),
+                    TextField(
+                      key: const Key('new_group_name'),
+                      controller: _controller,
+                      autofocus: true,
+                      enabled: !_submitting,
+                      decoration: InputDecoration(
+                        labelText: l.name,
+                        hintText: l.groupNameHint,
+                        border: const OutlineInputBorder(),
+                      ),
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(state),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    if (globalError.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        globalError,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: _submitting ? null : state.closeDialog,
+                          child: Text(l.cancel),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          key: const Key('new_group_create'),
+                          onPressed: canSubmit ? () => _submit(state) : null,
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : Text(l.create),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Lists every project group with rename/delete actions.
+class _ManageProjectGroupsDialog extends StatelessWidget {
+  const _ManageProjectGroupsDialog();
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    AppState state,
+    ProjectGroup group,
+  ) async {
+    final l = l10n(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: Text(l.deleteGroupConfirm(group.name)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await state.deleteProjectGroup(group.id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final state = context.read<AppState>();
+    final globalError = context.select((AppState s) => s.globalError);
+
+    return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l.groups, style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 16),
+                    Selector<AppState,
+                        ({List<ProjectGroup> groups, List<Project> projects})>(
+                      selector: (_, s) => (
+                        groups: s.projectGroups,
+                        projects: s.projects,
+                      ),
+                      builder: (context, model, _) {
+                        return Flexible(
+                          child: ListView(
+                            shrinkWrap: true,
+                            children: [
+                              for (final g in model.groups)
+                                ListTile(
+                                  key: Key('manage_group_${g.id}'),
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(
+                                    Icons.folder_outlined,
+                                    color:
+                                        theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  title: Text(
+                                    g.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    l.groupProjectsCount(model.projects
+                                        .where((p) => p.groupId == g.id)
+                                        .length),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        key: Key('rename_group_${g.id}'),
+                                        tooltip: l.renameGroup,
+                                        icon: const Icon(
+                                            Icons.edit_outlined,
+                                            size: 18),
+                                        visualDensity:
+                                            VisualDensity.compact,
+                                        onPressed: () => state
+                                            .openRenameProjectGroupDialog(
+                                                g.id, g.name),
+                                      ),
+                                      IconButton(
+                                        key: Key('delete_group_${g.id}'),
+                                        tooltip: l.deleteGroup,
+                                        icon: Icon(
+                                          Icons.delete_outline,
+                                          size: 18,
+                                          color: theme.colorScheme.error,
+                                        ),
+                                        visualDensity:
+                                            VisualDensity.compact,
+                                        onPressed: () => _confirmDelete(
+                                            context, state, g),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        key: const Key('manage_groups_new'),
+                        onPressed: () =>
+                            state.openNewProjectGroupDialog(fromManage: true),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: Text(l.newGroup),
+                      ),
+                    ),
+                    if (globalError.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        globalError,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: state.closeDialog,
+                          child: Text(l.close),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

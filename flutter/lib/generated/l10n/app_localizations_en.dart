@@ -251,6 +251,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get projects => 'Projects';
 
   @override
+  String get groups => 'Groups';
+
+  @override
+  String get groupFilterAll => 'All';
+
+  @override
+  String get newGroup => 'New group';
+
+  @override
+  String get manageGroups => 'Manage groups';
+
+  @override
+  String get groupNameHint => 'Group name';
+
+  @override
+  String get renameGroup => 'Rename group';
+
+  @override
+  String get deleteGroup => 'Delete group';
+
+  @override
+  String deleteGroupConfirm(String name) {
+    return 'Delete group \"$name\"? Its projects stay in the list, ungrouped.';
+  }
+
+  @override
+  String get noGroup => 'No group';
+
+  @override
+  String get groupEmpty => 'No projects in this group.';
+
+  @override
+  String get projectGroupMenu => 'Group';
+
+  @override
+  String groupProjectsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count projects',
+      one: '1 project',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get language => 'Language';
 
   @override
