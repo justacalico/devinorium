@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.72.0 - 2026-09-13
+#### Features
+- 添加项目分组前端模型、状态与侧边栏筛选界面 - (017cb68) - HttpAnimations
+- 添加项目分组后端迁移、数据库与 API - (f7b0907) - HttpAnimations
+
+- - -
+
 ## v0.71.0 - 2026-09-13
 #### Features
 - 添加工作树根目录设置页面、状态与 API 客户端 - (aec7fe6) - HttpAnimations
