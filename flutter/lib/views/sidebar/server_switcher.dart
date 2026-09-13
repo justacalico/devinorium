@@ -1,7 +1,10 @@
 part of '../sidebar.dart';
 
 class _ServerSwitcher extends StatelessWidget {
-  const _ServerSwitcher();
+  /// Compact renders the same menu behind a single icon for the rail.
+  final bool compact;
+
+  const _ServerSwitcher({this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -11,11 +14,12 @@ class _ServerSwitcher extends StatelessWidget {
 
     if (kIsWeb) return const SizedBox.shrink();
 
-    return Selector<AppState, ({List<ServerProfile> profiles, String? activeId})>(
-      selector: (_, s) => (
-        profiles: s.serverProfiles,
-        activeId: s.activeServerId,
-      ),
+    return Selector<
+      AppState,
+      ({List<ServerProfile> profiles, String? activeId})
+    >(
+      selector: (_, s) =>
+          (profiles: s.serverProfiles, activeId: s.activeServerId),
       builder: (context, model, _) {
         final profiles = model.profiles;
         if (profiles.length < 2) return const SizedBox.shrink();
@@ -28,9 +32,14 @@ class _ServerSwitcher extends StatelessWidget {
           orElse: () => profiles.first,
         );
 
+        final padding = compact
+            ? const EdgeInsets.symmetric(vertical: 4)
+            : const EdgeInsets.fromLTRB(12, 8, 12, 8);
+
         return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          padding: padding,
           child: MenuAnchor(
+            onClose: () => _clearMenuFocus(context),
             menuChildren: [
               for (final profile in profiles)
                 MenuItemButton(
@@ -45,10 +54,11 @@ class _ServerSwitcher extends StatelessWidget {
                       ? null
                       : () => unawaited(state.switchServer(profile.id)),
                   child: Text(
-                      profile.isLocal ? l.thisDevice : profile.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: false),
+                    profile.isLocal ? l.thisDevice : profile.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
                 ),
               const Divider(height: 1),
               MenuItemButton(
@@ -65,6 +75,29 @@ class _ServerSwitcher extends StatelessWidget {
               ),
             ],
             builder: (context, controller, child) {
+              if (compact) {
+                final serverName = active.isLocal ? l.thisDevice : active.label;
+                return IconButton(
+                  tooltip: '${l.switchServer}: $serverName',
+                  visualDensity: VisualDensity.compact,
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  icon: Icon(
+                    active.isLocal
+                        ? Icons.computer_outlined
+                        : Icons.cloud_outlined,
+                    size: 20,
+                  ),
+                  onPressed: () {
+                    if (controller.isOpen) {
+                      controller.close();
+                    } else {
+                      controller.open();
+                    }
+                  },
+                );
+              }
               return Tooltip(
                 message: l.switchServer,
                 child: TextButton(

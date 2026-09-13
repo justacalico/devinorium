@@ -1351,6 +1351,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchKeyboardShortcutNonMac => 'Ctrl+H';
 
   @override
+  String get collapseSidebar => 'Collapse sidebar';
+
+  @override
+  String get expandSidebar => 'Expand sidebar';
+
+  @override
+  String get sidebarToggleShortcut => '⌘B';
+
+  @override
+  String get sidebarToggleShortcutNonMac => 'Ctrl+B';
+
+  @override
   String get noSearchResults => 'No threads found.';
 
   @override

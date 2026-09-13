@@ -35,6 +35,15 @@ part 'sidebar/thread_tile.dart';
 part 'sidebar/section_header.dart';
 part 'sidebar/settings_nav.dart';
 part 'sidebar/server_switcher.dart';
+part 'sidebar/compact_rail.dart';
+
+/// Minimum window width where the sidebar is a fixed resizable column that
+/// can collapse into an icon rail. Below this the sidebar is a slide-over
+/// overlay and compact mode does not apply.
+const double kWideLayoutMinWidth = 768;
+
+/// Sidebar widths at or below this render as the compact icon rail.
+const double kCompactRailMaxWidth = 160;
 
 Color _projectColor(String name) {
   final colors = [
@@ -131,6 +140,7 @@ class Sidebar extends StatefulWidget {
 class _SidebarState extends State<Sidebar> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+  bool _railMode = false;
 
   @override
   void initState() {
@@ -160,9 +170,7 @@ class _SidebarState extends State<Sidebar> {
     if (route != null && !route.isCurrent) return false;
 
     final appState = context.read<AppState>();
-    if (appState.page == MainPage.settings) return false;
 
-    // macOS keeps ⌘K because ⌘H collides with the system Hide shortcut.
     final platform = Theme.of(context).platform;
     final isApple =
         platform == TargetPlatform.macOS || platform == TargetPlatform.iOS;
@@ -173,10 +181,35 @@ class _SidebarState extends State<Sidebar> {
 
     final isControl = HardwareKeyboard.instance.isControlPressed;
     final isMeta = HardwareKeyboard.instance.isMetaPressed;
-    final shortcut = isApple
-        ? isMeta && !isControl && event.logicalKey == LogicalKeyboardKey.keyK
-        : isControl && !isMeta && event.logicalKey == LogicalKeyboardKey.keyH;
-    if (!shortcut) return false;
+    final primaryMod = isApple
+        ? (isMeta && !isControl)
+        : (isControl && !isMeta);
+    if (!primaryMod) return false;
+
+    // ⌘B / Ctrl+B toggles the compact rail. It only exists in the fixed
+    // wide layout; the slide-over sidebar on narrow screens ignores it.
+    if (event.logicalKey == LogicalKeyboardKey.keyB) {
+      if (MediaQuery.sizeOf(context).width < kWideLayoutMinWidth) {
+        return false;
+      }
+      appState.toggleSidebarCompact();
+      return true;
+    }
+
+    if (appState.page == MainPage.settings) return false;
+
+    // macOS keeps ⌘K because ⌘H collides with the system Hide shortcut.
+    final searchKey = isApple
+        ? LogicalKeyboardKey.keyK
+        : LogicalKeyboardKey.keyH;
+    if (event.logicalKey != searchKey) return false;
+
+    // The rail has no search field; the shortcut expands first, then the
+    // post-frame focus lands on the freshly rebuilt field.
+    if (_railMode) {
+      _expandAndFocusSearch();
+      return true;
+    }
 
     if (_searchFocus.hasFocus) {
       _searchController.selection = TextSelection(
@@ -197,14 +230,42 @@ class _SidebarState extends State<Sidebar> {
     return true;
   }
 
+  /// Expands the rail and focuses the rebuilt search field. The post-frame
+  /// focus lives on this state, which outlives the rail it replaces.
+  void _expandAndFocusSearch() {
+    final appState = context.read<AppState>();
+    // The field is only rendered on the plain thread list, so any open
+    // panel has to close first or the focus request lands nowhere.
+    if (appState.filesPanelOpen) appState.closeFilesPanel();
+    if (appState.gitPanelOpen) appState.closeGitPanel();
+    if (!appState.sidebarCompact) {
+      _searchFocus.requestFocus();
+      return;
+    }
+    appState.expandSidebar();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFocus.requestFocus();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLowest,
-      child:
-          Selector<
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Rail mode only exists in the fixed wide layout. The slide-over
+          // sidebar on narrow screens always shows the regular list, even
+          // if the overlay itself ever shrinks below the rail width.
+          _railMode =
+              constraints.maxWidth <= kCompactRailMaxWidth &&
+              MediaQuery.sizeOf(context).width >= kWideLayoutMinWidth;
+          if (_railMode) {
+            return _CompactRail(onRevealSearch: _expandAndFocusSearch);
+          }
+          return Selector<
             AppState,
             ({
               MainPage page,
@@ -270,7 +331,9 @@ class _SidebarState extends State<Sidebar> {
                 ],
               );
             },
-          ),
+          );
+        },
+      ),
     );
   }
 }
@@ -285,10 +348,11 @@ class _ActivityBar extends StatelessWidget {
 
     return Selector<
       AppState,
-      ({MainPage page, bool filesPanelOpen, bool gitPanelOpen})
+      ({MainPage page, AppMode appMode, bool filesPanelOpen, bool gitPanelOpen})
     >(
       selector: (_, s) => (
         page: s.page,
+        appMode: s.appMode,
         filesPanelOpen: s.filesPanelOpen,
         gitPanelOpen: s.gitPanelOpen,
       ),
@@ -296,6 +360,10 @@ class _ActivityBar extends StatelessWidget {
         final isSettings = model.page == MainPage.settings;
         final filesOpen = !isSettings && model.filesPanelOpen;
         final gitOpen = !isSettings && model.gitPanelOpen;
+        final shortcutLabel = switch (Theme.of(context).platform) {
+          TargetPlatform.macOS || TargetPlatform.iOS => l.sidebarToggleShortcut,
+          _ => l.sidebarToggleShortcutNonMac,
+        };
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -330,6 +398,17 @@ class _ActivityBar extends StatelessWidget {
                 active: isSettings,
                 onPressed: () => state.setPage(MainPage.settings),
               ),
+              // The rail only exists in the wide fixed layout, and never
+              // in editor mode where the file tree is the sidebar.
+              if (MediaQuery.sizeOf(context).width >= kWideLayoutMinWidth &&
+                  model.appMode != AppMode.editor)
+                _ActivityIcon(
+                  key: const Key('sidebar_compact_toggle'),
+                  icon: Icons.keyboard_double_arrow_left,
+                  tooltip: '${l.collapseSidebar} ($shortcutLabel)',
+                  active: false,
+                  onPressed: () => state.setSidebarCompact(true),
+                ),
             ],
           ),
         );
@@ -342,9 +421,10 @@ class _ActivityIcon extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final bool active;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const _ActivityIcon({
+    super.key,
     required this.icon,
     required this.tooltip,
     required this.active,
@@ -682,6 +762,31 @@ class _ProjectsHeader extends StatelessWidget {
   }
 }
 
+/// The user menu shared by the expanded chip and the compact rail avatar.
+List<Widget> _userMenuItems(
+  BuildContext context,
+  AppState state, {
+  required bool isLocal,
+}) {
+  final l = l10n(context);
+  return [
+    MenuItemButton(
+      leadingIcon: const Icon(Icons.settings_outlined),
+      child: Text(l.settings),
+      onPressed: () {
+        state.setPage(MainPage.settings);
+        state.setUserMenuOpen(false);
+      },
+    ),
+    if (!isLocal)
+      MenuItemButton(
+        leadingIcon: const Icon(Icons.logout),
+        child: Text(l.signOut),
+        onPressed: () => state.logout(),
+      ),
+  ];
+}
+
 class _UserChip extends StatelessWidget {
   final String username;
   final String avatar;
@@ -731,22 +836,7 @@ class _UserChip extends StatelessWidget {
               const _ConnectionStatusIcon(),
               MenuAnchor(
                 onClose: () => _clearMenuFocus(context),
-                menuChildren: [
-                  MenuItemButton(
-                    leadingIcon: const Icon(Icons.settings_outlined),
-                    child: Text(l10n(context).settings),
-                    onPressed: () {
-                      state.setPage(MainPage.settings);
-                      state.setUserMenuOpen(false);
-                    },
-                  ),
-                  if (!isLocal)
-                    MenuItemButton(
-                      leadingIcon: const Icon(Icons.logout),
-                      child: Text(l10n(context).signOut),
-                      onPressed: () => state.logout(),
-                    ),
-                ],
+                menuChildren: _userMenuItems(context, state, isLocal: isLocal),
                 builder: (context, controller, child) {
                   return IconButton(
                     tooltip: l10n(context).menu,

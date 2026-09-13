@@ -36,9 +36,7 @@ class _ProjectExpandableTile extends StatelessWidget {
     final tile = Material(
       color: Colors.transparent,
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         leading: Container(
@@ -60,8 +58,9 @@ class _ProjectExpandableTile extends StatelessWidget {
             project.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         subtitle: project.isRepo && project.gitBranch.isNotEmpty
@@ -69,15 +68,17 @@ class _ProjectExpandableTile extends StatelessWidget {
                 project.gitBranch,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               )
             : Text(
                 project.path,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -85,8 +86,11 @@ class _ProjectExpandableTile extends StatelessWidget {
             if (onNewThread != null)
               IconButton(
                 tooltip: l10n(context).newThreadIn(project.name),
-                icon: Icon(Icons.add,
-                    size: 18, color: theme.colorScheme.onSurfaceVariant),
+                icon: Icon(
+                  Icons.add,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 onPressed: onNewThread,
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.all(4),
@@ -101,10 +105,7 @@ class _ProjectExpandableTile extends StatelessWidget {
         ),
         dense: true,
         visualDensity: VisualDensity.compact,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 2,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         horizontalTitleGap: 8,
         minLeadingWidth: 0,
         minVerticalPadding: 0,
@@ -120,8 +121,8 @@ class _ProjectExpandableTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: project.pinned
             ? Border(
-                left: BorderSide(
-                    color: theme.colorScheme.primary, width: 3))
+                left: BorderSide(color: theme.colorScheme.primary, width: 3),
+              )
             : null,
       ),
       child: Column(
@@ -264,6 +265,105 @@ class _ThreadList extends StatelessWidget {
   }
 }
 
+/// Project management actions shared by the expanded options menu and the
+/// compact rail flyout (as a submenu).
+List<Widget> _projectMenuItems(
+  BuildContext context,
+  AppState state,
+  Project project,
+) {
+  final theme = Theme.of(context);
+  final l = l10n(context);
+
+  return [
+    MenuItemButton(
+      leadingIcon: Icon(
+        project.pinned ? Icons.push_pin_outlined : Icons.push_pin,
+        size: 18,
+        color: theme.colorScheme.primary,
+      ),
+      child: Text(project.pinned ? l.unpin : l.pin),
+      onPressed: () => state.pinProject(project.id, !project.pinned),
+    ),
+    Selector<AppState, ({List<ProjectGroup> groups, bool unsupported})>(
+      selector: (_, s) =>
+          (groups: s.projectGroups, unsupported: s.projectGroupsUnsupported),
+      builder: (context, model, _) {
+        if (model.unsupported) {
+          return const SizedBox.shrink();
+        }
+        final groups = model.groups;
+        return SubmenuButton(
+          leadingIcon: Icon(
+            Icons.folder_outlined,
+            size: 18,
+            color: theme.colorScheme.onSurface,
+          ),
+          menuChildren: [
+            MenuItemButton(
+              trailingIcon: project.groupId == null
+                  ? const Icon(Icons.check, size: 18)
+                  : null,
+              onPressed: project.groupId == null
+                  ? null
+                  : () => state.setProjectGroup(project.id, null),
+              child: Text(l.noGroup),
+            ),
+            for (final g in groups)
+              MenuItemButton(
+                trailingIcon: project.groupId == g.id
+                    ? const Icon(Icons.check, size: 18)
+                    : null,
+                onPressed: project.groupId == g.id
+                    ? null
+                    : () => state.setProjectGroup(project.id, g.id),
+                child: Text(
+                  g.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            const Divider(height: 1),
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.add, size: 18),
+              onPressed: () =>
+                  state.openNewProjectGroupDialog(projectId: project.id),
+              child: Text(l.newGroup),
+            ),
+          ],
+          child: Text(l.projectGroupMenu),
+        );
+      },
+    ),
+    MenuItemButton(
+      leadingIcon: Icon(
+        Icons.edit_outlined,
+        size: 18,
+        color: theme.colorScheme.onSurface,
+      ),
+      child: Text(l.rename),
+      onPressed: () => state.openRenameProjectDialog(project.id, project.name),
+    ),
+    MenuItemButton(
+      leadingIcon: Icon(
+        Icons.delete_outline,
+        size: 18,
+        color: theme.colorScheme.error,
+      ),
+      child: Text(l.deleteProject),
+      onPressed: () async {
+        if (HardwareKeyboard.instance.isShiftPressed ||
+            await _confirm(
+              context,
+              l10n(context).deleteProjectConfirm(project.name),
+            )) {
+          state.deleteProject(project.id);
+        }
+      },
+    ),
+  ];
+}
+
 class _ProjectOptionsMenu extends StatelessWidget {
   final Project project;
 
@@ -277,96 +377,15 @@ class _ProjectOptionsMenu extends StatelessWidget {
 
     return MenuAnchor(
       onClose: () => _clearMenuFocus(context),
-      menuChildren: [
-        MenuItemButton(
-          leadingIcon: Icon(
-            project.pinned
-                ? Icons.push_pin_outlined
-                : Icons.push_pin,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
-          child: Text(
-              project.pinned ? l.unpin : l.pin),
-          onPressed: () =>
-              state.pinProject(project.id, !project.pinned),
-        ),
-        Selector<AppState, ({List<ProjectGroup> groups, bool unsupported})>(
-          selector: (_, s) => (
-            groups: s.projectGroups,
-            unsupported: s.projectGroupsUnsupported,
-          ),
-          builder: (context, model, _) {
-            if (model.unsupported) {
-              return const SizedBox.shrink();
-            }
-            final groups = model.groups;
-            return SubmenuButton(
-              leadingIcon: Icon(Icons.folder_outlined,
-                  size: 18, color: theme.colorScheme.onSurface),
-              menuChildren: [
-                MenuItemButton(
-                  trailingIcon: project.groupId == null
-                      ? const Icon(Icons.check, size: 18)
-                      : null,
-                  onPressed: project.groupId == null
-                      ? null
-                      : () => state.setProjectGroup(project.id, null),
-                  child: Text(l.noGroup),
-                ),
-                for (final g in groups)
-                  MenuItemButton(
-                    trailingIcon: project.groupId == g.id
-                        ? const Icon(Icons.check, size: 18)
-                        : null,
-                    onPressed: project.groupId == g.id
-                        ? null
-                        : () => state.setProjectGroup(project.id, g.id),
-                    child: Text(
-                      g.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                const Divider(height: 1),
-                MenuItemButton(
-                  leadingIcon: const Icon(Icons.add, size: 18),
-                  onPressed: () =>
-                      state.openNewProjectGroupDialog(projectId: project.id),
-                  child: Text(l.newGroup),
-                ),
-              ],
-              child: Text(l.projectGroupMenu),
-            );
-          },
-        ),
-        MenuItemButton(
-          leadingIcon: Icon(Icons.edit_outlined,
-              size: 18, color: theme.colorScheme.onSurface),
-          child: Text(l.rename),
-          onPressed: () =>
-              state.openRenameProjectDialog(project.id, project.name),
-        ),
-        MenuItemButton(
-          leadingIcon: Icon(Icons.delete_outline,
-              size: 18, color: theme.colorScheme.error),
-          child: Text(l.deleteProject),
-          onPressed: () async {
-            if (HardwareKeyboard.instance.isShiftPressed ||
-                await _confirm(
-                    context,
-                    l10n(context)
-                        .deleteProjectConfirm(project.name))) {
-              state.deleteProject(project.id);
-            }
-          },
-        ),
-      ],
+      menuChildren: _projectMenuItems(context, state, project),
       builder: (context, controller, child) {
         return IconButton(
           tooltip: l.options,
-          icon: Icon(Icons.more_vert,
-              size: 18, color: theme.colorScheme.onSurfaceVariant),
+          icon: Icon(
+            Icons.more_vert,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           onPressed: () {
             if (controller.isOpen) {
               controller.close();

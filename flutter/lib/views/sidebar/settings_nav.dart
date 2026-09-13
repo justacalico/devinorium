@@ -1,7 +1,10 @@
 part of '../sidebar.dart';
 
 class _SettingsNav extends StatelessWidget {
-  const _SettingsNav();
+  /// Compact renders topics as a vertical icon rail with tooltips.
+  final bool compact;
+
+  const _SettingsNav({this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -9,8 +12,10 @@ class _SettingsNav extends StatelessWidget {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState,
-        ({bool isOwner, int settingsTopicIndex, bool hasServer, Locale locale})>(
+    return Selector<
+      AppState,
+      ({bool isOwner, int settingsTopicIndex, bool hasServer, Locale locale})
+    >(
       selector: (_, s) => (
         isOwner: s.isOwner,
         settingsTopicIndex: s.settingsTopicIndex,
@@ -19,8 +24,7 @@ class _SettingsNav extends StatelessWidget {
       ),
       builder: (context, model, _) {
         final topics = settingsTopics(model.isOwner, l);
-        int indexOf(SettingsTopic t) =>
-            topics.indexWhere((e) => e.topic == t);
+        int indexOf(SettingsTopic t) => topics.indexWhere((e) => e.topic == t);
         final serversIndex = indexOf(SettingsTopic.servers);
         // Personalization, About, and Servers stay usable without a server.
         bool enabled(int i) =>
@@ -31,6 +35,26 @@ class _SettingsNav extends StatelessWidget {
         var selectedIndex = model.settingsTopicIndex;
         if (!enabled(selectedIndex)) selectedIndex = serversIndex;
 
+        if (compact) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              children: [
+                for (var i = 0; i < topics.length; i++)
+                  _ActivityIcon(
+                    key: Key('rail_topic_${topics[i].topic.name}'),
+                    icon: topics[i].icon,
+                    tooltip: topics[i].label,
+                    active: i == selectedIndex,
+                    onPressed: enabled(i)
+                        ? () => state.setSettingsTopicIndex(i)
+                        : null,
+                  ),
+              ],
+            ),
+          );
+        }
+
         // The topic list is small and fixed, so a Column builds every tile
         // eagerly; scrolling keeps the last item reachable on short screens.
         return SingleChildScrollView(
@@ -38,37 +62,37 @@ class _SettingsNav extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            _SectionHeader(l.topics),
-            for (var i = 0; i < topics.length; i++)
-              Material(
-                color: Colors.transparent,
-                elevation: 0,
-                shape: const StadiumBorder(),
-                clipBehavior: Clip.antiAlias,
-                child: ListTile(
-                  leading: Icon(topics[i].icon, size: 20),
-                  title: Row(
-                    children: [
-                      Text(topics[i].label),
-                      if (topics[i].topic == SettingsTopic.manage ||
-                          topics[i].topic == SettingsTopic.audit) ...[
-                        const SizedBox(width: 6),
-                        const OwnerBadge(),
+              _SectionHeader(l.topics),
+              for (var i = 0; i < topics.length; i++)
+                Material(
+                  color: Colors.transparent,
+                  elevation: 0,
+                  shape: const StadiumBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: ListTile(
+                    leading: Icon(topics[i].icon, size: 20),
+                    title: Row(
+                      children: [
+                        Text(topics[i].label),
+                        if (topics[i].topic == SettingsTopic.manage ||
+                            topics[i].topic == SettingsTopic.audit) ...[
+                          const SizedBox(width: 6),
+                          const OwnerBadge(),
+                        ],
                       ],
-                    ],
+                    ),
+                    enabled: enabled(i),
+                    selected: i == selectedIndex,
+                    selectedTileColor: theme.colorScheme.secondaryContainer,
+                    dense: true,
+                    onTap: enabled(i)
+                        ? () {
+                            state.setSettingsTopicIndex(i);
+                            state.closeSidebar();
+                          }
+                        : null,
                   ),
-                  enabled: enabled(i),
-                  selected: i == selectedIndex,
-                  selectedTileColor: theme.colorScheme.secondaryContainer,
-                  dense: true,
-                  onTap: enabled(i)
-                      ? () {
-                          state.setSettingsTopicIndex(i);
-                          state.closeSidebar();
-                        }
-                      : null,
                 ),
-              ),
             ],
           ),
         );

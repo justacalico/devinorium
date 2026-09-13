@@ -107,6 +107,8 @@ mixin FilesPanelStore on AppStateBase {
 
   @override
   Future<void> openFilesPanel() async {
+    // The compact getter suppresses the rail while a panel is open, so no
+    // explicit expand is needed and the stored preference stays untouched.
     _filesPanelOpen = true;
     _gitPanelOpen = false;
     _filesError = '';

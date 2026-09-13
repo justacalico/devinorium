@@ -1,5 +1,49 @@
 part of '../sidebar.dart';
 
+/// Group filter menu entries shared by the expanded dropdown and the
+/// compact rail icon.
+List<Widget> _groupFilterItems(
+  BuildContext context,
+  AppState state,
+  List<ProjectGroup> groups,
+  int? selectedId,
+) {
+  final l = l10n(context);
+  return [
+    MenuItemButton(
+      key: const Key('group_filter_all'),
+      trailingIcon: selectedId == null
+          ? const Icon(Icons.check, size: 18)
+          : null,
+      onPressed: () => state.selectProjectGroup(null),
+      child: Text(l.groupFilterAll),
+    ),
+    for (final g in groups)
+      MenuItemButton(
+        key: Key('group_filter_${g.id}'),
+        trailingIcon: selectedId == g.id
+            ? const Icon(Icons.check, size: 18)
+            : null,
+        onPressed: () => state.selectProjectGroup(g.id),
+        child: Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    if (groups.isNotEmpty) const Divider(height: 1),
+    MenuItemButton(
+      key: const Key('group_filter_new'),
+      leadingIcon: const Icon(Icons.add, size: 18),
+      onPressed: () => state.openNewProjectGroupDialog(),
+      child: Text(l.newGroup),
+    ),
+    if (groups.isNotEmpty)
+      MenuItemButton(
+        key: const Key('group_filter_manage'),
+        leadingIcon: const Icon(Icons.tune, size: 18),
+        onPressed: () => state.openManageProjectGroupsDialog(),
+        child: Text(l.manageGroups),
+      ),
+  ];
+}
+
 /// Dropdown that filters the sidebar project list by group.
 /// A null selection means "All" — every project is shown.
 class _GroupFilter extends StatelessWidget {
@@ -11,7 +55,10 @@ class _GroupFilter extends StatelessWidget {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({List<ProjectGroup> groups, int? selectedId, bool unsupported})>(
+    return Selector<
+      AppState,
+      ({List<ProjectGroup> groups, int? selectedId, bool unsupported})
+    >(
       selector: (_, s) => (
         groups: s.projectGroups,
         selectedId: s.selectedProjectGroupId,
@@ -31,43 +78,12 @@ class _GroupFilter extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
           child: MenuAnchor(
-            menuChildren: [
-              MenuItemButton(
-                key: const Key('group_filter_all'),
-                trailingIcon: model.selectedId == null
-                    ? const Icon(Icons.check, size: 18)
-                    : null,
-                onPressed: () => state.selectProjectGroup(null),
-                child: Text(l.groupFilterAll),
-              ),
-              for (final g in model.groups)
-                MenuItemButton(
-                  key: Key('group_filter_${g.id}'),
-                  trailingIcon: model.selectedId == g.id
-                      ? const Icon(Icons.check, size: 18)
-                      : null,
-                  onPressed: () => state.selectProjectGroup(g.id),
-                  child: Text(
-                    g.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              if (model.groups.isNotEmpty) const Divider(height: 1),
-              MenuItemButton(
-                key: const Key('group_filter_new'),
-                leadingIcon: const Icon(Icons.add, size: 18),
-                onPressed: () => state.openNewProjectGroupDialog(),
-                child: Text(l.newGroup),
-              ),
-              if (model.groups.isNotEmpty)
-                MenuItemButton(
-                  key: const Key('group_filter_manage'),
-                  leadingIcon: const Icon(Icons.tune, size: 18),
-                  onPressed: () => state.openManageProjectGroupsDialog(),
-                  child: Text(l.manageGroups),
-                ),
-            ],
+            menuChildren: _groupFilterItems(
+              context,
+              state,
+              model.groups,
+              model.selectedId,
+            ),
             builder: (context, controller, child) {
               return Material(
                 color: theme.colorScheme.surfaceContainer,

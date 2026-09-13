@@ -2438,6 +2438,30 @@ abstract class AppLocalizations {
   /// **'Ctrl+H'**
   String get searchKeyboardShortcutNonMac;
 
+  /// Tooltip for the button that collapses the sidebar into an icon rail
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse sidebar'**
+  String get collapseSidebar;
+
+  /// Tooltip for the button that expands the sidebar icon rail
+  ///
+  /// In en, this message translates to:
+  /// **'Expand sidebar'**
+  String get expandSidebar;
+
+  /// Keyboard shortcut label for toggling the sidebar on Apple platforms
+  ///
+  /// In en, this message translates to:
+  /// **'⌘B'**
+  String get sidebarToggleShortcut;
+
+  /// Keyboard shortcut label for toggling the sidebar on non-Apple platforms
+  ///
+  /// In en, this message translates to:
+  /// **'Ctrl+B'**
+  String get sidebarToggleShortcutNonMac;
+
   /// No description provided for @noSearchResults.
   ///
   /// In en, this message translates to:

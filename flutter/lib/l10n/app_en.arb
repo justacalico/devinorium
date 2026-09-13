@@ -777,6 +777,22 @@
   "searchHint": "Search threads...",
   "searchKeyboardShortcut": "⌘K",
   "searchKeyboardShortcutNonMac": "Ctrl+H",
+  "collapseSidebar": "Collapse sidebar",
+  "@collapseSidebar": {
+    "description": "Tooltip for the button that collapses the sidebar into an icon rail"
+  },
+  "expandSidebar": "Expand sidebar",
+  "@expandSidebar": {
+    "description": "Tooltip for the button that expands the sidebar icon rail"
+  },
+  "sidebarToggleShortcut": "⌘B",
+  "@sidebarToggleShortcut": {
+    "description": "Keyboard shortcut label for toggling the sidebar on Apple platforms"
+  },
+  "sidebarToggleShortcutNonMac": "Ctrl+B",
+  "@sidebarToggleShortcutNonMac": {
+    "description": "Keyboard shortcut label for toggling the sidebar on non-Apple platforms"
+  },
   "noSearchResults": "No threads found.",
   "threadStatusWorking": "Working",
   "threadStatusDone": "Done",

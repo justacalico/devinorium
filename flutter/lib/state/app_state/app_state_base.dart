@@ -37,6 +37,7 @@ abstract class AppStateBase extends ChangeNotifier {
   List<Thread> get _threads;
   set _threads(List<Thread> value);
   Set<String> get _runningThreadIds;
+  set _runningThreadIds(Set<String> value);
   int get _projectsOffset;
   set _projectsOffset(int value);
   bool get _projectsHasMore;
@@ -87,6 +88,10 @@ abstract class AppStateBase extends ChangeNotifier {
   set _userMenuOpen(bool value);
   bool get _sidebarOpen;
   set _sidebarOpen(bool value);
+  bool get _sidebarCompact;
+  set _sidebarCompact(bool value);
+  bool get _sidebarCompactAuto;
+  set _sidebarCompactAuto(bool value);
   bool get _filesPanelOpen;
   set _filesPanelOpen(bool value);
   bool get _gitPanelOpen;
@@ -277,6 +282,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get isOwner;
   bool get userMenuOpen;
   bool get sidebarOpen;
+  bool get sidebarCompact;
   bool get filesPanelOpen;
   bool get gitPanelOpen;
   GitChanges? get gitPanelChanges;
@@ -395,6 +401,16 @@ abstract class AppStateBase extends ChangeNotifier {
   void setUserMenuOpen(bool v);
   void openSidebar();
   void closeSidebar();
+  void setSidebarCompact(bool compact);
+  void toggleSidebarCompact();
+
+  /// Expands the sidebar for this session without touching the stored
+  /// preference. Used by programmatic reveals (search, flyout show-more)
+  /// so they don't overwrite the user's chosen default.
+  void expandSidebar();
+  void setSidebarCompactAuto(bool compact);
+  Future<void> _loadSidebarCompact();
+  Future<void> _saveSidebarCompact();
   void setComposerText(String t);
   void addAttachments(
     List<({String filename, String mime, Uint8List bytes})> files,

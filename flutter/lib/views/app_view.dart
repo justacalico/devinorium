@@ -24,23 +24,43 @@ class _AppShellState extends State<AppShell> {
   final _mainKey = GlobalKey();
   bool _wasSidePanelOpen = false;
   bool _wasSidebarOpen = false;
+  bool _autoNarrow = false;
   double _sidebarWidth = 300;
+  double _preDragWidth = 300;
   double _edgeDragDx = 0;
   double _panelDragDx = 0;
+  double _dragOvershoot = 0;
 
   static const double _minSidebarWidth = 240;
   static const double _maxSidebarWidth = 420;
   static const double _overlayWidth = 300;
+  static const double _compactSidebarWidth = 64;
+  static const double _autoCollapseWindowWidth = 880;
+
+  /// Re-engagement gap: once collapsed, the window must grow past this
+  /// before the auto-collapse can trigger again, so hovering near the
+  /// boundary doesn't flicker the layout.
+  static const double _autoCollapseHysteresis = 40;
+  static const double _collapseOvershoot = 48;
+
+  /// How far the rail's handle has to be pulled right before it expands;
+  /// keeps an accidental brush from undoing the collapse.
+  static const double _expandDragThreshold = 24;
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, ({bool sidePanelOpen, bool sidebarOpen})>(
+    return Selector<
+      AppState,
+      ({bool sidePanelOpen, bool sidebarOpen, bool compact})
+    >(
       selector: (_, state) => (
         sidePanelOpen: state.filesPanelOpen || state.gitPanelOpen,
         sidebarOpen: state.sidebarOpen,
+        compact: state.sidebarCompact,
       ),
       builder: (context, model, _) {
-        final isNarrow = MediaQuery.of(context).size.width < 768;
+        final windowWidth = MediaQuery.of(context).size.width;
+        final isNarrow = windowWidth < kWideLayoutMinWidth;
         final state = context.read<AppState>();
 
         // A stable key lets Flutter reparent this subtree (and preserve all
@@ -66,8 +86,10 @@ class _AppShellState extends State<AppShell> {
           }
           _wasSidebarOpen = model.sidebarOpen;
 
-          final overlayWidth =
-              math.min(_overlayWidth, MediaQuery.of(context).size.width * 0.85);
+          final overlayWidth = math.min(
+            _overlayWidth,
+            MediaQuery.of(context).size.width * 0.85,
+          );
 
           // The sidebar is a slide-over inside the body rather than a
           // Scaffold drawer: a drawer unmounts its subtree when it closes,
@@ -153,15 +175,32 @@ class _AppShellState extends State<AppShell> {
           });
         }
 
+        // Below this window width the expanded sidebar crowds out the main
+        // area, so it drops to the rail until the window widens again. The
+        // hysteresis keeps a resize hovering at the boundary from
+        // flickering between modes.
+        final autoNarrow = _autoNarrow
+            ? windowWidth < _autoCollapseWindowWidth + _autoCollapseHysteresis
+            : windowWidth < _autoCollapseWindowWidth;
+        if (autoNarrow != _autoNarrow) {
+          _autoNarrow = autoNarrow;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) state.setSidebarCompactAuto(autoNarrow);
+          });
+        }
+
         return Scaffold(
           body: Row(
             children: [
-              SizedBox(width: _sidebarWidth, child: const Sidebar()),
+              SizedBox(
+                width: model.compact ? _compactSidebarWidth : _sidebarWidth,
+                child: const Sidebar(),
+              ),
               _ResizeHandle(
-                onDrag: (delta) => setState(() {
-                  _sidebarWidth = (_sidebarWidth + delta)
-                      .clamp(_minSidebarWidth, _maxSidebarWidth);
-                }),
+                onDragStart: () => _preDragWidth = _sidebarWidth,
+                onDrag: (delta) => _onSidebarDrag(state, model.compact, delta),
+                onDragEnd: () => _dragOvershoot = 0,
+                onDoubleTap: state.toggleSidebarCompact,
               ),
               Expanded(child: main),
             ],
@@ -169,6 +208,37 @@ class _AppShellState extends State<AppShell> {
         );
       },
     );
+  }
+
+  /// Dragging past the minimum width snaps the sidebar into the rail;
+  /// pulling right from the rail expands it back to the pre-drag width.
+  void _onSidebarDrag(AppState state, bool compact, double delta) {
+    if (compact) {
+      _dragOvershoot = math.max(0.0, _dragOvershoot + delta);
+      if (_dragOvershoot >= _expandDragThreshold) {
+        _dragOvershoot = 0;
+        state.setSidebarCompact(false);
+      }
+      return;
+    }
+    final next = _sidebarWidth + delta;
+    if (next < _minSidebarWidth) {
+      _dragOvershoot += _minSidebarWidth - next;
+      if (_dragOvershoot >= _collapseOvershoot) {
+        _dragOvershoot = 0;
+        state.setSidebarCompact(true);
+        // Restore what the sidebar was before this drag, not the clamp.
+        // Skipped when the collapse was refused (e.g. editor mode), which
+        // would otherwise snap the width back and jitter during the drag.
+        if (state.sidebarCompact) _sidebarWidth = _preDragWidth;
+        return;
+      }
+    } else {
+      _dragOvershoot = 0;
+      setState(() {
+        _sidebarWidth = next.clamp(_minSidebarWidth, _maxSidebarWidth);
+      });
+    }
   }
 }
 
@@ -191,9 +261,17 @@ class _MainArea extends StatelessWidget {
 }
 
 class _ResizeHandle extends StatelessWidget {
+  final VoidCallback? onDragStart;
   final ValueChanged<double> onDrag;
+  final VoidCallback? onDragEnd;
+  final VoidCallback? onDoubleTap;
 
-  const _ResizeHandle({required this.onDrag});
+  const _ResizeHandle({
+    required this.onDrag,
+    this.onDragStart,
+    this.onDragEnd,
+    this.onDoubleTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -202,16 +280,18 @@ class _ResizeHandle extends StatelessWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
       child: GestureDetector(
+        key: const Key('sidebar_resize_handle'),
         behavior: HitTestBehavior.translucent,
+        onHorizontalDragStart: (_) => onDragStart?.call(),
         onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
+        onHorizontalDragEnd: (_) => onDragEnd?.call(),
+        onHorizontalDragCancel: () => onDragEnd?.call(),
+        onDoubleTap: onDoubleTap,
         child: Container(
           width: 10,
           color: theme.colorScheme.outlineVariant.withAlpha(40),
           alignment: Alignment.center,
-          child: VerticalDivider(
-            width: 2,
-            color: theme.colorScheme.outline,
-          ),
+          child: VerticalDivider(width: 2, color: theme.colorScheme.outline),
         ),
       ),
     );

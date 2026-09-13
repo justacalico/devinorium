@@ -11,7 +11,7 @@ mixin ThreadListStore on AppStateBase {
   @override
   List<Thread> _threads = [];
   @override
-  final Set<String> _runningThreadIds = {};
+  Set<String> _runningThreadIds = {};
   static const int _threadChunkSize = 50;
   @override
   int _userThreadsOffset = 0;
@@ -39,6 +39,13 @@ mixin ThreadListStore on AppStateBase {
   List<Thread> get threads => _threads;
   @override
   Set<String> get runningThreadIds => _runningThreadIds;
+
+  @visibleForTesting
+  void setRunningThreadIds(Set<String> ids) {
+    _runningThreadIds = Set.of(ids);
+    notifyListeners();
+  }
+
   @override
   List<ThreadGroup> get groups => _groups;
   @override
@@ -178,23 +185,22 @@ mixin ThreadListStore on AppStateBase {
 
   @override
   Future<void> refreshRunningThreads() async {
-    if (_threads.isEmpty) {
-      _runningThreadIds.clear();
+    // Reassign rather than mutate: Selectors that watch the set compare by
+    // identity, so a clear/addAll on the same instance is invisible to them.
+    var next = const <String>{};
+    if (_threads.isNotEmpty) {
+      try {
+        final running = await api.getThreadRuns();
+        final loaded = <String>{for (final t in _threads) t.id};
+        next = running.where(loaded.contains).toSet();
+      } catch (e) {
+        debugLogFailure('threadList.refreshRunningThreads', e);
+      }
+    }
+    if (!setEquals(_runningThreadIds, next)) {
+      _runningThreadIds = next;
       notifyListeners();
-      return;
     }
-
-    try {
-      final running = await api.getThreadRuns();
-      final loaded = <String>{for (final t in _threads) t.id};
-      _runningThreadIds
-        ..clear()
-        ..addAll(running.where((id) => loaded.contains(id)));
-    } catch (e) {
-      debugLogFailure('threadList.refreshRunningThreads', e);
-      _runningThreadIds.clear();
-    }
-    notifyListeners();
   }
 
   @override

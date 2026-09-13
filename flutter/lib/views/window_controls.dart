@@ -8,17 +8,19 @@ import '../services/window_actions.dart';
 ///
 /// Renders close, minimize, and maximize buttons as colored circles.
 /// The window action symbols appear on hover. On non-desktop platforms
-/// the widget collapses to nothing.
+/// the widget collapses to nothing. [direction] stacks the buttons
+/// vertically for the compact sidebar rail.
 class WindowControls extends StatelessWidget {
-  const WindowControls({super.key});
+  final Axis direction;
+
+  const WindowControls({super.key, this.direction = Axis.horizontal});
 
   bool _isDesktop(BuildContext context) {
     if (kIsWeb) return false;
     return switch (Theme.of(context).platform) {
       TargetPlatform.linux ||
       TargetPlatform.macOS ||
-      TargetPlatform.windows =>
-        true,
+      TargetPlatform.windows => true,
       _ => false,
     };
   }
@@ -30,8 +32,12 @@ class WindowControls extends StatelessWidget {
     }
 
     final l = l10n(context);
+    final gap = direction == Axis.horizontal
+        ? const SizedBox(width: 8)
+        : const SizedBox(height: 8);
 
-    return Row(
+    return Flex(
+      direction: direction,
       mainAxisSize: MainAxisSize.min,
       children: [
         _TrafficLight(
@@ -41,7 +47,7 @@ class WindowControls extends StatelessWidget {
           onPressed: closeWindow,
           tooltip: l.windowClose,
         ),
-        const SizedBox(width: 8),
+        gap,
         _TrafficLight(
           key: const Key('window_minimize_button'),
           color: const Color(0xFFFFBD2E),
@@ -49,7 +55,7 @@ class WindowControls extends StatelessWidget {
           onPressed: minimizeWindow,
           tooltip: l.windowMinimize,
         ),
-        const SizedBox(width: 8),
+        gap,
         _TrafficLight(
           key: const Key('window_maximize_button'),
           color: const Color(0xFF28CA41),

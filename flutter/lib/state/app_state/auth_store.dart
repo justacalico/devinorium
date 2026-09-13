@@ -24,6 +24,7 @@ mixin AuthStore on AppStateBase {
     await _loadComposerMode();
     await _loadNotificationPrefs();
     await _loadPlanOverlayState();
+    await _loadSidebarCompact();
     setAppL10n(_locale);
     try {
       if (!multiServerState.hasAnyServer) {
@@ -682,7 +683,7 @@ mixin AuthStore on AppStateBase {
     await _saveSelectedModel('');
     await _saveSelectedPermission('');
     _providerVersions.clear();
-    _runningThreadIds.clear();
+    _runningThreadIds = {};
     _connectionStatus = ConnectionStatus.checking;
     _serverVersion = null;
     _page = MainPage.threads;

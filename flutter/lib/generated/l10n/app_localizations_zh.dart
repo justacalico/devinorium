@@ -1293,6 +1293,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get searchKeyboardShortcutNonMac => 'Ctrl+H';
 
   @override
+  String get collapseSidebar => '收起侧边栏';
+
+  @override
+  String get expandSidebar => '展开侧边栏';
+
+  @override
+  String get sidebarToggleShortcut => '⌘B';
+
+  @override
+  String get sidebarToggleShortcutNonMac => 'Ctrl+B';
+
+  @override
   String get noSearchResults => '未找到会话';
 
   @override
