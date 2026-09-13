@@ -14,12 +14,22 @@ import 'terminal_tabs.dart';
 /// unmounted and remounted (switching between the agents and editor views,
 /// changing threads) without losing any terminal state.
 class TerminalPanel extends StatelessWidget {
-  const TerminalPanel({super.key, required this.store, this.onClose});
+  const TerminalPanel({
+    super.key,
+    required this.store,
+    this.onClose,
+    this.allowRemote = true,
+  });
 
   final TerminalStore store;
 
   /// Called when the user hides the panel. Defaults to closing the store.
   final VoidCallback? onClose;
+
+  /// Whether backend ("cloud") terminals can be created. False when the
+  /// active server is bundled inside the app — a remote PTY there is the
+  /// same machine as a local one, only slower.
+  final bool allowRemote;
 
   static const _maxHeightRatio = 0.75;
 
@@ -129,11 +139,14 @@ class TerminalPanel extends StatelessWidget {
                   _Header(
                     title: l10n(context).terminal,
                     local: _canUseLocalTerminal,
+                    remote: allowRemote,
                     busy: store.busy,
                     onAddLocal: _canUseLocalTerminal
                         ? () => _addSession(context, local: true)
                         : null,
-                    onAddRemote: () => _addSession(context, local: false),
+                    onAddRemote: allowRemote
+                        ? () => _addSession(context, local: false)
+                        : null,
                     onClose: onClose ?? () => store.setOpen(false),
                   ),
                   Expanded(
@@ -193,17 +206,19 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.title,
     required this.local,
+    required this.remote,
     required this.busy,
     this.onAddLocal,
-    required this.onAddRemote,
+    this.onAddRemote,
     this.onClose,
   });
 
   final String title;
   final bool local;
+  final bool remote;
   final bool busy;
   final VoidCallback? onAddLocal;
-  final VoidCallback onAddRemote;
+  final VoidCallback? onAddRemote;
   final VoidCallback? onClose;
 
   @override
@@ -223,12 +238,13 @@ class _Header extends StatelessWidget {
               tooltip: l10n(context).terminalLocal,
               onPressed: busy ? null : onAddLocal,
             ),
-          IconButton(
-            key: const ValueKey('addRemoteTerminal'),
-            icon: const Icon(Icons.cloud, size: 20),
-            tooltip: l10n(context).terminalRemote,
-            onPressed: busy ? null : onAddRemote,
-          ),
+          if (remote)
+            IconButton(
+              key: const ValueKey('addRemoteTerminal'),
+              icon: const Icon(Icons.cloud, size: 20),
+              tooltip: l10n(context).terminalRemote,
+              onPressed: busy ? null : onAddRemote,
+            ),
           if (onClose != null)
             IconButton(
               icon: const Icon(Icons.keyboard_arrow_down, size: 20),

@@ -28,6 +28,24 @@ void main() {
     expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
   });
 
+  testWidgets('hides the cloud terminal button when remote is not allowed', (
+    tester,
+  ) async {
+    final store = _openStore();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: TerminalPanel(store: store, allowRemote: false)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('addRemoteTerminal')), findsNothing);
+    expect(find.byKey(const ValueKey('addTerminalTab')), findsOneWidget);
+    expect(find.text('Terminal'), findsOneWidget);
+  });
+
   testWidgets('renders nothing when the store is closed', (tester) async {
     final store = TerminalStore(api: () => ApiService());
     addTearDown(store.dispose);

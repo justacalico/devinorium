@@ -14,7 +14,7 @@ Widget _buildWithState(AppState state) => MaterialApp(
 );
 
 void main() {
-  testWidgets('toggling the terminal icon opens and closes the bottom panel', (
+  testWidgets('toggling the terminal icon opens and closes the shared store', (
     tester,
   ) async {
     final state = AppState.test(
@@ -37,22 +37,19 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    expect(find.text('No terminal sessions'), findsNothing);
-    // The panel is always mounted; the store controls visibility.
-    expect(find.byType(TerminalPanel), findsOneWidget);
+    expect(state.terminalStore.open, isFalse);
+    // The panel is mounted once by the app shell, not inside this page.
+    expect(find.byType(TerminalPanel), findsNothing);
 
     await tester.tap(find.byIcon(Icons.terminal));
     await tester.pumpAndSettle();
 
     expect(state.terminalStore.open, isTrue);
-    expect(find.text('No terminal sessions'), findsOneWidget);
-    expect(find.text('Terminal'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+    await tester.tap(find.byIcon(Icons.terminal));
     await tester.pumpAndSettle();
 
     expect(state.terminalStore.open, isFalse);
-    expect(find.text('No terminal sessions'), findsNothing);
   });
 
   testWidgets('terminal toggle works without an active thread', (tester) async {
@@ -66,6 +63,5 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.terminalStore.open, isTrue);
-    expect(find.text('Terminal'), findsOneWidget);
   });
 }

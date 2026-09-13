@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_state.dart';
-import '../../terminal/terminal_panel.dart';
 import 'agent_panel.dart';
 import 'editor_tab_bar.dart';
 import 'file_editor.dart';
@@ -58,7 +57,6 @@ class _WideEditor extends StatelessWidget {
                   const Expanded(child: FileEditor()),
                   if (model.tabSaving)
                     const LinearProgressIndicator(minHeight: 2),
-                  TerminalPanel(store: state.terminalStore),
                 ],
               ),
             ),
@@ -114,7 +112,6 @@ class _NarrowEditor extends StatelessWidget {
                 const Expanded(child: FileEditor()),
                 if (model.tabSaving)
                   const LinearProgressIndicator(minHeight: 2),
-                TerminalPanel(store: state.terminalStore),
               ],
             ),
             if (agentPanelOpen)

@@ -33,7 +33,6 @@ import 'drop_zone.dart';
 import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
-import '../terminal/terminal_panel.dart';
 import 'plan_overlay.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
@@ -152,12 +151,7 @@ class ThreadPage extends StatelessWidget {
             backgroundColor: theme.colorScheme.surface,
             scrolledUnderElevation: 0,
           ),
-          body: Column(
-            children: [
-              const Expanded(child: ChatView()),
-              TerminalPanel(store: state.terminalStore),
-            ],
-          ),
+          body: const ChatView(),
         );
       },
     );
