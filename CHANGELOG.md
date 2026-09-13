@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.71.0 - 2026-09-13
+#### Features
+- 添加工作树根目录设置页面、状态与 API 客户端 - (aec7fe6) - HttpAnimations
+- 添加工作树根目录后端迁移、数据库字段与 API - (a8ed98d) - HttpAnimations
+
+- - -
+
 ## v0.70.0 - 2026-09-12
 #### Features
 - Tailscale 卡片添加 HTTPS 端口设置并接入持久化接口 - (b84431e) - HttpAnimations
