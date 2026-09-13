@@ -7,6 +7,7 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/thread_page.dart';
 import 'package:devinorium_frontend/widgets/attachment_thumbnail.dart';
+import 'package:devinorium_frontend/widgets/provider_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -555,6 +556,90 @@ void main() {
     await pumpThread(tester, state);
 
     expect(find.textContaining('You ·'), findsOneWidget);
+  });
+
+  testWidgets('user message shows the logged-in username', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'HttpAnimations',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: detailWith([
+        Message(id: 1, role: 'user', content: 'hi'),
+      ]),
+    );
+
+    await pumpThread(tester, state);
+
+    expect(find.text('HttpAnimations'), findsOneWidget);
+    expect(find.text('You'), findsNothing);
+  });
+
+  testWidgets('assistant avatar uses the selected provider icon', (
+    tester,
+  ) async {
+    // The persisted thread provider is devin-cli but the picker selection is
+    // codex: the avatar follows the live selection, not the stale record.
+    final state = AppState.test(
+      selectedProvider: 'codex',
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          providerId: 'devin-cli',
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(id: 1, role: 'user', content: 'q'),
+          Message(id: 2, role: 'assistant', content: 'a', model: 'gpt-5'),
+        ],
+        totalMessages: 2,
+      ),
+    );
+
+    await pumpThread(tester, state);
+
+    final providerIcon = find.descendant(
+      of: find.byType(CircleAvatar),
+      matching: find.byType(ProviderIcon),
+    );
+    expect(providerIcon, findsOneWidget);
+    expect(tester.widget<ProviderIcon>(providerIcon).providerId, 'codex');
+    expect(find.byIcon(Icons.person_outline), findsOneWidget);
+  });
+
+  testWidgets('streaming placeholder uses the selected provider icon', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      selectedProvider: 'grok',
+      sending: true,
+      streamingParts: [MessagePart.text(content: 'working')],
+      activeThreadId: 't1',
+      activeThreadDetail: detailWith([
+        Message(id: 1, role: 'user', content: 'q'),
+      ]),
+    );
+
+    await pumpThread(tester, state);
+
+    final providerIcon = find.descendant(
+      of: find.byType(CircleAvatar),
+      matching: find.byType(ProviderIcon),
+    );
+    expect(providerIcon, findsOneWidget);
+    expect(tester.widget<ProviderIcon>(providerIcon).providerId, 'grok');
   });
 
   testWidgets('copy action puts the message text on the clipboard', (

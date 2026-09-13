@@ -80,6 +80,16 @@ class _MessagesPanel extends StatelessWidget {
 
     final messages = detail!.messages;
     final hasStreaming = sending && streamingParts.isNotEmpty;
+    // selectedProvider tracks the live picker value, so it stays correct when
+    // the provider is switched on a thread that has no session yet; the
+    // persisted thread.providerId would go stale until the next reload.
+    final providerId = context.select<AppState, String>(
+      (s) => s.selectedProvider,
+    );
+    final model = context.select<AppState, String>((s) => s.selectedModel);
+    final username = context.select<AppState, String>(
+      (s) => s.user?.username ?? '',
+    );
 
     if (messages.isEmpty && !hasStreaming) {
       return Center(
@@ -132,9 +142,11 @@ class _MessagesPanel extends StatelessWidget {
                 attachments: null,
                 parts: streamingParts,
                 partsDigest: streamingDigest,
-                model: detail?.thread.model ?? '',
+                model: model,
               ),
               threadId: detail!.thread.id,
+              providerId: providerId,
+              username: username,
               thinkingActive: streamingThinkingActive,
               sending: true,
             );
@@ -153,6 +165,8 @@ class _MessagesPanel extends StatelessWidget {
             ),
             message: message,
             threadId: detail!.thread.id,
+            providerId: providerId,
+            username: username,
             isLastMessage: identical(message, lastMessage),
             sending: sending,
           );

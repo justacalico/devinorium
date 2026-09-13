@@ -3,6 +3,8 @@ part of '../thread_page.dart';
 class _MessageItem extends StatefulWidget {
   final Message message;
   final String threadId;
+  final String providerId;
+  final String username;
   final bool thinkingActive;
   final bool isLastMessage;
   final bool sending;
@@ -10,6 +12,8 @@ class _MessageItem extends StatefulWidget {
     super.key,
     required this.message,
     required this.threadId,
+    required this.providerId,
+    required this.username,
     this.thinkingActive = false,
     this.isLastMessage = false,
     this.sending = false,
@@ -420,25 +424,31 @@ class _MessageItemState extends State<_MessageItem> {
     final assistantLabel = message.model.isNotEmpty
         ? message.model
         : l.messageRoleAssistant;
-    final (icon, label, avatarBg, avatarFg) = switch (message.role) {
+    final (label, avatarBg, avatarFg) = switch (message.role) {
       'user' => (
-        Icons.person_outline,
-        l.messageRoleYou,
+        widget.username.isNotEmpty ? widget.username : l.messageRoleYou,
         theme.colorScheme.primaryContainer,
         theme.colorScheme.onPrimaryContainer,
       ),
       'assistant' => (
-        Icons.smart_toy_outlined,
         assistantLabel,
         theme.colorScheme.secondaryContainer,
         theme.colorScheme.onSecondaryContainer,
       ),
       _ => (
-        Icons.warning_amber_outlined,
         l.messageRoleError,
         theme.colorScheme.errorContainer,
         theme.colorScheme.onErrorContainer,
       ),
+    };
+    final avatar = switch (message.role) {
+      'assistant' => ProviderIcon(
+          providerId: widget.providerId,
+          size: 18,
+          color: avatarFg,
+        ),
+      'user' => const Icon(Icons.person_outline, size: 18),
+      _ => const Icon(Icons.warning_amber_outlined, size: 18),
     };
 
     final created = message.createdAt?.toLocal();
@@ -469,7 +479,7 @@ class _MessageItemState extends State<_MessageItem> {
             radius: 16,
             backgroundColor: avatarBg,
             foregroundColor: avatarFg,
-            child: Icon(icon, size: 18),
+            child: avatar,
           ),
           const SizedBox(width: 14),
           Expanded(
