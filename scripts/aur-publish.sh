@@ -19,26 +19,37 @@ PKG_DIR="$ROOT/packaging/aur"
 AUR_URL_BASE="ssh://aur@aur.archlinux.org"
 DRYRUN="${AUR_PUBLISH_DRYRUN:-}"
 
+write_key() {
+  # $1: home dir that gets the key
+  local home="$1" key="$2"
+  install -d -m 700 "$home/.ssh"
+  printf '%s\n' "$key" | sed 's/\\n/\n/g' | tr -d '\r' > "$home/.ssh/id_ed25519"
+  printf '\n' >> "$home/.ssh/id_ed25519"
+  chmod 600 "$home/.ssh/id_ed25519"
+  ssh-keygen -y -f "$home/.ssh/id_ed25519" >/dev/null
+}
+
 # makepkg refuses to run as root; CI containers run as root, so re-exec as a
 # dedicated user with the SSH material copied over.
 if [ "$(id -u)" -eq 0 ]; then
   id -u aur-builder >/dev/null 2>&1 || useradd -m -s /bin/bash aur-builder
   if [ -n "${AUR_SSH_PRIVATE_KEY:-}" ]; then
-    install -d -m 700 /root/.ssh
-    printf '%s\n' "$AUR_SSH_PRIVATE_KEY" | tr -d '\r' > /root/.ssh/id_ed25519
-    chmod 600 /root/.ssh/id_ed25519
+    write_key /root "$AUR_SSH_PRIVATE_KEY"
     install -d -m 700 -o aur-builder -g aur-builder /home/aur-builder/.ssh
     cp /root/.ssh/id_ed25519 /home/aur-builder/.ssh/
     chown aur-builder:aur-builder /home/aur-builder/.ssh/id_ed25519
   fi
-  exec su aur-builder -s /bin/bash -c "cd '$ROOT' && HOME=/home/aur-builder '$0' $*"
+  if command -v runuser >/dev/null 2>&1; then
+    exec runuser -u aur-builder -- env HOME=/home/aur-builder bash "$ROOT/scripts/aur-publish.sh" "$@"
+  fi
+  exec su aur-builder -s /bin/bash -c "cd '$ROOT' && HOME=/home/aur-builder bash '$ROOT/scripts/aur-publish.sh' $*"
 fi
 
 if [ -n "${AUR_SSH_PRIVATE_KEY:-}" ]; then
-  install -d -m 700 ~/.ssh
-  printf '%s\n' "$AUR_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
-  chmod 600 ~/.ssh/id_ed25519
+  write_key "$HOME" "$AUR_SSH_PRIVATE_KEY"
 fi
+
+ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null || true
 
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 if [ -f ~/.ssh/id_ed25519 ]; then
@@ -78,7 +89,8 @@ case "$MODE" in
       exit 1
     fi
     VERSION="${TAG#v}"
-    ARCHIVE_URL="https://gitlab.com/HttpAnimations/devinorium/-/archive/v$VERSION/devinorium-v$VERSION.tar.gz"
+    # Deterministic source tarball uploaded by the release job (git archive).
+    ARCHIVE_URL="https://github.com/justacalico/devinorium/releases/download/v$VERSION/devinorium-v$VERSION-source.tar.gz"
     echo "Resolving sha256 for $ARCHIVE_URL"
     ARCHIVE_SHA="$(curl -fsSL "$ARCHIVE_URL" | sha256sum | cut -d' ' -f1)"
     [ -n "$ARCHIVE_SHA" ] || { echo "aur-publish: could not hash archive" >&2; exit 1; }
@@ -121,10 +133,11 @@ publish() {
   fi
 
   (cd "$repo" && makepkg --printsrcinfo > .SRCINFO)
-  rm -rf "$repo/devinorium"
+  # makepkg may drop VCS clones or build dirs in srcdir; keep them out of the commit.
+  rm -rf "$repo/devinorium" "$repo/src" "$repo/pkg"
   newver=$(grep -m1 'pkgver = ' "$repo/.SRCINFO" | awk '{print $3}')
 
-  git -C "$repo" add PKGBUILD .SRCINFO "${aux[@]}"
+  git -C "$repo" add -A
   if git -C "$repo" diff --cached --quiet; then
     echo "$pkgbase: already up to date ($newver)"
   elif [ "$DRYRUN" = 1 ]; then

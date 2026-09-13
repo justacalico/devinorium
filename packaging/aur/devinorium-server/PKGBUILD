@@ -8,11 +8,12 @@ arch=('x86_64')
 url="https://gitlab.com/HttpAnimations/devinorium"
 license=('AGPL-3.0-only')
 options=('!lto')
-depends=('glibc' 'gcc-libs')
-makedepends=('cargo' 'clang' 'cmake' 'ninja' 'pkgconf')
+depends=('glibc' 'gcc-libs' 'git')
+makedepends=('cargo' 'git' 'unzip' 'zip' 'curl')
+optdepends=('openssh: clone repositories over SSH')
 backup=('etc/devinorium/devinorium.env')
 _flutterver=3.44.9
-source=("devinorium-v$pkgver.tar.gz::https://gitlab.com/HttpAnimations/devinorium/-/archive/v$pkgver/devinorium-v$pkgver.tar.gz"
+source=("devinorium-v$pkgver.tar.gz::https://github.com/justacalico/devinorium/releases/download/v$pkgver/devinorium-v$pkgver-source.tar.gz"
         "flutter_linux_${_flutterver}-stable.tar.xz::https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${_flutterver}-stable.tar.xz"
         "devinorium.service"
         "devinorium.sysusers"
@@ -30,7 +31,7 @@ build() {
   flutter config --no-analytics >/dev/null 2>&1 || true
   flutter precache --web >/dev/null
 
-  cd "$_pkgname-v$pkgver/flutter"
+  cd "$_pkgname-$pkgver/flutter"
   flutter pub get
   flutter build web --release --wasm
   rm -rf build/web/canvaskit
@@ -44,7 +45,7 @@ build() {
 }
 
 package() {
-  cd "$_pkgname-v$pkgver"
+  cd "$_pkgname-$pkgver"
   install -Dm755 target/release/devinorium "$pkgdir/usr/bin/devinorium-server"
   install -Dm644 "$srcdir/devinorium.service" "$pkgdir/usr/lib/systemd/system/devinorium.service"
   install -Dm644 "$srcdir/devinorium.sysusers" "$pkgdir/usr/lib/sysusers.d/devinorium.conf"

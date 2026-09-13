@@ -600,6 +600,9 @@ jobs:
             chmod +x release-assets/devinorium
             mv release-assets/devinorium "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-x86_64"
           fi
+          TAG="${{ steps.meta.outputs.release_tag }}"
+          git archive --format=tar.gz --prefix="devinorium-${TAG#v}/" \
+            -o "release-assets/devinorium-${TAG}-source.tar.gz" "$TAG"
           ls -la release-assets/
 
       - name: Generate checksums
@@ -676,7 +679,7 @@ jobs:
             -w "$GITHUB_WORKSPACE" \
             archlinux:latest bash -c '
               set -e
-              pacman -Sy --noconfirm --needed archlinux-keyring base-devel git
+              pacman -Syu --noconfirm --needed base-devel git
               useradd -m -s /bin/bash aur-builder
               su aur-builder -s /bin/bash -c "
                 set -e
@@ -712,7 +715,7 @@ jobs:
             -w "$GITHUB_WORKSPACE" \
             -e AUR_SSH_PRIVATE_KEY \
             archlinux:latest bash -c '
-              pacman -Sy --noconfirm --needed archlinux-keyring base-devel git openssh curl
+              pacman -Syu --noconfirm --needed base-devel git openssh curl
               bash scripts/aur-publish.sh git
             '
 
@@ -736,6 +739,6 @@ jobs:
             -w "$GITHUB_WORKSPACE" \
             -e AUR_SSH_PRIVATE_KEY \
             archlinux:latest bash -c '
-              pacman -Sy --noconfirm --needed archlinux-keyring base-devel git openssh curl
+              pacman -Syu --noconfirm --needed base-devel git openssh curl
               bash scripts/aur-publish.sh stable "${{ needs.release.outputs.release_tag }}"
             '
