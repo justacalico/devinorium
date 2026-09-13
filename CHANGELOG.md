@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.74.0 - 2026-09-13
+#### Features
+- 终端面板改为全局共享，切换视图不再丢失会话 - (e870019) - HttpAnimations
+#### Bug Fixes
+- 设置侧边栏主题标签过长时溢出 - (ad856b1) - HttpAnimations
+- https 服务器的终端改用 wss 连接 - (949e044) - HttpAnimations
+- 终端打开到线程的项目或 worktree 目录 - (a287279) - HttpAnimations
+- 终端面板移到主区域常驻并隐藏内嵌云端入口 - (fa10661) - HttpAnimations
+- 等待终端清理完成并补充断开后守卫 - (aaba3b3) - HttpAnimations
+- 修复终端清理的服务器归属与竞态问题 - (9e58af4) - HttpAnimations
+
+- - -
+
 ## v0.73.1 - 2026-09-13
 #### Bug Fixes
 - 修复 AUR 打包的依赖缺失与发布流程问题 - (bdea4d6) - HttpAnimations
