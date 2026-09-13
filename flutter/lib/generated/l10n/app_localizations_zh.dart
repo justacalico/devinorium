@@ -249,6 +249,46 @@ class AppLocalizationsZh extends AppLocalizations {
   String get projects => '项目';
 
   @override
+  String get groups => '分组';
+
+  @override
+  String get groupFilterAll => '全部';
+
+  @override
+  String get newGroup => '新建分组';
+
+  @override
+  String get manageGroups => '管理分组';
+
+  @override
+  String get groupNameHint => '分组名称';
+
+  @override
+  String get renameGroup => '重命名分组';
+
+  @override
+  String get deleteGroup => '删除分组';
+
+  @override
+  String deleteGroupConfirm(String name) {
+    return '删除分组“$name”？其中的项目会保留在列表中，但不再属于任何分组。';
+  }
+
+  @override
+  String get noGroup => '无分组';
+
+  @override
+  String get groupEmpty => '此分组中没有项目';
+
+  @override
+  String get projectGroupMenu => '分组';
+
+  @override
+  String groupProjectsCount(int count) {
+    return '$count 个项目';
+  }
+
+  @override
   String get language => '语言';
 
   @override

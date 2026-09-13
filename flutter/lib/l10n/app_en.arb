@@ -165,6 +165,44 @@
   "personalization": "Personalization",
   "manage": "Manage",
   "projects": "Projects",
+  "groups": "Groups",
+  "@groups": {
+    "description": "Project groups feature label"
+  },
+  "groupFilterAll": "All",
+  "@groupFilterAll": {
+    "description": "Default sidebar group filter showing every project"
+  },
+  "newGroup": "New group",
+  "manageGroups": "Manage groups",
+  "groupNameHint": "Group name",
+  "renameGroup": "Rename group",
+  "deleteGroup": "Delete group",
+  "deleteGroupConfirm": "Delete group \"{name}\"? Its projects stay in the list, ungrouped.",
+  "@deleteGroupConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "noGroup": "No group",
+  "@noGroup": {
+    "description": "Menu item that removes a project from its group"
+  },
+  "groupEmpty": "No projects in this group.",
+  "projectGroupMenu": "Group",
+  "@projectGroupMenu": {
+    "description": "Submenu label for assigning a project to a group"
+  },
+  "groupProjectsCount": "{count, plural, =1{1 project} other{{count} projects}}",
+  "@groupProjectsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "language": "Language",
   "theme": "Theme",
   "root": "root",

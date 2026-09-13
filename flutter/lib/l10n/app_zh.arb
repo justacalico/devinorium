@@ -165,6 +165,44 @@
   "personalization": "个性化",
   "manage": "管理",
   "projects": "项目",
+  "groups": "分组",
+  "@groups": {
+    "description": "项目分组功能标签"
+  },
+  "groupFilterAll": "全部",
+  "@groupFilterAll": {
+    "description": "侧边栏分组筛选默认项，显示所有项目"
+  },
+  "newGroup": "新建分组",
+  "manageGroups": "管理分组",
+  "groupNameHint": "分组名称",
+  "renameGroup": "重命名分组",
+  "deleteGroup": "删除分组",
+  "deleteGroupConfirm": "删除分组“{name}”？其中的项目会保留在列表中，但不再属于任何分组。",
+  "@deleteGroupConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "noGroup": "无分组",
+  "@noGroup": {
+    "description": "将项目移出分组的菜单项"
+  },
+  "groupEmpty": "此分组中没有项目",
+  "projectGroupMenu": "分组",
+  "@projectGroupMenu": {
+    "description": "将项目加入分组的子菜单标签"
+  },
+  "groupProjectsCount": "{count} 个项目",
+  "@groupProjectsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "language": "语言",
   "theme": "主题",
   "root": "根",

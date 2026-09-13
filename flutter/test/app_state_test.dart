@@ -1018,6 +1018,7 @@ void main() {
         api: ApiService(
           client: _clientFor([
             _json(200, chunk),
+            _json(200, []),
             _json(200, [
               {
                 'id': 51,

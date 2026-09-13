@@ -34,6 +34,7 @@ part 'app_state/navigation_store.dart';
 part 'app_state/core_store.dart';
 part 'app_state/auth_store.dart';
 part 'app_state/project_store.dart';
+part 'app_state/project_group_store.dart';
 part 'app_state/thread_list_store.dart';
 part 'app_state/composer_store.dart';
 part 'app_state/attachment_store.dart';
@@ -70,6 +71,9 @@ enum DialogKind {
   permissionRequest,
   renameProject,
   renameThread,
+  renameProjectGroup,
+  newProjectGroup,
+  manageProjectGroups,
   mergeRequest,
   issue,
   webLogin,
@@ -81,6 +85,7 @@ class AppState extends AppStateBase
         CoreStore,
         AuthStore,
         ProjectStore,
+        ProjectGroupStore,
         ThreadListStore,
         ComposerStore,
         AttachmentStore,
@@ -150,6 +155,8 @@ class AppState extends AppStateBase
     List<Project> projects = const [],
     List<Thread> threads = const [],
     List<ThreadGroup> groups = const [],
+    List<ProjectGroup> projectGroups = const [],
+    int? selectedProjectGroupId,
     List<ModelInfo> models = const [],
     List<ProviderInfo> providers = const [],
     Map<String, ProviderVersion> providerVersions = const {},
@@ -243,6 +250,8 @@ class AppState extends AppStateBase
           projectThreadCount >= ThreadListStore._threadChunkSize;
     }
     _groups = groups;
+    _projectGroups = projectGroups;
+    _selectedProjectGroupId = selectedProjectGroupId;
     _models = models;
     _providers = providers;
     _providerVersions.addAll(providerVersions);

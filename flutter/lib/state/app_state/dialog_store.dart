@@ -42,6 +42,9 @@ mixin DialogStore on AppStateBase {
     _issueUrl = null;
     _renameProjectId = null;
     _renameThreadId = null;
+    _renameProjectGroupId = null;
+    _groupAssignProjectId = null;
+    _newGroupFromManage = false;
     _renameInitialName = '';
     _cloneRepoSeq++;
     _cloningRepo = false;

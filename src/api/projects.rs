@@ -21,6 +21,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/reorder", patch(reorder))
         .route("/api/projects/:id", delete(delete_one).patch(rename))
         .route("/api/projects/:id/pin", post(pin))
+        .route("/api/projects/:id/group", patch(set_group))
         .route("/api/projects/:id/threads", get(list_threads))
 }
 
@@ -34,6 +35,7 @@ pub struct ProjectOut {
     pub is_repo: bool,
     pub branch: String,
     pub project_type: String,
+    pub group_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -57,6 +59,7 @@ impl ProjectOut {
             is_repo,
             branch,
             project_type: p.project_type,
+            group_id: p.group_id,
             created_at: p.created_at,
             updated_at: p.updated_at,
         }
@@ -309,6 +312,59 @@ async fn pin(
     }
 
     if let Err(e) = state.db.set_project_pinned(id, user.id, req.pinned).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+
+    match state.db.get_project(id, user.id).await {
+        Ok(Some(p)) => Json(ProjectOut::from_row(&state, p).await).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
+        Err(e) => crate::api::map_err_internal(e).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetProjectGroup {
+    /// `null` ungroups the project.
+    pub group_id: Option<i64>,
+}
+
+async fn set_group(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+    Json(req): Json<SetProjectGroup>,
+) -> Response {
+    match state.db.get_project(id, user.id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response();
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    }
+
+    if let Some(gid) = req.group_id {
+        match state.db.get_project_group(gid, user.id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("group not found")),
+                )
+                    .into_response();
+            }
+            Err(e) => return crate::api::map_err_internal(e).into_response(),
+        }
+    }
+
+    if let Err(e) = state.db.set_project_group(id, user.id, req.group_id).await {
         return crate::api::map_err_internal(e).into_response();
     }
 

@@ -621,6 +621,12 @@ mixin AuthStore on AppStateBase {
     _projects = [];
     _projectsOffset = 0;
     _projectsHasMore = true;
+    _projectGroups = [];
+    _selectedProjectGroupId = null;
+    _groupAssignProjectId = null;
+    _renameProjectGroupId = null;
+    _projectGroupsUnsupported = false;
+    _newGroupFromManage = false;
     _threads = [];
     _userThreadsOffset = 0;
     _userThreadsHasMore = true;
