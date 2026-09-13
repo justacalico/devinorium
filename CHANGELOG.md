@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.72.1 - 2026-09-13
+#### Bug Fixes
+- 避免菜单关闭回调中注册多余的焦点依赖 - (2487ccf) - HttpAnimations
+- 修复点击菜单操作后项目保持高亮的问题 - (2eb6095) - HttpAnimations
+
+- - -
+
 ## v0.72.0 - 2026-09-13
 #### Features
 - 添加项目分组前端模型、状态与侧边栏筛选界面 - (017cb68) - HttpAnimations
