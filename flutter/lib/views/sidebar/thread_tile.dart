@@ -521,6 +521,7 @@ class _ThreadOptionsMenu extends StatelessWidget {
     final l = l10n(context);
 
     return MenuAnchor(
+      onClose: () => _clearMenuFocus(context),
       menuChildren: [
         MenuItemButton(
           leadingIcon: Icon(
