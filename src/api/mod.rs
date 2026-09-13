@@ -9,6 +9,7 @@ pub mod git;
 pub mod git_connections;
 pub mod models;
 pub mod pagination;
+pub mod project_groups;
 pub mod projects;
 pub mod providers;
 pub mod server;

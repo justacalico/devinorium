@@ -18,6 +18,7 @@ pub mod attachments;
 pub mod audit;
 pub mod messages;
 pub mod plans;
+pub mod project_groups;
 pub mod projects;
 pub mod server_settings;
 pub mod sessions;
@@ -28,6 +29,7 @@ pub mod users;
 
 pub use messages::{DuplicateClientMessageId, NewMessage, MAX_CLIENT_MESSAGE_ID_LEN};
 pub use plans::{NewPlan, PlanRow};
+pub use project_groups::NewProjectGroup;
 pub use projects::NewProject;
 pub use thread_groups::NewThreadGroup;
 pub use threads::{NewThread, ThreadSettingsUpdate};
@@ -228,6 +230,8 @@ pub struct ProjectRow {
     pub position: i64,
     pub project_type: String,
     pub pinned: bool,
+    /// Project group this project belongs to, if any.
+    pub group_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -254,6 +258,16 @@ pub struct MessageRow {
 /// A row from the `thread_groups` table.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct ThreadGroupRow {
+    pub id: i64,
+    pub user_id: i64,
+    pub name: String,
+    pub position: i64,
+    pub created_at: String,
+}
+
+/// A row from the `project_groups` table.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct ProjectGroupRow {
     pub id: i64,
     pub user_id: i64,
     pub name: String,
