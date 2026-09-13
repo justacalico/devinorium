@@ -5,6 +5,7 @@ import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:devinorium_frontend/widgets/provider_icons.dart';
 import 'package:devinorium_frontend/widgets/thread_tag.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -207,6 +208,21 @@ Future<void> _openDrawer(WidgetTester tester) async {
   final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold));
   scaffold.openDrawer();
   await tester.pumpAndSettle();
+}
+
+// The states carried by the tile's own ink well: hovered, focused, pressed.
+Set<WidgetState> _tileInkStates(WidgetTester tester, Finder tile) {
+  // The tile's own InkWell is visited first in depth-first order, before
+  // the ink responses of buttons nested inside the tile.
+  final ink = find.descendant(
+    of: tile,
+    matching: find.byWidgetPredicate(
+      (w) => w.runtimeType.toString() == '_InkResponseStateWidget',
+    ),
+  );
+  final dynamic inkState = tester.state(ink.first);
+  // ignore: avoid_dynamic_calls
+  return Set<WidgetState>.from(inkState.statesController.value as Iterable);
 }
 
 void main() {
@@ -1376,6 +1392,155 @@ void main() {
     await tester.tap(more);
     await tester.pumpAndSettle();
     expect(find.text('Unpin'), findsOneWidget);
+  });
+
+  testWidgets('Project menu action does not leave the tile highlighted', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+    );
+    api.pinProjectReturns[1] = Project(
+      id: 1,
+      name: 'p',
+      path: '/x',
+      pinned: true,
+      createdAt: '',
+      updatedAt: '',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final projectTile = find
+        .ancestor(of: find.text('p'), matching: find.byType(ListTile))
+        .first;
+    final more = find.descendant(
+      of: projectTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(more));
+    await mouse.down(tester.getCenter(more));
+    await mouse.up();
+    await tester.pumpAndSettle();
+
+    await mouse.moveTo(tester.getCenter(find.text('Pin')));
+    await tester.pump();
+    expect(
+      _tileInkStates(tester, projectTile),
+      contains(WidgetState.focused),
+    );
+
+    await mouse.down(tester.getCenter(find.text('Pin')));
+    await mouse.up();
+    await tester.pumpAndSettle();
+
+    // Picking an item focused the tile's focus node through the menu's
+    // overlay; after close the tile must not keep a stale focused state.
+    expect(
+      _tileInkStates(tester, projectTile),
+      isNot(contains(WidgetState.focused)),
+    );
+
+    await mouse.moveTo(Offset.zero);
+    await tester.pumpAndSettle();
+    expect(_tileInkStates(tester, projectTile), isEmpty);
+  });
+
+  testWidgets('Thread menu action does not leave the tile highlighted', (
+    tester,
+  ) async {
+    final api = _FakeApiService();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'a',
+          title: 'My thread',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'a',
+    );
+    api.pinThreadReturns['a'] = Thread(
+      id: 'a',
+      title: 'My thread',
+      projectId: 1,
+      model: '',
+      permissionMode: 'normal',
+      pinned: true,
+      createdAt: '',
+      updatedAt: '',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final threadTile = find
+        .ancestor(of: find.text('My thread'), matching: find.byType(ListTile))
+        .first;
+    final more = find.descendant(
+      of: threadTile,
+      matching: find.byIcon(Icons.more_vert),
+    );
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(more));
+    await mouse.down(tester.getCenter(more));
+    await mouse.up();
+    await tester.pumpAndSettle();
+
+    await mouse.moveTo(tester.getCenter(find.text('Pin')));
+    await tester.pump();
+    expect(
+      _tileInkStates(tester, threadTile),
+      contains(WidgetState.focused),
+    );
+
+    await mouse.down(tester.getCenter(find.text('Pin')));
+    await mouse.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      _tileInkStates(tester, threadTile),
+      isNot(contains(WidgetState.focused)),
+    );
+
+    await mouse.moveTo(Offset.zero);
+    await tester.pumpAndSettle();
+    expect(_tileInkStates(tester, threadTile), isEmpty);
   });
 
   testWidgets('Project pin menu item sorts pinned projects to top', (

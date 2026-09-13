@@ -65,6 +65,18 @@ bool _isDesktop(BuildContext context) {
   };
 }
 
+/// Called when a sidebar [MenuAnchor] has finished closing.
+///
+/// Focusing a menu item puts the surrounding tile's [Focus] node on the
+/// focus path, so its ink well shows the focused state. When the menu's
+/// overlay is removed that node is never notified that it left the path, so
+/// the tile keeps a stale focused state (a permanent highlight on desktop).
+/// Parking focus on the enclosing scope forces the missed notification.
+void _clearMenuFocus(BuildContext context) {
+  if (!context.mounted) return;
+  FocusScope.of(context, createDependency: false).requestScopeFocus();
+}
+
 String _timeAgo(String iso, AppLocalizations l) {
   final dt = DateTime.tryParse(iso);
   if (dt == null) return '';
@@ -718,6 +730,7 @@ class _UserChip extends StatelessWidget {
               ),
               const _ConnectionStatusIcon(),
               MenuAnchor(
+                onClose: () => _clearMenuFocus(context),
                 menuChildren: [
                   MenuItemButton(
                     leadingIcon: const Icon(Icons.settings_outlined),
