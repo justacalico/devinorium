@@ -21,22 +21,27 @@ class _RecordingApi extends ApiService {
 
 TerminalStore _store({
   String? Function()? activeThreadId,
+  String? Function()? activeWorkingDir,
   TerminalSessionFactory? sessionFactory,
 }) => TerminalStore(
   api: () => ApiService(),
   activeThreadId: activeThreadId,
+  activeWorkingDir: activeWorkingDir,
   sessionFactory: sessionFactory,
 );
 
-TerminalSessionFactory _fakeFactory({void Function(String? threadId)? onCall}) {
+TerminalSessionFactory _fakeFactory({
+  void Function(String? threadId, String? workingDir)? onCall,
+}) {
   var callCount = 0;
   return ({
     required ApiService api,
     required String? threadId,
     required bool local,
+    String? workingDir,
   }) async {
     callCount++;
-    onCall?.call(threadId);
+    onCall?.call(threadId, workingDir);
     return TerminalSession(id: 's-$callCount', isLocal: local);
   };
 }
@@ -60,7 +65,7 @@ void main() {
       final seen = <String?>[];
       final store = _store(
         activeThreadId: () => current,
-        sessionFactory: _fakeFactory(onCall: seen.add),
+        sessionFactory: _fakeFactory(onCall: (threadId, _) => seen.add(threadId)),
       );
       addTearDown(store.dispose);
 
@@ -73,9 +78,28 @@ void main() {
       expect(store.tabs.single.sessions, hasLength(2));
     });
 
+    test('passes the active working directory to the factory', () async {
+      var current = '/repo';
+      final seen = <String?>[];
+      final store = _store(
+        activeWorkingDir: () => current,
+        sessionFactory:
+            _fakeFactory(onCall: (_, workingDir) => seen.add(workingDir)),
+      );
+      addTearDown(store.dispose);
+
+      await store.addSession(local: true);
+      current = '/repo/.worktrees/t2';
+      await store.addSession(local: true);
+
+      expect(seen, ['/repo', '/repo/.worktrees/t2']);
+    });
+
     test('works without an active thread', () async {
       final seen = <String?>[];
-      final store = _store(sessionFactory: _fakeFactory(onCall: seen.add));
+      final store = _store(
+        sessionFactory: _fakeFactory(onCall: (threadId, _) => seen.add(threadId)),
+      );
       addTearDown(store.dispose);
 
       await store.addSession(local: false);
@@ -91,6 +115,7 @@ void main() {
               required ApiService api,
               required String? threadId,
               required bool local,
+              String? workingDir,
             }) async => throw StateError('nope'),
       );
       addTearDown(store.dispose);
@@ -109,6 +134,7 @@ void main() {
               required ApiService api,
               required String? threadId,
               required bool local,
+              String? workingDir,
             }) async {
               calls++;
               await gate.future;
@@ -259,6 +285,7 @@ void main() {
               required ApiService api,
               required String? threadId,
               required bool local,
+              String? workingDir,
             }) async {
               calls++;
               await gate.future;
@@ -288,6 +315,7 @@ void main() {
               required ApiService api,
               required String? threadId,
               required bool local,
+              String? workingDir,
             }) async {
               calls++;
               return TerminalSession(id: 's', isLocal: local);

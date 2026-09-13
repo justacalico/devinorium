@@ -58,9 +58,18 @@ async fn create(
         return forbidden();
     }
 
-    let thread_id = match req.thread_id.as_deref().filter(|t| !t.is_empty()) {
+    let (thread_id, cwd) = match req.thread_id.as_deref().filter(|t| !t.is_empty()) {
         Some(thread_id) => match state.db.get_thread(thread_id, user.id).await {
-            Ok(Some(t)) => t.id,
+            Ok(Some(t)) => {
+                // Open the shell where the thread's files are: its managed
+                // worktree when it runs in one, else the project checkout.
+                let dir =
+                    match super::threads::plan::project_working_dir_for_thread(&state, &t).await {
+                        Ok(dir) => dir,
+                        Err(e) => return crate::api::map_err_internal(e).into_response(),
+                    };
+                (t.id, dir)
+            }
             Ok(None) => {
                 return (
                     StatusCode::BAD_REQUEST,
@@ -70,12 +79,12 @@ async fn create(
             }
             Err(e) => return crate::api::map_err_internal(e).into_response(),
         },
-        None => String::new(),
+        None => (String::new(), state.config.home_dir.clone()),
     };
 
     match state
         .terminal_manager
-        .spawn(user.id, thread_id.clone(), None)
+        .spawn(user.id, thread_id.clone(), None, Some(cwd))
         .await
     {
         Ok(session) => {

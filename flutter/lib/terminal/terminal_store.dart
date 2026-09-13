@@ -22,16 +22,22 @@ class TerminalStore extends ChangeNotifier {
   TerminalStore({
     required ApiService Function() api,
     String? Function()? activeThreadId,
+    String? Function()? activeWorkingDir,
     TerminalSessionFactory? sessionFactory,
     // ignore: prefer_initializing_formals
   }) : _api = api,
        _activeThreadId = activeThreadId ?? (() => null),
+       _activeWorkingDir = activeWorkingDir ?? (() => null),
        sessionFactory = sessionFactory ?? createTerminalSession;
 
   /// Resolved lazily so sessions are always created through the currently
   /// active server connection.
   final ApiService Function() _api;
   final String? Function() _activeThreadId;
+
+  /// Working directory for new local shells — the active thread's worktree
+  /// or project path when one resolves.
+  final String? Function() _activeWorkingDir;
 
   /// Injectable so tests can avoid real PTYs and WebSockets.
   TerminalSessionFactory sessionFactory;
@@ -105,6 +111,7 @@ class TerminalStore extends ChangeNotifier {
         api: api,
         threadId: _activeThreadId(),
         local: local,
+        workingDir: _activeWorkingDir(),
       );
       // The store may have been cleared or disposed while the factory was in
       // flight — kill the session instead of writing to a stale workspace.
@@ -179,17 +186,15 @@ class TerminalStore extends ChangeNotifier {
   /// sessions (null for local ones). The kill is bounded and swallows errors.
   Future<void>? _disposeSession(TerminalSession session, {ApiService? api}) {
     session.removeListener(_notify);
+    final owner = _sessionApis.remove(session) ?? api;
     Future<void>? kill;
-    if (!session.isLocal) {
+    if (!session.isLocal && owner != null) {
       // Tell the backend to kill the PTY too — otherwise the shell keeps
       // running on the server until the idle TTL expires.
-      final owner = _sessionApis.remove(session) ?? api;
-      if (owner != null) {
-        kill = owner
-            .killTerminalSession(session.id)
-            .timeout(const Duration(seconds: 5))
-            .catchError((_) {});
-      }
+      kill = owner
+          .killTerminalSession(session.id)
+          .timeout(const Duration(seconds: 5))
+          .catchError((_) {});
     }
     session.dispose();
     return kill;

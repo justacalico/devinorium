@@ -71,10 +71,15 @@ class TerminalSession extends ChangeNotifier {
 }
 
 class LocalTerminalSession extends TerminalSession {
-  LocalTerminalSession({required super.id}) : super(isLocal: true) {
+  LocalTerminalSession({required super.id, this.workingDir})
+    : super(isLocal: true) {
     _setStatus(TerminalStatus.connected);
-    _backend.start();
+    _backend.start(workingDirectory: workingDir);
   }
+
+  /// Directory the local shell starts in — the thread's working directory
+  /// when it resolves on this device.
+  final String? workingDir;
 
   late final _backend = LocalPtyBackend(terminal);
 
@@ -227,17 +232,22 @@ typedef TerminalSessionFactory =
       required ApiService api,
       required String? threadId,
       required bool local,
+      String? workingDir,
     });
 
-/// Create a local or remote terminal session.
+/// Create a local or remote terminal session. [workingDir] only applies to
+/// local sessions — remote shells start in the thread's working directory,
+/// resolved by the backend from [threadId].
 Future<TerminalSession> createTerminalSession({
   required ApiService api,
   required String? threadId,
   required bool local,
+  String? workingDir,
 }) async {
   if (local) {
     return LocalTerminalSession(
       id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+      workingDir: workingDir,
     );
   }
   final sessionId = await api.createTerminalSession(threadId);

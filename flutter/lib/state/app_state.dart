@@ -115,6 +115,7 @@ class AppState extends AppStateBase
   late final TerminalStore terminalStore = TerminalStore(
     api: () => api,
     activeThreadId: () => activeThreadId,
+    activeWorkingDir: () => _activeTerminalWorkingDir,
   );
 
   ApiService? _defaultApi;

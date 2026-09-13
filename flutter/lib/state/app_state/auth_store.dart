@@ -271,6 +271,8 @@ mixin AuthStore on AppStateBase {
           }
           _threadStores.clear();
           _setActiveStore(null);
+          // Remote terminal sessions point at the dead process as well.
+          await terminalStore.clear();
         }
       } else if (!manager.hasBinary &&
           multiServerState

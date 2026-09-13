@@ -97,6 +97,7 @@ void main() {
       required ApiService api,
       required String? threadId,
       required bool local,
+      String? workingDir,
     }) async {
       callCount++;
       return TerminalSession(id: 's-$callCount', isLocal: local);
@@ -138,6 +139,7 @@ void main() {
       required ApiService api,
       required String? threadId,
       required bool local,
+      String? workingDir,
     }) async {
       callCount++;
       return TerminalSession(id: 's-$callCount-$threadId', isLocal: local);
@@ -175,6 +177,7 @@ void main() {
       required ApiService api,
       required String? threadId,
       required bool local,
+      String? workingDir,
     }) async {
       callCount++;
       return TerminalSession(id: 's-$callCount', isLocal: local);
@@ -248,6 +251,7 @@ void main() {
       required ApiService api,
       required String? threadId,
       required bool local,
+      String? workingDir,
     }) async {
       callCount++;
       final session = TerminalSession(id: 's-$callCount', isLocal: local);
@@ -320,6 +324,7 @@ void main() {
       required ApiService api,
       required String? threadId,
       required bool local,
+      String? workingDir,
     }) async {
       throw StateError('boom');
     }
