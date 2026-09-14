@@ -5,10 +5,12 @@ import 'l10n/l10n.dart';
 import 'utils/debug_log.dart';
 import 'services/window_service.dart';
 import 'state/app_state.dart';
+import 'state/zoom_controller.dart';
 import 'theme/theme.dart';
 import 'views/app_view.dart';
 import 'views/dev_merge_request_dialog.dart';
 import 'views/dialogs.dart';
+import 'widgets/desktop_zoom.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,22 +19,35 @@ Future<void> main() async {
   final themeProvider = ThemeProvider();
   await themeProvider.loadInitial();
 
+  final zoomController = ZoomController();
+  if (ZoomController.isDesktop) {
+    await zoomController.load();
+  }
+
   final appState = AppState();
   appState.bootstrap().catchError((Object e, StackTrace _) {
     debugLogFailure('main.bootstrap', e);
   });
 
-  runApp(DevinoriumApp(appState: appState, themeProvider: themeProvider));
+  runApp(
+    DevinoriumApp(
+      appState: appState,
+      themeProvider: themeProvider,
+      zoomController: zoomController,
+    ),
+  );
 }
 
 class DevinoriumApp extends StatefulWidget {
   final AppState appState;
   final ThemeProvider themeProvider;
+  final ZoomController zoomController;
 
   const DevinoriumApp({
     super.key,
     required this.appState,
     required this.themeProvider,
+    required this.zoomController,
   });
 
   @override
@@ -91,6 +106,9 @@ class _DevinoriumAppState extends State<DevinoriumApp>
         ChangeNotifierProvider<ThemeProvider>.value(
           value: widget.themeProvider,
         ),
+        ChangeNotifierProvider<ZoomController>.value(
+          value: widget.zoomController,
+        ),
       ],
       child: Builder(
         builder: (context) {
@@ -107,6 +125,8 @@ class _DevinoriumAppState extends State<DevinoriumApp>
             theme: theme.lightTheme,
             darkTheme: theme.darkTheme,
             themeMode: theme.themeMode,
+            builder: (context, child) =>
+                DesktopZoom(child: child ?? const SizedBox.shrink()),
             home: const DevMergeRequestWrapper(child: RootScaffold()),
           );
         },

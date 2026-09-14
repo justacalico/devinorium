@@ -1,5 +1,6 @@
 import 'package:devinorium_frontend/main.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/state/zoom_controller.dart';
 import 'package:devinorium_frontend/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,7 +46,11 @@ void main() {
     });
 
     await tester.pumpWidget(
-      DevinoriumApp(appState: appState, themeProvider: themeProvider),
+      DevinoriumApp(
+        appState: appState,
+        themeProvider: themeProvider,
+        zoomController: ZoomController(),
+      ),
     );
     await tester.pump();
 
@@ -86,7 +91,11 @@ void main() {
     );
 
     await tester.pumpWidget(
-      DevinoriumApp(appState: appState, themeProvider: themeProvider),
+      DevinoriumApp(
+        appState: appState,
+        themeProvider: themeProvider,
+        zoomController: ZoomController(),
+      ),
     );
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);

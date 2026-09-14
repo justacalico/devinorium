@@ -617,7 +617,7 @@ class _MessageContextMenu extends StatelessWidget {
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (renderBox == null || overlay == null || overlay.size.isEmpty) return;
 
-    final global = renderBox.localToGlobal(position);
+    final global = renderBox.localToGlobal(position, ancestor: overlay);
     final relative = RelativeRect.fromSize(
       Rect.fromPoints(global, global.translate(2, 2)),
       overlay.size,
