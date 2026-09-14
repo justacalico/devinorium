@@ -210,7 +210,9 @@ class _DropZoneState extends State<DropZone> {
     try {
       final results = await Future.wait(files.map(_readWebFile));
       final attachments = await _collect(results);
-      if (attachments.isNotEmpty && mounted) {
+      if (attachments.isNotEmpty &&
+          mounted &&
+          context.read<AppState>().hasActiveThreadStore) {
         context.read<AppState>().addAttachments(attachments);
       }
     } catch (e) {
@@ -236,7 +238,9 @@ class _DropZoneState extends State<DropZone> {
     }
     try {
       final attachments = await _collect(results);
-      if (attachments.isNotEmpty && mounted) {
+      if (attachments.isNotEmpty &&
+          mounted &&
+          context.read<AppState>().hasActiveThreadStore) {
         context.read<AppState>().addAttachments(attachments);
       }
     } catch (e) {

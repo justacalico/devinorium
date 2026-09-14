@@ -280,6 +280,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String? get activeThreadId;
   ThreadDetail? get activeThreadDetail;
   bool get activeThreadLoading;
+  bool get hasActiveThreadStore;
   List<User> get users;
   bool get isOwner;
   bool get userMenuOpen;

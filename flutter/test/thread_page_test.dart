@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
@@ -13,6 +15,7 @@ import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _ThrowingClient extends BaseApiClient {
   @override
@@ -35,8 +38,7 @@ class _ThrowingClient extends BaseApiClient {
     Map<String, String> fields = const {},
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
@@ -150,6 +152,58 @@ class _FakeApiService extends ApiService {
 
   @override
   Future<void> stopThread(String id) => Future.value();
+}
+
+/// _FakeApiService whose getThread blocks until [gate] completes, holding
+/// openThread in its in-flight window.
+class _BlockingApi extends _FakeApiService {
+  final gate = Completer<void>();
+
+  @override
+  Future<ThreadDetail> getThread(
+    String id, {
+    bool includeMessages = false,
+    int? turnLimit,
+  }) => gate.future.then(
+    (_) => super.getThread(
+      id,
+      includeMessages: includeMessages,
+      turnLimit: turnLimit,
+    ),
+  );
+
+  @override
+  Future<Map<String, dynamic>> getThreadProject(String id) =>
+      Future.value({'project_id': 1});
+
+  @override
+  Future<List<Thread>> listThreads({int? limit, int? offset}) =>
+      Future.value(const []);
+
+  @override
+  Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
+      Future.value(const []);
+
+  @override
+  Future<List<String>> getThreadRuns() => Future.value(const []);
+
+  @override
+  Future<Map<String, dynamic>> getThreadRun(String id) =>
+      Future.value(const {'status': 'idle'});
+
+  @override
+  Future<List<ModelInfo>> listModels({String? provider}) =>
+      Future.value(const []);
+
+  @override
+  Future<MessagePage> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
+    int limit = 50,
+  }) => Future.value(const MessagePage());
 }
 
 Widget _buildWithState(AppState state) => MaterialApp(
@@ -2165,7 +2219,10 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     // The "select or create" hint should NOT show while loading.
-    expect(find.textContaining('select'), findsNothing);
+    expect(
+      find.text('Select or create a thread to start chatting.'),
+      findsNothing,
+    );
   });
 
   testWidgets('shows hint text when no thread selected and not loading', (
@@ -2189,7 +2246,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  testWidgets('hides composer while thread is loading', (tester) async {
+  testWidgets('composer stays visible while thread is loading', (tester) async {
     final state = AppState.test(
       user: User(
         id: 1,
@@ -2207,10 +2264,68 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pump();
 
-    // Loading spinner is shown.
+    // Loading spinner is shown above a rendered composer.
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    // Composer is not rendered during loading.
-    expect(find.byType(TextField), findsNothing);
+    final input = find.byKey(const Key('composer_input'));
+    expect(input, findsOneWidget);
+    expect(tester.widget<TextField>(input).enabled, isTrue);
+
+    // A store exists while it loads, so typing lands on it directly.
+    await tester.enterText(input, 'typed while loading');
+    await tester.pump();
+    expect(state.composerText, 'typed while loading');
+  });
+
+  testWidgets('composer renders while openThread is in flight', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final api = _BlockingApi();
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pump();
+
+    final openFuture = state.openThread('t1');
+    await tester.pump();
+    expect(state.activeThreadLoading, isTrue);
+
+    // The composer renders through the open window; the input is enabled so
+    // text can be drafted ahead of the store being attached.
+    final input = find.byKey(const Key('composer_input'));
+    expect(input, findsOneWidget);
+    expect(tester.widget<TextField>(input).enabled, isTrue);
+
+    // Actions that need a live store stay disabled until it is attached.
+    final send = find.widgetWithIcon(IconButton, Icons.send);
+    expect(tester.widget<IconButton>(send).onPressed, isNull);
+    final attach = find.widgetWithIcon(IconButton, Icons.attach_file);
+    expect(tester.widget<IconButton>(attach).onPressed, isNull);
+
+    await tester.enterText(input, 'queued while opening');
+    await tester.pump();
+    expect(state.composerText, 'queued while opening');
+
+    api.gate.complete();
+    await tester.pumpAndSettle();
+    await openFuture;
+    await tester.pump();
+
+    // The drafted text was adopted by the activated store and actions are on.
+    expect(state.activeThreadDetail, isNotNull);
+    expect(state.composerText, 'queued while opening');
+    expect(tester.widget<IconButton>(send).onPressed, isNotNull);
+    expect(tester.widget<IconButton>(attach).onPressed, isNotNull);
   });
 
   testWidgets('assistant message label uses the message model', (tester) async {

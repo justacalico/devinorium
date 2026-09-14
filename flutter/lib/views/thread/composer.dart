@@ -3,6 +3,7 @@ part of '../thread_page.dart';
 typedef _ComposerModel = ({
   String? activeThreadId,
   bool sending,
+  bool hasStore,
   ComposerMode composerMode,
   List<({String filename, String mime, Uint8List bytes})> attachments,
   List<PathRef> pathRefs,
@@ -130,6 +131,7 @@ class _ComposerState extends State<_Composer> {
     final imageBytes = await getClipboardImage();
     if (!mounted) return;
     if (imageBytes != null && imageBytes.isNotEmpty) {
+      if (!state.hasActiveThreadStore) return;
       final result = await readAttachment(
         InMemoryAttachmentSource('pasted-image', imageBytes),
       );
@@ -157,7 +159,9 @@ class _ComposerState extends State<_Composer> {
     final text = data?.text;
     if (text == null || text.isEmpty) return;
 
-    final result = await maybeAttachPath(text);
+    final result = state.hasActiveThreadStore
+        ? await maybeAttachPath(text)
+        : const PathFallback();
     if (!mounted) return;
     switch (result) {
       case PathAttached():
@@ -260,7 +264,7 @@ class _ComposerState extends State<_Composer> {
     if ((_effectivePrompt(state).isNotEmpty ||
             state.pathRefs.isNotEmpty ||
             state.threadReferences.isNotEmpty) &&
-        state.activeThreadId != null &&
+        state.hasActiveThreadStore &&
         !state.sending) {
       widget.controller.clear();
       state.sendMessage();
@@ -276,6 +280,7 @@ class _ComposerState extends State<_Composer> {
   }
 
   void _cycleComposerMode(AppState state) {
+    if (!state.hasActiveThreadStore) return;
     state.setComposerMode(state.composerMode.next);
   }
 
@@ -371,6 +376,7 @@ class _ComposerState extends State<_Composer> {
       selector: (_, s) => (
         activeThreadId: s.activeThreadId,
         sending: s.sending,
+        hasStore: s.hasActiveThreadStore,
         composerMode: s.composerMode,
         attachments: s.attachments,
         pathRefs: s.pathRefs,
@@ -386,6 +392,7 @@ class _ComposerState extends State<_Composer> {
       builder: (context, model, _) {
         final isSending = model.sending;
         final hasActiveThread = model.activeThreadId != null;
+        final hasStore = model.hasStore;
         final mode = model.composerMode;
         final semantic = SemanticColors.of(context);
         final modeColor = _modeColor(mode, semantic);
@@ -527,8 +534,7 @@ class _ComposerState extends State<_Composer> {
                                       AttachmentThumb(
                                         key: Key('composer_attachment_$i'),
                                         bytes: model.attachments[i].bytes,
-                                        filename:
-                                            model.attachments[i].filename,
+                                        filename: model.attachments[i].filename,
                                         onDelete: () =>
                                             state.removeAttachment(i),
                                         onTap: () => showAttachmentPreview(
@@ -621,7 +627,7 @@ class _ComposerState extends State<_Composer> {
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.attach_file, size: 20),
-                                onPressed: hasActiveThread && !isSending
+                                onPressed: hasStore && !isSending
                                     ? () async {
                                         final dz = DropZone.of(context);
                                         if (dz == null) return;
@@ -648,14 +654,14 @@ class _ComposerState extends State<_Composer> {
                                         // cannot be resumed by another
                                         // provider, so the picker locks.
                                         providerLocked: model.providerLocked,
-                                        enabled: hasActiveThread && !isSending,
+                                        enabled: hasStore && !isSending,
                                       ),
                                       _ReasoningDropdown(
                                         models: model.models,
                                         selectedModel: model.selectedModel,
                                         value: model.selectedReasoning,
                                         compact: compact,
-                                        enabled: hasActiveThread && !isSending,
+                                        enabled: hasStore && !isSending,
                                         onChanged: (effort) {
                                           state.setSelectedReasoning(effort);
                                           state.saveThreadSettings();
@@ -664,7 +670,7 @@ class _ComposerState extends State<_Composer> {
                                       _PermissionDropdown(
                                         value: model.selectedPermission,
                                         compact: compact,
-                                        enabled: hasActiveThread && !isSending,
+                                        enabled: hasStore && !isSending,
                                         onChanged: (mode) {
                                           state.setSelectedPermission(mode);
                                           state.saveThreadSettings();
@@ -673,7 +679,7 @@ class _ComposerState extends State<_Composer> {
                                       _ModeDropdown(
                                         value: model.composerMode,
                                         compact: compact,
-                                        enabled: hasActiveThread && !isSending,
+                                        enabled: hasStore && !isSending,
                                         onChanged: state.setComposerMode,
                                       ),
                                     ];
@@ -725,7 +731,7 @@ class _ComposerState extends State<_Composer> {
                                 icon: isSending
                                     ? const Icon(Icons.stop, size: 18)
                                     : const Icon(Icons.send, size: 18),
-                                onPressed: hasActiveThread
+                                onPressed: hasStore
                                     ? () {
                                         if (isSending) {
                                           state.stopThread();
@@ -733,8 +739,7 @@ class _ComposerState extends State<_Composer> {
                                               state,
                                             ).isNotEmpty ||
                                             model.pathRefs.isNotEmpty ||
-                                            model
-                                                .threadReferences.isNotEmpty) {
+                                            model.threadReferences.isNotEmpty) {
                                           widget.controller.clear();
                                           state.sendMessage();
                                         }
@@ -795,10 +800,11 @@ class _ThreadRefDropTarget extends StatelessWidget {
     final state = context.read<AppState>();
     return DragTarget<Thread>(
       onWillAcceptWithDetails: (details) =>
-          state.activeThreadId != null &&
+          state.hasActiveThreadStore &&
           !state.sending &&
           details.data.id != state.activeThreadId,
       onAcceptWithDetails: (details) {
+        if (!state.hasActiveThreadStore || state.sending) return;
         final thread = details.data;
         state.addThreadReference(
           ThreadReference(id: thread.id, title: thread.title),
@@ -843,8 +849,9 @@ class _PathRefDropTarget extends StatelessWidget {
     final state = context.read<AppState>();
     return DragTarget<FileTreeNode>(
       onWillAcceptWithDetails: (_) =>
-          state.activeThreadId != null && !state.sending,
+          state.hasActiveThreadStore && !state.sending,
       onAcceptWithDetails: (details) {
+        if (!state.hasActiveThreadStore || state.sending) return;
         final node = details.data;
         state.addPathRef(node.fullPathString, isDir: node.entry.isDir);
       },

@@ -271,7 +271,7 @@ class _ChatViewState extends State<ChatView> {
             ),
             if (model.pendingAskRequestId != null)
               AskRequestPanel(key: ValueKey(model.pendingAskRequestId))
-            else if (!model.loading) ...[
+            else ...[
               if (model.sending)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(32, 0, 24, 4),
@@ -289,7 +289,7 @@ class _ChatViewState extends State<ChatView> {
                   child: _Composer(controller: _composerController),
                 ),
               ),
-              const BranchToolbar(),
+              if (!model.loading) const BranchToolbar(),
             ],
           ],
         );
