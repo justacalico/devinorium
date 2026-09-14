@@ -834,8 +834,9 @@ void main() {
       store.onStateChanged = () => emitCount++;
       await store.sendMessage();
 
-      // sendMessage emits twice before the stream starts.
-      expect(emitCount, 2);
+      // sendMessage emits three times before the stream starts: the
+      // composer clear, the optimistic message, and the streaming flip.
+      expect(emitCount, 3);
 
       for (var i = 0; i < 10; i++) {
         api.controller.add(
@@ -851,7 +852,7 @@ void main() {
       // to flush the remaining nine events.
       await Future.delayed(const Duration(milliseconds: 60));
 
-      expect(emitCount, lessThanOrEqualTo(4));
+      expect(emitCount, lessThanOrEqualTo(5));
       expect(store.streamingParts, hasLength(10));
       expect(store.streamingDigest, isNot(0));
     });

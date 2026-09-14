@@ -214,8 +214,11 @@ class _ComposerState extends State<_Composer> {
   }
 
   void _updateComposerFromText(String text, AppState state) {
-    _applySlashCommandMode(text, state);
+    // Write the text before touching the mode: setComposerMode notifies
+    // listeners, and the state->controller sync must already see the fresh
+    // text or it would push the stale draft back into the field.
     state.setComposerText(text);
+    _applySlashCommandMode(text, state);
   }
 
   void _applySlashCommandMode(String text, AppState state) {
@@ -276,9 +279,45 @@ class _ComposerState extends State<_Composer> {
     state.setComposerMode(state.composerMode.next);
   }
 
+  /// Keep the shared text controller in step with the active thread's draft.
+  /// Typing already wrote through to state so this is a no-op then; it only
+  /// applies text when the draft changed underneath the input — a thread
+  /// switch, a draft restored from disk, or a prompt restored after a failed
+  /// send.
+  void _syncControllerText(AppState state) {
+    final text = state.composerText;
+    if (widget.controller.text == text) return;
+    widget.controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  /// Re-evaluate the slash-command bookkeeping when the active thread or its
+  /// draft changes underneath us. Text edits go through
+  /// [_updateComposerFromText] instead; re-deriving the ask bookkeeping on
+  /// every notify would read a half-applied mode/text pair.
+  void _syncComposerContext(AppState state) {
+    final threadId = state.activeThreadId;
+    if (threadId != _lastThreadId) {
+      _lastThreadId = threadId;
+      _preAskMode = null;
+      _promptDrivenAsk = false;
+      _wasSending = state.sending;
+      _applySlashCommandMode(state.composerText, state);
+      if (state.composerMode == ComposerMode.ask &&
+          hasAskPrefix(state.composerText)) {
+        _promptDrivenAsk = true;
+        _preAskMode = state.defaultComposerMode;
+      }
+    }
+  }
+
   void _onAppStateChanged() {
     if (!mounted) return;
     final state = _appState!;
+    _syncComposerContext(state);
+    _syncControllerText(state);
     if (_wasSending && !state.sending && !_isMobile) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _focusNode.requestFocus();
@@ -295,27 +334,11 @@ class _ComposerState extends State<_Composer> {
       _appState = state;
       _wasSending = state.sending;
       state.addListener(_onAppStateChanged);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _appState != null) _syncControllerText(_appState!);
+      });
     }
-
-    final threadId = state.activeThreadId;
-    if (threadId != _lastThreadId) {
-      _lastThreadId = threadId;
-      _preAskMode = null;
-      _promptDrivenAsk = false;
-      _wasSending = state.sending;
-      _applySlashCommandMode(state.composerText, state);
-      if (state.composerMode == ComposerMode.ask &&
-          hasAskPrefix(state.composerText)) {
-        _promptDrivenAsk = true;
-        _preAskMode = state.defaultComposerMode;
-      }
-    }
-
-    if (state.composerMode == ComposerMode.ask &&
-        !hasAskPrefix(state.composerText)) {
-      _promptDrivenAsk = false;
-      _preAskMode = null;
-    }
+    _syncComposerContext(state);
   }
 
   static Color _modeColor(ComposerMode mode, SemanticColors semantic) =>

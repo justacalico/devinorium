@@ -22,6 +22,7 @@ mixin AuthStore on AppStateBase {
   Future<void> bootstrap() async {
     await _loadLanguage();
     await _loadComposerMode();
+    await _loadComposerDrafts();
     await _loadNotificationPrefs();
     await _loadPlanOverlayState();
     setAppL10n(_locale);
@@ -678,6 +679,7 @@ mixin AuthStore on AppStateBase {
     _tailscaleSeq++;
     _linkedMergeRequest = null;
     _composerText = '';
+    _composerTextThreadId = null;
     _attachments = [];
     _pathRefs = [];
     _threadReferences = [];

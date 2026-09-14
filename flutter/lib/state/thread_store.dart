@@ -159,6 +159,11 @@ class ThreadStore {
   /// same file fires again.
   void Function(List<String> paths)? onAgentEditedFiles;
 
+  /// Called whenever [composerText] changes, including the internal clear on
+  /// send and the restore after a failed turn, so the app state can persist
+  /// the draft.
+  void Function(String text)? onComposerTextChanged;
+
   // ---- getters ----
 
   ThreadStoreStatus get status => _status;
@@ -354,41 +359,43 @@ class ThreadStore {
     if (_pendingSend != null) return;
     _globalError = '';
 
+    final messageAttachments =
+        List<({String filename, String mime, Uint8List bytes})>.of(attachments);
+    final messagePathRefs = List<PathRef>.of(pathRefs);
+    final messageThreadRefs = List<ThreadReference>.of(threadReferences);
+    final clientMessageId = _newClientMessageId();
+
+    // Snapshot the composer so we can restore it if the turn fails before the
+    // server acknowledges the user message.
+    _pendingSend = _PendingSend(
+      prompt: prompt,
+      composerText: composerText,
+      attachments: messageAttachments,
+      pathRefs: messagePathRefs,
+      threadReferences: messageThreadRefs,
+      clientMessageId: clientMessageId,
+      composerMode: composerMode,
+    );
+
+    // Clear the composer and its persisted draft up front so the input reads
+    // empty even while a previous stream command is still finishing.
+    setComposerText('');
+    attachments = [];
+    pathRefs = [];
+    threadReferences = [];
+    _emit();
+
     await _scheduler.run('stream', () async {
       final token = _nextStreamToken();
-      try {
-        await saveSettings();
-      } catch (_) {
+      await saveSettings();
+      if (token != _streamToken || onStateChanged == null) {
+        _restorePendingSend();
+        _emit();
         return;
       }
-      if (token != _streamToken || onStateChanged == null) return;
 
-      final messageAttachments =
-          List<({String filename, String mime, Uint8List bytes})>.of(
-            attachments,
-          );
-      final messagePathRefs = List<PathRef>.of(pathRefs);
-      final messageThreadRefs = List<ThreadReference>.of(threadReferences);
-      final clientMessageId = _newClientMessageId();
-
-      // Snapshot the composer so we can restore it if the turn fails before the
-      // server acknowledges the user message.
-      _pendingSend = _PendingSend(
-        prompt: prompt,
-        composerText: composerText,
-        attachments: messageAttachments,
-        pathRefs: messagePathRefs,
-        threadReferences: messageThreadRefs,
-        clientMessageId: clientMessageId,
-        composerMode: composerMode,
-      );
-
-      // Clear the composer and show the message immediately, like t3code does.
-      // The message is removed once the server echoes the same client id.
-      composerText = '';
-      attachments = [];
-      pathRefs = [];
-      threadReferences = [];
+      // Show the message immediately, like t3code does. The optimistic row is
+      // removed once the server echoes the same client id.
       _optimisticMessages.add(
         _buildOptimisticMessage(
           prompt,
@@ -559,6 +566,15 @@ class ThreadStore {
     }
   }
 
+  /// Update the draft text and notify the persistence hook. Writes that keep
+  /// the current value are dropped so notification listeners are not woken
+  /// for no-ops.
+  void setComposerText(String value) {
+    if (composerText == value) return;
+    composerText = value;
+    onComposerTextChanged?.call(value);
+  }
+
   /// Ask the server to stop the current run.
   Future<void> stop() async {
     await _scheduler.run('stream', () async {
@@ -720,11 +736,13 @@ class ThreadStore {
   }
 
   /// Mark this thread as deleted. The store may still be cached, but any
-  /// further operation is a no-op.
+  /// further operation is a no-op. The draft hook is severed so a queued
+  /// send's restore cannot resurrect the deleted thread's draft.
   void markDeleted() {
     _status = ThreadStoreStatus.deleted;
     _flushEmit();
     _cancelStream();
+    onComposerTextChanged = null;
     _emit();
   }
 
@@ -734,11 +752,15 @@ class ThreadStore {
     _emitTimer = null;
     _emitPending = false;
     _cancelStream();
+    // Give an unsent message back to the composer before the draft hook is
+    // severed; the write still persists under this thread's key.
+    _restorePendingSend();
     _scheduler.dispose();
     onStateChanged = null;
     onThreadUpdated = null;
     onRunFinished = null;
     onAgentEditedFiles = null;
+    onComposerTextChanged = null;
     _emit();
   }
 
@@ -1306,6 +1328,11 @@ class ThreadStore {
     }
   }
 
+  /// Put an unacknowledged send back into the composer. Called when the
+  /// store is deactivated or disposed mid-send so the text is not lost with
+  /// the cancelled stream. No-op when nothing is pending.
+  void restorePendingSend() => _restorePendingSend();
+
   void _restorePendingSend() {
     final pending = _pendingSend;
     if (pending == null) {
@@ -1315,7 +1342,7 @@ class ThreadStore {
     // A resend edit only reclaims the composer when it is empty; the text
     // stays retriable from the original message and a live draft wins.
     if (!pending.resendEdit || composerText.trim().isEmpty) {
-      composerText = pending.composerText;
+      setComposerText(pending.composerText);
     }
     attachments = List.of(pending.attachments);
     pathRefs = List.of(pending.pathRefs);
