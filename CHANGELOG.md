@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.75.0 - 2026-09-14
+#### Features
+- 桌面端支持 Ctrl/Cmd 加减号缩放界面 - (3a13a47) - HttpAnimations
+
+- - -
+
 ## v0.74.0 - 2026-09-13
 #### Features
 - 终端面板改为全局共享，切换视图不再丢失会话 - (e870019) - HttpAnimations
