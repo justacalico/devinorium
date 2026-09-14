@@ -881,6 +881,13 @@ class ApiService {
     return _client.getStream(path: '/api/threads/$id/events');
   }
 
+  /// Watch run status transitions across all of the user's threads. The
+  /// stream opens with a `runs` snapshot event, then emits `run_status`
+  /// events whenever a run starts, waits for input, or finishes.
+  Stream<SseEvent> watchRunEvents() {
+    return _client.getStream(path: '/api/threads/runs/events');
+  }
+
   /// Watch the message stream for a thread.
   Stream<SseEvent> watchMessageStream(
     String threadId, {

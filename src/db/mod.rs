@@ -218,6 +218,10 @@ pub struct ThreadRow {
     pub pinned: bool,
     pub title_user_set: bool,
     pub linked_mr: Option<String>,
+    /// Role of the thread's newest message. Not a real column — populated by
+    /// a correlated subquery on the list/get queries that need it.
+    #[sqlx(default)]
+    pub last_message_role: Option<String>,
 }
 
 /// A row from the `projects` table.

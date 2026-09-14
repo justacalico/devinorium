@@ -623,9 +623,11 @@ mixin AuthStore on AppStateBase {
     notifyListeners();
     startHealthChecks();
     startGitRefresh();
+    _ensureRunEvents();
   }
 
   Future<void> _resetServerState() async {
+    _stopRunEvents();
     _user = null;
     _users = [];
     _projects = [];

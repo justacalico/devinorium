@@ -50,6 +50,9 @@ class _RecordingApiService extends ApiService {
   }
 
   @override
+  Stream<SseEvent> watchRunEvents() => throw UnimplementedError();
+
+  @override
   Future<List<String>> getThreadRuns() async {
     getThreadRunsCalls++;
     return [];

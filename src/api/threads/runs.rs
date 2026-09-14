@@ -80,6 +80,86 @@ pub(super) async fn list_runs(
     }
 }
 
+/// SSE stream of run status transitions across all of the caller's threads.
+/// The sidebar uses it so every tile updates the moment a run starts, asks
+/// for input, or finishes — not only the thread currently open.
+///
+/// On connect the stream sends one `runs` event carrying the current
+/// running ids plus every run still tracked (including recently finished
+/// ones kept by the retention tail) with status and attention flag, then
+/// live `run_status` events. A subscriber that lags behind the broadcast
+/// window gets a fresh `runs` snapshot instead of silent gaps.
+pub(super) async fn runs_events(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> Response {
+    // Subscribe before computing the snapshot so a run that starts while the
+    // snapshot is being built still lands in the live stream.
+    let receiver = state.thread_runner.subscribe_lifecycle();
+    let snapshot = runs_snapshot_event(&state.thread_runner, user.id).await;
+
+    let runner = state.thread_runner.clone();
+    let user_id = user.id;
+    let live = TokioStreamExt::filter_map(
+        TokioStreamExt::then(BroadcastStream::new(receiver), move |res| {
+            let runner = runner.clone();
+            async move {
+                match res {
+                    // The event carries the owner's id captured at run start,
+                    // so filtering needs no DB lookup and still works when
+                    // the thread row was deleted mid-run.
+                    Ok(ev) if ev.user_id == user_id => Some(Ok::<_, std::convert::Infallible>(
+                        Event::default()
+                            .event("run_status")
+                            .data(serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into())),
+                    )),
+                    Ok(_) => None,
+                    // Lagged behind the broadcast window: resend a full
+                    // snapshot so the client can reconcile instead of
+                    // silently missing transitions.
+                    Err(_) => Some(Ok(runs_snapshot_event(&runner, user_id).await)),
+                }
+            }
+        }),
+        |opt| opt,
+    );
+
+    let stream = TokioStreamExt::chain(tokio_stream::once(Ok(snapshot)), live);
+    Sse::new(FuturesStreamExt::boxed(stream))
+        .keep_alive(
+            axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
+        )
+        .into_response()
+}
+
+/// Build the `runs` snapshot event carrying the caller's live and recently
+/// finished runs with their status and attention flag.
+async fn runs_snapshot_event(runner: &crate::thread_runner::ThreadRunner, user_id: i64) -> Event {
+    let mut running_ids = Vec::new();
+    let mut runs = Vec::new();
+    for run in runner.all_runs().await {
+        if run.user_id != user_id {
+            continue;
+        }
+        let status = *run.status.read().await;
+        if status == RunStatus::Running {
+            running_ids.push(run.thread_id.clone());
+        }
+        runs.push(serde_json::json!({
+            "thread_id": run.thread_id,
+            "run_id": run.run_id,
+            "status": status,
+            "attention": if status == RunStatus::Running {
+                run.current_attention()
+            } else {
+                None
+            },
+        }));
+    }
+    let payload = serde_json::json!({"running_ids": running_ids, "runs": runs});
+    Event::default().event("runs").data(payload.to_string())
+}
+
 /// Stop the currently running model/ACP session for a thread.
 pub(super) async fn stop(
     State(state): State<AppState>,
@@ -519,7 +599,7 @@ mod tests {
     async fn events_stream_returns_sse_with_state_and_events() {
         let runner = ThreadRunner::new();
         let run = runner
-            .start("t1".into(), |run| async move {
+            .start("t1".into(), 1, |run| async move {
                 run.emit("done", "{}");
                 tokio::time::sleep(Duration::from_millis(10)).await;
                 Ok(())
@@ -563,6 +643,7 @@ mod tests {
             pinned: false,
             title_user_set: false,
             linked_mr: None,
+            last_message_role: None,
         }
     }
 

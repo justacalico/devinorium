@@ -133,7 +133,7 @@ pub(super) async fn resend(
 
     let run = match state
         .thread_runner
-        .start(id.clone(), {
+        .start(id.clone(), user.id, {
             let state = state.clone();
             move |run| async move {
                 if editing {

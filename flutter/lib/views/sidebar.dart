@@ -93,15 +93,24 @@ String _timeAgo(String iso, AppLocalizations l) {
   final active = state.activeThreadDetail?.thread.id == thread.id;
 
   String? tag;
-  if (isRunning || (active && state.sending)) {
-    tag = 'running';
-  } else if (active) {
-    tag = activeThreadTag(
-      sending: state.sending,
-      messages: state.activeThreadDetail?.messages ?? const [],
-      pendingPermissionRequest: state.pendingPermissionRequest,
-      pendingAskRequest: state.pendingAskRequest,
-      runStatus: state.lastRunStatus,
+  if (active) {
+    if (isRunning || state.sending) {
+      tag = 'running';
+    } else {
+      tag = activeThreadTag(
+        sending: state.sending,
+        messages: state.activeThreadDetail?.messages ?? const [],
+        pendingPermissionRequest: state.pendingPermissionRequest,
+        pendingAskRequest: state.pendingAskRequest,
+        runStatus: state.lastRunStatus,
+      );
+    }
+  } else {
+    tag = backgroundThreadTag(
+      running: isRunning,
+      runStatus: state.threadRunStatus(thread.id),
+      attention: state.threadRunAttention(thread.id),
+      lastMessageRole: thread.lastMessageRole,
     );
   }
 
@@ -114,6 +123,7 @@ String _timeAgo(String iso, AppLocalizations l) {
     'failed' => (color: style.color, label: l.threadStatusFailed),
     'needs approval' => (color: style.color, label: l.threadStatusApproval),
     'needs answer' => (color: style.color, label: l.threadStatusInput),
+    'stopped' => (color: style.color, label: l.tagStopped),
     _ => (color: style.color, label: l.threadStatusDone),
   };
 }

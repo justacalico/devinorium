@@ -37,6 +37,9 @@ abstract class AppStateBase extends ChangeNotifier {
   List<Thread> get _threads;
   set _threads(List<Thread> value);
   Set<String> get _runningThreadIds;
+  Map<String, String> get _threadRunStatuses;
+  Map<String, String> get _threadRunAttention;
+  bool get _runEventsConnected;
   int get _projectsOffset;
   set _projectsOffset(int value);
   bool get _projectsHasMore;
@@ -262,6 +265,8 @@ abstract class AppStateBase extends ChangeNotifier {
   List<Project> get projects;
   List<Thread> get threads;
   Set<String> get runningThreadIds;
+  String? threadRunStatus(String threadId);
+  String? threadRunAttention(String threadId);
   List<ThreadGroup> get groups;
   List<ProjectGroup> get projectGroups;
   int? get selectedProjectGroupId;
@@ -476,6 +481,10 @@ abstract class AppStateBase extends ChangeNotifier {
   void handleAppResumed();
   void handleLocalesChanged(List<Locale>? locales);
   void _onConnectionRestored();
+  void _ensureRunEvents();
+  void _restartRunEvents();
+  void _stopRunEvents();
+  void _dropRunEventState(String threadId);
   Future<void> loadProjects();
   Future<void> loadMoreProjects();
   Future<void> loadProjectGroups();

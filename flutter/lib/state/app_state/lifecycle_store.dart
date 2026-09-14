@@ -47,6 +47,7 @@ mixin LifecycleStore on AppStateBase {
 
   @override
   void _onConnectionRestored() {
+    _ensureRunEvents();
     if (!_wantsResume || _resumeThreadFuture != null) return;
     _resumeThreadFuture = _resumeActiveThread().then((_) {
       _wantsResume = false;

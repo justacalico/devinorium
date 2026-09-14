@@ -82,7 +82,7 @@ pub(super) async fn send_stream(
 
     let run = match state
         .thread_runner
-        .start(id.clone(), {
+        .start(id.clone(), user.id, {
             let state = state.clone();
             move |run| run_thread(state, run, user, thread, input, user_msg)
         })

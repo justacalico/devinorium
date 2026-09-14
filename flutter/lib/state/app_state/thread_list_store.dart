@@ -178,6 +178,10 @@ mixin ThreadListStore on AppStateBase {
 
   @override
   Future<void> refreshRunningThreads() async {
+    // While the lifecycle stream is connected it owns _runningThreadIds; a
+    // poll response fetched before a run's completion event would otherwise
+    // re-add the finished run and flip the tile back to working.
+    if (_runEventsConnected) return;
     if (_threads.isEmpty) {
       _runningThreadIds.clear();
       notifyListeners();
@@ -191,8 +195,9 @@ mixin ThreadListStore on AppStateBase {
         ..clear()
         ..addAll(running.where((id) => loaded.contains(id)));
     } catch (e) {
+      // A failed poll must not erase state the lifecycle stream already
+      // delivered; keep the last known ids instead.
       debugLogFailure('threadList.refreshRunningThreads', e);
-      _runningThreadIds.clear();
     }
     notifyListeners();
   }
@@ -420,6 +425,7 @@ mixin ThreadListStore on AppStateBase {
     try {
       await api.deleteThread(id);
       _saveDraft(id, '');
+      _dropRunEventState(id);
       final store = _threadStores.remove(id);
       if (store != null) store.markDeleted();
       if (_activeStore?.threadId == id) {

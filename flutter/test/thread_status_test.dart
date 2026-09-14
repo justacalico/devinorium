@@ -169,6 +169,95 @@ void main() {
     });
   });
 
+  group('backgroundThreadTag', () {
+    test('returns running while the run is live', () {
+      expect(
+        backgroundThreadTag(running: true, lastMessageRole: 'user'),
+        'running',
+      );
+    });
+
+    test('maps permission attention to needs approval', () {
+      expect(
+        backgroundThreadTag(
+          running: true,
+          attention: 'permission',
+          lastMessageRole: 'user',
+        ),
+        'needs approval',
+      );
+    });
+
+    test('maps ask attention to needs answer', () {
+      expect(
+        backgroundThreadTag(
+          running: true,
+          attention: 'ask',
+          lastMessageRole: 'user',
+        ),
+        'needs answer',
+      );
+    });
+
+    test('attention only applies while running', () {
+      expect(
+        backgroundThreadTag(
+          running: false,
+          runStatus: 'completed',
+          attention: 'permission',
+        ),
+        'done',
+      );
+    });
+
+    test('maps terminal run statuses', () {
+      expect(
+        backgroundThreadTag(running: false, runStatus: 'completed'),
+        'done',
+      );
+      expect(backgroundThreadTag(running: false, runStatus: 'failed'), 'failed');
+      expect(
+        backgroundThreadTag(running: false, runStatus: 'stopped'),
+        'stopped',
+      );
+    });
+
+    test('run status wins over the last message role', () {
+      expect(
+        backgroundThreadTag(
+          running: false,
+          runStatus: 'failed',
+          lastMessageRole: 'assistant',
+        ),
+        'failed',
+      );
+      expect(
+        backgroundThreadTag(
+          running: false,
+          runStatus: 'stopped',
+          lastMessageRole: 'user',
+        ),
+        'stopped',
+      );
+    });
+
+    test('falls back to the last message role without a run event', () {
+      expect(
+        backgroundThreadTag(running: false, lastMessageRole: 'assistant'),
+        'done',
+      );
+      expect(
+        backgroundThreadTag(running: false, lastMessageRole: 'error'),
+        'failed',
+      );
+      expect(
+        backgroundThreadTag(running: false, lastMessageRole: 'user'),
+        'working',
+      );
+      expect(backgroundThreadTag(running: false), isNull);
+    });
+  });
+
   group('threadStatusStyle', () {
     test('maps statuses to theme-aware colors', () {
       final theme = ThemeData.light();
