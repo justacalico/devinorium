@@ -32,8 +32,7 @@ part 'settings/accounts_section.dart';
 part 'settings/audit_section.dart';
 part 'settings/about_section.dart';
 part 'settings/git_section.dart';
-part 'settings/clone_root_section.dart';
-part 'settings/worktree_root_section.dart';
+part 'settings/directories_section.dart';
 part 'settings/usage_section.dart';
 part 'settings/servers_section.dart';
 part 'settings/tailscale_section.dart';
@@ -47,8 +46,7 @@ Widget _sectionFor(SettingsTopic topic, AppState state) => switch (topic) {
   SettingsTopic.providers => _ProviderCard(state: state),
   SettingsTopic.personalization => _PersonalizationSection(state: state),
   SettingsTopic.git => _GitSection(state: state),
-  SettingsTopic.cloneRoot => _CloneRootSection(state: state),
-  SettingsTopic.worktreeRoot => _WorktreeRootSection(state: state),
+  SettingsTopic.directories => _DirectoriesSection(state: state),
   SettingsTopic.usage => _UsageSection(state: state),
   SettingsTopic.manage => _AccountsSection(state: state),
   SettingsTopic.audit => _AuditSection(state: state),

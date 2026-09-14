@@ -773,6 +773,7 @@
   "worktreeRootSave": "Save",
   "worktreeRootBrowse": "Browse...",
   "worktreeRootOnlyOwner": "Only the owner can change the worktree root.",
+  "directories": "Directories",
   "search": "Search",
   "searchHint": "Search threads...",
   "searchKeyboardShortcut": "⌘K",

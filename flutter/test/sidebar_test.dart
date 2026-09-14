@@ -257,7 +257,7 @@ void main() {
     expect(find.text('Providers'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
     expect(find.text('Git'), findsOneWidget);
-    expect(find.text('Clone root'), findsOneWidget);
+    expect(find.text('Directories'), findsOneWidget);
     expect(find.text('Manage'), findsOneWidget);
     expect(find.text('Audit log'), findsOneWidget);
     expect(find.text('About'), findsOneWidget);
@@ -285,7 +285,7 @@ void main() {
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Providers'), findsOneWidget);
     expect(find.text('Personalization'), findsOneWidget);
-    expect(find.text('Clone root'), findsOneWidget);
+    expect(find.text('Directories'), findsOneWidget);
     expect(find.text('Manage'), findsNothing);
     expect(find.text('Audit log'), findsNothing);
   });
@@ -337,11 +337,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // Manage is the last owner topic; its index must map to the accounts
-    // section, not the clone-root section that precedes it.
+    // section, not the directories section that precedes it.
     expect(state.settingsTopicIndex, 5);
   });
 
-  testWidgets('Tapping Clone root nav topic selects the clone-root section', (
+  testWidgets('Tapping Directories nav topic selects the directories section', (
     tester,
   ) async {
     final state = AppState.test(
@@ -361,7 +361,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    await tester.tap(find.text('Clone root'));
+    await tester.tap(find.text('Directories'));
     await tester.pumpAndSettle();
 
     expect(state.settingsTopicIndex, 4);
@@ -2129,7 +2129,7 @@ void main() {
     expect(tile('Account').enabled, isFalse);
     expect(tile('Providers').enabled, isFalse);
     expect(tile('Git').enabled, isFalse);
-    expect(tile('Clone root').enabled, isFalse);
+    expect(tile('Directories').enabled, isFalse);
     expect(tile('About').enabled, isTrue);
     expect(tile('Personalization').enabled, isTrue);
     expect(tile('Servers').enabled, isTrue);

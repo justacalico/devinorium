@@ -752,6 +752,7 @@
   "worktreeRootSave": "保存",
   "worktreeRootBrowse": "浏览…",
   "worktreeRootOnlyOwner": "只有所有者可以更改工作树根目录",
+  "directories": "目录",
   "search": "搜索",
   "searchHint": "搜索会话…",
   "searchKeyboardShortcut": "⌘K",

@@ -2414,6 +2414,12 @@ abstract class AppLocalizations {
   /// **'Only the owner can change the worktree root.'**
   String get worktreeRootOnlyOwner;
 
+  /// No description provided for @directories.
+  ///
+  /// In en, this message translates to:
+  /// **'Directories'**
+  String get directories;
+
   /// No description provided for @search.
   ///
   /// In en, this message translates to:

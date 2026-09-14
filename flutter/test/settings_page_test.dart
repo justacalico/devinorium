@@ -852,7 +852,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // With 7 sections for non-owners, index 10 clamps to 6 (Servers).
+    // Without a server the page falls back to the Servers section.
     expect(find.text('Servers'), findsOneWidget);
   });
 
@@ -1404,7 +1404,7 @@ void main() {
     expect(find.byType(GitProviderTile), findsOneWidget);
   });
 
-  testWidgets('Clone root section loads current value for owners', (
+  testWidgets('Directories section loads current value for owners', (
     tester,
   ) async {
     final fake = _FakeApiService()..cloneRootToReturn = '/srv/clones';
@@ -1433,9 +1433,9 @@ void main() {
       find.text('Directory where cloned repositories are placed.'),
       findsOneWidget,
     );
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
     expect(state.cloneRoot, '/srv/clones');
-    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNWidgets(2));
     expect(fake.getCloneRootCalls, greaterThan(0));
   });
 
@@ -1494,11 +1494,11 @@ void main() {
     state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    final field = find.byType(TextField);
+    final field = find.byType(TextField).first;
     expect(field, findsOneWidget);
 
     await tester.enterText(field, '/new/clones');
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Save').first);
     await tester.pumpAndSettle();
 
     expect(fake.setCloneRootCalls, 1);
@@ -1528,12 +1528,47 @@ void main() {
     state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    final field = find.byType(TextField);
+    final field = find.byType(TextField).first;
     await tester.enterText(field, 'relative');
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Save').first);
     await tester.pumpAndSettle();
 
     expect(state.globalError, contains('path must be absolute'));
+    expect(find.textContaining('path must be absolute'), findsOneWidget);
+  });
+
+  testWidgets('Directories section shows a save error only once', (
+    tester,
+  ) async {
+    final fake = _FakeApiService()
+      ..cloneRootError = Exception('path must be absolute');
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'relative');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save').first);
+    await tester.pumpAndSettle();
+
+    // Rebuilding the sibling card must not duplicate the shared error.
+    await tester.enterText(find.byType(TextField).last, '/srv/worktrees');
+    await tester.pumpAndSettle();
+
     expect(find.textContaining('path must be absolute'), findsOneWidget);
   });
 
@@ -1558,7 +1593,7 @@ void main() {
     state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    final browse = find.byTooltip('Browse...');
+    final browse = find.byTooltip('Browse...').first;
     expect(browse, findsOneWidget);
     await tester.tap(browse);
     await tester.pumpAndSettle();
@@ -1587,9 +1622,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // Owner topic list: account, providers, personalization, git, cloneRoot,
-    // manage, about, servers, usage, audit, worktreeRoot.
-    state.setSettingsTopicIndex(10);
+    // Owner topic list: account, providers, personalization, git,
+    // directories, manage, about, servers, usage, audit.
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     expect(find.text('Worktree root'), findsOneWidget);
@@ -1600,9 +1635,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byType(TextField), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
-    expect(find.byTooltip('Browse...'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNWidgets(2));
+    expect(find.byTooltip('Browse...'), findsNWidgets(2));
     expect(state.worktreeRoot, '/srv/worktrees');
     expect(fake.getWorktreeRootCalls, greaterThan(0));
   });
@@ -1629,8 +1664,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Non-owner topic list: account, providers, personalization, git,
-    // cloneRoot, about, servers, usage, worktreeRoot.
-    state.setSettingsTopicIndex(8);
+    // directories, about, servers, usage.
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
     expect(find.text('/srv/worktrees'), findsOneWidget);
@@ -1663,11 +1698,14 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(10);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '/srv/new-worktrees');
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.enterText(
+      find.byType(TextField).last,
+      '/srv/new-worktrees',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save').last);
     await tester.pumpAndSettle();
 
     expect(fake.setWorktreeRootCalls, 1);
@@ -1696,10 +1734,10 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(10);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    final browse = find.byTooltip('Browse...');
+    final browse = find.byTooltip('Browse...').last;
     expect(browse, findsOneWidget);
     await tester.tap(browse);
     await tester.pumpAndSettle();
