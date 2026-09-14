@@ -25,8 +25,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Devinorium">
-  <meta name="theme-color" content="#0F172A" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0A0A0A" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#FFFBFE" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="light dark">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="apple-touch-icon" sizes="120x120" href="icons/apple-touch-icon-120.png">
   <link rel="apple-touch-icon" sizes="152x152" href="icons/apple-touch-icon-152.png">
@@ -109,6 +110,17 @@
   <!-- Fonts and icons are large enough that starting them early helps first paint. -->
   <link rel="preload" href="assets/fonts/MaterialIcons-Regular.otf" as="font" type="font/otf" crossorigin>
   <link rel="preload" href="assets/packages/cupertino_icons/assets/CupertinoIcons.ttf" as="font" type="font/ttf" crossorigin>
+
+  <style>
+    /* The strips behind the notch and home indicator show the page
+       background in the standalone iOS app, and iOS 26 Safari tints its
+       chrome from it. These only cover first paint; once Flutter boots it
+       rewrites them to match the selected in-app theme. */
+    html, body { background-color: #FFFBFE; }
+    @media (prefers-color-scheme: dark) {
+      html, body { background-color: #0A0A0A; }
+    }
+  </style>
 </head>
 <body>
   <!--

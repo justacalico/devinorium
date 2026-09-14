@@ -52,6 +52,24 @@ void main() {
     expect(indexHtml, contains('viewport-fit=cover'));
   });
 
+  test('index.html chrome defaults match the built-in theme surfaces', () {
+    // iOS standalone colors the status bar from theme-color and iOS 26
+    // Safari tints its chrome from the page background. The static tags only
+    // cover first paint; syncPwaChrome rewrites them once the app resolves
+    // the in-app theme, so the defaults must match the built-in surfaces.
+    expect(indexHtml, contains('name="color-scheme"'));
+    expect(
+      indexHtml,
+      contains('content="#0A0A0A" media="(prefers-color-scheme: dark)"'),
+    );
+    expect(
+      indexHtml,
+      contains('content="#FFFBFE" media="(prefers-color-scheme: light)"'),
+    );
+    expect(indexHtml, contains('html, body { background-color: #FFFBFE; }'));
+    expect(indexHtml, contains('html, body { background-color: #0A0A0A; }'));
+  });
+
   test('every apple icon and splash link in index.html exists on disk', () {
     final hrefs = linkTags
         .where((t) => (_attr(t, 'rel') ?? '').startsWith('apple-touch-'))

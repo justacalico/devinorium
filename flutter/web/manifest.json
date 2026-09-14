@@ -6,7 +6,7 @@
     "scope": ".",
     "display": "standalone",
     "background_color": "#0F172A",
-    "theme_color": "#22D3EE",
+    "theme_color": "#0A0A0A",
     "description": "Devinorium — a self-hosted AI coding assistant.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
