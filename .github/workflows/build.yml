@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       build_all:
-        description: 'Build all targets (server, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
+        description: 'Build all targets (server, server-windows, server-macos, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
         type: boolean
         default: true
       create_release:
@@ -69,7 +69,7 @@ jobs:
             BUILD_ALL="true"
           fi
           if [ "$BUILD_ALL" = "true" ]; then
-            TARGETS='[{"target":"server","os":"ubuntu-latest"},{"target":"android","os":"ubuntu-latest"},{"target":"linux","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"windows","os":"windows-latest"},{"target":"windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"ios","os":"macos-latest","flutter_arch":"arm64"}]'
+            TARGETS='[{"target":"server","os":"ubuntu-latest"},{"target":"server-windows","os":"windows-latest"},{"target":"server-macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"android","os":"ubuntu-latest"},{"target":"linux","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"windows","os":"windows-latest"},{"target":"windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"ios","os":"macos-latest","flutter_arch":"arm64"}]'
           else
             TARGETS='[{"target":"server","os":"ubuntu-latest"}]'
           fi
@@ -200,11 +200,11 @@ jobs:
           fi
 
       - name: Install Rust
-        if: matrix.target == 'server' || startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
+        if: startsWith(matrix.target, 'server') || startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
         uses: dtolnay/rust-toolchain@1.88.0
 
       - name: Cache Rust
-        if: matrix.target == 'server' || startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
+        if: startsWith(matrix.target, 'server') || startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
         uses: Swatinem/rust-cache@v2
 
       - name: Install Linux build dependencies
@@ -282,6 +282,20 @@ jobs:
           cargo build --release
           mkdir -p artifacts
           cp target/release/devinorium artifacts/devinorium
+
+      - name: Build server binary (Windows/macOS)
+        if: matrix.target == 'server-windows' || matrix.target == 'server-macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/build-flutter.sh
+          cargo build --release
+          mkdir -p artifacts
+          if [ "${{ matrix.target }}" = "server-windows" ]; then
+            cp target/release/devinorium.exe artifacts/devinorium-windows-x86_64.exe
+          else
+            cp target/release/devinorium artifacts/devinorium-macos-arm64
+          fi
 
       - name: Build bundled server binary
         if: startsWith(matrix.target, 'linux') || startsWith(matrix.target, 'windows') || matrix.target == 'macos'
@@ -501,6 +515,13 @@ jobs:
             chmod +x release-assets/devinorium
             mv release-assets/devinorium "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-x86_64"
           fi
+          if [ -f release-assets/devinorium-windows-x86_64.exe ]; then
+            mv release-assets/devinorium-windows-x86_64.exe "release-assets/devinorium-${{ needs.setup.outputs.version }}-windows-x86_64.exe"
+          fi
+          if [ -f release-assets/devinorium-macos-arm64 ]; then
+            chmod +x release-assets/devinorium-macos-arm64
+            mv release-assets/devinorium-macos-arm64 "release-assets/devinorium-${{ needs.setup.outputs.version }}-macos-arm64"
+          fi
           ls -la release-assets/
 
       - name: Generate checksums
@@ -600,6 +621,13 @@ jobs:
             chmod +x release-assets/devinorium
             mv release-assets/devinorium "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-x86_64"
           fi
+          if [ -f release-assets/devinorium-windows-x86_64.exe ]; then
+            mv release-assets/devinorium-windows-x86_64.exe "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-windows-x86_64.exe"
+          fi
+          if [ -f release-assets/devinorium-macos-arm64 ]; then
+            chmod +x release-assets/devinorium-macos-arm64
+            mv release-assets/devinorium-macos-arm64 "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-macos-arm64"
+          fi
           TAG="${{ steps.meta.outputs.release_tag }}"
           git archive --format=tar.gz --prefix="devinorium-${TAG#v}/" \
             -o "release-assets/devinorium-${TAG}-source.tar.gz" "$TAG"
@@ -624,7 +652,7 @@ jobs:
             **Commit:** ${{ github.sha }}
 
             ### Artifacts
-            - Linux server binary (x86_64)
+            - Server binaries (Linux x86_64, Windows x86_64, macOS arm64)
             - Android APK + AAB
             - Linux desktop bundle (x86_64 + arm64: tar.gz, zip, deb, rpm)
             - Windows package (x86_64 + arm64: zip)
