@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.77.2 - 2026-09-14
+#### Bug Fixes
+- 修复线程加载时输入框闪烁的问题 - (8c679aa) - HttpAnimations
+
+- - -
+
 ## v0.77.1 - 2026-09-14
 #### Bug Fixes
 - 修复 iOS PWA 界面不随应用主题切换深色模式 - (9a02fa7) - HttpAnimations
