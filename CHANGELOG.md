@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.77.1 - 2026-09-14
+#### Bug Fixes
+- 修复 iOS PWA 界面不随应用主题切换深色模式 - (9a02fa7) - HttpAnimations
+- 思考块改为工具行样式并默认折叠 - (edd5139) - HttpAnimations
+
+- - -
+
 ## v0.77.0 - 2026-09-14
 #### Features
 - 全局推送线程运行状态 - (d89f54b) - HttpAnimations
