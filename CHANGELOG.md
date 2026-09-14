@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.77.0 - 2026-09-14
+#### Features
+- 全局推送线程运行状态 - (d89f54b) - HttpAnimations
+#### Bug Fixes
+- 测试里清空新建用户的默认 provider 命令 - (de41a74) - HttpAnimations
+
+- - -
+
 ## v0.76.0 - 2026-09-14
 #### Features
 - 记住每个线程未发送的草稿 - (ea72f2d) - HttpAnimations
