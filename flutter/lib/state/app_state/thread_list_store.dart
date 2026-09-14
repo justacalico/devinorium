@@ -277,6 +277,7 @@ mixin ThreadListStore on AppStateBase {
     }
     _page = MainPage.threads;
     _composerText = '';
+    _composerTextThreadId = null;
     _attachments = [];
     _pathRefs = [];
     _threadReferences = [];
@@ -350,6 +351,10 @@ mixin ThreadListStore on AppStateBase {
       _globalError = '';
       await refreshThreadsAndGroups();
 
+      // Dispose the outgoing store first: a still-pending send restores its
+      // text into previous.composerText and the draft map, so the
+      // replacement below adopts it instead of diverging from disk.
+      previous?.dispose();
       // Create or replace the thread store with the latest detail.
       // Preserve the user's draft from a previous visit so switching
       // threads does not lose in-progress input.
@@ -370,7 +375,6 @@ mixin ThreadListStore on AppStateBase {
       _threadStores[id] = store;
       _setActiveStore(store);
       unawaited(ensureModelsFor(detail.thread.providerId));
-      previous?.dispose();
 
       // If the backend is already running this thread, reconnect to it.
       await store.resume();
@@ -415,6 +419,7 @@ mixin ThreadListStore on AppStateBase {
   Future<bool> deleteThread(String id) async {
     try {
       await api.deleteThread(id);
+      _saveDraft(id, '');
       final store = _threadStores.remove(id);
       if (store != null) store.markDeleted();
       if (_activeStore?.threadId == id) {

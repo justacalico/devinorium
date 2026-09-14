@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Locale;
@@ -325,6 +326,7 @@ class AppState extends AppStateBase
   void dispose() {
     _versionChecker?.close();
     markDisposed();
+    _flushComposerDrafts();
     stopHealthChecks();
     _resumeDebounceTimer?.cancel();
     _wantsResume = false;
@@ -351,6 +353,9 @@ class AppState extends AppStateBase
     _activeStore?.onAgentEditedFiles = null;
     _activeStore?.cancelStream();
     _activeStore?.clearStreamingState();
+    // A send cancelled by the switch never got its ack; hand the text back
+    // so it persists as a draft and the cached store is not wedged.
+    _activeStore?.restorePendingSend();
     _activeStore = store;
     _activeThreadId = store?.threadId;
     _planOverlayVisible = false;
@@ -358,6 +363,25 @@ class AppState extends AppStateBase
     // preferences so they survive thread switches and app restarts.
     store?.onStateChanged = _onThreadStoreChanged;
     if (store != null) _configureStore(store);
+    if (store != null) {
+      // Text typed while the thread was still loading went to the global
+      // scratch field; hand it to the activated store so it is not lost.
+      // Scratch recorded for a different thread already persisted under its
+      // own key, so only an unscoped or same-thread scratch transfers here.
+      if (_composerText.isNotEmpty &&
+          (_composerTextThreadId == null ||
+              _composerTextThreadId == store.threadId)) {
+        store.composerText = _composerText;
+      }
+      _composerText = '';
+      _composerTextThreadId = null;
+      // Reconcile the persisted draft with the store's text so a draft typed
+      // during the load window is not overwritten by an older snapshot.
+      if (store.composerText.isNotEmpty ||
+          _composerDrafts.containsKey(_draftKey(store.threadId))) {
+        _saveDraft(store.threadId, store.composerText);
+      }
+    }
     _syncFromActiveStore();
     _clearLinkedMergeRequest();
     notifyListeners();
@@ -411,6 +435,10 @@ class AppState extends AppStateBase
 
   void _configureStore(ThreadStore store) {
     final id = store.threadId;
+    // Resolve the draft key now so a late restore fired while a server
+    // switch is in flight cannot land under the new server's namespace.
+    final draftKey = _draftKey(id);
+    store.onComposerTextChanged = (text) => _saveDraftKey(draftKey, text);
     store.onRunFinished = (failed) {
       final title = _threadTitle(id) ?? 'Thread';
       _notifications.notifyThreadCompleted(title: title, failed: failed);
@@ -471,7 +499,11 @@ class AppState extends AppStateBase
       projectId: projectId ?? _activeProjectId ?? 0,
       detail: detail != null ? AsyncValue.ready(detail) : null,
       streaming: streaming,
-      composerText: composerText,
+      // An empty or missing in-memory draft falls back to the persisted one
+      // so text left unsent before a restart comes back on first open.
+      composerText: composerText == null || composerText.isEmpty
+          ? _draftFor(id)
+          : composerText,
       attachments: attachments,
       pathRefs: pathRefs,
       threadReferences: threadReferences,

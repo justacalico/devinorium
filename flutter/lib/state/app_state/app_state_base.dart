@@ -152,6 +152,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _threadOpening(bool value);
   String get _composerText;
   set _composerText(String value);
+  String? get _composerTextThreadId;
+  set _composerTextThreadId(String? value);
   List<({String filename, String mime, Uint8List bytes})> get _attachments;
   set _attachments(
     List<({String filename, String mime, Uint8List bytes})> value,
@@ -413,6 +415,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> setSelectedProvider(String id);
   Future<void> ensureModelsFor(String providerId);
   void setComposerMode(ComposerMode m, {bool persist});
+  void _saveDraft(String threadId, String text);
+  Future<void> _loadComposerDrafts();
   Future<void> _saveComposerMode(ComposerMode m);
   Future<void> _loadComposerMode();
   Future<void> _loadComposerSelections();
