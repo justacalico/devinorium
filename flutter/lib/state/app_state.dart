@@ -47,6 +47,7 @@ part 'app_state/plan_overlay_store.dart';
 part 'app_state/files_panel_store.dart';
 part 'app_state/git_panel_store.dart';
 part 'app_state/health_check_store.dart';
+part 'app_state/run_events_store.dart';
 part 'app_state/lifecycle_store.dart';
 part 'app_state/git_store.dart';
 part 'app_state/git_refresh_store.dart';
@@ -98,6 +99,7 @@ class AppState extends AppStateBase
         FilesPanelStore,
         GitPanelStore,
         HealthCheckStore,
+        RunEventsStore,
         LifecycleStore,
         GitStore,
         GitRefreshStore,
@@ -328,6 +330,7 @@ class AppState extends AppStateBase
     markDisposed();
     _flushComposerDrafts();
     stopHealthChecks();
+    _stopRunEvents();
     _resumeDebounceTimer?.cancel();
     _wantsResume = false;
     _isResuming = false;

@@ -67,7 +67,8 @@ impl super::Db {
         offset: i64,
     ) -> anyhow::Result<Vec<ThreadRow>> {
         let mut sql =
-            "SELECT * FROM threads WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC, id DESC"
+            "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role
+             FROM threads WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC, id DESC"
                 .to_string();
         if let Some(l) = limit {
             sql.push_str(&format!(" LIMIT {l} OFFSET {offset}"));
@@ -80,7 +81,10 @@ impl super::Db {
     }
 
     pub async fn get_thread(&self, id: &str, user_id: i64) -> anyhow::Result<Option<ThreadRow>> {
-        sqlx::query_as::<_, ThreadRow>("SELECT * FROM threads WHERE id = ? AND user_id = ?")
+        sqlx::query_as::<_, ThreadRow>(
+            "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role
+             FROM threads WHERE id = ? AND user_id = ?",
+        )
             .bind(id)
             .bind(user_id)
             .fetch_optional(self.pool())

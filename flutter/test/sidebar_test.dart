@@ -2516,6 +2516,187 @@ void main() {
     expect(find.text('Done'), findsOneWidget);
   });
 
+  testWidgets('Inactive thread shows done from its last message role', (
+    tester,
+  ) async {
+    final thread = Thread(
+      id: 'a',
+      title: 'My thread',
+      projectId: 1,
+      model: '',
+      permissionMode: 'normal',
+      createdAt: '',
+      updatedAt: '',
+      lastMessageRole: 'assistant',
+    );
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [thread],
+      activeProjectId: 1,
+      // A different thread is open so 'a' is the background tile.
+      activeThreadId: 'other',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 'other',
+          title: 'Other',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('Done'), findsOneWidget);
+  });
+
+  testWidgets('Inactive thread follows run events without being active', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'bg',
+          title: 'Background',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'fg',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 'fg',
+          title: 'Foreground',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+    expect(find.text('Working'), findsNothing);
+    expect(find.text('Done'), findsNothing);
+
+    // The global stream reports the background thread started running.
+    state.handleRunEventForTest(
+      SseEvent(
+        'run_status',
+        '{"thread_id":"bg","run_id":"r1","status":"running","updated_at":"x"}',
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Working'), findsOneWidget);
+
+    // Waiting on a permission decision swaps the tag.
+    state.handleRunEventForTest(
+      SseEvent(
+        'run_status',
+        '{"thread_id":"bg","run_id":"r1","status":"running","attention":"permission","updated_at":"x"}',
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Approval'), findsOneWidget);
+
+    // Completion lands immediately too, and outlives the run record.
+    state.handleRunEventForTest(
+      SseEvent(
+        'run_status',
+        '{"thread_id":"bg","run_id":"r1","status":"completed","updated_at":"x"}',
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Approval'), findsNothing);
+    expect(find.text('Done'), findsOneWidget);
+  });
+
+  testWidgets('Inactive thread shows failed from run events', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(id: 1, name: 'p', path: '/x', createdAt: '', updatedAt: ''),
+      ],
+      threads: [
+        Thread(
+          id: 'bg',
+          title: 'Background',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+      activeProjectId: 1,
+      activeThreadId: 'fg',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 'fg',
+          title: 'Foreground',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    state.handleRunEventForTest(
+      SseEvent(
+        'run_status',
+        '{"thread_id":"bg","run_id":"r1","status":"failed","error":"boom","updated_at":"x"}',
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Failed'), findsOneWidget);
+  });
+
   testWidgets(
     'Thread delete still completes if tile unmounts during animation',
     (tester) async {

@@ -212,7 +212,8 @@ impl Db {
         limit: Option<i64>,
         offset: i64,
     ) -> anyhow::Result<Vec<super::ThreadRow>> {
-        let mut sql = "SELECT * FROM threads
+        let mut sql = "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role
+             FROM threads
              WHERE project_id = ? AND user_id = ?
              ORDER BY pinned DESC, updated_at DESC, id DESC"
             .to_string();

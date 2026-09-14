@@ -63,3 +63,30 @@ String? activeThreadTag({
     _ => null,
   };
 }
+
+/// Status tag for a thread that is not currently open. Live values come from
+/// the global run-events stream; when no event is known the thread's last
+/// persisted message role stands in so cold tiles still show a tag.
+String? backgroundThreadTag({
+  required bool running,
+  String? runStatus,
+  String? attention,
+  String? lastMessageRole,
+}) {
+  if (running || runStatus == 'running') {
+    return switch (attention) {
+      'permission' => 'needs approval',
+      'ask' => 'needs answer',
+      _ => 'running',
+    };
+  }
+  if (runStatus == 'failed') return 'failed';
+  if (runStatus == 'stopped') return 'stopped';
+  if (runStatus == 'completed') return 'done';
+  return switch (lastMessageRole) {
+    'assistant' => 'done',
+    'error' => 'failed',
+    'user' => 'working',
+    _ => null,
+  };
+}

@@ -65,6 +65,9 @@ mixin HealthCheckStore on AppStateBase {
     final version = ok ? await api.serverVersion() : null;
 
     final next = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;
+    final recovered =
+        _connectionStatus != ConnectionStatus.connected &&
+        next == ConnectionStatus.connected;
     var changed = false;
     if (_connectionStatus != next) {
       _connectionStatus = next;
@@ -91,6 +94,12 @@ mixin HealthCheckStore on AppStateBase {
       if (_healthTimer != null) {
         _reconnectTimer = Timer(const Duration(seconds: 2), checkConnection);
       }
+    }
+    if (recovered) {
+      // A dead SSE socket does not always report an error, so reopen the
+      // lifecycle stream on the disconnected -> connected transition; the
+      // fresh snapshot resyncs anything missed while away.
+      _restartRunEvents();
     }
     if (_connectionStatus == ConnectionStatus.connected) {
       _onConnectionRestored();

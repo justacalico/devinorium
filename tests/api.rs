@@ -9344,6 +9344,383 @@ async fn thread_list_runs_returns_empty_when_idle() {
     assert!(arr.is_empty());
 }
 
+/// Accumulate SSE text from an open body stream until `pred` matches or the
+/// deadline passes. Returns whatever was collected so the caller can assert.
+async fn collect_sse_until(
+    stream: &mut axum::body::BodyDataStream,
+    timeout: std::time::Duration,
+    pred: impl Fn(&str) -> bool,
+) -> String {
+    let mut buf = String::new();
+    let sleep = tokio::time::sleep(timeout);
+    tokio::pin!(sleep);
+    loop {
+        tokio::select! {
+            _ = &mut sleep => break,
+            chunk = futures::StreamExt::next(stream) => {
+                match chunk {
+                    Some(Ok(bytes)) => {
+                        buf.push_str(&String::from_utf8_lossy(&bytes));
+                        if pred(&buf) {
+                            break;
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
+    }
+    buf
+}
+
+/// Extract the `data:` payload of every SSE block named `event_name`.
+fn sse_events(text: &str, event_name: &str) -> Vec<serde_json::Value> {
+    let needle = format!("event: {event_name}");
+    text.split("\n\n")
+        .filter(|block| block.contains(&needle))
+        .filter_map(|block| {
+            block
+                .lines()
+                .find(|l| l.starts_with("data: "))
+                .map(|l| serde_json::from_str(&l[6..]).unwrap())
+        })
+        .collect()
+}
+
+/// POST a prompt through the streaming endpoint and drop the response. The
+/// run keeps executing in the background so SSE subscribers can watch it.
+async fn start_prompt(app: &Router, cookie: &str, tid: &str, prompt: &str) {
+    let boundary = "----runboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n{prompt}\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+async fn runs_events_stream(app: &Router, cookie: &str) -> axum::body::BodyDataStream {
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads/runs/events", cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    resp.into_body().into_data_stream()
+}
+
+#[tokio::test]
+async fn runs_events_requires_auth() {
+    let (app, _db) = make_app().await;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/threads/runs/events")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn runs_events_snapshot_then_status_transitions() {
+    let (app, _db) = make_app_with_delay(80).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let mut stream = runs_events_stream(&app, &cookie).await;
+    let snapshot = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        t.contains("event: runs")
+    })
+    .await;
+    let runs = sse_events(&snapshot, "runs");
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0]["running_ids"].as_array().unwrap().is_empty());
+
+    start_prompt(&app, &cookie, &tid, "hi").await;
+    let text = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        sse_events(t, "run_status")
+            .iter()
+            .any(|e| e["thread_id"] == tid && e["status"] == "completed")
+    })
+    .await;
+    let events = sse_events(&text, "run_status");
+    assert!(
+        events
+            .iter()
+            .any(|e| e["thread_id"] == tid && e["status"] == "running"),
+        "expected a running transition for {tid}, got {text}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e["thread_id"] == tid && e["status"] == "completed"),
+        "expected a completed transition for {tid}, got {text}"
+    );
+}
+
+#[tokio::test]
+async fn runs_events_tracks_concurrent_threads() {
+    let (app, _db) = make_app_with_delay(120).await;
+    let cookie = login(&app).await;
+    // Separate projects: creating a thread purges empty siblings in the same
+    // project, which would delete t1 before its run starts.
+    let t1 = make_thread(&app, &cookie, create_project(&app, &cookie).await, "A").await;
+    let t2 = make_thread(&app, &cookie, create_project(&app, &cookie).await, "B").await;
+
+    let mut stream = runs_events_stream(&app, &cookie).await;
+    let _ = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        t.contains("event: runs")
+    })
+    .await;
+
+    start_prompt(&app, &cookie, &t1, "one").await;
+    start_prompt(&app, &cookie, &t2, "two").await;
+
+    let text = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        let events = sse_events(t, "run_status");
+        [&t1, &t2].iter().all(|tid| {
+            events
+                .iter()
+                .any(|e| e["thread_id"] == **tid && e["status"] == "completed")
+        })
+    })
+    .await;
+    let events = sse_events(&text, "run_status");
+    for tid in [&t1, &t2] {
+        assert!(
+            events
+                .iter()
+                .any(|e| e["thread_id"] == *tid && e["status"] == "running"),
+            "missing running transition for {tid}: {text}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e["thread_id"] == *tid && e["status"] == "completed"),
+            "missing completed transition for {tid}: {text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn runs_events_hides_other_users_threads() {
+    let (app, _db) = make_app_with_delay(80).await;
+    let cookie = login(&app).await;
+    create_user(&app, &cookie, "bob", "bobpassword123").await;
+    let bob_cookie = login_as(&app, "bob", "bobpassword123").await;
+
+    let mut stream = runs_events_stream(&app, &cookie).await;
+    let _ = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        t.contains("event: runs")
+    })
+    .await;
+
+    // Owner's own run is a positive control: the stream must deliver it.
+    let pid = create_project(&app, &cookie).await;
+    let mine = make_thread(&app, &cookie, pid, "mine").await;
+    start_prompt(&app, &cookie, &mine, "hi").await;
+    let text = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        sse_events(t, "run_status")
+            .iter()
+            .any(|e| e["thread_id"] == mine && e["status"] == "completed")
+    })
+    .await;
+    assert!(
+        sse_events(&text, "run_status")
+            .iter()
+            .any(|e| e["thread_id"] == mine && e["status"] == "completed"),
+        "own run never arrived: {text}"
+    );
+
+    // Bob's run must never reach the owner's stream.
+    let bob_pid = create_project(&app, &bob_cookie).await;
+    let bob_tid = make_thread(&app, &bob_cookie, bob_pid, "bob's").await;
+    start_prompt(&app, &bob_cookie, &bob_tid, "hi").await;
+    wait_for_run(&app, &bob_cookie, &bob_tid, |b| {
+        b.contains("\"status\":\"completed\"")
+    })
+    .await;
+    let leaked = collect_sse_until(&mut stream, std::time::Duration::from_millis(500), |_| {
+        false
+    })
+    .await;
+    assert!(
+        !leaked.contains(&bob_tid),
+        "foreign thread event leaked into the stream: {leaked}"
+    );
+}
+
+#[tokio::test]
+async fn runs_events_snapshot_lists_active_run() {
+    let (app, _db) = make_app_with_delay(400).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    start_prompt(&app, &cookie, &tid, "hi").await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        b.contains("\"status\":\"running\"")
+    })
+    .await;
+
+    let mut stream = runs_events_stream(&app, &cookie).await;
+    let snapshot = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        t.contains("event: runs")
+    })
+    .await;
+    let runs = sse_events(&snapshot, "runs");
+    let ids = runs[0]["running_ids"].as_array().unwrap();
+    assert!(
+        ids.iter().any(|v| v == &tid),
+        "snapshot missing {tid}: {snapshot}"
+    );
+    let entry = runs[0]["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["thread_id"] == tid)
+        .expect("run entry");
+    assert_eq!(entry["status"], "running");
+}
+
+#[tokio::test]
+async fn runs_events_reports_stopped_run() {
+    let (app, _db) = make_app_with_delay(600).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let mut stream = runs_events_stream(&app, &cookie).await;
+    let _ = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        t.contains("event: runs")
+    })
+    .await;
+
+    start_prompt(&app, &cookie, &tid, "hi").await;
+    let running = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        sse_events(t, "run_status")
+            .iter()
+            .any(|e| e["thread_id"] == tid && e["status"] == "running")
+    })
+    .await;
+    assert!(running.contains("event: run_status"));
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/stop"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let text = collect_sse_until(&mut stream, std::time::Duration::from_secs(10), |t| {
+        sse_events(t, "run_status")
+            .iter()
+            .any(|e| e["thread_id"] == tid && e["status"] == "stopped")
+    })
+    .await;
+    assert!(
+        sse_events(&text, "run_status")
+            .iter()
+            .any(|e| e["thread_id"] == tid && e["status"] == "stopped"),
+        "expected a stopped transition for {tid}, got {text}"
+    );
+}
+
+#[tokio::test]
+async fn thread_list_includes_last_message_role() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    // Creating a thread deletes empty siblings in the same project, so seed
+    // each thread right after creation and keep the empty one for last.
+    let t_user = make_thread(&app, &cookie, pid, "user").await;
+    seed_messages(&db, &t_user, 1, "m").await;
+    let t_assistant = make_thread(&app, &cookie, pid, "assistant").await;
+    seed_messages(&db, &t_assistant, 2, "m").await;
+    let t_empty = make_thread(&app, &cookie, pid, "empty").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let threads = v.as_array().unwrap();
+    let role_of = |tid: &str| {
+        threads
+            .iter()
+            .find(|t| t["id"] == tid)
+            .unwrap_or_else(|| panic!("thread {tid} missing"))
+            .get("last_message_role")
+            .expect("last_message_role field")
+            .clone()
+    };
+    assert_eq!(role_of(&t_empty), serde_json::Value::Null);
+    assert_eq!(role_of(&t_user), "user");
+    assert_eq!(role_of(&t_assistant), "assistant");
+}
+
+#[tokio::test]
+async fn project_threads_list_includes_last_message_role() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+    seed_messages(&db, &tid, 2, "m").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/threads"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let thread = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == tid)
+        .expect("thread");
+    assert_eq!(thread["last_message_role"], "assistant");
+}
+
 #[tokio::test]
 async fn thread_get_one_returns_total_messages() {
     let (app, _db) = make_app().await;

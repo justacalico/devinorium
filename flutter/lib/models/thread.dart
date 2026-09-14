@@ -138,6 +138,10 @@ class Thread {
   final String updatedAt;
   final LinkedMergeRequestRef? linkedMr;
 
+  /// Role of the newest persisted message. Lets the sidebar show a status
+  /// tag for threads that have no live run event to go by.
+  final String? lastMessageRole;
+
   Thread({
     required this.id,
     required this.title,
@@ -156,6 +160,7 @@ class Thread {
     required this.createdAt,
     required this.updatedAt,
     this.linkedMr,
+    this.lastMessageRole,
   });
 
   factory Thread.fromJson(Map<String, dynamic> j) => Thread(
@@ -176,6 +181,7 @@ class Thread {
     createdAt: j['created_at'] as String? ?? '',
     updatedAt: j['updated_at'] as String? ?? '',
     linkedMr: _parseLinkedMr(j['linked_mr']),
+    lastMessageRole: j['last_message_role'] as String?,
   );
 
   /// A short display name for the thread's active worktree.
@@ -224,6 +230,7 @@ class Thread {
     linkedMr: linkedMrOrNull is _Unset
         ? (linkedMr ?? this.linkedMr)
         : (linkedMrOrNull as LinkedMergeRequestRef?),
+    lastMessageRole: lastMessageRole,
   );
 
   @override
@@ -246,7 +253,8 @@ class Thread {
         pinned == other.pinned &&
         createdAt == other.createdAt &&
         updatedAt == other.updatedAt &&
-        linkedMr == other.linkedMr;
+        linkedMr == other.linkedMr &&
+        lastMessageRole == other.lastMessageRole;
   }
 
   @override
@@ -268,6 +276,7 @@ class Thread {
     createdAt,
     updatedAt,
     linkedMr,
+    lastMessageRole,
   );
 }
 

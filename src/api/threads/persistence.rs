@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(active_run_plan(&runner, "missing").await, (false, None));
 
         let run = runner
-            .start("t1".into(), |_run| async { Ok(()) })
+            .start("t1".into(), 1, |_run| async { Ok(()) })
             .await
             .unwrap();
         let plan = Plan::new(None, vec![PlanStep::new("step 1", PlanStepStatus::Pending)]);

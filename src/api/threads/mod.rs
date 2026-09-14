@@ -29,6 +29,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/threads", get(routes::list).post(routes::create))
         .route("/api/threads/runs", get(runs::list_runs))
+        .route("/api/threads/runs/events", get(runs::runs_events))
         .route(
             "/api/threads/:id",
             get(routes::get_one)
@@ -92,6 +93,9 @@ pub struct ThreadOut {
     pub created_at: String,
     pub updated_at: String,
     pub linked_mr: Option<LinkedMergeRequest>,
+    /// Role of the newest persisted message. The sidebar uses it to show a
+    /// status tag for threads that have no live run event to go by.
+    pub last_message_role: Option<String>,
 }
 
 impl From<ThreadRow> for ThreadOut {
@@ -117,6 +121,7 @@ impl From<ThreadRow> for ThreadOut {
             created_at: t.created_at,
             updated_at: t.updated_at,
             linked_mr,
+            last_message_role: t.last_message_role,
         }
     }
 }
@@ -354,6 +359,7 @@ mod tests {
             pinned: true,
             title_user_set: true,
             linked_mr: None,
+            last_message_role: Some("assistant".into()),
         };
         let out = ThreadOut::from(row);
         assert_eq!(out.id, "th-1");
