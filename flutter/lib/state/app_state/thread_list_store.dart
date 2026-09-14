@@ -49,6 +49,8 @@ mixin ThreadListStore on AppStateBase {
   bool get activeThreadLoading =>
       _threadOpening || _activeStore?.status == ThreadStoreStatus.loading;
   @override
+  bool get hasActiveThreadStore => _activeStore != null;
+  @override
   bool get sending => _activeStore?.sending ?? false;
   @override
   String? get lastRunStatus => _activeStore?.lastRunStatus;
