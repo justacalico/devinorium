@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'l10n/l10n.dart';
 import 'utils/debug_log.dart';
+import 'services/pwa_chrome.dart';
 import 'services/window_service.dart';
 import 'state/app_state.dart';
 import 'state/zoom_controller.dart';
@@ -62,11 +63,14 @@ class _DevinoriumAppState extends State<DevinoriumApp>
   void initState() {
     super.initState();
     _updateBrightness();
+    widget.themeProvider.addListener(_syncPwaChrome);
+    _syncPwaChrome();
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    widget.themeProvider.removeListener(_syncPwaChrome);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -96,6 +100,17 @@ class _DevinoriumAppState extends State<DevinoriumApp>
     final brightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
     widget.themeProvider.setPlatformBrightness(brightness);
+  }
+
+  void _syncPwaChrome() {
+    final provider = widget.themeProvider;
+    final theme = provider.isActiveDark
+        ? provider.darkTheme
+        : provider.lightTheme;
+    syncPwaChrome(
+      theme.colorScheme.surface,
+      theme.brightness == Brightness.dark,
+    );
   }
 
   @override

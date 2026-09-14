@@ -111,6 +111,8 @@ mod tests {
         let html = std::str::from_utf8(file.contents()).unwrap();
         assert!(html.contains(r#"<link rel="manifest" href="manifest.json">"#));
         assert!(html.contains(r#"name="apple-mobile-web-app-capable""#));
+        assert!(html.contains(r#"name="theme-color""#));
+        assert!(html.contains(r#"name="color-scheme""#));
         assert!(html.contains(r#"rel="apple-touch-icon""#));
         assert!(html.contains(r#"rel="apple-touch-startup-image""#));
     }
