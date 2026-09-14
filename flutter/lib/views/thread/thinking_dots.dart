@@ -2,7 +2,8 @@ part of '../thread_page.dart';
 
 class _ThinkingDots extends StatefulWidget {
   final bool active;
-  const _ThinkingDots({required this.active});
+  final TextStyle? style;
+  const _ThinkingDots({required this.active, this.style});
 
   @override
   State<_ThinkingDots> createState() => _ThinkingDotsState();
@@ -45,7 +46,7 @@ class _ThinkingDotsState extends State<_ThinkingDots>
       animation: _controller,
       builder: (_, child) {
         final dotCount = ((_controller.value * 3).floor() % 3) + 1;
-        return Text('.' * dotCount);
+        return Text('.' * dotCount, style: widget.style);
       },
     );
   }

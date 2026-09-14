@@ -721,7 +721,7 @@ void main() {
 
     // Edit tool card is visible without expanding thinking.
     expect(find.textContaining('lib.rs'), findsOneWidget);
-    // Thinking is collapsed (hasText=true so it auto-collapses).
+    // Thinking is collapsed.
     expect(find.text('Show thinking'), findsOneWidget);
     // Reply text is visible.
     expect(find.text('Done editing'), findsOneWidget);
@@ -890,7 +890,7 @@ void main() {
 
     // Execute tool card shows the command, visible without expanding thinking.
     expect(find.textContaining('echo hello'), findsOneWidget);
-    // Thinking is collapsed (hasText=true).
+    // Thinking is collapsed.
     expect(find.text('Show thinking'), findsOneWidget);
     // Reply text is visible.
     expect(find.text('Finished'), findsOneWidget);
@@ -1270,6 +1270,61 @@ void main() {
 
     expect(find.text('Show thinking'), findsOneWidget);
     expect(find.text('Hide thinking'), findsOneWidget);
+  });
+
+  testWidgets('active thinking stays collapsed until tapped', (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      sending: true,
+      streamingThinkingActive: true,
+      streamingParts: [MessagePart.thinking(content: 'hmm')],
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [Message(id: 1, role: 'user', content: 'q')],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    // The thinking dots animate on a loop, so pump fixed frames instead of
+    // pumpAndSettle.
+    await tester.pump();
+    await tester.pump();
+
+    final fade = find.byType(AnimatedCrossFade);
+    expect(fade, findsOneWidget);
+    expect(
+      tester.widget<AnimatedCrossFade>(fade).crossFadeState,
+      CrossFadeState.showFirst,
+    );
+    expect(find.text('Thinking'), findsOneWidget);
+    expect(find.text('Show thinking'), findsNothing);
+    expect(find.byIcon(Icons.psychology_outlined), findsOneWidget);
+
+    await tester.tap(find.text('Thinking'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(
+      tester.widget<AnimatedCrossFade>(fade).crossFadeState,
+      CrossFadeState.showSecond,
+    );
   });
 
   testWidgets('tapping assistant markdown link opens the url', (tester) async {

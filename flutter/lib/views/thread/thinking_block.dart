@@ -3,13 +3,7 @@ part of '../thread_page.dart';
 class _ThinkingBlock extends StatefulWidget {
   final String text;
   final bool working;
-  final bool hasText;
-  const _ThinkingBlock({
-    super.key,
-    required this.text,
-    required this.working,
-    required this.hasText,
-  });
+  const _ThinkingBlock({super.key, required this.text, required this.working});
 
   @override
   State<_ThinkingBlock> createState() => _ThinkingBlockState();
@@ -19,33 +13,16 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
   bool _expanded = false;
 
   @override
-  void initState() {
-    super.initState();
-    _expanded = widget.working && !widget.hasText;
-  }
-
-  @override
-  void didUpdateWidget(covariant _ThinkingBlock old) {
-    super.didUpdateWidget(old);
-    if ((!old.hasText && widget.hasText) ||
-        (old.working && !widget.working && widget.hasText)) {
-      if (_expanded) setState(() => _expanded = false);
-      return;
-    }
-    // Auto-expand only when working flips on without reply text, matching
-    // initState; a later chunk must not re-open a block the user collapsed.
-    if (!old.working && widget.working && !widget.hasText && !_expanded) {
-      setState(() => _expanded = true);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l = l10n(context);
     final label = widget.working
         ? l.thinking
         : (_expanded ? l.hideThinking : l.showThinking);
+    final labelStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w500,
+    );
 
     final text = stripPlanMarkup(widget.text);
 
@@ -55,30 +32,46 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
       children: [
         InkWell(
           onTap: () => setState(() => _expanded = !_expanded),
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
+          borderRadius: BorderRadius.circular(6),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(20),
+              color: _expanded
+                  ? theme.colorScheme.surfaceContainer
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            margin: const EdgeInsets.only(bottom: 2),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  Icons.psychology_outlined,
                   size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: theme.colorScheme.tertiary,
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: labelStyle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (widget.working)
+                        _ThinkingDots(active: true, style: labelStyle),
+                    ],
                   ),
                 ),
-                if (widget.working) _ThinkingDots(active: widget.working),
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 14,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ],
             ),
           ),

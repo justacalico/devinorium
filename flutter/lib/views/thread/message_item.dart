@@ -109,10 +109,6 @@ class _MessageItemState extends State<_MessageItem> {
     );
   }
 
-  bool get _hasText => _message.allParts.any(
-    (p) => p.type == 'text' && (p.content?.trim().isNotEmpty ?? false),
-  );
-
   bool get _shouldCollapse {
     if (_message.role != 'user' || _expanded) return false;
     final lines = _message.content.split('\n').length;
@@ -354,7 +350,6 @@ class _MessageItemState extends State<_MessageItem> {
 
   Widget _buildRows(BuildContext context, List<MessageRun> rows) {
     final children = <Widget>[];
-    final hasText = _hasText;
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
       switch (row) {
@@ -371,7 +366,6 @@ class _MessageItemState extends State<_MessageItem> {
               key: ValueKey(row.id),
               text: text,
               working: i == rows.length - 1 && _working,
-              hasText: hasText,
             ),
           );
         case ToolRun(:final tool):
