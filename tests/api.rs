@@ -9528,9 +9528,15 @@ async fn runs_events_tracks_concurrent_threads() {
 
 #[tokio::test]
 async fn runs_events_hides_other_users_threads() {
-    let (app, _db) = make_app_with_delay(80).await;
+    let (app, db) = make_app_with_delay(80).await;
     let cookie = login(&app).await;
     create_user(&app, &cookie, "bob", "bobpassword123").await;
+    // New users inherit the default provider command; clear it so the run
+    // uses the stub provider instead of spawning a binary that CI lacks.
+    sqlx::query("UPDATE users SET provider_command = '' WHERE username = 'bob'")
+        .execute(db.pool())
+        .await
+        .unwrap();
     let bob_cookie = login_as(&app, "bob", "bobpassword123").await;
 
     let mut stream = runs_events_stream(&app, &cookie).await;
