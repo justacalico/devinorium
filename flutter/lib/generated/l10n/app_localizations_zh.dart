@@ -1281,6 +1281,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get worktreeRootOnlyOwner => '只有所有者可以更改工作树根目录';
 
   @override
+  String get directories => '目录';
+
+  @override
   String get search => '搜索';
 
   @override

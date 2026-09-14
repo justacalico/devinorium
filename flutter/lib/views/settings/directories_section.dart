@@ -1,21 +1,106 @@
 part of '../settings_page.dart';
 
-class _WorktreeRootSection extends StatefulWidget {
+class _DirectoriesSection extends StatelessWidget {
   final AppState state;
 
-  const _WorktreeRootSection({required this.state});
+  const _DirectoriesSection({required this.state});
 
   @override
-  State<_WorktreeRootSection> createState() => _WorktreeRootSectionState();
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _RootPathCard(
+          state: state,
+          title: l.cloneRoot,
+          description: l.cloneRootDescription,
+          notSetLabel: l.cloneRootNotSet,
+          ownerOnlyLabel: l.cloneRootOnlyOwner,
+          browseTooltip: l.cloneRootBrowse,
+          saveLabel: l.cloneRootSave,
+          hintText: '/absolute/path/to/clones',
+          pickerTitle: l.cloneRoot,
+          getValue: () => state.cloneRoot,
+          getLoading: () => state.loadingCloneRoot,
+          onSave: state.setCloneRoot,
+        ),
+        _RootPathCard(
+          state: state,
+          title: l.worktreeRoot,
+          description: l.worktreeRootDescription,
+          notSetLabel: l.worktreeRootNotSet,
+          ownerOnlyLabel: l.worktreeRootOnlyOwner,
+          browseTooltip: l.worktreeRootBrowse,
+          saveLabel: l.worktreeRootSave,
+          hintText: '/absolute/path/to/worktrees',
+          pickerTitle: l.worktreeRoot,
+          getValue: () => state.worktreeRoot,
+          getLoading: () => state.loadingWorktreeRoot,
+          onSave: state.setWorktreeRoot,
+        ),
+        // Shown once for both cards; each save reports through the shared
+        // globalError field.
+        Selector<AppState, String>(
+          selector: (_, s) => s.globalError,
+          builder: (context, error, _) {
+            if (error.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                error,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
 }
 
-class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
+class _RootPathCard extends StatefulWidget {
+  final AppState state;
+  final String title;
+  final String description;
+  final String notSetLabel;
+  final String ownerOnlyLabel;
+  final String browseTooltip;
+  final String saveLabel;
+  final String hintText;
+  final String pickerTitle;
+  final String? Function() getValue;
+  final bool Function() getLoading;
+  final Future<void> Function(String? path) onSave;
+
+  const _RootPathCard({
+    required this.state,
+    required this.title,
+    required this.description,
+    required this.notSetLabel,
+    required this.ownerOnlyLabel,
+    required this.browseTooltip,
+    required this.saveLabel,
+    required this.hintText,
+    required this.pickerTitle,
+    required this.getValue,
+    required this.getLoading,
+    required this.onSave,
+  });
+
+  @override
+  State<_RootPathCard> createState() => _RootPathCardState();
+}
+
+class _RootPathCardState extends State<_RootPathCard> {
   final _controller = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _controller.text = widget.state.worktreeRoot ?? '';
+    _controller.text = widget.getValue() ?? '';
     _controller.addListener(_onTextChanged);
   }
 
@@ -24,9 +109,9 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
   }
 
   @override
-  void didUpdateWidget(covariant _WorktreeRootSection oldWidget) {
+  void didUpdateWidget(covariant _RootPathCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final root = widget.state.worktreeRoot ?? '';
+    final root = widget.getValue() ?? '';
     if (_controller.text.isEmpty && root.isNotEmpty) {
       _controller.text = root;
     }
@@ -41,9 +126,9 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
 
   Future<void> _save() async {
     final text = _controller.text.trim();
-    await widget.state.setWorktreeRoot(text.isEmpty ? null : text);
+    await widget.onSave(text.isEmpty ? null : text);
     if (mounted && widget.state.globalError.isEmpty) {
-      _controller.text = widget.state.worktreeRoot ?? '';
+      _controller.text = widget.getValue() ?? '';
     }
   }
 
@@ -52,7 +137,7 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
       context,
       api: widget.state.api,
       initialPath: _controller.text,
-      title: l10n(context).worktreeRoot,
+      title: widget.pickerTitle,
     );
     if (picked != null && mounted) {
       _controller.text = picked;
@@ -65,14 +150,14 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
     final theme = Theme.of(context);
     final l = l10n(context);
     final isOwner = widget.state.isOwner;
-    final current = widget.state.worktreeRoot;
-    final loading = widget.state.loadingWorktreeRoot;
+    final current = widget.getValue();
+    final loading = widget.getLoading();
 
     return _SectionCard(
-      title: l.worktreeRoot,
+      title: widget.title,
       children: [
         Text(
-          l.worktreeRootDescription,
+          widget.description,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -83,14 +168,14 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                current ?? l.worktreeRootNotSet,
+                current ?? widget.notSetLabel,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                l.worktreeRootOnlyOwner,
+                widget.ownerOnlyLabel,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -106,7 +191,7 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
                   controller: _controller,
                   enabled: !loading,
                   decoration: InputDecoration(
-                    hintText: '/absolute/path/to/worktrees',
+                    hintText: widget.hintText,
                     isDense: true,
                     border: const OutlineInputBorder(),
                     suffixIcon: _controller.text.isNotEmpty
@@ -128,7 +213,7 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.folder_open_outlined),
-                tooltip: l.worktreeRootBrowse,
+                tooltip: widget.browseTooltip,
                 onPressed: loading ? null : _browse,
               ),
               const SizedBox(width: 8),
@@ -140,17 +225,10 @@ class _WorktreeRootSectionState extends State<_WorktreeRootSection> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(l.worktreeRootSave),
+                    : Text(widget.saveLabel),
               ),
             ],
           ),
-        if (widget.state.globalError.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            widget.state.globalError,
-            style: TextStyle(color: theme.colorScheme.error),
-          ),
-        ],
       ],
     );
   }

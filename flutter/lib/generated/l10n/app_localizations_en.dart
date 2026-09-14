@@ -1339,6 +1339,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Only the owner can change the worktree root.';
 
   @override
+  String get directories => 'Directories';
+
+  @override
   String get search => 'Search';
 
   @override

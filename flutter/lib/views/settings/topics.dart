@@ -9,8 +9,7 @@ enum SettingsTopic {
   providers,
   personalization,
   git,
-  cloneRoot,
-  worktreeRoot,
+  directories,
   usage,
   manage,
   audit,
@@ -42,9 +41,9 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
     ),
     (topic: SettingsTopic.git, icon: Icons.code_outlined, label: l.git),
     (
-      topic: SettingsTopic.cloneRoot,
+      topic: SettingsTopic.directories,
       icon: Icons.folder_outlined,
-      label: l.cloneRoot,
+      label: l.directories,
     ),
     if (isOwner)
       (
@@ -66,10 +65,5 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
         icon: Icons.receipt_long_outlined,
         label: l.auditLog,
       ),
-    (
-      topic: SettingsTopic.worktreeRoot,
-      icon: Icons.account_tree_outlined,
-      label: l.worktreeRoot,
-    ),
   ];
 }
