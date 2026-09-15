@@ -260,6 +260,39 @@ void main() {
         isTrue,
       );
     });
+
+    testWidgets('opening the sidebar drops focus so the keyboard hides',
+        (tester) async {
+      tester.view.physicalSize = const Size(600, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final state = _baseState(api: _clientFor([_json(200, [])]));
+      addTearDown(state.dispose);
+      await tester.pumpWidget(_buildWithState(state, size: const Size(600, 800)));
+      await tester.pumpAndSettle();
+
+      // Focus the composer as if the soft keyboard were up.
+      await tester.tap(find.byKey(const Key('composer_input')));
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<EditableText>(),
+        isNotNull,
+      );
+
+      state.openSidebar();
+      await tester.pumpAndSettle();
+
+      // Primary focus moves off the text field, closing the input
+      // connection and with it the keyboard.
+      expect(state.sidebarOpen, isTrue);
+      expect(
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<EditableText>(),
+        isNull,
+      );
+    });
   });
 
   group('AppShell resize preserves state', () {
