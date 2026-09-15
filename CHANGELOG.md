@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.78.0 - 2026-09-15
+#### Features
+- 支持配置新建项目目录并一键创建项目 - (1880f35) - HttpAnimations
+#### Bug Fixes
+- 打开侧边栏时收起手机软键盘 - (1f897aa) - HttpAnimations
+
+- - -
+
 ## v0.77.2 - 2026-09-14
 #### Bug Fixes
 - 修复线程加载时输入框闪烁的问题 - (8c679aa) - HttpAnimations
