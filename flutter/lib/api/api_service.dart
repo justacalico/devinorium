@@ -378,6 +378,13 @@ class ApiService {
     return Project.fromJson(j);
   }
 
+  /// Create a fresh project folder under the configured project root and
+  /// register it. The name doubles as the folder name.
+  Future<Project> createNewProject({required String name}) async {
+    final j = await _client.post('/api/projects/new', {'name': name.trim()});
+    return Project.fromJson(j);
+  }
+
   Future<void> deleteProject(int id) async {
     await _client.delete('/api/projects/$id');
   }
@@ -1055,6 +1062,18 @@ class ApiService {
 
   Future<String?> setWorktreeRoot(String? path) async {
     final j = await _client.put('/api/settings/worktree-root', {'path': path});
+    return j['path'] as String?;
+  }
+
+  // ---- Project root ----
+
+  Future<String?> getProjectRoot() async {
+    final j = await _client.get('/api/settings/project-root');
+    return j['path'] as String?;
+  }
+
+  Future<String?> setProjectRoot(String? path) async {
+    final j = await _client.put('/api/settings/project-root', {'path': path});
     return j['path'] as String?;
   }
 

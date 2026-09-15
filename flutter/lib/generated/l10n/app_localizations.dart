@@ -680,11 +680,35 @@ abstract class AppLocalizations {
   /// **'Browse a folder on disk'**
   String get addProjectLocalDescription;
 
+  /// No description provided for @addProjectCreateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create new'**
+  String get addProjectCreateTitle;
+
+  /// No description provided for @addProjectCreateDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an empty folder and add it as a project'**
+  String get addProjectCreateDescription;
+
   /// No description provided for @addProjectCloneDescription.
   ///
   /// In en, this message translates to:
   /// **'Clone from a remote URL'**
   String get addProjectCloneDescription;
+
+  /// No description provided for @createProjectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create project'**
+  String get createProjectTitle;
+
+  /// No description provided for @createProjectDestination.
+  ///
+  /// In en, this message translates to:
+  /// **'Will be created at {path}'**
+  String createProjectDestination(String path);
 
   /// No description provided for @cloneRepo.
   ///
@@ -841,6 +865,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Name and path are required'**
   String get nameAndPathRequired;
+
+  /// No description provided for @nameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Name is required'**
+  String get nameRequired;
 
   /// No description provided for @noSubfoldersHere.
   ///
@@ -2413,6 +2443,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Only the owner can change the worktree root.'**
   String get worktreeRootOnlyOwner;
+
+  /// No description provided for @projectRoot.
+  ///
+  /// In en, this message translates to:
+  /// **'Project root'**
+  String get projectRoot;
+
+  /// No description provided for @projectRootDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Parent directory where new project folders are created. Defaults to the home directory.'**
+  String get projectRootDescription;
+
+  /// No description provided for @projectRootNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set yet'**
+  String get projectRootNotSet;
+
+  /// No description provided for @projectRootSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get projectRootSave;
+
+  /// No description provided for @projectRootBrowse.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse...'**
+  String get projectRootBrowse;
+
+  /// No description provided for @projectRootOnlyOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the owner can change the project root.'**
+  String get projectRootOnlyOwner;
 
   /// No description provided for @directories.
   ///

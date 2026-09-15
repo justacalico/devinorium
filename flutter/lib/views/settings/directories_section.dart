@@ -41,7 +41,21 @@ class _DirectoriesSection extends StatelessWidget {
           getLoading: () => state.loadingWorktreeRoot,
           onSave: state.setWorktreeRoot,
         ),
-        // Shown once for both cards; each save reports through the shared
+        _RootPathCard(
+          state: state,
+          title: l.projectRoot,
+          description: l.projectRootDescription,
+          notSetLabel: l.projectRootNotSet,
+          ownerOnlyLabel: l.projectRootOnlyOwner,
+          browseTooltip: l.projectRootBrowse,
+          saveLabel: l.projectRootSave,
+          hintText: '/absolute/path/to/projects',
+          pickerTitle: l.projectRoot,
+          getValue: () => state.projectRoot,
+          getLoading: () => state.loadingProjectRoot,
+          onSave: state.setProjectRoot,
+        ),
+        // Shown once for all cards; each save reports through the shared
         // globalError field.
         Selector<AppState, String>(
           selector: (_, s) => s.globalError,

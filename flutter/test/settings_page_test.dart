@@ -30,18 +30,23 @@ class _FakeApiService extends ApiService {
   int setCloneRootCalls = 0;
   int getWorktreeRootCalls = 0;
   int setWorktreeRootCalls = 0;
+  int getProjectRootCalls = 0;
+  int setProjectRootCalls = 0;
   String? savedProviderCommand;
   String? testedCommand;
   String? savedCloneRoot;
   String? cloneRootToReturn;
   String? savedWorktreeRoot;
   String? worktreeRootToReturn;
+  String? savedProjectRoot;
+  String? projectRootToReturn;
   ProviderVersion? providerVersionToReturn;
   Map<String, ProviderVersion> providerVersionsToReturn = const {};
   Completer<ProviderVersion>? providerVersionGate;
   bool throwOnTest = false;
   Exception? cloneRootError;
   Exception? worktreeRootError;
+  Exception? projectRootError;
   List<DirEntry> listFilesToReturn = const [];
 
   final List<User> _users;
@@ -179,6 +184,21 @@ class _FakeApiService extends ApiService {
     setWorktreeRootCalls++;
     savedWorktreeRoot = path;
     if (worktreeRootError != null) throw worktreeRootError!;
+    return path;
+  }
+
+  @override
+  Future<String?> getProjectRoot() async {
+    getProjectRootCalls++;
+    if (projectRootError != null) throw projectRootError!;
+    return projectRootToReturn;
+  }
+
+  @override
+  Future<String?> setProjectRoot(String? path) async {
+    setProjectRootCalls++;
+    savedProjectRoot = path;
+    if (projectRootError != null) throw projectRootError!;
     return path;
   }
 
@@ -1433,9 +1453,9 @@ void main() {
       find.text('Directory where cloned repositories are placed.'),
       findsOneWidget,
     );
-    expect(find.byType(TextField), findsNWidgets(2));
+    expect(find.byType(TextField), findsNWidgets(3));
     expect(state.cloneRoot, '/srv/clones');
-    expect(find.widgetWithText(FilledButton, 'Save'), findsNWidgets(2));
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNWidgets(3));
     expect(fake.getCloneRootCalls, greaterThan(0));
   });
 
@@ -1635,9 +1655,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byType(TextField), findsNWidgets(2));
-    expect(find.widgetWithText(FilledButton, 'Save'), findsNWidgets(2));
-    expect(find.byTooltip('Browse...'), findsNWidgets(2));
+    expect(find.byType(TextField), findsNWidgets(3));
+    expect(find.widgetWithText(FilledButton, 'Save'), findsNWidgets(3));
+    expect(find.byTooltip('Browse...'), findsNWidgets(3));
     expect(state.worktreeRoot, '/srv/worktrees');
     expect(fake.getWorktreeRootCalls, greaterThan(0));
   });
@@ -1702,10 +1722,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.byType(TextField).last,
+      find.byType(TextField).at(1),
       '/srv/new-worktrees',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Save').last);
+    await tester.tap(find.widgetWithText(FilledButton, 'Save').at(1));
     await tester.pumpAndSettle();
 
     expect(fake.setWorktreeRootCalls, 1);
@@ -1737,7 +1757,7 @@ void main() {
     state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    final browse = find.byTooltip('Browse...').last;
+    final browse = find.byTooltip('Browse...').at(1);
     expect(browse, findsOneWidget);
     await tester.tap(browse);
     await tester.pumpAndSettle();
@@ -1751,6 +1771,127 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Select current folder'), findsOneWidget);
+  });
+
+  testWidgets('Project root save propagates to the API and updates state', (
+    tester,
+  ) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projectRoot: '/old/projects',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project root'), findsOneWidget);
+    expect(
+      find.text(
+        'Parent directory where new project folders are created. Defaults to '
+        'the home directory.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byType(TextField).last,
+      '/srv/new-projects',
+    );
+    final save = find.widgetWithText(FilledButton, 'Save').last;
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(fake.setProjectRootCalls, 1);
+    expect(fake.savedProjectRoot, '/srv/new-projects');
+    expect(state.projectRoot, '/srv/new-projects');
+    expect(state.globalError, isEmpty);
+  });
+
+  testWidgets('Project root browse opens folder picker with custom title', (
+    tester,
+  ) async {
+    final fake = _FakeApiService();
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    final browse = find.byTooltip('Browse...').at(2);
+    expect(browse, findsOneWidget);
+    await tester.ensureVisible(browse);
+    await tester.pumpAndSettle();
+    await tester.tap(browse);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.text('Project root'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Select current folder'), findsOneWidget);
+  });
+
+  testWidgets('Project root section is read-only for non-owners', (
+    tester,
+  ) async {
+    final fake = _FakeApiService()..projectRootToReturn = '/srv/projects';
+    final state = AppState.test(
+      api: fake,
+      user: User(
+        id: 2,
+        username: 'member',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projectRoot: '/srv/projects',
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(4);
+    await tester.pumpAndSettle();
+
+    expect(find.text('/srv/projects'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(
+      find.text('Only the owner can change the project root.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('app bar title is left aligned and ellipsized', (tester) async {

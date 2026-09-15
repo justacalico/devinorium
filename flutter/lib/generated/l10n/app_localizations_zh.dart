@@ -316,7 +316,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addProjectLocalDescription => '浏览磁盘上的文件夹';
 
   @override
+  String get addProjectCreateTitle => '新建空白项目';
+
+  @override
+  String get addProjectCreateDescription => '新建一个空文件夹并添加为项目';
+
+  @override
   String get addProjectCloneDescription => '从远程 URL 克隆';
+
+  @override
+  String get createProjectTitle => '创建项目';
+
+  @override
+  String createProjectDestination(String path) {
+    return '将在 $path 中创建';
+  }
 
   @override
   String get cloneRepo => '克隆存储库';
@@ -395,6 +409,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get nameAndPathRequired => '名称和路径必填';
+
+  @override
+  String get nameRequired => '名称为必填项';
 
   @override
   String get noSubfoldersHere => '此处无子文件夹';
@@ -1279,6 +1296,24 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get worktreeRootOnlyOwner => '只有所有者可以更改工作树根目录';
+
+  @override
+  String get projectRoot => '项目根目录';
+
+  @override
+  String get projectRootDescription => '新建项目文件夹所在的父目录，默认为主目录。';
+
+  @override
+  String get projectRootNotSet => '尚未设置';
+
+  @override
+  String get projectRootSave => '保存';
+
+  @override
+  String get projectRootBrowse => '浏览…';
+
+  @override
+  String get projectRootOnlyOwner => '只有所有者可以更改项目根目录';
 
   @override
   String get directories => '目录';

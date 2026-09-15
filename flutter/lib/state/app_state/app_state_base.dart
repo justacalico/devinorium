@@ -220,6 +220,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _cloneRoot(String? value);
   String? get _worktreeRoot;
   set _worktreeRoot(String? value);
+  String? get _projectRoot;
+  set _projectRoot(String? value);
   TailscaleInfo? get _tailscaleInfo;
   set _tailscaleInfo(TailscaleInfo? value);
   bool get _tailscaleBusy;
@@ -230,6 +232,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _loadingCloneRoot(bool value);
   bool get _loadingWorktreeRoot;
   set _loadingWorktreeRoot(bool value);
+  bool get _loadingProjectRoot;
+  set _loadingProjectRoot(bool value);
   bool get _cloningRepo;
   set _cloningRepo(bool value);
   String? get _cloneRepoResult;
@@ -359,8 +363,10 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get isLoadingMoreFiles;
   String? get cloneRoot;
   String? get worktreeRoot;
+  String? get projectRoot;
   bool get loadingCloneRoot;
   bool get loadingWorktreeRoot;
+  bool get loadingProjectRoot;
   TailscaleInfo? get tailscaleInfo;
   bool get tailscaleBusy;
   bool get cloningRepo;
@@ -512,6 +518,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
   Future<void> createProject({required String name, required String path});
+  Future<void> createNewProject(String name);
   void openAddProjectDialog();
   void openCloneRepoDialog();
   Future<String?> cloneRepo(String url);
@@ -519,6 +526,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> deleteProject(int id);
   Future<void> reorderProjects(List<int> ids);
   Future<void> openNewProjectDialog();
+  void openCreateProjectDialog();
   Future<void> openRenameProjectDialog(int id, String name);
   Future<void> openRenameThreadDialog(String id, String title);
   Future<void> renameProject(int id, String name);
@@ -601,6 +609,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> setCloneRoot(String? path);
   Future<void> loadWorktreeRoot();
   Future<void> setWorktreeRoot(String? path);
+  Future<void> loadProjectRoot();
+  Future<void> setProjectRoot(String? path);
   Future<void> loadGitConnections();
   Future<void> connectGitLab({String? hostname});
   Future<void> disconnectGitLab({String? hostname});

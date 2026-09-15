@@ -327,6 +327,7 @@ mixin AuthStore on AppStateBase {
       loadGitConnections(),
       loadCloneRoot(),
       loadWorktreeRoot(),
+      loadProjectRoot(),
       refreshProviderVersion(),
       loadTailscaleStatus(),
     ];

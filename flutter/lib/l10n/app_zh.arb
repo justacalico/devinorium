@@ -212,7 +212,18 @@
   "addProject": "添加项目",
   "addProjectLocalTitle": "本地文件夹",
   "addProjectLocalDescription": "浏览磁盘上的文件夹",
+  "addProjectCreateTitle": "新建空白项目",
+  "addProjectCreateDescription": "新建一个空文件夹并添加为项目",
   "addProjectCloneDescription": "从远程 URL 克隆",
+  "createProjectTitle": "创建项目",
+  "createProjectDestination": "将在 {path} 中创建",
+  "@createProjectDestination": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "cloneRepo": "克隆存储库",
   "cloneRepoDescription": "将远程仓库克隆到配置的克隆根目录",
   "cloneRepoUrlLabel": "远程 URL",
@@ -752,6 +763,12 @@
   "worktreeRootSave": "保存",
   "worktreeRootBrowse": "浏览…",
   "worktreeRootOnlyOwner": "只有所有者可以更改工作树根目录",
+  "projectRoot": "项目根目录",
+  "projectRootDescription": "新建项目文件夹所在的父目录，默认为主目录。",
+  "projectRootNotSet": "尚未设置",
+  "projectRootSave": "保存",
+  "projectRootBrowse": "浏览…",
+  "projectRootOnlyOwner": "只有所有者可以更改项目根目录",
   "directories": "目录",
   "search": "搜索",
   "searchHint": "搜索会话…",

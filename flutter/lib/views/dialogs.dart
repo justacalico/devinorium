@@ -33,6 +33,7 @@ class DialogLayer extends StatelessWidget {
           DialogKind.totpSetup => const _TotpSetupDialog(),
           DialogKind.addProject => const _AddProjectDialog(),
           DialogKind.newProject => const _NewProjectDialog(),
+          DialogKind.createProject => const _CreateProjectDialog(),
           DialogKind.cloneRepo => const _CloneRepoDialog(),
           DialogKind.permissionRequest => const _PermissionRequestDialog(),
           DialogKind.mergeRequest =>
@@ -268,6 +269,13 @@ class _AddProjectDialog extends StatelessWidget {
                       title: l.addProjectLocalTitle,
                       description: l.addProjectLocalDescription,
                       onTap: () => unawaited(state.openNewProjectDialog()),
+                    ),
+                    const SizedBox(height: 8),
+                    _AddProjectSourceTile(
+                      icon: Icons.note_add_outlined,
+                      title: l.addProjectCreateTitle,
+                      description: l.addProjectCreateDescription,
+                      onTap: state.openCreateProjectDialog,
                     ),
                     const SizedBox(height: 8),
                     _AddProjectSourceTile(
@@ -548,6 +556,155 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// "Create new" flow: a name field plus a preview of where the folder will
+/// be created; the backend derives the folder under the project root.
+class _CreateProjectDialog extends StatefulWidget {
+  const _CreateProjectDialog();
+
+  @override
+  State<_CreateProjectDialog> createState() => _CreateProjectDialogState();
+}
+
+class _CreateProjectDialogState extends State<_CreateProjectDialog> {
+  final _nameController = TextEditingController();
+  var _submitting = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+
+    setState(() => _submitting = true);
+    final state = context.read<AppState>();
+    try {
+      await state.createNewProject(name);
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+    // Close whichever add-project dialog is showing: the user may have
+    // navigated back to the source picker while the create was in flight.
+    if (state.globalError.isEmpty) {
+      state.closeDialog();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final state = context.read<AppState>();
+    final name = _nameController.text.trim();
+    final canSubmit = name.isNotEmpty && !_submitting;
+
+    return Selector<AppState, ({String? projectRoot, String globalError})>(
+      selector: (_, s) => (projectRoot: s.projectRoot, globalError: s.globalError),
+      builder: (context, model, _) {
+        final root = model.projectRoot;
+        final destination = (root == null || root.isEmpty)
+            ? null
+            : name.isEmpty
+            ? root
+            : '$root/$name';
+
+        return Stack(
+      children: [
+        ModalBarrier(
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _AddProjectDialogTitle(title: l.createProjectTitle),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _nameController,
+                      autofocus: true,
+                      enabled: !_submitting,
+                      decoration: InputDecoration(
+                        labelText: l.name,
+                        hintText: l.myProjectHint,
+                        border: const OutlineInputBorder(),
+                      ),
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) => setState(() {}),
+                      onSubmitted: (_) {
+                        if (canSubmit) _submit();
+                      },
+                    ),
+                    if (destination != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        l.createProjectDestination(destination),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (model.globalError.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        liveRegion: true,
+                        label: l.error,
+                        child: Text(
+                          model.globalError,
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: state.closeDialog,
+                          child: Text(l.cancel),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: canSubmit ? _submit : null,
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : Text(l.create),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+      },
     );
   }
 }

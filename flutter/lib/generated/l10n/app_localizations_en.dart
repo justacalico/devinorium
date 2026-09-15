@@ -324,7 +324,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addProjectLocalDescription => 'Browse a folder on disk';
 
   @override
+  String get addProjectCreateTitle => 'Create new';
+
+  @override
+  String get addProjectCreateDescription =>
+      'Create an empty folder and add it as a project';
+
+  @override
   String get addProjectCloneDescription => 'Clone from a remote URL';
+
+  @override
+  String get createProjectTitle => 'Create project';
+
+  @override
+  String createProjectDestination(String path) {
+    return 'Will be created at $path';
+  }
 
   @override
   String get cloneRepo => 'Clone repository';
@@ -405,6 +420,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nameAndPathRequired => 'Name and path are required';
+
+  @override
+  String get nameRequired => 'Name is required';
 
   @override
   String get noSubfoldersHere => 'No subfolders here';
@@ -1337,6 +1355,26 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get worktreeRootOnlyOwner =>
       'Only the owner can change the worktree root.';
+
+  @override
+  String get projectRoot => 'Project root';
+
+  @override
+  String get projectRootDescription =>
+      'Parent directory where new project folders are created. Defaults to the home directory.';
+
+  @override
+  String get projectRootNotSet => 'Not set yet';
+
+  @override
+  String get projectRootSave => 'Save';
+
+  @override
+  String get projectRootBrowse => 'Browse...';
+
+  @override
+  String get projectRootOnlyOwner =>
+      'Only the owner can change the project root.';
 
   @override
   String get directories => 'Directories';
