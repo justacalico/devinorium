@@ -65,6 +65,11 @@ class _AppShellState extends State<AppShell> {
               if (state.gitPanelOpen) state.closeGitPanel();
             });
           }
+          if (model.sidebarOpen && !_wasSidebarOpen) {
+            // The slide-over covers whatever had focus; drop it so the soft
+            // keyboard doesn't stay up over the sidebar on phones.
+            FocusManager.instance.primaryFocus?.unfocus();
+          }
           _wasSidebarOpen = model.sidebarOpen;
 
           final overlayWidth =
