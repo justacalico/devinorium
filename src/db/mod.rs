@@ -147,6 +147,9 @@ pub struct UserRow {
     /// Root directory managed worktrees are created under. `~` expands to
     /// the server home directory at use time.
     pub worktree_root: String,
+    /// Parent directory new project folders are created under. `~` expands
+    /// to the server home directory at use time.
+    pub project_root: String,
     pub provider_id: String,
     pub provider_command: String,
     /// JSON object mapping provider id -> CLI command, e.g.

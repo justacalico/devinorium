@@ -10455,6 +10455,393 @@ async fn worktree_root_rejects_existing_file() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+async fn set_project_root(app: &axum::Router, cookie: &str, path: &std::path::Path) {
+    let body = serde_json::json!({"path": path.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/settings/project-root", cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+async fn get_project_root_path(app: &axum::Router, cookie: &str) -> String {
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/settings/project-root", cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+async fn create_new_project(app: &axum::Router, cookie: &str, name: &str) -> (StatusCode, String) {
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects/new",
+            cookie,
+            &serde_json::json!({"name": name}).to_string(),
+        ))
+        .await
+        .unwrap();
+    let status = resp.status();
+    (status, body_str(resp.into_body()).await)
+}
+
+#[tokio::test]
+async fn project_root_defaults_to_home() {
+    // The migration stores `~`, which the API expands to the server home
+    // directory (the `files` dir in test apps).
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let stored: (String,) = sqlx::query_as("SELECT project_root FROM users WHERE is_owner = 1")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(stored.0, "~");
+
+    let path = get_project_root_path(&app, &cookie).await;
+    assert!(std::path::Path::new(&path).is_absolute(), "path: {path}");
+    assert!(
+        path.ends_with("files"),
+        "path should be the test home: {path}"
+    );
+}
+
+#[tokio::test]
+async fn project_root_owner_can_set_and_create_missing_directory() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let proj_dir = root.join("projects");
+    assert!(!proj_dir.exists());
+
+    let body = serde_json::json!({"path": proj_dir.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/settings/project-root", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), proj_dir.to_string_lossy());
+    assert!(tokio::fs::try_exists(&proj_dir).await.unwrap());
+    assert!(tokio::fs::metadata(&proj_dir).await.unwrap().is_dir());
+}
+
+#[tokio::test]
+async fn project_root_clear_resets_to_home() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_project_root(&app, &cookie, &root).await;
+    assert_eq!(
+        get_project_root_path(&app, &cookie).await,
+        root.to_string_lossy()
+    );
+
+    // Clearing restores the `~` default instead of NULL.
+    for clear_body in [r#"{"path":""}"#, r#"{"path":null}"#] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "PUT",
+                "/api/settings/project-root",
+                &cookie,
+                clear_body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "clear body: {clear_body}");
+
+        let stored: (String,) = sqlx::query_as("SELECT project_root FROM users WHERE is_owner = 1")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(stored.0, "~");
+
+        let path = get_project_root_path(&app, &cookie).await;
+        assert!(
+            path.ends_with("files"),
+            "path should be the test home: {path}"
+        );
+
+        set_project_root(&app, &cookie, &root).await;
+    }
+}
+
+#[tokio::test]
+async fn project_root_non_owner_can_get_but_not_set() {
+    let (app, db) = make_app().await;
+    let owner_cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_project_root(&app, &owner_cookie, &root).await;
+
+    let uid = create_user(&app, &owner_cookie, "member", "supersecret123").await;
+    let member_cookie = login_as(&app, "member", "supersecret123").await;
+
+    // Non-owner GET returns the owner's configured project root.
+    assert_eq!(
+        get_project_root_path(&app, &member_cookie).await,
+        root.to_string_lossy()
+    );
+
+    // Non-owner PUT is forbidden.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/project-root",
+            &member_cookie,
+            r#"{"path":"/another/path"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // The project root is unchanged (the owner value, not the attempted path).
+    assert_eq!(
+        get_project_root_path(&app, &member_cookie).await,
+        root.to_string_lossy()
+    );
+
+    // Sanity: the new user's own project_root is the `~` default.
+    let row: Option<(String,)> = sqlx::query_as("SELECT project_root FROM users WHERE id = ?")
+        .bind(uid)
+        .fetch_optional(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(row.unwrap().0, "~");
+}
+
+#[tokio::test]
+async fn project_root_rejects_relative_and_traversal_paths() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let cases = [
+        (r#"{"path":"relative/path"}"#, "relative"),
+        (r#"{"path":"../escape"}"#, "relative with parent"),
+        (r#"{"path":"/tmp/../etc"}"#, "traversal"),
+        (r#"{"path":"~/../../etc"}"#, "tilde traversal"),
+    ];
+
+    for (body, label) in cases {
+        let resp = app
+            .clone()
+            .oneshot(authed("PUT", "/api/settings/project-root", &cookie, body))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "{label} should be rejected"
+        );
+    }
+}
+
+#[tokio::test]
+async fn project_root_expands_tilde_path() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/project-root",
+            &cookie,
+            r#"{"path":"~/projects"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let resolved = v["path"].as_str().unwrap();
+    assert!(
+        resolved.contains("projects"),
+        "resolved path should contain 'projects': {resolved}"
+    );
+    assert!(tokio::fs::try_exists(resolved).await.unwrap());
+    assert_eq!(get_project_root_path(&app, &cookie).await, resolved);
+}
+
+#[tokio::test]
+async fn project_root_rejects_existing_file() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let file = root.join("not-a-dir");
+    tokio::fs::write(&file, b"nope").await.unwrap();
+
+    let body = serde_json::json!({"path": file.to_string_lossy()}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/settings/project-root", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_new_project_creates_folder_under_default_root() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    // The default project root is the server home directory.
+    let root = get_project_root_path(&app, &cookie).await;
+    let name = format!("fresh-{}", Uuid::new_v4());
+    let (status, body) = create_new_project(&app, &cookie, &name).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(v["name"].as_str().unwrap(), name);
+    let expected = std::path::Path::new(&root).join(&name);
+    let expected = expected.canonicalize().unwrap_or(expected);
+    assert_eq!(v["path"].as_str().unwrap(), expected.to_string_lossy());
+    assert!(tokio::fs::metadata(&expected).await.unwrap().is_dir());
+}
+
+#[tokio::test]
+async fn create_new_project_uses_configured_project_root() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_project_root(&app, &cookie, &root).await;
+
+    let name = format!("fresh-{}", Uuid::new_v4());
+    let (status, body) = create_new_project(&app, &cookie, &name).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let expected = root.join(&name).canonicalize().unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), expected.to_string_lossy());
+    assert!(tokio::fs::metadata(&expected).await.unwrap().is_dir());
+}
+
+#[tokio::test]
+async fn create_new_project_rejects_unsafe_names() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    for (name, label) in [
+        ("", "empty"),
+        ("   ", "blank"),
+        ("a/b", "slash"),
+        ("a\\b", "backslash"),
+        ("..", "parent"),
+        (".", "current dir"),
+        (".git", "protected git dir"),
+        (".devinorium-attachments", "protected attachments dir"),
+        ("a\nb", "newline"),
+        ("a\tb", "tab"),
+    ] {
+        let (status, body) = create_new_project(&app, &cookie, name).await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "{label} should be rejected: {body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn create_new_project_conflict_on_duplicate() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let name = format!("fresh-{}", Uuid::new_v4());
+    let (status, body) = create_new_project(&app, &cookie, &name).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let (status, _body) = create_new_project(&app, &cookie, &name).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn create_new_project_rejects_existing_file() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_project_root(&app, &cookie, &root).await;
+
+    let name = format!("fresh-{}", Uuid::new_v4());
+    tokio::fs::write(root.join(&name), b"nope").await.unwrap();
+
+    let (status, body) = create_new_project(&app, &cookie, &name).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+}
+
+#[tokio::test]
+async fn create_new_project_adds_existing_folder() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_project_root(&app, &cookie, &root).await;
+
+    let name = format!("fresh-{}", Uuid::new_v4());
+    tokio::fs::create_dir_all(root.join(&name)).await.unwrap();
+
+    let (status, body) = create_new_project(&app, &cookie, &name).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+}
+
+#[tokio::test]
+async fn create_new_project_rejects_symlink_escaping_root() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    let outside = tempfile::tempdir().unwrap().keep();
+    set_project_root(&app, &cookie, &root).await;
+
+    let name = format!("fresh-{}", Uuid::new_v4());
+    std::os::unix::fs::symlink(&outside, root.join(&name)).unwrap();
+
+    let (status, body) = create_new_project(&app, &cookie, &name).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+}
+
+#[tokio::test]
+async fn create_new_project_non_owner_uses_owner_root() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_project_root(&app, &owner_cookie, &root).await;
+
+    create_user(&app, &owner_cookie, "member", "supersecret123").await;
+    let member_cookie = login_as(&app, "member", "supersecret123").await;
+
+    // Like POST /api/projects, folder creation is open to every user; the
+    // folder lands under the owner's configured project root.
+    let name = format!("fresh-{}", Uuid::new_v4());
+    let (status, body) = create_new_project(&app, &member_cookie, &name).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let expected = root.join(&name).canonicalize().unwrap();
+    assert_eq!(v["path"].as_str().unwrap(), expected.to_string_lossy());
+    assert!(tokio::fs::metadata(&expected).await.unwrap().is_dir());
+}
+
 #[tokio::test]
 async fn worktree_root_controls_auto_worktree_location() {
     let (app, _db) = make_app().await;

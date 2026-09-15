@@ -18,6 +18,7 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/projects", get(list).post(create))
+        .route("/api/projects/new", post(create_new))
         .route("/api/projects/reorder", patch(reorder))
         .route("/api/projects/:id", delete(delete_one).patch(rename))
         .route("/api/projects/:id/pin", post(pin))
@@ -72,6 +73,11 @@ pub struct CreateProject {
     pub path: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CreateNewProject {
+    pub name: String,
+}
+
 async fn list(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -124,6 +130,157 @@ async fn create(
         }
     };
 
+    insert_project(&state, user.id, name, abs).await
+}
+
+/// Create a fresh folder named after the project under the configured
+/// project root and register it. The name doubles as the folder name, so it
+/// must be a single plain path component.
+async fn create_new(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<CreateNewProject>,
+) -> Response {
+    let name = req.name.trim();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("project name is required")),
+        )
+            .into_response();
+    }
+
+    if !is_valid_folder_name(name) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new(
+                "project name is not a valid folder name",
+            )),
+        )
+            .into_response();
+    }
+
+    let root = match crate::api::settings::project_root(&state, user.id).await {
+        Ok(r) => r,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
+    let resolved = match paths::resolve(&root.join(name), None, None) {
+        Some(r) => r,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid project path")),
+            )
+                .into_response()
+        }
+    };
+
+    // A pre-existing symlink at root/name could resolve outside the root;
+    // refuse to register that as a project.
+    if !paths::is_within(&resolved, &root) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid project path")),
+        )
+            .into_response();
+    }
+
+    // Reject duplicates before creating the folder so a 409 does not leave
+    // a stray directory behind.
+    if let Some(path_str) = resolved.to_str() {
+        if let Some(resp) = project_conflict(&state, user.id, name, path_str).await {
+            return resp;
+        }
+    }
+
+    if let Err(e) = tokio::fs::create_dir_all(&resolved).await {
+        tracing::warn!(error = %e, path = %resolved.display(), "project folder creation failed");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("cannot create project folder")),
+        )
+            .into_response();
+    }
+
+    let abs = tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved);
+    // Canonicalization follows symlinks, so re-check containment: a symlink
+    // swapped in after the first check must not land the project outside.
+    if !paths::is_within(&abs, &root) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid project path")),
+        )
+            .into_response();
+    }
+    insert_project(&state, user.id, name, abs).await
+}
+
+/// Check that `name` works as a single folder name: no separators, no
+/// control characters, no `.`/`..` components, and none of the protected
+/// hidden names.
+fn is_valid_folder_name(name: &str) -> bool {
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.chars().any(|c| c.is_control())
+        || paths::is_hidden_name(name)
+    {
+        return false;
+    }
+    std::path::Path::new(name)
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
+/// Return a 409 response when `name` or `path` is already registered for
+/// this user, or `None` when the project can be created.
+async fn project_conflict(
+    state: &AppState,
+    user_id: i64,
+    name: &str,
+    path: &str,
+) -> Option<Response> {
+    if state
+        .db
+        .get_project_by_path(user_id, path)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return Some(
+            (
+                StatusCode::CONFLICT,
+                Json(crate::api::ApiError::new("project path already exists")),
+            )
+                .into_response(),
+        );
+    }
+
+    if state
+        .db
+        .get_project_by_name(user_id, name)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return Some(
+            (
+                StatusCode::CONFLICT,
+                Json(crate::api::ApiError::new("project name already exists")),
+            )
+                .into_response(),
+        );
+    }
+
+    None
+}
+
+/// Insert a project once `name` and the canonical absolute `abs` path are
+/// validated, translating duplicate races into 409s.
+async fn insert_project(state: &AppState, user_id: i64, name: &str, abs: PathBuf) -> Response {
     let path_str = match abs.to_str() {
         Some(s) => s.to_string(),
         None => {
@@ -135,37 +292,11 @@ async fn create(
         }
     };
 
-    if state
-        .db
-        .get_project_by_path(user.id, &path_str)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
-    {
-        return (
-            StatusCode::CONFLICT,
-            Json(crate::api::ApiError::new("project path already exists")),
-        )
-            .into_response();
+    if let Some(resp) = project_conflict(state, user_id, name, &path_str).await {
+        return resp;
     }
 
-    if state
-        .db
-        .get_project_by_name(user.id, name)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
-    {
-        return (
-            StatusCode::CONFLICT,
-            Json(crate::api::ApiError::new("project name already exists")),
-        )
-            .into_response();
-    }
-
-    let position = match state.db.next_project_position(user.id).await {
+    let position = match state.db.next_project_position(user_id).await {
         Ok(p) => p,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
@@ -173,7 +304,7 @@ async fn create(
     let project_type = crate::projects::detect::detect_project_type(&abs);
 
     let new = NewProject {
-        user_id: user.id,
+        user_id,
         name: name.to_string(),
         path: path_str,
         position,
@@ -182,7 +313,7 @@ async fn create(
 
     match state.db.create_project(new).await {
         Ok(p) => {
-            let out = ProjectOut::from_row(&state, p).await;
+            let out = ProjectOut::from_row(state, p).await;
             (StatusCode::CREATED, Json(out)).into_response()
         }
         Err(e) => {

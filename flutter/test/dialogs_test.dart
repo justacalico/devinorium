@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:devinorium_frontend/api/api_client.dart';
@@ -46,6 +47,11 @@ void main() {
       expect(find.text('Add project'), findsOneWidget);
       expect(find.text('Local folder'), findsOneWidget);
       expect(find.text('Browse a folder on disk'), findsOneWidget);
+      expect(find.text('Create new'), findsOneWidget);
+      expect(
+        find.text('Create an empty folder and add it as a project'),
+        findsOneWidget,
+      );
       expect(find.text('Clone repository'), findsOneWidget);
       expect(find.text('Clone from a remote URL'), findsOneWidget);
     });
@@ -328,6 +334,172 @@ void main() {
       await tester.tap(find.text('Create'));
       await tester.pump();
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('CreateProjectDialog', () {
+    testWidgets('create new source opens the create project form', (
+      tester,
+    ) async {
+      final client = _clientFor([
+        _json(200, {'path': '/srv/projects'}),
+      ]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.addProject,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Create new'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.createProject);
+      expect(find.text('Create project'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Name',
+        ),
+        findsOneWidget,
+      );
+      // The fetched project root is shown as the destination preview.
+      expect(find.text('Will be created at /srv/projects'), findsOneWidget);
+    });
+
+    testWidgets('preview appends the typed folder name', (tester) async {
+      final state = AppState.test(
+        dialog: DialogKind.createProject,
+        projectRoot: '/srv/projects',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final nameField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Name',
+      );
+      await tester.enterText(nameField, 'my-app');
+      await tester.pump();
+
+      expect(
+        find.text('Will be created at /srv/projects/my-app'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('submitting a name creates the project and closes', (
+      tester,
+    ) async {
+      final client = _clientFor([
+        _json(200, {'path': '/srv/projects'}),
+        _json(201, {
+          'id': 7,
+          'name': 'my-app',
+          'path': '/srv/projects/my-app',
+          'created_at': '',
+          'updated_at': '',
+        }),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.createProject,
+      );
+      unawaited(state.loadProjectRoot());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final nameField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Name',
+      );
+      await tester.enterText(nameField, 'my-app');
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.none);
+      expect(state.projects.single.name, 'my-app');
+      expect(state.projects.single.path, '/srv/projects/my-app');
+      expect(state.activeProjectId, 7);
+    });
+
+    testWidgets('server error keeps the dialog open', (tester) async {
+      final client = _clientFor([
+        _json(200, {'path': '/srv/projects'}),
+        _json(409, {'error': 'project name already exists'}),
+      ]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.createProject,
+      );
+      unawaited(state.loadProjectRoot());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final nameField = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Name',
+      );
+      await tester.enterText(nameField, 'my-app');
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.createProject);
+      expect(state.projects, isEmpty);
+      expect(find.textContaining('already exists'), findsOneWidget);
+    });
+
+    testWidgets('back returns to the source picker', (tester) async {
+      final state = AppState.test(dialog: DialogKind.createProject);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(state.dialog, DialogKind.addProject);
     });
   });
 

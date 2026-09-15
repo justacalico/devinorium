@@ -70,6 +70,7 @@ enum DialogKind {
   totpSetup,
   addProject,
   newProject,
+  createProject,
   cloneRepo,
   permissionRequest,
   renameProject,
@@ -177,6 +178,7 @@ class AppState extends AppStateBase
     TailscaleInfo? tailscaleInfo,
     String? cloneRoot,
     String? worktreeRoot,
+    String? projectRoot,
     bool cloningRepo = false,
     String? cloneRepoResult,
     Map<int, GitRepoInfo> gitRepoInfo = const {},
@@ -240,6 +242,7 @@ class AppState extends AppStateBase
     _tailscaleInfo = tailscaleInfo;
     _cloneRoot = cloneRoot;
     _worktreeRoot = worktreeRoot;
+    _projectRoot = projectRoot;
     _cloningRepo = cloningRepo;
     _cloneRepoResult = cloneRepoResult;
     _gitRepoInfo.addAll(gitRepoInfo);

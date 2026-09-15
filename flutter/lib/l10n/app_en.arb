@@ -212,7 +212,18 @@
   "addProject": "Add project",
   "addProjectLocalTitle": "Local folder",
   "addProjectLocalDescription": "Browse a folder on disk",
+  "addProjectCreateTitle": "Create new",
+  "addProjectCreateDescription": "Create an empty folder and add it as a project",
   "addProjectCloneDescription": "Clone from a remote URL",
+  "createProjectTitle": "Create project",
+  "createProjectDestination": "Will be created at {path}",
+  "@createProjectDestination": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "cloneRepo": "Clone repository",
   "cloneRepoDescription": "Clone a remote repository into the configured clone root.",
   "cloneRepoUrlLabel": "Remote URL",
@@ -773,6 +784,12 @@
   "worktreeRootSave": "Save",
   "worktreeRootBrowse": "Browse...",
   "worktreeRootOnlyOwner": "Only the owner can change the worktree root.",
+  "projectRoot": "Project root",
+  "projectRootDescription": "Parent directory where new project folders are created. Defaults to the home directory.",
+  "projectRootNotSet": "Not set yet",
+  "projectRootSave": "Save",
+  "projectRootBrowse": "Browse...",
+  "projectRootOnlyOwner": "Only the owner can change the project root.",
   "directories": "Directories",
   "search": "Search",
   "searchHint": "Search threads...",

@@ -13,9 +13,17 @@ mixin ProjectStore on AppStateBase {
   @override
   int? _activeProjectId;
   @override
+  String? _projectRoot;
+  @override
+  bool _loadingProjectRoot = false;
+  @override
   List<Project> get projects => _projects;
   @override
   int? get activeProjectId => _activeProjectId;
+  @override
+  String? get projectRoot => _projectRoot;
+  @override
+  bool get loadingProjectRoot => _loadingProjectRoot;
   @override
   bool get hasMoreProjects => _projectsHasMore;
   @override
@@ -99,7 +107,11 @@ mixin ProjectStore on AppStateBase {
   Future<void> createProject({
     required String name,
     required String path,
-  }) async {
+  }) => _addProject(() => api.createProject(name: name, path: path));
+  @override
+  Future<void> createNewProject(String name) =>
+      _addProject(() => api.createNewProject(name: name));
+  Future<void> _addProject(Future<Project> Function() create) async {
     _globalError = '';
     notifyListeners();
     if (hasDirtyEditorTabs) {
@@ -108,7 +120,7 @@ mixin ProjectStore on AppStateBase {
       return;
     }
     try {
-      final p = await api.createProject(name: name, path: path);
+      final p = await create();
       _projects = [..._projects, p];
       // A project created while a group filter is active joins that group,
       // otherwise it would be invisible in the sidebar.
@@ -217,6 +229,43 @@ mixin ProjectStore on AppStateBase {
     _globalError = '';
     _userMenuOpen = false;
     notifyListeners();
+  }
+  @override
+  void openCreateProjectDialog() {
+    _dialog = DialogKind.createProject;
+    _globalError = '';
+    _userMenuOpen = false;
+    notifyListeners();
+    // Loaded lazily so the dialog can show where the folder will land.
+    unawaited(loadProjectRoot());
+  }
+  @override
+  Future<void> loadProjectRoot() async {
+    _loadingProjectRoot = true;
+    notifyListeners();
+    try {
+      _projectRoot = await api.getProjectRoot();
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    } finally {
+      _loadingProjectRoot = false;
+      notifyListeners();
+    }
+  }
+  @override
+  Future<void> setProjectRoot(String? path) async {
+    _loadingProjectRoot = true;
+    notifyListeners();
+    try {
+      _projectRoot = await api.setProjectRoot(path?.trim());
+      _globalError = '';
+    } catch (e) {
+      _globalError = '$e';
+    } finally {
+      _loadingProjectRoot = false;
+      notifyListeners();
+    }
   }
   @override
   Future<void> openRenameProjectDialog(int id, String name) async {

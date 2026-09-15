@@ -1,8 +1,8 @@
 //! Instance settings routes.
 //!
-//! The clone root and worktree root are owner-only settings stored on the
-//! owner user row. Non-owner users can read them so they know where clones
-//! and worktrees will land.
+//! The clone root, worktree root, and project root are owner-only settings
+//! stored on the owner user row. Non-owner users can read them so they know
+//! where clones, worktrees, and new project folders will land.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -23,6 +23,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/settings/clone-root", put(set_clone_root))
         .route("/api/settings/worktree-root", get(get_worktree_root))
         .route("/api/settings/worktree-root", put(set_worktree_root))
+        .route("/api/settings/project-root", get(get_project_root))
+        .route("/api/settings/project-root", put(set_project_root))
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +44,16 @@ struct WorktreeRootResponse {
 
 #[derive(Debug, Deserialize)]
 struct SetWorktreeRootRequest {
+    path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProjectRootResponse {
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetProjectRootRequest {
     path: Option<String>,
 }
 
@@ -240,6 +252,72 @@ async fn set_worktree_root(
         .await;
 
     Json(WorktreeRootResponse {
+        path: paths::normalize_path(&stored, &state.config.home_dir),
+    })
+    .into_response()
+}
+
+/// The directory new project folders are created under for `user_id`: the
+/// owner-configured setting resolved to a canonical absolute path, with `~`
+/// (the default) expanding to the server home directory.
+pub(crate) async fn project_root(state: &AppState, user_id: i64) -> anyhow::Result<PathBuf> {
+    let configured = state.db.get_project_root(user_id).await?;
+    let normalized = paths::normalize_path(&configured, &state.config.home_dir);
+    paths::resolve(Path::new(&normalized), None, None)
+        .ok_or_else(|| anyhow::anyhow!("invalid project root"))
+}
+
+async fn get_project_root(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> Response {
+    match state.db.get_project_root(user.id).await {
+        // The stored `~` default is returned expanded so the settings page
+        // shows the real directory.
+        Ok(path) => Json(ProjectRootResponse {
+            path: paths::normalize_path(&path, &state.config.home_dir),
+        })
+        .into_response(),
+        Err(e) => map_err_internal(e).into_response(),
+    }
+}
+
+async fn set_project_root(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<SetProjectRootRequest>,
+) -> Response {
+    if !user.is_owner {
+        return (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response();
+    }
+
+    // An empty value restores the home-directory default. A bare `~` is
+    // stored verbatim so the value keeps tracking the server home directory
+    // if it ever changes.
+    let raw = req.path.as_deref().map(|s| s.trim());
+    let stored = match raw {
+        None | Some("") | Some("~") | Some("~/") | Some("~\\") => "~".to_string(),
+        Some(p) => match checked_dir_path(&state, p).await {
+            Ok(p) => p,
+            Err(resp) => return resp,
+        },
+    };
+
+    if let Err(e) = state.db.set_project_root(user.id, &stored).await {
+        return map_err_internal(e).into_response();
+    }
+
+    let _ = state
+        .db
+        .audit(
+            Some(user.id),
+            "project_root.set",
+            &serde_json::json!({"path": &stored}),
+            None,
+        )
+        .await;
+
+    Json(ProjectRootResponse {
         path: paths::normalize_path(&stored, &state.config.home_dir),
     })
     .into_response()
