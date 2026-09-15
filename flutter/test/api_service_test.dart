@@ -268,6 +268,88 @@ void main() {
       expect(await service.serverVersion(), isNull);
     });
 
+    test('checkServerUpdate parses the check response', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/server/update/check'));
+        return _json(200, {
+          'current_version': '0.77.2',
+          'latest_version': '0.78.0',
+          'latest_tag': 'v0.78.0',
+          'release_url': 'https://example/releases/v0.78.0',
+          'asset_name': 'devinorium-v0.78.0-linux-x86_64',
+          'update_available': true,
+          'updatable': true,
+          'reason': null,
+        });
+      });
+      final service = _serviceFor(mock);
+      final check = await service.checkServerUpdate();
+      expect(check.currentVersion, '0.77.2');
+      expect(check.latestVersion, '0.78.0');
+      expect(check.latestTag, 'v0.78.0');
+      expect(check.assetName, 'devinorium-v0.78.0-linux-x86_64');
+      expect(check.updateAvailable, isTrue);
+      expect(check.updatable, isTrue);
+      expect(check.reason, isNull);
+    });
+
+    test('checkServerUpdate parses a not-updatable response', () async {
+      final mock = MockClient((req) async {
+        return _json(200, {
+          'current_version': '0.77.2',
+          'latest_version': null,
+          'latest_tag': null,
+          'release_url': null,
+          'asset_name': null,
+          'update_available': false,
+          'updatable': false,
+          'reason': 'local_mode',
+        });
+      });
+      final service = _serviceFor(mock);
+      final check = await service.checkServerUpdate();
+      expect(check.updatable, isFalse);
+      expect(check.reason, 'local_mode');
+      expect(check.updateAvailable, isFalse);
+    });
+
+    test('checkServerUpdate propagates errors', () async {
+      final mock = MockClient((req) async {
+        return _json(403, {'error': 'forbidden'});
+      });
+      final service = _serviceFor(mock);
+      expect(
+        () => service.checkServerUpdate(),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 403)
+              .having((e) => e.message, 'message', 'forbidden'),
+        ),
+      );
+    });
+
+    test('applyServerUpdate posts and returns the installed version', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('POST', '/api/server/update/apply'));
+        return _json(200, {'status': 'restarting', 'version': '0.78.0'});
+      });
+      final service = _serviceFor(mock);
+      expect(await service.applyServerUpdate(), '0.78.0');
+    });
+
+    test('applyServerUpdate propagates conflict errors', () async {
+      final mock = MockClient((req) async {
+        return _json(409, {'error': 'no update is available'});
+      });
+      final service = _serviceFor(mock);
+      expect(
+        () => service.applyServerUpdate(),
+        throwsA(
+          isA<ApiException>().having((e) => e.statusCode, 'statusCode', 409),
+        ),
+      );
+    });
+
     test('reorderProjects patches project_ids', () async {
       final mock = MockClient((req) async {
         expect(req, _requestTo('PATCH', '/api/projects/reorder'));

@@ -398,6 +398,51 @@
   "@serverVersion": {
     "description": "Label for the connected server version row in settings"
   },
+  "serverUpdate": "服务器更新",
+  "@serverUpdate": {
+    "description": "Title of the server self-update card in settings"
+  },
+  "serverUpdateHint": "检查发布版本，下载并安装新的服务器程序。",
+  "serverUpdateCheck": "检查更新",
+  "serverUpdateApply": "更新并重启",
+  "serverUpdateConfirm": "将服务器更新到 {version}？服务器会重启，进行中的任务会被中断。",
+  "@serverUpdateConfirm": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateApplying": "正在下载更新并重启服务器…",
+  "serverUpdateAvailable": "新版本 {version} 可用",
+  "@serverUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateUpToDate": "服务器已是最新版本",
+  "serverUpdateCheckFailed": "无法检查服务器更新",
+  "serverUpdateFailed": "服务器更新失败：{error}",
+  "@serverUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateRestarting": "服务器正在重启到版本 {version}",
+  "@serverUpdateRestarting": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateLocalMode": "内置服务器随应用一起更新",
+  "serverUpdateDevMode": "开发实例无法通过此方式更新",
+  "serverUpdateUnsupported": "此平台没有预构建的服务器版本",
   "topics": "主题",
   "timeAgoJustNow": "刚刚",
   "timeAgoMinutes": "{count} 分钟前",

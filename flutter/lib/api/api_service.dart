@@ -1002,6 +1002,22 @@ class ApiService {
     }
   }
 
+  // ---- Server self-update ----
+
+  /// Owner-only: ask the backend whether a newer server release exists.
+  Future<ServerUpdateCheck> checkServerUpdate() async {
+    final j = await _client.get('/api/server/update/check');
+    return ServerUpdateCheck.fromJson(j);
+  }
+
+  /// Owner-only: download the new server binary, swap it in, and restart
+  /// the server. Resolves to the version being installed; the connection
+  /// drops for the restart right after this returns.
+  Future<String> applyServerUpdate() async {
+    final j = await _client.post('/api/server/update/apply', {});
+    return j['version'] as String? ?? '';
+  }
+
   // ---- Clone ----
 
   /// Clone a remote repository into the configured clone root.

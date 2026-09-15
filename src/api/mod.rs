@@ -18,6 +18,7 @@ pub mod tailscale;
 pub mod terminal;
 pub mod thread_groups;
 pub mod threads;
+pub mod update;
 pub mod usage;
 
 use axum::http::StatusCode;

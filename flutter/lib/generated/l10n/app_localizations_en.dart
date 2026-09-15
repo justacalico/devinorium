@@ -652,6 +652,61 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverVersion => 'Server version';
 
   @override
+  String get serverUpdate => 'Server update';
+
+  @override
+  String get serverUpdateHint =>
+      'Check releases for a newer server build and install it.';
+
+  @override
+  String get serverUpdateCheck => 'Check for updates';
+
+  @override
+  String get serverUpdateApply => 'Update and restart';
+
+  @override
+  String serverUpdateConfirm(String version) {
+    return 'Update the server to $version? The server restarts and any running work is interrupted.';
+  }
+
+  @override
+  String get serverUpdateApplying =>
+      'Downloading the update and restarting the server…';
+
+  @override
+  String serverUpdateAvailable(String version) {
+    return 'Version $version is available';
+  }
+
+  @override
+  String get serverUpdateUpToDate => 'The server is up to date';
+
+  @override
+  String get serverUpdateCheckFailed => 'Could not check for server updates';
+
+  @override
+  String serverUpdateFailed(String error) {
+    return 'The server update failed: $error';
+  }
+
+  @override
+  String serverUpdateRestarting(String version) {
+    return 'The server is restarting into version $version';
+  }
+
+  @override
+  String get serverUpdateLocalMode =>
+      'The bundled server is updated together with the app';
+
+  @override
+  String get serverUpdateDevMode =>
+      'Development instances cannot be updated this way';
+
+  @override
+  String get serverUpdateUnsupported =>
+      'No prebuilt server release exists for this platform';
+
+  @override
   String get topics => 'Topics';
 
   @override
