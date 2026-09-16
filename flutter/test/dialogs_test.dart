@@ -197,6 +197,52 @@ void main() {
       expect(state.dialog, DialogKind.none);
       expect(find.text('Add project'), findsNothing);
     });
+
+    testWidgets('sub-dialog fields do not take focus when they open',
+        (tester) async {
+      final client = _clientFor([
+        _json(200, []),
+        _json(200, {'path': '/srv/projects'}),
+      ]);
+      final state = AppState.test(
+        api: ApiService(client: client),
+        dialog: DialogKind.addProject,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const DialogLayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      bool focusInTextField() =>
+          FocusManager.instance.primaryFocus?.context
+              ?.findAncestorWidgetOfExactType<TextField>() !=
+          null;
+
+      Future<void> checkSource(String tile, DialogKind kind) async {
+        await tester.tap(find.text(tile));
+        await tester.pumpAndSettle();
+        expect(state.dialog, kind);
+        expect(focusInTextField(), isFalse);
+
+        // Escape still dismisses the sub-dialog without a focused field.
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(state.dialog, DialogKind.none);
+
+        state.openAddProjectDialog();
+        await tester.pumpAndSettle();
+      }
+
+      await checkSource('Local folder', DialogKind.newProject);
+      await checkSource('Create new', DialogKind.createProject);
+      await checkSource('Clone repository', DialogKind.cloneRepo);
+    });
   });
 
   group('NewProjectDialog', () {

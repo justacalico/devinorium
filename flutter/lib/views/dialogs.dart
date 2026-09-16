@@ -498,7 +498,6 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _nameController,
-                      autofocus: true,
                       enabled: !_submitting,
                       decoration: InputDecoration(
                         labelText: l10n(context).name,
@@ -640,7 +639,6 @@ class _CreateProjectDialogState extends State<_CreateProjectDialog> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _nameController,
-                      autofocus: true,
                       enabled: !_submitting,
                       decoration: InputDecoration(
                         labelText: l.name,
@@ -1035,7 +1033,6 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
                     if (!hasResult)
                       TextField(
                         controller: _urlController,
-                        autofocus: true,
                         enabled: !model.cloningRepo,
                         decoration: InputDecoration(
                           labelText: l.cloneRepoUrlLabel,
