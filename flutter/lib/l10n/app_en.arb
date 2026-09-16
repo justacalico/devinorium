@@ -948,6 +948,107 @@
   "@tailscaleUnreachable": {
     "description": "Badge shown next to an endpoint that did not answer"
   },
+  "machines": "Machines",
+  "@machines": {
+    "description": "Machines section title under server settings"
+  },
+  "machinesHint": "VNC machines this server can hand to an agent. Type @ in the composer to reference one; the thread can then remote-control it.",
+  "@machinesHint": {
+    "description": "Description under the Machines settings title"
+  },
+  "machinesEmpty": "No machines configured.",
+  "@machinesEmpty": {
+    "description": "Shown when the server has no machines"
+  },
+  "machinesOnlyOwner": "Only the owner can manage machines.",
+  "@machinesOnlyOwner": {
+    "description": "Hint shown to non-owner users"
+  },
+  "machineAdd": "Add machine",
+  "@machineAdd": {
+    "description": "Button and dialog title for adding a machine"
+  },
+  "machineEdit": "Edit machine",
+  "@machineEdit": {
+    "description": "Dialog title for editing a machine"
+  },
+  "machineName": "Name",
+  "@machineName": {
+    "description": "Label for the machine name field"
+  },
+  "machineHost": "VNC host",
+  "@machineHost": {
+    "description": "Label for the machine host field"
+  },
+  "machineHostHint": "192.168.1.10 or vnc://host",
+  "@machineHostHint": {
+    "description": "Placeholder for the machine host field"
+  },
+  "machinePort": "Port",
+  "@machinePort": {
+    "description": "Label for the machine port field"
+  },
+  "machinePassword": "VNC password",
+  "@machinePassword": {
+    "description": "Label for the machine password field"
+  },
+  "machinePasswordKeep": "Leave blank to keep the stored password.",
+  "@machinePasswordKeep": {
+    "description": "Helper under the password field when editing a machine"
+  },
+  "machinePasswordClear": "Clear stored password",
+  "@machinePasswordClear": {
+    "description": "Checkbox that removes the stored VNC password"
+  },
+  "machineHasPassword": "Password saved",
+  "@machineHasPassword": {
+    "description": "Badge shown on a machine that has a stored VNC password"
+  },
+  "machineTest": "Test connection",
+  "@machineTest": {
+    "description": "Button that probes a machine's VNC handshake"
+  },
+  "machineTestOk": "Connected to {name} ({width}x{height})",
+  "@machineTestOk": {
+    "description": "Result of a successful machine connection probe",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "width": {
+        "type": "int"
+      },
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "machineTestFailed": "Connection failed: {error}",
+  "@machineTestFailed": {
+    "description": "Result of a failed machine connection probe",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "machineDeleteConfirm": "Delete \"{name}\"? Threads can no longer remote-control it.",
+  "@machineDeleteConfirm": {
+    "description": "Confirmation before deleting a machine",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "machinePickerHint": "Select a machine",
+  "@machinePickerHint": {
+    "description": "Header of the @ machine picker in the composer"
+  },
+  "machinePickerEmpty": "No matching machines.",
+  "@machinePickerEmpty": {
+    "description": "Shown in the @ picker when nothing matches the query"
+  },
   "serverUrlWithSchemeHint": "http://localhost:7878",
   "@serverUrlWithSchemeHint": {
     "description": "Hint for the add-server URL field, which requires a scheme"

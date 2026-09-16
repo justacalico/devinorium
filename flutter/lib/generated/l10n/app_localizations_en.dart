@@ -422,9 +422,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nameAndPathRequired => 'Name and path are required';
 
   @override
-  String get nameRequired => 'Name is required';
-
-  @override
   String get noSubfoldersHere => 'No subfolders here';
 
   @override
@@ -1547,6 +1544,73 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tailscaleUnreachable => 'unreachable';
+
+  @override
+  String get machines => 'Machines';
+
+  @override
+  String get machinesHint =>
+      'VNC machines this server can hand to an agent. Type @ in the composer to reference one; the thread can then remote-control it.';
+
+  @override
+  String get machinesEmpty => 'No machines configured.';
+
+  @override
+  String get machinesOnlyOwner => 'Only the owner can manage machines.';
+
+  @override
+  String get machineAdd => 'Add machine';
+
+  @override
+  String get machineEdit => 'Edit machine';
+
+  @override
+  String get machineName => 'Name';
+
+  @override
+  String get machineHost => 'VNC host';
+
+  @override
+  String get machineHostHint => '192.168.1.10 or vnc://host';
+
+  @override
+  String get machinePort => 'Port';
+
+  @override
+  String get machinePassword => 'VNC password';
+
+  @override
+  String get machinePasswordKeep => 'Leave blank to keep the stored password.';
+
+  @override
+  String get machinePasswordClear => 'Clear stored password';
+
+  @override
+  String get machineHasPassword => 'Password saved';
+
+  @override
+  String get machineTest => 'Test connection';
+
+  @override
+  String machineTestOk(String name, int width, int height) {
+    return 'Connected to $name (${width}x$height)';
+  }
+
+  @override
+  String machineTestFailed(String error) {
+    return 'Connection failed: $error';
+  }
+
+  @override
+  String machineDeleteConfirm(String name) {
+    return 'Delete \"$name\"? Threads can no longer remote-control it.';
+  }
+
+  @override
+  String get machinePickerHint => 'Select a machine';
+
+  @override
+  String get machinePickerEmpty => 'No matching machines.';
 
   @override
   String get serverUrlWithSchemeHint => 'http://localhost:7878';

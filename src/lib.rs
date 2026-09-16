@@ -10,6 +10,7 @@ pub mod config;
 pub mod db;
 pub mod git;
 pub mod lock;
+pub mod machine_grants;
 pub mod plan;
 pub mod projects;
 pub mod providers;
@@ -18,6 +19,7 @@ pub mod tailscale;
 pub mod terminal;
 pub mod thread_runner;
 pub mod update;
+pub mod vnc;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -59,6 +61,53 @@ pub struct AppState {
     pub terminal_manager: crate::terminal::manager::TerminalManager,
     /// `tailscale` CLI client used by the Tailscale endpoints.
     pub tailscale: crate::tailscale::Tailscale,
+    /// Capability tokens minted for runs that reference machines.
+    pub machine_grants: machine_grants::MachineGrants,
+    /// The address the listener actually bound, set once after startup.
+    /// Machine-control instructions point agents at this so `--dev`'s
+    /// random port and wildcard binds resolve to a reachable URL.
+    pub bound_addr: Arc<std::sync::OnceLock<std::net::SocketAddr>>,
+}
+
+impl AppState {
+    /// Base URL agents on this host use for the machine-control API.
+    /// Prefers the bound socket; falls back to the configured host/port,
+    /// mapping a wildcard bind to loopback.
+    pub fn agent_base_url(&self) -> String {
+        let (host, port) = match self.bound_addr.get() {
+            Some(addr) => {
+                let ip = addr.ip();
+                (
+                    if ip.is_unspecified() {
+                        "127.0.0.1".to_string()
+                    } else {
+                        ip.to_string()
+                    },
+                    addr.port(),
+                )
+            }
+            None => {
+                let raw = self
+                    .config
+                    .host
+                    .trim_start_matches('[')
+                    .trim_end_matches(']');
+                let host = match raw.parse::<std::net::IpAddr>() {
+                    Ok(ip) if ip.is_unspecified() => "127.0.0.1".to_string(),
+                    _ => raw.to_string(),
+                };
+                (host, self.config.port)
+            }
+        };
+        if host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_ipv6())
+        {
+            format!("http://[{host}]:{port}")
+        } else {
+            format!("http://{host}:{port}")
+        }
+    }
 }
 
 impl AppState {
@@ -127,8 +176,11 @@ pub fn build_app(state: AppState) -> Router {
     // messages before being throttled. After depletion, 1 login every 10s.
     let limiter = security::RateLimiter::new(500, 2.0);
 
-    // Public routes (no auth).
-    let public = api::auth::router().merge(api::server::router());
+    // Public routes (no auth). Machine-control endpoints authenticate
+    // with per-run capability tokens inside their handlers.
+    let public = api::auth::router()
+        .merge(api::server::router())
+        .merge(api::machine_control::router());
 
     // Protected routes (require auth + role=user).
     let protected = api::threads::router()
@@ -143,6 +195,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::accounts::router())
         .merge(api::audit::router())
         .merge(api::settings::router())
+        .merge(api::machines::router())
         .merge(api::tailscale::router())
         .merge(api::models::router())
         .merge(api::providers::router())

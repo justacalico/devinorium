@@ -6,6 +6,7 @@ export 'file_tree_node.dart';
 export 'files.dart';
 export 'git.dart';
 export 'json_utils.dart';
+export 'machine.dart';
 export 'messages.dart';
 export 'permissions.dart';
 export 'provider.dart';

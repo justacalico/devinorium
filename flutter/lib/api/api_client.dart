@@ -37,6 +37,7 @@ abstract class BaseApiClient {
     List<({String filename, String mime, Uint8List bytes})> attachments,
     List<PathRef> contextPaths,
     List<String> referencedThreadIds,
+    List<int> machineIds,
   });
 
   /// POST a multipart body and read the response as an SSE stream.
@@ -178,11 +179,7 @@ class ApiClient implements BaseApiClient {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final err = tryDecodeJson(text);
       if (err != null && err['error'] is String) {
-        throw ApiException(
-          err['error'] as String,
-          resp.statusCode,
-          data: err,
-        );
+        throw ApiException(err['error'] as String, resp.statusCode, data: err);
       }
       if (text.isNotEmpty) {
         throw ApiException(text, resp.statusCode);
@@ -258,6 +255,7 @@ class ApiClient implements BaseApiClient {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) {
     final fields = buildSendFields(
       prompt: prompt,
@@ -265,6 +263,7 @@ class ApiClient implements BaseApiClient {
       clientMessageId: clientMessageId,
       contextPaths: contextPaths,
       referencedThreadIds: referencedThreadIds,
+      machineIds: machineIds,
     );
     return fetchSseStream(
       client: _client,
@@ -304,6 +303,7 @@ Map<String, String> buildSendFields({
   String? clientMessageId,
   List<PathRef> contextPaths = const [],
   List<String> referencedThreadIds = const [],
+  List<int> machineIds = const [],
 }) {
   final fields = <String, String>{};
   if (prompt != null) fields['prompt'] = prompt;
@@ -318,6 +318,9 @@ Map<String, String> buildSendFields({
   }
   if (referencedThreadIds.isNotEmpty) {
     fields['referenced_thread_ids'] = jsonEncode(referencedThreadIds);
+  }
+  if (machineIds.isNotEmpty) {
+    fields['machine_ids'] = jsonEncode(machineIds);
   }
   return fields;
 }

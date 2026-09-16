@@ -119,6 +119,7 @@ class _FakeBaseClient extends BaseApiClient {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => throw UnimplementedError();
 
   @override

@@ -88,6 +88,7 @@ class _SendApiService extends ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => Stream.fromIterable([
     SseEvent(
       'user_message',

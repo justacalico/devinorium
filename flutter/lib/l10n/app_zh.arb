@@ -927,6 +927,107 @@
   "@tailscaleUnreachable": {
     "description": "端点无响应时显示的标记"
   },
+  "machines": "机器",
+  "@machines": {
+    "description": "Machines section title under server settings"
+  },
+  "machinesHint": "此服务器可交给 AI 远程控制的 VNC 机器。在输入框中输入 @ 引用一台机器后，该线程即可远程控制它。",
+  "@machinesHint": {
+    "description": "Description under the Machines settings title"
+  },
+  "machinesEmpty": "未配置机器",
+  "@machinesEmpty": {
+    "description": "Shown when the server has no machines"
+  },
+  "machinesOnlyOwner": "只有所有者可以管理机器",
+  "@machinesOnlyOwner": {
+    "description": "Hint shown to non-owner users"
+  },
+  "machineAdd": "添加机器",
+  "@machineAdd": {
+    "description": "Button and dialog title for adding a machine"
+  },
+  "machineEdit": "编辑机器",
+  "@machineEdit": {
+    "description": "Dialog title for editing a machine"
+  },
+  "machineName": "名称",
+  "@machineName": {
+    "description": "Label for the machine name field"
+  },
+  "machineHost": "VNC 地址",
+  "@machineHost": {
+    "description": "Label for the machine host field"
+  },
+  "machineHostHint": "192.168.1.10 或 vnc://host",
+  "@machineHostHint": {
+    "description": "Placeholder for the machine host field"
+  },
+  "machinePort": "端口",
+  "@machinePort": {
+    "description": "Label for the machine port field"
+  },
+  "machinePassword": "VNC 密码",
+  "@machinePassword": {
+    "description": "Label for the machine password field"
+  },
+  "machinePasswordKeep": "留空则保留已保存的密码",
+  "@machinePasswordKeep": {
+    "description": "Helper under the password field when editing a machine"
+  },
+  "machinePasswordClear": "清除已保存的密码",
+  "@machinePasswordClear": {
+    "description": "Checkbox that removes the stored VNC password"
+  },
+  "machineHasPassword": "已保存密码",
+  "@machineHasPassword": {
+    "description": "Badge shown on a machine that has a stored VNC password"
+  },
+  "machineTest": "测试连接",
+  "@machineTest": {
+    "description": "Button that probes a machine's VNC handshake"
+  },
+  "machineTestOk": "已连接 {name}（{width}x{height}）",
+  "@machineTestOk": {
+    "description": "Result of a successful machine connection probe",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "width": {
+        "type": "int"
+      },
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "machineTestFailed": "连接失败：{error}",
+  "@machineTestFailed": {
+    "description": "Result of a failed machine connection probe",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "machineDeleteConfirm": "删除 \"{name}\"？线程将无法再远程控制它。",
+  "@machineDeleteConfirm": {
+    "description": "Confirmation before deleting a machine",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "machinePickerHint": "选择一台机器",
+  "@machinePickerHint": {
+    "description": "Header of the @ machine picker in the composer"
+  },
+  "machinePickerEmpty": "没有匹配的机器",
+  "@machinePickerEmpty": {
+    "description": "Shown in the @ picker when nothing matches the query"
+  },
   "serverUrlWithSchemeHint": "http://localhost:7878",
   "@serverUrlWithSchemeHint": {
     "description": "Hint for the add-server URL field, which requires a scheme"

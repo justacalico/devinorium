@@ -106,6 +106,7 @@ class PreloaderClient implements BaseApiClient {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => _inner.sendStream(
     path: path,
     prompt: prompt,
@@ -114,6 +115,7 @@ class PreloaderClient implements BaseApiClient {
     attachments: attachments,
     contextPaths: contextPaths,
     referencedThreadIds: referencedThreadIds,
+    machineIds: machineIds,
   );
 
   @override

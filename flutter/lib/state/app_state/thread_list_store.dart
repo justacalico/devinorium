@@ -288,6 +288,7 @@ mixin ThreadListStore on AppStateBase {
     _attachments = [];
     _pathRefs = [];
     _threadReferences = [];
+    _machineReferences = [];
     notifyListeners();
     try {
       final provider = selectedProvider;
@@ -373,6 +374,7 @@ mixin ThreadListStore on AppStateBase {
         attachments: previous?.attachments,
         pathRefs: previous?.pathRefs,
         threadReferences: previous?.threadReferences,
+        machineReferences: previous?.machineReferences,
         composerMode: previous?.composerMode ?? _composerMode,
         selectedModel: detail.thread.model,
         selectedReasoning: detail.thread.reasoningEffort,
@@ -492,7 +494,8 @@ mixin ThreadListStore on AppStateBase {
     if (store == null) return;
     if (store.composerText.trim().isEmpty &&
         store.pathRefs.isEmpty &&
-        store.threadReferences.isEmpty) {
+        store.threadReferences.isEmpty &&
+        store.machineReferences.isEmpty) {
       return;
     }
     await store.sendMessage();

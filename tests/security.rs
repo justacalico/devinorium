@@ -78,6 +78,8 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
+        machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     (devinorium::build_app(state), database)
 }
@@ -299,6 +301,8 @@ async fn body_size_limit_rejects_oversized() {
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
+        machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     let app = devinorium::build_app(state);
 

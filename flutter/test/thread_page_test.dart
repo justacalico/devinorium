@@ -77,6 +77,7 @@ class _ThrowingClient extends BaseApiClient {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => throw UnimplementedError();
 
   @override
@@ -148,6 +149,7 @@ class _FakeApiService extends ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => Stream.fromFuture(Future.value(SseEvent('done', '')));
 
   @override

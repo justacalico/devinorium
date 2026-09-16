@@ -178,6 +178,7 @@ class _DraftApi extends ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) {
     sentPrompts.add(prompt);
     final handler = sendHandler;

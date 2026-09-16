@@ -246,7 +246,7 @@ pub(crate) async fn run_thread(
     run: Arc<RunState>,
     user: UserRow,
     mut thread: ThreadRow,
-    input: SendInput,
+    mut input: SendInput,
     user_msg: MessageRow,
 ) -> anyhow::Result<()> {
     // The thread may have been deleted between the send being accepted and
@@ -254,6 +254,19 @@ pub(crate) async fn run_thread(
     if state.db.get_thread(&thread.id, user.id).await?.is_none() {
         return Ok(());
     }
+
+    // Referenced machines get a run-scoped control token; the guard revokes
+    // it no matter which exit path the run takes, so a finished turn leaves
+    // no live credential behind.
+    let _machine_grant = if input.machine_refs.is_empty() {
+        None
+    } else {
+        let ids: Vec<i64> = input.machine_refs.iter().map(|m| m.id).collect();
+        state.machine_grants.create(user.id, ids).map(|token| {
+            input.machine_token = Some(token.clone());
+            crate::machine_grants::GrantGuard::new(state.machine_grants.clone(), token)
+        })
+    };
 
     match update_thread_title_from_send(&state, user.id, &mut thread, &input).await {
         Ok(true) => {

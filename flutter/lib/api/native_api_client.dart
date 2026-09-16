@@ -30,11 +30,9 @@ class NativeApiClient implements BaseApiClient {
   void close() => _client.close();
 
   /// Construct a client backed by a specific server profile.
-  NativeApiClient.fromProfile(
-    ServerProfile profile, {
-    http.Client? client,
-  })  : _client = client ?? http.Client(),
-        _profile = profile {
+  NativeApiClient.fromProfile(ServerProfile profile, {http.Client? client})
+    : _client = client ?? http.Client(),
+      _profile = profile {
     _baseUrl = profile.baseUrl;
     _token = profile.token;
     _username = profile.username;
@@ -118,11 +116,7 @@ class NativeApiClient implements BaseApiClient {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final err = tryDecodeJson(text);
       if (err != null && err['error'] is String) {
-        throw ApiException(
-          err['error'] as String,
-          resp.statusCode,
-          data: err,
-        );
+        throw ApiException(err['error'] as String, resp.statusCode, data: err);
       }
       if (text.isNotEmpty) {
         throw ApiException(text, resp.statusCode);
@@ -220,6 +214,7 @@ class NativeApiClient implements BaseApiClient {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) {
     final fields = buildSendFields(
       prompt: prompt,
@@ -227,6 +222,7 @@ class NativeApiClient implements BaseApiClient {
       clientMessageId: clientMessageId,
       contextPaths: contextPaths,
       referencedThreadIds: referencedThreadIds,
+      machineIds: machineIds,
     );
     // Each SSE stream uses its own client because nativeSseStream closes it
     // when the stream ends or is cancelled.
@@ -277,8 +273,7 @@ class NativeApiClient implements BaseApiClient {
   bool get isNative => true;
 
   @override
-  Future<String?> get serverUrl async =>
-      _baseUrl.isNotEmpty ? _baseUrl : null;
+  Future<String?> get serverUrl async => _baseUrl.isNotEmpty ? _baseUrl : null;
 
   @override
   Future<String?> get token async => _token.isNotEmpty ? _token : null;

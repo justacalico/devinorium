@@ -20,6 +20,7 @@ use crate::providers::{
 use crate::AppState;
 
 use super::context_refs::{prompt_with_refs, resolve_context_refs, ContextPathIn, ContextRef};
+use super::machine_refs::{parse_machine_ids, prompt_with_machine_refs, resolve_machine_refs};
 use super::persistence::persist_user_message;
 use super::plan::{normalize_mode, project_working_dir_for_thread};
 use super::runs::{events_stream, run_thread};
@@ -54,9 +55,11 @@ pub(super) async fn send_stream(
     };
     resolve_context_refs(&state, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
+    resolve_machine_refs(&state, &mut input).await;
     if input.prompt.trim().is_empty()
         && input.context_refs.is_empty()
         && input.thread_refs.is_empty()
+        && input.machine_refs.is_empty()
     {
         return (
             StatusCode::BAD_REQUEST,
@@ -124,6 +127,14 @@ pub(crate) struct SendInput {
     /// Referenced threads with their recent history; filled in by
     /// `thread_refs::resolve_thread_refs` before the message is persisted.
     pub thread_refs: Vec<ThreadRef>,
+    /// Raw machine ids sent by the client (`@` picks in the composer).
+    pub machine_ids: Vec<i64>,
+    /// Referenced machines; filled in by
+    /// `machine_refs::resolve_machine_refs` before the message is persisted.
+    pub machine_refs: Vec<crate::db::machines::MachineRow>,
+    /// Run-scoped machine-control token minted in `run_thread` when
+    /// `machine_refs` is non-empty. The prompt block points agents at it.
+    pub machine_token: Option<String>,
 }
 
 pub(crate) fn sanitize_sse_data(s: &str) -> String {
@@ -142,6 +153,7 @@ pub(crate) struct SendFields {
     pub att_meta: Vec<serde_json::Value>,
     pub context_paths: Vec<ContextPathIn>,
     pub referenced_thread_ids: Vec<String>,
+    pub machine_ids: Vec<i64>,
 }
 
 pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFields, Response> {
@@ -205,6 +217,14 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
                     return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
                 }
             }
+        } else if name == "machine_ids" {
+            let raw = String::from_utf8_lossy(&bytes).to_string();
+            match parse_machine_ids(&raw) {
+                Ok(ids) => fields.machine_ids.extend(ids),
+                Err(e) => {
+                    return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
+                }
+            }
         } else if !filename.is_empty() {
             if bytes.len() > 8 * 1024 * 1024 {
                 return Err((
@@ -242,7 +262,10 @@ pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Re
         Some(p) if !p.trim().is_empty() => p,
         // References alone are a valid message: the context block makes up
         // the effective prompt sent to the provider.
-        _ if !fields.context_paths.is_empty() || !fields.referenced_thread_ids.is_empty() => {
+        _ if !fields.context_paths.is_empty()
+            || !fields.referenced_thread_ids.is_empty()
+            || !fields.machine_ids.is_empty() =>
+        {
             String::new()
         }
         _ => {
@@ -270,6 +293,9 @@ pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Re
         context_refs: Vec::new(),
         referenced_thread_ids: fields.referenced_thread_ids,
         thread_refs: Vec::new(),
+        machine_ids: fields.machine_ids,
+        machine_refs: Vec::new(),
+        machine_token: None,
     })
 }
 
@@ -346,9 +372,14 @@ pub(crate) async fn call_provider(
         cancel_signal: Some(cancel_signal),
     };
 
-    let prompt = prompt_with_thread_refs(
-        &prompt_with_refs(&input.prompt, &input.context_refs),
-        &input.thread_refs,
+    let prompt = prompt_with_machine_refs(
+        &prompt_with_thread_refs(
+            &prompt_with_refs(&input.prompt, &input.context_refs),
+            &input.thread_refs,
+        ),
+        &input.machine_refs,
+        input.machine_token.as_deref(),
+        &state.agent_base_url(),
     );
     if let Some(sid) = thread.devin_session_id.as_ref() {
         provider

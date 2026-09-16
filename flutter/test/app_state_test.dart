@@ -7,6 +7,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
+import 'package:devinorium_frontend/services/local_server.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart' show Locale;
@@ -61,6 +62,7 @@ class _StreamableApiService extends ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) {
     lastClientMessageId = clientMessageId;
     return streamBuilder?.call() ?? Stream.empty();
@@ -577,7 +579,9 @@ void main() {
 
     test('bootstrap lands on app when no server is configured', () async {
       SharedPreferences.setMockInitialValues({});
-      final state = AppState();
+      // A real manager would adopt a devinorium server already running on the
+      // host via its endpoint file, so keep this test hermetic.
+      final state = AppState(localServerManager: LocalServerManager.disabled());
       await state.bootstrap();
       expect(state.view, AppView.app);
       expect(state.user, isNull);

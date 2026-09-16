@@ -165,6 +165,12 @@ abstract class AppStateBase extends ChangeNotifier {
   set _pathRefs(List<PathRef> value);
   List<ThreadReference> get _threadReferences;
   set _threadReferences(List<ThreadReference> value);
+  List<MachineReference> get _machineReferences;
+  set _machineReferences(List<MachineReference> value);
+  List<Machine> get _machines;
+  set _machines(List<Machine> value);
+  int get _machinesSeq;
+  set _machinesSeq(int value);
   String get _selectedModel;
   set _selectedModel(String value);
   String get _selectedReasoning;
@@ -334,6 +340,8 @@ abstract class AppStateBase extends ChangeNotifier {
   List<({String filename, String mime, Uint8List bytes})> get attachments;
   List<PathRef> get pathRefs;
   List<ThreadReference> get threadReferences;
+  List<MachineReference> get machineReferences;
+  List<Machine> get machines;
   String get selectedModel;
   String get selectedReasoning;
   String get selectedPermission;
@@ -389,6 +397,7 @@ abstract class AppStateBase extends ChangeNotifier {
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     List<PathRef>? pathRefs,
     List<ThreadReference>? threadReferences,
+    List<MachineReference>? machineReferences,
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedReasoning,
@@ -420,6 +429,9 @@ abstract class AppStateBase extends ChangeNotifier {
   void addThreadReference(ThreadReference ref);
   void removeThreadReference(int index);
   void clearThreadReferences();
+  void addMachineReference(MachineReference ref);
+  void removeMachineReference(int index);
+  void clearMachineReferences();
   void setSelectedModel(String m);
   void setSelectedReasoning(String effort);
   void setSelectedPermission(String p);
@@ -615,6 +627,23 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> connectGitLab({String? hostname});
   Future<void> disconnectGitLab({String? hostname});
   Future<void> loadTailscaleStatus();
+  Future<void> loadMachines();
+  Future<String?> createMachine({
+    required String name,
+    required String host,
+    required int port,
+    String? password,
+  });
+  Future<String?> updateMachine(
+    int id, {
+    String? name,
+    String? host,
+    int? port,
+    String? password,
+    bool clearPassword,
+  });
+  Future<String?> deleteMachine(int id);
+  Future<MachineTestResult> testMachine(int id);
   Future<String?> setTailscaleServe(bool enabled, {int? port});
   Future<String?> addServer({
     required String serverUrl,

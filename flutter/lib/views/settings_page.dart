@@ -36,6 +36,7 @@ part 'settings/directories_section.dart';
 part 'settings/usage_section.dart';
 part 'settings/servers_section.dart';
 part 'settings/tailscale_section.dart';
+part 'settings/machines_section.dart';
 part 'settings/section_card.dart';
 part 'settings/settings_row.dart';
 

@@ -25,6 +25,7 @@ class _PendingSend {
   final List<({String filename, String mime, Uint8List bytes})> attachments;
   final List<PathRef> pathRefs;
   final List<ThreadReference> threadReferences;
+  final List<MachineReference> machineReferences;
   final String clientMessageId;
   final ComposerMode composerMode;
 
@@ -39,6 +40,7 @@ class _PendingSend {
     required this.attachments,
     required this.pathRefs,
     required this.threadReferences,
+    this.machineReferences = const [],
     required this.clientMessageId,
     required this.composerMode,
     this.resendEdit = false,
@@ -67,6 +69,7 @@ class ThreadStore {
     List<({String filename, String mime, Uint8List bytes})>? attachments,
     List<PathRef>? pathRefs,
     List<ThreadReference>? threadReferences,
+    List<MachineReference>? machineReferences,
     ComposerMode? composerMode,
     String? selectedModel,
     String? selectedReasoning,
@@ -79,8 +82,12 @@ class ThreadStore {
        composerText = composerText ?? '',
        attachments = attachments == null ? [] : List.of(attachments),
        pathRefs = pathRefs == null ? [] : List.of(pathRefs),
-       threadReferences =
-           threadReferences == null ? [] : List.of(threadReferences),
+       threadReferences = threadReferences == null
+           ? []
+           : List.of(threadReferences),
+       machineReferences = machineReferences == null
+           ? []
+           : List.of(machineReferences),
        composerMode = composerMode ?? ComposerMode.code,
        selectedModel = selectedModel ?? '',
        selectedReasoning = selectedReasoning ?? '',
@@ -102,6 +109,7 @@ class ThreadStore {
   List<({String filename, String mime, Uint8List bytes})> attachments;
   List<PathRef> pathRefs;
   List<ThreadReference> threadReferences;
+  List<MachineReference> machineReferences;
   ComposerMode composerMode;
   String selectedModel;
   String selectedReasoning;
@@ -353,7 +361,10 @@ class ThreadStore {
   /// Send a user message and start a new streaming turn.
   Future<void> sendMessage() async {
     final prompt = _promptForMode(composerText.trim());
-    if (prompt.isEmpty && pathRefs.isEmpty && threadReferences.isEmpty) {
+    if (prompt.isEmpty &&
+        pathRefs.isEmpty &&
+        threadReferences.isEmpty &&
+        machineReferences.isEmpty) {
       return;
     }
     if (_pendingSend != null) return;
@@ -363,6 +374,7 @@ class ThreadStore {
         List<({String filename, String mime, Uint8List bytes})>.of(attachments);
     final messagePathRefs = List<PathRef>.of(pathRefs);
     final messageThreadRefs = List<ThreadReference>.of(threadReferences);
+    final messageMachineRefs = List<MachineReference>.of(machineReferences);
     final clientMessageId = _newClientMessageId();
 
     // Snapshot the composer so we can restore it if the turn fails before the
@@ -373,6 +385,7 @@ class ThreadStore {
       attachments: messageAttachments,
       pathRefs: messagePathRefs,
       threadReferences: messageThreadRefs,
+      machineReferences: messageMachineRefs,
       clientMessageId: clientMessageId,
       composerMode: composerMode,
     );
@@ -383,6 +396,7 @@ class ThreadStore {
     attachments = [];
     pathRefs = [];
     threadReferences = [];
+    machineReferences = [];
     _emit();
 
     await _scheduler.run('stream', () async {
@@ -402,6 +416,7 @@ class ThreadStore {
           messageAttachments,
           messagePathRefs,
           messageThreadRefs,
+          messageMachineRefs,
           clientMessageId,
         ),
       );
@@ -429,9 +444,8 @@ class ThreadStore {
               clientMessageId: clientMessageId,
               attachments: messageAttachments,
               contextPaths: messagePathRefs,
-              referencedThreadIds: [
-                for (final r in messageThreadRefs) r.id,
-              ],
+              referencedThreadIds: [for (final r in messageThreadRefs) r.id],
+              machineIds: [for (final r in messageMachineRefs) r.id],
             )
             .listen(
               (ev) => _handleEvent(ev, token),
@@ -490,6 +504,7 @@ class ThreadStore {
         _optimisticMessages.add(
           _buildOptimisticMessage(
             editedPrompt,
+            const [],
             const [],
             const [],
             const [],
@@ -1014,8 +1029,7 @@ class ThreadStore {
     final inclusive = _resendInclusive;
     final kept = d.messages
         .where(
-          (m) =>
-              m.id == null || (inclusive ? m.id! < anchor : m.id! <= anchor),
+          (m) => m.id == null || (inclusive ? m.id! < anchor : m.id! <= anchor),
         )
         .toList();
     if (kept.length == d.messages.length) return d;
@@ -1240,6 +1254,7 @@ class ThreadStore {
     List<({String filename, String mime, Uint8List bytes})> attachments,
     List<PathRef> pathRefs,
     List<ThreadReference> threadReferences,
+    List<MachineReference> machineReferences,
     String clientMessageId,
   ) {
     return Message(
@@ -1247,7 +1262,7 @@ class ThreadStore {
       content: prompt,
       clientMessageId: clientMessageId,
       // Match the backend's att_meta order: uploads, then path refs, then
-      // thread references.
+      // thread references, then machine references.
       attachments: [
         for (var i = 0; i < attachments.length; i++)
           Attachment(
@@ -1266,6 +1281,13 @@ class ThreadStore {
           ),
         for (final r in threadReferences)
           Attachment(filename: r.title, size: 0, isThreadRef: true),
+        for (final r in machineReferences)
+          Attachment(
+            filename: r.name,
+            size: 0,
+            mime: 'application/x-devinorium-machine',
+            isMachineRef: true,
+          ),
       ],
     );
   }
@@ -1344,10 +1366,16 @@ class ThreadStore {
     if (!pending.resendEdit || composerText.trim().isEmpty) {
       setComposerText(pending.composerText);
     }
-    attachments = List.of(pending.attachments);
-    pathRefs = List.of(pending.pathRefs);
-    threadReferences = List.of(pending.threadReferences);
-    composerMode = pending.composerMode;
+    if (!pending.resendEdit) {
+      // Resend edits never snapshot the chips or the mode — they belong to
+      // the original message — so restoring the pending values would wipe
+      // composer state the user picked meanwhile.
+      attachments = List.of(pending.attachments);
+      pathRefs = List.of(pending.pathRefs);
+      threadReferences = List.of(pending.threadReferences);
+      machineReferences = List.of(pending.machineReferences);
+      composerMode = pending.composerMode;
+    }
     _optimisticMessages.removeWhere(
       (m) => m.clientMessageId == pending.clientMessageId,
     );
@@ -1388,8 +1416,7 @@ class ThreadStore {
       }
       for (final diff in tool.diffs) {
         if (diff.path.isNotEmpty) {
-          keys[diff.path] =
-              '${tool.id} ${diff.path} ${diff.newText.hashCode}';
+          keys[diff.path] = '${tool.id} ${diff.path} ${diff.newText.hashCode}';
         }
       }
       for (final e in keys.entries) {
