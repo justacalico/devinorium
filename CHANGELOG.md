@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.79.1 - 2026-09-16
+#### Bug Fixes
+- 添加项目对话框的输入框不再自动聚焦 - (d07197a) - HttpAnimations
+
+- - -
+
 ## v0.79.0 - 2026-09-16
 #### Features
 - 添加服务端更新检查与一键更新 - (624f8a5) - HttpAnimations
