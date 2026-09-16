@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.79.0 - 2026-09-16
+#### Features
+- 添加服务端更新检查与一键更新 - (624f8a5) - HttpAnimations
+
+- - -
+
 ## v0.78.0 - 2026-09-15
 #### Features
 - 支持配置新建项目目录并一键创建项目 - (1880f35) - HttpAnimations
