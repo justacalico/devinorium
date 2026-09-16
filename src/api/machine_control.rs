@@ -37,6 +37,7 @@ const CONTROL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Resolve the bearer token to its grant, then check machine coverage.
 /// `Err` is the response to return.
+#[allow(clippy::result_large_err)]
 fn authorize(
     state: &AppState,
     headers: &axum::http::HeaderMap,
@@ -149,6 +150,7 @@ enum MachineInput {
     Scroll { x: i64, y: i64, dy: i64 },
 }
 
+#[allow(clippy::result_large_err)]
 fn button_mask(button: Option<&str>) -> Result<u8, Response> {
     match button.unwrap_or("left") {
         "left" => Ok(1),
@@ -165,6 +167,7 @@ fn button_mask(button: Option<&str>) -> Result<u8, Response> {
 }
 
 /// Valid pointer coords are `0..max`; `max` itself is off-screen.
+#[allow(clippy::result_large_err)]
 fn coord(v: i64, max: u16) -> Result<u16, Response> {
     u16::try_from(v).ok().filter(|v| *v < max).ok_or_else(|| {
         (
@@ -185,6 +188,7 @@ fn bad_request(msg: &str) -> Response {
 
 /// Check every field that does not need framebuffer geometry. Runs before
 /// the VNC connection so a rejected input never touches the remote host.
+#[allow(clippy::result_large_err)]
 fn validate_input(req: &MachineInput) -> Result<(), Response> {
     match req {
         MachineInput::Click { button, .. } => button_mask(button.as_deref()).map(|_| ()),
@@ -209,6 +213,7 @@ fn validate_input(req: &MachineInput) -> Result<(), Response> {
 }
 
 /// Pointer target for move/click/scroll, checked against the framebuffer.
+#[allow(clippy::result_large_err)]
 fn pointer_target(
     req: &MachineInput,
     client: &crate::vnc::VncClient,

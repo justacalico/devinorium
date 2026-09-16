@@ -709,7 +709,7 @@ mod tests {
         })
         .await;
         let mut client = VncClient::connect("127.0.0.1", port, "").await.unwrap();
-        let err = client.screenshot().await.err().expect("should fail");
+        let err = client.screenshot().await.expect_err("should fail");
         assert!(err.to_string().contains("unsupported encoding"));
     }
 
@@ -730,7 +730,7 @@ mod tests {
         })
         .await;
         let mut client = VncClient::connect("127.0.0.1", port, "").await.unwrap();
-        let err = client.screenshot().await.err().expect("should fail");
+        let err = client.screenshot().await.expect_err("should fail");
         assert!(err.to_string().contains("out of bounds"));
     }
 

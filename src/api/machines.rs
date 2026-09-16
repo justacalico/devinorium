@@ -87,6 +87,7 @@ struct UpdateMachine {
 /// host would produce the unconnectable `host:port:port`. Hosts go into
 /// the provider prompt verbatim, so the allowed charset is deliberately
 /// narrow (DNS names, IPv4, bracketed IPv6 literals).
+#[allow(clippy::result_large_err)]
 fn clean_host(raw: &str) -> Result<(String, Option<i64>), Response> {
     let mut host = raw.trim();
     for scheme in ["vnc://", "tcp://", "rfb://"] {
@@ -133,6 +134,7 @@ fn clean_host(raw: &str) -> Result<(String, Option<i64>), Response> {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn clean_name(raw: &str) -> Result<String, Response> {
     let name = raw.trim();
     // Names are quoted inside the provider prompt, so control characters
@@ -148,6 +150,7 @@ fn clean_name(raw: &str) -> Result<String, Response> {
     Ok(name.to_string())
 }
 
+#[allow(clippy::result_large_err)]
 fn clean_port(port: Option<i64>) -> Result<i64, Response> {
     match port.unwrap_or(DEFAULT_VNC_PORT) {
         p if (1..=65535).contains(&p) => Ok(p),
@@ -159,6 +162,7 @@ fn clean_port(port: Option<i64>) -> Result<i64, Response> {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn clean_password(password: Option<String>) -> Result<Option<String>, Response> {
     match password {
         Some(p) if p.chars().count() > MAX_PASSWORD_LEN => Err((
@@ -255,9 +259,11 @@ async fn update(
         None => (None, None),
     };
     // As in create, a port embedded in a new host wins over `port`.
-    let port = match host_port.or(req.port).map(|p| clean_port(Some(p))) {
-        Some(Ok(v)) => Some(v),
-        Some(Err(r)) => return r,
+    let port = match host_port.or(req.port) {
+        Some(p) => match clean_port(Some(p)) {
+            Ok(v) => Some(v),
+            Err(r) => return r,
+        },
         None => None,
     };
     let password = match clean_password(req.password) {

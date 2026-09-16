@@ -71,7 +71,6 @@ pub fn key_chord(chord: &str) -> Option<(Vec<u32>, (u32, bool))> {
     let main = resolve_key(last)?;
     // A char key that needs shift adds it to the held modifiers instead of
     // toggling inside the press, so `shift+a` and `A` behave the same.
-    let mut modifiers = modifiers;
     if main.1 && !modifiers.contains(&SHIFT_L) {
         modifiers.push(SHIFT_L);
     }

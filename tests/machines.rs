@@ -556,7 +556,7 @@ async fn test_connection_reports_failure_without_leaking() {
     assert_eq!(resp.status(), StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["ok"], false);
-    assert!(v["error"].as_str().unwrap().len() > 0);
+    assert!(!v["error"].as_str().unwrap().is_empty());
     assert!(!v["error"].as_str().unwrap().contains("sekrit"));
 }
 
