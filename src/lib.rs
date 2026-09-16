@@ -17,6 +17,7 @@ pub mod security;
 pub mod tailscale;
 pub mod terminal;
 pub mod thread_runner;
+pub mod update;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -145,6 +146,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::tailscale::router())
         .merge(api::models::router())
         .merge(api::providers::router())
+        .merge(api::update::router())
         .merge(api::usage::router())
         .route("/api/auth/me", get(api::auth::me))
         .route("/api/auth/me", axum::routing::patch(api::auth::update_me))

@@ -409,6 +409,51 @@
   "@serverVersion": {
     "description": "Label for the connected server version row in settings"
   },
+  "serverUpdate": "Server update",
+  "@serverUpdate": {
+    "description": "Title of the server self-update card in settings"
+  },
+  "serverUpdateHint": "Check releases for a newer server build and install it.",
+  "serverUpdateCheck": "Check for updates",
+  "serverUpdateApply": "Update and restart",
+  "serverUpdateConfirm": "Update the server to {version}? The server restarts and any running work is interrupted.",
+  "@serverUpdateConfirm": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateApplying": "Downloading the update and restarting the server\u2026",
+  "serverUpdateAvailable": "Version {version} is available",
+  "@serverUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateUpToDate": "The server is up to date",
+  "serverUpdateCheckFailed": "Could not check for server updates",
+  "serverUpdateFailed": "The server update failed: {error}",
+  "@serverUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateRestarting": "The server is restarting into version {version}",
+  "@serverUpdateRestarting": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "serverUpdateLocalMode": "The bundled server is updated together with the app",
+  "serverUpdateDevMode": "Development instances cannot be updated this way",
+  "serverUpdateUnsupported": "No prebuilt server release exists for this platform",
   "topics": "Topics",
   "timeAgoJustNow": "just now",
   "timeAgoMinutes": "{count}m ago",

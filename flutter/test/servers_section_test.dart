@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
@@ -19,6 +21,14 @@ class _FakeApiService extends ApiService {
   String? tailscaleServeError;
   bool? lastServeEnabled;
   int? lastServePort;
+  ServerUpdateCheck? updateCheck;
+  Object? updateCheckError;
+  Completer<ServerUpdateCheck>? updateCheckGate;
+  String applyResult = '0.78.0';
+  Object? applyError;
+  String? serverVersionResult;
+  int updateCheckCalls = 0;
+  int applyCalls = 0;
 
   _FakeApiService()
     : super(
@@ -93,6 +103,28 @@ class _FakeApiService extends ApiService {
       httpsReachable: info.httpsReachable,
       endpoints: info.endpoints,
     );
+  }
+
+  @override
+  Future<String?> serverVersion() async => serverVersionResult;
+
+  @override
+  Future<ServerUpdateCheck> checkServerUpdate() async {
+    updateCheckCalls++;
+    final gate = updateCheckGate;
+    if (gate != null) return gate.future;
+    final err = updateCheckError;
+    if (err != null) throw err;
+    return updateCheck ??
+        const ServerUpdateCheck(currentVersion: '0.77.2', updatable: true);
+  }
+
+  @override
+  Future<String> applyServerUpdate() async {
+    applyCalls++;
+    final err = applyError;
+    if (err != null) throw err;
+    return applyResult;
   }
 }
 
@@ -504,6 +536,373 @@ void main() {
       expect(tooltip.message, longUrl);
     });
 
+    group('Server update card', () {
+      // Owners get an extra "manage" topic, so servers is index 7 for them.
+      AppState ownerState(_FakeApiService api) => AppState.test(
+        api: api,
+        user: User(
+          id: 1,
+          username: 'owner',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: true,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+        settingsTopicIndex: 7,
+        serverVersion: '0.77.2',
+      );
+
+      testWidgets('is hidden for non-owners', (tester) async {
+        final state = buildState();
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Server update'), findsNothing);
+        expect(
+          find.byKey(const Key('server_update_check_button')),
+          findsNothing,
+        );
+      });
+
+      testWidgets('check reports an available update', (tester) async {
+        final api = _FakeApiService()
+          ..updateCheck = const ServerUpdateCheck(
+            currentVersion: '0.77.2',
+            latestVersion: '0.78.0',
+            latestTag: 'v0.78.0',
+            updateAvailable: true,
+            updatable: true,
+          );
+        final state = ownerState(api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Server update'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('server_update_check_button')));
+        await tester.pumpAndSettle();
+
+        expect(api.updateCheckCalls, 1);
+        expect(find.text('Version 0.78.0 is available'), findsOneWidget);
+        expect(
+          find.byKey(const Key('server_update_apply_button')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('server_update_check_button')),
+          findsNothing,
+        );
+      });
+
+      testWidgets('check reports the server is up to date', (tester) async {
+        final api = _FakeApiService()
+          ..updateCheck = const ServerUpdateCheck(
+            currentVersion: '0.77.2',
+            latestVersion: '0.77.2',
+            latestTag: 'v0.77.2',
+            updatable: true,
+          );
+        final state = ownerState(api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('server_update_check_button')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('The server is up to date'), findsOneWidget);
+        // A re-check stays possible.
+        expect(
+          find.byKey(const Key('server_update_check_button')),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('a failed check shows an error and keeps the button', (
+        tester,
+      ) async {
+        final api = _FakeApiService()
+          ..updateCheckError = ApiException('update check failed', 502);
+        final state = ownerState(api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('server_update_check_button')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Could not check for server updates'), findsOneWidget);
+        expect(
+          find.byKey(const Key('server_update_check_button')),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('a bundled server reports itself as not updatable', (
+        tester,
+      ) async {
+        final api = _FakeApiService()
+          ..updateCheck = const ServerUpdateCheck(
+            currentVersion: '0.77.2',
+            updatable: false,
+            reason: 'local_mode',
+          );
+        final state = ownerState(api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('server_update_check_button')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('The bundled server is updated together with the app'),
+          findsOneWidget,
+        );
+        // No further action is offered.
+        expect(
+          find.byKey(const Key('server_update_check_button')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('server_update_apply_button')),
+          findsNothing,
+        );
+      });
+
+      testWidgets('apply asks for confirmation before restarting', (
+        tester,
+      ) async {
+        final api = _FakeApiService()
+          ..updateCheck = const ServerUpdateCheck(
+            currentVersion: '0.77.2',
+            latestVersion: '0.78.0',
+            latestTag: 'v0.78.0',
+            updateAvailable: true,
+            updatable: true,
+          );
+        final state = ownerState(api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('server_update_check_button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('server_update_apply_button')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(
+            'Update the server to 0.78.0? The server restarts and any running work is interrupted.',
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.widgetWithText(TextButton, 'Update and restart'));
+        // The restarting state shows an indeterminate spinner, so the tree
+        // never fully settles; pump the dialog away and a frame instead.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(api.applyCalls, 1);
+        expect(
+          find.text('The server is restarting into version 0.78.0'),
+          findsWidgets,
+        );
+      });
+
+      testWidgets('cancelling the apply dialog does not call the api', (
+        tester,
+      ) async {
+        final api = _FakeApiService()
+          ..updateCheck = const ServerUpdateCheck(
+            currentVersion: '0.77.2',
+            latestVersion: '0.78.0',
+            latestTag: 'v0.78.0',
+            updateAvailable: true,
+            updatable: true,
+          );
+        final state = ownerState(api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('server_update_check_button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('server_update_apply_button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+        await tester.pumpAndSettle();
+
+        expect(api.applyCalls, 0);
+        // The update offer is still shown.
+        expect(find.text('Version 0.78.0 is available'), findsOneWidget);
+      });
+
+      testWidgets('a failed apply shows the server error', (tester) async {
+        final api = _FakeApiService()
+          ..updateCheck = const ServerUpdateCheck(
+            currentVersion: '0.77.2',
+            latestVersion: '0.78.0',
+            latestTag: 'v0.78.0',
+            updateAvailable: true,
+            updatable: true,
+          )
+          ..applyError = ApiException('an update is already in progress', 409);
+        final state = ownerState(api);
+        addTearDown(state.dispose);
+        await tester.pumpWidget(_buildWithState(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('server_update_check_button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('server_update_apply_button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(TextButton, 'Update and restart'));
+        await tester.pumpAndSettle();
+
+        expect(api.applyCalls, 1);
+        expect(
+          find.text(
+            'The server update failed: an update is already in progress',
+          ),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets(
+        'the restarting card returns to normal once the new version reports',
+        (tester) async {
+          final api = _FakeApiService()
+            ..updateCheck = const ServerUpdateCheck(
+              currentVersion: '0.77.2',
+              latestVersion: '0.78.0',
+              latestTag: 'v0.78.0',
+              updateAvailable: true,
+              updatable: true,
+            );
+          final state = ownerState(api);
+          addTearDown(state.dispose);
+          await tester.pumpWidget(_buildWithState(state));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byKey(const Key('server_update_check_button')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('server_update_apply_button')));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.widgetWithText(TextButton, 'Update and restart'),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+
+          expect(
+            find.text('The server is restarting into version 0.78.0'),
+            findsWidgets,
+          );
+
+          // The health check reconnects and reports the new build; the
+          // card leaves the restarting state and offers a fresh check.
+          api.serverVersionResult = '0.78.0';
+          await state.checkConnection();
+          // Let the toast expire; the card must leave the restarting state
+          // on its own, not just because the message overlay went away.
+          await tester.pump(const Duration(seconds: 5));
+          await tester.pumpAndSettle();
+
+          expect(state.serverVersion, '0.78.0');
+          expect(
+            find.text('The server is restarting into version 0.78.0'),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const Key('server_update_check_button')),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'a check result for the old server does not leak after switching',
+        (tester) async {
+          final gate = Completer<ServerUpdateCheck>();
+          final apiA = _FakeApiService()..updateCheckGate = gate;
+          final apiB = _FakeApiService();
+          final multi = MultiServerState();
+          // The last added connection becomes the active one.
+          multi.addTestConnection(
+            ServerProfile(
+              id: 'b',
+              label: 'b',
+              baseUrl: 'http://b:7878',
+              token: 'tb',
+              username: 'owner',
+              createdAt: DateTime(2024, 1, 2).toUtc(),
+            ),
+            apiB,
+          );
+          multi.addTestConnection(
+            ServerProfile(
+              id: 'a',
+              label: 'a',
+              baseUrl: 'http://a:7878',
+              token: 'ta',
+              username: 'owner',
+              createdAt: DateTime(2024, 1, 1).toUtc(),
+            ),
+            apiA,
+          );
+          final state = AppState.test(
+            multiServerState: multi,
+            user: User(
+              id: 1,
+              username: 'owner',
+              role: 'user',
+              totpEnabled: false,
+              isOwner: true,
+              providerId: 'devin-cli',
+              providerCommand: 'devin',
+            ),
+            settingsTopicIndex: 7,
+          );
+          addTearDown(state.dispose);
+
+          await tester.pumpWidget(_buildWithState(state));
+          await tester.pumpAndSettle();
+          expect(state.activeServerId, 'a');
+
+          await tester.tap(find.byKey(const Key('server_update_check_button')));
+          await tester.pump();
+
+          // Switch away while server A's check is still in flight, then let
+          // it complete; the result must not land on server B's card.
+          await state.switchServer('b');
+          gate.complete(
+            const ServerUpdateCheck(
+              currentVersion: '0.77.2',
+              latestVersion: '0.78.0',
+              latestTag: 'v0.78.0',
+              updateAvailable: true,
+              updatable: true,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(state.activeServerId, 'b');
+          expect(apiA.updateCheckCalls, 1);
+          expect(find.text('Version 0.78.0 is available'), findsNothing);
+          expect(
+            find.byKey(const Key('server_update_check_button')),
+            findsOneWidget,
+          );
+          state.stopHealthChecks();
+          state.stopGitRefresh();
+        },
+      );
+    });
+
     group('Tailscale card', () {
       const tsInfo = TailscaleInfo(
         localMode: false,
@@ -589,6 +988,9 @@ void main() {
         expect(sw.value, isFalse);
         expect(sw.onChanged, isNotNull);
 
+        await tester.ensureVisible(
+          find.byKey(const Key('tailscale_serve_switch')),
+        );
         await tester.tap(find.byKey(const Key('tailscale_serve_switch')));
         await tester.pumpAndSettle();
         expect(api.lastServeEnabled, isTrue);
@@ -620,6 +1022,9 @@ void main() {
         expect(tester.widget<TextField>(field).controller?.text, '443');
 
         await tester.enterText(field, '8443');
+        await tester.ensureVisible(
+          find.byKey(const Key('tailscale_serve_switch')),
+        );
         await tester.tap(find.byKey(const Key('tailscale_serve_switch')));
         await tester.pumpAndSettle();
 
@@ -653,6 +1058,9 @@ void main() {
         await tester.enterText(
           find.byKey(const Key('tailscale_serve_port')),
           '70000',
+        );
+        await tester.ensureVisible(
+          find.byKey(const Key('tailscale_serve_switch')),
         );
         await tester.tap(find.byKey(const Key('tailscale_serve_switch')));
         await tester.pumpAndSettle();
@@ -700,6 +1108,9 @@ void main() {
         await tester.pumpWidget(_buildWithState(state));
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(
+          find.byKey(const Key('tailscale_serve_switch')),
+        );
         await tester.tap(find.byKey(const Key('tailscale_serve_switch')));
         await tester.pumpAndSettle();
 

@@ -656,6 +656,56 @@ class AppLocalizationsZh extends AppLocalizations {
   String get serverVersion => '服务器版本';
 
   @override
+  String get serverUpdate => '服务器更新';
+
+  @override
+  String get serverUpdateHint => '检查发布版本，下载并安装新的服务器程序。';
+
+  @override
+  String get serverUpdateCheck => '检查更新';
+
+  @override
+  String get serverUpdateApply => '更新并重启';
+
+  @override
+  String serverUpdateConfirm(String version) {
+    return '将服务器更新到 $version？服务器会重启，进行中的任务会被中断。';
+  }
+
+  @override
+  String get serverUpdateApplying => '正在下载更新并重启服务器…';
+
+  @override
+  String serverUpdateAvailable(String version) {
+    return '新版本 $version 可用';
+  }
+
+  @override
+  String get serverUpdateUpToDate => '服务器已是最新版本';
+
+  @override
+  String get serverUpdateCheckFailed => '无法检查服务器更新';
+
+  @override
+  String serverUpdateFailed(String error) {
+    return '服务器更新失败：$error';
+  }
+
+  @override
+  String serverUpdateRestarting(String version) {
+    return '服务器正在重启到版本 $version';
+  }
+
+  @override
+  String get serverUpdateLocalMode => '内置服务器随应用一起更新';
+
+  @override
+  String get serverUpdateDevMode => '开发实例无法通过此方式更新';
+
+  @override
+  String get serverUpdateUnsupported => '此平台没有预构建的服务器版本';
+
+  @override
   String get topics => '主题';
 
   @override

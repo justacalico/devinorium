@@ -1316,6 +1316,90 @@ abstract class AppLocalizations {
   /// **'Server version'**
   String get serverVersion;
 
+  /// Title of the server self-update card in settings
+  ///
+  /// In en, this message translates to:
+  /// **'Server update'**
+  String get serverUpdate;
+
+  /// No description provided for @serverUpdateHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Check releases for a newer server build and install it.'**
+  String get serverUpdateHint;
+
+  /// No description provided for @serverUpdateCheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates'**
+  String get serverUpdateCheck;
+
+  /// No description provided for @serverUpdateApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Update and restart'**
+  String get serverUpdateApply;
+
+  /// No description provided for @serverUpdateConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the server to {version}? The server restarts and any running work is interrupted.'**
+  String serverUpdateConfirm(String version);
+
+  /// No description provided for @serverUpdateApplying.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading the update and restarting the server…'**
+  String get serverUpdateApplying;
+
+  /// No description provided for @serverUpdateAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} is available'**
+  String serverUpdateAvailable(String version);
+
+  /// No description provided for @serverUpdateUpToDate.
+  ///
+  /// In en, this message translates to:
+  /// **'The server is up to date'**
+  String get serverUpdateUpToDate;
+
+  /// No description provided for @serverUpdateCheckFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check for server updates'**
+  String get serverUpdateCheckFailed;
+
+  /// No description provided for @serverUpdateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The server update failed: {error}'**
+  String serverUpdateFailed(String error);
+
+  /// No description provided for @serverUpdateRestarting.
+  ///
+  /// In en, this message translates to:
+  /// **'The server is restarting into version {version}'**
+  String serverUpdateRestarting(String version);
+
+  /// No description provided for @serverUpdateLocalMode.
+  ///
+  /// In en, this message translates to:
+  /// **'The bundled server is updated together with the app'**
+  String get serverUpdateLocalMode;
+
+  /// No description provided for @serverUpdateDevMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Development instances cannot be updated this way'**
+  String get serverUpdateDevMode;
+
+  /// No description provided for @serverUpdateUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'No prebuilt server release exists for this platform'**
+  String get serverUpdateUnsupported;
+
   /// No description provided for @topics.
   ///
   /// In en, this message translates to:
