@@ -81,6 +81,8 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         git: Arc::new(GitService::new()),
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
+        machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     (state, database)
 }

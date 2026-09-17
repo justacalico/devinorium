@@ -35,6 +35,10 @@ class Attachment {
   /// sidebar) whose history was sent as context.
   final bool isThreadRef;
 
+  /// True when this entry references a machine the run may remote-control
+  /// (picked in the composer with `@`).
+  final bool isMachineRef;
+
   /// For path refs: whether the referenced path is a directory.
   final bool isDir;
 
@@ -46,6 +50,7 @@ class Attachment {
     this.bytes,
     this.isPathRef = false,
     this.isThreadRef = false,
+    this.isMachineRef = false,
     this.isDir = false,
   });
 
@@ -59,6 +64,7 @@ class Attachment {
     bytes: data,
     isPathRef: isPathRef,
     isThreadRef: isThreadRef,
+    isMachineRef: isMachineRef,
     isDir: isDir,
   );
 
@@ -69,6 +75,7 @@ class Attachment {
     index: (j['index'] as num?)?.toInt(),
     isPathRef: j['kind'] == 'path',
     isThreadRef: j['kind'] == 'thread',
+    isMachineRef: j['kind'] == 'machine',
     isDir: j['is_dir'] as bool? ?? false,
   );
 
@@ -82,10 +89,19 @@ class Attachment {
         index == other.index &&
         isPathRef == other.isPathRef &&
         isThreadRef == other.isThreadRef &&
+        isMachineRef == other.isMachineRef &&
         isDir == other.isDir;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(filename, size, mime, index, isPathRef, isThreadRef, isDir);
+  int get hashCode => Object.hash(
+    filename,
+    size,
+    mime,
+    index,
+    isPathRef,
+    isThreadRef,
+    isMachineRef,
+    isDir,
+  );
 }

@@ -14,6 +14,7 @@ use crate::providers::Attachment;
 use crate::AppState;
 
 use super::context_refs::{resolve_context_refs, ContextPathIn};
+use super::machine_refs::resolve_machine_refs;
 use super::persistence::persist_user_message;
 use super::runs::{events_stream, run_thread};
 use super::send::{read_send_fields, send_input_from_fields, SendInput};
@@ -98,12 +99,13 @@ pub(super) async fn resend(
     };
 
     let mut input = if editing {
-        // Keep the stored message's path/thread references: an edit only
-        // changes the text, so the references are rebuilt alongside it.
-        let (paths, tids) = stored_refs(&anchor);
+        // Keep the stored message's path/thread/machine references: an edit
+        // only changes the text, so the references are rebuilt alongside it.
+        let (paths, tids, mids) = stored_refs(&anchor);
         let mut fields = fields;
         fields.context_paths.extend(paths);
         fields.referenced_thread_ids.extend(tids);
+        fields.machine_ids.extend(mids);
         let mut input = match send_input_from_fields(fields) {
             Ok(i) => i,
             Err(resp) => return resp,
@@ -117,12 +119,14 @@ pub(super) async fn resend(
     };
     resolve_context_refs(&state, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
+    resolve_machine_refs(&state, &mut input).await;
 
     // Nothing to send: the resolved prompt and every reference came up
     // empty (e.g. a refs-only message whose paths no longer exist).
     if input.prompt.trim().is_empty()
         && input.context_refs.is_empty()
         && input.thread_refs.is_empty()
+        && input.machine_refs.is_empty()
     {
         return (
             StatusCode::BAD_REQUEST,
@@ -180,13 +184,14 @@ fn emit_truncated(run: &crate::thread_runner::RunState, thread_id: &str) {
     run.emit("messages_truncated", &payload.to_string());
 }
 
-/// The path and thread references stored on a user message, rebuilt so they
-/// can be re-resolved against the current project state.
-fn stored_refs(anchor: &MessageRow) -> (Vec<ContextPathIn>, Vec<String>) {
+/// The path, thread, and machine references stored on a user message,
+/// rebuilt so they can be re-resolved against the current project state.
+fn stored_refs(anchor: &MessageRow) -> (Vec<ContextPathIn>, Vec<String>, Vec<i64>) {
     let attachments: serde_json::Value =
         serde_json::from_str(&anchor.attachments).unwrap_or(serde_json::json!([]));
     let mut context_paths = Vec::new();
     let mut referenced_thread_ids = Vec::new();
+    let mut machine_ids = Vec::new();
     for item in attachments.as_array().into_iter().flatten() {
         match item.get("kind").and_then(|k| k.as_str()) {
             Some("path") => {
@@ -205,14 +210,20 @@ fn stored_refs(anchor: &MessageRow) -> (Vec<ContextPathIn>, Vec<String>) {
                     referenced_thread_ids.push(tid.to_string());
                 }
             }
+            Some("machine") => {
+                if let Some(mid) = item.get("machine_id").and_then(|t| t.as_i64()) {
+                    machine_ids.push(mid);
+                }
+            }
             _ => {}
         }
     }
-    (context_paths, referenced_thread_ids)
+    (context_paths, referenced_thread_ids, machine_ids)
 }
 
-/// File entries in a stored message's attachment metadata (path and thread
-/// references have a `kind` and are handled separately), sorted by index.
+/// File entries in a stored message's attachment metadata (path, thread,
+/// and machine references have a `kind` and are handled separately),
+/// sorted by index.
 fn stored_file_metas(anchor: &MessageRow) -> Vec<serde_json::Value> {
     let attachments: serde_json::Value =
         serde_json::from_str(&anchor.attachments).unwrap_or(serde_json::json!([]));
@@ -223,7 +234,7 @@ fn stored_file_metas(anchor: &MessageRow) -> Vec<serde_json::Value> {
         .filter(|item| {
             !matches!(
                 item.get("kind").and_then(|k| k.as_str()),
-                Some("path") | Some("thread")
+                Some("path") | Some("thread") | Some("machine")
             )
         })
         .cloned()
@@ -272,7 +283,7 @@ async fn reattach_stored_files(
 
 /// Rebuild a [SendInput] from a stored user message for regeneration.
 fn regen_input(anchor: &MessageRow, mode: String) -> SendInput {
-    let (context_paths, referenced_thread_ids) = stored_refs(anchor);
+    let (context_paths, referenced_thread_ids, machine_ids) = stored_refs(anchor);
     SendInput {
         prompt: anchor.content.clone(),
         mode,
@@ -283,5 +294,8 @@ fn regen_input(anchor: &MessageRow, mode: String) -> SendInput {
         context_refs: Vec::new(),
         referenced_thread_ids,
         thread_refs: Vec::new(),
+        machine_ids,
+        machine_refs: Vec::new(),
+        machine_token: None,
     }
 }

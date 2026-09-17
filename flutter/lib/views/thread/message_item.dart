@@ -382,7 +382,7 @@ class _MessageItemState extends State<_MessageItem> {
   }
 
   Widget _buildAttachment(BuildContext context, Attachment a) {
-    if (!a.isImage || a.isPathRef || a.isThreadRef) {
+    if (!a.isImage || a.isPathRef || a.isThreadRef || a.isMachineRef) {
       return _attachmentChip(Theme.of(context), a);
     }
     final bytes = a.bytes;
@@ -390,11 +390,8 @@ class _MessageItemState extends State<_MessageItem> {
       return AttachmentThumb(
         bytes: bytes,
         filename: a.filename,
-        onTap: () => showAttachmentPreview(
-          context,
-          bytes: bytes,
-          filename: a.filename,
-        ),
+        onTap: () =>
+            showAttachmentPreview(context, bytes: bytes, filename: a.filename),
       );
     }
     final messageId = _message.id;
@@ -437,10 +434,10 @@ class _MessageItemState extends State<_MessageItem> {
     };
     final avatar = switch (message.role) {
       'assistant' => ProviderIcon(
-          providerId: widget.providerId,
-          size: 18,
-          color: avatarFg,
-        ),
+        providerId: widget.providerId,
+        size: 18,
+        color: avatarFg,
+      ),
       'user' => const Icon(Icons.person_outline, size: 18),
       _ => const Icon(Icons.warning_amber_outlined, size: 18),
     };
@@ -683,12 +680,12 @@ class _MessageContextMenu extends StatelessWidget {
 Widget _attachmentChip(ThemeData theme, Attachment a) {
   return Chip(
     avatar: Icon(
-      a.isThreadRef
+      a.isMachineRef
+          ? Icons.computer
+          : a.isThreadRef
           ? Icons.chat_bubble_outline
           : a.isPathRef
-          ? (a.isDir
-                ? Icons.folder_outlined
-                : Icons.insert_drive_file_outlined)
+          ? (a.isDir ? Icons.folder_outlined : Icons.insert_drive_file_outlined)
           : Icons.attach_file,
       size: 14,
     ),

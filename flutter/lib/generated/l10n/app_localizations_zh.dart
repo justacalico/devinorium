@@ -411,9 +411,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get nameAndPathRequired => '名称和路径必填';
 
   @override
-  String get nameRequired => '名称为必填项';
-
-  @override
   String get noSubfoldersHere => '此处无子文件夹';
 
   @override
@@ -1476,6 +1473,73 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get tailscaleUnreachable => '不可达';
+
+  @override
+  String get machines => '机器';
+
+  @override
+  String get machinesHint =>
+      '此服务器可交给 AI 远程控制的 VNC 机器。在输入框中输入 @ 引用一台机器后，该线程即可远程控制它。';
+
+  @override
+  String get machinesEmpty => '未配置机器';
+
+  @override
+  String get machinesOnlyOwner => '只有所有者可以管理机器';
+
+  @override
+  String get machineAdd => '添加机器';
+
+  @override
+  String get machineEdit => '编辑机器';
+
+  @override
+  String get machineName => '名称';
+
+  @override
+  String get machineHost => 'VNC 地址';
+
+  @override
+  String get machineHostHint => '192.168.1.10 或 vnc://host';
+
+  @override
+  String get machinePort => '端口';
+
+  @override
+  String get machinePassword => 'VNC 密码';
+
+  @override
+  String get machinePasswordKeep => '留空则保留已保存的密码';
+
+  @override
+  String get machinePasswordClear => '清除已保存的密码';
+
+  @override
+  String get machineHasPassword => '已保存密码';
+
+  @override
+  String get machineTest => '测试连接';
+
+  @override
+  String machineTestOk(String name, int width, int height) {
+    return '已连接 $name（${width}x$height）';
+  }
+
+  @override
+  String machineTestFailed(String error) {
+    return '连接失败：$error';
+  }
+
+  @override
+  String machineDeleteConfirm(String name) {
+    return '删除 \"$name\"？线程将无法再远程控制它。';
+  }
+
+  @override
+  String get machinePickerHint => '选择一台机器';
+
+  @override
+  String get machinePickerEmpty => '没有匹配的机器';
 
   @override
   String get serverUrlWithSchemeHint => 'http://localhost:7878';

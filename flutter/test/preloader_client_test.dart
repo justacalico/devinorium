@@ -102,6 +102,7 @@ class _FakeClient implements BaseApiClient {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => const Stream.empty();
 
   @override

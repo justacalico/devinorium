@@ -45,6 +45,7 @@ class _StreamApiService extends ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => controller.stream;
 }
 

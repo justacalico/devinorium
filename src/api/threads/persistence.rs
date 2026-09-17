@@ -72,6 +72,12 @@ pub(crate) async fn update_thread_title_from_send(
                     .first()
                     .map(|r| title_from_prompt(&r.title))
             })
+            .or_else(|| {
+                input
+                    .machine_refs
+                    .first()
+                    .map(|m| title_from_prompt(&m.name))
+            })
             .unwrap_or_else(|| "New thread".into())
     } else {
         title_from_prompt(&input.prompt)

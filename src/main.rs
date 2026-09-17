@@ -150,12 +150,15 @@ async fn main() -> Result<()> {
         git: Arc::new(git::GitService::new()),
         git_remote: Arc::new(git::GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: tailscale.clone(),
+        machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        bound_addr: Arc::new(std::sync::OnceLock::new()),
     };
 
-    let app = devinorium::build_app(state);
+    let app = devinorium::build_app(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     let addr = listener.local_addr()?;
+    let _ = state.bound_addr.set(addr);
     if dev_mode {
         if local_only {
             tracing::info!("--dev --local: serving http://{addr} (loopback only) with no authentication and a throwaway in-memory database");

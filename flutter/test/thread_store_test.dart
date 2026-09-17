@@ -100,6 +100,7 @@ class _TestApiService extends ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => Stream.fromIterable([
     SseEvent(
       'user_message',
@@ -131,6 +132,7 @@ class _RecordingApiService extends _TestApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) {
     lastPrompt = prompt;
     lastMode = mode;
@@ -155,6 +157,7 @@ class _ControlledApiService extends _TestApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) => _controller.stream;
 }
 

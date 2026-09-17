@@ -866,12 +866,6 @@ abstract class AppLocalizations {
   /// **'Name and path are required'**
   String get nameAndPathRequired;
 
-  /// No description provided for @nameRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Name is required'**
-  String get nameRequired;
-
   /// No description provided for @noSubfoldersHere.
   ///
   /// In en, this message translates to:
@@ -2773,6 +2767,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'unreachable'**
   String get tailscaleUnreachable;
+
+  /// Machines section title under server settings
+  ///
+  /// In en, this message translates to:
+  /// **'Machines'**
+  String get machines;
+
+  /// Description under the Machines settings title
+  ///
+  /// In en, this message translates to:
+  /// **'VNC machines this server can hand to an agent. Type @ in the composer to reference one; the thread can then remote-control it.'**
+  String get machinesHint;
+
+  /// Shown when the server has no machines
+  ///
+  /// In en, this message translates to:
+  /// **'No machines configured.'**
+  String get machinesEmpty;
+
+  /// Hint shown to non-owner users
+  ///
+  /// In en, this message translates to:
+  /// **'Only the owner can manage machines.'**
+  String get machinesOnlyOwner;
+
+  /// Button and dialog title for adding a machine
+  ///
+  /// In en, this message translates to:
+  /// **'Add machine'**
+  String get machineAdd;
+
+  /// Dialog title for editing a machine
+  ///
+  /// In en, this message translates to:
+  /// **'Edit machine'**
+  String get machineEdit;
+
+  /// Label for the machine name field
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get machineName;
+
+  /// Label for the machine host field
+  ///
+  /// In en, this message translates to:
+  /// **'VNC host'**
+  String get machineHost;
+
+  /// Placeholder for the machine host field
+  ///
+  /// In en, this message translates to:
+  /// **'192.168.1.10 or vnc://host'**
+  String get machineHostHint;
+
+  /// Label for the machine port field
+  ///
+  /// In en, this message translates to:
+  /// **'Port'**
+  String get machinePort;
+
+  /// Label for the machine password field
+  ///
+  /// In en, this message translates to:
+  /// **'VNC password'**
+  String get machinePassword;
+
+  /// Helper under the password field when editing a machine
+  ///
+  /// In en, this message translates to:
+  /// **'Leave blank to keep the stored password.'**
+  String get machinePasswordKeep;
+
+  /// Checkbox that removes the stored VNC password
+  ///
+  /// In en, this message translates to:
+  /// **'Clear stored password'**
+  String get machinePasswordClear;
+
+  /// Badge shown on a machine that has a stored VNC password
+  ///
+  /// In en, this message translates to:
+  /// **'Password saved'**
+  String get machineHasPassword;
+
+  /// Button that probes a machine's VNC handshake
+  ///
+  /// In en, this message translates to:
+  /// **'Test connection'**
+  String get machineTest;
+
+  /// Result of a successful machine connection probe
+  ///
+  /// In en, this message translates to:
+  /// **'Connected to {name} ({width}x{height})'**
+  String machineTestOk(String name, int width, int height);
+
+  /// Result of a failed machine connection probe
+  ///
+  /// In en, this message translates to:
+  /// **'Connection failed: {error}'**
+  String machineTestFailed(String error);
+
+  /// Confirmation before deleting a machine
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{name}\"? Threads can no longer remote-control it.'**
+  String machineDeleteConfirm(String name);
+
+  /// Header of the @ machine picker in the composer
+  ///
+  /// In en, this message translates to:
+  /// **'Select a machine'**
+  String get machinePickerHint;
+
+  /// Shown in the @ picker when nothing matches the query
+  ///
+  /// In en, this message translates to:
+  /// **'No matching machines.'**
+  String get machinePickerEmpty;
 
   /// Hint for the add-server URL field, which requires a scheme
   ///

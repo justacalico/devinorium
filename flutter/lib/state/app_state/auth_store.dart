@@ -330,6 +330,7 @@ mixin AuthStore on AppStateBase {
       loadProjectRoot(),
       refreshProviderVersion(),
       loadTailscaleStatus(),
+      loadMachines(),
     ];
     if (isOwner) {
       futures.add(loadUsers());
@@ -625,6 +626,9 @@ mixin AuthStore on AppStateBase {
     startHealthChecks();
     startGitRefresh();
     _ensureRunEvents();
+    // Machines power the composer's `@` picker; warm the cache so it is
+    // ready without visiting settings first.
+    unawaited(loadMachines());
   }
 
   Future<void> _resetServerState() async {
@@ -680,12 +684,15 @@ mixin AuthStore on AppStateBase {
     // Invalidate in-flight status loads so a slow response from the old
     // server cannot write back over the reset state.
     _tailscaleSeq++;
+    _machines = [];
+    _machinesSeq++;
     _linkedMergeRequest = null;
     _composerText = '';
     _composerTextThreadId = null;
     _attachments = [];
     _pathRefs = [];
     _threadReferences = [];
+    _machineReferences = [];
     _selectedModel = '';
     _selectedPermission = 'normal';
     _selectedProvider = '';

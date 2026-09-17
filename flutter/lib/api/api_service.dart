@@ -941,6 +941,7 @@ class ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) {
     return _client.sendStream(
       path: '/api/threads/$threadId/send/stream',
@@ -950,6 +951,7 @@ class ApiService {
       attachments: attachments,
       contextPaths: contextPaths,
       referencedThreadIds: referencedThreadIds,
+      machineIds: machineIds,
     );
   }
 
@@ -1067,6 +1069,57 @@ class ApiService {
       'port': ?port,
     });
     return TailscaleInfo.fromJson(j);
+  }
+
+  // ---- Machines ----
+
+  /// Machines configured on this server (VNC endpoints an agent can
+  /// remote-control when a message references them).
+  Future<List<Machine>> machines() async {
+    final list = await _client.getList('/api/machines');
+    return [for (final m in list) Machine.fromJson(m)];
+  }
+
+  Future<Machine> createMachine({
+    required String name,
+    required String host,
+    required int port,
+    String? password,
+  }) async {
+    final j = await _client.post('/api/machines', {
+      'name': name.trim(),
+      'host': host.trim(),
+      'port': port,
+      if (password != null && password.isNotEmpty) 'password': password,
+    });
+    return Machine.fromJson(j);
+  }
+
+  /// Update a machine. A null [password] keeps the stored one; an empty
+  /// string clears it; any other value replaces it.
+  Future<Machine> updateMachine(
+    int id, {
+    String? name,
+    String? host,
+    int? port,
+    String? password,
+  }) async {
+    final j = await _client.patch('/api/machines/$id', {
+      if (name != null) 'name': name.trim(),
+      if (host != null) 'host': host.trim(),
+      'port': ?port,
+      'password': ?password,
+    });
+    return Machine.fromJson(j);
+  }
+
+  Future<void> deleteMachine(int id) => _client.delete('/api/machines/$id');
+
+  /// Probe the machine's VNC endpoint (owner only). Reports the negotiated
+  /// framebuffer size and desktop name on success.
+  Future<MachineTestResult> testMachine(int id) async {
+    final j = await _client.post('/api/machines/$id/test', const {});
+    return MachineTestResult.fromJson(j);
   }
 
   // ---- Worktree root ----

@@ -46,6 +46,7 @@ class _RecordingApi extends ApiService {
         const [],
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
   }) {
     sentPrompt = prompt;
     sentContextPaths = contextPaths;

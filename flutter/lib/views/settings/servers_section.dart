@@ -46,6 +46,7 @@ class _ServersSection extends StatelessWidget {
               ),
               const _ServerUpdateSection(),
               const _TailscaleSection(),
+              const _MachinesSection(),
             ],
           );
         }
@@ -142,6 +143,7 @@ class _ServersSection extends StatelessWidget {
             ),
             const _ServerUpdateSection(),
             const _TailscaleSection(),
+            const _MachinesSection(),
           ],
         );
       },

@@ -7,6 +7,8 @@ pub mod clones;
 pub mod files;
 pub mod git;
 pub mod git_connections;
+pub mod machine_control;
+pub mod machines;
 pub mod models;
 pub mod pagination;
 pub mod project_groups;
