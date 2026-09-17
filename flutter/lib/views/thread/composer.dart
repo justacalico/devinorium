@@ -104,6 +104,8 @@ class _Composer extends StatefulWidget {
 
 class _ComposerState extends State<_Composer> {
   final _focusNode = FocusNode();
+  final _attachmentsScroll = ScrollController();
+  int _lastAttachmentCount = 0;
   ComposerMode? _preAskMode;
   bool _promptDrivenAsk = false;
   String? _lastThreadId;
@@ -248,6 +250,7 @@ class _ComposerState extends State<_Composer> {
   void dispose() {
     _appState?.removeListener(_onAppStateChanged);
     _focusNode.dispose();
+    _attachmentsScroll.dispose();
     super.dispose();
   }
 
@@ -403,6 +406,19 @@ class _ComposerState extends State<_Composer> {
         final cardRadius = showOutline ? _innerRadius : _outerRadius;
         final cardElevation = showOutline ? 0.0 : 1.0;
 
+        // New attachments append at the end of the strip; without jumping
+        // there they land offscreen once the row overflows.
+        if (model.attachments.length > _lastAttachmentCount) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_attachmentsScroll.hasClients) {
+              _attachmentsScroll.jumpTo(
+                _attachmentsScroll.position.maxScrollExtent,
+              );
+            }
+          });
+        }
+        _lastAttachmentCount = model.attachments.length;
+
         return SafeArea(
           top: false,
           child: Padding(
@@ -518,60 +534,68 @@ class _ComposerState extends State<_Composer> {
                           if (model.attachments.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [
-                                  for (
-                                    var i = 0;
-                                    i < model.attachments.length;
-                                    i++
-                                  )
-                                    if (isImageMime(
-                                          model.attachments[i].mime,
-                                        ) &&
-                                        model.attachments[i].bytes.isNotEmpty)
-                                      AttachmentThumb(
-                                        key: Key('composer_attachment_$i'),
-                                        bytes: model.attachments[i].bytes,
-                                        filename: model.attachments[i].filename,
-                                        onDelete: () =>
-                                            state.removeAttachment(i),
-                                        onTap: () => showAttachmentPreview(
-                                          context,
+                              child: SingleChildScrollView(
+                                key: const Key('composer_attachments'),
+                                controller: _attachmentsScroll,
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    for (
+                                      var i = 0;
+                                      i < model.attachments.length;
+                                      i++
+                                    ) ...[
+                                      if (i > 0) const SizedBox(width: 6),
+                                      if (isImageMime(
+                                            model.attachments[i].mime,
+                                          ) &&
+                                          model.attachments[i].bytes.isNotEmpty)
+                                        AttachmentThumb(
+                                          key: Key('composer_attachment_$i'),
                                           bytes: model.attachments[i].bytes,
                                           filename:
                                               model.attachments[i].filename,
-                                        ),
-                                      )
-                                    else
-                                      Chip(
-                                        avatar: const Icon(
-                                          Icons.attach_file,
-                                          size: 14,
-                                        ),
-                                        label: ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 280,
+                                          onDelete: () =>
+                                              state.removeAttachment(i),
+                                          onTap: () => showAttachmentPreview(
+                                            context,
+                                            bytes: model.attachments[i].bytes,
+                                            filename:
+                                                model.attachments[i].filename,
                                           ),
-                                          child: Text(
-                                            model.attachments[i].filename,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                        )
+                                      else
+                                        Chip(
+                                          avatar: const Icon(
+                                            Icons.attach_file,
+                                            size: 14,
                                           ),
+                                          label: ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                              maxWidth: 280,
+                                            ),
+                                            child: Text(
+                                              model.attachments[i].filename,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 0,
+                                          ),
+                                          visualDensity: VisualDensity.compact,
+                                          backgroundColor: theme
+                                              .colorScheme
+                                              .surfaceContainerHigh,
+                                          onDeleted: () =>
+                                              state.removeAttachment(i),
                                         ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 4,
-                                          vertical: 0,
-                                        ),
-                                        visualDensity: VisualDensity.compact,
-                                        backgroundColor: theme
-                                            .colorScheme
-                                            .surfaceContainerHigh,
-                                        onDeleted: () =>
-                                            state.removeAttachment(i),
-                                      ),
-                                ],
+                                    ],
+                                  ],
+                                ),
                               ),
                             ),
                           CallbackShortcuts(
