@@ -197,5 +197,79 @@ void main() {
       expect(state.attachments, isEmpty);
       expect(find.byType(AttachmentThumb), findsNothing);
     });
+
+    testWidgets('attachments stay on one horizontally scrolling row', (
+      tester,
+    ) async {
+      final state = _testState();
+      addTearDown(state.dispose);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      state.addAttachments([
+        for (var i = 0; i < 8; i++)
+          (
+            filename: 'photo_$i.png',
+            mime: 'image/png',
+            bytes: Uint8List.fromList(_pngBytes),
+          ),
+      ]);
+      await tester.pump();
+
+      final scroll = tester.widget<SingleChildScrollView>(
+        find.byKey(const Key('composer_attachments')),
+      );
+      expect(scroll.scrollDirection, Axis.horizontal);
+
+      // Every thumbnail shares the same top edge; a second row would push
+      // the text field down like the old Wrap did.
+      final tops = {
+        for (var i = 0; i < 8; i++)
+          tester.getTopLeft(find.byKey(Key('composer_attachment_$i'))).dy,
+      };
+      expect(tops, hasLength(1));
+    });
+
+    testWidgets('overflowing attachments auto-scroll to the newest item', (
+      tester,
+    ) async {
+      final state = _testState();
+      addTearDown(state.dispose);
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+
+      state.addAttachments([
+        for (var i = 0; i < 8; i++)
+          (
+            filename: 'photo_$i.png',
+            mime: 'image/png',
+            bytes: Uint8List.fromList(_pngBytes),
+          ),
+      ]);
+      await tester.pump();
+      await tester.pump();
+
+      final strip = tester.getRect(
+        find.byKey(const Key('composer_attachments')),
+      );
+      final first = find.byKey(const Key('composer_attachment_0'));
+      final last = find.byKey(const Key('composer_attachment_7'));
+
+      // The strip jumped to the end so the just-added thumbnail is on
+      // screen; the oldest item is scrolled off the left edge.
+      expect(tester.getTopLeft(last).dx, lessThan(strip.right));
+      expect(tester.getTopLeft(first).dx, lessThan(strip.left));
+
+      // The user can still scroll back to the first items.
+      await tester.drag(
+        find.byKey(const Key('composer_attachments')),
+        const Offset(400, 0),
+      );
+      await tester.pump();
+
+      expect(tester.getTopLeft(first).dx, greaterThanOrEqualTo(strip.left));
+    });
   });
 }
