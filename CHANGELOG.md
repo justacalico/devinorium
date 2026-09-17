@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.80.0 - 2026-09-17
+#### Features
+- 添加 Machines 远程机器控制 - (a7526a6) - HttpAnimations
+#### Bug Fixes
+- 附件改为横向滚动避免挤掉输入框 - (1983722) - HttpAnimations
+- 修复 clippy 告警 - (020de5e) - HttpAnimations
+
+- - -
+
 ## v0.79.1 - 2026-09-16
 #### Bug Fixes
 - 添加项目对话框的输入框不再自动聚焦 - (d07197a) - HttpAnimations
