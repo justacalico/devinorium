@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.80.1 - 2026-09-19
+#### Bug Fixes
+- 无活跃线程时切换到编辑器不再自动打开文件面板 - (e525be8) - HttpAnimations
+
+- - -
+
 ## v0.80.0 - 2026-09-17
 #### Features
 - 添加 Machines 远程机器控制 - (a7526a6) - HttpAnimations
