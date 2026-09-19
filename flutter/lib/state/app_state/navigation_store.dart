@@ -31,7 +31,10 @@ mixin NavigationStore on AppStateBase {
     if (_appMode == m) return;
     _appMode = m;
     _page = MainPage.threads;
-    _filesPanelOpen = m == AppMode.editor;
+    // The editor's files view only has something to show while a thread is
+    // active; without one it would just hide the thread list behind a
+    // placeholder, so stay on the thread list instead.
+    _filesPanelOpen = m == AppMode.editor && _activeStore != null;
     _gitPanelOpen = false;
     notifyListeners();
   }

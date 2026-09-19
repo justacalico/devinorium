@@ -374,6 +374,12 @@ class AppState extends AppStateBase
     _activeStore = store;
     _activeThreadId = store?.threadId;
     _planOverlayVisible = false;
+    // In editor mode the files view follows the active thread: opening one
+    // swaps the sidebar to it, losing the thread swaps back to the list.
+    if (_appMode == AppMode.editor) {
+      _filesPanelOpen = store != null;
+      _gitPanelOpen = false;
+    }
     // Keep _planOverlayExpanded and _planOverlayUserDismissed as user
     // preferences so they survive thread switches and app restarts.
     store?.onStateChanged = _onThreadStoreChanged;

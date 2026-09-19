@@ -90,7 +90,7 @@ void main() {
     });
 
     test('switching to editor opens files panel and shows threads page', () {
-      final state = AppState.test();
+      final state = AppState.test(activeThreadId: 't1');
       state.setPage(MainPage.settings);
       state.setAppMode(AppMode.editor);
 
@@ -99,8 +99,73 @@ void main() {
       expect(state.filesPanelOpen, isTrue);
     });
 
-    test('switching to agents closes files panel and shows threads page', () {
+    test('switching to editor without a thread keeps the files panel closed',
+        () {
       final state = AppState.test();
+      state.setPage(MainPage.settings);
+      state.setAppMode(AppMode.editor);
+
+      expect(state.appMode, AppMode.editor);
+      expect(state.page, MainPage.threads);
+      expect(state.filesPanelOpen, isFalse);
+    });
+
+    test('opening a thread in editor mode opens the files panel', () async {
+      final client = _clientFor([
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'm1',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, {'project_id': 1, 'path': '/x'}),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+      );
+      state.setAppMode(AppMode.editor);
+      expect(state.filesPanelOpen, isFalse);
+
+      await state.openThread('a');
+
+      expect(state.activeThreadId, 'a');
+      expect(state.filesPanelOpen, isTrue);
+    });
+
+    test('losing the active thread in editor mode closes the files panel',
+        () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final state = AppState.test(
+        api: _serviceFor(client),
+        projects: [project],
+        activeProjectId: 1,
+        activeThreadId: 't1',
+      );
+      state.setAppMode(AppMode.editor);
+      expect(state.filesPanelOpen, isTrue);
+
+      await state.deleteThread('t1');
+
+      expect(state.activeThreadId, isNull);
+      expect(state.filesPanelOpen, isFalse);
+    });
+
+    test('switching to agents closes files panel and shows threads page', () {
+      final state = AppState.test(activeThreadId: 't1');
       state.setAppMode(AppMode.editor);
       expect(state.filesPanelOpen, isTrue);
 
@@ -113,7 +178,7 @@ void main() {
     });
 
     test('switching to the same mode is a no-op', () {
-      final state = AppState.test();
+      final state = AppState.test(activeThreadId: 't1');
       state.setAppMode(AppMode.editor);
       expect(state.filesPanelOpen, isTrue);
 
@@ -122,7 +187,7 @@ void main() {
     });
 
     test('no-op mode switch preserves page and panel state', () {
-      final state = AppState.test();
+      final state = AppState.test(activeThreadId: 't1');
       state.setAppMode(AppMode.editor);
       state.setPage(MainPage.settings);
 
