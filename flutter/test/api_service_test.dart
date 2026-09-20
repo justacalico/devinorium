@@ -409,6 +409,57 @@ void main() {
       final threads = await service.listThreadsForProject(1);
       expect(threads, isEmpty);
     });
+
+    test('projectIcon decodes base64 and mime', () async {
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/projects/7/icon'));
+        return _json(200, {
+          'mime': 'image/png',
+          'base64': base64Encode(bytes),
+        });
+      });
+      final service = _serviceFor(mock);
+      final icon = await service.projectIcon(7);
+      expect(icon, isNotNull);
+      expect(icon!.mime, 'image/png');
+      expect(icon.bytes, bytes);
+    });
+
+    test('projectIcon returns null on 404', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('GET', '/api/projects/7/icon'));
+        return _json(404, {'error': 'no icon'});
+      });
+      final service = _serviceFor(mock);
+      expect(await service.projectIcon(7), isNull);
+    });
+
+    test('projectIcon memoizes per project', () async {
+      var calls = 0;
+      final mock = MockClient((req) async {
+        calls++;
+        return _json(200, {'mime': 'image/png', 'base64': base64Encode([1])});
+      });
+      final service = _serviceFor(mock);
+      await service.projectIcon(7);
+      await service.projectIcon(7);
+      await service.projectIcon(8);
+      expect(calls, 2);
+    });
+
+    test('projectIcon evicts failures so the next call retries', () async {
+      var calls = 0;
+      final mock = MockClient((req) async {
+        calls++;
+        if (calls == 1) return _json(500, {'error': 'boom'});
+        return _json(200, {'mime': 'image/png', 'base64': base64Encode([1])});
+      });
+      final service = _serviceFor(mock);
+      expect(await service.projectIcon(7), isNull);
+      expect((await service.projectIcon(7))?.mime, 'image/png');
+      expect(calls, 2);
+    });
   });
 
   group('Threads', () {

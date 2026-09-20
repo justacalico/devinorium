@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:devinorium_frontend/views/project_icon.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -51,6 +55,63 @@ void main() {
         colors.add(projectIconForType(t).color.toARGB32());
       }
       expect(colors.length, types.length);
+    });
+  });
+
+  group('ProjectIconImage', () {
+    const fallback = SizedBox(key: Key('fallback'));
+
+    // 1x1 transparent PNG.
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+      'AAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    );
+
+    testWidgets('renders raster bytes through Image', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProjectIconImage(
+            icon: (mime: 'image/png', bytes: png),
+            fallback: fallback,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.byKey(const Key('fallback')), findsNothing);
+    });
+
+    testWidgets('renders svg bytes through SvgPicture', (tester) async {
+      final svg = Uint8List.fromList(
+        utf8.encode(
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+          '<rect width="16" height="16"/></svg>',
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProjectIconImage(
+            icon: (mime: 'image/svg+xml', bytes: svg),
+            fallback: fallback,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(SvgPicture), findsOneWidget);
+    });
+
+    testWidgets('shows the fallback for undecodable bytes', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProjectIconImage(
+            icon: (mime: 'image/png', bytes: Uint8List.fromList([1, 2, 3])),
+            fallback: fallback,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('fallback')), findsOneWidget);
     });
   });
 }

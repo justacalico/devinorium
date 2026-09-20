@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
+import '../api/api_service.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../servers/server_profile.dart';
