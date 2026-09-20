@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.81.0 - 2026-09-20
+#### Features
+- 项目侧栏显示真实应用图标 - (0a413a0) - HttpAnimations
+
+- - -
+
 ## v0.80.1 - 2026-09-19
 #### Bug Fixes
 - 无活跃线程时切换到编辑器不再自动打开文件面板 - (e525be8) - HttpAnimations
