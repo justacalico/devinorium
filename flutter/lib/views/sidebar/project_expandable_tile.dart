@@ -49,7 +49,7 @@ class _ProjectExpandableTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           alignment: Alignment.center,
-          child: _ProjectIcon(project: project, color: color),
+          child: _ProjectIcon(project: project),
         ),
         title: Tooltip(
           message: project.path,

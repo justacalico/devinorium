@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/views/project_icon.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:devinorium_frontend/widgets/provider_icons.dart';
 import 'package:devinorium_frontend/widgets/thread_tag.dart';
@@ -96,8 +99,13 @@ class _FakeApiService extends ApiService {
   final reorderedProjectIds = <List<int>>[];
   List<Thread> listThreadsResult = const [];
   bool healthOk = true;
+  final projectIcons = <int, ({String mime, Uint8List bytes})>{};
 
   _FakeApiService() : super(client: _ThrowingClient());
+
+  @override
+  Future<({String mime, Uint8List bytes})?> projectIcon(int projectId) =>
+      Future.value(projectIcons[projectId]);
 
   @override
   Future<void> deleteThread(String id) {
@@ -578,6 +586,80 @@ void main() {
     await _openDrawer(tester);
 
     expect(find.text('My thread'), findsOneWidget);
+  });
+
+  testWidgets('Project app icon replaces the type icon', (tester) async {
+    final api = _FakeApiService();
+    api.projectIcons[1] = (
+      mime: 'image/svg+xml',
+      bytes: Uint8List.fromList(utf8.encode(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+        '<rect width="16" height="16"/></svg>',
+      )),
+    );
+    final state = AppState.test(
+      api: api,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(
+          id: 1,
+          name: 'p',
+          path: '/x',
+          projectType: 'rust',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+    await tester.pump();
+
+    expect(find.byType(ProjectIconImage), findsOneWidget);
+    expect(find.byIcon(Icons.build), findsNothing);
+  });
+
+  testWidgets('Project without an app icon keeps the type icon', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      projects: [
+        Project(
+          id: 1,
+          name: 'p',
+          path: '/x',
+          projectType: 'rust',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+    await tester.pump();
+
+    expect(find.byType(ProjectIconImage), findsNothing);
+    expect(find.byIcon(Icons.build), findsOneWidget);
   });
 
   testWidgets('Active thread is highlighted instead of project card', (

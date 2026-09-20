@@ -5449,6 +5449,157 @@ async fn project_accepts_home_root_with_empty_path() {
 }
 
 #[tokio::test]
+async fn project_icon_returns_resolved_icon() {
+    use base64::Engine;
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let dir = home.join("iconned");
+    std::fs::create_dir_all(dir.join("public")).unwrap();
+    std::fs::write(dir.join("public/favicon.svg"), "<svg>icon</svg>").unwrap();
+
+    let body = r#"{"name":"iconned","path":"iconned"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let pid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_i64()
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/icon"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let j = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(j["mime"].as_str().unwrap(), "image/svg+xml");
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(j["base64"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(decoded, b"<svg>icon</svg>");
+}
+
+#[tokio::test]
+async fn project_icon_prefers_devinorium_json_icon_path() {
+    use base64::Engine;
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let dir = home.join("configured");
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    std::fs::write(dir.join("favicon.svg"), "<svg>auto</svg>").unwrap();
+    std::fs::write(dir.join("assets/logo.png"), b"png-bytes").unwrap();
+    std::fs::write(
+        dir.join("devinorium.json"),
+        r#"{"iconPath": "assets/logo.png"}"#,
+    )
+    .unwrap();
+
+    let body = r#"{"name":"configured","path":"configured"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let pid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_i64()
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/icon"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let j = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    assert_eq!(j["mime"].as_str().unwrap(), "image/png");
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(j["base64"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(decoded, b"png-bytes");
+}
+
+#[tokio::test]
+async fn project_icon_404_when_no_icon() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/icon"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn project_icon_scoped_to_owner() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let dir = home.join("mine");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("favicon.png"), b"png").unwrap();
+
+    let body = r#"{"name":"mine","path":"mine"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_str(resp.into_body()).await;
+    let pid = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+        .as_i64()
+        .unwrap();
+
+    create_user(&app, &cookie, "alice", "alicepass123").await;
+    let alice = login_as(&app, "alice", "alicepass123").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{pid}/icon"),
+            &alice,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn project_rejects_traversal() {
     let (state, _db) = app_state().await;
     let app = devinorium::build_app(state);

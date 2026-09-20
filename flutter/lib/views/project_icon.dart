@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// Maps a project type string to an icon and color for the sidebar.
 class ProjectIcon {
@@ -11,8 +14,8 @@ class ProjectIcon {
 /// Returns an icon + color for the given project type.
 ///
 /// The type is detected by the backend from marker files (pubspec.yaml,
-/// Cargo.toml, etc.) and stored in the database. Unknown types fall back
-/// to a generic folder icon.
+/// Cargo.toml, etc.) and stored in the database. It is only used as the
+/// fallback when the project has no resolvable app icon file.
 ProjectIcon projectIconForType(String type) {
   return switch (type) {
     'flutter' => const ProjectIcon(Icons.flutter_dash, Color(0xFF02569B)),
@@ -28,4 +31,55 @@ ProjectIcon projectIconForType(String type) {
     'swift' => const ProjectIcon(Icons.extension, Color(0xFFF05138)),
     _ => const ProjectIcon(Icons.folder_outlined, Color(0xFF607D8B)),
   };
+}
+
+/// The project's app icon bytes as returned by `GET /api/projects/:id/icon`.
+/// SVG sources render through flutter_svg; everything else goes through the
+/// image codec. Undecodable content shows [fallback].
+class ProjectIconImage extends StatelessWidget {
+  final ({String mime, Uint8List bytes}) icon;
+  final Widget fallback;
+  final double size;
+
+  const ProjectIconImage({
+    super.key,
+    required this.icon,
+    required this.fallback,
+    this.size = 30,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(6);
+    if (icon.mime == 'image/svg+xml') {
+      return ClipRRect(
+        borderRadius: radius,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: SvgPicture.memory(
+            icon.bytes,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => fallback,
+          ),
+        ),
+      );
+    }
+    // Decode at the display size so a multi-megabyte source image does not
+    // end up as a full-resolution texture for a 30px slot.
+    final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
+    return ClipRRect(
+      borderRadius: radius,
+      child: Image.memory(
+        icon.bytes,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: px,
+        cacheHeight: px,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
+  }
 }

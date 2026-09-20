@@ -24,6 +24,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/projects/:id/pin", post(pin))
         .route("/api/projects/:id/group", patch(set_group))
         .route("/api/projects/:id/threads", get(list_threads))
+        .route("/api/projects/:id/icon", get(icon))
 }
 
 #[derive(Debug, Serialize)]
@@ -578,6 +579,49 @@ async fn delete_one(
         .await;
     }
     StatusCode::NO_CONTENT.into_response()
+}
+
+/// The project's resolved app icon, sent as base64 like message attachments.
+/// 404 when the project has no icon so the client can use its local fallback.
+async fn icon(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i64>,
+) -> Response {
+    let project = match state.db.get_project(id, user.id).await {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new("not found")),
+            )
+                .into_response()
+        }
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+
+    // Discovery walks the filesystem; keep it off the async executor.
+    let path = project.path.clone();
+    let resolved = tokio::task::spawn_blocking(move || {
+        crate::projects::icon::resolve_and_load(std::path::Path::new(&path))
+    })
+    .await;
+    match resolved.unwrap_or(None) {
+        Some((bytes, mime)) => {
+            use base64::Engine;
+            Json(serde_json::json!({
+                "mime": mime,
+                "size": bytes.len(),
+                "base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+            }))
+            .into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("no icon")),
+        )
+            .into_response(),
+    }
 }
 
 async fn list_threads(

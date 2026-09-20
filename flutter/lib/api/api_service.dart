@@ -916,6 +916,51 @@ class ApiService {
     await _client.post('/api/threads/$id/stop', {});
   }
 
+  /// Resolved project icons, keyed by project id. Each ApiService instance
+  /// belongs to one server, so the cache is naturally server-scoped. Entries
+  /// expire after a minute so a newly added or changed icon shows up without
+  /// an app restart.
+  static const _projectIconTtl = Duration(minutes: 1);
+  final Map<int, (Future<({String mime, Uint8List bytes})?>, DateTime)>
+  _projectIconCache = {};
+
+  /// Fetch the project's app icon resolved by the server, or `null` when the
+  /// project has none. Results are memoized for [_projectIconTtl]; failed
+  /// requests are evicted so the next call retries.
+  Future<({String mime, Uint8List bytes})?> projectIcon(int projectId) {
+    final hit = _projectIconCache[projectId];
+    if (hit != null &&
+        DateTime.now().difference(hit.$2) < _projectIconTtl) {
+      return hit.$1;
+    }
+    late final Future<({String mime, Uint8List bytes})?> future;
+    future = _fetchProjectIcon(projectId).catchError((_) {
+      if (identical(_projectIconCache[projectId]?.$1, future)) {
+        _projectIconCache.remove(projectId);
+      }
+      return null;
+    });
+    _projectIconCache[projectId] = (future, DateTime.now());
+    return future;
+  }
+
+  Future<({String mime, Uint8List bytes})?> _fetchProjectIcon(
+    int projectId,
+  ) async {
+    try {
+      final j = await _client.get('/api/projects/$projectId/icon');
+      final b64 = j['base64'];
+      if (b64 is! String || b64.isEmpty) return null;
+      return (
+        mime: j['mime'] as String? ?? 'application/octet-stream',
+        bytes: base64Decode(b64),
+      );
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   /// Fetch a stored message attachment. [index] is the attachment's `index`
   /// from the message metadata (its position among the uploaded files).
   Future<({String filename, String mime, Uint8List bytes})>
