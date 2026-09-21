@@ -944,6 +944,47 @@
       }
     }
   },
+  "federationNodes": "Nodes",
+  "@federationNodes": {
+    "description": "Federation satellites section title in settings"
+  },
+  "federationNodesHint": "Satellite machines registered with this server. Pick one to run the app against that machine through this server.",
+  "@federationNodesHint": {
+    "description": "Description under the federation nodes settings title"
+  },
+  "noNodesRegistered": "No satellites registered.",
+  "@noNodesRegistered": {
+    "description": "Empty state when the active server has no federation satellites"
+  },
+  "switchNode": "Switch node",
+  "@switchNode": {
+    "description": "Tooltip for the federation node switcher"
+  },
+  "thisHub": "This hub",
+  "@thisHub": {
+    "description": "Label for the hub itself in the node switcher"
+  },
+  "nodeOnline": "online",
+  "@nodeOnline": {
+    "description": "Badge for a federation node that heartbeats normally"
+  },
+  "nodeOffline": "offline",
+  "@nodeOffline": {
+    "description": "Badge for a federation node whose heartbeat has lapsed"
+  },
+  "removeNode": "Remove node",
+  "@removeNode": {
+    "description": "Button to deregister a federation satellite"
+  },
+  "removeNodeConfirm": "Remove \"{name}\"? The satellite will appear again the next time it heartbeats unless it is stopped.",
+  "@removeNodeConfirm": {
+    "description": "Confirmation before deregistering a federation satellite",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tailscaleDescription": "Access this server from other devices on your Tailnet.",
   "@tailscaleDescription": {
     "description": "Help text in the Tailscale settings card"

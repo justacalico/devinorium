@@ -1493,6 +1493,35 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get federationNodes => '节点';
+
+  @override
+  String get federationNodesHint => '注册到此服务器的卫星机器。选择一个节点后应用将通过此服务器在该机器上运行。';
+
+  @override
+  String get noNodesRegistered => '未注册任何卫星节点';
+
+  @override
+  String get switchNode => '切换节点';
+
+  @override
+  String get thisHub => '本枢纽';
+
+  @override
+  String get nodeOnline => '在线';
+
+  @override
+  String get nodeOffline => '离线';
+
+  @override
+  String get removeNode => '移除节点';
+
+  @override
+  String removeNodeConfirm(String name) {
+    return '移除“$name”？除非停止该卫星节点，否则它会在下次心跳时再次出现。';
+  }
+
+  @override
   String get tailscaleDescription => '从同一 Tailnet 中的其他设备访问此服务器';
 
   @override

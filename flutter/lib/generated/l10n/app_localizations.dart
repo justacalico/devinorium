@@ -2798,6 +2798,60 @@ abstract class AppLocalizations {
   /// **'Remove \"{name}\" from Devinorium? This will delete the saved connection.'**
   String deleteServerConfirm(String name);
 
+  /// Federation satellites section title in settings
+  ///
+  /// In en, this message translates to:
+  /// **'Nodes'**
+  String get federationNodes;
+
+  /// Description under the federation nodes settings title
+  ///
+  /// In en, this message translates to:
+  /// **'Satellite machines registered with this server. Pick one to run the app against that machine through this server.'**
+  String get federationNodesHint;
+
+  /// Empty state when the active server has no federation satellites
+  ///
+  /// In en, this message translates to:
+  /// **'No satellites registered.'**
+  String get noNodesRegistered;
+
+  /// Tooltip for the federation node switcher
+  ///
+  /// In en, this message translates to:
+  /// **'Switch node'**
+  String get switchNode;
+
+  /// Label for the hub itself in the node switcher
+  ///
+  /// In en, this message translates to:
+  /// **'This hub'**
+  String get thisHub;
+
+  /// Badge for a federation node that heartbeats normally
+  ///
+  /// In en, this message translates to:
+  /// **'online'**
+  String get nodeOnline;
+
+  /// Badge for a federation node whose heartbeat has lapsed
+  ///
+  /// In en, this message translates to:
+  /// **'offline'**
+  String get nodeOffline;
+
+  /// Button to deregister a federation satellite
+  ///
+  /// In en, this message translates to:
+  /// **'Remove node'**
+  String get removeNode;
+
+  /// Confirmation before deregistering a federation satellite
+  ///
+  /// In en, this message translates to:
+  /// **'Remove \"{name}\"? The satellite will appear again the next time it heartbeats unless it is stopped.'**
+  String removeNodeConfirm(String name);
+
   /// Help text in the Tailscale settings card
   ///
   /// In en, this message translates to:

@@ -15,6 +15,7 @@ import '../state/app_state.dart';
 import '../theme/theme.dart';
 import '../utils/link_opener.dart';
 import '../utils/permission_modes.dart';
+import '../utils/time_ago.dart';
 import '../widgets/git_provider_icons.dart';
 import '../widgets/git_provider_tile.dart';
 import '../widgets/message_view.dart';
@@ -37,6 +38,7 @@ part 'settings/usage_section.dart';
 part 'settings/servers_section.dart';
 part 'settings/tailscale_section.dart';
 part 'settings/machines_section.dart';
+part 'settings/nodes_section.dart';
 part 'settings/section_card.dart';
 part 'settings/settings_row.dart';
 
