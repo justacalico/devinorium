@@ -98,6 +98,7 @@ async fn make_state_as(
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: devinorium::federation::http_client(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (state, database)
 }

@@ -87,6 +87,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (devinorium::build_app(state), database)
 }
@@ -258,6 +259,134 @@ async fn rate_limit_blocks_after_burst() {
 }
 
 #[tokio::test]
+async fn rate_limit_probes_with_bogus_credentials_are_charged() {
+    let (app, _db) = make_app(None).await;
+    // A forged Cookie header must not launder the probe into a free read:
+    // the auth middleware debits the probe bucket when the credential fails.
+    for cookie in ["x=y", "devinorium_session=forged"] {
+        let mut saw_limited = false;
+        for _ in 0..25 {
+            let resp = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri("/api/threads")
+                        .header(header::COOKIE, cookie)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = resp.status();
+            assert!(
+                status == StatusCode::UNAUTHORIZED || status == StatusCode::TOO_MANY_REQUESTS,
+                "probe must fail, got {status}"
+            );
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                saw_limited = true;
+                break;
+            }
+        }
+        assert!(saw_limited, "probes with `{cookie}` never hit 429");
+    }
+}
+
+#[tokio::test]
+async fn rate_limit_machine_token_failures_are_charged() {
+    let (app, _db) = make_app(None).await;
+    // Public route with its own token auth: a bogus Bearer must still pay
+    // the probe rate instead of riding the cheap write classification.
+    let mut saw_limited = false;
+    for _ in 0..25 {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/machine-control/1/screenshot")
+                    .header(header::AUTHORIZATION, "Bearer bogus")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = resp.status();
+        assert!(
+            status == StatusCode::UNAUTHORIZED || status == StatusCode::TOO_MANY_REQUESTS,
+            "probe must fail, got {status}"
+        );
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            saw_limited = true;
+            break;
+        }
+    }
+    assert!(saw_limited, "machine-token probes never hit 429");
+}
+
+#[tokio::test]
+async fn rate_limit_federation_register_failures_are_charged() {
+    let (app, _db) = make_app(None).await;
+    let mut saw_limited = false;
+    for _ in 0..25 {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/federation/register")
+                    .header(header::AUTHORIZATION, "Bearer bogus")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = resp.status();
+        assert!(
+            status == StatusCode::UNAUTHORIZED || status == StatusCode::TOO_MANY_REQUESTS,
+            "probe must fail, got {status}"
+        );
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            saw_limited = true;
+            break;
+        }
+    }
+    assert!(saw_limited, "federation-token probes never hit 429");
+}
+
+async fn bad_login(app: Router, username: &str) -> StatusCode {
+    app.oneshot(
+        Request::builder()
+            .method("POST")
+            .uri("/api/auth/login")
+            .header(header::HOST, "localhost:7878")
+            .header(header::ORIGIN, "http://localhost:7878")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(
+                r#"{{"username":"{username}","password":"wrong-password"}}"#
+            )))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+    .status()
+}
+
+#[tokio::test]
+async fn rate_limit_login_throttles_per_username() {
+    let (app, _db) = make_app(None).await;
+    // 20 attempts at one username drain the per-username bucket; the next
+    // attempt for the same name is 429 even though the IP bucket has room.
+    let mut last = StatusCode::OK;
+    for _ in 0..21 {
+        last = bad_login(app.clone(), "owner").await;
+    }
+    assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
+    // A different username still reaches the verifier (401, not 429).
+    assert_eq!(bad_login(app, "someone-else").await, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn body_size_limit_rejects_oversized() {
     // Build an app with a tiny body limit.
     let dir = tempfile::tempdir().unwrap().keep();
@@ -317,6 +446,7 @@ async fn body_size_limit_rejects_oversized() {
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     let app = devinorium::build_app(state);
 

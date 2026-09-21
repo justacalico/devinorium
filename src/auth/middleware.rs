@@ -80,6 +80,10 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         }
     }
 
+    // Extracted once so every auth failure below pays the same total price.
+    let client_ip = crate::security::ip::from_req(&req);
+    let upfront_cost = crate::security::rate_limit::classify(&req).cost();
+
     // Session lookup tries the explicit bearer credential first, then the
     // cookie — so a stale or proxy-injected header cannot shadow a valid
     // session cookie, and a stale cookie cannot shadow a working bearer.
@@ -93,12 +97,12 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         }
     }
     let (Some(session), Some(token)) = (session, token) else {
-        return unauthorized("invalid session");
+        return reject(&state, &client_ip, upfront_cost, "invalid session").await;
     };
 
     let user = match state.db.get_user_by_id(session.user_id).await {
         Ok(Some(u)) => u,
-        _ => return unauthorized("no user"),
+        _ => return reject(&state, &client_ip, upfront_cost, "no user").await,
     };
 
     // Role check: the only permitted role is "user". This is belt-and-suspenders
@@ -107,11 +111,11 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
     if user.role != "user" {
         // Revoke the session for a non-user role (should be impossible).
         let _ = state.db.delete_session(&token).await;
-        return unauthorized("role not permitted");
+        return reject(&state, &client_ip, upfront_cost, "role not permitted").await;
     }
     if user.disabled {
         let _ = state.db.delete_session(&token).await;
-        return unauthorized("disabled");
+        return reject(&state, &client_ip, upfront_cost, "disabled").await;
     }
 
     // Touch last-seen (best-effort, non-blocking on error).
@@ -140,6 +144,18 @@ async fn run_as_local(state: AppState, req: Request, next: Next) -> Response {
         }
         _ => unauthorized("local user missing"),
     }
+}
+
+/// A rejected request pays the `UnauthProbe` rate in total: whatever the
+/// global classifier already charged, the failure tops it up here. A bogus
+/// `Cookie` or `Bearer` cannot launder a probe into a cheap write, and a
+/// probe with no credentials does not get charged twice. Once the bucket is
+/// dry the response escalates to 429.
+async fn reject(state: &AppState, ip: &str, upfront: f64, reason: &'static str) -> Response {
+    if !crate::security::rate_limit::charge_auth_failure(&state.rate_limiter, ip, upfront).await {
+        return (StatusCode::TOO_MANY_REQUESTS, "rate limited").into_response();
+    }
+    unauthorized(reason)
 }
 
 fn unauthorized(reason: &'static str) -> Response {

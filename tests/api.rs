@@ -443,6 +443,7 @@ async fn app_state() -> (AppState, db::Db) {
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (state, database)
 }

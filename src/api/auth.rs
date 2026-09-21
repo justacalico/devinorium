@@ -57,6 +57,25 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
                 .into_response()
         }
     };
+    // Per-username throttle on top of the per-IP one: rotating source IPs
+    // cannot spray guesses at one account faster than this bucket refills.
+    // The block runs before argon2 so a dry bucket costs the attacker no
+    // verify work and the server no CPU; a targeted sender can throttle a
+    // known username, which is the accepted price of stuffing protection
+    // on a self-hosted install (the in-memory bucket resets on restart).
+    let uname_key = username.trim().to_lowercase();
+    if !state
+        .rate_limiter
+        .check("login-user", &uname_key, 25.0)
+        .await
+    {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(auth_json_err("rate limited")),
+        )
+            .into_response();
+    }
+
     // Load user by username. To avoid user-enumeration timing, we always do
     // a dummy hash verify even when the user doesn't exist.
     let user = state.db.get_user_by_username(username).await.ok().flatten();

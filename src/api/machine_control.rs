@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use axum::extract::{Path, State};
+use axum::extract::{Extension, Path, State};
 use axum::http::header::HeaderValue;
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -19,6 +19,8 @@ use serde::Deserialize;
 
 use crate::api::{map_err_internal, ApiError};
 use crate::machine_grants::GrantInfo;
+use crate::security::ip::ClientIp;
+use crate::security::rate_limit::{charge_auth_failure, EndpointClass};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -36,41 +38,61 @@ pub fn router() -> Router<AppState> {
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Resolve the bearer token to its grant, then check machine coverage.
-/// `Err` is the response to return.
+/// `Err` carries whether a Bearer header was present (for rate-limit
+/// pricing) plus the response to return.
 #[allow(clippy::result_large_err)]
 fn authorize(
     state: &AppState,
     headers: &axum::http::HeaderMap,
     machine_id: i64,
-) -> Result<GrantInfo, Response> {
+) -> Result<GrantInfo, (bool, Response)> {
     let token = headers
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.trim().strip_prefix("Bearer "))
-        .unwrap_or("");
-    match state.machine_grants.lookup(token) {
+        .and_then(|s| s.trim().strip_prefix("Bearer "));
+    let bearer_seen = token.is_some();
+    match state.machine_grants.lookup(token.unwrap_or("")) {
         None => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ApiError::new("invalid machine token")),
-        )
-            .into_response()),
+            bearer_seen,
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiError::new("invalid machine token")),
+            )
+                .into_response(),
+        )),
         Some(grant) if !grant.machine_ids.contains(&machine_id) => Err((
-            StatusCode::FORBIDDEN,
-            Json(ApiError::new("token does not cover this machine")),
-        )
-            .into_response()),
+            bearer_seen,
+            (
+                StatusCode::FORBIDDEN,
+                Json(ApiError::new("token does not cover this machine")),
+            )
+                .into_response(),
+        )),
         Some(grant) => Ok(grant),
     }
 }
 
+/// A failed machine-token check pays the same probe rate as session-auth
+/// failures, topped up from whatever the request already cost upfront.
+async fn auth_fail(state: &AppState, ip: &str, upfront: f64, r: Response) -> Response {
+    if !charge_auth_failure(&state.rate_limiter, ip, upfront).await {
+        return (StatusCode::TOO_MANY_REQUESTS, "rate limited").into_response();
+    }
+    r
+}
+
 async fn screenshot(
     State(state): State<AppState>,
+    Extension(client_ip): Extension<ClientIp>,
     Path(machine_id): Path<i64>,
     headers: axum::http::HeaderMap,
 ) -> Response {
     let grant = match authorize(&state, &headers, machine_id) {
         Ok(g) => g,
-        Err(r) => return r,
+        Err((_seen, r)) => {
+            // A GET never costs more than a read upfront.
+            return auth_fail(&state, &client_ip.0, EndpointClass::AuthRead.cost(), r).await;
+        }
     };
     let machine = match state.db.get_machine(machine_id).await {
         Ok(Some(m)) => m,
@@ -270,13 +292,23 @@ async fn run_input(
 
 async fn input(
     State(state): State<AppState>,
+    Extension(client_ip): Extension<ClientIp>,
     Path(machine_id): Path<i64>,
     headers: axum::http::HeaderMap,
     Json(req): Json<MachineInput>,
 ) -> Response {
     let grant = match authorize(&state, &headers, machine_id) {
         Ok(g) => g,
-        Err(r) => return r,
+        Err((seen, r)) => {
+            // Matches classify(): a bearer POST is a write, a bare one is a probe.
+            let upfront = if seen {
+                EndpointClass::AuthWrite
+            } else {
+                EndpointClass::UnauthProbe
+            }
+            .cost();
+            return auth_fail(&state, &client_ip.0, upfront, r).await;
+        }
     };
     if let Err(r) = validate_input(&req) {
         return r;

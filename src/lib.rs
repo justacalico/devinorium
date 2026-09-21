@@ -76,6 +76,10 @@ pub struct AppState {
     /// heartbeats and hub-side request proxying. Has no overall timeout so
     /// proxied SSE streams can run indefinitely.
     pub http_client: reqwest::Client,
+    /// Shared weighted token bucket. The global middleware charges by
+    /// endpoint class; auth/login code debits extra on failures so probes
+    /// cannot hide behind header tricks or rotating source IPs.
+    pub rate_limiter: security::RateLimiter,
 }
 
 impl AppState {
@@ -183,7 +187,9 @@ pub fn build_app(state: AppState) -> Router {
     // This means a brute-force attacker depletes the bucket in ~25 tries,
     // while a normal authenticated user can browse freely and send many
     // messages before being throttled. After depletion, 1 login every 10s.
-    let limiter = security::RateLimiter::new(500, 2.0);
+    // The instance lives on AppState so auth handlers can debit the same
+    // buckets on credential failures.
+    let limiter = state.rate_limiter.clone();
 
     // Public routes (no auth). Machine-control endpoints authenticate
     // with per-run capability tokens inside their handlers; the federation

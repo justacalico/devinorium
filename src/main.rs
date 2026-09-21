@@ -168,6 +168,7 @@ async fn main() -> Result<()> {
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
         push,
         bound_addr: Arc::new(std::sync::OnceLock::new()),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
         http_client: devinorium::federation::http_client(),
     };
 
