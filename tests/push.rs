@@ -258,6 +258,79 @@ async fn subscribe_validates_endpoint_and_keys() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Plain http endpoints are rejected — the VAPID JWT must never travel
+    // unencrypted and browsers only ever mint https endpoints.
+    let bad = serde_json::json!({
+        "endpoint": "http://push.example.com/x",
+        "keys": { "p256dh": b64u(&[4u8; 65]), "auth": b64u(&[9u8; 16]) },
+    })
+    .to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/push/subscriptions", &cookie, &bad))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // A 65-byte p256dh that does not start with the uncompressed-point
+    // marker (0x04) is rejected before it ever reaches ECDH.
+    let mut point = vec![0x05u8];
+    point.extend_from_slice(&[7u8; 64]);
+    let bad = serde_json::json!({
+        "endpoint": "https://push.example.com/x",
+        "keys": { "p256dh": b64u(&point), "auth": b64u(&[9u8; 16]) },
+    })
+    .to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("PUT", "/api/push/subscriptions", &cookie, &bad))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn subscribe_is_capped_per_user() {
+    let (app, _db) = make_app(true).await;
+    let cookie = login(&app).await;
+    for i in 0..16 {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "PUT",
+                "/api/push/subscriptions",
+                &cookie,
+                &valid_sub(&format!("https://push.example.com/sub/{i}")),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+    // A 17th distinct endpoint is rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/push/subscriptions",
+            &cookie,
+            &valid_sub("https://push.example.com/sub/16"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    // Resubscribing an existing endpoint still works at the cap.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/push/subscriptions",
+            &cookie,
+            &valid_sub("https://push.example.com/sub/0"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
 #[tokio::test]

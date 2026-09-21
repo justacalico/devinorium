@@ -10,6 +10,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, put};
 use axum::{Json, Router};
+use base64::Engine as _;
 use serde::Deserialize;
 
 use crate::api::{map_err_internal, ApiError};
@@ -65,23 +66,39 @@ fn valid_b64url(s: &str, min: usize, max: usize) -> bool {
         .unwrap_or(false)
 }
 
+/// Cap on subscriptions per user. Browsers create one per profile/device;
+/// 16 is generous headroom while keeping the table from being flooded.
+const MAX_SUBSCRIPTIONS_PER_USER: usize = 16;
+
 async fn subscribe(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
+    headers: axum::http::HeaderMap,
     Json(req): Json<SubscribeRequest>,
 ) -> Response {
     let endpoint = req.endpoint.trim();
-    // Only http(s) endpoints are push services; anything else would let a
-    // subscriber turn the server into an SSRF client.
-    if crate::push::crypto::endpoint_origin(endpoint).is_err() || endpoint.len() > 2048 {
+    // Browser push endpoints are always https. Accepting anything else would
+    // leak the VAPID JWT in plaintext and let a subscriber point outbound
+    // POSTs at internal services.
+    if !endpoint.starts_with("https://")
+        || crate::push::crypto::endpoint_origin(endpoint).is_err()
+        || endpoint.len() > 2048
+    {
         return (
             StatusCode::BAD_REQUEST,
             Json(ApiError::new("invalid endpoint")),
         )
             .into_response();
     }
-    // p256dh is the uncompressed 65-byte P-256 point; auth is a short secret.
-    if !valid_b64url(&req.keys.p256dh, 65, 65) || !valid_b64url(&req.keys.auth, 1, 64) {
+    // p256dh is the uncompressed 65-byte P-256 point (0x04 || X || Y); auth
+    // is a short secret.
+    let p256dh = req.keys.p256dh.trim_end_matches('=');
+    let valid_p256dh = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(p256dh)
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(p256dh))
+        .map(|v| v.len() == 65 && v[0] == 0x04)
+        .unwrap_or(false);
+    if !valid_p256dh || !valid_b64url(&req.keys.auth, 1, 64) {
         return (StatusCode::BAD_REQUEST, Json(ApiError::new("invalid keys"))).into_response();
     }
     let lang = req
@@ -90,6 +107,27 @@ async fn subscribe(
         .map(str::trim)
         .filter(|s| !s.is_empty() && s.len() <= 16)
         .unwrap_or("en");
+    let user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.chars().take(256).collect::<String>())
+        .unwrap_or_default();
+    // Resubscribing an existing endpoint rebinds it, so only reject when the
+    // row would be new and the caller is already at the cap.
+    match state.db.push_subscriptions_for_user(user.id).await {
+        Ok(rows)
+            if rows.len() >= MAX_SUBSCRIPTIONS_PER_USER
+                && !rows.iter().any(|r| r.endpoint == endpoint) =>
+        {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ApiError::new("too many push subscriptions")),
+            )
+                .into_response();
+        }
+        Ok(_) => {}
+        Err(e) => return map_err_internal(e).into_response(),
+    }
     match state
         .db
         .upsert_push_subscription(
@@ -98,7 +136,7 @@ async fn subscribe(
             &req.keys.p256dh,
             &req.keys.auth,
             lang,
-            "",
+            &user_agent,
         )
         .await
     {
