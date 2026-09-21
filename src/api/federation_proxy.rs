@@ -27,6 +27,15 @@ use crate::AppState;
 /// the tunnel quickly instead of parking the task on the OS TCP timeout.
 const WS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// What the upstream leg needs beyond the URL: the federation credential
+/// and provenance headers describing who made the call.
+struct UpstreamMeta {
+    token: String,
+    hop: u32,
+    client_ip: Option<String>,
+    username: String,
+}
+
 /// Headers that must not cross the proxy boundary in either direction.
 /// Hop-by-hop fields belong to the connection, and credential/origin fields
 /// are rewritten so the caller's session never leaks to the satellite and
@@ -146,28 +155,24 @@ pub async fn proxy(
             .into_response();
     };
 
-    if let Some(ws) = ws {
-        let query = req.uri().query().map(str::to_string);
-        let client_ip = req
+    let meta = UpstreamMeta {
+        token,
+        hop,
+        client_ip: req
             .extensions()
             .get::<ClientIp>()
-            .map(|ip| ip.0.to_string());
+            .map(|ip| ip.0.to_string()),
+        username: user.username,
+    };
+
+    if let Some(ws) = ws {
+        let query = req.uri().query().map(str::to_string);
         return ws.on_upgrade(move |socket| async move {
-            tunnel_websocket(
-                socket,
-                &node,
-                &sub_path,
-                query.as_deref(),
-                &token,
-                hop,
-                client_ip,
-                user.username,
-            )
-            .await;
+            tunnel_websocket(socket, &node, &sub_path, query.as_deref(), meta).await;
         });
     }
 
-    proxy_http(state, req, &node, &sub_path, &token, hop, &user.username).await
+    proxy_http(state, req, &node, &sub_path, &meta).await
 }
 
 /// Split `/api/federation/nodes/<id>/proxy[/rest...]` into `(id, rest)`.
@@ -209,25 +214,19 @@ async fn proxy_http(
     req: Request,
     node: &FederationNodeRow,
     sub_path: &str,
-    token: &str,
-    hop: u32,
-    username: &str,
+    meta: &UpstreamMeta,
 ) -> Response {
     let url = node_url(node, sub_path, req.uri().query());
-    let client_ip = req
-        .extensions()
-        .get::<ClientIp>()
-        .map(|ip| ip.0.to_string());
 
     let mut out = state
         .http_client
         .request(req.method().clone(), &url)
-        .bearer_auth(token)
-        .header(PROXY_HOP_HEADER, (hop + 1).to_string());
-    if let Ok(v) = axum::http::HeaderValue::from_str(username) {
+        .bearer_auth(&meta.token)
+        .header(PROXY_HOP_HEADER, (meta.hop + 1).to_string());
+    if let Ok(v) = axum::http::HeaderValue::from_str(&meta.username) {
         out = out.header(PROXY_USER_HEADER, v);
     }
-    if let Some(ip) = client_ip {
+    if let Some(ip) = &meta.client_ip {
         out = out.header("x-forwarded-for", ip);
     }
     for (name, value) in req.headers() {
@@ -268,10 +267,7 @@ async fn tunnel_websocket(
     node: &FederationNodeRow,
     sub_path: &str,
     query: Option<&str>,
-    token: &str,
-    hop: u32,
-    client_ip: Option<String>,
-    username: String,
+    meta: UpstreamMeta,
 ) {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
@@ -285,16 +281,16 @@ async fn tunnel_websocket(
     let upstream = async move {
         let mut request = url.into_client_request()?;
         let headers = request.headers_mut();
-        if let Ok(v) = format!("Bearer {token}").parse() {
+        if let Ok(v) = format!("Bearer {}", meta.token).parse() {
             headers.insert(header::AUTHORIZATION, v);
         }
-        if let Ok(v) = (hop + 1).to_string().parse() {
+        if let Ok(v) = (meta.hop + 1).to_string().parse() {
             headers.insert(HeaderName::from_static(PROXY_HOP_HEADER), v);
         }
-        if let Ok(v) = username.parse() {
+        if let Ok(v) = meta.username.parse() {
             headers.insert(HeaderName::from_static(PROXY_USER_HEADER), v);
         }
-        if let Some(ip) = client_ip {
+        if let Some(ip) = meta.client_ip {
             if let Ok(v) = ip.parse() {
                 headers.insert(header::HeaderName::from_static("x-forwarded-for"), v);
             }
