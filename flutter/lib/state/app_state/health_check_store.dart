@@ -11,6 +11,8 @@ mixin HealthCheckStore on AppStateBase {
   Timer? _reconnectTimer;
   @override
   Future<void>? _ongoingCheck;
+  @override
+  (String?, String?)? _ongoingCheckTarget;
 
   @override
   ConnectionStatus get connectionStatus => _connectionStatus;
@@ -35,10 +37,25 @@ mixin HealthCheckStore on AppStateBase {
   }
   @override
   Future<void> checkConnection() {
+    final serverId = multiServerState.activeServerId;
+    final nodeId = _activeNodeId;
     final existing = _ongoingCheck;
-    if (existing != null) return existing;
-    _ongoingCheck = _doCheck().whenComplete(() => _ongoingCheck = null);
-    return _ongoingCheck!;
+    // A check started for a different server or node is meaningless for the
+    // current target; let it run (it discards its own result) and start a
+    // fresh one rather than returning the stale future.
+    if (existing != null && _ongoingCheckTarget == (serverId, nodeId)) {
+      return existing;
+    }
+    _ongoingCheckTarget = (serverId, nodeId);
+    final check = _doCheck().whenComplete(() {
+      // A check for a newer target may already have replaced this one.
+      if (_ongoingCheckTarget == (serverId, nodeId)) {
+        _ongoingCheck = null;
+        _ongoingCheckTarget = null;
+      }
+    });
+    _ongoingCheck = check;
+    return check;
   }
 
   Future<void> _doCheck() async {
@@ -48,7 +65,12 @@ mixin HealthCheckStore on AppStateBase {
     final api = this.api;
     final profileId = multiServerState.activeServerId;
     final nodeId = _activeNodeId;
-    var ok = await api.checkHealth();
+    // /healthz is public, so a node-bound check would report "connected"
+    // even when the satellite rejects the federation token. Probe an
+    // authenticated endpoint instead so the whole proxy path is exercised.
+    var ok = nodeId == null
+        ? await api.checkHealth()
+        : await _probeNode(api);
     var authFailed = false;
     if (ok && multiServerState.activeProfile?.isLocal == true) {
       // /healthz is public, so also prove the bundled token still
@@ -63,13 +85,20 @@ mixin HealthCheckStore on AppStateBase {
       }
     }
     // A server or node switch during the check makes the result meaningless
-    // for the new target — drop it; the switch's own load path re-checks
+    // for the new target; drop it. The switch's own load path re-checks
     // anyway.
     if (multiServerState.activeServerId != profileId ||
         _activeNodeId != nodeId) {
       return;
     }
     final version = ok ? await api.serverVersion() : null;
+    // The version fetch above is another suspension point; re-check before
+    // applying anything so a switch during it cannot leak the old target's
+    // status into the new one.
+    if (multiServerState.activeServerId != profileId ||
+        _activeNodeId != nodeId) {
+      return;
+    }
 
     final next = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;
     final recovered =
@@ -116,6 +145,18 @@ mixin HealthCheckStore on AppStateBase {
     }
     if (_connectionStatus == ConnectionStatus.connected) {
       _onConnectionRestored();
+    }
+  }
+
+  /// Probe the selected satellite through the hub proxy. [ApiService.me]
+  /// needs auth on the satellite, so a rejected federation token or a dead
+  /// proxy route both read as disconnected.
+  Future<bool> _probeNode(ApiService api) async {
+    try {
+      await api.me();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 }

@@ -616,5 +616,102 @@ void main() {
       );
       state.dispose();
     });
+
+    test('a user switch is vetoed by unsaved editor changes', () async {
+      final mock = _HubMock()..nodes = [_node('n1')];
+      final state = await appStateFor(mock);
+      await state.switchNode('n1');
+
+      await state.openEditorFile('a.txt');
+      state.setEditorTabText(state.activeEditorTab!.path, 'changed');
+      expect(state.hasDirtyEditorTabs, isTrue);
+
+      await state.switchNode(null);
+
+      expect(state.activeNodeId, 'n1');
+      expect(state.globalError, contains('unsaved changes'));
+      state.dispose();
+    });
+
+    test('a vanished node falls back even with unsaved changes', () async {
+      final mock = _HubMock()..nodes = [_node('n1')];
+      final state = await appStateFor(mock);
+      await state.switchNode('n1');
+
+      await state.openEditorFile('a.txt');
+      state.setEditorTabText(state.activeEditorTab!.path, 'changed');
+      expect(state.hasDirtyEditorTabs, isTrue);
+
+      // The node is gone, so the dirty tab cannot keep the app bound to a
+      // route that only fails; the fallback is forced.
+      mock.nodes = [];
+      await state.refreshFederationNodes();
+      // The fallback switch runs unawaited; let it settle.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(state.activeNodeId, isNull);
+      expect(state.api.client.pathPrefix, '');
+      state.dispose();
+    });
+
+    test('removing the active node ignores unsaved changes', () async {
+      final mock = _HubMock()..nodes = [_node('n1')];
+      final state = await appStateFor(mock);
+      await state.switchNode('n1');
+
+      await state.openEditorFile('a.txt');
+      state.setEditorTabText(state.activeEditorTab!.path, 'changed');
+      expect(state.hasDirtyEditorTabs, isTrue);
+
+      mock.nodes = [];
+      await state.removeFederationNode('n1');
+
+      expect(state.activeNodeId, isNull);
+      expect(
+        mock.requests,
+        contains('DELETE /api/federation/nodes/n1'),
+      );
+      state.dispose();
+    });
+
+    test('a node-bound health check probes auth through the proxy', () async {
+      final mock = _HubMock()..nodes = [_node('n1')];
+      final state = await appStateFor(mock);
+      await state.switchNode('n1');
+      // The switch starts a health check that is not awaited; let it
+      // finish so the next checkConnection starts a fresh probe.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      mock.requests.clear();
+
+      await state.checkConnection();
+
+      // /healthz is public on the satellite, so the check must hit an
+      // authenticated endpoint to prove the federation token is accepted.
+      expect(
+        mock.requests,
+        contains('GET /api/federation/nodes/n1/proxy/api/auth/me'),
+      );
+      expect(
+        mock.requests
+            .where((r) => r.endsWith('/healthz') && r.contains('n1')),
+        isEmpty,
+      );
+      expect(state.connectionStatus, ConnectionStatus.connected);
+      state.dispose();
+    });
+
+    test('a dead satellite reports disconnected on the health tick',
+        () async {
+      final mock = _HubMock()..nodes = [_node('n1')];
+      final state = await appStateFor(mock);
+      await state.switchNode('n1');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      mock.deadNodes.add('n1');
+      await state.checkConnection();
+
+      expect(state.connectionStatus, ConnectionStatus.disconnected);
+      state.dispose();
+    });
   });
 }

@@ -276,6 +276,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _resumeThreadFuture(Future<void>? value);
   Future<void>? get _ongoingCheck;
   set _ongoingCheck(Future<void>? value);
+  (String?, String?)? get _ongoingCheckTarget;
+  set _ongoingCheckTarget((String?, String?)? value);
   bool get _wantsResume;
   set _wantsResume(bool value);
   bool get _isResuming;

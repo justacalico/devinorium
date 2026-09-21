@@ -64,6 +64,9 @@ mixin NodeStore on AppStateBase {
     final serverId = multiServerState.activeServerId;
     final service = multiServerState.activeApi;
     if (serverId == null || service == null) return;
+    // Bump the sequence even on the early returns below so an in-flight
+    // response from before the downgrade or server change is discarded.
+    final seq = ++_federationSeq;
     // The node list is owner-only; skip the request entirely once a signed
     // in non-owner is known rather than logging a 403 every health tick.
     final user = _user;
@@ -80,7 +83,6 @@ mixin NodeStore on AppStateBase {
       }
       return;
     }
-    final seq = ++_federationSeq;
     try {
       final res = await service.federationNodes();
       if (seq != _federationSeq ||
@@ -105,14 +107,17 @@ mixin NodeStore on AppStateBase {
             notifyListeners();
           }
         } else {
-          unawaited(switchNode(null));
+          unawaited(_switchNode(null, force: true));
         }
       }
     } on ApiException catch (e) {
       // Non-owners cannot list nodes and older servers have no federation
       // routes; either way the section stays hidden. A stale selection can
       // only produce failures now, so drop it too.
-      if (seq != _federationSeq) return;
+      if (seq != _federationSeq ||
+          multiServerState.activeServerId != serverId) {
+        return;
+      }
       if (e.statusCode == 403 || e.statusCode == 404) {
         _federationSupported = false;
         _federationNodes = [];
@@ -133,8 +138,9 @@ mixin NodeStore on AppStateBase {
     if (_switchingServer || _user == null) {
       _activeNodeId = null;
       unawaited(_persistNodeSelection());
+      notifyListeners();
     } else {
-      unawaited(switchNode(null));
+      unawaited(_switchNode(null, force: true));
     }
   }
 
@@ -143,9 +149,15 @@ mixin NodeStore on AppStateBase {
   /// rolls the binding back so the app is never left pointing at a target
   /// that cannot answer.
   @override
-  Future<void> switchNode(String? nodeId) async {
+  Future<void> switchNode(String? nodeId) => _switchNode(nodeId);
+
+  /// System-initiated fallbacks pass [force]: when the current target is
+  /// already gone (deregistered, removed, or the account lost owner rights)
+  /// dirty editor tabs must not veto the return to the hub, since the node
+  /// cannot serve the data anyway.
+  Future<void> _switchNode(String? nodeId, {bool force = false}) async {
     if (_switchingServer || nodeId == _activeNodeId) return;
-    if (hasDirtyEditorTabs) {
+    if (!force && hasDirtyEditorTabs) {
       _globalError =
           'Editor has unsaved changes. Save or discard them before switching.';
       notifyListeners();
@@ -208,7 +220,14 @@ mixin NodeStore on AppStateBase {
   Future<String?> removeFederationNode(String nodeId) async {
     try {
       if (_activeNodeId == nodeId) {
-        await switchNode(null);
+        await _switchNode(null, force: true);
+        if (_activeNodeId == nodeId) {
+          // A server switch already owns the binding; just drop it so the
+          // app is not left pointing at a deleted node.
+          _activeNodeId = null;
+          unawaited(_persistNodeSelection());
+          notifyListeners();
+        }
       }
       await hubApi.removeFederationNode(nodeId);
       await refreshFederationNodes();
