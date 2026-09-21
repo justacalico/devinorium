@@ -725,8 +725,17 @@
   "previous": "上一步",
   "stopGenerating": "停止生成",
   "notifications": "通知",
-  "completionNotifications": "会话完成时通知",
-  "completionNotificationsDescription": "当会话在后台完成运行时显示浏览器通知",
+  "completionNotifications": "会话事件通知",
+  "completionNotificationsDescription": "当运行完成、失败、停止或需要输入时显示通知",
+  "pushNotifications": "后台通知",
+  "pushNotificationsDescription": "即使应用关闭也将通知送达此设备",
+  "pushNotificationsUnsupported": "此浏览器或服务器不支持后台推送",
+  "notificationPermissionDenied": "通知已被阻止。请在浏览器或系统设置中允许通知后再开启。",
+  "sendTestNotification": "发送测试通知",
+  "testNotificationSent": "测试通知已发送。",
+  "testNotificationFailed": "没有推送订阅接收测试通知。",
+  "notificationChannelRuns": "会话运行",
+  "notificationChannelAlerts": "需要处理",
   "threadCompletedTitle": "会话完成",
   "threadCompletedBody": "{title} 已运行完成",
   "@threadCompletedBody": {
@@ -739,6 +748,33 @@
   "threadFailedTitle": "会话失败",
   "threadFailedBody": "{title} 遇到错误",
   "@threadFailedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadStoppedTitle": "会话已停止",
+  "threadStoppedBody": "{title} 已被停止",
+  "@threadStoppedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadNeedsPermissionTitle": "需要审批",
+  "threadNeedsPermissionBody": "{title} 正在等待权限确认",
+  "@threadNeedsPermissionBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadAskTitle": "代理在提问",
+  "threadAskBody": "{title} 正在等待回答",
+  "@threadAskBody": {
     "placeholders": {
       "title": {
         "type": "String"

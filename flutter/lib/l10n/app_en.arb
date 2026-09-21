@@ -746,8 +746,17 @@
   "previous": "Previous",
   "stopGenerating": "Stop generating",
   "notifications": "Notifications",
-  "completionNotifications": "Notify when a thread completes",
-  "completionNotificationsDescription": "Show a browser notification when a thread run finishes while this tab is in the background.",
+  "completionNotifications": "Notify on thread events",
+  "completionNotificationsDescription": "Show a notification when a run finishes, fails, stops, or needs your input.",
+  "pushNotifications": "Background notifications",
+  "pushNotificationsDescription": "Deliver notifications to this device even when the app is closed.",
+  "pushNotificationsUnsupported": "Background push is not supported by this browser or server.",
+  "notificationPermissionDenied": "Notifications are blocked. Allow them in your browser or system settings to enable them.",
+  "sendTestNotification": "Send test notification",
+  "testNotificationSent": "Test notification sent.",
+  "testNotificationFailed": "No push subscription accepted the test notification.",
+  "notificationChannelRuns": "Thread runs",
+  "notificationChannelAlerts": "Attention requests",
   "threadCompletedTitle": "Thread completed",
   "threadCompletedBody": "{title} has finished running.",
   "@threadCompletedBody": {
@@ -760,6 +769,33 @@
   "threadFailedTitle": "Thread failed",
   "threadFailedBody": "{title} encountered an error.",
   "@threadFailedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadStoppedTitle": "Thread stopped",
+  "threadStoppedBody": "{title} was stopped.",
+  "@threadStoppedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadNeedsPermissionTitle": "Approval needed",
+  "threadNeedsPermissionBody": "{title} is waiting for a permission decision.",
+  "@threadNeedsPermissionBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "threadAskTitle": "Question from agent",
+  "threadAskBody": "{title} is waiting for answers.",
+  "@threadAskBody": {
     "placeholders": {
       "title": {
         "type": "String"

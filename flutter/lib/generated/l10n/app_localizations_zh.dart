@@ -1147,10 +1147,37 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notifications => '通知';
 
   @override
-  String get completionNotifications => '会话完成时通知';
+  String get completionNotifications => '会话事件通知';
 
   @override
-  String get completionNotificationsDescription => '当会话在后台完成运行时显示浏览器通知';
+  String get completionNotificationsDescription => '当运行完成、失败、停止或需要输入时显示通知';
+
+  @override
+  String get pushNotifications => '后台通知';
+
+  @override
+  String get pushNotificationsDescription => '即使应用关闭也将通知送达此设备';
+
+  @override
+  String get pushNotificationsUnsupported => '此浏览器或服务器不支持后台推送';
+
+  @override
+  String get notificationPermissionDenied => '通知已被阻止。请在浏览器或系统设置中允许通知后再开启。';
+
+  @override
+  String get sendTestNotification => '发送测试通知';
+
+  @override
+  String get testNotificationSent => '测试通知已发送。';
+
+  @override
+  String get testNotificationFailed => '没有推送订阅接收测试通知。';
+
+  @override
+  String get notificationChannelRuns => '会话运行';
+
+  @override
+  String get notificationChannelAlerts => '需要处理';
 
   @override
   String get threadCompletedTitle => '会话完成';
@@ -1166,6 +1193,30 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String threadFailedBody(String title) {
     return '$title 遇到错误';
+  }
+
+  @override
+  String get threadStoppedTitle => '会话已停止';
+
+  @override
+  String threadStoppedBody(String title) {
+    return '$title 已被停止';
+  }
+
+  @override
+  String get threadNeedsPermissionTitle => '需要审批';
+
+  @override
+  String threadNeedsPermissionBody(String title) {
+    return '$title 正在等待权限确认';
+  }
+
+  @override
+  String get threadAskTitle => '代理在提问';
+
+  @override
+  String threadAskBody(String title) {
+    return '$title 正在等待回答';
   }
 
   @override
