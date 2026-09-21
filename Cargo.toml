@@ -76,7 +76,7 @@ mini-moka = "0.10.3"
 portable-pty = "0.9"
 bytes = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 png = "0.18"
 des = "0.8"
 cipher = "0.4"

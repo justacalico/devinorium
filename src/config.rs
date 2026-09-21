@@ -146,24 +146,38 @@ impl Config {
     /// Validate federation settings: a hub URL requires the shared token (it
     /// is both the registration credential and the token the hub uses when
     /// proxying), and the token must be long enough to resist guessing since
-    /// it is the only credential guarding a satellite's whole API.
+    /// it is the only credential guarding a satellite's whole API. The token
+    /// travels as a bearer header, so it must be header-safe ASCII. The node
+    /// URL goes through the same check the hub applies at registration so a
+    /// satellite cannot configure an address its hub would reject on every
+    /// heartbeat.
     pub fn check_federation(&self) -> Result<()> {
         if let Some(token) = self.federation_token.as_deref() {
             if token.len() < 16 {
                 bail!("DEVINORIUM_FEDERATION_TOKEN must be at least 16 characters long");
+            }
+            if !token.bytes().all(|b| (0x21..=0x7e).contains(&b)) {
+                bail!("DEVINORIUM_FEDERATION_TOKEN must contain only printable ASCII without spaces");
             }
         }
         if let Some(hub) = self.hub_url.as_deref() {
             if self.federation_token.is_none() {
                 bail!("DEVINORIUM_HUB_URL requires DEVINORIUM_FEDERATION_TOKEN");
             }
-            if !hub.starts_with("http://") && !hub.starts_with("https://") {
-                bail!("DEVINORIUM_HUB_URL must start with http:// or https://");
+            match reqwest::Url::parse(hub) {
+                Ok(u)
+                    if matches!(u.scheme(), "http" | "https")
+                        && u.host_str().is_some()
+                        && u.username().is_empty()
+                        && u.password().is_none()
+                        && u.query().is_none()
+                        && u.fragment().is_none() => {}
+                _ => bail!("DEVINORIUM_HUB_URL must be an http(s) URL without credentials, query, or fragment"),
             }
         }
         if let Some(url) = self.node_url.as_deref() {
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                bail!("DEVINORIUM_NODE_URL must start with http:// or https://");
+            if crate::federation::clean_node_base_url(url).is_none() {
+                bail!("DEVINORIUM_NODE_URL must be a plain http(s) origin without path, query, credentials, or fragment");
             }
         }
         Ok(())
@@ -371,6 +385,17 @@ mod tests {
         cfg.federation_token = Some("short".into());
         assert!(cfg.check_federation().is_err());
 
+        // A token with characters that cannot go in a header is rejected.
+        let mut cfg = cfg_with("127.0.0.1", None, false);
+        cfg.federation_token = Some("token with spaces 123".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.federation_token = Some("token\nwith\nnewlines".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.federation_token = Some("tokén-with-unicode-ok".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.federation_token = Some("a-long-enough-token-123".into());
+        assert!(cfg.check_federation().is_ok());
+
         // A hub URL requires a token and a valid scheme.
         let mut cfg = cfg_with("127.0.0.1", None, false);
         cfg.hub_url = Some("http://hub.local:7878".into());
@@ -379,13 +404,25 @@ mod tests {
         assert!(cfg.check_federation().is_ok());
         cfg.hub_url = Some("ftp://hub.local".into());
         assert!(cfg.check_federation().is_err());
+        cfg.hub_url = Some("http://hub.local?x=1".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.hub_url = Some("http://user:pass@hub.local".into());
+        assert!(cfg.check_federation().is_err());
+        // A path prefix is allowed so a hub behind a sub-path proxy works.
+        cfg.hub_url = Some("http://hub.local/base".into());
+        assert!(cfg.check_federation().is_ok());
 
-        // A bad node URL is rejected.
+        // A bad node URL is rejected, including ones the hub would refuse
+        // at registration time.
         let mut cfg = cfg_with("127.0.0.1", None, false);
         cfg.node_url = Some("node.local:7878".into());
         assert!(cfg.check_federation().is_err());
         cfg.node_url = Some("http://192.168.1.10:7878".into());
         assert!(cfg.check_federation().is_ok());
+        cfg.node_url = Some("http://192.168.1.10:7878/sub".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.node_url = Some("http://192.168.1.10:7878#frag".into());
+        assert!(cfg.check_federation().is_err());
     }
 
     #[test]

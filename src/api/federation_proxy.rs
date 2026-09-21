@@ -14,12 +14,18 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use futures::{SinkExt, StreamExt};
 
+use std::time::Duration;
+
 use crate::api::{map_err_internal, ApiError};
 use crate::auth::session::CurrentUser;
 use crate::db::federation_nodes::FederationNodeRow;
-use crate::federation::{MAX_PROXY_HOPS, PROXY_HOP_HEADER};
+use crate::federation::{MAX_PROXY_HOPS, PROXY_HOP_HEADER, PROXY_USER_HEADER};
 use crate::security::ip::ClientIp;
 use crate::AppState;
+
+/// Cap on dialing an upstream WebSocket; a blackholed satellite should fail
+/// the tunnel quickly instead of parking the task on the OS TCP timeout.
+const WS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Headers that must not cross the proxy boundary in either direction.
 /// Hop-by-hop fields belong to the connection, and credential/origin fields
@@ -44,16 +50,35 @@ const STRIPPED_REQUEST_HEADERS: &[&str] = &[
     "x-forwarded-for",
     "x-forwarded-proto",
     "x-forwarded-host",
+    "x-forwarded-port",
+    "x-forwarded-server",
+    "x-forwarded-scheme",
     "x-real-ip",
+    "proxy-authorization",
+    "proxy-connection",
     PROXY_HOP_HEADER,
+    PROXY_USER_HEADER,
 ];
 
+/// Response headers that must not reach the hub's client. Beyond framing
+/// headers this drops anything that would act on the hub's origin: a
+/// satellite `Set-Cookie` would overwrite the caller's hub session cookie,
+/// `Location` would send the browser around the proxy, and
+/// `WWW-Authenticate`/`Clear-Site-Data`/`Alt-Svc` all target the wrong
+/// origin once relayed.
 const STRIPPED_RESPONSE_HEADERS: &[&str] = &[
     "connection",
     "transfer-encoding",
     "keep-alive",
     "trailer",
+    "trailers",
+    "upgrade",
     "content-length",
+    "set-cookie",
+    "clear-site-data",
+    "www-authenticate",
+    "alt-svc",
+    "location",
 ];
 
 fn forbidden() -> Response {
@@ -136,12 +161,13 @@ pub async fn proxy(
                 &token,
                 hop,
                 client_ip,
+                user.username,
             )
             .await;
         });
     }
 
-    proxy_http(state, req, &node, &sub_path, &token, hop).await
+    proxy_http(state, req, &node, &sub_path, &token, hop, &user.username).await
 }
 
 /// Split `/api/federation/nodes/<id>/proxy[/rest...]` into `(id, rest)`.
@@ -185,6 +211,7 @@ async fn proxy_http(
     sub_path: &str,
     token: &str,
     hop: u32,
+    username: &str,
 ) -> Response {
     let url = node_url(node, sub_path, req.uri().query());
     let client_ip = req
@@ -197,6 +224,9 @@ async fn proxy_http(
         .request(req.method().clone(), &url)
         .bearer_auth(token)
         .header(PROXY_HOP_HEADER, (hop + 1).to_string());
+    if let Ok(v) = axum::http::HeaderValue::from_str(username) {
+        out = out.header(PROXY_USER_HEADER, v);
+    }
     if let Some(ip) = client_ip {
         out = out.header("x-forwarded-for", ip);
     }
@@ -241,6 +271,7 @@ async fn tunnel_websocket(
     token: &str,
     hop: u32,
     client_ip: Option<String>,
+    username: String,
 ) {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
@@ -254,14 +285,15 @@ async fn tunnel_websocket(
     let upstream = async move {
         let mut request = url.into_client_request()?;
         let headers = request.headers_mut();
-        headers.insert(
-            header::AUTHORIZATION,
-            format!("Bearer {token}").parse().unwrap(),
-        );
-        headers.insert(
-            HeaderName::from_static(PROXY_HOP_HEADER),
-            (hop + 1).to_string().parse().unwrap(),
-        );
+        if let Ok(v) = format!("Bearer {token}").parse() {
+            headers.insert(header::AUTHORIZATION, v);
+        }
+        if let Ok(v) = (hop + 1).to_string().parse() {
+            headers.insert(HeaderName::from_static(PROXY_HOP_HEADER), v);
+        }
+        if let Ok(v) = username.parse() {
+            headers.insert(HeaderName::from_static(PROXY_USER_HEADER), v);
+        }
         if let Some(ip) = client_ip {
             if let Ok(v) = ip.parse() {
                 headers.insert(header::HeaderName::from_static("x-forwarded-for"), v);
@@ -270,10 +302,15 @@ async fn tunnel_websocket(
         tokio_tungstenite::connect_async(request).await
     };
 
-    let (upstream, _) = match upstream.await {
-        Ok(pair) => pair,
-        Err(e) => {
+    let (upstream, _) = match tokio::time::timeout(WS_CONNECT_TIMEOUT, upstream).await {
+        Ok(Ok(pair)) => pair,
+        Ok(Err(e)) => {
             tracing::warn!(node = %node.id, "federation ws upstream failed: {e}");
+            let _ = socket.close().await;
+            return;
+        }
+        Err(_) => {
+            tracing::warn!(node = %node.id, "federation ws upstream timed out");
             let _ = socket.close().await;
             return;
         }

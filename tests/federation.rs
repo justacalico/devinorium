@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use axum::body::{to_bytes, Body};
-use axum::http::{header, Request, StatusCode};
+use axum::http::{header, Request, Response, StatusCode};
 use axum::Router;
 use tower::ServiceExt;
 
@@ -419,6 +419,103 @@ async fn proxy_forwards_requests_to_the_node() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn proxy_replaces_credentials_and_tags_the_user() {
+    use axum::routing::get as axum_get;
+
+    // Satellite that reports which headers actually arrived.
+    let echo = Router::new().route(
+        "/headers",
+        axum_get(|req: Request<Body>| async move {
+            let h = req.headers();
+            let pick = |k: &str| h.get(k).and_then(|v| v.to_str().ok().map(str::to_string));
+            serde_json::json!({
+                "authorization": pick("authorization"),
+                "cookie": pick("cookie"),
+                "origin": pick("origin"),
+                "proxy_user": pick("x-devinorium-proxy-user"),
+            })
+            .to_string()
+        }),
+    );
+    let sat_url = serve(echo).await;
+
+    let (app, db) = make_hub(Some(FED_TOKEN)).await;
+    let cookie = login(&app).await;
+    db.upsert_federation_node("sat-1", "satellite", &sat_url, "")
+        .await
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/federation/nodes/sat-1/proxy/headers")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                // A spoofed attribution header must not survive either.
+                .header("x-devinorium-proxy-user", "mallory")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(
+        json["authorization"],
+        serde_json::json!(format!("Bearer {FED_TOKEN}"))
+    );
+    assert_eq!(json["proxy_user"], "owner");
+    // The caller's session cookie and browser origin never cross over.
+    assert_eq!(json["cookie"], serde_json::Value::Null);
+    assert_eq!(json["origin"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn proxy_strips_satellite_origin_headers() {
+    use axum::routing::get as axum_get;
+
+    // Satellite answering with headers that would act on the hub origin.
+    let evil = Router::new().route(
+        "/cookie",
+        axum_get(|| async move {
+            Response::builder()
+                .header("set-cookie", "devinorium_session=stolen; Path=/")
+                .header("location", "http://satellite.internal/")
+                .header("www-authenticate", "Basic realm=\"sat\"")
+                .header("clear-site-data", "\"cookies\"")
+                .body(Body::from("ok"))
+                .unwrap()
+        }),
+    );
+    let sat_url = serve(evil).await;
+
+    let (app, db) = make_hub(Some(FED_TOKEN)).await;
+    let cookie = login(&app).await;
+    db.upsert_federation_node("sat-1", "satellite", &sat_url, "")
+        .await
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/federation/nodes/sat-1/proxy/cookie")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    for h in ["set-cookie", "location", "www-authenticate", "clear-site-data"] {
+        assert!(resp.headers().get(h).is_none(), "{h} leaked");
+    }
+    assert_eq!(body_str(resp.into_body()).await, "ok");
 }
 
 #[tokio::test]

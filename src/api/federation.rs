@@ -16,12 +16,11 @@ use serde::{Deserialize, Serialize};
 use crate::api::{map_err_internal, ApiError};
 use crate::auth::session::{extract_bearer_token, CurrentUser};
 use crate::db::federation_nodes::FederationNodeRow;
-use crate::federation::ONLINE_WINDOW;
+use crate::federation::{clean_node_base_url, ONLINE_WINDOW};
 use crate::AppState;
 
 const MAX_NODE_ID_LEN: usize = 64;
 const MAX_NODE_NAME_LEN: usize = 128;
-const MAX_BASE_URL_LEN: usize = 512;
 const MAX_VERSION_LEN: usize = 64;
 
 /// Routes that authenticate with the federation token, not a session.
@@ -126,11 +125,14 @@ async fn register(State(state): State<AppState>, req: axum::extract::Request) ->
     if version.chars().count() > MAX_VERSION_LEN || version.chars().any(|c| c.is_control()) {
         return bad_request("invalid version");
     }
-    let base_url = match clean_base_url(&body.base_url) {
-        Ok(u) => u,
-        Err(()) => return bad_request("invalid base_url"),
+    let base_url = match clean_node_base_url(&body.base_url) {
+        Some(u) => u,
+        None => return bad_request("invalid base_url"),
     };
 
+    // Audit only the first sighting; the 30s heartbeat re-registers forever
+    // and would otherwise drown the log.
+    let is_new = matches!(state.db.get_federation_node(id).await, Ok(None));
     match state
         .db
         .upsert_federation_node(id, name, &base_url, version)
@@ -138,6 +140,17 @@ async fn register(State(state): State<AppState>, req: axum::extract::Request) ->
     {
         Ok(node) => {
             tracing::info!(node = %node.name, base_url = %node.base_url, "federation node registered");
+            if is_new {
+                let _ = state
+                    .db
+                    .audit(
+                        None,
+                        "federation.register",
+                        &serde_json::json!({"node_id": id, "name": name, "base_url": base_url}),
+                        None,
+                    )
+                    .await;
+            }
             Json(RegisterResponse {
                 ok: true,
                 hub: state.config.display_node_name(),
@@ -146,25 +159,6 @@ async fn register(State(state): State<AppState>, req: axum::extract::Request) ->
         }
         Err(e) => map_err_internal(e).into_response(),
     }
-}
-
-/// Normalize and validate the URL a satellite asks the hub to dial. It must
-/// be a plain http(s) origin: no userinfo, no path or query (those would
-/// silently reshaped proxied paths). Anything reachable from the hub is
-/// allowed by design — the shared token is the gate, and LAN addresses are
-/// the point of the feature.
-fn clean_base_url(raw: &str) -> Result<String, ()> {
-    let url = raw.trim().trim_end_matches('/');
-    if url.len() > MAX_BASE_URL_LEN {
-        return Err(());
-    }
-    let parsed = reqwest::Url::parse(url).map_err(|_| ())?;
-    let ok_scheme = matches!(parsed.scheme(), "http" | "https");
-    let bare = parsed.path() == "/" || parsed.path().is_empty();
-    if !ok_scheme || parsed.host_str().is_none() || !bare || parsed.query().is_some() {
-        return Err(());
-    }
-    Ok(url.to_string())
 }
 
 /// Node as reported to the UI. `online` is computed from the last
@@ -181,13 +175,14 @@ pub struct NodeOut {
 
 impl From<FederationNodeRow> for NodeOut {
     fn from(n: FederationNodeRow) -> Self {
+        // Negative age means the hub clock moved backwards since the last
+        // heartbeat; count it as fresh within the same window either way.
         let online = chrono::DateTime::parse_from_rfc3339(&n.last_seen_at)
             .map(|t| {
-                chrono::Utc::now()
+                let secs = chrono::Utc::now()
                     .signed_duration_since(t.with_timezone(&chrono::Utc))
-                    .to_std()
-                    .map(|d| d <= ONLINE_WINDOW)
-                    .unwrap_or(false)
+                    .num_seconds();
+                secs.unsigned_abs() <= ONLINE_WINDOW.as_secs()
             })
             .unwrap_or(false);
         Self {
