@@ -64,6 +64,25 @@ mixin NodeStore on AppStateBase {
     final serverId = multiServerState.activeServerId;
     final service = multiServerState.activeApi;
     if (serverId == null || service == null) return;
+    // The node list is owner-only; skip the request entirely once a signed
+    // in non-owner is known rather than logging a 403 every health tick.
+    final user = _user;
+    if (user != null && !user.isOwner) {
+      // A non-owner can never hold a node selection (the picker is hidden
+      // and the proxy is owner-only), but clear a stale one defensively so
+      // a downgraded account is not left bound to a route that always 403s.
+      if (_activeNodeId != null) {
+        _activeNodeId = null;
+        unawaited(_persistNodeSelection());
+      }
+      if (_federationSupported || _federationNodes.isNotEmpty) {
+        _federationSupported = false;
+        _federationNodes = [];
+        _federationSelfName = '';
+        notifyListeners();
+      }
+      return;
+    }
     final seq = ++_federationSeq;
     try {
       final res = await service.federationNodes();

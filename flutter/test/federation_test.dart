@@ -266,7 +266,7 @@ void main() {
   });
 
   group('MultiServerState node services', () {
-    Future<MultiServerState> _stateWith(MockClient mock) async {
+    Future<MultiServerState> stateWith(MockClient mock) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
       final state = MultiServerState(registry: ServerRegistry(prefs: prefs));
@@ -292,7 +292,7 @@ void main() {
         paths.add(req.url.path);
         return _json(200, const []);
       });
-      final state = await _stateWith(mock);
+      final state = await stateWith(mock);
 
       final nodeApi = state.nodeApi('srv', 'n7');
       expect(nodeApi, isNotNull);
@@ -324,7 +324,7 @@ void main() {
 
     test('terminalWebSocketUri is relative on the web client', () async {
       final mock = MockClient((req) async => _json(200, const {}));
-      final state = await _stateWith(mock);
+      final state = await stateWith(mock);
       final nodeApi = state.nodeApi('srv', 'n7')!;
 
       final uri = await nodeApi.terminalWebSocketUri('sess-1');
@@ -366,7 +366,7 @@ void main() {
   });
 
   group('AppState node switching', () {
-    Future<AppState> _appState(_HubMock mock) async {
+    Future<AppState> appStateFor(_HubMock mock) async {
       final prefs = await SharedPreferences.getInstance();
       final mss = MultiServerState(registry: ServerRegistry(prefs: prefs));
       final profile = ServerProfile(
@@ -387,7 +387,7 @@ void main() {
 
     test('refreshFederationNodes populates the list', () async {
       final mock = _HubMock()..nodes = [_node('n1'), _node('n2')];
-      final state = await _appState(mock);
+      final state = await appStateFor(mock);
 
       await state.refreshFederationNodes();
 
@@ -402,7 +402,6 @@ void main() {
     });
 
     test('a server without federation routes hides the section', () async {
-      final mock = _HubMock();
       final service = ApiService(
         client: ApiClient.withClient(
           MockClient((req) async => _json(404, {'error': 'not found'})),
@@ -434,7 +433,7 @@ void main() {
 
     test('switchNode rebinds api through the proxy prefix', () async {
       final mock = _HubMock()..nodes = [_node('n1')];
-      final state = await _appState(mock);
+      final state = await appStateFor(mock);
 
       await state.switchNode('n1');
 
@@ -453,7 +452,7 @@ void main() {
 
     test('switchNode(null) returns to the hub', () async {
       final mock = _HubMock()..nodes = [_node('n1')];
-      final state = await _appState(mock);
+      final state = await appStateFor(mock);
 
       await state.switchNode('n1');
       mock.requests.clear();
@@ -467,7 +466,7 @@ void main() {
 
     test('selection persists and restores per server', () async {
       final mock = _HubMock()..nodes = [_node('n1')];
-      final state = await _appState(mock);
+      final state = await appStateFor(mock);
       await state.switchNode('n1');
       state.dispose();
 
@@ -475,7 +474,7 @@ void main() {
       final raw = prefs.getString('federation_node_selection');
       expect(jsonDecode(raw!), {'srv': 'n1'});
 
-      final state2 = await _appState(mock);
+      final state2 = await appStateFor(mock);
       await state2.restoreNodeSelection();
       expect(state2.activeNodeId, 'n1');
       state2.dispose();
@@ -483,7 +482,7 @@ void main() {
 
     test('a deregistered node falls back to the hub', () async {
       final mock = _HubMock()..nodes = [_node('n1')];
-      final state = await _appState(mock);
+      final state = await appStateFor(mock);
       await state.switchNode('n1');
       expect(state.activeNodeId, 'n1');
 
@@ -499,7 +498,7 @@ void main() {
 
     test('removeFederationNode goes to the hub unprefixed', () async {
       final mock = _HubMock()..nodes = [_node('n1'), _node('n2')];
-      final state = await _appState(mock);
+      final state = await appStateFor(mock);
       await state.switchNode('n1');
       mock.requests.clear();
 
@@ -512,7 +511,7 @@ void main() {
 
     test('removing the active node falls back to the hub', () async {
       final mock = _HubMock()..nodes = [_node('n1')];
-      final state = await _appState(mock);
+      final state = await appStateFor(mock);
       await state.switchNode('n1');
 
       mock.nodes = [];
