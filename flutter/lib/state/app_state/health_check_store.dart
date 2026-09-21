@@ -47,21 +47,28 @@ mixin HealthCheckStore on AppStateBase {
     _reconnectTimer = null;
     final api = this.api;
     final profileId = multiServerState.activeServerId;
+    final nodeId = _activeNodeId;
     var ok = await api.checkHealth();
     var authFailed = false;
     if (ok && multiServerState.activeProfile?.isLocal == true) {
       // /healthz is public, so also prove the bundled token still
-      // authenticates; otherwise a stale token looks "connected".
+      // authenticates; otherwise a stale token looks "connected". This
+      // probes the hub itself: a node-bound me() would blame a satellite's
+      // auth problem on the bundled server and restart it in a loop.
       try {
-        await api.me();
+        await hubApi.me();
       } catch (_) {
         ok = false;
         authFailed = true;
       }
     }
-    // A server switch during the check makes the result meaningless for the
-    // new profile — drop it; the switch's own load path re-checks anyway.
-    if (multiServerState.activeServerId != profileId) return;
+    // A server or node switch during the check makes the result meaningless
+    // for the new target — drop it; the switch's own load path re-checks
+    // anyway.
+    if (multiServerState.activeServerId != profileId ||
+        _activeNodeId != nodeId) {
+      return;
+    }
     final version = ok ? await api.serverVersion() : null;
 
     final next = ok ? ConnectionStatus.connected : ConnectionStatus.disconnected;

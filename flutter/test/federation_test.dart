@@ -51,6 +51,15 @@ class _HubMock {
   final requests = <String>[];
   List<Map<String, dynamic>> nodes = [];
 
+  /// Node ids whose proxied requests fail, simulating a dead satellite.
+  final deadNodes = <String>{};
+
+  /// Override for the node list status (403/404 disables federation).
+  int? nodesStatus;
+
+  /// When false the signed-in account is a non-owner.
+  bool ownerUser = true;
+
   static const _listPaths = [
     '/api/projects',
     '/api/threads',
@@ -68,8 +77,17 @@ class _HubMock {
   http.BaseClient get client => MockClient((req) async {
         requests.add('${req.method} ${req.url.path}');
         final path = req.url.path;
-        if (path.endsWith('/api/auth/me')) return _json(200, _userJson);
+        for (final id in deadNodes) {
+          if (path.startsWith('/api/federation/nodes/$id/')) {
+            return _json(502, {'error': 'node unreachable'});
+          }
+        }
+        if (path.endsWith('/api/auth/me')) {
+          return _json(200, {..._userJson, 'is_owner': ownerUser});
+        }
         if (path.endsWith('/api/federation/nodes')) {
+          final status = nodesStatus;
+          if (status != null) return _json(status, {'error': 'no'});
           return _json(200, _nodesJson(nodes));
         }
         if (path.endsWith('/healthz')) return _json(200, {'ok': true});
@@ -518,6 +536,84 @@ void main() {
       await state.removeFederationNode('n1');
 
       expect(state.activeNodeId, isNull);
+      state.dispose();
+    });
+
+    test('switching to a dead node lands back on the hub', () async {
+      final mock = _HubMock()..nodes = [_node('n1')];
+      final state = await appStateFor(mock);
+
+      mock.deadNodes.add('n1');
+      await state.switchNode('n1');
+
+      // The failed switch rolls the binding back rather than leaving the
+      // app bound to a proxy route that only returns 502s.
+      expect(state.activeNodeId, isNull);
+      expect(state.api.client.pathPrefix, '');
+      expect(state.globalError, isNotEmpty);
+      state.dispose();
+    });
+
+    test('a failed switch keeps the previous working node', () async {
+      final mock = _HubMock()..nodes = [_node('n1'), _node('n2')];
+      final state = await appStateFor(mock);
+      await state.switchNode('n1');
+      expect(state.activeNodeId, 'n1');
+
+      mock.deadNodes.add('n2');
+      await state.switchNode('n2');
+
+      expect(state.activeNodeId, 'n1');
+      expect(
+        state.api.client.pathPrefix,
+        '/api/federation/nodes/n1/proxy',
+      );
+      state.dispose();
+    });
+
+    test('a 403 on the node list drops the selection', () async {
+      final mock = _HubMock()..nodes = [_node('n1')];
+      final state = await appStateFor(mock);
+      await state.switchNode('n1');
+      expect(state.activeNodeId, 'n1');
+
+      mock.nodesStatus = 403;
+      await state.refreshFederationNodes();
+      // The fallback switch runs unawaited; let it settle.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(state.federationSupported, isFalse);
+      expect(state.activeNodeId, isNull);
+      expect(state.api.client.pathPrefix, '');
+      state.dispose();
+    });
+
+    test('a non-owner never keeps a stale node selection', () async {
+      SharedPreferences.setMockInitialValues({
+        'federation_node_selection': jsonEncode({'srv': 'n1'}),
+      });
+      final mock = _HubMock()
+        ..nodes = [_node('n1'), _node('n2')]
+        ..ownerUser = false;
+      final state = await appStateFor(mock);
+      await state.restoreNodeSelection();
+      expect(state.activeNodeId, 'n1');
+
+      // switchNode runs the data load, which reports a non-owner; the
+      // defensive clear then drops the binding during the same call.
+      await state.switchNode('n2');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(state.activeNodeId, isNull);
+      expect(state.federationNodes, isEmpty);
+      expect(state.federationSupported, isFalse);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        jsonDecode(prefs.getString('federation_node_selection') ?? '{}'),
+        isNot(contains('srv')),
+        reason: 'the stale selection must be forgotten, not restored',
+      );
       state.dispose();
     });
   });

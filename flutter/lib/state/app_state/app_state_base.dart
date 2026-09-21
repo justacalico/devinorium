@@ -558,6 +558,7 @@ abstract class AppStateBase extends ChangeNotifier {
   set _switchingServer(bool value);
   Future<void> _resetServerState();
   Future<void> _loadUserAndData();
+  Future<void> _loadUserAndDataWithNodeFallback();
   Future<void> _loadUserThreadsChunk({bool reset = false});
   Future<void> _loadProjectThreadsChunk(int projectId, {bool reset = false});
   void _mergeThreads(List<Thread> incoming);

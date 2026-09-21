@@ -50,7 +50,7 @@ mixin AuthStore on AppStateBase {
         notifyListeners();
         return;
       }
-      await _loadUserAndData();
+      await _loadUserAndDataWithNodeFallback();
     } catch (e) {
       if (e is ApiException && e.statusCode == 401) {
         if (multiServerState.activeProfile?.isLocal == true) {
@@ -58,7 +58,7 @@ mixin AuthStore on AppStateBase {
           // stale profile survived — re-ensure once before giving up.
           await _ensureLocalServer();
           try {
-            await _loadUserAndData();
+            await _loadUserAndDataWithNodeFallback();
             return;
           } catch (_) {}
         }
@@ -109,7 +109,7 @@ mixin AuthStore on AppStateBase {
         await restoreNodeSelection();
         _view = AppView.app;
         notifyListeners();
-        await _loadUserAndData();
+        await _loadUserAndDataWithNodeFallback();
       }
       _globalError = '';
       notifyListeners();
@@ -169,7 +169,7 @@ mixin AuthStore on AppStateBase {
       await restoreNodeSelection();
       _view = AppView.app;
       notifyListeners();
-      await _loadUserAndData();
+      await _loadUserAndDataWithNodeFallback();
       closeDialog();
       _globalError = '';
       notifyListeners();
@@ -301,6 +301,7 @@ mixin AuthStore on AppStateBase {
           MultiServerState.localProfileId,
           force: true,
         );
+        dropNodeSelectionFor(MultiServerState.localProfileId);
         if (wasActive) {
           await _resetServerState();
         }
@@ -324,7 +325,10 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> loadUsers() async {
     try {
-      _users = await api.listUsers();
+      // Account management is a hub concern: satellites only have the
+      // passwordless `local` owner, so listing them via the node-bound api
+      // would show the wrong user table.
+      _users = await hubApi.listUsers();
       _globalError = '';
     } catch (e) {
       _globalError = '$e';
@@ -357,7 +361,7 @@ mixin AuthStore on AppStateBase {
     required String password,
   }) async {
     try {
-      await api.createUser(username: username, password: password);
+      await hubApi.createUser(username: username, password: password);
       _globalError = '';
       await loadUsers();
     } catch (e) {
@@ -369,7 +373,7 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> setUserDisabled(int id, bool disabled) async {
     try {
-      await api.setUserDisabled(id, disabled);
+      await hubApi.setUserDisabled(id, disabled);
       _globalError = '';
       await loadUsers();
     } catch (e) {
@@ -424,6 +428,12 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> switchServer(String serverId) async {
     if (_switchingServer) return;
+    if (hasDirtyEditorTabs) {
+      _globalError =
+          'Editor has unsaved changes. Save or discard them before switching.';
+      notifyListeners();
+      return;
+    }
     _switchingServer = true;
     stopHealthChecks();
     stopGitRefresh();
@@ -451,7 +461,7 @@ mixin AuthStore on AppStateBase {
       // Refresh the Tailscale card for the new server even if the rest of
       // the user data load fails below.
       unawaited(loadTailscaleStatus());
-      await _loadUserAndData();
+      await _loadUserAndDataWithNodeFallback();
     } catch (e) {
       _globalError = '$e';
       // The bundled server is app-managed — keep retrying it even when the
@@ -489,7 +499,7 @@ mixin AuthStore on AppStateBase {
           await _ensureLocalServer();
         }
         if (multiServerState.activeApi != null) {
-          await _loadUserAndData();
+          await _loadUserAndDataWithNodeFallback();
         } else {
           if (multiServerState.activeProfile?.isLocal == true) {
             startHealthChecks();
@@ -600,7 +610,8 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> openTotpSetup() async {
     try {
-      final res = await api.totpSetup();
+      // TOTP guards the hub login, not the satellite's `local` account.
+      final res = await hubApi.totpSetup();
       _totpSecret = res.secret;
       _dialog = DialogKind.totpSetup;
       _userMenuOpen = false;
@@ -614,7 +625,7 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> verifyTotp(String code) async {
     try {
-      await api.totpVerify(code);
+      await hubApi.totpVerify(code);
       _dialog = DialogKind.none;
       _user = await api.me();
       _globalError = '';
@@ -628,7 +639,7 @@ mixin AuthStore on AppStateBase {
   @override
   Future<void> disableTotp() async {
     try {
-      await api.totpDisable();
+      await hubApi.totpDisable();
       _user = await api.me();
       _globalError = '';
       notifyListeners();
@@ -689,6 +700,7 @@ mixin AuthStore on AppStateBase {
     _projectThreadsHasMore.clear();
     _loadingMoreProjectThreads.clear();
     _filesTreeRoot = FileTreeNode.root();
+    _filesScopeKey = null;
     _filesPanelOpen = false;
     _sidebarOpen = false;
     _filesError = '';
@@ -707,6 +719,9 @@ mixin AuthStore on AppStateBase {
     _gitPanelSeq++;
     _activeProjectId = null;
     _activeThreadId = null;
+    // Open editor tabs hold content from the old target; leaving them would
+    // let a save land on the new machine under a reused path.
+    closeAllEditorTabs();
     for (final store in _threadStores.values) {
       store.dispose();
     }

@@ -23,7 +23,7 @@ mixin NodeStore on AppStateBase {
 
   /// Remembered node id per server profile id, persisted so a returning
   /// user lands back on the satellite they were using.
-  Map<String, String> _nodeSelections = {};
+  final Map<String, String> _nodeSelections = {};
   bool _nodeSelectionsLoaded = false;
 
   @override
@@ -69,12 +69,9 @@ mixin NodeStore on AppStateBase {
     final user = _user;
     if (user != null && !user.isOwner) {
       // A non-owner can never hold a node selection (the picker is hidden
-      // and the proxy is owner-only), but clear a stale one defensively so
+      // and the proxy is owner-only), but drop a stale one defensively so
       // a downgraded account is not left bound to a route that always 403s.
-      if (_activeNodeId != null) {
-        _activeNodeId = null;
-        unawaited(_persistNodeSelection());
-      }
+      _dropActiveNode();
       if (_federationSupported || _federationNodes.isNotEmpty) {
         _federationSupported = false;
         _federationNodes = [];
@@ -99,23 +96,28 @@ mixin NodeStore on AppStateBase {
         // The selected satellite was deregistered. During a server switch
         // or bootstrap the in-progress load just needs the binding dropped;
         // mid-session the loaded data came from the vanished node, so fall
-        // back to the hub with a full reset.
+        // back to the hub with a full reset. Re-check the binding: the user
+        // may have picked another node while this refresh was in flight.
         if (_switchingServer || _user == null) {
-          _activeNodeId = null;
-          unawaited(_persistNodeSelection());
-          notifyListeners();
+          if (_activeNodeId == active) {
+            _activeNodeId = null;
+            unawaited(_persistNodeSelection());
+            notifyListeners();
+          }
         } else {
           unawaited(switchNode(null));
         }
       }
     } on ApiException catch (e) {
       // Non-owners cannot list nodes and older servers have no federation
-      // routes; either way the section stays hidden.
+      // routes; either way the section stays hidden. A stale selection can
+      // only produce failures now, so drop it too.
       if (seq != _federationSeq) return;
       if (e.statusCode == 403 || e.statusCode == 404) {
         _federationSupported = false;
         _federationNodes = [];
         _federationSelfName = '';
+        _dropActiveNode();
         notifyListeners();
       }
     } catch (_) {
@@ -123,14 +125,36 @@ mixin NodeStore on AppStateBase {
     }
   }
 
+  /// Forget the selected node. Mid-session this runs the full switch back
+  /// to the hub so node-bound state resets; while a server switch or
+  /// bootstrap is already resetting state it only clears the binding.
+  void _dropActiveNode() {
+    if (_activeNodeId == null) return;
+    if (_switchingServer || _user == null) {
+      _activeNodeId = null;
+      unawaited(_persistNodeSelection());
+    } else {
+      unawaited(switchNode(null));
+    }
+  }
+
   /// Re-target the app at a satellite of the active hub, or back at the hub
-  /// itself when [nodeId] is null. Mirrors [switchServer].
+  /// itself when [nodeId] is null. Mirrors [switchServer]. A failed switch
+  /// rolls the binding back so the app is never left pointing at a target
+  /// that cannot answer.
   @override
   Future<void> switchNode(String? nodeId) async {
     if (_switchingServer || nodeId == _activeNodeId) return;
+    if (hasDirtyEditorTabs) {
+      _globalError =
+          'Editor has unsaved changes. Save or discard them before switching.';
+      notifyListeners();
+      return;
+    }
     _switchingServer = true;
     stopHealthChecks();
     stopGitRefresh();
+    final previous = _activeNodeId;
     try {
       // Terminals belong to the previous target — kill them while the api
       // getter still resolves to it.
@@ -141,10 +165,39 @@ mixin NodeStore on AppStateBase {
       unawaited(loadTailscaleStatus());
       await _loadUserAndData();
     } catch (e) {
+      // The new target cannot serve this client (dead satellite, revoked
+      // registration). Restore the previous binding and reload it.
+      _activeNodeId = previous;
+      unawaited(_persistNodeSelection());
+      try {
+        await _resetServerState();
+        await _loadUserAndDataWithNodeFallback();
+      } catch (_) {
+        // Even the fallback failed; keep the health loop alive so the UI
+        // can recover on its own.
+        startHealthChecks();
+      }
       _globalError = '$e';
       notifyListeners();
     } finally {
       _switchingServer = false;
+    }
+  }
+
+  /// [_loadUserAndData] with a self-healing escape: when a selected
+  /// satellite cannot answer (dead, deregistered, or federation turned off)
+  /// the binding is dropped and the load retried through the hub, so a
+  /// stale node can never wedge the app on a dead proxy route.
+  @override
+  Future<void> _loadUserAndDataWithNodeFallback() async {
+    try {
+      await _loadUserAndData();
+    } catch (_) {
+      if (_activeNodeId == null) rethrow;
+      _activeNodeId = null;
+      unawaited(_persistNodeSelection());
+      await _resetServerState();
+      await _loadUserAndData();
     }
   }
 
@@ -188,17 +241,19 @@ mixin NodeStore on AppStateBase {
 
   Future<void> _loadNodeSelections() async {
     if (_nodeSelectionsLoaded) return;
-    _nodeSelectionsLoaded = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_nodeSelectionsKey);
       final decoded = raw == null ? null : jsonDecode(raw);
       if (decoded is Map) {
-        _nodeSelections = {
-          for (final e in decoded.entries) '${e.key}': '${e.value}',
-        };
+        // Merge rather than replace: a persist that ran while this load was
+        // in flight already wrote its in-session value to the map.
+        for (final e in decoded.entries) {
+          _nodeSelections.putIfAbsent('${e.key}', () => '${e.value}');
+        }
       }
     } catch (_) {}
+    _nodeSelectionsLoaded = true;
   }
 
   Future<void> _persistNodeSelection() async {
