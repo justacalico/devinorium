@@ -178,6 +178,25 @@ void main() {
       expect(session.terminal.buffer.getText(), contains('hello world'));
     });
 
+    test('decodes multibyte sequences split across frames', () {
+      final fake = _FakeWebSocketChannel();
+      final session = RemoteTerminalSession(
+        id: 'r1b',
+        uri: Uri.parse('ws://localhost/ws'),
+        connector: _returnFake(fake),
+      );
+      addTearDown(session.dispose);
+
+      final payload = utf8.encode('a✓界b');
+      // Split inside the 3-byte ✓ and the 3-byte 界.
+      fake.remoteSink.add(payload.sublist(0, 2));
+      fake.remoteSink.add(payload.sublist(2, 5));
+      fake.remoteSink.add(payload.sublist(5));
+
+      expect(session.terminal.buffer.getText(), contains('a✓界b'));
+      expect(session.terminal.buffer.getText(), isNot(contains('�')));
+    });
+
     test('sends JSON resize and input frames', () {
       final fake = _FakeWebSocketChannel();
       final outgoing = <dynamic>[];

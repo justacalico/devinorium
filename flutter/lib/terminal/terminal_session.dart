@@ -124,6 +124,11 @@ class RemoteTerminalSession extends TerminalSession {
   bool _disposed = false;
   static const _maxReconnectAttempts = 5;
 
+  // Binary frames arrive independently but UTF-8 sequences can span them;
+  // the sink buffers partial code units between frames. Recreated on every
+  // connect since a new socket carries no pending bytes.
+  ByteConversionSink? _utf8Sink;
+
   @override
   void _attach() {
     terminal.onOutput = _onOutput;
@@ -132,6 +137,9 @@ class RemoteTerminalSession extends TerminalSession {
 
   void _connect() {
     _setStatus(TerminalStatus.connecting);
+    _utf8Sink = utf8.decoder.startChunkedConversion(
+      _TerminalTextSink(terminal.write),
+    );
     try {
       _channel = _connector(uri, token: token);
       _sub = _channel!.stream.listen(
@@ -151,8 +159,7 @@ class RemoteTerminalSession extends TerminalSession {
   void _onMessage(dynamic message) {
     if (_disposed) return;
     if (message is List<int>) {
-      final text = utf8.decode(message, allowMalformed: true);
-      terminal.write(text);
+      _utf8Sink?.add(message);
     } else if (message is String) {
       try {
         final data = jsonDecode(message) as Map<String, dynamic>;
@@ -173,6 +180,8 @@ class RemoteTerminalSession extends TerminalSession {
     _setStatus(TerminalStatus.disconnected);
     _sub?.cancel();
     _channel = null;
+    _utf8Sink?.close();
+    _utf8Sink = null;
     if (!reconnect || _reconnectAttempts >= _maxReconnectAttempts) {
       _setStatus(TerminalStatus.exited);
       _complete();
@@ -214,8 +223,25 @@ class RemoteTerminalSession extends TerminalSession {
     _disposed = true;
     _sub?.cancel();
     _channel?.sink.close();
+    _utf8Sink?.close();
     super.dispose();
   }
+}
+
+/// Delivers each decoded text chunk to the terminal as it completes; a
+/// [StringConversionSink.withCallback] would accumulate until close.
+class _TerminalTextSink implements Sink<String> {
+  _TerminalTextSink(this._write);
+
+  final void Function(String) _write;
+
+  @override
+  void add(String data) {
+    if (data.isNotEmpty) _write(data);
+  }
+
+  @override
+  void close() {}
 }
 
 /// Factory signature for creating a [TerminalSession].
