@@ -104,6 +104,37 @@ pub(crate) async fn apply_session_config(
         }
     }
 
+    // An agent that advertises a select option for the output cap gets the
+    // thread's override applied verbatim. ACP has no free-form number input,
+    // so the cap is only sent when the requested value is one of the
+    // agent's own choices; otherwise it stays display-only.
+    if let Some(cap) = options.max_output_tokens {
+        match output_token_option(config_options, cap) {
+            Some(opt) => {
+                let opt_id = opt.id.clone();
+                tracing::info!(session_id = %session_id, value = %cap, "setting acp output token cap");
+                if let Err(e) = connection
+                    .send_request(SetSessionConfigOptionRequest::new(
+                        session_id.clone(),
+                        opt_id,
+                        SessionConfigOptionValue::value_id(cap.to_string()),
+                    ))
+                    .block_task()
+                    .await
+                {
+                    tracing::warn!(session_id = %session_id, error = %e, "failed to set acp output token cap");
+                }
+            }
+            None => {
+                tracing::debug!(
+                    session_id = %session_id,
+                    value = %cap,
+                    "agent exposes no output-token option; cap is advisory only"
+                );
+            }
+        }
+    }
+
     if let Some(option_id) = kind.interaction_mode_option() {
         if let Some(interaction_opt) = config_options.iter().find(|o| o.id.0.as_ref() == option_id)
         {
@@ -232,6 +263,27 @@ pub(crate) async fn apply_session_config(
     Ok(())
 }
 
+/// Session-config option ids an agent might use for an output token cap.
+const OUTPUT_TOKEN_OPTION_IDS: &[&str] = &[
+    "max_output_tokens",
+    "max_output_token",
+    "output_tokens",
+    "max_tokens",
+];
+
+/// The config option to set for an output-cap request: a select whose
+/// choices contain the value verbatim. `None` when the agent exposes no
+/// matching option.
+fn output_token_option(
+    config_options: &[SessionConfigOption],
+    value: u64,
+) -> Option<&SessionConfigOption> {
+    let want = value.to_string();
+    config_options.iter().find(|o| {
+        OUTPUT_TOKEN_OPTION_IDS.contains(&o.id.0.as_ref()) && select_values(o).contains(&want)
+    })
+}
+
 pub(crate) fn select_values(opt: &SessionConfigOption) -> Vec<String> {
     match &opt.kind {
         SessionConfigKind::Select(select) => match &select.options {
@@ -251,6 +303,7 @@ pub(crate) fn select_values(opt: &SessionConfigOption) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent_client_protocol::schema::v1::SessionConfigSelectOption;
 
     #[test]
     fn devin_session_mode_id_maps_interaction_modes() {
@@ -331,6 +384,33 @@ mod tests {
             AgentKind::Devin.interaction_mode_value("bogus", &choices),
             None
         );
+    }
+
+    #[test]
+    fn output_token_option_matches_only_offered_values() {
+        let opt = SessionConfigOption::select(
+            "max_output_tokens",
+            "Max output tokens",
+            "4096",
+            vec![
+                SessionConfigSelectOption::new("2048", "2048"),
+                SessionConfigSelectOption::new("4096", "4096"),
+            ],
+        );
+        let other = SessionConfigOption::select(
+            "model",
+            "Model",
+            "a",
+            vec![SessionConfigSelectOption::new("4096", "a")],
+        );
+        let options = vec![other, opt];
+
+        assert!(output_token_option(&options, 4096).is_some());
+        // Not among the agent's choices: the cap is advisory, not sent.
+        assert!(output_token_option(&options, 8192).is_none());
+        // A select with a matching value but an unrelated id must not be hit.
+        let model_only = vec![options[0].clone()];
+        assert!(output_token_option(&model_only, 4096).is_none());
     }
 
     #[test]

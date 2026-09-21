@@ -13640,3 +13640,490 @@ async fn git_changes_rejects_thread_without_project() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+// ---- Context usage and output-token caps (work item 56) ----
+
+/// A stub provider that records the `max_output_tokens` it was given for
+/// each call, so tests can assert the per-thread cap reaches the provider.
+struct RecordingProvider {
+    seen: std::sync::Arc<std::sync::Mutex<Vec<Option<u64>>>>,
+}
+
+#[async_trait]
+impl Provider for RecordingProvider {
+    fn id(&self) -> &str {
+        "recording-stub"
+    }
+    fn name(&self) -> &str {
+        "Recording Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "stub-1".into(),
+            label: "Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        self.seen
+            .lock()
+            .unwrap()
+            .push(req.options.max_output_tokens);
+        if let Some(cb) = &req.options.session_callback {
+            cb("recording-session".into()).await;
+        }
+        Ok(StartResponse {
+            session_id: "recording-session".into(),
+            reply: "ok".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("ok")],
+            title: "T".into(),
+            usage: None,
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        self.seen
+            .lock()
+            .unwrap()
+            .push(req.options.max_output_tokens);
+        Ok(SendResponse {
+            reply: "ok".into(),
+            thinking: String::new(),
+            parts: vec![MessagePart::text("ok")],
+            usage: None,
+        })
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+/// POST a send with one file attachment; returns the raw response so the
+/// status can be asserted.
+async fn send_with_file(
+    app: &Router,
+    cookie: &str,
+    tid: &str,
+    prompt: &str,
+    filename: &str,
+    mime: &str,
+    data: &[u8],
+) -> axum::response::Response {
+    let boundary = "----sendfileboundary";
+    let mut body: Vec<u8> = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n{prompt}\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {mime}\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(data);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+/// Insert one raw message row, bypassing `add_message` so tests can write
+/// oversized content the API path would never persist.
+async fn seed_raw_message(db: &db::Db, thread_id: &str, role: &str, content: &str) {
+    sqlx::query(
+        "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, turn_id, seq)
+         VALUES (?, ?, ?, NULL, '[]', '[]', '', 1,
+                 (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?))",
+    )
+    .bind(thread_id)
+    .bind(role)
+    .bind(content)
+    .bind(thread_id)
+    .execute(db.pool())
+    .await
+    .expect("seed message");
+    sqlx::query("UPDATE messages SET seq = id WHERE thread_id = ? AND seq != id")
+        .bind(thread_id)
+        .execute(db.pool())
+        .await
+        .expect("fix seq");
+}
+
+async fn get_context(app: &Router, cookie: &str, tid: &str) -> serde_json::Value {
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/context"),
+            cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    serde_json::from_str(&body_str(resp.into_body()).await).unwrap()
+}
+
+#[tokio::test]
+async fn context_endpoint_reports_thread_usage() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "ctx").await;
+
+    let ctx = get_context(&app, &cookie, &tid).await;
+    assert_eq!(ctx["used_tokens"], 0);
+    assert_eq!(ctx["context_limit"], 200_000);
+    assert_eq!(ctx["output_limit"], 32_000);
+    assert_eq!(ctx["max_output_tokens"], serde_json::Value::Null);
+    assert_eq!(ctx["has_session"], false);
+
+    send_and_wait(&app, &cookie, &tid, "hello there").await;
+    let ctx = get_context(&app, &cookie, &tid).await;
+    let used = ctx["used_tokens"].as_u64().unwrap();
+    assert!(used > 0, "usage should grow after a send: {ctx}");
+    assert_eq!(ctx["has_session"], true);
+
+    // Another user's view of the same id must not leak usage.
+    let other = create_user(&app, &cookie, "bob", "bobsecret123").await;
+    let _ = other;
+    let bob_cookie = login_as(&app, "bob", "bobsecret123").await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/threads/{tid}/context"),
+            &bob_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn send_rejects_prompt_over_context_limit() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "big").await;
+
+    // History only counts once a provider session exists, so establish one
+    // before inflating the stored rows.
+    send_and_wait(&app, &cookie, &tid, "first").await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
+
+    // History alone pushes past the 200k-token stub limit: 900k chars is
+    // roughly 225k tokens.
+    seed_raw_message(&db, &tid, "user", &"x".repeat(900_000)).await;
+
+    let resp = send_with_file(&app, &cookie, &tid, "hi", "n.txt", "text/plain", b"n").await;
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains("context"),
+        "error should name the limit: {body}"
+    );
+
+    // The rejected send must not have persisted a user message.
+    let count = db.count_messages(&tid).await.unwrap();
+    assert_eq!(count, 3, "only the first turn and seeded row should remain");
+
+    // A huge text attachment is rejected even with empty history.
+    let tid2 = make_thread(&app, &cookie, pid, "big2").await;
+    let big_text = vec![b'x'; 800_000];
+    let resp = send_with_file(
+        &app,
+        &cookie,
+        &tid2,
+        "hi",
+        "big.txt",
+        "text/plain",
+        &big_text,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(db.count_messages(&tid2).await.unwrap(), 0);
+
+    // An output cap that alone exceeds the window gets its own message.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid2}"),
+            &cookie,
+            r#"{"max_output_tokens":400000}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = send_with_file(&app, &cookie, &tid2, "hi", "n.txt", "text/plain", b"n").await;
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let body = body_str(resp.into_body()).await;
+    assert!(
+        body.contains("output token cap"),
+        "error should name the cap: {body}"
+    );
+}
+
+#[tokio::test]
+async fn resend_counts_full_session_history() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "resend").await;
+
+    send_and_wait(&app, &cookie, &tid, "first").await;
+    send_and_wait(&app, &cookie, &tid, "second").await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.len(), 4);
+    let first_user = msgs[0].id;
+    let second_user = msgs[2].id;
+
+    // Inflate the first turn's assistant reply past the stub's 200k limit.
+    sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
+        .bind("y".repeat(900_000))
+        .bind(msgs[1].id)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+    // The provider session is never rewound, so a resend still carries the
+    // full history — both anchors reject while the session lives.
+    let resp = resend_message(&app, &cookie, &tid, second_user, &[]).await;
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let resp = resend_message(&app, &cookie, &tid, first_user, &[]).await;
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+    // After a context reset the session is gone and history stops counting;
+    // replaying the tiny first prompt fits again.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/context/reset"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = resend_message(&app, &cookie, &tid, first_user, &[]).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn context_reset_drops_session_and_usage() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "reset").await;
+
+    send_and_wait(&app, &cookie, &tid, "hello").await;
+    // The SSE stream closes before the run task flips to a terminal status;
+    // wait for it so the reset below is not refused as "still running".
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
+    let ctx = get_context(&app, &cookie, &tid).await;
+    assert!(ctx["used_tokens"].as_u64().unwrap() > 0);
+    assert_eq!(ctx["has_session"], true);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/context/reset"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let ctx = get_context(&app, &cookie, &tid).await;
+    assert_eq!(ctx["used_tokens"], 0);
+    assert_eq!(ctx["has_session"], false);
+    let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
+    assert!(thread.devin_session_id.is_none());
+    assert!(thread.context_cleared_seq > 0);
+
+    // After the reset the thread behaves like a fresh session: an oversized
+    // old history no longer counts against the limit.
+    sqlx::query("UPDATE messages SET content = ? WHERE thread_id = ?")
+        .bind("z".repeat(900_000))
+        .bind(&tid)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    let resp = send_with_file(&app, &cookie, &tid, "hi again", "n.txt", "text/plain", b"n").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn context_reset_rejects_active_run() {
+    let (app, _db) = make_app_with_delay(2_000).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "busy").await;
+
+    let send_app = app.clone();
+    let send_cookie = cookie.clone();
+    let send_tid = tid.clone();
+    let send_task = tokio::spawn(async move {
+        send_and_wait(&send_app, &send_cookie, &send_tid, "slow").await;
+    });
+    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/context/reset"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    send_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn update_thread_sets_and_clears_output_cap() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "caps").await;
+
+    let cap_of = |app: &Router, cookie: &str, tid: &str| {
+        let app = app.clone();
+        let cookie = cookie.to_string();
+        let tid = tid.to_string();
+        async move {
+            let resp = app
+                .clone()
+                .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+                .await
+                .unwrap();
+            let body: serde_json::Value =
+                serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+            body["thread"]["max_output_tokens"].clone()
+        }
+    };
+
+    assert_eq!(cap_of(&app, &cookie, &tid).await, serde_json::Value::Null);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"max_output_tokens":4096}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(cap_of(&app, &cookie, &tid).await, 4096);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"max_output_tokens":null}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(cap_of(&app, &cookie, &tid).await, serde_json::Value::Null);
+
+    for bad in ["0", "-5", "4000001"] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "PATCH",
+                &format!("/api/threads/{tid}"),
+                &cookie,
+                &format!(r#"{{"max_output_tokens":{bad}}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "value {bad}");
+    }
+}
+
+#[tokio::test]
+async fn send_passes_output_cap_to_provider() {
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (mut state, _db) = app_state().await;
+    state.provider = Arc::new(RecordingProvider { seen: seen.clone() }) as Arc<dyn Provider>;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "caps").await;
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"max_output_tokens":4096}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    send_and_wait(&app, &cookie, &tid, "with cap").await;
+    assert_eq!(seen.lock().unwrap().as_slice(), &[Some(4096)]);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            r#"{"max_output_tokens":null}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    send_and_wait(&app, &cookie, &tid, "without cap").await;
+    assert_eq!(seen.lock().unwrap().as_slice(), &[Some(4096), None]);
+}

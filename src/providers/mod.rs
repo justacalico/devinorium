@@ -18,6 +18,7 @@ pub mod ask;
 pub mod codex;
 pub mod parts;
 pub mod status;
+pub mod tokens;
 pub mod version;
 
 pub use ask::{AskCallback, AskOption, AskOutcome, AskQuestion, AskRequest, AskResponse};
@@ -146,6 +147,10 @@ pub struct SendOptions {
     /// in-flight prompt gracefully (e.g. via ACP `$/cancelRequest`) so the
     /// agent session preserves its context for subsequent messages.
     pub cancel_signal: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Per-turn output token cap. `None` lets the model use its own default.
+    /// Providers apply it only when they expose a matching config option;
+    /// otherwise it is carried for display only.
+    pub max_output_tokens: Option<u64>,
 }
 
 impl std::fmt::Debug for SendOptions {

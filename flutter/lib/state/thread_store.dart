@@ -9,6 +9,7 @@ import '../l10n/global_l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../utils/debug_log.dart';
+import '../utils/token_estimate.dart';
 import 'async_value.dart';
 import 'command_scheduler.dart';
 import 'streaming_reducer.dart';
@@ -76,6 +77,7 @@ class ThreadStore {
     String? selectedPermission,
     String? selectedProvider,
     String? lastRunStatus,
+    this.contextUsage,
   }) : _status = status ?? ThreadStoreStatus.empty,
        _detail = detail ?? const AsyncValue.empty(),
        _streaming = streaming ?? StreamingSnapshot.empty,
@@ -101,6 +103,11 @@ class ThreadStore {
   StreamingSnapshot _streaming;
   String _globalError = '';
   String? _lastRunStatus;
+
+  /// The server's estimate of the tokens the provider session would carry
+  /// into the next send. Null until the first fetch completes or when the
+  /// backend does not expose the endpoint.
+  ThreadContextUsage? contextUsage;
 
   // Draft state for this thread. t3code keeps a per-thread draft so switching
   // threads does not lose the user's in-progress input.
@@ -213,6 +220,66 @@ class ThreadStore {
       _streaming.isActive ? _streaming.plan : _detail.valueOrNull?.plan;
   String? get startedAt => _streaming.startedAt;
 
+  /// The thread's output-token override, mirrored from the detail.
+  int? get maxOutputTokens => _detail.valueOrNull?.thread.maxOutputTokens;
+
+  /// Estimated tokens the current composer draft would add to the next
+  /// send, including its mode instruction and reference chips.
+  int get draftTokens => estimateDraftTokens(
+    prompt: _promptForMode(composerText.trim()),
+    mode: composerMode.name,
+    attachments: attachments,
+    pathRefs: pathRefs,
+    threadReferences: threadReferences,
+    machineReferences: machineReferences,
+  );
+
+  /// True when the model advertises a window and the draft plus history plus
+  /// the output reserve would overflow it.
+  bool get sendExceedsContext {
+    final u = contextUsage;
+    if (u == null || !u.hasLimit) return false;
+    return u.exceedsLimit(draftTokens);
+  }
+
+  /// Refresh the context usage estimate. Called on load and after each run;
+  /// failures keep the stale value so a flaky network never blanks the meter.
+  Future<void> refreshContextUsage() async {
+    try {
+      contextUsage = await api.getThreadContext(threadId);
+      _emit();
+    } catch (e) {
+      debugLogFailure('thread.contextUsage', e, threadId: threadId);
+    }
+  }
+
+  /// Drop the provider session so the next send starts fresh. Stored
+  /// messages stay visible but stop counting toward the context estimate.
+  Future<void> resetContext() async {
+    try {
+      await api.resetThreadContext(threadId);
+      await reloadDetail();
+      unawaited(refreshContextUsage());
+    } catch (e) {
+      debugLogFailure('thread.resetContext', e, threadId: threadId);
+      _globalError = '$e';
+      _emit();
+    }
+  }
+
+  /// Set or clear the thread's output-token cap.
+  Future<void> setThreadMaxOutputTokens(int? tokens) async {
+    try {
+      await api.setThreadMaxOutputTokens(threadId, tokens);
+      await reloadDetail();
+      unawaited(refreshContextUsage());
+    } catch (e) {
+      debugLogFailure('thread.setMaxOutputTokens', e, threadId: threadId);
+      _globalError = '$e';
+      _emit();
+    }
+  }
+
   /// Load the persisted detail and, if the server says the thread is still
   /// running, resume the live stream. This is t3code's "snapshot then
   /// subscribe" pattern.
@@ -239,6 +306,7 @@ class ThreadStore {
 
       _applyRunSnapshot(run as Map<String, dynamic>);
       unawaited(_loadInitialMessages());
+      unawaited(refreshContextUsage());
     } catch (e) {
       debugLogFailure('thread.load', e, threadId: threadId);
       _status = ThreadStoreStatus.error;
@@ -350,6 +418,8 @@ class ThreadStore {
             }
           }
         }
+        // Last: the estimate reflects whatever the calls above loaded.
+        unawaited(refreshContextUsage());
       } catch (e) {
         debugLogFailure('thread.resume', e, threadId: threadId);
         _globalError = '$e';
@@ -368,6 +438,11 @@ class ThreadStore {
       return;
     }
     if (_pendingSend != null) return;
+    if (sendExceedsContext) {
+      _globalError = appL10n.contextExceeded;
+      _emit();
+      return;
+    }
     _globalError = '';
 
     final messageAttachments =
@@ -1017,6 +1092,7 @@ class ThreadStore {
     // Timed out — clear streaming state anyway so the UI doesn't freeze.
     _clearStreamingState();
     _emit();
+    unawaited(refreshContextUsage());
   }
 
   /// Drop the tail rows a resend run deleted server-side. Returns the
@@ -1170,6 +1246,9 @@ class ThreadStore {
     }
     _lastRunStatus = _statusFromPhase(phase);
     _emit();
+    // A finished turn grew the session; refresh the estimate so the meter
+    // reflects the reply that just persisted.
+    unawaited(refreshContextUsage());
     if (!_runFinishedFired &&
         (phase == StreamPhase.completed || phase == StreamPhase.failed)) {
       _runFinishedFired = true;

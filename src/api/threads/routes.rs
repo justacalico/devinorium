@@ -430,6 +430,18 @@ pub(super) async fn rename(
         }
     }
 
+    if let Some(Some(cap)) = req.max_output_tokens {
+        if !(1..=4_000_000).contains(&cap) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(
+                    "max_output_tokens must be between 1 and 4000000",
+                )),
+            )
+                .into_response();
+        }
+    }
+
     // Resolve and validate a linked merge request URL against the thread's
     // project remote. An empty string or JSON null clears the stored link.
     let linked_mr_json = match &req.linked_mr {
@@ -471,6 +483,7 @@ pub(super) async fn rename(
         || req.permissions.is_some()
         || env_mode.is_some()
         || linked_mr_json.is_some()
+        || req.max_output_tokens.is_some()
     {
         // Treat an empty permissions string as a request to clear the field.
         let permissions = req
@@ -494,6 +507,7 @@ pub(super) async fn rename(
             permissions: permissions.map(|opt| opt.map(str::to_string)),
             env_mode,
             linked_mr: linked_mr_json,
+            max_output_tokens: req.max_output_tokens,
         };
         if let Err(e) = state.db.update_thread_settings(&id, user.id, update).await {
             return map_err_internal(e).into_response();

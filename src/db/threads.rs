@@ -31,6 +31,8 @@ pub struct ThreadSettingsUpdate {
     pub permissions: Option<Option<String>>,
     pub env_mode: Option<String>,
     pub linked_mr: Option<Option<String>>,
+    /// `Some(Some(n))` sets the output token cap, `Some(None)` clears it.
+    pub max_output_tokens: Option<Option<i64>>,
 }
 
 impl super::Db {
@@ -268,8 +270,35 @@ impl super::Db {
                     .execute(&mut *tx).await?;
             }
         }
+        if let Some(max_output) = update.max_output_tokens {
+            sqlx::query("UPDATE threads SET max_output_tokens = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?")
+                .bind(max_output)
+                .bind(id)
+                .bind(user_id)
+                .execute(&mut *tx).await?;
+        }
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Drop the provider session and watermark the context estimate at the
+    /// thread's newest message. The next send starts a fresh provider
+    /// session, so the token estimate only counts what the new session will
+    /// see: messages written after this point.
+    pub async fn reset_thread_context(&self, id: &str, user_id: i64) -> anyhow::Result<u64> {
+        let changed = sqlx::query(
+            "UPDATE threads
+             SET devin_session_id = NULL,
+                 context_cleared_seq = COALESCE((SELECT MAX(seq) FROM messages WHERE thread_id = ?), 0),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE id = ? AND user_id = ?",
+        )
+        .bind(id)
+        .bind(id)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(changed.rows_affected())
     }
 
     /// Update a thread's git fields. Returns the number of rows updated; a
