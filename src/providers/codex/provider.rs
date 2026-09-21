@@ -255,8 +255,10 @@ impl CodexProvider {
         let turn_id = turn.id;
 
         // When the user cancels, interrupt the turn so the thread keeps its
-        // context for follow-up messages.
-        if let Some(flag) = options.cancel_signal.clone() {
+        // context for follow-up messages. The watcher holds an `AppServer`
+        // clone, so it must be aborted when the turn ends — a finished or
+        // failed turn would otherwise leak the task and the child process.
+        let cancel_watcher = options.cancel_signal.clone().map(|flag| {
             let server = server.clone();
             let (tid, turn_id) = (thread_id.clone(), turn_id.clone());
             tokio::spawn(async move {
@@ -271,8 +273,9 @@ impl CodexProvider {
                         json!({ "threadId": tid, "turnId": turn_id }),
                     )
                     .await;
-            });
-        }
+            })
+        });
+        let _cancel_guard = AbortOnDrop(cancel_watcher);
 
         let mut translator = TurnTranslator::new();
         let mut parts = Vec::new();
@@ -392,6 +395,20 @@ impl CodexProvider {
     }
 }
 
+/// Abort a spawned task when the enclosing scope exits, whichever way it
+/// exits. Used for the cancel watcher: without this, a completed turn leaves
+/// the watcher looping forever on an `AppServer` clone and the child
+/// process never dies.
+struct AbortOnDrop(Option<tokio::task::JoinHandle<()>>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        if let Some(h) = self.0.take() {
+            h.abort();
+        }
+    }
+}
+
 fn sanitize_filename(name: &str) -> String {
     crate::providers::acp::content::sanitize(name)
 }
@@ -480,6 +497,7 @@ mod tests {
     fn fake_codex(dir: &Path) -> PathBuf {
         let path = dir.join("codex");
         let script = r#"#!/bin/sh
+echo $$ > "__LOGDIR__/codex.pid"
 id_of() { printf '%s' "$1" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'; }
 while IFS= read -r line; do
   case "$line" in
@@ -562,6 +580,46 @@ done
                 .iter()
                 .any(|p| matches!(p, MessagePart::ToolCall { payload } if payload.command.as_deref() == Some("echo hi")))
         );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn finished_turn_releases_the_app_server() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = fake_codex(dir.path());
+        let provider = CodexProvider::new(bin.to_string_lossy().into(), String::new());
+        let mut opts = options(dir.path());
+        opts.cancel_signal = Some(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+
+        provider
+            .start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            })
+            .await
+            .unwrap();
+
+        let raw = std::fs::read_to_string(dir.path().join("codex.pid"))
+            .unwrap()
+            .trim()
+            .parse::<i32>()
+            .unwrap();
+        let pid = rustix::process::Pid::from_raw(raw).unwrap();
+        // The cancel watcher holds an `AppServer` clone; unless it is dropped
+        // with the turn, kill_on_drop never fires and the child outlives the
+        // prompt.
+        let mut alive = true;
+        for _ in 0..60 {
+            if matches!(
+                rustix::process::test_kill_process(pid),
+                Err(e) if e == rustix::io::Errno::SRCH
+            ) {
+                alive = false;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(!alive, "codex app-server {raw} still running after the turn");
     }
 
     #[tokio::test]
