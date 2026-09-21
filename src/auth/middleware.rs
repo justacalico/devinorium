@@ -44,6 +44,16 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         }
     }
 
+    // The shared federation token maps onto `local` the same way. On a
+    // satellite this is how the hub's proxied requests authenticate.
+    if let Some(expected) = state.config.federation_token.as_deref() {
+        if let Some(token) = bearer.as_deref() {
+            if constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes()) {
+                return run_as_local(state, req, next).await;
+            }
+        }
+    }
+
     // Session lookup tries the explicit bearer credential first, then the
     // cookie — so a stale or proxy-injected header cannot shadow a valid
     // session cookie, and a stale cookie cannot shadow a working bearer.

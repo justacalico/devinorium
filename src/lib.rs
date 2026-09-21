@@ -8,6 +8,7 @@ pub mod assets;
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod federation;
 pub mod git;
 pub mod lock;
 pub mod machine_grants;
@@ -71,6 +72,10 @@ pub struct AppState {
     /// Machine-control instructions point agents at this so `--dev`'s
     /// random port and wildcard binds resolve to a reachable URL.
     pub bound_addr: Arc<std::sync::OnceLock<std::net::SocketAddr>>,
+    /// Outbound HTTP client for federation: satellite registration
+    /// heartbeats and hub-side request proxying. Has no overall timeout so
+    /// proxied SSE streams can run indefinitely.
+    pub http_client: reqwest::Client,
 }
 
 impl AppState {
@@ -181,10 +186,12 @@ pub fn build_app(state: AppState) -> Router {
     let limiter = security::RateLimiter::new(500, 2.0);
 
     // Public routes (no auth). Machine-control endpoints authenticate
-    // with per-run capability tokens inside their handlers.
+    // with per-run capability tokens inside their handlers; the federation
+    // register endpoint authenticates with the shared federation token.
     let public = api::auth::router()
         .merge(api::server::router())
-        .merge(api::machine_control::router());
+        .merge(api::machine_control::router())
+        .merge(api::federation::public_router());
 
     // Protected routes (require auth + role=user).
     let protected = api::threads::router()
@@ -200,6 +207,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::audit::router())
         .merge(api::settings::router())
         .merge(api::machines::router())
+        .merge(api::federation::router())
         .merge(api::tailscale::router())
         .merge(api::models::router())
         .merge(api::providers::router())

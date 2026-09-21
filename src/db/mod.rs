@@ -16,6 +16,7 @@ use sqlx::{
 
 pub mod attachments;
 pub mod audit;
+pub mod federation_nodes;
 pub mod machines;
 pub mod messages;
 pub mod plans;
