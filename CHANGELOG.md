@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.83.0 - 2026-09-21
+#### Features
+- 添加上下文长度用量统计与输出令牌上限 - (1fd1903) - HttpAnimations
+#### Bug Fixes
+- 迁移编号改为 0037 避免与主干冲突 - (f301664) - HttpAnimations
+
+- - -
+
 ## v0.82.0 - 2026-09-21
 #### Features
 - 通知设置与测试推送界面 - (2d8a162) - HttpAnimations
