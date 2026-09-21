@@ -1971,4 +1971,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get maxOutputTokensInvalid => '请输入 1 到 4,000,000 之间的数值';
+
+  @override
+  String get editorUnsavedSwitchProjects => '编辑器有未保存的更改。请先保存或放弃更改，然后再切换项目。';
+
+  @override
+  String get editorUnsavedNewProject => '编辑器有未保存的更改。请先保存或放弃更改，然后再创建新项目。';
+
+  @override
+  String get editorUnsavedDeleteProject => '编辑器有未保存的更改。请先保存或放弃更改，然后再删除此项目。';
+
+  @override
+  String get editorUnsavedSwitch => '编辑器有未保存的更改。请先保存或放弃更改，然后再切换。';
+
+  @override
+  String get projectNotFoundAfterClone => '克隆后未找到项目。';
+
+  @override
+  String get threadTitleFallback => '线程';
+
+  @override
+  String get webSocketClosed => 'WebSocket 已关闭';
 }

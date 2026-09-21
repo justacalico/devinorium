@@ -1521,5 +1521,33 @@
   "maxOutputTokensInvalid": "请输入 1 到 4,000,000 之间的数值",
   "@maxOutputTokensInvalid": {
     "description": "Validation error for the output token field"
+  },
+  "editorUnsavedSwitchProjects": "编辑器有未保存的更改。请先保存或放弃更改，然后再切换项目。",
+  "@editorUnsavedSwitchProjects": {
+    "description": "Error shown when switching projects while the editor has unsaved changes"
+  },
+  "editorUnsavedNewProject": "编辑器有未保存的更改。请先保存或放弃更改，然后再创建新项目。",
+  "@editorUnsavedNewProject": {
+    "description": "Error shown when creating a project while the editor has unsaved changes"
+  },
+  "editorUnsavedDeleteProject": "编辑器有未保存的更改。请先保存或放弃更改，然后再删除此项目。",
+  "@editorUnsavedDeleteProject": {
+    "description": "Error shown when deleting a project while the editor has unsaved changes"
+  },
+  "editorUnsavedSwitch": "编辑器有未保存的更改。请先保存或放弃更改，然后再切换。",
+  "@editorUnsavedSwitch": {
+    "description": "Error shown when switching servers or nodes while the editor has unsaved changes"
+  },
+  "projectNotFoundAfterClone": "克隆后未找到项目。",
+  "@projectNotFoundAfterClone": {
+    "description": "Error shown when a cloned project cannot be loaded"
+  },
+  "threadTitleFallback": "线程",
+  "@threadTitleFallback": {
+    "description": "Notification title used when a thread has no title"
+  },
+  "webSocketClosed": "WebSocket 已关闭",
+  "@webSocketClosed": {
+    "description": "Terminal error recorded when the socket closes unexpectedly"
   }
 }

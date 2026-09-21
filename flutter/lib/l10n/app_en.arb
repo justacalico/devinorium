@@ -1542,5 +1542,33 @@
   "maxOutputTokensInvalid": "Enter a value between 1 and 4,000,000",
   "@maxOutputTokensInvalid": {
     "description": "Validation error for the output token field"
+  },
+  "editorUnsavedSwitchProjects": "Editor has unsaved changes. Save or discard them before switching projects.",
+  "@editorUnsavedSwitchProjects": {
+    "description": "Error shown when switching projects while the editor has unsaved changes"
+  },
+  "editorUnsavedNewProject": "Editor has unsaved changes. Save or discard them before creating a new project.",
+  "@editorUnsavedNewProject": {
+    "description": "Error shown when creating a project while the editor has unsaved changes"
+  },
+  "editorUnsavedDeleteProject": "Editor has unsaved changes. Save or discard them before deleting this project.",
+  "@editorUnsavedDeleteProject": {
+    "description": "Error shown when deleting a project while the editor has unsaved changes"
+  },
+  "editorUnsavedSwitch": "Editor has unsaved changes. Save or discard them before switching.",
+  "@editorUnsavedSwitch": {
+    "description": "Error shown when switching servers or nodes while the editor has unsaved changes"
+  },
+  "projectNotFoundAfterClone": "Project not found after clone.",
+  "@projectNotFoundAfterClone": {
+    "description": "Error shown when a cloned project cannot be loaded"
+  },
+  "threadTitleFallback": "Thread",
+  "@threadTitleFallback": {
+    "description": "Notification title used when a thread has no title"
+  },
+  "webSocketClosed": "WebSocket closed",
+  "@webSocketClosed": {
+    "description": "Terminal error recorded when the socket closes unexpectedly"
   }
 }

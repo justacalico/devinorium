@@ -461,7 +461,7 @@ mixin AuthStore on AppStateBase {
     if (_switchingServer) return;
     if (hasDirtyEditorTabs) {
       _globalError =
-          'Editor has unsaved changes. Save or discard them before switching.';
+          appL10n.editorUnsavedSwitch;
       notifyListeners();
       return;
     }

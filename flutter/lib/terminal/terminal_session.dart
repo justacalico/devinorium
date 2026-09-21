@@ -214,7 +214,7 @@ class RemoteTerminalSession extends TerminalSession {
 
   void _onDone() {
     if (_disposed || _status == TerminalStatus.exited) return;
-    _onError('WebSocket closed');
+    _onError(appL10n.webSocketClosed);
   }
 
   void _onOutput(String data) {

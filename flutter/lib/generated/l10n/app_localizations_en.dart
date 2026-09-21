@@ -2056,4 +2056,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get maxOutputTokensInvalid => 'Enter a value between 1 and 4,000,000';
+
+  @override
+  String get editorUnsavedSwitchProjects =>
+      'Editor has unsaved changes. Save or discard them before switching projects.';
+
+  @override
+  String get editorUnsavedNewProject =>
+      'Editor has unsaved changes. Save or discard them before creating a new project.';
+
+  @override
+  String get editorUnsavedDeleteProject =>
+      'Editor has unsaved changes. Save or discard them before deleting this project.';
+
+  @override
+  String get editorUnsavedSwitch =>
+      'Editor has unsaved changes. Save or discard them before switching.';
+
+  @override
+  String get projectNotFoundAfterClone => 'Project not found after clone.';
+
+  @override
+  String get threadTitleFallback => 'Thread';
+
+  @override
+  String get webSocketClosed => 'WebSocket closed';
 }

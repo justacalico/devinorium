@@ -954,10 +954,6 @@ class ThreadStore {
       detail: d,
       snapshot: _streaming,
       event: ev,
-      appL10nInvalidPermission: appL10n.invalidPermissionRequest(''),
-      appL10nFailedPermission: appL10n.failedToDecodePermissionRequest,
-      appL10nInvalidAsk: appL10n.invalidAskRequest,
-      appL10nFailedAsk: appL10n.failedToDecodeAskRequest,
     );
     _streaming = result.snapshot;
     _lastRunStatus = _statusFromPhase(result.snapshot.phase);

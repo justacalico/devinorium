@@ -485,7 +485,7 @@ class AppState extends AppStateBase
     final draftKey = _draftKey(id);
     store.onComposerTextChanged = (text) => _saveDraftKey(draftKey, text);
     store.onRunFinished = (failed) {
-      final title = _threadTitle(id) ?? 'Thread';
+      final title = _threadTitle(id) ?? appL10n.threadTitleFallback;
       // The lifecycle stream already covers completion notifications for
       // every thread; this callback is the fallback for servers too old to
       // have it. Suppressed when the user is looking at this very thread.

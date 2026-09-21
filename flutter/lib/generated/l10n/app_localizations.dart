@@ -3637,6 +3637,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Enter a value between 1 and 4,000,000'**
   String get maxOutputTokensInvalid;
+
+  /// Error shown when switching projects while the editor has unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Editor has unsaved changes. Save or discard them before switching projects.'**
+  String get editorUnsavedSwitchProjects;
+
+  /// Error shown when creating a project while the editor has unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Editor has unsaved changes. Save or discard them before creating a new project.'**
+  String get editorUnsavedNewProject;
+
+  /// Error shown when deleting a project while the editor has unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Editor has unsaved changes. Save or discard them before deleting this project.'**
+  String get editorUnsavedDeleteProject;
+
+  /// Error shown when switching servers or nodes while the editor has unsaved changes
+  ///
+  /// In en, this message translates to:
+  /// **'Editor has unsaved changes. Save or discard them before switching.'**
+  String get editorUnsavedSwitch;
+
+  /// Error shown when a cloned project cannot be loaded
+  ///
+  /// In en, this message translates to:
+  /// **'Project not found after clone.'**
+  String get projectNotFoundAfterClone;
+
+  /// Notification title used when a thread has no title
+  ///
+  /// In en, this message translates to:
+  /// **'Thread'**
+  String get threadTitleFallback;
+
+  /// Terminal error recorded when the socket closes unexpectedly
+  ///
+  /// In en, this message translates to:
+  /// **'WebSocket closed'**
+  String get webSocketClosed;
 }
 
 class _AppLocalizationsDelegate
