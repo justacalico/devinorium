@@ -54,7 +54,7 @@ pub(super) async fn send_stream(
         Ok(parsed) => parsed,
         Err(resp) => return resp,
     };
-    resolve_context_refs(&state, &thread, &mut input).await;
+    resolve_context_refs(&state, &user, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
     resolve_machine_refs(&state, &mut input).await;
     if input.prompt.trim().is_empty()

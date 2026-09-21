@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::auth::session::CurrentUser;
+use crate::api::scope;
 use crate::security::paths;
 use crate::AppState;
 
@@ -49,9 +50,13 @@ pub fn router() -> Router<AppState> {
 /// A `thread_id` takes precedence over `project_id`: the root becomes the
 /// thread's working directory, i.e. its worktree when the thread runs in
 /// worktree mode and the project root otherwise.
+///
+/// Owners may reach any absolute path. Non-owners are confined to their own
+/// projects and the shared managed roots (see [`scope`]), and can never
+/// touch credential locations or the server's database file.
 async fn resolve(
     state: &AppState,
-    user_id: i64,
+    user: &crate::db::UserRow,
     rel: Option<&str>,
     project_id: Option<i64>,
     thread_id: Option<&str>,
@@ -59,12 +64,12 @@ async fn resolve(
     let home_dir = &state.config.home_dir;
 
     let project_root = if let Some(tid) = thread_id.filter(|s| !s.trim().is_empty()) {
-        match state.db.get_thread(tid, user_id).await {
+        match state.db.get_thread(tid, user.id).await {
             Ok(Some(t)) => {
                 // A thread whose project row was deleted has no meaningful
                 // root; reject instead of falling back to the home dir.
                 if let Some(pid) = t.project_id {
-                    if !matches!(state.db.get_project(pid, user_id).await, Ok(Some(_))) {
+                    if !matches!(state.db.get_project(pid, user.id).await, Ok(Some(_))) {
                         return Err((
                             StatusCode::BAD_REQUEST,
                             Json(crate::api::ApiError::new("invalid thread_id")),
@@ -88,7 +93,7 @@ async fn resolve(
             }
         }
     } else if let Some(pid) = project_id {
-        match state.db.get_project(pid, user_id).await {
+        match state.db.get_project(pid, user.id).await {
             Ok(Some(p)) => Some(PathBuf::from(p.path)),
             _ => {
                 return Err((
@@ -107,10 +112,28 @@ async fn resolve(
             Ok(c) => c,
             Err(_) => p.clone(),
         },
+        // Non-owners have no home-directory scope; their default browse root
+        // is the managed project root.
+        None if !user.is_owner => {
+            match crate::api::settings::project_root(state, user.id).await {
+                Ok(root) => root,
+                Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
+            }
+        }
         None => match home_dir.canonicalize() {
             Ok(c) => c,
             Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
         },
+    };
+
+    // The authorized root set only exists for non-owners; owners keep the
+    // historical unrestricted behavior.
+    let (allowed, db_files) = if user.is_owner {
+        (Vec::new(), Vec::new())
+    } else {
+        let mut roots = crate::api::scope::non_owner_roots(state, user).await;
+        roots.push(root_canon.clone());
+        (roots, crate::api::scope::db_file_paths(state))
     };
 
     let rel = rel.unwrap_or("");
@@ -129,7 +152,11 @@ async fn resolve(
             std::slice::from_ref(&root_canon),
         )
     } else if Path::new(rel).is_absolute() {
-        paths::resolve(Path::new(rel), None, None)
+        if user.is_owner {
+            paths::resolve(Path::new(rel), None, None)
+        } else {
+            paths::resolve(Path::new(rel), None, Some(&allowed))
+        }
     } else {
         paths::resolve_within(
             &target,
@@ -138,18 +165,21 @@ async fn resolve(
         )
     };
 
+    let invalid = || {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid path")),
+        )
+            .into_response()
+    };
+
     match resolved {
-        Some(p) if paths::is_hidden_within(&root_canon, &p) => Err((
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("invalid path")),
-        )
-            .into_response()),
+        Some(p) if paths::is_hidden_within(&root_canon, &p) => Err(invalid()),
+        Some(p) if !user.is_owner && scope::outside_scope(&p, &allowed, &db_files) => {
+            Err(invalid())
+        }
         Some(p) => Ok((p, root_canon)),
-        None => Err((
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("invalid path")),
-        )
-            .into_response()),
+        None => Err(invalid()),
     }
 }
 
@@ -189,7 +219,7 @@ async fn list_dir(
 ) -> Response {
     let (target, _root) = match resolve(
         &state,
-        user.id,
+        &user,
         q.path.as_deref(),
         q.project_id,
         q.thread_id.as_deref(),
@@ -206,8 +236,11 @@ async fn list_dir(
     let mut out = Vec::new();
     while let Ok(Some(entry)) = entries.next_entry().await {
         let name = entry.file_name().to_string_lossy().to_string();
-        // Skip hidden attachment and git metadata entries.
-        if paths::is_hidden_name(&name) {
+        // Skip hidden attachment and git metadata entries. Non-owners also
+        // never see credential locations in listings.
+        if paths::is_hidden_name(&name)
+            || (!user.is_owner && paths::is_sensitive_name(&name))
+        {
             continue;
         }
         let ft = entry.file_type().await.ok();
@@ -267,7 +300,7 @@ async fn read_file(
 ) -> Response {
     let (target, _root) = match resolve(
         &state,
-        user.id,
+        &user,
         q.path.as_deref(),
         q.project_id,
         q.thread_id.as_deref(),
@@ -367,7 +400,7 @@ async fn write_file(
 ) -> Response {
     let (target, _root) = match resolve(
         &state,
-        user.id,
+        &user,
         Some(&req.path),
         req.project_id,
         req.thread_id.as_deref(),
@@ -536,10 +569,20 @@ async fn upload(
     }
 
     let (root_base, _root) =
-        match resolve(&state, user.id, None, project_id, thread_id.as_deref()).await {
+        match resolve(&state, &user, None, project_id, thread_id.as_deref()).await {
             Ok(v) => v,
             Err(r) => return r,
         };
+
+    // Same scope rules as `resolve`: absolute destination dirs for
+    // non-owners must stay inside the authorized root set.
+    let (allowed, db_files) = if user.is_owner {
+        (Vec::new(), Vec::new())
+    } else {
+        let mut roots = crate::api::scope::non_owner_roots(&state, &user).await;
+        roots.push(root_base.clone());
+        (roots, crate::api::scope::db_file_paths(&state))
+    };
 
     let mut uploaded: Vec<String> = Vec::new();
     for (filename, bytes) in files {
@@ -562,12 +605,22 @@ async fn upload(
             root_base.join(rel).join(&safe)
         };
         let resolved = if std::path::Path::new(rel).is_absolute() {
-            paths::resolve(&target, None, None)
+            if user.is_owner {
+                paths::resolve(&target, None, None)
+            } else {
+                paths::resolve(&target, None, Some(&allowed))
+            }
         } else {
             paths::resolve_within(&target, Some(&root_base), std::slice::from_ref(&root_base))
         };
         let resolved = match resolved {
-            Some(p) if !paths::is_hidden_within(&root_base, &p) => p,
+            Some(p)
+                if !paths::is_hidden_within(&root_base, &p)
+                    && (user.is_owner
+                        || !scope::outside_scope(&p, &allowed, &db_files)) =>
+            {
+                p
+            }
             _ => {
                 return (
                     StatusCode::BAD_REQUEST,
@@ -603,7 +656,7 @@ async fn mkdir(
 ) -> Response {
     let (target, _root) = match resolve(
         &state,
-        user.id,
+        &user,
         Some(&req.path),
         req.project_id,
         req.thread_id.as_deref(),
@@ -626,7 +679,7 @@ async fn delete(
 ) -> Response {
     let (target, _root) = match resolve(
         &state,
-        user.id,
+        &user,
         q.path.as_deref(),
         q.project_id,
         q.thread_id.as_deref(),

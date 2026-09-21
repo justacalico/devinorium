@@ -118,20 +118,75 @@ async fn create(
     // An empty path is interpreted as the user's home directory so the
     // project picker can select the home root.
 
-    // Validate the path is within the configured file root.
-    let abs = match resolve_and_ensure_dir(&state, path).await {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!(error = %e, path = %path, "project path resolution failed");
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("invalid project path")),
-            )
-                .into_response();
+    let abs = if user.is_owner {
+        // Owners may register any directory.
+        match resolve_and_ensure_dir(&state, path).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = %e, path = %path, "project path resolution failed");
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid project path")),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        match resolve_non_owner_dir(&state, &user, path).await {
+            Ok(p) => p,
+            Err(resp) => return resp,
         }
     };
 
     insert_project(&state, user.id, name, abs).await
+}
+
+/// Resolve a non-owner's project path. The path must land strictly inside
+/// one of the managed roots (project, worktree, or clone root); relative
+/// paths resolve under the project root. Credential locations and hidden
+/// names are never registrable.
+async fn resolve_non_owner_dir(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    path: &str,
+) -> Result<PathBuf, Response> {
+    let invalid = || {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid project path")),
+        )
+            .into_response()
+    };
+    let normalized = paths::normalize_path(path, &state.config.home_dir);
+    let roots = crate::api::scope::non_owner_managed_roots(state, user.id).await;
+    let project_root = crate::api::settings::project_root(state, user.id)
+        .await
+        .map_err(crate::api::map_err_internal)
+        .map_err(IntoResponse::into_response)?;
+
+    let candidate = if std::path::Path::new(&normalized).is_absolute() {
+        PathBuf::from(&normalized)
+    } else {
+        project_root.join(&normalized)
+    };
+    let resolved = paths::resolve(&candidate, None, None).ok_or_else(invalid)?;
+
+    // Strictly inside a managed root: the root itself is not registrable.
+    if !roots.iter().any(|r| resolved != *r && resolved.starts_with(r)) {
+        return Err(invalid());
+    }
+    if paths::is_hidden_path(&resolved) || paths::has_sensitive_component(&resolved) {
+        return Err(invalid());
+    }
+
+    tokio::fs::create_dir_all(&resolved)
+        .await
+        .map_err(|_| invalid())?;
+    let abs = tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved);
+    if !roots.iter().any(|r| abs != *r && abs.starts_with(r)) {
+        return Err(invalid());
+    }
+    Ok(abs)
 }
 
 /// Create a fresh folder named after the project under the configured
@@ -219,13 +274,14 @@ async fn create_new(
 
 /// Check that `name` works as a single folder name: no separators, no
 /// control characters, no `.`/`..` components, and none of the protected
-/// hidden names.
+/// hidden or sensitive names.
 fn is_valid_folder_name(name: &str) -> bool {
     if name.is_empty()
         || name.contains('/')
         || name.contains('\\')
         || name.chars().any(|c| c.is_control())
         || paths::is_hidden_name(name)
+        || paths::is_sensitive_name(name)
     {
         return false;
     }

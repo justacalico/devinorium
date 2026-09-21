@@ -6124,6 +6124,275 @@ async fn file_manager_lists_absolute_path_with_spaces() {
 }
 
 #[tokio::test]
+async fn file_manager_confines_non_owner_to_project_roots() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // The managed project root defaults to the server home dir.
+    let inside = home.join("scratch.txt");
+    std::fs::write(&inside, "hello").unwrap();
+    let creds = home.join(".ssh");
+    std::fs::create_dir_all(&creds).unwrap();
+    std::fs::write(creds.join("id_rsa"), "secret").unwrap();
+
+    // Absolute path outside every authorized root -> rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/files/content?path=/etc/hostname",
+            &alice_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Credential locations are rejected even inside an authorized root.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!(
+                "/api/files/content?path={}",
+                creds.join("id_rsa").display()
+            ),
+            &alice_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Absolute path inside the managed root -> allowed.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?path={}", inside.display()),
+            &alice_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The owner is unaffected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/files/content?path=/etc/hostname",
+            &owner_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn file_manager_non_owner_listing_hides_credentials() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".env"), "SECRET=1").unwrap();
+    std::fs::write(home.join("notes.txt"), "hi").unwrap();
+
+    // Non-owner listing of the managed root hides credential entries.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/files", &alice_cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("notes.txt"), "body: {body}");
+    assert!(!body.contains(".ssh"), "body: {body}");
+    assert!(!body.contains(".env"), "body: {body}");
+
+    // The owner still sees them.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/files", &owner_cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(".ssh"), "body: {body}");
+    assert!(body.contains(".env"), "body: {body}");
+}
+
+#[tokio::test]
+async fn file_manager_non_owner_write_outside_roots_rejected() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    let outside = tempfile::tempdir().unwrap().keep().join("evil.txt");
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/files/content",
+            &alice_cookie,
+            &format!(
+                r#"{{"path":"{}","content":"x"}}"#,
+                outside.display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(!outside.exists());
+
+    // Inside the managed root works.
+    let inside = home.join("ok.txt");
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/files/content",
+            &alice_cookie,
+            &format!(r#"{{"path":"{}","content":"x"}}"#, inside.display()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn file_manager_non_owner_upload_outside_roots_rejected() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    let outside = tempfile::tempdir().unwrap().keep();
+    let boundary = "----fmboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n{}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"evil.txt\"\r\nContent-Type: text/plain\r\n\r\nhi\r\n--{boundary}--\r\n",
+        outside.display()
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/files")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &alice_cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(!outside.join("evil.txt").exists());
+}
+
+#[tokio::test]
+async fn non_owner_project_create_is_confined_to_managed_roots() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // Relative path lands under the managed project root.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            r#"{"name":"mine","path":"mine"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+
+    // Absolute path outside the managed roots is rejected.
+    let outside = tempfile::tempdir().unwrap().keep();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            &format!(
+                r#"{{"name":"escape","path":"{}"}}"#,
+                outside.join("x").display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // The managed root itself and credential locations are rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            &format!(r#"{{"name":"root","path":"{}"}}"#, home.display()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            &format!(r#"{{"name":"ssh","path":"{}"}}"#, home.join(".ssh").display()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // The owner can still register an arbitrary directory.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &owner_cookie,
+            &format!(
+                r#"{{"name":"anywhere","path":"{}"}}"#,
+                outside.display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
 async fn file_manager_uploads_to_absolute_dir_with_spaces() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
