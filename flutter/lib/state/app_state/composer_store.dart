@@ -1,7 +1,8 @@
 part of 'package:devinorium_frontend/state/app_state.dart';
 
 /// SharedPreferences key holding the per-thread composer drafts as a JSON
-/// object of `<serverId>:<threadId>` to draft text.
+/// object of `<serverId>:<threadId>` to draft text. Drafts typed against a
+/// federation node add the node id: `<serverId>:<nodeId>:<threadId>`.
 const _composerDraftsKey = 'devinorium_composer_drafts';
 
 mixin ComposerStore on AppStateBase {
@@ -35,8 +36,13 @@ mixin ComposerStore on AppStateBase {
   @override
   ComposerMode get defaultComposerMode => _composerMode;
 
-  String _draftKey(String threadId) =>
-      '${multiServerState.activeServerId ?? ''}:${_activeNodeId ?? ''}:$threadId';
+  String _draftKey(String threadId) {
+    final serverId = multiServerState.activeServerId ?? '';
+    final nodeId = _activeNodeId;
+    return nodeId == null
+        ? '$serverId:$threadId'
+        : '$serverId:$nodeId:$threadId';
+  }
 
   /// The persisted draft for [threadId] on the active server, if any.
   String? _draftFor(String threadId) => _composerDrafts[_draftKey(threadId)];
