@@ -20,10 +20,10 @@ use agent_client_protocol::{
     schema::v1::{
         ClientCapabilities, ContentBlock, CreateElicitationRequest, CreateElicitationResponse,
         ElicitationAction, ElicitationCapabilities, ElicitationFormCapabilities, ImageContent,
-        InitializeRequest, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-        NewSessionResponse, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SessionId, SessionNotification, SessionUpdate,
-        SetSessionModeRequest, TextContent,
+        InitializeRequest, LoadSessionRequest, NewSessionRequest, NewSessionResponse,
+        PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
+        RequestPermissionResponse, SessionConfigOption, SessionId, SessionNotification,
+        SessionUpdate, SetSessionModeRequest, TextContent,
     },
     schema::ProtocolVersion as ProtocolVersionEnum,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -202,7 +202,7 @@ impl AcpProvider {
             .connect_with(
                 AcpAgent::from_args(self.agent_args())?,
                 async move |connection: ConnectionTo<Agent>| {
-                    let _init_response = connection
+                    let init_response = connection
                         .send_request(
                             InitializeRequest::new(ProtocolVersionEnum::V1)
                                 .client_capabilities(client_capabilities()),
@@ -210,24 +210,46 @@ impl AcpProvider {
                         .block_task()
                         .await?;
 
-                    let (session_id, config_options) = if let Some(ref sid) = maybe_session {
-                        let load_resp: LoadSessionResponse = connection
+                    // `session/load` only exists when the agent advertises
+                    // `loadSession`, and even then a stored session may be
+                    // gone (agent restart, expired history). Fall back to a
+                    // fresh session and persist the new id.
+                    let can_load =
+                        maybe_session.is_some() && init_response.agent_capabilities.load_session;
+                    if maybe_session.is_some() && !can_load {
+                        tracing::info!(
+                            "acp agent does not support session/load; starting a new session"
+                        );
+                    }
+
+                    let (session_id, config_options) = if can_load {
+                        let sid = maybe_session.as_deref().unwrap();
+                        match connection
                             .send_request(LoadSessionRequest::new(
-                                SessionId::new(sid.clone()),
+                                SessionId::new(sid.to_string()),
                                 cwd.clone(),
                             ))
                             .block_task()
-                            .await?;
-                        (sid.clone(), load_resp.config_options)
+                            .await
+                        {
+                            Ok(load_resp) => (sid.to_string(), load_resp.config_options),
+                            Err(e) => {
+                                tracing::warn!(
+                                    session_id = %sid,
+                                    error = %e,
+                                    "acp session/load failed; starting a new session"
+                                );
+                                new_session(&connection, &cwd).await?
+                            }
+                        }
                     } else {
-                        let resp: NewSessionResponse = connection
-                            .send_request(NewSessionRequest::new(cwd.clone()))
-                            .block_task()
-                            .await?;
-                        (resp.session_id.to_string(), resp.config_options)
+                        new_session(&connection, &cwd).await?
                     };
 
-                    if maybe_session.is_none() {
+                    // Persist the session id when it differs from the stored
+                    // one: a fresh session, or a fallback after a failed or
+                    // unsupported load.
+                    if maybe_session.as_deref() != Some(session_id.as_str()) {
                         if let Some(ref cb) = options.session_callback {
                             cb(session_id.clone()).await;
                         }
@@ -497,6 +519,17 @@ pub(crate) fn client_capabilities() -> ClientCapabilities {
         .elicitation(ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()))
 }
 
+async fn new_session(
+    connection: &ConnectionTo<Agent>,
+    cwd: &Path,
+) -> anyhow::Result<(String, Option<Vec<SessionConfigOption>>)> {
+    let resp: NewSessionResponse = connection
+        .send_request(NewSessionRequest::new(cwd.to_path_buf()))
+        .block_task()
+        .await?;
+    Ok((resp.session_id.to_string(), resp.config_options))
+}
+
 #[async_trait]
 impl Provider for AcpProvider {
     fn id(&self) -> &str {
@@ -554,8 +587,10 @@ impl Provider for AcpProvider {
 mod tests {
     use super::*;
     use std::fs;
+    use std::future::Future;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    use std::pin::Pin;
 
     fn provider() -> AcpProvider {
         AcpProvider::new(AgentKind::Devin, "devin".into(), "swe-1-7".into())
@@ -696,6 +731,129 @@ mod tests {
             !sets.iter().any(|(id, _)| id == "reasoning_effort"),
             "{sets:?}"
         );
+    }
+
+    /// Fake ACP agent for session/load tests: logs every request line,
+    /// reports the `loadSession` capability per `capable`, and answers
+    /// `session/load` with either an empty result or a JSON-RPC error.
+    #[cfg(unix)]
+    fn fake_acp_agent_load(capable: bool, load_ok: bool) -> (tempfile::TempDir, String, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("fake-agent");
+        let log = dir.path().join("requests.log");
+        let load_result = if load_ok {
+            r#""result":{"configOptions":[]}"#
+        } else {
+            r#""error":{"code":-32602,"message":"unknown session"}"#
+        };
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n\
+                 while IFS= read -r line; do\n\
+                 \x20 id=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\(\"[^\"]*\"\\|[0-9][0-9]*\\).*/\\1/p')\n\
+                 \x20 [ -z \"$id\" ] && continue\n\
+                 \x20 printf '%s\\n' \"$line\" >> '{}'\n\
+                 \x20 case \"$line\" in\n\
+                 \x20   *'\"initialize\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',\"result\":{{\"protocolVersion\":1,\"agentCapabilities\":{{\"loadSession\":{capable}}}}}}}' ;;\n\
+                 \x20   *'\"session/load\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',{load_result}}}' ;;\n\
+                 \x20   *'\"session/new\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',\"result\":{{\"sessionId\":\"new-session\",\"configOptions\":[]}}}}' ;;\n\
+                 \x20   *'\"session/prompt\"'*)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{\"stopReason\":\"end_turn\"}}}}\\n' \"$id\" ;;\n\
+                 \x20   *)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{}}}}\\n' \"$id\" ;;\n\
+                 \x20 esac\n\
+                 done\n",
+                log.display(),
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (dir, script.to_string_lossy().to_string(), log)
+    }
+
+    #[cfg(unix)]
+    fn logged_methods(log: &Path) -> Vec<String> {
+        fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter_map(|v| v["method"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[cfg(unix)]
+    async fn send_with_stored_session(bin: &str) -> (SendResponse, Arc<Mutex<Vec<String>>>) {
+        let provider = AcpProvider::new(AgentKind::Devin, bin.to_string(), "swe-1-7".into());
+        let workdir = tempfile::tempdir().unwrap();
+        let sessions = Arc::new(Mutex::new(Vec::<String>::new()));
+        let mut opts = send_options(workdir.path().to_path_buf(), None);
+        let recorded = sessions.clone();
+        opts.session_callback = Some(Arc::new(move |sid: String| {
+            let recorded = recorded.clone();
+            Box::pin(async move { recorded.lock().await.push(sid) })
+                as Pin<Box<dyn Future<Output = ()> + Send>>
+        }));
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.send(SendRequest {
+                session_id: "stored-session".into(),
+                prompt: "hi".into(),
+                options: opts,
+            }),
+        )
+        .await
+        .expect("send timed out")
+        .unwrap();
+        (res, sessions)
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn send_without_load_capability_starts_new_session() {
+        let (_dir, bin, log) = fake_acp_agent_load(false, true);
+        let (_res, sessions) = send_with_stored_session(&bin).await;
+        let methods = logged_methods(&log);
+        assert!(methods.contains(&"session/new".to_string()), "{methods:?}");
+        assert!(
+            !methods.contains(&"session/load".to_string()),
+            "{methods:?}"
+        );
+        assert_eq!(*sessions.lock().await, vec!["new-session".to_string()]);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn send_falls_back_when_session_load_fails() {
+        let (_dir, bin, log) = fake_acp_agent_load(true, false);
+        let (_res, sessions) = send_with_stored_session(&bin).await;
+        let methods = logged_methods(&log);
+        assert!(
+            methods.contains(&"session/load".to_string()),
+            "{methods:?}"
+        );
+        assert!(methods.contains(&"session/new".to_string()), "{methods:?}");
+        assert_eq!(*sessions.lock().await, vec!["new-session".to_string()]);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn send_reuses_session_when_load_succeeds() {
+        let (_dir, bin, log) = fake_acp_agent_load(true, true);
+        let (_res, sessions) = send_with_stored_session(&bin).await;
+        let methods = logged_methods(&log);
+        assert!(
+            methods.contains(&"session/load".to_string()),
+            "{methods:?}"
+        );
+        assert!(
+            !methods.contains(&"session/new".to_string()),
+            "{methods:?}"
+        );
+        assert!(sessions.lock().await.is_empty());
     }
 
     #[tokio::test]
