@@ -103,8 +103,12 @@ proxied call are owner-only.
   fast instead of looping.
 - Satellite response headers that would act on the hub's origin
   (`Set-Cookie`, `Location`, `WWW-Authenticate`, `Clear-Site-Data`,
-  `Alt-Svc`) are dropped before relaying, so a node cannot overwrite the
-  caller's hub session.
+  `Alt-Svc`, security policy headers, and cache validators) are dropped
+  before relaying, so a node cannot overwrite the caller's hub session or
+  weaken the hub's security posture. Proxied responses are also marked
+  `Content-Security-Policy: sandbox` and `Cache-Control: no-store`, so
+  satellite-served documents can never run script in the hub's origin and
+  one node's cached response is never replayed while another is selected.
 - Request bodies through the proxy are bounded by the hub's
   `DEVINORIUM_MAX_BODY_BYTES` (default 16 MiB); raise it on the hub if
   uploads to satellites must be larger.

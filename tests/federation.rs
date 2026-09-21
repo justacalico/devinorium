@@ -488,6 +488,10 @@ async fn proxy_strips_satellite_origin_headers() {
                 .header("location", "http://satellite.internal/")
                 .header("www-authenticate", "Basic realm=\"sat\"")
                 .header("clear-site-data", "\"cookies\"")
+                .header("content-security-policy", "default-src *")
+                .header("x-frame-options", "ALLOWALL")
+                .header("cache-control", "public, max-age=3600")
+                .header("etag", "\"sat-etag\"")
                 .body(Body::from("ok"))
                 .unwrap()
         }),
@@ -517,9 +521,18 @@ async fn proxy_strips_satellite_origin_headers() {
         "location",
         "www-authenticate",
         "clear-site-data",
+        "etag",
     ] {
         assert!(resp.headers().get(h).is_none(), "{h} leaked");
     }
+    // Satellite policy headers never override the hub's own posture:
+    // proxied documents are sandboxed and never cached.
+    assert_eq!(
+        resp.headers().get("content-security-policy").unwrap(),
+        "sandbox"
+    );
+    assert_eq!(resp.headers().get("cache-control").unwrap(), "no-store");
+    assert_ne!(resp.headers().get("x-frame-options").unwrap(), "ALLOWALL");
     assert_eq!(body_str(resp.into_body()).await, "ok");
 }
 

@@ -9,7 +9,7 @@
 
 use axum::body::Body;
 use axum::extract::{Request, State, WebSocketUpgrade};
-use axum::http::{header, HeaderMap, HeaderName, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use futures::{SinkExt, StreamExt};
@@ -74,7 +74,10 @@ const STRIPPED_REQUEST_HEADERS: &[&str] = &[
 /// satellite `Set-Cookie` would overwrite the caller's hub session cookie,
 /// `Location` would send the browser around the proxy, and
 /// `WWW-Authenticate`/`Clear-Site-Data`/`Alt-Svc` all target the wrong
-/// origin once relayed.
+/// origin once relayed. Security policy headers are stripped so the hub's
+/// own values apply instead of the satellite's, and cache validators so a
+/// response cached under the hub URL can never be served for a different
+/// node.
 const STRIPPED_RESPONSE_HEADERS: &[&str] = &[
     "connection",
     "transfer-encoding",
@@ -88,6 +91,30 @@ const STRIPPED_RESPONSE_HEADERS: &[&str] = &[
     "www-authenticate",
     "alt-svc",
     "location",
+    "content-security-policy",
+    "content-security-policy-report-only",
+    "x-frame-options",
+    "frame-options",
+    "referrer-policy",
+    "permissions-policy",
+    "x-content-type-options",
+    "x-xss-protection",
+    "x-permitted-cross-domain-policies",
+    "strict-transport-security",
+    "nel",
+    "report-to",
+    "reporting-endpoints",
+    "cross-origin-opener-policy",
+    "cross-origin-embedder-policy",
+    "cross-origin-resource-policy",
+    "origin-agent-cluster",
+    "etag",
+    "last-modified",
+    "cache-control",
+    "expires",
+    "age",
+    "pragma",
+    "vary",
 ];
 
 fn forbidden() -> Response {
@@ -251,6 +278,15 @@ async fn proxy_http(
             headers.append(name.clone(), value.clone());
         }
     }
+    // The response renders under the hub's origin but its content is
+    // controlled by the node. Sandbox it so satellite HTML can never run
+    // script against the hub session, and forbid caching so one node's
+    // response is never replayed while another is selected.
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("sandbox"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
     let mut builder = Response::builder().status(status);
     *builder.headers_mut().unwrap() = headers;
