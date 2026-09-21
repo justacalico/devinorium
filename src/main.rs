@@ -45,6 +45,10 @@ async fn main() -> Result<()> {
     let bind = cfg.bind_addr();
     let database = db::Db::connect(&cfg.db_url).await?;
 
+    // The desktop app holds our stdin pipe; when it exits or crashes the
+    // pipe closes and we shut down instead of lingering as an orphan. Not
+    // wanted in dev mode: a detached run has no stdin.
+    let mut stdin_closed = None;
     if cfg.dev_mode {
         // Dev mode needs no interactive accounts; the passwordless local
         // account backs every request.
@@ -62,10 +66,9 @@ async fn main() -> Result<()> {
             auth::bootstrap::run_local(&database).await?;
         }
         if cfg.is_local_mode() {
-            // The desktop app holds our stdin pipe; when it exits or crashes
-            // the pipe closes and we shut down instead of lingering as an
-            // orphan. Not wanted in dev mode: a detached run has no stdin.
-            spawn_stdin_watchdog();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            spawn_stdin_watchdog(tx);
+            stdin_closed = Some(rx);
         }
     }
 
@@ -195,8 +198,16 @@ async fn main() -> Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal())
+    .with_graceful_shutdown(shutdown_signal(stdin_closed))
     .await?;
+
+    // Drain active runs so provider children are reaped instead of orphaned,
+    // then kill any PTY sessions still open.
+    state
+        .thread_runner
+        .stop_all(std::time::Duration::from_secs(12))
+        .await;
+    state.terminal_manager.kill_all().await;
 
     // When the stored setting was enabled at startup the mapping is removed
     // again on shutdown; a mapping the owner toggled at runtime without the
@@ -222,9 +233,10 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Resolve on Ctrl-C or SIGTERM so `axum::serve` can drain and the
-/// startup-managed tailscale mapping can be removed.
-async fn shutdown_signal() {
+/// Resolve on Ctrl-C, SIGTERM, or the bundled-mode stdin pipe closing, so
+/// `axum::serve` can drain and the startup-managed tailscale mapping can be
+/// removed.
+async fn shutdown_signal(stdin_closed: Option<tokio::sync::oneshot::Receiver<()>>) {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -239,23 +251,37 @@ async fn shutdown_signal() {
     };
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
+    let stdin_eof = async move {
+        match stdin_closed {
+            Some(rx) => {
+                let _ = rx.await;
+            }
+            None => std::future::pending::<()>().await,
+        }
+    };
     tokio::select! {
         _ = ctrl_c => {},
         _ = terminate => {},
+        _ = stdin_eof => {},
     }
 }
 
-/// Exit the process once stdin reaches EOF. Used in bundled local mode, where
-/// the Flutter app owns stdin: a closed pipe means the app is gone.
-fn spawn_stdin_watchdog() {
-    tokio::task::spawn_blocking(|| {
+/// Signal once stdin reaches EOF. Used in bundled local mode, where the
+/// Flutter app owns stdin: a closed pipe means the app is gone. Shutdown
+/// then goes through the normal drain path so runs are stopped and
+/// provider children reaped before exit.
+fn spawn_stdin_watchdog(done: tokio::sync::oneshot::Sender<()>) {
+    tokio::task::spawn_blocking(move || {
         use std::io::Read;
         let mut stdin = std::io::stdin().lock();
         let mut buf = [0u8; 256];
         loop {
             match stdin.read(&mut buf) {
                 // EOF or a broken pipe: the parent is gone.
-                Ok(0) | Err(_) => std::process::exit(0),
+                Ok(0) | Err(_) => {
+                    let _ = done.send(());
+                    return;
+                }
                 Ok(_) => {}
             }
         }

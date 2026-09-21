@@ -128,6 +128,18 @@ impl TerminalManager {
         }
     }
 
+    /// Kill every tracked session. Called on shutdown so PTYs are not left
+    /// running when the process exits.
+    pub async fn kill_all(&self) {
+        let sessions: Vec<Arc<TerminalSession>> = {
+            let mut guard = self.inner.lock().await;
+            guard.sessions.drain().map(|(_, s)| s).collect()
+        };
+        for s in sessions {
+            let _ = s.kill();
+        }
+    }
+
     pub async fn list_for_thread(&self, thread_id: &str) -> Vec<Arc<TerminalSession>> {
         let guard = self.inner.lock().await;
         guard
