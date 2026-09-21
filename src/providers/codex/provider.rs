@@ -9,6 +9,7 @@
 
 use std::path::Path;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -258,12 +259,21 @@ impl CodexProvider {
         // context for follow-up messages. The watcher holds an `AppServer`
         // clone, so it must be aborted when the turn ends — a finished or
         // failed turn would otherwise leak the task and the child process.
+        // The thread id can change mid-turn (provisional id -> rollout id),
+        // so the watcher reads the live value instead of the id captured at
+        // spawn time.
+        let live_thread_id = Arc::new(std::sync::Mutex::new(thread_id.clone()));
         let cancel_watcher = options.cancel_signal.clone().map(|flag| {
             let server = server.clone();
-            let (tid, turn_id) = (thread_id.clone(), turn_id.clone());
+            let live = live_thread_id.clone();
+            let turn_id = turn_id.clone();
             tokio::spawn(async move {
                 while !flag.load(Ordering::SeqCst) {
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                let tid = live.lock().map(|t| t.clone()).unwrap_or_default();
+                if tid.is_empty() {
+                    return;
                 }
                 // Fire and forget: the reply is irrelevant and awaiting it
                 // would keep the child alive for the request timeout.
@@ -304,6 +314,7 @@ impl CodexProvider {
                     {
                         if tid != thread_id {
                             thread_id = tid.to_string();
+                            set_live_thread_id(&live_thread_id, tid);
                             if let Some(ref cb) = options.session_callback {
                                 cb(thread_id.clone()).await;
                             }
@@ -320,6 +331,7 @@ impl CodexProvider {
                                 if let Some(id) = id {
                                     if id != thread_id {
                                         thread_id = id.to_string();
+                                        set_live_thread_id(&live_thread_id, id);
                                         if let Some(ref cb) = options.session_callback {
                                             cb(thread_id.clone()).await;
                                         }
@@ -411,6 +423,14 @@ impl Drop for AbortOnDrop {
 
 fn sanitize_filename(name: &str) -> String {
     crate::providers::acp::content::sanitize(name)
+}
+
+/// Publish the live codex thread id for the cancel watcher; ignores a
+/// poisoned lock rather than panicking the event loop.
+fn set_live_thread_id(live: &std::sync::Mutex<String>, id: &str) {
+    if let Ok(mut guard) = live.lock() {
+        *guard = id.to_string();
+    }
 }
 
 /// Normalize a reasoning effort value so provider aliases (`extra_high`,
@@ -538,6 +558,54 @@ done
         path
     }
 
+    /// Variant fake for the cancel path: `turn/start` announces the rollout
+    /// id via `thread/started` but never completes on its own — the turn ends
+    /// only after `turn/interrupt` arrives, which is logged for assertion.
+    #[cfg(unix)]
+    fn fake_codex_interrupt(dir: &Path) -> PathBuf {
+        let path = dir.join("codex");
+        let script = r#"#!/bin/sh
+echo $$ > "__LOGDIR__/codex.pid"
+id_of() { printf '%s' "$1" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'; }
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      id=$(id_of "$line")
+      printf '{"id":%s,"result":{"userAgent":"fake"}}\n' "$id"
+      ;;
+    *'"method":"thread/start"'*|*'"method":"thread/resume"'*)
+      id=$(id_of "$line")
+      printf '{"id":%s,"result":{"thread":{"id":"th-1","cliVersion":"0","createdAt":0,"cwd":"/tmp","ephemeral":false,"modelProvider":"openai","preview":"","projectId":"","sessionId":"","source":"","status":"","turns":[],"updatedAt":0}}}\n' "$id"
+      ;;
+    *'"method":"turn/start"'*)
+      id=$(id_of "$line")
+      printf '{"id":%s,"result":{"turn":{"id":"tu-1","items":[],"status":"inProgress"}}}\n' "$id"
+      printf '%s\n' '{"method":"thread/started","params":{"thread":{"id":"th-1","sessionId":"roll-9"}}}'
+      touch "__LOGDIR__/turn_started"
+      ;;
+    *'"method":"turn/interrupt"'*)
+      printf '%s\n' "$line" >> "__LOGDIR__/interrupts.log"
+      id=$(id_of "$line")
+      printf '{"id":%s,"result":{}}\n' "$id"
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"roll-9","turn":{"id":"tu-1","items":[],"status":"completed"}}}'
+      ;;
+    *'"method":"thread/unsubscribe"'*)
+      id=$(id_of "$line")
+      printf '{"id":%s,"result":{"status":"unsubscribed"}}\n' "$id"
+      ;;
+    *'"method":"model/list"'*)
+      id=$(id_of "$line")
+      printf '{"id":%s,"result":{"data":[]}}\n' "$id"
+      ;;
+  esac
+done
+"#.replace("__LOGDIR__", &dir.display().to_string());
+        std::fs::write(&path, script).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
     fn options(dir: &Path) -> SendOptions {
         SendOptions {
             model: "gpt-test".into(),
@@ -620,6 +688,47 @@ done
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         assert!(!alive, "codex app-server {raw} still running after the turn");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn cancel_interrupts_with_the_rollout_thread_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = fake_codex_interrupt(dir.path());
+        let provider = CodexProvider::new(bin.to_string_lossy().into(), String::new());
+        let mut opts = options(dir.path());
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        opts.cancel_signal = Some(flag.clone());
+
+        let run = tokio::spawn(async move {
+            provider
+                .start(StartRequest {
+                    prompt: "hi".into(),
+                    options: opts,
+                })
+                .await
+        });
+
+        // Cancel once the rollout id has been announced and processed.
+        for _ in 0..200 {
+            if dir.path().join("turn_started").exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        flag.store(true, Ordering::SeqCst);
+
+        let resp = tokio::time::timeout(std::time::Duration::from_secs(30), run)
+            .await
+            .expect("turn did not finish after interrupt")
+            .unwrap()
+            .unwrap();
+        assert_eq!(resp.session_id, "roll-9");
+
+        let log = std::fs::read_to_string(dir.path().join("interrupts.log")).unwrap();
+        assert!(log.contains(r#""threadId":"roll-9""#), "{log}");
+        assert!(!log.contains(r#""threadId":"th-1""#), "{log}");
     }
 
     #[tokio::test]
