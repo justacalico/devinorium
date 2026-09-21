@@ -134,7 +134,7 @@ impl RunState {
         parts.push(part);
     }
 
-    pub fn set_permission_request(&self, req: Option<PermissionRequest>) {
+    pub fn set_permission_request(self: &Arc<Self>, req: Option<PermissionRequest>) {
         if let Ok(mut guard) = self.permission_request.lock() {
             let same = guard.as_ref().map(|r| r.request_id.as_str())
                 == req.as_ref().map(|r| r.request_id.as_str());
@@ -146,7 +146,7 @@ impl RunState {
         self.publish_attention();
     }
 
-    pub fn set_ask_request(&self, req: Option<AskRequest>) {
+    pub fn set_ask_request(self: &Arc<Self>, req: Option<AskRequest>) {
         if let Ok(mut guard) = self.ask_request.lock() {
             let same = guard.as_ref().map(|r| r.request_id.as_str())
                 == req.as_ref().map(|r| r.request_id.as_str());
@@ -291,13 +291,28 @@ impl RunState {
 
     /// Notify lifecycle subscribers that the run now waits on (or just left)
     /// a permission/ask request. Only meaningful while the run is live; a
-    /// status write in progress carries the current attention on its own
-    /// event instead.
-    fn publish_attention(&self) {
+    /// status write in progress publishes lifecycle itself, but that event
+    /// may have read the attention flag before this request landed, so the
+    /// check is retried once the write finishes instead of being dropped.
+    fn publish_attention(self: &Arc<Self>) {
         let Some(tx) = &self.lifecycle else { return };
-        if !matches!(self.status.try_read().map(|s| *s), Ok(RunStatus::Running)) {
-            return;
+        match self.status.try_read().map(|s| *s) {
+            Ok(RunStatus::Running) => self.send_attention(tx),
+            Ok(_) => {}
+            Err(_) => {
+                let this = Arc::clone(self);
+                tokio::spawn(async move {
+                    if let Some(tx) = &this.lifecycle {
+                        if matches!(*this.status.read().await, RunStatus::Running) {
+                            this.send_attention(tx);
+                        }
+                    }
+                });
+            }
         }
+    }
+
+    fn send_attention(&self, tx: &broadcast::Sender<RunLifecycleEvent>) {
         let _ = tx.send(RunLifecycleEvent {
             thread_id: self.thread_id.clone(),
             run_id: self.run_id.clone(),
@@ -819,7 +834,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_state_set_ask_request_updates_snapshot() {
-        let state = RunState {
+        let state = Arc::new(RunState {
             run_id: "r1".into(),
             thread_id: "t1".into(),
             user_id: 1,
@@ -838,7 +853,7 @@ mod tests {
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
             lifecycle: None,
-        };
+        });
 
         let ask = AskRequest {
             request_id: "a1".into(),
@@ -978,7 +993,7 @@ mod tests {
     #[tokio::test]
     async fn attention_events_fire_on_permission_and_ask() {
         let (tx, mut rx) = broadcast::channel(8);
-        let state = RunState {
+        let state = Arc::new(RunState {
             run_id: "r1".into(),
             thread_id: "t1".into(),
             user_id: 1,
@@ -997,7 +1012,7 @@ mod tests {
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
             lifecycle: Some(tx),
-        };
+        });
 
         state.set_permission_request(Some(PermissionRequest {
             request_id: "p1".into(),

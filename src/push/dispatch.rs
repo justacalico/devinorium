@@ -3,11 +3,11 @@
 //! Subscribes to the thread runner's lifecycle feed and pushes terminal
 //! statuses and attention requests to the owning user's subscriptions. The
 //! feed already scopes events to the right user and fires once per
-//! transition, so the only state kept here is the last-seen attention flag
-//! per run — needed because `publish_attention` can re-fire `running` events
-//! for a request the user already saw.
+//! transition; the state kept here is the set of attention kinds already
+//! announced per run, reset whenever the flag clears so a request that is
+//! answered and re-raised notifies again.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use tokio::sync::broadcast::error::RecvError;
 
@@ -30,10 +30,18 @@ pub fn spawn_dispatch(state: &AppState) {
 }
 
 async fn pump(state: AppState, mut rx: tokio::sync::broadcast::Receiver<RunLifecycleEvent>) {
-    let mut last_attention: HashMap<String, Option<String>> = HashMap::new();
+    let mut announced: HashMap<String, HashSet<String>> = HashMap::new();
     loop {
         match rx.recv().await {
-            Ok(ev) => handle_event(&state, &mut last_attention, ev).await,
+            Ok(ev) => {
+                if let Some(kind) = decide(&mut announced, &ev) {
+                    // Sends can take seconds per dead endpoint; run them off
+                    // the pump so one slow push service cannot delay or lag
+                    // out later events.
+                    let state = state.clone();
+                    tokio::spawn(send_for_event(state, ev, kind));
+                }
+            }
             // Lagged receivers miss transitions; pushes are best-effort so a
             // missed one is dropped rather than replayed.
             Err(RecvError::Lagged(_)) => continue,
@@ -41,52 +49,64 @@ async fn pump(state: AppState, mut rx: tokio::sync::broadcast::Receiver<RunLifec
         }
         // Bound the map: terminal events remove their entry, but a leaked
         // run would otherwise grow it forever.
-        if last_attention.len() > 1024 {
-            last_attention.clear();
+        if announced.len() > 1024 {
+            announced.clear();
         }
     }
 }
 
-/// Decide what (if anything) to push for `ev` and send it.
-async fn handle_event(
-    state: &AppState,
-    last_attention: &mut HashMap<String, Option<String>>,
-    ev: RunLifecycleEvent,
-) {
-    let kind = match ev.status {
+/// Decide what (if anything) to push for `ev`, updating `announced` — the
+/// per-run set of attention kinds already pushed. Entries are dropped on
+/// terminal events and when the attention flag clears, so a request that is
+/// answered and re-raised (or a permission flag superseding an ask and then
+/// resolving back to it) behaves like a fresh notification exactly once.
+fn decide(
+    announced: &mut HashMap<String, HashSet<String>>,
+    ev: &RunLifecycleEvent,
+) -> Option<PushKind> {
+    match ev.status {
         RunStatus::Completed => {
-            last_attention.remove(&ev.run_id);
-            PushKind::Completed
+            announced.remove(&ev.run_id);
+            Some(PushKind::Completed)
         }
         RunStatus::Failed => {
-            last_attention.remove(&ev.run_id);
-            PushKind::Failed
+            announced.remove(&ev.run_id);
+            Some(PushKind::Failed)
         }
         RunStatus::Stopped => {
             // User-initiated: not worth a push.
-            last_attention.remove(&ev.run_id);
-            return;
+            announced.remove(&ev.run_id);
+            None
         }
         RunStatus::Running | RunStatus::Idle => {
-            let prev = last_attention.insert(ev.run_id.clone(), ev.attention.clone());
             let Some(att) = ev.attention.as_deref() else {
-                return;
+                announced.remove(&ev.run_id);
+                return None;
             };
-            // Re-emitted running events for the same pending request do not
-            // re-notify; permission→ask transitions do.
-            if prev.flatten().as_deref() == Some(att) {
-                return;
-            }
-            match att {
+            let kind = match att {
                 "permission" => PushKind::Permission,
                 "ask" => PushKind::Ask,
-                _ => return,
+                _ => {
+                    announced.remove(&ev.run_id);
+                    return None;
+                }
+            };
+            if !announced
+                .entry(ev.run_id.clone())
+                .or_default()
+                .insert(att.to_string())
+            {
+                return None;
             }
+            Some(kind)
         }
-    };
+    }
+}
 
-    // The title is the only DB-dependent part; a thread deleted mid-run has
-    // nothing useful left to point at, so the push is skipped.
+/// Look up the thread title and fan the push out to the owner's endpoints.
+/// The title is the only DB-dependent part; a thread deleted mid-run has
+/// nothing useful left to point at, so the push is skipped.
+async fn send_for_event(state: AppState, ev: RunLifecycleEvent, kind: PushKind) {
     let thread = match state.db.get_thread(&ev.thread_id, ev.user_id).await {
         Ok(Some(t)) => t,
         Ok(None) => return,
@@ -117,73 +137,84 @@ mod tests {
         }
     }
 
-    /// The attention dedup is the one piece of dispatch logic with real
-    /// state; exercise it through a stand-in that mirrors handle_event's
-    /// decision table without needing an AppState.
     #[test]
-    fn attention_transitions_dedup_per_run() {
-        fn decide(
-            last: &mut HashMap<String, Option<String>>,
-            ev: &RunLifecycleEvent,
-        ) -> Option<PushKind> {
-            match ev.status {
-                RunStatus::Completed => {
-                    last.remove(&ev.run_id);
-                    Some(PushKind::Completed)
-                }
-                RunStatus::Failed => {
-                    last.remove(&ev.run_id);
-                    Some(PushKind::Failed)
-                }
-                RunStatus::Stopped => {
-                    last.remove(&ev.run_id);
-                    None
-                }
-                _ => {
-                    let prev = last.insert(ev.run_id.clone(), ev.attention.clone());
-                    let prev = prev.flatten();
-                    match ev.attention.as_deref() {
-                        Some("permission") if prev.as_deref() != Some("permission") => {
-                            Some(PushKind::Permission)
-                        }
-                        Some("ask") if prev.as_deref() != Some("ask") => Some(PushKind::Ask),
-                        _ => None,
-                    }
-                }
-            }
-        }
-
-        let mut last = HashMap::new();
-        // permission fires once, then repeats are ignored until cleared.
+    fn attention_announces_once_per_flag_and_reannounces_after_clear() {
+        let mut announced = HashMap::new();
+        // permission fires once, then repeats are ignored while pending.
         assert_eq!(
-            decide(&mut last, &ev(RunStatus::Running, Some("permission"))),
+            decide(&mut announced, &ev(RunStatus::Running, Some("permission"))),
             Some(PushKind::Permission)
         );
         assert_eq!(
-            decide(&mut last, &ev(RunStatus::Running, Some("permission"))),
+            decide(&mut announced, &ev(RunStatus::Running, Some("permission"))),
             None
         );
         // permission -> ask is a new kind, so it fires.
         assert_eq!(
-            decide(&mut last, &ev(RunStatus::Running, Some("ask"))),
+            decide(&mut announced, &ev(RunStatus::Running, Some("ask"))),
             Some(PushKind::Ask)
         );
-        // Clearing then re-requesting permission fires again.
-        assert_eq!(decide(&mut last, &ev(RunStatus::Running, None)), None);
+        // The flag clearing resets the run, so the next request notifies.
+        assert_eq!(decide(&mut announced, &ev(RunStatus::Running, None)), None);
         assert_eq!(
-            decide(&mut last, &ev(RunStatus::Running, Some("permission"))),
+            decide(&mut announced, &ev(RunStatus::Running, Some("permission"))),
             Some(PushKind::Permission)
         );
         // Stopped and idle push nothing; completion does.
-        assert_eq!(decide(&mut last, &ev(RunStatus::Stopped, None)), None);
+        assert_eq!(decide(&mut announced, &ev(RunStatus::Stopped, None)), None);
         assert_eq!(
-            decide(&mut last, &ev(RunStatus::Completed, None)),
+            decide(&mut announced, &ev(RunStatus::Completed, None)),
             Some(PushKind::Completed)
         );
         // A run that ends and a fresh attention flag on the next run id
         // is a clean slate.
         let mut e = ev(RunStatus::Running, Some("ask"));
         e.run_id = "r2".into();
-        assert_eq!(decide(&mut last, &e), Some(PushKind::Ask));
+        assert_eq!(decide(&mut announced, &e), Some(PushKind::Ask));
+    }
+
+    #[test]
+    fn attention_flip_does_not_reannounce_a_seen_kind() {
+        let mut announced = HashMap::new();
+        assert_eq!(
+            decide(&mut announced, &ev(RunStatus::Running, Some("ask"))),
+            Some(PushKind::Ask)
+        );
+        // Permission superseding the pending ask is announced once.
+        assert_eq!(
+            decide(&mut announced, &ev(RunStatus::Running, Some("permission"))),
+            Some(PushKind::Permission)
+        );
+        // Permission resolved while the ask still pends: the user was
+        // already told about this ask, so it stays quiet.
+        assert_eq!(
+            decide(&mut announced, &ev(RunStatus::Running, Some("ask"))),
+            None
+        );
+        // Both answered: the flag clears and the slate resets.
+        assert_eq!(decide(&mut announced, &ev(RunStatus::Running, None)), None);
+        assert_eq!(
+            decide(&mut announced, &ev(RunStatus::Running, Some("ask"))),
+            Some(PushKind::Ask)
+        );
+    }
+
+    #[test]
+    fn terminal_events_clear_dedup_state() {
+        let mut announced = HashMap::new();
+        assert_eq!(
+            decide(&mut announced, &ev(RunStatus::Running, Some("ask"))),
+            Some(PushKind::Ask)
+        );
+        assert_eq!(
+            decide(&mut announced, &ev(RunStatus::Failed, None)),
+            Some(PushKind::Failed)
+        );
+        // Same run id would be unusual after failure, but a fresh attention
+        // flag must still announce rather than hitting stale dedup state.
+        assert_eq!(
+            decide(&mut announced, &ev(RunStatus::Running, Some("ask"))),
+            Some(PushKind::Ask)
+        );
     }
 }
