@@ -1014,6 +1014,39 @@ void main() {
       expect(api.listThreadsCalls, 2);
     });
 
+    test('mid-session 401 clears the token', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test(
+        api: ApiService(
+          client: _clientFor([http.Response('expired', 401)]),
+        ),
+        activeProjectId: 1,
+      );
+      await state.openThread('a');
+      expect(state.globalError, isEmpty);
+      expect(
+        state.serverProfiles.firstWhere((p) => p.id == 'test').token,
+        isEmpty,
+      );
+    });
+
+    test('mid-session 403 from an owner-gated route keeps the token',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test(
+        api: ApiService(
+          client: _clientFor([http.Response('forbidden', 403)]),
+        ),
+        activeProjectId: 1,
+      );
+      await state.openThread('a');
+      expect(state.globalError, isNotEmpty);
+      expect(
+        state.serverProfiles.firstWhere((p) => p.id == 'test').token,
+        'token',
+      );
+    });
+
     test(
       'selectProject preserves default draft when no thread is active',
       () async {

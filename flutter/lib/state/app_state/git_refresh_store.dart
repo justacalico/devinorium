@@ -44,6 +44,7 @@ mixin GitRefreshStore on AppStateBase {
       _globalError = '';
     } catch (e) {
       if (gen != _serverSeq) return;
+      _checkAuthFailure(e);
       _gitRepoInfo.remove(projectId);
     }
     notifyListeners();

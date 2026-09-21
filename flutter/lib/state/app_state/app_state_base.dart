@@ -564,6 +564,11 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get _switchingServer;
   set _switchingServer(bool value);
   Future<void> _resetServerState();
+  // Routes a mid-session expired credential to login; true when [e] was an
+  // auth failure. Mid-session only a 401 counts — a 403 can be a real
+  // owner-only denial and must not sign the user out.
+  bool _checkAuthFailure(Object e);
+  Future<void> _routeToLogin();
   Future<void> _loadUserAndData();
   Future<void> _loadUserAndDataWithNodeFallback();
   Future<void> _loadUserThreadsChunk({bool reset = false});

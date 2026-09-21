@@ -37,7 +37,8 @@ mixin ProjectStore on AppStateBase {
       _projects = chunk;
       _projectsOffset = chunk.length;
       _projectsHasMore = chunk.length == _projectChunkSize;
-    } catch (_) {
+    } catch (e) {
+      _checkAuthFailure(e);
       _projects = [];
       _projectsOffset = 0;
       _projectsHasMore = false;

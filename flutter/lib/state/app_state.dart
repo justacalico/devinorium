@@ -343,6 +343,7 @@ class AppState extends AppStateBase
         lastRunStatus: lastRunStatus,
         contextUsage: threadContextUsage,
       );
+      store.onAuthFailure = () => unawaited(_routeToLogin());
       _threadStores[threadId] = store;
       _setActiveStore(store);
     } else {
@@ -569,6 +570,7 @@ class AppState extends AppStateBase
       selectedPermission: selectedPermission,
       selectedProvider: selectedProvider,
     );
+    store.onAuthFailure = () => unawaited(_routeToLogin());
     return store;
   }
 }

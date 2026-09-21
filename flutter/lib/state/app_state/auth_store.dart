@@ -835,9 +835,29 @@ mixin AuthStore on AppStateBase {
       return url;
     }
   }
+
+  @override
+  bool _checkAuthFailure(Object e) {
+    if (e is! ApiException || e.statusCode != 401) return false;
+    unawaited(_routeToLogin());
+    return true;
+  }
+
+  @override
+  Future<void> _routeToLogin() async {
+    await multiServerState.clearActiveToken();
+    await _resetServerState();
+    if (kIsWeb) _dialog = DialogKind.webLogin;
+    if (multiServerState.activeProfile?.isLocal == true) {
+      startHealthChecks();
+    }
+    _view = AppView.app;
+    notifyListeners();
+  }
 }
 
 /// A relayed satellite answers 403 for a credential it does not accept
 /// (expired or insufficient scope); treat it like a 401 from the hub.
 bool _isUnauthenticated(ApiException e) =>
     e.statusCode == 401 || e.statusCode == 403;
+

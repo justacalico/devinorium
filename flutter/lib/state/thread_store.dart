@@ -179,6 +179,10 @@ class ThreadStore {
   /// the draft.
   void Function(String text)? onComposerTextChanged;
 
+  /// Called when a request fails with an expired credential so the app can
+  /// drop the token and route to login instead of a dead banner.
+  VoidCallback? onAuthFailure;
+
   // ---- getters ----
 
   ThreadStoreStatus get status => _status;
@@ -851,6 +855,7 @@ class ThreadStore {
     onRunFinished = null;
     onAgentEditedFiles = null;
     onComposerTextChanged = null;
+    onAuthFailure = null;
     _emit();
   }
 
@@ -1159,6 +1164,10 @@ class ThreadStore {
 
   void _handleStreamError(Object e, int token) {
     if (token != _streamToken) return;
+    if (e is ApiException && e.statusCode == 401) {
+      onAuthFailure?.call();
+      return;
+    }
     if (_resendAnchorId != null) {
       _resendAnchorId = null;
       if (e is! ApiException || e.statusCode < 400 || e.statusCode >= 500) {

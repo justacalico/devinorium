@@ -110,6 +110,7 @@ mixin ThreadListStore on AppStateBase {
       _userThreadsOffset += chunk.length;
       _userThreadsHasMore = chunk.length == _threadChunkSize;
     } catch (e) {
+      _checkAuthFailure(e);
       debugLogFailure('threadList.loadUserThreadsChunk', e);
     } finally {
       _loadingMoreUserThreads = false;
@@ -141,6 +142,7 @@ mixin ThreadListStore on AppStateBase {
       _projectThreadOffsets[projectId] = offset + chunk.length;
       _projectThreadsHasMore[projectId] = chunk.length == _threadChunkSize;
     } catch (e) {
+      _checkAuthFailure(e);
       debugLogFailure('threadList.loadProjectThreadsChunk', e);
     } finally {
       _loadingMoreProjectThreads[projectId] = false;
@@ -205,6 +207,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (e) {
       // A failed poll must not erase state the lifecycle stream already
       // delivered; keep the last known ids instead.
+      _checkAuthFailure(e);
       debugLogFailure('threadList.refreshRunningThreads', e);
     }
     notifyListeners();
@@ -418,7 +421,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (e) {
       stopwatch?.stop();
       debugLogFailure('threadList.openThread', e, threadId: id);
-      if (gen == _serverSeq) {
+      if (gen == _serverSeq && !_checkAuthFailure(e)) {
         _globalError = '$e';
         notifyListeners();
       }
