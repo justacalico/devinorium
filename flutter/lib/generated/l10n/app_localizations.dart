@@ -2942,12 +2942,6 @@ abstract class AppLocalizations {
   /// **'No machines configured.'**
   String get machinesEmpty;
 
-  /// Hint shown to non-owner users
-  ///
-  /// In en, this message translates to:
-  /// **'Only the owner can manage machines.'**
-  String get machinesOnlyOwner;
-
   /// Button and dialog title for adding a machine
   ///
   /// In en, this message translates to:

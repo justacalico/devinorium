@@ -259,6 +259,8 @@ class _ComposerState extends State<_Composer> {
   }
 
   void _updateMachinePicker(String text, AppState state) {
+    // Machine references mint VNC control grants — owner-only.
+    if (!state.isOwner) return;
     final sel = widget.controller.selection;
     final caret = sel.isValid ? sel.baseOffset : text.length;
     final at = _machineTriggerAt(text, caret);

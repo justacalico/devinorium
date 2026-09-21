@@ -1571,9 +1571,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get machinesEmpty => '未配置机器';
 
   @override
-  String get machinesOnlyOwner => '只有所有者可以管理机器';
-
-  @override
   String get machineAdd => '添加机器';
 
   @override

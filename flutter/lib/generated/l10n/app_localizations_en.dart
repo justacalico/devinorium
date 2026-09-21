@@ -1648,9 +1648,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get machinesEmpty => 'No machines configured.';
 
   @override
-  String get machinesOnlyOwner => 'Only the owner can manage machines.';
-
-  @override
   String get machineAdd => 'Add machine';
 
   @override

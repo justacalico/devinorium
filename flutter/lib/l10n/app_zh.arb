@@ -1018,10 +1018,6 @@
   "@machinesEmpty": {
     "description": "Shown when the server has no machines"
   },
-  "machinesOnlyOwner": "只有所有者可以管理机器",
-  "@machinesOnlyOwner": {
-    "description": "Hint shown to non-owner users"
-  },
   "machineAdd": "添加机器",
   "@machineAdd": {
     "description": "Button and dialog title for adding a machine"

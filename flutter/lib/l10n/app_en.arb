@@ -1039,10 +1039,6 @@
   "@machinesEmpty": {
     "description": "Shown when the server has no machines"
   },
-  "machinesOnlyOwner": "Only the owner can manage machines.",
-  "@machinesOnlyOwner": {
-    "description": "Hint shown to non-owner users"
-  },
   "machineAdd": "Add machine",
   "@machineAdd": {
     "description": "Button and dialog title for adding a machine"

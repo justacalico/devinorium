@@ -56,7 +56,9 @@ pub(super) async fn send_stream(
     };
     resolve_context_refs(&state, &user, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
-    resolve_machine_refs(&state, &mut input).await;
+    if let Err(resp) = resolve_machine_refs(&state, &user, &mut input).await {
+        return resp;
+    }
     if input.prompt.trim().is_empty()
         && input.context_refs.is_empty()
         && input.thread_refs.is_empty()
