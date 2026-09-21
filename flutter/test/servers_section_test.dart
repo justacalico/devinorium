@@ -7,6 +7,7 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/servers/multi_server_state.dart';
 import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:devinorium_frontend/views/settings/topics.dart';
 import 'package:devinorium_frontend/views/settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -137,6 +138,9 @@ Widget _buildWithState(AppState state) => MaterialApp(
   ),
 );
 
+int _serversIndex(bool isOwner) =>
+    settingsTopicOrder(isOwner).indexOf(SettingsTopic.servers);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -156,7 +160,7 @@ void main() {
         providerId: 'devin-cli',
         providerCommand: 'devin',
       ),
-      settingsTopicIndex: 6,
+      settingsTopicIndex: _serversIndex(false),
       serverVersion: serverVersion,
     );
 
@@ -458,7 +462,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 6,
+          settingsTopicIndex: _serversIndex(false),
         );
         addTearDown(state.dispose);
 
@@ -502,7 +506,7 @@ void main() {
           providerId: 'devin-cli',
           providerCommand: 'devin',
         ),
-        settingsTopicIndex: 6,
+        settingsTopicIndex: _serversIndex(false),
       );
     }
 
@@ -549,7 +553,7 @@ void main() {
           providerId: 'devin-cli',
           providerCommand: 'devin',
         ),
-        settingsTopicIndex: 7,
+        settingsTopicIndex: _serversIndex(true),
         serverVersion: '0.77.2',
       );
 
@@ -865,7 +869,7 @@ void main() {
               providerId: 'devin-cli',
               providerCommand: 'devin',
             ),
-            settingsTopicIndex: 7,
+            settingsTopicIndex: _serversIndex(true),
           );
           addTearDown(state.dispose);
 
@@ -941,7 +945,7 @@ void main() {
               providerId: 'devin-cli',
               providerCommand: 'devin',
             ),
-            settingsTopicIndex: isOwner ? 7 : 6,
+            settingsTopicIndex: _serversIndex(isOwner),
           );
 
       testWidgets('is hidden while the server has no Tailscale status', (
@@ -970,7 +974,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 7,
+          settingsTopicIndex: _serversIndex(true),
         );
         addTearDown(state.dispose);
 
@@ -1010,7 +1014,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 7,
+          settingsTopicIndex: _serversIndex(true),
         );
         addTearDown(state.dispose);
 
@@ -1048,7 +1052,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 7,
+          settingsTopicIndex: _serversIndex(true),
         );
         addTearDown(state.dispose);
 
@@ -1101,7 +1105,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 7,
+          settingsTopicIndex: _serversIndex(true),
         );
         addTearDown(state.dispose);
 
@@ -1144,7 +1148,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 7,
+          settingsTopicIndex: _serversIndex(true),
         );
         addTearDown(state.dispose);
 
@@ -1202,7 +1206,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 7,
+          settingsTopicIndex: _serversIndex(true),
         );
         addTearDown(state.dispose);
 
@@ -1261,7 +1265,7 @@ void main() {
             providerId: 'devin-cli',
             providerCommand: 'devin',
           ),
-          settingsTopicIndex: 7,
+          settingsTopicIndex: _serversIndex(true),
         );
         addTearDown(state.dispose);
 
