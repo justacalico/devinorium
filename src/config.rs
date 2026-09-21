@@ -111,9 +111,7 @@ impl Config {
             .ok()
             .map(|s| s.trim().trim_end_matches('/').to_string())
             .filter(|s| !s.is_empty());
-        let node_name = env_or("DEVINORIUM_NODE_NAME", "")
-            .trim()
-            .to_string();
+        let node_name = env_or("DEVINORIUM_NODE_NAME", "").trim().to_string();
         let node_url = std::env::var("DEVINORIUM_NODE_URL")
             .ok()
             .map(|s| s.trim().trim_end_matches('/').to_string())

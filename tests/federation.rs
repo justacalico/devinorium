@@ -120,7 +120,9 @@ async fn login(app: &Router) -> String {
                 .header(header::HOST, "localhost")
                 .header(header::ORIGIN, "http://localhost")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"owner","password":"supersecret123"}"#))
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -264,7 +266,9 @@ async fn nodes_list_is_owner_only_and_reports_online() {
                 .header(header::ORIGIN, "http://localhost")
                 .header("content-type", "application/json")
                 .header("cookie", &cookie)
-                .body(Body::from(r#"{"username":"guest","password":"guestpass123"}"#))
+                .body(Body::from(
+                    r#"{"username":"guest","password":"guestpass123"}"#,
+                ))
                 .unwrap(),
         )
         .await
@@ -280,7 +284,9 @@ async fn nodes_list_is_owner_only_and_reports_online() {
                     .header(header::HOST, "localhost")
                     .header(header::ORIGIN, "http://localhost")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"username":"guest","password":"guestpass123"}"#))
+                    .body(Body::from(
+                        r#"{"username":"guest","password":"guestpass123"}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -455,9 +461,7 @@ async fn db_register(app: &Router, id: &str) {
         .clone()
         .oneshot(register_req(
             Some(FED_TOKEN),
-            &format!(
-                r#"{{"id":"{id}","name":"n","base_url":"http://127.0.0.1:1"}}"#
-            ),
+            &format!(r#"{{"id":"{id}","name":"n","base_url":"http://127.0.0.1:1"}}"#),
         ))
         .await
         .unwrap();

@@ -65,11 +65,7 @@ fn not_found() -> Response {
 }
 
 fn bad_gateway(msg: impl Into<String>) -> Response {
-    (
-        StatusCode::BAD_GATEWAY,
-        Json(ApiError::new(msg.into())),
-    )
-        .into_response()
+    (StatusCode::BAD_GATEWAY, Json(ApiError::new(msg.into()))).into_response()
 }
 
 /// Entry point for both proxy routes (`/proxy` and `/proxy/*path`). The
@@ -132,8 +128,16 @@ pub async fn proxy(
             .get::<ClientIp>()
             .map(|ip| ip.0.to_string());
         return ws.on_upgrade(move |socket| async move {
-            tunnel_websocket(socket, &node, &sub_path, query.as_deref(), &token, hop, client_ip)
-                .await;
+            tunnel_websocket(
+                socket,
+                &node,
+                &sub_path,
+                query.as_deref(),
+                &token,
+                hop,
+                client_ip,
+            )
+            .await;
         });
     }
 
@@ -203,11 +207,7 @@ async fn proxy_http(
     }
 
     let body = req.into_body().into_data_stream();
-    let res = match out
-        .body(reqwest::Body::wrap_stream(body))
-        .send()
-        .await
-    {
+    let res = match out.body(reqwest::Body::wrap_stream(body)).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(node = %node.id, "federation proxy upstream failed: {e}");
@@ -326,30 +326,30 @@ fn into_tungstenite(
 ) -> Option<tokio_tungstenite::tungstenite::Message> {
     use tokio_tungstenite::tungstenite::{protocol::CloseFrame, Message};
     Some(match msg {
-        axum::extract::ws::Message::Text(t) => Message::Text(t.into()),
-        axum::extract::ws::Message::Binary(b) => Message::Binary(b.into()),
-        axum::extract::ws::Message::Ping(p) => Message::Ping(p.into()),
-        axum::extract::ws::Message::Pong(p) => Message::Pong(p.into()),
+        axum::extract::ws::Message::Text(t) => Message::Text(t),
+        axum::extract::ws::Message::Binary(b) => Message::Binary(b),
+        axum::extract::ws::Message::Ping(p) => Message::Ping(p),
+        axum::extract::ws::Message::Pong(p) => Message::Pong(p),
         axum::extract::ws::Message::Close(c) => Message::Close(c.map(|f| CloseFrame {
             code: f.code.into(),
-            reason: f.reason.into(),
+            reason: f.reason,
         })),
     })
 }
 
-fn into_axum(
-    msg: tokio_tungstenite::tungstenite::Message,
-) -> Option<axum::extract::ws::Message> {
+fn into_axum(msg: tokio_tungstenite::tungstenite::Message) -> Option<axum::extract::ws::Message> {
     use axum::extract::ws::{CloseFrame, Message};
     Some(match msg {
-        tokio_tungstenite::tungstenite::Message::Text(t) => Message::Text(t.to_string().into()),
-        tokio_tungstenite::tungstenite::Message::Binary(b) => Message::Binary(b.into()),
-        tokio_tungstenite::tungstenite::Message::Ping(p) => Message::Ping(p.into()),
-        tokio_tungstenite::tungstenite::Message::Pong(p) => Message::Pong(p.into()),
-        tokio_tungstenite::tungstenite::Message::Close(c) => Message::Close(c.map(|f| CloseFrame {
-            code: f.code.into(),
-            reason: f.reason.to_string().into(),
-        })),
+        tokio_tungstenite::tungstenite::Message::Text(t) => Message::Text(t),
+        tokio_tungstenite::tungstenite::Message::Binary(b) => Message::Binary(b),
+        tokio_tungstenite::tungstenite::Message::Ping(p) => Message::Ping(p),
+        tokio_tungstenite::tungstenite::Message::Pong(p) => Message::Pong(p),
+        tokio_tungstenite::tungstenite::Message::Close(c) => {
+            Message::Close(c.map(|f| CloseFrame {
+                code: f.code.into(),
+                reason: f.reason,
+            }))
+        }
         tokio_tungstenite::tungstenite::Message::Frame(_) => return None,
     })
 }

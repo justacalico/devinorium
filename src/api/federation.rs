@@ -61,7 +61,11 @@ fn bad_request(msg: &str) -> Response {
 }
 
 fn unauthorized() -> Response {
-    (StatusCode::UNAUTHORIZED, Json(ApiError::new("invalid token"))).into_response()
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(ApiError::new("invalid token")),
+    )
+        .into_response()
 }
 
 /// Whether the request carries the configured federation token. When no
@@ -94,10 +98,7 @@ struct RegisterResponse {
 /// A satellite announcing itself. Doubles as the heartbeat: the node calls
 /// it every [`crate::federation::HEARTBEAT_INTERVAL`] and `last_seen_at`
 /// drives the online flag.
-async fn register(
-    State(state): State<AppState>,
-    req: axum::extract::Request,
-) -> Response {
+async fn register(State(state): State<AppState>, req: axum::extract::Request) -> Response {
     if !has_federation_token(&state, &req) {
         return unauthorized();
     }
@@ -127,7 +128,7 @@ async fn register(
     }
     let base_url = match clean_base_url(&body.base_url) {
         Ok(u) => u,
-        Err(r) => return r,
+        Err(()) => return bad_request("invalid base_url"),
     };
 
     match state
@@ -152,16 +153,16 @@ async fn register(
 /// silently reshaped proxied paths). Anything reachable from the hub is
 /// allowed by design — the shared token is the gate, and LAN addresses are
 /// the point of the feature.
-fn clean_base_url(raw: &str) -> Result<String, Response> {
+fn clean_base_url(raw: &str) -> Result<String, ()> {
     let url = raw.trim().trim_end_matches('/');
     if url.len() > MAX_BASE_URL_LEN {
-        return Err(bad_request("invalid base_url"));
+        return Err(());
     }
-    let parsed = reqwest::Url::parse(url).map_err(|_| bad_request("invalid base_url"))?;
+    let parsed = reqwest::Url::parse(url).map_err(|_| ())?;
     let ok_scheme = matches!(parsed.scheme(), "http" | "https");
     let bare = parsed.path() == "/" || parsed.path().is_empty();
     if !ok_scheme || parsed.host_str().is_none() || !bare || parsed.query().is_some() {
-        return Err(bad_request("invalid base_url"));
+        return Err(());
     }
     Ok(url.to_string())
 }

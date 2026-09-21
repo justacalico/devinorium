@@ -56,10 +56,7 @@ impl super::Db {
         Ok(rows)
     }
 
-    pub async fn get_federation_node(
-        &self,
-        id: &str,
-    ) -> anyhow::Result<Option<FederationNodeRow>> {
+    pub async fn get_federation_node(&self, id: &str) -> anyhow::Result<Option<FederationNodeRow>> {
         let row = sqlx::query_as::<_, FederationNodeRow>(
             "SELECT id, name, base_url, version, last_seen_at, created_at
              FROM federation_nodes WHERE id = ?",

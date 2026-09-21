@@ -118,7 +118,10 @@ async fn register_once(state: &AppState, node_id: &str) -> anyhow::Result<()> {
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("hub returned {status}: {}", body.chars().take(200).collect::<String>());
+        anyhow::bail!(
+            "hub returned {status}: {}",
+            body.chars().take(200).collect::<String>()
+        );
     }
     tracing::debug!(%hub, %base_url, "federation: registered with hub");
     Ok(())
