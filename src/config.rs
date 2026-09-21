@@ -157,7 +157,9 @@ impl Config {
                 bail!("DEVINORIUM_FEDERATION_TOKEN must be at least 16 characters long");
             }
             if !token.bytes().all(|b| (0x21..=0x7e).contains(&b)) {
-                bail!("DEVINORIUM_FEDERATION_TOKEN must contain only printable ASCII without spaces");
+                bail!(
+                    "DEVINORIUM_FEDERATION_TOKEN must contain only printable ASCII without spaces"
+                );
             }
         }
         if let Some(hub) = self.hub_url.as_deref() {

@@ -512,7 +512,12 @@ async fn proxy_strips_satellite_origin_headers() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    for h in ["set-cookie", "location", "www-authenticate", "clear-site-data"] {
+    for h in [
+        "set-cookie",
+        "location",
+        "www-authenticate",
+        "clear-site-data",
+    ] {
         assert!(resp.headers().get(h).is_none(), "{h} leaked");
     }
     assert_eq!(body_str(resp.into_body()).await, "ok");
