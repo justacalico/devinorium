@@ -90,8 +90,18 @@ class NotificationService {
     if (_initialThreadConsumed) return null;
     _initialThreadConsumed = true;
     try {
-      final id = Uri.parse(web.window.location.href).queryParameters['thread'];
-      return (id != null && id.isNotEmpty) ? id : null;
+      final uri = Uri.parse(web.window.location.href);
+      final id = uri.queryParameters['thread'];
+      if (id == null || id.isEmpty) return null;
+      // Strip the param so reloads and server switches do not reopen the
+      // thread forever.
+      final cleaned = uri.replace(
+        queryParameters: Map.of(uri.queryParameters)..remove('thread'),
+      );
+      try {
+        web.window.history.replaceState(null, '', cleaned.toString());
+      } catch (_) {}
+      return id;
     } catch (_) {
       return null;
     }
@@ -100,9 +110,12 @@ class NotificationService {
   /// 'granted' | 'denied' | 'default' | 'unsupported'.
   Future<String> permissionState() async => _permission;
 
-  Future<void> setNotificationsEnabled(bool enabled) async {
+  Future<void> setNotificationsEnabled(
+    bool enabled, {
+    bool allowPrompt = true,
+  }) async {
     _notificationsEnabled = enabled;
-    if (enabled) await _requestPermission();
+    if (enabled && allowPrompt) await _requestPermission();
   }
 
   Future<void> _requestPermission() async {
@@ -160,9 +173,21 @@ class NotificationService {
     try {
       final registration = await _pushRegistration();
       if (registration == null) return _pushStatus = 'error';
+      final vapidKey = await api.pushVapidKey();
+      if (vapidKey == null) return _pushStatus = 'unavailable';
       var subscription = await registration.pushManager
           .getSubscription()
           .toDart;
+      if (subscription != null &&
+          _subscriptionServerKey(subscription) != vapidKey) {
+        // Bound to another server's VAPID key — pushes would be rejected
+        // silently by the push service, so re-subscribe.
+        try {
+          await api.pushUnsubscribe(subscription.endpoint);
+        } catch (_) {}
+        await subscription.unsubscribe().toDart;
+        subscription = null;
+      }
       if (subscription == null) {
         var permission = _permission;
         if (permission != 'granted' && allowPrompt) {
@@ -172,7 +197,7 @@ class NotificationService {
         if (permission != 'granted') {
           return _pushStatus = permission == 'denied' ? 'denied' : 'off';
         }
-        subscription = await _subscribeFresh(registration, api);
+        subscription = await _subscribeFresh(registration, vapidKey);
         if (subscription == null) return _pushStatus;
       }
       final p256dh = _subscriptionKey(subscription, 'p256dh');
@@ -191,6 +216,19 @@ class NotificationService {
     }
   }
 
+  /// The application server key this subscription was created with, as a
+  /// base64url string matching the format `GET /api/push/vapid-key` returns.
+  /// Null when the subscription predates `options` support.
+  String? _subscriptionServerKey(web.PushSubscription subscription) {
+    try {
+      final key = subscription.options.applicationServerKey;
+      if (key == null) return null;
+      return base64Url.encode(key.toDart.asUint8List()).replaceAll('=', '');
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<web.ServiceWorkerRegistration?> _pushRegistration() async {
     try {
       return await web.window.navigator.serviceWorker
@@ -204,16 +242,13 @@ class NotificationService {
 
   Future<web.PushSubscription?> _subscribeFresh(
     web.ServiceWorkerRegistration registration,
-    ApiService api,
+    String vapidKey,
   ) async {
-    final key = await api.pushVapidKey();
-    if (key == null) {
-      _pushStatus = 'unavailable';
-      return null;
-    }
     final options = web.PushSubscriptionOptionsInit(
       userVisibleOnly: true,
-      applicationServerKey: base64Url.decode(base64Url.normalize(key)).toJS,
+      applicationServerKey: base64Url
+          .decode(base64Url.normalize(vapidKey))
+          .toJS,
     );
     try {
       return await registration.pushManager.subscribe(options).toDart;
