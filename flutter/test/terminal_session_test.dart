@@ -15,6 +15,14 @@ class _FakeWebSocketSink extends DelegatingStreamSink<dynamic>
     implements WebSocketSink {
   _FakeWebSocketSink(super.sink);
 
+  final sent = <dynamic>[];
+
+  @override
+  void add(dynamic event) {
+    sent.add(event);
+    super.add(event);
+  }
+
   @override
   Future close([int? closeCode, String? closeReason]) => super.close();
 }
@@ -254,6 +262,64 @@ void main() {
 
       expect(connector.calls, 1);
       expect(session.status, TerminalStatus.disconnected);
+    });
+
+    testWidgets('flapping socket exhausts reconnect attempts', (tester) async {
+      final fakes = <_FakeWebSocketChannel>[];
+      final session = RemoteTerminalSession(
+        id: 'r6',
+        uri: Uri.parse('ws://localhost/ws'),
+        reconnect: true,
+        connector: (Uri uri, {String? token}) {
+          final fake = _FakeWebSocketChannel();
+          fakes.add(fake);
+          return fake;
+        },
+      );
+      addTearDown(session.dispose);
+
+      // Each link dies well inside the stability window, so the attempt
+      // counter must keep climbing instead of resetting per connect. Pump
+      // just past each backoff delay so the 10s window is never crossed;
+      // the sixth drop exhausts the five retries.
+      for (final delay in [600, 1100, 2100, 4100, 8100, 600]) {
+        fakes.last.remoteSink.close();
+        await tester.pump(Duration(milliseconds: delay));
+      }
+
+      expect(session.status, TerminalStatus.exited);
+      expect(fakes.length, 6);
+    });
+
+    testWidgets('buffers input typed while disconnected', (tester) async {
+      final fakes = <_FakeWebSocketChannel>[];
+      final session = RemoteTerminalSession(
+        id: 'r7',
+        uri: Uri.parse('ws://localhost/ws'),
+        reconnect: true,
+        connector: (Uri uri, {String? token}) {
+          final fake = _FakeWebSocketChannel();
+          fakes.add(fake);
+          return fake;
+        },
+      );
+      addTearDown(session.dispose);
+
+      fakes.first.remoteSink.close();
+      expect(session.status, TerminalStatus.disconnected);
+
+      session.terminal.onOutput!('abc');
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(fakes.length, 2);
+      final sent = (fakes.last.sink as _FakeWebSocketSink).sent;
+      final inputs = sent
+          .map((e) => jsonDecode(e as String) as Map<String, dynamic>)
+          .where((m) => m['type'] == 'input');
+      expect(inputs.single['data'], 'abc');
+
+      // Let the stability-window timer fire so nothing is left pending.
+      await tester.pump(const Duration(seconds: 10));
     });
 
     test('exited message completes the session', () {
