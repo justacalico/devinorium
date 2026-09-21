@@ -1186,6 +1186,20 @@ class ApiService {
     return MachineTestResult.fromJson(j);
   }
 
+  // ---- Federation ----
+
+  /// Satellite nodes registered with this hub (owner only). Always queried
+  /// against the hub itself, so callers should use the unprefixed base
+  /// service even when a node is selected.
+  Future<FederationNodesResponse> federationNodes() async {
+    final j = await _client.get('/api/federation/nodes');
+    return FederationNodesResponse.fromJson(j);
+  }
+
+  /// Remove a satellite registration from this hub (owner only).
+  Future<void> removeFederationNode(String nodeId) =>
+      _client.delete('/api/federation/nodes/$nodeId');
+
   // ---- Worktree root ----
 
   Future<String?> getWorktreeRoot() async {
@@ -1287,7 +1301,7 @@ class ApiService {
   /// Build the WebSocket URL for a remote terminal session.
   Future<Uri> terminalWebSocketUri(String sessionId) async {
     final base = await _client.serverUrl;
-    final path = '/api/terminal/sessions/$sessionId/ws';
+    final path = '${_client.pathPrefix}/api/terminal/sessions/$sessionId/ws';
     if (base == null || base.isEmpty) {
       // Web build: same origin, relative URL.
       return Uri.parse(path);

@@ -277,4 +277,7 @@ class NativeApiClient implements BaseApiClient {
 
   @override
   Future<String?> get token async => _token.isNotEmpty ? _token : null;
+
+  @override
+  String get pathPrefix => '';
 }

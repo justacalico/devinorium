@@ -70,6 +70,9 @@ class PreloaderClient implements BaseApiClient {
   Future<String?> get token => _inner.token;
 
   @override
+  String get pathPrefix => _inner.pathPrefix;
+
+  @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       _mutate(() => _inner.post(path, body));
 

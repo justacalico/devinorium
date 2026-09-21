@@ -36,7 +36,7 @@ mixin ComposerStore on AppStateBase {
   ComposerMode get defaultComposerMode => _composerMode;
 
   String _draftKey(String threadId) =>
-      '${multiServerState.activeServerId ?? ''}:$threadId';
+      '${multiServerState.activeServerId ?? ''}:${_activeNodeId ?? ''}:$threadId';
 
   /// The persisted draft for [threadId] on the active server, if any.
   String? _draftFor(String threadId) => _composerDrafts[_draftKey(threadId)];

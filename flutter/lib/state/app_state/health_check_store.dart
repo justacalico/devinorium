@@ -101,6 +101,12 @@ mixin HealthCheckStore on AppStateBase {
       // fresh snapshot resyncs anything missed while away.
       _restartRunEvents();
     }
+    // Node online flags age with each heartbeat; refresh them on the health
+    // tick. When a satellite is selected this also runs while it is down —
+    // the check fails through the proxy but the hub still answers the list.
+    if (ok || _activeNodeId != null) {
+      unawaited(refreshFederationNodes());
+    }
     if (_connectionStatus == ConnectionStatus.connected) {
       _onConnectionRestored();
     }

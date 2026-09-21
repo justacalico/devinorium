@@ -11,6 +11,7 @@ import '../api/api_client.dart';
 import '../api/api_service.dart';
 import '../api/client_factory.dart';
 import '../api/native_api_client.dart';
+import '../api/prefixing_client.dart';
 import '../api/preloader_client.dart';
 import '../servers/multi_server_state.dart';
 import '../servers/server_profile.dart';
@@ -59,6 +60,7 @@ part 'app_state/dialog_store.dart';
 part 'app_state/settings_store.dart';
 part 'app_state/tailscale_store.dart';
 part 'app_state/machines_store.dart';
+part 'app_state/node_store.dart';
 part 'app_state/version_store.dart';
 part 'app_state/editor_store.dart';
 
@@ -116,6 +118,7 @@ class AppState extends AppStateBase
         SettingsStore,
         TailscaleStore,
         MachinesStore,
+        NodeStore,
         VersionStore,
         EditorStore {
   @override
@@ -132,9 +135,20 @@ class AppState extends AppStateBase
   );
 
   ApiService? _defaultApi;
+
+  /// The service every store calls. Resolves to a node-bound (prefixed)
+  /// service when a federation satellite is selected so all data calls land
+  /// on that machine through the hub's proxy.
   @override
-  ApiService get api =>
-      multiServerState.activeApi ?? (_defaultApi ??= ApiService());
+  ApiService get api {
+    final nodeId = _activeNodeId;
+    final serverId = multiServerState.activeServerId;
+    if (nodeId != null && serverId != null) {
+      final service = multiServerState.nodeApi(serverId, nodeId);
+      if (service != null) return service;
+    }
+    return multiServerState.activeApi ?? (_defaultApi ??= ApiService());
+  }
 
   /// The list of configured servers, for the UI switcher and settings.
   List<ServerProfile> get serverProfiles => multiServerState.profiles;

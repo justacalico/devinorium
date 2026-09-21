@@ -1,6 +1,7 @@
 part of 'package:devinorium_frontend/state/app_state.dart';
 
 mixin AuthStore on AppStateBase {
+  @override
   bool _switchingServer = false;
 
   @override
@@ -31,6 +32,12 @@ mixin AuthStore on AppStateBase {
         await multiServerState.loadFromRegistry();
       }
       await _ensureLocalServer();
+      await restoreNodeSelection();
+      // A remembered satellite may have been deregistered while the app was
+      // away; prune it before the data load binds calls to a dead route.
+      if (_activeNodeId != null) {
+        await refreshFederationNodes();
+      }
       final active = multiServerState.activeApi;
       if (active == null || !(await active.client.isConfigured)) {
         // A local profile whose bundled server failed to start would
@@ -99,6 +106,7 @@ mixin AuthStore on AppStateBase {
         api: _apiForNewProfile(),
       );
       if (makeActive) {
+        await restoreNodeSelection();
         _view = AppView.app;
         notifyListeners();
         await _loadUserAndData();
@@ -122,7 +130,9 @@ mixin AuthStore on AppStateBase {
     _globalError = '';
     notifyListeners();
     try {
-      final res = await api.login(
+      // Login always targets the hub, never a selected satellite — the
+      // proxied satellite has no user accounts to authenticate against.
+      final res = await hubApi.login(
         username: username,
         password: password,
         totp: totp,
@@ -156,6 +166,7 @@ mixin AuthStore on AppStateBase {
         setActive: true,
         api: _apiForNewProfile(),
       );
+      await restoreNodeSelection();
       _view = AppView.app;
       notifyListeners();
       await _loadUserAndData();
@@ -201,7 +212,7 @@ mixin AuthStore on AppStateBase {
   }
 
   ApiService _loginApiFor(String serverUrl) {
-    if (_isRealNativeClient(api.client)) {
+    if (_isRealNativeClient(hubApi.client)) {
       final tempProfile = ServerProfile(
         id: ServerProfile.generateId(),
         label: _serverLabel(serverUrl),
@@ -213,7 +224,7 @@ mixin AuthStore on AppStateBase {
       );
       return ApiService(client: createApiClient(tempProfile));
     }
-    return api;
+    return hubApi;
   }
 
   Future<void> _configureLoginClient(
@@ -221,7 +232,7 @@ mixin AuthStore on AppStateBase {
     String token,
     String username,
   ) async {
-    final client = api.client;
+    final client = hubApi.client;
     if (_isRealNativeClient(client)) {
       // Real native clients get a fresh service per profile; no need to mutate
       // the transient unconfigured client.
@@ -233,15 +244,16 @@ mixin AuthStore on AppStateBase {
   }
 
   bool _isRealNativeClient(BaseApiClient client) {
+    if (client is PrefixingClient) return _isRealNativeClient(client.inner);
     if (client is NativeApiClient) return true;
     if (client is PreloaderClient) return client.inner is NativeApiClient;
     return false;
   }
 
   ApiService? _apiForNewProfile() {
-    if (_isRealNativeClient(api.client)) return null;
+    if (_isRealNativeClient(hubApi.client)) return null;
     if (kIsWeb) return ApiService(client: createApiClient());
-    return ApiService(client: api.client);
+    return ApiService(client: hubApi.client);
   }
 
   /// Spawn the bundled server on desktop and register its profile. No-ops on
@@ -331,6 +343,7 @@ mixin AuthStore on AppStateBase {
       refreshProviderVersion(),
       loadTailscaleStatus(),
       loadMachines(),
+      refreshFederationNodes(),
     ];
     if (isOwner) {
       futures.add(loadUsers());
@@ -381,7 +394,7 @@ mixin AuthStore on AppStateBase {
     await terminalStore.clear();
     await _teardownPushSubscription();
     try {
-      await api.logout();
+      await hubApi.logout();
     } catch (_) {}
     // Sign-out removes the server profile so no stale unauthenticated
     // connection is left behind. On web the implicit same-origin profile is
@@ -428,7 +441,13 @@ mixin AuthStore on AppStateBase {
       if (multiServerState.activeProfile?.isLocal == true) {
         await _ensureLocalServer();
       }
+      await restoreNodeSelection();
       await _resetServerState();
+      // Prune a remembered node that no longer exists on the new hub before
+      // the data load binds calls to a dead proxy route.
+      if (_activeNodeId != null) {
+        await refreshFederationNodes();
+      }
       // Refresh the Tailscale card for the new server even if the rest of
       // the user data load fails below.
       unawaited(loadTailscaleStatus());
@@ -461,7 +480,9 @@ mixin AuthStore on AppStateBase {
         await _teardownPushSubscription();
       }
       await multiServerState.removeServer(serverId);
+      dropNodeSelectionFor(serverId);
       if (wasActive) {
+        await restoreNodeSelection();
         await _resetServerState();
         unawaited(loadTailscaleStatus());
         if (multiServerState.activeProfile?.isLocal == true) {
@@ -617,6 +638,7 @@ mixin AuthStore on AppStateBase {
     }
   }
 
+  @override
   Future<void> _loadUserAndData() async {
     _user = await api.me();
     await _loadPlanOverlayState();
@@ -643,8 +665,10 @@ mixin AuthStore on AppStateBase {
     // Machines power the composer's `@` picker; warm the cache so it is
     // ready without visiting settings first.
     unawaited(loadMachines());
+    unawaited(refreshFederationNodes());
   }
 
+  @override
   Future<void> _resetServerState() async {
     _stopRunEvents();
     _user = null;
@@ -700,6 +724,13 @@ mixin AuthStore on AppStateBase {
     _tailscaleSeq++;
     _machines = [];
     _machinesSeq++;
+    // The node list belongs to the previous target (a node switch keeps the
+    // hub but drops its data; a server switch drops the list too). The
+    // selection itself is managed by the caller via restoreNodeSelection.
+    _federationNodes = [];
+    _federationSelfName = '';
+    _federationSupported = false;
+    _federationSeq++;
     _linkedMergeRequest = null;
     _composerText = '';
     _composerTextThreadId = null;
