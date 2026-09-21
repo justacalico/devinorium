@@ -586,6 +586,21 @@ void main() {
       expect(state.view, AppView.app);
     });
 
+    test('bootstrap clears a token a relay answered 403 for', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([http.Response('forbidden', 403)]),
+        ),
+      );
+      await state.bootstrap();
+      expect(state.view, AppView.app);
+      expect(
+        state.serverProfiles.firstWhere((p) => p.id == 'default').token,
+        isEmpty,
+      );
+    });
+
     test('bootstrap lands on app when no server is configured', () async {
       SharedPreferences.setMockInitialValues({});
       // A real manager would adopt a devinorium server already running on the

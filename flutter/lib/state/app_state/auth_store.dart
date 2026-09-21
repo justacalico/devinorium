@@ -54,7 +54,7 @@ mixin AuthStore on AppStateBase {
       }
       await _loadUserAndDataWithNodeFallback();
     } catch (e) {
-      if (e is ApiException && e.statusCode == 401) {
+      if (e is ApiException && _isUnauthenticated(e)) {
         if (multiServerState.activeProfile?.isLocal == true) {
           // The bundled server may have restarted with a fresh token while a
           // stale profile survived — re-ensure once before giving up.
@@ -69,7 +69,7 @@ mixin AuthStore on AppStateBase {
         _globalError = '$e';
       }
       await _resetServerState();
-      if (kIsWeb && e is ApiException && e.statusCode == 401) {
+      if (kIsWeb && e is ApiException && _isUnauthenticated(e)) {
         _dialog = DialogKind.webLogin;
       }
       if (multiServerState.activeProfile?.isLocal == true) {
@@ -836,3 +836,8 @@ mixin AuthStore on AppStateBase {
     }
   }
 }
+
+/// A relayed satellite answers 403 for a credential it does not accept
+/// (expired or insufficient scope); treat it like a 401 from the hub.
+bool _isUnauthenticated(ApiException e) =>
+    e.statusCode == 401 || e.statusCode == 403;
