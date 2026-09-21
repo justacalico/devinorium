@@ -2,6 +2,22 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.84.0 - 2026-09-21
+#### Features
+- 侧边栏节点切换器与设置节点列表 - (73107af) - HttpAnimations
+- 联邦节点客户端与选择状态 - (efc6f57) - HttpAnimations
+- 添加卫星节点联邦后端 - (5d00f3b) - HttpAnimations
+#### Bug Fixes
+- 联邦测试补齐主干新增字段 - (6c8ef91) - HttpAnimations
+- 强制兜底失效节点并改进健康检查探针 - (f405d84) - HttpAnimations
+- 沙箱化联邦代理响应并剥离缓存头 - (cfe2818) - HttpAnimations
+- 节点失效时回退绑定并收紧账号操作范围 - (3ed2420) - HttpAnimations
+- 代理剥离敏感头并支持 wss 上游 - (406cd73) - HttpAnimations
+- 草稿键在无节点时保持旧格式 - (f335693) - HttpAnimations
+- 非所有者不再轮询节点列表 - (d71baa3) - HttpAnimations
+
+- - -
+
 ## v0.83.0 - 2026-09-21
 #### Features
 - 添加上下文长度用量统计与输出令牌上限 - (1fd1903) - HttpAnimations
