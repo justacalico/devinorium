@@ -416,8 +416,11 @@ mixin AuthStore on AppStateBase {
     stopGitRefresh();
     try {
       // Terminals belong to the current server — kill them before the
-      // active connection changes underneath us.
+      // active connection changes underneath us. Same for the push
+      // subscription: it must be removed while the old server is still
+      // authenticated, or it keeps pushing this account's events.
       await terminalStore.clear();
+      await _teardownPushSubscription();
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
       // The bundled server may have died while a remote profile was active;
@@ -455,6 +458,7 @@ mixin AuthStore on AppStateBase {
         stopHealthChecks();
         stopGitRefresh();
         await terminalStore.clear();
+        await _teardownPushSubscription();
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
