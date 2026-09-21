@@ -3694,6 +3694,56 @@ async fn file_manager_rejects_traversal() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn file_manager_delete_removes_symlink_not_target() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let real_dir = home.join("real_dir");
+    std::fs::create_dir_all(&real_dir).unwrap();
+    std::fs::write(real_dir.join("keep.txt"), "keep").unwrap();
+    std::os::unix::fs::symlink(&real_dir, home.join("link")).unwrap();
+
+    for path in ["link", "link/"] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "DELETE",
+                &format!("/api/files/delete?path={path}"),
+                &cookie,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "path: {path}");
+        assert!(!home.join("link").exists(), "link should be gone");
+        assert!(
+            real_dir.join("keep.txt").exists(),
+            "target contents must survive"
+        );
+        std::os::unix::fs::symlink(&real_dir, home.join("link")).unwrap();
+    }
+
+    // The browse root itself and `.`/`..` final components are refused.
+    for path in ["", ".", "..", "real_dir/.", "real_dir/.."] {
+        let uri = if path.is_empty() {
+            "/api/files/delete".to_string()
+        } else {
+            format!("/api/files/delete?path={path}")
+        };
+        let resp = app
+            .clone()
+            .oneshot(authed("DELETE", &uri, &cookie, ""))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "path: {path}");
+    }
+    assert!(real_dir.join("keep.txt").exists());
+}
+
 #[tokio::test]
 async fn file_manager_list_paginates() {
     let (app, _db) = make_app().await;

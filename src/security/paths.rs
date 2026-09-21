@@ -166,6 +166,22 @@ pub fn is_within(child: &Path, parent: &Path) -> bool {
     child == parent || child.starts_with(parent)
 }
 
+/// Normalize `.` and `..` components purely lexically, without touching the
+/// filesystem. `..` at the root stays at the root.
+pub fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,6 +302,20 @@ mod tests {
         assert!(
             resolved.is_none(),
             "traversal through non-existent dir should be rejected"
+        );
+    }
+
+    #[test]
+    fn normalize_lexical_collapses_dot_segments() {
+        assert_eq!(
+            normalize_lexical(Path::new("/a/b/../c")),
+            PathBuf::from("/a/c")
+        );
+        assert_eq!(normalize_lexical(Path::new("/a/./b")), PathBuf::from("/a/b"));
+        assert_eq!(normalize_lexical(Path::new("/a/..")), PathBuf::from("/"));
+        assert_eq!(
+            normalize_lexical(Path::new("/a/b/../../..")),
+            PathBuf::from("/")
         );
     }
 

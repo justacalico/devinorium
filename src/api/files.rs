@@ -677,7 +677,8 @@ async fn delete(
     CurrentUser(user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> Response {
-    let (target, _root) = match resolve(
+    let rel = q.path.as_deref().unwrap_or("").trim_end_matches('/');
+    let (_resolved, root) = match resolve(
         &state,
         &user,
         q.path.as_deref(),
@@ -689,6 +690,35 @@ async fn delete(
         Ok(v) => v,
         Err(r) => return r,
     };
+    let invalid = || {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid path")),
+        )
+            .into_response()
+    };
+    // `resolve` returns the canonicalized path, which turns a symlink into
+    // its target. Delete must act on the link itself, so rebuild the lexical
+    // path and lstat that instead of removing whatever it points at.
+    let target = if rel.is_empty() {
+        return invalid();
+    } else if Path::new(rel).is_absolute() {
+        PathBuf::from(rel)
+    } else {
+        root.join(rel)
+    };
+    // The final raw segment must be a real name: `dir/.` resolves to the
+    // directory itself and `dir/..` to its parent, so removing either would
+    // hit a different object than the entry the user picked. Relative
+    // targets must also stay under the root so `..` cannot delete the root
+    // itself.
+    let last = rel.rsplit('/').next().unwrap_or("");
+    if last == "." || last == ".."
+        || (!Path::new(rel).is_absolute()
+            && !paths::normalize_lexical(&target).starts_with(&root))
+    {
+        return invalid();
+    }
     let meta = match tokio::fs::symlink_metadata(&target).await {
         Ok(m) => m,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
