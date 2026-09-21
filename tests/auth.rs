@@ -179,6 +179,27 @@ async fn login_token(app: &Router, username: &str, password: &str) -> String {
     v["token"].as_str().unwrap().to_string()
 }
 
+#[tokio::test]
+async fn session_tokens_are_stored_hashed() {
+    let (state, database) = make_app("owner", "supersecret123").await;
+    let app = build_router(state);
+    let cookie = login(&app, "owner", "supersecret123").await;
+    let token = cookie
+        .strip_prefix("devinorium_session=")
+        .unwrap()
+        .to_string();
+
+    let stored: String = sqlx::query_scalar("SELECT token FROM sessions LIMIT 1")
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+    // The database holds SHA-256(token), never the bearer credential itself.
+    assert_ne!(stored, token);
+    assert_eq!(stored.len(), 64);
+    assert!(stored.chars().all(|c| c.is_ascii_hexdigit()));
+    assert_eq!(stored, devinorium::auth::tokens::token_hash(&token));
+}
+
 fn totp_code(secret: &str) -> String {
     use totp_rs::{Algorithm, Secret, TOTP};
     TOTP::new(
