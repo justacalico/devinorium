@@ -41,6 +41,8 @@ class _StreamableApiService extends ApiService {
   Map<String, dynamic>? runResponse;
   Future<MessagePage>? messagesResponse;
   int getThreadMessagesCalls = 0;
+  int listThreadsCalls = 0;
+  Future<List<Thread>> Function()? listThreadsBuilder;
   String? stoppedThread;
   String? lastClientMessageId;
   Future<MergeRequestLink?> Function(int, int)? findMergeRequestByIidBuilder;
@@ -75,6 +77,13 @@ class _StreamableApiService extends ApiService {
 
   @override
   Future<List<String>> getThreadRuns() async => [];
+
+  @override
+  Future<List<Thread>> listThreads({int? limit, int? offset}) {
+    listThreadsCalls++;
+    return listThreadsBuilder?.call() ??
+        super.listThreads(limit: limit, offset: offset);
+  }
 
   @override
   Stream<SseEvent> watchThreadEvents(String id) {
@@ -948,6 +957,46 @@ void main() {
       expect(base.composerText, 'draft text');
       expect(base.attachments, hasLength(1));
       expect(base.threads, hasLength(1));
+    });
+
+    test('stale in-flight thread load cannot write after reset', () async {
+      SharedPreferences.setMockInitialValues({});
+      final pending = Completer<List<Thread>>();
+      final api = _StreamableApiService(
+        ApiClient.withClient(
+          MockClient((_) async => _json(404, {'error': 'none'})),
+        ),
+      );
+      api.listThreadsBuilder = () => pending.future;
+      final state = AppState.test(api: api);
+
+      final refresh = state.refreshThreadsAndGroups();
+      expect(api.listThreadsCalls, 1);
+
+      // A node switch runs the same reset as a server switch; the post-
+      // switch data load unwinds through the fallback when me() 404s.
+      final switching = state.switchNode('n1');
+      pending.complete([
+        Thread(
+          id: 'stale',
+          title: 'stale',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ]);
+      await refresh;
+      await switching;
+
+      expect(state.threads, isEmpty);
+
+      // The loading flag must also be cleared so the next target can load
+      // instead of early-returning on a stuck flag.
+      api.listThreadsBuilder = () async => [];
+      await state.loadMoreThreads();
+      expect(api.listThreadsCalls, 2);
     });
 
     test(

@@ -35,12 +35,15 @@ mixin GitRefreshStore on AppStateBase {
   }
   @override
   Future<void> _refreshGitForProject(int projectId) async {
+    final gen = _serverSeq;
     try {
       final info = await api.gitRepoStatus(projectId, force: true);
+      if (gen != _serverSeq) return;
       _gitRepoInfo[projectId] = info;
       _syncProjectBranch(projectId, info);
       _globalError = '';
     } catch (e) {
+      if (gen != _serverSeq) return;
       _gitRepoInfo.remove(projectId);
     }
     notifyListeners();

@@ -114,6 +114,11 @@ abstract class AppStateBase extends ChangeNotifier {
   set _gitPanelProjectId(int? value);
   int get _gitPanelSeq;
   set _gitPanelSeq(int value);
+  // Bumped by `_resetServerState`; async loads capture it at entry and
+  // compare after each await so a stale response cannot write old-server
+  // data into the reset state.
+  int get _serverSeq;
+  set _serverSeq(int value);
   Map<String, FileDiff?> get _gitDiffs;
   Set<String> get _gitDiffsLoading;
   Set<String> get _gitDiffsExpanded;

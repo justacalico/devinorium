@@ -3,6 +3,8 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 mixin AuthStore on AppStateBase {
   @override
   bool _switchingServer = false;
+  @override
+  int _serverSeq = 0;
 
   @override
   User? _user;
@@ -730,6 +732,9 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> _resetServerState() async {
+    // Bump first: every guarded async load from the old server notices the
+    // generation change and stops writing before the fields clear.
+    _serverSeq++;
     _stopRunEvents();
     _user = null;
     _users = [];
@@ -745,6 +750,8 @@ mixin AuthStore on AppStateBase {
     _threads = [];
     _userThreadsOffset = 0;
     _userThreadsHasMore = true;
+    _loadingMoreUserThreads = false;
+    _threadOpening = false;
     _projectThreadOffsets.clear();
     _projectThreadsHasMore.clear();
     _loadingMoreProjectThreads.clear();
