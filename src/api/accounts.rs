@@ -60,7 +60,10 @@ pub struct CreateUserResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateUserRequest {
-    pub disabled: bool,
+    pub disabled: Option<bool>,
+    /// Owner-initiated password reset: no current password required. All of
+    /// the target's sessions are revoked.
+    pub password: Option<String>,
 }
 
 fn is_valid_username(s: &str) -> bool {
@@ -73,8 +76,7 @@ fn is_valid_username(s: &str) -> bool {
 }
 
 fn is_valid_password(s: &str) -> bool {
-    let len = s.chars().count();
-    (12..=1024).contains(&len)
+    password::is_valid(s)
 }
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
@@ -201,28 +203,68 @@ async fn update(
     if target.is_owner {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiError::new("cannot disable an owner account")),
+            Json(ApiError::new("cannot modify an owner account")),
         )
             .into_response();
     }
 
-    if let Err(e) = state.db.set_user_disabled(id, req.disabled).await {
-        return map_err_internal(e).into_response();
+    if req.disabled.is_none() && req.password.is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("nothing to update")),
+        )
+            .into_response();
     }
 
-    let _ = state
-        .db
-        .audit(
-            Some(user.id),
-            if req.disabled {
-                "user.disable"
-            } else {
-                "user.enable"
-            },
-            &serde_json::json!({"target_user_id": id}),
-            None,
-        )
-        .await;
+    // Validate everything before applying so a bad request does not leave a
+    // partial update behind.
+    if let Some(new_password) = req.password.as_deref() {
+        if !password::is_valid(new_password) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError::new("password must be 12-1024 characters")),
+            )
+                .into_response();
+        }
+    }
+
+    if let Some(disabled) = req.disabled {
+        if let Err(e) = state.db.set_user_disabled(id, disabled).await {
+            return map_err_internal(e).into_response();
+        }
+        let _ = state
+            .db
+            .audit(
+                Some(user.id),
+                if disabled { "user.disable" } else { "user.enable" },
+                &serde_json::json!({"target_user_id": id}),
+                None,
+            )
+            .await;
+    }
+
+    if let Some(new_password) = req.password.as_deref() {
+        let hash = match password::hash(new_password) {
+            Ok(h) => h,
+            Err(e) => return map_err_internal(e).into_response(),
+        };
+        if let Err(e) = state.db.set_user_password(id, hash).await {
+            return map_err_internal(e).into_response();
+        }
+        // The reset invalidates every existing session on the account.
+        if let Err(e) = state.db.delete_user_sessions(id).await {
+            return map_err_internal(e).into_response();
+        }
+        let _ = state
+            .db
+            .audit(
+                Some(user.id),
+                "user.password_reset",
+                &serde_json::json!({"target_user_id": id}),
+                None,
+            )
+            .await;
+    }
 
     Json(serde_json::json!({ "ok": true })).into_response()
 }

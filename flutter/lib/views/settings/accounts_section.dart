@@ -153,6 +153,16 @@ class _UserRow extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                if (!user.isOwner)
+                  IconButton(
+                    tooltip: l10n(context).resetPassword,
+                    icon: const Icon(Icons.password_outlined, size: 18),
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) =>
+                          ResetPasswordDialog(state: state, user: user),
+                    ),
+                  ),
                 Switch(
                   value: !user.disabled,
                   onChanged: user.isOwner

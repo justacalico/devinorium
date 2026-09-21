@@ -78,6 +78,18 @@ class _AccountSection extends StatelessWidget {
         if (!isLocal) ...[
           const Divider(),
           _SettingsRow(
+            label: l.password,
+            value: '••••••••',
+            trailing: OutlinedButton(
+              onPressed: () => showDialog(
+                context: context,
+                builder: (_) => ChangePasswordDialog(state: state),
+              ),
+              child: Text(l.changePassword),
+            ),
+          ),
+          const Divider(),
+          _SettingsRow(
             label: l.twoFactorAuthentication,
             value: totpEnabled ? l.enabled : l.disabled,
             trailing: totpEnabled

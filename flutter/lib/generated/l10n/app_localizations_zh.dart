@@ -192,6 +192,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get password => '密码';
 
   @override
+  String get changePassword => '修改密码';
+
+  @override
+  String get currentPassword => '当前密码';
+
+  @override
+  String get newPassword => '新密码';
+
+  @override
+  String get confirmNewPassword => '确认新密码';
+
+  @override
+  String get passwordsDoNotMatch => '两次输入的密码不一致';
+
+  @override
+  String get resetPassword => '重置密码';
+
+  @override
+  String resetPasswordHint(String name) {
+    return '为 \"$name\" 设置新密码，其所有会话将失效。';
+  }
+
+  @override
   String get test => '测试';
 
   @override

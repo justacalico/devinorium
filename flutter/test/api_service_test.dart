@@ -1289,6 +1289,33 @@ void main() {
       final service = _serviceFor(mock);
       await service.setUserDisabled(1, true);
     });
+
+    test('resetUserPassword sends password', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('PATCH', '/api/users/1'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['password'], 'new-password-123');
+        expect(body.containsKey('disabled'), isFalse);
+        return _json(200, {'ok': true});
+      });
+      final service = _serviceFor(mock);
+      await service.resetUserPassword(1, 'new-password-123');
+    });
+
+    test('changePassword posts current and new passwords', () async {
+      final mock = MockClient((req) async {
+        expect(req, _requestTo('PATCH', '/api/auth/me/password'));
+        final body = jsonDecode(_readBody(req)!);
+        expect(body['current_password'], 'old-password-1');
+        expect(body['new_password'], 'new-password-1');
+        return _json(200, {'ok': true});
+      });
+      final service = _serviceFor(mock);
+      await service.changePassword(
+        currentPassword: 'old-password-1',
+        newPassword: 'new-password-1',
+      );
+    });
   });
 
   group('parseSseMessage', () {

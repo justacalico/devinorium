@@ -146,6 +146,21 @@
   "otherHint": "Type your answer",
   "username": "Username",
   "password": "Password",
+  "changePassword": "Change password",
+  "currentPassword": "Current password",
+  "newPassword": "New password",
+  "confirmNewPassword": "Confirm new password",
+  "passwordsDoNotMatch": "Passwords do not match",
+  "resetPassword": "Reset password",
+  "resetPasswordHint": "Set a new password for \"{name}\". All of their sessions are revoked.",
+  "@resetPasswordHint": {
+    "description": "Hint above the owner password reset field",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "test": "Test",
   "error": "Error",
   "on": "On",

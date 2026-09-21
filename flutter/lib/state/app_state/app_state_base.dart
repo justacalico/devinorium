@@ -572,6 +572,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadSettingsData();
   Future<void> createUser({required String username, required String password});
   Future<void> setUserDisabled(int id, bool disabled);
+  Future<String?> changePassword(String current, String newPassword);
+  Future<String?> resetUserPassword(int id, String password);
   Future<void> logout();
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();

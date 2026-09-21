@@ -101,6 +101,15 @@ impl super::Db {
         Ok(())
     }
 
+    pub async fn set_user_password(&self, user_id: i64, hash: String) -> anyhow::Result<()> {
+        sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+            .bind(hash)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
     /// Stage (or clear) the pending TOTP secret produced by `/totp/setup`
     /// without touching the active factor.
     pub async fn set_totp_pending(

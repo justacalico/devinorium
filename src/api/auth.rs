@@ -485,3 +485,81 @@ pub async fn totp_disable(
 fn auth_json_err(msg: &str) -> serde_json::Value {
     serde_json::json!({ "error": msg })
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: Option<String>,
+    pub new_password: Option<String>,
+}
+
+/// `PATCH /api/auth/me/password` — change the caller's own password. Requires
+/// the current password; the passwordless `local` account cannot gain one
+/// here (that would silently enable interactive login for it). Every session
+/// is revoked, so the client must log in again.
+pub async fn change_password(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<ChangePasswordRequest>,
+) -> Response {
+    if user.password_hash == crate::auth::bootstrap::LOCAL_PASSWORD_SENTINEL {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("this account has no password sign-in")),
+        )
+            .into_response();
+    }
+    let current = match req.current_password.as_deref().filter(|s| !s.is_empty()) {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("current password is required")),
+            )
+                .into_response()
+        }
+    };
+    let new_password = match req.new_password.as_deref().filter(|s| !s.is_empty()) {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("new password is required")),
+            )
+                .into_response()
+        }
+    };
+    if !password::is_valid(new_password) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("password must be 12-1024 characters")),
+        )
+            .into_response();
+    }
+    if !password::verify(current, &user.password_hash).unwrap_or(false) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(auth_json_err("current password is incorrect")),
+        )
+            .into_response();
+    }
+    let hash = match password::hash(new_password) {
+        Ok(h) => h,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+    if let Err(e) = state.db.set_user_password(user.id, hash).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+    if let Err(e) = state.db.delete_user_sessions(user.id).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+    let _ = state
+        .db
+        .audit(
+            Some(user.id),
+            "user.password_change",
+            &serde_json::json!({}),
+            None,
+        )
+        .await;
+    Json(serde_json::json!({"ok": true})).into_response()
+}

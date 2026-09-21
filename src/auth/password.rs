@@ -34,6 +34,12 @@ pub fn verify(password: &str, stored: &str) -> anyhow::Result<bool> {
     Ok(ok)
 }
 
+/// Password policy for account creation and changes: 12-1024 chars.
+pub fn is_valid(password: &str) -> bool {
+    let len = password.chars().count();
+    (12..=1024).contains(&len)
+}
+
 /// Constant-time comparison of two equal-length byte slices.
 pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {

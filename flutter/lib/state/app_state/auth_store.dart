@@ -382,6 +382,35 @@ mixin AuthStore on AppStateBase {
     }
   }
 
+  /// Change the signed-in account's password. On success the server has
+  /// revoked every session, so the user is logged out to sign in again.
+  /// Returns an error string on failure.
+  @override
+  Future<String?> changePassword(String current, String newPassword) async {
+    try {
+      await hubApi.changePassword(
+        currentPassword: current,
+        newPassword: newPassword,
+      );
+    } catch (e) {
+      return '$e';
+    }
+    await logout();
+    return null;
+  }
+
+  /// Owner path: reset another account's password. Returns an error string
+  /// on failure.
+  @override
+  Future<String?> resetUserPassword(int id, String password) async {
+    try {
+      await hubApi.resetUserPassword(id, password);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   @override
   Future<void> logout() async {
     stopHealthChecks();

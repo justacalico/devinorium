@@ -217,6 +217,10 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/auth/me", get(api::auth::me))
         .route("/api/auth/me", axum::routing::patch(api::auth::update_me))
         .route(
+            "/api/auth/me/password",
+            axum::routing::patch(api::auth::change_password),
+        )
+        .route(
             "/api/auth/totp/setup",
             axum::routing::post(api::auth::totp_setup),
         )

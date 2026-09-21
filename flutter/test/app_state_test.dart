@@ -614,6 +614,69 @@ void main() {
       expect(prefs.getString('devinorium_selected_permission'), isNull);
     });
 
+    test('changePassword logs out after the server revokes sessions',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      var patchCalls = 0;
+      final state = AppState(
+        api: ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              if (req.url.path == '/api/auth/me/password') {
+                patchCalls++;
+                final body = jsonDecode((req as http.Request).body);
+                expect(body['current_password'], 'old-password-1');
+                expect(body['new_password'], 'new-password-1');
+                return _json(200, {'ok': true});
+              }
+              return _json(200, {});
+            }),
+          ),
+        ),
+      );
+      final error =
+          await state.changePassword('old-password-1', 'new-password-1');
+      expect(error, isNull);
+      expect(patchCalls, 1);
+      expect(state.user, isNull);
+      expect(state.serverProfiles, isEmpty);
+    });
+
+    test('changePassword returns the error and stays logged in', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([_json(401, {'error': 'wrong password'})]),
+        ),
+      );
+      final error =
+          await state.changePassword('bad-password-1', 'new-password-1');
+      expect(error, isNotNull);
+    });
+
+    test('resetUserPassword patches the user password', () async {
+      SharedPreferences.setMockInitialValues({});
+      var patchCalls = 0;
+      final state = AppState(
+        api: ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              if (req.url.path == '/api/users/2') {
+                patchCalls++;
+                final body = jsonDecode((req as http.Request).body);
+                expect(body['password'], 'fresh-password-1');
+                return _json(200, {'ok': true});
+              }
+              return _json(404, {'error': 'unexpected ${req.url.path}'});
+            }),
+          ),
+        ),
+      );
+      final error = await state.resetUserPassword(2, 'fresh-password-1');
+      expect(error, isNull);
+      expect(patchCalls, 1);
+    });
+
     test('addServer adds a profile without changing the active view', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(

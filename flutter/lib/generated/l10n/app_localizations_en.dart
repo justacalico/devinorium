@@ -194,6 +194,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get password => 'Password';
 
   @override
+  String get changePassword => 'Change password';
+
+  @override
+  String get currentPassword => 'Current password';
+
+  @override
+  String get newPassword => 'New password';
+
+  @override
+  String get confirmNewPassword => 'Confirm new password';
+
+  @override
+  String get passwordsDoNotMatch => 'Passwords do not match';
+
+  @override
+  String get resetPassword => 'Reset password';
+
+  @override
+  String resetPasswordHint(String name) {
+    return 'Set a new password for \"$name\". All of their sessions are revoked.';
+  }
+
+  @override
   String get test => 'Test';
 
   @override

@@ -872,6 +872,23 @@ class ApiService {
     await _client.patch('/api/users/$id', {'disabled': disabled});
   }
 
+  /// Owner path: set another account's password. Revokes their sessions.
+  Future<void> resetUserPassword(int id, String password) async {
+    await _client.patch('/api/users/$id', {'password': password});
+  }
+
+  /// Self-service password change. Succeeds only with the current password;
+  /// the server revokes every session on success.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _client.patch('/api/auth/me/password', {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
+  }
+
   // ---- Audit log ----
 
   /// List audit log entries, newest first. Owner-only on the server.

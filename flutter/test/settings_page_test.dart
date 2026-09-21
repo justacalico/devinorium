@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
+import 'package:devinorium_frontend/servers/multi_server_state.dart';
+import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/services/version_checker.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/theme/theme.dart';
@@ -26,6 +28,9 @@ class _FakeApiService extends ApiService {
   int providerVersionCalls = 0;
   final List<String?> providerVersionArgs = [];
   int createUserCalls = 0;
+  int resetPasswordCalls = 0;
+  String? resetPasswordValue;
+  int? resetPasswordUserId;
   int getCloneRootCalls = 0;
   int setCloneRootCalls = 0;
   int getWorktreeRootCalls = 0;
@@ -138,6 +143,13 @@ class _FakeApiService extends ApiService {
         providerCommand: 'devin',
       ),
     );
+  }
+
+  @override
+  Future<void> resetUserPassword(int id, String password) async {
+    resetPasswordCalls++;
+    resetPasswordUserId = id;
+    resetPasswordValue = password;
   }
 
   @override
@@ -853,6 +865,143 @@ void main() {
 
     expect(fake.createUserCalls, 1);
     expect(find.text('alice'), findsOneWidget);
+  });
+
+  testWidgets('Owner resets a user password from the accounts list', (
+    tester,
+  ) async {
+    final users = [
+      User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      User(
+        id: 2,
+        username: 'alice',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    ];
+    final fake = _FakeApiService(users: users);
+    final state = AppState.test(
+      api: fake,
+      user: users[0],
+      users: users,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(5);
+    await tester.pumpAndSettle();
+
+    // Owner rows offer no reset button.
+    final resetButtons = find.byIcon(Icons.password_outlined);
+    expect(resetButtons, findsOneWidget);
+
+    await tester.tap(resetButtons);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reset password'), findsOneWidget);
+    final passwordField = find.widgetWithText(TextField, 'New password');
+    await tester.enterText(passwordField, 'fresh-password-1');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(fake.resetPasswordCalls, 1);
+    expect(fake.resetPasswordUserId, 2);
+    expect(fake.resetPasswordValue, 'fresh-password-1');
+  });
+
+  testWidgets('Account section offers a change password dialog', (
+    tester,
+  ) async {
+    final servers = MultiServerState();
+    servers.addTestConnection(
+      ServerProfile(
+        id: 'remote',
+        label: 'Remote',
+        baseUrl: 'http://remote',
+        token: 'token',
+        username: 'alice',
+        createdAt: DateTime.now().toUtc(),
+        isPrimary: true,
+      ),
+      _FakeApiService(),
+    );
+    final state = AppState.test(
+      multiServerState: servers,
+      user: User(
+        id: 2,
+        username: 'alice',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: false,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(0);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Change password'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Current password'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'New password'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Confirm new password'),
+        findsOneWidget);
+  });
+
+  testWidgets('Change password row is hidden on the local profile', (
+    tester,
+  ) async {
+    final servers = MultiServerState();
+    servers.addTestConnection(
+      ServerProfile(
+        id: 'local',
+        label: 'This device',
+        baseUrl: 'http://localhost',
+        token: 'token',
+        username: 'local',
+        createdAt: DateTime.now().toUtc(),
+        isPrimary: true,
+        isLocal: true,
+      ),
+      _FakeApiService(),
+    );
+    final state = AppState.test(
+      multiServerState: servers,
+      user: User(
+        id: 1,
+        username: 'local',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(0);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Change password'), findsNothing);
   });
 
   testWidgets('Settings topic index clamps out of bounds', (tester) async {

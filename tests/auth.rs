@@ -99,6 +99,10 @@ fn build_router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/api/auth/me", get(devinorium::api::auth::me))
         .route(
+            "/api/auth/me/password",
+            axum::routing::patch(devinorium::api::auth::change_password),
+        )
+        .route(
             "/api/auth/totp/setup",
             axum::routing::post(devinorium::api::auth::totp_setup),
         )
@@ -923,6 +927,191 @@ async fn totp_disable_clears_pending_secret() {
     assert!(user.totp_pending_secret.is_none());
     assert!(!user.totp_enabled);
     assert!(user.totp_secret.is_none());
+}
+
+#[tokio::test]
+async fn change_password_requires_current_and_revokes_sessions() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let patch = |body: &str, cookie: &str| {
+        let app = app.clone();
+        let cookie = cookie.to_string();
+        let body = body.to_string();
+        async move {
+            app.oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/api/auth/me/password")
+                    .header("cookie", cookie)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+        }
+    };
+
+    // Missing fields, weak new password, wrong current: all rejected.
+    assert_eq!(patch(r#"{}"#, &cookie).await, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        patch(
+            r#"{"current_password":"supersecret123","new_password":"short"}"#,
+            &cookie
+        )
+        .await,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        patch(
+            r#"{"current_password":"wrongwrongwrong","new_password":"newsecret456"}"#,
+            &cookie
+        )
+        .await,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // Correct current password succeeds and kills every session.
+    assert_eq!(
+        patch(
+            r#"{"current_password":"supersecret123","new_password":"newsecret456"}"#,
+            &cookie
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    // The old session cookie is dead.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    // Old password fails, new password logs in.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    login(&app, "owner", "newsecret456").await;
+}
+
+#[tokio::test]
+async fn owner_password_reset_revokes_target_sessions() {
+    let (state, db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/users")
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(
+                    r#"{"username":"alice","password":"alicepass123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let alice_id = serde_json::from_str::<serde_json::Value>(&read_body(resp.into_body()).await)
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    let alice_cookie = login(&app, "alice", "alicepass123").await;
+
+    // A member cannot use the reset path.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/users/{alice_id}"))
+                .header("content-type", "application/json")
+                .header("cookie", &alice_cookie)
+                .body(Body::from(r#"{"password":"takenover12345"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // The owner resets it: alice's session dies and the new password works.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/users/{alice_id}"))
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(r#"{"password":"resetpass456"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", &alice_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    login(&app, "alice", "resetpass456").await;
+
+    // Owner accounts cannot be reset through this path.
+    let owner_id = db
+        .get_user_by_username("owner")
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/users/{owner_id}"))
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(r#"{"password":"resetpass456"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

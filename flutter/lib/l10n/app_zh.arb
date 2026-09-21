@@ -146,6 +146,21 @@
   "otherHint": "输入你的答案",
   "username": "用户名",
   "password": "密码",
+  "changePassword": "修改密码",
+  "currentPassword": "当前密码",
+  "newPassword": "新密码",
+  "confirmNewPassword": "确认新密码",
+  "passwordsDoNotMatch": "两次输入的密码不一致",
+  "resetPassword": "重置密码",
+  "resetPasswordHint": "为 \"{name}\" 设置新密码，其所有会话将失效。",
+  "@resetPasswordHint": {
+    "description": "Hint above the owner password reset field",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "test": "测试",
   "error": "错误",
   "on": "开",
