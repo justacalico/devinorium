@@ -319,10 +319,10 @@ impl AcpProvider {
                         Self::apply_interaction_mode_prefix(prompt, &options.interaction_mode);
 
                     let mut prompt_blocks = vec![ContentBlock::Text(TextContent::new(prompt))];
-                    prompt_blocks.extend(
-                        self.attachment_blocks(&options.attachments, &options.working_dir)
-                            .await?,
-                    );
+                    let (attachment_blocks, _staged) = self
+                        .attachment_blocks(&options.attachments, &options.working_dir)
+                        .await?;
+                    prompt_blocks.extend(attachment_blocks);
 
                     replaying.store(false, Ordering::SeqCst);
                     let sent = connection
@@ -390,16 +390,20 @@ impl AcpProvider {
         result
     }
 
+    /// Stage non-image attachments to disk and build the prompt blocks that
+    /// reference them. The returned guard removes the staging dir when the
+    /// turn ends (or when a write fails mid-way and the error propagates).
     async fn attachment_blocks(
         &self,
         attachments: &[Attachment],
         working_dir: &Path,
-    ) -> anyhow::Result<Vec<ContentBlock>> {
+    ) -> anyhow::Result<(Vec<ContentBlock>, StagedAttachments)> {
         if attachments.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), StagedAttachments::none()));
         }
 
         let att_dir = ensure_writable_attachment_dir(working_dir).await?;
+        let staged = StagedAttachments::new(att_dir.clone());
         let mut blocks = Vec::new();
 
         for (i, att) in attachments.iter().enumerate() {
@@ -423,7 +427,7 @@ impl AcpProvider {
             }
         }
 
-        Ok(blocks)
+        Ok((blocks, staged))
     }
 
     async fn fetch_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
@@ -530,12 +534,16 @@ fn usage_from_acp(usage: &agent_client_protocol::schema::v1::Usage) -> UsageSnap
 }
 
 pub(crate) async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<PathBuf> {
+    // A fresh subdirectory per turn so cleanup can remove it wholesale
+    // without touching files a concurrent send in the same worktree staged.
     let preferred = working_dir.join(".devinorium-attachments");
     if tokio::fs::create_dir_all(&preferred).await.is_ok() {
         let probe = preferred.join(format!(".probe-{}", uuid::Uuid::new_v4()));
         if tokio::fs::write(&probe, b"").await.is_ok() {
             let _ = tokio::fs::remove_file(&probe).await;
-            return Ok(preferred);
+            let dir = preferred.join(uuid::Uuid::new_v4().to_string());
+            tokio::fs::create_dir(&dir).await?;
+            return Ok(dir);
         }
     }
 
@@ -544,6 +552,32 @@ pub(crate) async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow
         .join(format!("{}-{}", std::process::id(), uuid::Uuid::new_v4()));
     tokio::fs::create_dir_all(&fallback).await?;
     Ok(fallback)
+}
+
+/// Removes a turn's attachment staging dir on drop. The agent reads the
+/// staged files while the prompt runs, so the guard is dropped only after
+/// the turn resolves; the now-empty parent is removed too when possible.
+pub(crate) struct StagedAttachments(Option<PathBuf>);
+
+impl StagedAttachments {
+    pub(crate) fn none() -> Self {
+        Self(None)
+    }
+
+    pub(crate) fn new(dir: PathBuf) -> Self {
+        Self(Some(dir))
+    }
+}
+
+impl Drop for StagedAttachments {
+    fn drop(&mut self) {
+        if let Some(dir) = self.0.take() {
+            let _ = std::fs::remove_dir_all(&dir);
+            if let Some(parent) = dir.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
+        }
+    }
 }
 
 pub(crate) fn client_capabilities() -> ClientCapabilities {
@@ -1162,7 +1196,7 @@ mod tests {
             data: png.clone(),
         }];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -1187,7 +1221,7 @@ mod tests {
             data: b"PINEAPPLE".to_vec(),
         }];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -1200,15 +1234,39 @@ mod tests {
         assert!(text.text.contains("secret.txt"));
 
         let att_dir = root.path().join(".devinorium-attachments");
-        let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        let staged_dirs: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        assert_eq!(staged_dirs.len(), 1);
+        let entries: Vec<_> = fs::read_dir(staged_dirs[0].path())
+            .unwrap()
+            .flatten()
+            .collect();
         assert_eq!(entries.len(), 1);
         let content = fs::read_to_string(entries[0].path()).unwrap();
         assert_eq!(content, "PINEAPPLE");
     }
 
     #[tokio::test]
+    async fn staged_dir_is_removed_when_guard_drops() {
+        let root = tempfile::tempdir().unwrap();
+        let attachments = vec![Attachment {
+            filename: "a.txt".into(),
+            mime: "text/plain".into(),
+            data: b"x".to_vec(),
+        }];
+        let (_, staged) = provider()
+            .attachment_blocks(&attachments, root.path())
+            .await
+            .unwrap();
+        let parent = root.path().join(".devinorium-attachments");
+        assert!(parent.is_dir());
+        drop(staged);
+        // The turn subdir is removed and the emptied parent goes with it.
+        assert!(!parent.exists());
+    }
+
+    #[tokio::test]
     async fn empty_attachments_returns_empty_blocks() {
-        let blocks = provider()
+        let (blocks, _) = provider()
             .attachment_blocks(&[], std::env::temp_dir().as_path())
             .await
             .unwrap();
@@ -1225,7 +1283,7 @@ mod tests {
             data: svg,
         }];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -1254,7 +1312,7 @@ mod tests {
             },
         ];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -1270,7 +1328,12 @@ mod tests {
         assert_ne!(first.text, second.text);
 
         let att_dir = root.path().join(".devinorium-attachments");
-        let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        let staged_dirs: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        assert_eq!(staged_dirs.len(), 1);
+        let entries: Vec<_> = fs::read_dir(staged_dirs[0].path())
+            .unwrap()
+            .flatten()
+            .collect();
         assert_eq!(entries.len(), 2);
     }
 }

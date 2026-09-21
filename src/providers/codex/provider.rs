@@ -18,7 +18,7 @@ use super::approvals::{handle_server_request, thread_config, ServerRequestRespon
 use super::events::TurnTranslator;
 use super::rpc::{AppServer, ServerEvent};
 use super::wire::{ThreadResponse, Turn, TurnResponse};
-use crate::providers::acp::provider::ensure_writable_attachment_dir;
+use crate::providers::acp::provider::{ensure_writable_attachment_dir, StagedAttachments};
 use crate::providers::{
     apply_interaction_mode_prefix, collect_text, collect_thinking, title_from_prompt, MessagePart,
     ModelInfo, Provider, SendOptions, SendRequest, SendResponse, StartRequest, StartResponse,
@@ -186,15 +186,21 @@ impl CodexProvider {
 
     /// Build the `turn/start` input items: the prompt text (with the mode
     /// prefix), file references for non-image attachments, and `localImage`
-    /// items for images.
-    async fn build_input(&self, options: &SendOptions, prompt: &str) -> anyhow::Result<Vec<Value>> {
+    /// items for images. The returned guard removes the staging dir when
+    /// the turn ends.
+    async fn build_input(
+        &self,
+        options: &SendOptions,
+        prompt: &str,
+    ) -> anyhow::Result<(Vec<Value>, StagedAttachments)> {
         let prompt = apply_interaction_mode_prefix(prompt.to_string(), &options.interaction_mode);
         let mut input = vec![json!({ "type": "text", "text": prompt })];
 
         if options.attachments.is_empty() {
-            return Ok(input);
+            return Ok((input, StagedAttachments::none()));
         }
         let att_dir = ensure_writable_attachment_dir(&options.working_dir).await?;
+        let staged = StagedAttachments::new(att_dir.clone());
         for (i, att) in options.attachments.iter().enumerate() {
             let name = format!("{}_{}", i, sanitize_filename(&att.filename));
             let path = att_dir.join(&name);
@@ -211,7 +217,7 @@ impl CodexProvider {
                 }));
             }
         }
-        Ok(input)
+        Ok((input, staged))
     }
 
     async fn run_prompt(
@@ -235,7 +241,7 @@ impl CodexProvider {
             }
         }
 
-        let input = self.build_input(options, &prompt).await?;
+        let (input, _staged) = self.build_input(options, &prompt).await?;
         let config = thread_config(&options.permission_mode);
         let mut turn_params = json!({
             "threadId": thread_id,
