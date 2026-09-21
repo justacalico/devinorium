@@ -7339,6 +7339,71 @@ async fn update_provider_persists_and_validates() {
 }
 
 #[tokio::test]
+async fn provider_commands_are_owner_only() {
+    let (app, db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // A non-owner cannot set a provider command or the per-provider map.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &alice_cookie,
+            r#"{"provider_command":"/tmp/evil"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &alice_cookie,
+            r#"{"provider_commands":{"opencode":"/tmp/evil"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // Switching providers is still allowed.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &alice_cookie,
+            r#"{"provider_id":"opencode"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+
+    // A custom command written directly into a non-owner's row is ignored:
+    // the built-in default is used instead.
+    sqlx::query(
+        "UPDATE users SET provider_commands = '{\"opencode\":\"/nonexistent/evil\"}' WHERE username = 'alice'",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+    let alice = db.get_user_by_username("alice").await.unwrap().unwrap();
+    assert_eq!(
+        alice.command_for_provider("opencode"),
+        devinorium::providers::default_command("opencode")
+    );
+}
+
+#[tokio::test]
 async fn provider_health_rejects_invalid_input() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

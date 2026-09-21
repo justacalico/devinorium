@@ -195,6 +195,16 @@ pub async fn update_me(
     CurrentUser(user): CurrentUser,
     Json(req): Json<UpdateMeRequest>,
 ) -> Response {
+    // Provider commands execute as the server user; only the owner may set
+    // them. Non-owners can still pick which provider a thread uses.
+    if !user.is_owner && (req.provider_command.is_some() || req.provider_commands.is_some()) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(auth_json_err("forbidden")),
+        )
+            .into_response();
+    }
+
     let provider_id = req
         .provider_id
         .as_deref()

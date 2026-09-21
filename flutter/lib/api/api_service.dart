@@ -709,13 +709,15 @@ class ApiService {
 
   Future<User> updateMe({
     required String providerId,
-    required String providerCommand,
+    String? providerCommand,
     Map<String, String>? providerCommands,
   }) async {
-    final body = <String, dynamic>{
-      'provider_id': providerId,
-      'provider_command': providerCommand,
-    };
+    final body = <String, dynamic>{'provider_id': providerId};
+    // Provider command fields are owner-only; non-owners must omit them or
+    // the server rejects the whole update.
+    if (providerCommand != null) {
+      body['provider_command'] = providerCommand;
+    }
     if (providerCommands != null) {
       body['provider_commands'] = providerCommands;
     }

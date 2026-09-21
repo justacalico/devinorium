@@ -170,19 +170,29 @@ impl UserRow {
     /// then the legacy single-provider command for the default provider, then
     /// the built-in default. An empty result means "use the app-level
     /// provider" (only reachable in tests that inject a stub).
+    ///
+    /// Non-owners can only run the built-in provider binaries: a custom
+    /// command would be arbitrary code execution as the server user.
     pub fn command_for_provider(&self, provider_id: &str) -> String {
-        if let Some(command) = self
+        let command = if let Some(command) = self
             .provider_commands_map()
             .get(provider_id)
             .map(|c| c.trim())
             .filter(|c| !c.is_empty())
         {
-            return command.to_string();
+            command.to_string()
+        } else if provider_id == self.provider_id {
+            self.provider_command.trim().to_string()
+        } else {
+            crate::providers::default_command(provider_id).to_string()
+        };
+        if !self.is_owner
+            && !command.is_empty()
+            && command != crate::providers::default_command(provider_id)
+        {
+            return crate::providers::default_command(provider_id).to_string();
         }
-        if provider_id == self.provider_id {
-            return self.provider_command.trim().to_string();
-        }
-        crate::providers::default_command(provider_id).to_string()
+        command
     }
 }
 

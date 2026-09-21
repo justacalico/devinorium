@@ -528,10 +528,14 @@ mixin AuthStore on AppStateBase {
     final user = _user;
     if (user == null) return;
     try {
+      // Provider commands are owner-only; non-owners omit them so a
+      // provider switch is not rejected.
+      final commands = user.isOwner;
       _user = await api.updateMe(
         providerId: providerId ?? user.providerId,
-        providerCommand: providerCommand ?? user.providerCommand,
-        providerCommands: providerCommands,
+        providerCommand:
+            commands ? (providerCommand ?? user.providerCommand) : null,
+        providerCommands: commands ? providerCommands : null,
       );
       if (providerId != null && providerId != user.providerId) {
         // The global composer selection followed the old default provider;
