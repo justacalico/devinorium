@@ -43,8 +43,11 @@ class ApiService {
     await _client.post('/api/auth/logout', {});
   }
 
-  Future<TotpSetupResponse> totpSetup() async {
-    final j = await _client.post('/api/auth/totp/setup', {});
+  Future<TotpSetupResponse> totpSetup({String? password, String? code}) async {
+    final j = await _client.post('/api/auth/totp/setup', {
+      'password': ?password,
+      'code': ?code,
+    });
     return TotpSetupResponse.fromJson(j);
   }
 
@@ -52,8 +55,11 @@ class ApiService {
     await _client.post('/api/auth/totp/verify', {'code': code});
   }
 
-  Future<void> totpDisable() async {
-    await _client.post('/api/auth/totp/disable', {});
+  Future<void> totpDisable({String? password, String? code}) async {
+    await _client.post('/api/auth/totp/disable', {
+      'password': ?password,
+      'code': ?code,
+    });
   }
 
   // ---- Git ----

@@ -613,9 +613,9 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> stopThread();
   Future<void> resetThreadContext();
   Future<void> setThreadMaxOutputTokens(int? tokens);
-  Future<void> openTotpSetup();
+  Future<void> openTotpSetup(String proof);
   Future<void> verifyTotp(String code);
-  Future<void> disableTotp();
+  Future<void> disableTotp(String proof);
   Future<void> respondToPermissionRequest(String? optionId);
   Future<void> respondToAskRequest(Map<String, dynamic>? answers);
   Future<void> loadGitRepoInfo(int projectId, {bool force = false});

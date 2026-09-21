@@ -611,11 +611,24 @@ mixin AuthStore on AppStateBase {
     }
   }
 
+  // The backend accepts either the account password or a current TOTP code
+  // as proof for enrollment changes. Codes are exactly 6 digits; passwords
+  // are at least 12 chars, so the shape decides which field to send.
+  static ({String? password, String? code}) _totpProof(String proof) {
+    final p = proof.trim();
+    return RegExp(r'^\d{6}$').hasMatch(p)
+        ? (password: null, code: p)
+        : (password: p, code: null);
+  }
+
   @override
-  Future<void> openTotpSetup() async {
+  Future<void> openTotpSetup(String proof) async {
     try {
       // TOTP guards the hub login, not the satellite's `local` account.
-      final res = await hubApi.totpSetup();
+      final res = await hubApi.totpSetup(
+        password: _totpProof(proof).password,
+        code: _totpProof(proof).code,
+      );
       _totpSecret = res.secret;
       _dialog = DialogKind.totpSetup;
       _userMenuOpen = false;
@@ -641,9 +654,12 @@ mixin AuthStore on AppStateBase {
   }
 
   @override
-  Future<void> disableTotp() async {
+  Future<void> disableTotp(String proof) async {
     try {
-      await hubApi.totpDisable();
+      await hubApi.totpDisable(
+        password: _totpProof(proof).password,
+        code: _totpProof(proof).code,
+      );
       _user = await api.me();
       _globalError = '';
       notifyListeners();

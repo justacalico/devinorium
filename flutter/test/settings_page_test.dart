@@ -81,7 +81,7 @@ class _FakeApiService extends ApiService {
   @override
   Future<User> updateMe({
     required String providerId,
-    required String providerCommand,
+    String? providerCommand,
     Map<String, String>? providerCommands,
   }) async {
     updateMeCalls++;
@@ -93,7 +93,7 @@ class _FakeApiService extends ApiService {
       totpEnabled: false,
       isOwner: true,
       providerId: providerId,
-      providerCommand: providerCommand,
+      providerCommand: providerCommand ?? '',
       providerCommands: providerCommands ?? const {},
     );
   }
@@ -893,7 +893,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Theme'), findsOneWidget);
 
-    state.setSettingsTopicIndex(5);
+    state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
     expect(find.text('About'), findsWidgets);
   });
@@ -1477,7 +1477,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    // Non-owner topic list: account, providers, personalization,
+    // directories, about, servers, usage.
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.text('Clone root'), findsOneWidget);
@@ -1683,9 +1685,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    // Non-owner topic list: account, providers, personalization, git,
+    // Non-owner topic list: account, providers, personalization,
     // directories, about, servers, usage.
-    state.setSettingsTopicIndex(4);
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.text('/srv/worktrees'), findsOneWidget);
@@ -1883,7 +1885,9 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
 
-    state.setSettingsTopicIndex(4);
+    // Non-owner topic list: account, providers, personalization,
+    // directories, about, servers, usage.
+    state.setSettingsTopicIndex(3);
     await tester.pumpAndSettle();
 
     expect(find.text('/srv/projects'), findsOneWidget);
@@ -1970,7 +1974,7 @@ void main() {
   testWidgets('About section is available for non-owners', (tester) async {
     final state = AppState.test(
       api: _FakeApiService(),
-      settingsTopicIndex: 5,
+      settingsTopicIndex: 4,
       user: User(
         id: 2,
         username: 'alice',

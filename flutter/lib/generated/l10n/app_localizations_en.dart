@@ -577,6 +577,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get disable2fa => 'Disable 2FA';
 
   @override
+  String get totpProofPrompt =>
+      'Enter your current password or 2FA code to continue.';
+
+  @override
+  String get passwordOrTotpCode => 'Password or 2FA code';
+
+  @override
   String get twoFactorAuthentication => 'Two-factor authentication';
 
   @override

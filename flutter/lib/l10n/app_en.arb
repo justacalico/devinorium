@@ -345,6 +345,8 @@
   "disable2faTitle": "Disable 2FA?",
   "disable2faConfirmation": "This will remove TOTP-based two-factor authentication from your account. Are you sure?",
   "disable2fa": "Disable 2FA",
+  "totpProofPrompt": "Enter your current password or 2FA code to continue.",
+  "passwordOrTotpCode": "Password or 2FA code",
   "twoFactorAuthentication": "Two-factor authentication",
   "twoFactorShort": "2FA",
   "user": "User",

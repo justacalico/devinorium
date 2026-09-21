@@ -3670,7 +3670,7 @@ void main() {
           ]),
         ),
       );
-      await state.openTotpSetup();
+      await state.openTotpSetup('pw');
       expect(state.totpSecret, 's');
       expect(state.dialog, DialogKind.totpSetup);
     });

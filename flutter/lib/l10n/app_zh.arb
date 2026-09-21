@@ -345,6 +345,8 @@
   "disable2faTitle": "禁用 2FA？",
   "disable2faConfirmation": "这将移除基于 TOTP 的双因素认证。确定吗？",
   "disable2fa": "禁用 2FA",
+  "totpProofPrompt": "请输入当前密码或 2FA 验证码以继续。",
+  "passwordOrTotpCode": "密码或 2FA 验证码",
   "twoFactorAuthentication": "双因素认证",
   "twoFactorShort": "2FA",
   "user": "用户",

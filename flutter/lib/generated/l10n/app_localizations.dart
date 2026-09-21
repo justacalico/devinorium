@@ -1148,6 +1148,18 @@ abstract class AppLocalizations {
   /// **'Disable 2FA'**
   String get disable2fa;
 
+  /// No description provided for @totpProofPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your current password or 2FA code to continue.'**
+  String get totpProofPrompt;
+
+  /// No description provided for @passwordOrTotpCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Password or 2FA code'**
+  String get passwordOrTotpCode;
+
   /// No description provided for @twoFactorAuthentication.
   ///
   /// In en, this message translates to:

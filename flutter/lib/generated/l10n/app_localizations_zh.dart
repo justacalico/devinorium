@@ -564,6 +564,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get disable2fa => '禁用 2FA';
 
   @override
+  String get totpProofPrompt => '请输入当前密码或 2FA 验证码以继续。';
+
+  @override
+  String get passwordOrTotpCode => '密码或 2FA 验证码';
+
+  @override
   String get twoFactorAuthentication => '双因素认证';
 
   @override

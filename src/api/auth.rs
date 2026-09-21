@@ -355,9 +355,59 @@ pub struct TotpSetupResponse {
     pub secret: String,
 }
 
+/// Proof required before changing TOTP enrollment: the current TOTP code, or
+/// the account password when it has a real one. Accounts with neither (the
+/// bundled passwordless `local` account with no TOTP yet) pass without proof.
+#[derive(Debug, Deserialize, Default)]
+pub struct TotpProofRequest {
+    pub password: Option<String>,
+    pub code: Option<String>,
+}
+
+fn totp_proof_satisfied(
+    user: &crate::db::UserRow,
+    req: Option<&TotpProofRequest>,
+) -> bool {
+    if !user.totp_enabled
+        && user.password_hash == crate::auth::bootstrap::LOCAL_PASSWORD_SENTINEL
+    {
+        return true;
+    }
+    let Some(req) = req else { return false };
+    if user.totp_enabled {
+        if let (Some(secret), Some(code)) = (user.totp_secret.as_deref(), req.code.as_deref()) {
+            if totp::verify(secret, code) {
+                return true;
+            }
+        }
+    }
+    if let Some(pw) = req.password.as_deref() {
+        if password::verify(pw, &user.password_hash).unwrap_or(false) {
+            return true;
+        }
+    }
+    false
+}
+
+fn totp_proof_denied() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(auth_json_err("current password or TOTP code required")),
+    )
+        .into_response()
+}
+
 /// Begin TOTP enrollment. Returns the secret + otpauth URI. The secret is
-/// NOT enabled until verified with a valid code via `/totp/verify`.
-pub async fn totp_setup(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
+/// staged as pending and is NOT enabled until verified with a valid code via
+/// `/totp/verify`, so an existing factor keeps working in the meantime.
+pub async fn totp_setup(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    body: Option<Json<TotpProofRequest>>,
+) -> Response {
+    if !totp_proof_satisfied(&user, body.as_ref().map(|Json(r)| r)) {
+        return totp_proof_denied();
+    }
     let setup = match totp::generate("devinorium", &user.username) {
         Ok(s) => s,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
@@ -365,7 +415,7 @@ pub async fn totp_setup(State(state): State<AppState>, CurrentUser(user): Curren
     // Store the pending secret (not yet enabled) so verify can confirm it.
     if let Err(e) = state
         .db
-        .set_totp(user.id, Some(setup.secret_base32.clone()), false)
+        .set_totp_pending(user.id, Some(setup.secret_base32.clone()))
         .await
     {
         return crate::api::map_err_internal(e).into_response();
@@ -387,9 +437,9 @@ pub async fn totp_verify(
     CurrentUser(user): CurrentUser,
     Json(req): Json<TotpVerifyRequest>,
 ) -> Response {
-    let secret = match user.totp_secret {
-        Some(ref s) if !user.totp_enabled => s.clone(),
-        _ => {
+    let secret = match user.totp_pending_secret {
+        Some(ref s) => s.clone(),
+        None => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(auth_json_err("no pending totp setup")),
@@ -417,7 +467,11 @@ pub async fn totp_verify(
 pub async fn totp_disable(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
+    body: Option<Json<TotpProofRequest>>,
 ) -> Response {
+    if !totp_proof_satisfied(&user, body.as_ref().map(|Json(r)| r)) {
+        return totp_proof_denied();
+    }
     if let Err(e) = state.db.set_totp(user.id, None, false).await {
         return crate::api::map_err_internal(e).into_response();
     }
