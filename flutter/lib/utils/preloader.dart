@@ -12,6 +12,16 @@ class _CacheEntry {
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 }
 
+class _InFlightEntry {
+  _InFlightEntry(this.future);
+
+  final Future<Object?> future;
+
+  // Flipped by invalidate/clear: the future still resolves for its callers
+  // but its result must not be written into the cache.
+  bool valid = true;
+}
+
 /// Coalesces in-flight requests, caches successful results, and reports loads
 /// that take longer than 100ms so the UI can avoid waiting on network round
 /// trips more than once.
@@ -21,7 +31,7 @@ class Preloader {
   final bool enabled;
   final void Function(String key, Duration elapsed)? onSlowLoad;
 
-  final _inFlight = <String, Future<Object?>>{};
+  final _inFlight = <String, _InFlightEntry>{};
   final _cache = <String, _CacheEntry>{};
 
   /// Fetch [key], reusing an in-flight request or a cached value when
@@ -40,14 +50,15 @@ class Preloader {
 
     final existing = _inFlight[key];
     if (existing != null) {
-      return (await existing) as T;
+      return (await existing.future) as T;
     }
 
     final stopwatch = Stopwatch()..start();
+    late final _InFlightEntry entry;
     final future = fetch().then((value) {
       _inFlight.remove(key);
       final effectiveTtl = ttl ?? _defaultTtl;
-      if (effectiveTtl > Duration.zero) {
+      if (entry.valid && effectiveTtl > Duration.zero) {
         _cache[key] = _CacheEntry(value as Object, DateTime.now().add(effectiveTtl));
       }
       _maybeReport(key, stopwatch.elapsed);
@@ -57,7 +68,8 @@ class Preloader {
       throw error!;
     });
 
-    _inFlight[key] = future;
+    entry = _InFlightEntry(future);
+    _inFlight[key] = entry;
     return future;
   }
 
@@ -71,14 +83,20 @@ class Preloader {
   /// Called after a mutation so stale lists and detail pages are refetched.
   void invalidate(String prefix) {
     _cache.removeWhere((key, _) => key.startsWith(prefix));
-    // In-flight futures are left running; their results will be cached with the
-    // old data, so remove them as well.
+    // In-flight futures are left running for their callers, but their
+    // results carry pre-mutation data and must never reach the cache.
+    for (final entry in _inFlight.entries) {
+      if (entry.key.startsWith(prefix)) entry.value.valid = false;
+    }
     _inFlight.removeWhere((key, _) => key.startsWith(prefix));
   }
 
   /// Clear every cached and in-flight entry.
   void clear() {
     _cache.clear();
+    for (final entry in _inFlight.values) {
+      entry.valid = false;
+    }
     _inFlight.clear();
   }
 
