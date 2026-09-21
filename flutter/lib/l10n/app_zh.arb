@@ -1423,5 +1423,49 @@
   "devMergeRequestClose": "关闭",
   "@devMergeRequestClose": {
     "description": "Button to dismiss the merge request dialog"
+  },
+  "contextUsage": "~{used} / {max} tokens",
+  "@contextUsage": {
+    "description": "Estimated context usage shown under the composer input",
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "contextNearlyFull": "上下文将满",
+  "@contextNearlyFull": {
+    "description": "Short warning shown next to the context meter at 80% usage"
+  },
+  "contextOverLimit": "超出上限",
+  "@contextOverLimit": {
+    "description": "Short label next to the context meter when the draft exceeds the window"
+  },
+  "contextExceeded": "消息超出模型的上下文窗口。请缩短内容或重置该会话的上下文。",
+  "@contextExceeded": {
+    "description": "Error shown when a send is blocked by the context limit"
+  },
+  "resetContext": "重置上下文",
+  "@resetContext": {
+    "description": "Button that drops the provider session so the next message starts fresh"
+  },
+  "resetContextTooltip": "丢弃当前会话并以全新上下文继续。历史消息仍然可见,但不会再发送给模型。",
+  "@resetContextTooltip": {
+    "description": "Tooltip on the context reset button"
+  },
+  "maxOutputTokens": "最大输出令牌数",
+  "@maxOutputTokens": {
+    "description": "Label for the per-thread output token cap field"
+  },
+  "maxOutputTokensHint": "模型默认",
+  "@maxOutputTokensHint": {
+    "description": "Placeholder for the output token field when no override is set"
+  },
+  "maxOutputTokensInvalid": "请输入 1 到 4,000,000 之间的数值",
+  "@maxOutputTokensInvalid": {
+    "description": "Validation error for the output token field"
   }
 }

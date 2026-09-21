@@ -560,6 +560,26 @@ class ApiService {
     }
   }
 
+  /// Set or clear the thread's reply-token cap. `null` sends JSON null,
+  /// clearing the override so the model's advertised limit applies.
+  Future<void> setThreadMaxOutputTokens(String id, int? tokens) async {
+    await _client.patch('/api/threads/$id', {'max_output_tokens': tokens});
+  }
+
+  /// The server's estimate of the tokens the provider session would carry
+  /// into the next send, plus the model's advertised limits.
+  Future<ThreadContextUsage> getThreadContext(String id) async {
+    final j = await _client.get('/api/threads/$id/context');
+    return ThreadContextUsage.fromJson(j);
+  }
+
+  /// Drop the provider session and move the usage watermark to now. The
+  /// next send starts a fresh session; history stays visible but is no
+  /// longer sent to the model.
+  Future<void> resetThreadContext(String id) async {
+    await _client.post('/api/threads/$id/context/reset', {});
+  }
+
   Future<void> respondPermission(
     String threadId,
     String requestId,
@@ -929,8 +949,7 @@ class ApiService {
   /// requests are evicted so the next call retries.
   Future<({String mime, Uint8List bytes})?> projectIcon(int projectId) {
     final hit = _projectIconCache[projectId];
-    if (hit != null &&
-        DateTime.now().difference(hit.$2) < _projectIconTtl) {
+    if (hit != null && DateTime.now().difference(hit.$2) < _projectIconTtl) {
       return hit.$1;
     }
     late final Future<({String mime, Uint8List bytes})?> future;

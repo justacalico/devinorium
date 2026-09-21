@@ -342,6 +342,9 @@ abstract class AppStateBase extends ChangeNotifier {
   String get totpSecret;
   String get composerText;
   bool get sending;
+  ThreadContextUsage? get threadContextUsage;
+  int get draftContextTokens;
+  bool get sendExceedsContext;
   String? get lastRunStatus;
   List<({String filename, String mime, Uint8List bytes})> get attachments;
   List<PathRef> get pathRefs;
@@ -580,6 +583,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> sendMessage();
   Future<void> resendMessage(Message message, {String? editedPrompt});
   Future<void> stopThread();
+  Future<void> resetThreadContext();
+  Future<void> setThreadMaxOutputTokens(int? tokens);
   Future<void> openTotpSetup();
   Future<void> verifyTotp(String code);
   Future<void> disableTotp();

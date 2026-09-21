@@ -138,6 +138,10 @@ class Thread {
   final String updatedAt;
   final LinkedMergeRequestRef? linkedMr;
 
+  /// Per-thread cap on reply tokens. Null falls back to the model's
+  /// advertised output limit.
+  final int? maxOutputTokens;
+
   /// Role of the newest persisted message. Lets the sidebar show a status
   /// tag for threads that have no live run event to go by.
   final String? lastMessageRole;
@@ -160,6 +164,7 @@ class Thread {
     required this.createdAt,
     required this.updatedAt,
     this.linkedMr,
+    this.maxOutputTokens,
     this.lastMessageRole,
   });
 
@@ -181,6 +186,7 @@ class Thread {
     createdAt: j['created_at'] as String? ?? '',
     updatedAt: j['updated_at'] as String? ?? '',
     linkedMr: _parseLinkedMr(j['linked_mr']),
+    maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt(),
     lastMessageRole: j['last_message_role'] as String?,
   );
 
@@ -209,6 +215,7 @@ class Thread {
     Object? linkedMrOrNull = const _Unset(),
     Object? branch = const _Unset(),
     Object? worktreePath = const _Unset(),
+    Object? maxOutputTokens = const _Unset(),
   }) => Thread(
     id: id,
     title: title ?? this.title,
@@ -221,8 +228,9 @@ class Thread {
     reasoningEffort: reasoningEffort,
     permissions: permissions,
     branch: branch is _Unset ? this.branch : (branch as String?),
-    worktreePath:
-        worktreePath is _Unset ? this.worktreePath : (worktreePath as String?),
+    worktreePath: worktreePath is _Unset
+        ? this.worktreePath
+        : (worktreePath as String?),
     envMode: envMode ?? this.envMode,
     pinned: pinned ?? this.pinned,
     createdAt: createdAt,
@@ -230,6 +238,9 @@ class Thread {
     linkedMr: linkedMrOrNull is _Unset
         ? (linkedMr ?? this.linkedMr)
         : (linkedMrOrNull as LinkedMergeRequestRef?),
+    maxOutputTokens: maxOutputTokens is _Unset
+        ? this.maxOutputTokens
+        : (maxOutputTokens as int?),
     lastMessageRole: lastMessageRole,
   );
 
@@ -254,6 +265,7 @@ class Thread {
         createdAt == other.createdAt &&
         updatedAt == other.updatedAt &&
         linkedMr == other.linkedMr &&
+        maxOutputTokens == other.maxOutputTokens &&
         lastMessageRole == other.lastMessageRole;
   }
 
@@ -276,6 +288,7 @@ class Thread {
     createdAt,
     updatedAt,
     linkedMr,
+    maxOutputTokens,
     lastMessageRole,
   );
 }

@@ -23,6 +23,7 @@ import '../models/composer_mode.dart';
 import '../utils/link_opener.dart' as link_opener;
 import '../utils/debug_log.dart';
 import '../utils/permission_modes.dart';
+import '../utils/token_estimate.dart';
 import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/version_checker.dart';
@@ -39,6 +40,7 @@ part 'app_state/project_store.dart';
 part 'app_state/project_group_store.dart';
 part 'app_state/thread_list_store.dart';
 part 'app_state/composer_store.dart';
+part 'app_state/context_store.dart';
 part 'app_state/attachment_store.dart';
 part 'app_state/path_refs_store.dart';
 part 'app_state/thread_refs_store.dart';
@@ -95,6 +97,7 @@ class AppState extends AppStateBase
         ProjectGroupStore,
         ThreadListStore,
         ComposerStore,
+        ContextStore,
         AttachmentStore,
         PathRefsStore,
         ThreadRefsStore,
@@ -218,6 +221,7 @@ class AppState extends AppStateBase
     String? selectedProvider,
     String? startedAt,
     bool threadLoading = false,
+    ThreadContextUsage? threadContextUsage,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
     String? serverVersion,
     LocalServerController? localServerManager,
@@ -323,6 +327,7 @@ class AppState extends AppStateBase
         selectedPermission: selectedPermission ?? 'normal',
         selectedProvider: selectedProvider ?? detail?.thread.providerId ?? '',
         lastRunStatus: lastRunStatus,
+        contextUsage: threadContextUsage,
       );
       _threadStores[threadId] = store;
       _setActiveStore(store);

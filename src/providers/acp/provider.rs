@@ -611,6 +611,7 @@ mod tests {
             session_callback: None,
             interaction_mode: "code".into(),
             cancel_signal: None,
+            max_output_tokens: None,
         }
     }
 

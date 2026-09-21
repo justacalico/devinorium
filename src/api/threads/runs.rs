@@ -656,6 +656,8 @@ mod tests {
             pinned: false,
             title_user_set: false,
             linked_mr: None,
+            max_output_tokens: None,
+            context_cleared_seq: 0,
             last_message_role: None,
         }
     }

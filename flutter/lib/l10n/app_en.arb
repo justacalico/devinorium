@@ -1444,5 +1444,49 @@
   "devMergeRequestClose": "Close",
   "@devMergeRequestClose": {
     "description": "Button to dismiss the merge request dialog"
+  },
+  "contextUsage": "~{used} / {max} tokens",
+  "@contextUsage": {
+    "description": "Estimated context usage shown under the composer input",
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "contextNearlyFull": "context nearly full",
+  "@contextNearlyFull": {
+    "description": "Short warning shown next to the context meter at 80% usage"
+  },
+  "contextOverLimit": "over limit",
+  "@contextOverLimit": {
+    "description": "Short label next to the context meter when the draft exceeds the window"
+  },
+  "contextExceeded": "Message exceeds the model's context window. Shorten it or reset the thread's context.",
+  "@contextExceeded": {
+    "description": "Error shown when a send is blocked by the context limit"
+  },
+  "resetContext": "Reset context",
+  "@resetContext": {
+    "description": "Button that drops the provider session so the next message starts fresh"
+  },
+  "resetContextTooltip": "Drop the provider session and start fresh. History stays visible but is no longer sent to the model.",
+  "@resetContextTooltip": {
+    "description": "Tooltip on the context reset button"
+  },
+  "maxOutputTokens": "Max output tokens",
+  "@maxOutputTokens": {
+    "description": "Label for the per-thread output token cap field"
+  },
+  "maxOutputTokensHint": "Model default",
+  "@maxOutputTokensHint": {
+    "description": "Placeholder for the output token field when no override is set"
+  },
+  "maxOutputTokensInvalid": "Enter a value between 1 and 4,000,000",
+  "@maxOutputTokensInvalid": {
+    "description": "Validation error for the output token field"
   }
 }

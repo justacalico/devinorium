@@ -223,6 +223,15 @@ pub struct ThreadRow {
     pub pinned: bool,
     pub title_user_set: bool,
     pub linked_mr: Option<String>,
+    /// Per-thread output token cap. `None` means the model's advertised
+    /// default applies.
+    #[sqlx(default)]
+    pub max_output_tokens: Option<i64>,
+    /// Seq watermark of the last context reset. The context estimate only
+    /// counts messages with `seq` above this; the provider session is dropped
+    /// at the same time so the two stay in step.
+    #[sqlx(default)]
+    pub context_cleared_seq: i64,
     /// Role of the thread's newest message. Not a real column — populated by
     /// a correlated subquery on the list/get queries that need it.
     #[sqlx(default)]

@@ -1450,6 +1450,12 @@ void main() {
         _json(200, []),
         _json(200, []),
         _json(200, {
+          'used_tokens': 0,
+          'context_limit': 0,
+          'output_limit': 0,
+          'has_session': false,
+        }),
+        _json(200, {
           'thread': {
             'id': 'a',
             'title': 't',
@@ -3550,6 +3556,12 @@ void main() {
             'messages': [],
             'total_messages': 0,
           }),
+          _json(200, {
+            'used_tokens': 0,
+            'context_limit': 0,
+            'output_limit': 0,
+            'has_session': false,
+          }), // getThreadContext
           _json(200, [
             {
               'id': 'a',

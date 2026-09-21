@@ -4,6 +4,7 @@
 //! (`provider.start`); subsequent sends continue it (`provider.send`). Every
 //! user message and assistant reply is persisted in the `messages` table.
 
+pub(crate) mod context;
 pub(crate) mod context_refs;
 pub(crate) mod machine_refs;
 pub(crate) mod permissions;
@@ -38,6 +39,11 @@ pub fn router() -> Router<AppState> {
                 .delete(routes::delete),
         )
         .route("/api/threads/:id/pin", post(routes::pin))
+        .route("/api/threads/:id/context", get(context::get_context))
+        .route(
+            "/api/threads/:id/context/reset",
+            post(context::reset_context),
+        )
         .route("/api/threads/:id/messages", get(routes::list_messages))
         .route(
             "/api/threads/:id/messages/stream",
@@ -94,6 +100,8 @@ pub struct ThreadOut {
     pub created_at: String,
     pub updated_at: String,
     pub linked_mr: Option<LinkedMergeRequest>,
+    /// The thread's output token cap; `None` means the model default.
+    pub max_output_tokens: Option<u64>,
     /// Role of the newest persisted message. The sidebar uses it to show a
     /// status tag for threads that have no live run event to go by.
     pub last_message_role: Option<String>,
@@ -122,6 +130,9 @@ impl From<ThreadRow> for ThreadOut {
             created_at: t.created_at,
             updated_at: t.updated_at,
             linked_mr,
+            max_output_tokens: t
+                .max_output_tokens
+                .and_then(|v| u64::try_from(v).ok()),
             last_message_role: t.last_message_role,
         }
     }
@@ -312,6 +323,12 @@ pub struct UpdateThread {
     /// Distinguish between absent, null (clear), and a string (set URL).
     #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub linked_mr: Option<Option<String>>,
+    /// Distinguish between:
+    ///   - field absent: don't change the output cap
+    ///   - field null: clear the override
+    ///   - field is a number: set the output token cap
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub max_output_tokens: Option<Option<i64>>,
 }
 
 /// Custom deserializer that maps `null` -> `Some(None)` and a number -> `Some(Some(n))`.
@@ -360,6 +377,8 @@ mod tests {
             pinned: true,
             title_user_set: true,
             linked_mr: None,
+            max_output_tokens: None,
+            context_cleared_seq: 0,
             last_message_role: Some("assistant".into()),
         };
         let out = ThreadOut::from(row);

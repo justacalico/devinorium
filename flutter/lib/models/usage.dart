@@ -94,9 +94,9 @@ class UsageTotals {
       totalTokens: (j['total_tokens'] as num?)?.toInt() ?? 0,
       costs: rawCosts is List
           ? rawCosts
-              .whereType<Map<String, dynamic>>()
-              .map(UsageCost.fromJson)
-              .toList()
+                .whereType<Map<String, dynamic>>()
+                .map(UsageCost.fromJson)
+                .toList()
           : const [],
     );
   }
@@ -124,9 +124,9 @@ class UsageSummary {
       untilDay: j['until_day'] as String? ?? '',
       buckets: rawBuckets is List
           ? rawBuckets
-              .whereType<Map<String, dynamic>>()
-              .map(UsageBucket.fromJson)
-              .toList()
+                .whereType<Map<String, dynamic>>()
+                .map(UsageBucket.fromJson)
+                .toList()
           : const [],
       totals: rawTotals is Map<String, dynamic>
           ? UsageTotals.fromJson(rawTotals)
@@ -142,6 +142,87 @@ class UsageSummary {
             ),
     );
   }
+}
+
+/// Response of `GET /api/threads/:id/context`: the server's estimate of the
+/// tokens the provider session would carry into the next send.
+class ThreadContextUsage {
+  final int usedTokens;
+
+  /// The model's advertised context window; 0 when unknown.
+  final int contextLimit;
+
+  /// The model's advertised output cap; 0 when unknown.
+  final int outputLimit;
+
+  /// The thread's own output cap, when one is set.
+  final int? maxOutputTokens;
+
+  /// Whether a provider session exists, i.e. whether [usedTokens] describes
+  /// history the next send will actually carry.
+  final bool hasSession;
+
+  const ThreadContextUsage({
+    required this.usedTokens,
+    required this.contextLimit,
+    required this.outputLimit,
+    this.maxOutputTokens,
+    this.hasSession = false,
+  });
+
+  factory ThreadContextUsage.fromJson(Map<String, dynamic> j) =>
+      ThreadContextUsage(
+        usedTokens: (j['used_tokens'] as num?)?.toInt() ?? 0,
+        contextLimit: (j['context_limit'] as num?)?.toInt() ?? 0,
+        outputLimit: (j['output_limit'] as num?)?.toInt() ?? 0,
+        maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt(),
+        hasSession: j['has_session'] as bool? ?? false,
+      );
+
+  /// Whether the model advertises a context window. Zero means the limit is
+  /// unknown and no warning or gating applies.
+  bool get hasLimit => contextLimit > 0;
+
+  /// Tokens reserved for the model's reply: the thread override first, then
+  /// the model's advertised cap, then the same fallback the backend uses.
+  int get outputReserve {
+    final own = maxOutputTokens;
+    if (own != null && own > 0) return own;
+    if (outputLimit > 0) return outputLimit;
+    return 8192;
+  }
+
+  /// Estimated window occupancy if a message of [pendingTokens] were sent:
+  /// history plus the draft plus the output reserve.
+  int projectedTotal(int pendingTokens) =>
+      usedTokens + pendingTokens + outputReserve;
+
+  /// Fraction of the window the next send would occupy; over 1.0 is over.
+  double usageRatio(int pendingTokens) =>
+      hasLimit ? projectedTotal(pendingTokens) / contextLimit : 0;
+
+  bool exceedsLimit(int pendingTokens) =>
+      hasLimit && projectedTotal(pendingTokens) > contextLimit;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ThreadContextUsage) return false;
+    return usedTokens == other.usedTokens &&
+        contextLimit == other.contextLimit &&
+        outputLimit == other.outputLimit &&
+        maxOutputTokens == other.maxOutputTokens &&
+        hasSession == other.hasSession;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    usedTokens,
+    contextLimit,
+    outputLimit,
+    maxOutputTokens,
+    hasSession,
+  );
 }
 
 /// Compacts a token count to three significant figures with a unit suffix

@@ -1887,4 +1887,33 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get devMergeRequestClose => '关闭';
+
+  @override
+  String contextUsage(String used, String max) {
+    return '~$used / $max tokens';
+  }
+
+  @override
+  String get contextNearlyFull => '上下文将满';
+
+  @override
+  String get contextOverLimit => '超出上限';
+
+  @override
+  String get contextExceeded => '消息超出模型的上下文窗口。请缩短内容或重置该会话的上下文。';
+
+  @override
+  String get resetContext => '重置上下文';
+
+  @override
+  String get resetContextTooltip => '丢弃当前会话并以全新上下文继续。历史消息仍然可见,但不会再发送给模型。';
+
+  @override
+  String get maxOutputTokens => '最大输出令牌数';
+
+  @override
+  String get maxOutputTokensHint => '模型默认';
+
+  @override
+  String get maxOutputTokensInvalid => '请输入 1 到 4,000,000 之间的数值';
 }
