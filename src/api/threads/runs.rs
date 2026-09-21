@@ -413,10 +413,13 @@ pub(crate) async fn run_thread(
         };
         let parts = strip_plan_markup_from_parts(parts);
         if let Some(ref sid) = new_session_id {
-            let _ = state
+            if let Err(e) = state
                 .db
                 .update_thread_session(&thread.id, &thread.provider_id, sid, new_title.as_deref())
-                .await;
+                .await
+            {
+                tracing::warn!(error = %e, "failed to persist session id on stopped run");
+            }
         }
         if !parts.is_empty() {
             let reply = collect_text(&parts);
@@ -499,16 +502,13 @@ pub(crate) async fn run_thread(
         usage,
     } = outcome;
 
-    if let Some(usage) = usage {
-        record_run_usage(&state, user.id, &thread, new_session_id.clone(), usage).await;
-    }
-
     if run.cancelled.load(Ordering::SeqCst) {
         sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
             .await;
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
+    let session_for_usage = new_session_id.clone();
     let assistant_msg = match persist_assistant_reply(
         &state,
         &thread,
@@ -533,6 +533,12 @@ pub(crate) async fn run_thread(
             return Err(anyhow::anyhow!("failed to save assistant message"));
         }
     };
+
+    // Record after the session id is persisted so a lost session write
+    // cannot leave an orphaned baseline that skews later diffs.
+    if let Some(usage) = usage {
+        record_run_usage(&state, user.id, &thread, session_for_usage, usage).await;
+    }
 
     persist_run_plan(&state.db, &thread.id, &run).await;
 
