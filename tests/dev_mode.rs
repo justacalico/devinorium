@@ -41,6 +41,7 @@ fn base_config_with_host(db_url: &str, host: &str) -> Config {
         local_token: None,
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
+        push_contact: "mailto:test@localhost".into(),
     }
 }
 
@@ -95,6 +96,7 @@ async fn make_app_on(dev_mode: bool, host: &str) -> (axum::Router, db::Db) {
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     (devinorium::build_app(state), database)

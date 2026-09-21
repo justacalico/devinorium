@@ -134,6 +134,18 @@ async fn main() -> Result<()> {
         })
     });
 
+    // Web Push: load or mint the VAPID keypair. A failure only disables
+    // pushes — the server still starts.
+    let push = match devinorium::push::PushService::new(database.clone(), cfg.push_contact.clone())
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("push disabled: {e}");
+            devinorium::push::PushService::disabled()
+        }
+    };
+
     let secure_cookie = cfg.secure_cookie;
     let cfg = Arc::new(cfg);
     let state = AppState {
@@ -151,8 +163,12 @@ async fn main() -> Result<()> {
         git_remote: Arc::new(git::GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: tailscale.clone(),
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        push,
         bound_addr: Arc::new(std::sync::OnceLock::new()),
     };
+
+    // Turn run lifecycle transitions into pushes for closed clients.
+    devinorium::push::spawn_dispatch(&state);
 
     let app = devinorium::build_app(state.clone());
 

@@ -52,6 +52,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         local_token: None,
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
+        push_contact: "mailto:test@localhost".into(),
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -79,6 +80,7 @@ async fn make_app(allowed_origin: Option<String>) -> (Router, db::Db) {
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     (devinorium::build_app(state), database)
@@ -277,6 +279,7 @@ async fn body_size_limit_rejects_oversized() {
         local_token: None,
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
+        push_contact: "mailto:test@localhost".into(),
     };
     let provider = providers::build_provider(providers::ProviderConfig {
         id: "devin-cli".into(),
@@ -302,6 +305,7 @@ async fn body_size_limit_rejects_oversized() {
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     let app = devinorium::build_app(state);

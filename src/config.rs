@@ -31,6 +31,10 @@ pub struct Config {
     /// `local` account with no credentials at all, on a random port with a
     /// throwaway in-memory database.
     pub dev_mode: bool,
+    /// RFC 8292 VAPID `sub` contact for Web Push (a mailto: or https: URI).
+    /// Push services use it to reach the operator when the instance
+    /// misbehaves; a placeholder works but a real contact is kinder.
+    pub push_contact: String,
 }
 
 impl Config {
@@ -100,6 +104,7 @@ impl Config {
             local_token,
             tailscale_bin: "tailscale".into(),
             dev_mode: false,
+            push_contact: env_or("DEVINORIUM_PUSH_CONTACT", "mailto:devinorium@localhost"),
         })
     }
 
@@ -245,6 +250,7 @@ mod tests {
             local_token: token.map(str::to_string),
             tailscale_bin: "tailscale".into(),
             dev_mode,
+            push_contact: "mailto:devinorium@localhost".into(),
         }
     }
 

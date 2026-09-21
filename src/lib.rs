@@ -14,6 +14,7 @@ pub mod machine_grants;
 pub mod plan;
 pub mod projects;
 pub mod providers;
+pub mod push;
 pub mod security;
 pub mod tailscale;
 pub mod terminal;
@@ -63,6 +64,9 @@ pub struct AppState {
     pub tailscale: crate::tailscale::Tailscale,
     /// Capability tokens minted for runs that reference machines.
     pub machine_grants: machine_grants::MachineGrants,
+    /// Web Push sender for run lifecycle events; `PushService::disabled()`
+    /// in tests.
+    pub push: push::PushService,
     /// The address the listener actually bound, set once after startup.
     /// Machine-control instructions point agents at this so `--dev`'s
     /// random port and wildcard binds resolve to a reachable URL.
@@ -199,6 +203,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(api::tailscale::router())
         .merge(api::models::router())
         .merge(api::providers::router())
+        .merge(api::push::router())
         .merge(api::update::router())
         .merge(api::usage::router())
         .route("/api/auth/me", get(api::auth::me))

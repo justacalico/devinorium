@@ -108,6 +108,7 @@ async fn make_app() -> (Router, db::Db, MachineGrants) {
         local_token: None,
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
+        push_contact: "mailto:test@localhost".into(),
     };
 
     let machine_grants = MachineGrants::new();
@@ -129,6 +130,7 @@ async fn make_app() -> (Router, db::Db, MachineGrants) {
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
         machine_grants: machine_grants.clone(),
+        push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     (devinorium::build_app(state), database, machine_grants)

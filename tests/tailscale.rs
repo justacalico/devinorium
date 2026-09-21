@@ -59,6 +59,7 @@ async fn make_app(
         local_token: local_token.map(str::to_string),
         tailscale_bin: tailscale_bin.into(),
         dev_mode: false,
+        push_contact: "mailto:test@localhost".into(),
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -86,6 +87,7 @@ async fn make_app(
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new(tailscale_bin),
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
     };
     (devinorium::build_app(state), database)
