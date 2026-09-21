@@ -115,9 +115,18 @@ pub struct HealthRequest {
 
 async fn health(
     State(state): State<AppState>,
-    CurrentUser(_user): CurrentUser,
+    CurrentUser(user): CurrentUser,
     Json(req): Json<HealthRequest>,
 ) -> Response {
+    // The command is spawned on the host; only the owner may probe binaries.
+    if !user.is_owner {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            Json(crate::api::ApiError::new("forbidden")),
+        )
+            .into_response();
+    }
+
     let provider_id = req.provider_id.as_deref().unwrap_or("").trim();
     let command = req.command.as_deref().unwrap_or("").trim();
 

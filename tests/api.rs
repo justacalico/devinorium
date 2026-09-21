@@ -7102,6 +7102,41 @@ async fn provider_health_rejects_invalid_input() {
 }
 
 #[tokio::test]
+async fn provider_health_requires_owner() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // A non-owner must not be able to probe (i.e. spawn) a binary. `true`
+    // would exit 0 if it ran, so a success-shaped answer proves a spawn.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &alice_cookie,
+            r#"{"provider_id":"devin-cli","command":"true"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // The owner can still run the check.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &owner_cookie,
+            r#"{"provider_id":"devin-cli","command":"/nonexistent/devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
 async fn provider_health_fails_for_missing_binary() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
