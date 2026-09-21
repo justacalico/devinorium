@@ -12,6 +12,7 @@ impl GitService {
     /// switches so the UI can re-check for pull.
     pub async fn fetch(&self, path: &Path) -> Result<(), GitError> {
         self.repo_status(path, true).await?;
+        self.scrub_remote_tokens(path).await;
         let mut cmd = self.git_cmd(path);
         cmd.arg("fetch");
         self.run(&mut cmd, Duration::from_secs(30)).await?;
@@ -22,6 +23,7 @@ impl GitService {
     /// Pull the current branch's upstream using fast-forward only.
     pub async fn pull(&self, path: &Path) -> Result<(), GitError> {
         self.repo_status(path, true).await?;
+        self.scrub_remote_tokens(path).await;
         let mut cmd = self.git_cmd(path);
         cmd.arg("pull").arg("--ff-only");
         self.run(&mut cmd, Duration::from_secs(60)).await?;
@@ -133,6 +135,7 @@ impl GitService {
         let remote = pick_remote(tracked_remote.as_deref(), &remotes)
             .ok_or_else(|| GitError::Other("no remote configured".to_string()))?;
 
+        self.scrub_remote_tokens(path).await;
         let mut cmd = self.git_cmd(path);
         cmd.arg("push").arg("-u").arg(remote).arg(&status.branch);
         self.run(&mut cmd, Duration::from_secs(60)).await?;
@@ -178,6 +181,61 @@ impl GitService {
             .await?;
         Ok(url.trim().to_string())
     }
+
+    /// Strip `oauth*:` tokens embedded in remote URLs by older versions and
+    /// point the host at the `glab` credential helper so fetches keep
+    /// authenticating without a stored secret. Best-effort remediation.
+    async fn scrub_remote_tokens(&self, path: &Path) {
+        let Ok(remotes) = self.run_with(path, &["remote"], Duration::from_secs(5)).await else {
+            return;
+        };
+        for remote in remotes.lines() {
+            let Ok(url) = self
+                .run_with(path, &["remote", "get-url", remote], Duration::from_secs(5))
+                .await
+            else {
+                continue;
+            };
+            let Some((clean, base)) = strip_oauth_userinfo(url.trim()) else {
+                continue;
+            };
+            if self
+                .run_with(
+                    path,
+                    &["remote", "set-url", remote, &clean],
+                    Duration::from_secs(5),
+                )
+                .await
+                .is_err()
+            {
+                continue;
+            }
+            let helper = format!("credential.{base}/.helper");
+            let _ = self
+                .run_with(
+                    path,
+                    &["config", &helper, "!glab auth git-credential"],
+                    Duration::from_secs(5),
+                )
+                .await;
+            self.invalidate(path);
+        }
+    }
+}
+
+/// `https://oauth2:TOKEN@host/path` → `("https://host/path", "https://host")`.
+///
+/// Returns `None` when the URL carries no `oauth*:` userinfo; credentials a
+/// user embedded deliberately are left alone.
+fn strip_oauth_userinfo(url: &str) -> Option<(String, String)> {
+    let (scheme, rest) = url.split_once("://")?;
+    let (authority, path) = rest.split_once('/')?;
+    let (userinfo, host) = authority.split_once('@')?;
+    if !userinfo.starts_with("oauth") {
+        return None;
+    }
+    let base = format!("{scheme}://{host}");
+    Some((format!("{base}/{path}"), base))
 }
 
 /// Pick a remote name from an optional tracked remote and the output of
@@ -202,7 +260,26 @@ pub(super) fn pick_remote(tracked: Option<&str>, remotes: &str) -> Option<String
 
 #[cfg(test)]
 mod tests {
-    use super::pick_remote;
+    use super::{pick_remote, strip_oauth_userinfo};
+
+    #[test]
+    fn strip_oauth_userinfo_removes_token() {
+        let (clean, base) =
+            strip_oauth_userinfo("https://oauth2:glpat-xyz@gitlab.com/group/repo.git").unwrap();
+        assert_eq!(clean, "https://gitlab.com/group/repo.git");
+        assert_eq!(base, "https://gitlab.com");
+
+        let (clean, _) =
+            strip_oauth_userinfo("https://oauth:t@gitlab.example.com:8443/a/b").unwrap();
+        assert_eq!(clean, "https://gitlab.example.com:8443/a/b");
+    }
+
+    #[test]
+    fn strip_oauth_userinfo_leaves_other_urls() {
+        assert!(strip_oauth_userinfo("https://gitlab.com/group/repo.git").is_none());
+        assert!(strip_oauth_userinfo("https://user:pass@host/r.git").is_none());
+        assert!(strip_oauth_userinfo("git@gitlab.com:g/r.git").is_none());
+    }
 
     #[test]
     fn pick_remote_prefers_tracked_then_origin_then_first() {

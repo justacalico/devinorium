@@ -17,8 +17,8 @@ enum SettingsTopic {
   servers,
 }
 
-/// The sidebar topic list, in display order. `manage` and `audit` are
-/// owner-only.
+/// The sidebar topic list, in display order. `git`, `manage` and `audit`
+/// are owner-only.
 List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
   bool isOwner,
   AppLocalizations l,
@@ -39,7 +39,8 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
       icon: Icons.palette_outlined,
       label: l.personalization,
     ),
-    (topic: SettingsTopic.git, icon: Icons.code_outlined, label: l.git),
+    if (isOwner)
+      (topic: SettingsTopic.git, icon: Icons.code_outlined, label: l.git),
     (
       topic: SettingsTopic.directories,
       icon: Icons.folder_outlined,

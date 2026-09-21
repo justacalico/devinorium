@@ -9026,6 +9026,47 @@ async fn git_connections_list_login_logout() {
 }
 
 #[tokio::test]
+async fn git_connections_routes_require_owner() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "mallory", "mallorypass123").await;
+    let cookie = login_as(&app, "mallory", "mallorypass123").await;
+
+    for (method, uri, body) in [
+        ("GET", "/api/git-connections", ""),
+        ("POST", "/api/git-connections/gitlab", "{}"),
+        ("DELETE", "/api/git-connections/gitlab", "{}"),
+        (
+            "GET",
+            "/api/git-connections/gitlab/proxy?path=projects/foo",
+            "",
+        ),
+        (
+            "GET",
+            "/api/git-connections/gitlab/pipelines?project=g/p&iid=1",
+            "",
+        ),
+        (
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            r#"{"project":"g/p","iid":1,"action":"merge"}"#,
+        ),
+    ] {
+        let status = request_status(app.clone(), &cookie, method, uri, body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}");
+    }
+
+    // The owner is unaffected.
+    let status = request_status(app, &owner_cookie, "GET", "/api/git-connections", "").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn git_connections_login_fails_when_glab_not_authed() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();

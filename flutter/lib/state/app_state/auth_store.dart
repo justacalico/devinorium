@@ -340,7 +340,6 @@ mixin AuthStore on AppStateBase {
   Future<void> loadSettingsData() async {
     if (multiServerState.activeApi == null) return;
     final futures = <Future<void>>[
-      loadGitConnections(),
       loadCloneRoot(),
       loadWorktreeRoot(),
       loadProjectRoot(),
@@ -350,6 +349,7 @@ mixin AuthStore on AppStateBase {
       refreshFederationNodes(),
     ];
     if (isOwner) {
+      futures.add(loadGitConnections());
       futures.add(loadUsers());
     }
     await Future.wait(futures);
