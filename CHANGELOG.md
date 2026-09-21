@@ -2,6 +2,23 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.82.0 - 2026-09-21
+#### Features
+- 通知设置与测试推送界面 - (2d8a162) - HttpAnimations
+- 全部会话的运行通知与推送订阅同步 - (1d784a6) - HttpAnimations
+- 重写通知服务并接入 Web Push 与本地通知 - (6348b9b) - HttpAnimations
+- 添加通知与推送文案本地化 - (87ea18c) - HttpAnimations
+- 添加推送订阅 API 并在生命周期事件上分发推送 - (fdf356b) - HttpAnimations
+- 添加 Web Push 订阅存储与推送服务 - (6e65111) - HttpAnimations
+#### Bug Fixes
+- 切换或移除服务器时注销推送订阅 - (f08f258) - HttpAnimations
+- 修复通知去漏报与桌面通知脚本注入 - (55c1cca) - HttpAnimations
+- 服务器变更后按 VAPID 密钥重新订阅推送 - (e551aa2) - HttpAnimations
+- 注意力事件去重不再漏报且推送发送不阻塞事件泵 - (1380338) - HttpAnimations
+- 推送订阅接口强制 HTTPS 并限制每用户数量 - (b8ba500) - HttpAnimations
+
+- - -
+
 ## v0.81.0 - 2026-09-20
 #### Features
 - 项目侧栏显示真实应用图标 - (0a413a0) - HttpAnimations
