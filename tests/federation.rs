@@ -54,6 +54,7 @@ async fn make_state(federation_token: Option<&str>) -> (AppState, db::Db) {
         local_token: None,
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
+        push_contact: "mailto:test@localhost".into(),
         federation_token: federation_token.map(str::to_string),
         hub_url: None,
         node_name: "test-hub".into(),
@@ -85,6 +86,7 @@ async fn make_state(federation_token: Option<&str>) -> (AppState, db::Db) {
         git_remote: Arc::new(GitRemoteService::new(cfg.home_dir.clone())),
         tailscale: devinorium::tailscale::Tailscale::new("tailscale"),
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
+        push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: devinorium::federation::http_client(),
     };
