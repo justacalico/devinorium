@@ -131,7 +131,16 @@ impl RunState {
         if is_update {
             return;
         }
-        parts.push(part);
+        // Deltas arrive one part per chunk; fold consecutive text or
+        // thinking parts so a long turn stays a handful of parts instead
+        // of thousands of single-token ones.
+        match (parts.last_mut(), &part) {
+            (Some(MessagePart::Text { content: last }), MessagePart::Text { content })
+            | (Some(MessagePart::Thinking { content: last }), MessagePart::Thinking { content }) => {
+                last.push_str(content)
+            }
+            _ => parts.push(part),
+        }
     }
 
     pub fn set_permission_request(self: &Arc<Self>, req: Option<PermissionRequest>) {

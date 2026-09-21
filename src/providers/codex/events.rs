@@ -47,14 +47,14 @@ impl TurnTranslator {
                 let (item_id, delta) = (str_field(params, "itemId")?, str_field(params, "delta")?);
                 self.streamed.insert(item_id);
                 let part = MessagePart::text(delta);
-                parts.push(part.clone());
+                push_coalesced(parts, &part);
                 Some(PartEvent::New(part))
             }
             "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
                 let (item_id, delta) = (str_field(params, "itemId")?, str_field(params, "delta")?);
                 self.streamed.insert(item_id);
                 let part = MessagePart::thinking(delta);
-                parts.push(part.clone());
+                push_coalesced(parts, &part);
                 Some(PartEvent::New(part))
             }
             "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
@@ -322,6 +322,19 @@ fn str_field(v: &Value, key: &str) -> Option<String> {
     v.get(key)?.as_str().map(str::to_string)
 }
 
+/// Append `part` to `parts`, folding it into the tail when both are the
+/// same text or thinking kind. Streams emit one part per delta; without
+/// coalescing a long turn would store thousands of one-token parts.
+fn push_coalesced(parts: &mut Vec<MessagePart>, part: &MessagePart) {
+    match (parts.last_mut(), part) {
+        (Some(MessagePart::Text { content: last }), MessagePart::Text { content })
+        | (Some(MessagePart::Thinking { content: last }), MessagePart::Thinking { content }) => {
+            last.push_str(content)
+        }
+        _ => parts.push(part.clone()),
+    }
+}
+
 fn string_list(fields: &serde_json::Map<String, Value>, key: &str) -> Vec<String> {
     fields
         .get(key)
@@ -368,16 +381,10 @@ mod tests {
                 .unwrap();
             assert!(matches!(ev, PartEvent::New(_)));
         }
-        // One part per delta; the joined text still reads "Hello".
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0].text_content(), Some("Hel"));
-        assert_eq!(
-            parts
-                .iter()
-                .filter_map(|p| p.text_content())
-                .collect::<String>(),
-            "Hello"
-        );
+        // Each delta still emits a part event, but the stored vec folds
+        // consecutive text into one part so long turns stay bounded.
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].text_content(), Some("Hello"));
     }
 
     #[test]
@@ -395,9 +402,35 @@ mod tests {
             &json!({"itemId":"r1","delta":"!"}),
             &mut parts,
         );
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0].thinking_content(), Some("hmm"));
-        assert_eq!(parts[1].thinking_content(), Some("!"));
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].thinking_content(), Some("hmm!"));
+    }
+
+    #[test]
+    fn coalescing_breaks_at_kind_and_tool_boundaries() {
+        let mut parts = vec![];
+        push_coalesced(&mut parts, &MessagePart::text("a"));
+        push_coalesced(&mut parts, &MessagePart::thinking("t"));
+        push_coalesced(
+            &mut parts,
+            &MessagePart::tool_call(ToolCallEvent {
+                id: "c1".into(),
+                title: "Cmd".into(),
+                kind: "execute".into(),
+                status: "completed".into(),
+                command: None,
+                output: None,
+                output_preview: None,
+                changed_files: vec![],
+                diffs: vec![],
+            }),
+        );
+        push_coalesced(&mut parts, &MessagePart::text("b"));
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[3].text_content(), Some("b"));
+        push_coalesced(&mut parts, &MessagePart::text("c"));
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[3].text_content(), Some("bc"));
     }
 
     #[test]
