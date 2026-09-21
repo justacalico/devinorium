@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show Locale;
+import 'package:flutter/material.dart' show AppLifecycleState, Locale;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,6 +49,7 @@ part 'app_state/files_panel_store.dart';
 part 'app_state/git_panel_store.dart';
 part 'app_state/health_check_store.dart';
 part 'app_state/run_events_store.dart';
+part 'app_state/notifications_store.dart';
 part 'app_state/lifecycle_store.dart';
 part 'app_state/git_store.dart';
 part 'app_state/git_refresh_store.dart';
@@ -104,6 +105,7 @@ class AppState extends AppStateBase
         GitPanelStore,
         HealthCheckStore,
         RunEventsStore,
+        NotificationsStore,
         LifecycleStore,
         GitStore,
         GitRefreshStore,
@@ -219,12 +221,14 @@ class AppState extends AppStateBase
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
     String? serverVersion,
     LocalServerController? localServerManager,
+    NotificationService? notifications,
   }) : multiServerState = multiServerState ?? MultiServerState(),
        localServerManager =
            localServerManager ?? LocalServerManager.disabled() {
     this.multiServerState.addListener(notifyListeners);
     this.localServerManager.onExit = _onLocalServerExit;
     _versionChecker = versionChecker ?? _NoNetworkVersionChecker();
+    if (notifications != null) _notifications = notifications;
     if (api != null) {
       this.multiServerState.addTestConnection(
         ServerProfile(
@@ -462,7 +466,17 @@ class AppState extends AppStateBase
     store.onComposerTextChanged = (text) => _saveDraftKey(draftKey, text);
     store.onRunFinished = (failed) {
       final title = _threadTitle(id) ?? 'Thread';
-      _notifications.notifyThreadCompleted(title: title, failed: failed);
+      // The lifecycle stream already covers completion notifications for
+      // every thread; this callback is the fallback for servers too old to
+      // have it. Suppressed when the user is looking at this very thread.
+      if (!_runEventsConnected &&
+          !(id == _activeThreadId && _appInForeground)) {
+        _notifications.notifyRunEvent(
+          threadId: id,
+          title: title,
+          kind: failed ? 'failed' : 'completed',
+        );
+      }
       final projectId = store.projectId;
       if (projectId > 0) {
         // Refresh branches and worktrees too, not just the repo status: a
