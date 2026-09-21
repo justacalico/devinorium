@@ -1205,6 +1205,49 @@ class ApiService {
     return UsageSummary.fromJson(j);
   }
 
+  // ---- Web Push ----
+
+  /// The instance's VAPID public key, or `null` when the server has push
+  /// disabled (404) — clients should fall back to in-page notifications.
+  Future<String?> pushVapidKey() async {
+    try {
+      final j = await _client.get('/api/push/vapid-key');
+      return j['public_key'] as String?;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Register a browser push subscription. The endpoint is globally unique
+  /// server-side, so resubscribing refreshes keys in place.
+  Future<void> pushSubscribe({
+    required String endpoint,
+    required String p256dh,
+    required String auth,
+    String lang = 'en',
+  }) async {
+    await _client.put('/api/push/subscriptions', {
+      'endpoint': endpoint,
+      'keys': {'p256dh': p256dh, 'auth': auth},
+      'lang': lang,
+    });
+  }
+
+  /// Remove a push subscription by endpoint.
+  Future<void> pushUnsubscribe(String endpoint) async {
+    await _client.deleteWithBody('/api/push/subscriptions', {
+      'endpoint': endpoint,
+    });
+  }
+
+  /// Fire a test push at every subscription the caller owns. Returns the
+  /// number of endpoints that accepted it.
+  Future<int> sendTestPush() async {
+    final j = await _client.post('/api/push/test', const {});
+    return (j['sent'] as num?)?.toInt() ?? 0;
+  }
+
   // ---- Terminal ----
 
   /// Create a remote terminal session. [threadId] is optional bookkeeping —

@@ -21,6 +21,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // flutter_local_notifications needs desugaring even for plain show()
+        // calls — its Android code uses java.time throughout.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -54,6 +57,10 @@ android {
             }
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {

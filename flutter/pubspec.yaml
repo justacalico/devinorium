@@ -33,6 +33,7 @@ dependencies:
   pty2: ^0.5.3
   package_info_plus: ^10.2.1
   image_picker: ^1.2.3
+  flutter_local_notifications: ^22.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
