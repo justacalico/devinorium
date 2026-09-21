@@ -168,7 +168,10 @@ mixin SettingsStore on AppStateBase {
     _pushEnabled = push;
     _notifications.initialize();
     _notifications.onOpenThread = (id) => unawaited(openThread(id));
-    await _notifications.setNotificationsEnabled(enabled);
+    // Restoring a stored preference is not a user gesture — browsers may
+    // auto-deny a permission prompt fired outside one, so only the settings
+    // toggle is allowed to ask.
+    await _notifications.setNotificationsEnabled(enabled, allowPrompt: false);
     notifyListeners();
   }
 }

@@ -85,6 +85,7 @@ mixin RunEventsStore on AppStateBase {
     _threadRunAttention.clear();
     _runningThreadIds.clear();
     _notifiedRunKeys.clear();
+    _runAttentionNotified.clear();
   }
 
   void _onRunEventsClosed(StreamSubscription<SseEvent> sub, Object? error) {

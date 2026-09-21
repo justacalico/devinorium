@@ -117,6 +117,36 @@ void main() {
       expect(fake.calls.map((c) => c.kind), ['permission', 'completed']);
     });
 
+    test('a request answered and re-raised notifies again', () {
+      final fake = _RecordingNotifications();
+      final state = AppState.test(user: _user(), notifications: fake);
+      state.handleRunEventForTest(
+        _runStatus('t1', 'running', attention: 'ask'),
+      );
+      state.handleRunEventForTest(_runStatus('t1', 'running'));
+      state.handleRunEventForTest(
+        _runStatus('t1', 'running', attention: 'ask'),
+      );
+      expect(fake.calls.map((c) => c.kind), ['ask', 'ask']);
+    });
+
+    test('an attention flip does not re-alert the seen kind', () {
+      final fake = _RecordingNotifications();
+      final state = AppState.test(user: _user(), notifications: fake);
+      state.handleRunEventForTest(
+        _runStatus('t1', 'running', attention: 'ask'),
+      );
+      // Permission superseding the pending ask is its own alert; when it
+      // resolves and the ask is still pending, the user was already told.
+      state.handleRunEventForTest(
+        _runStatus('t1', 'running', attention: 'permission'),
+      );
+      state.handleRunEventForTest(
+        _runStatus('t1', 'running', attention: 'ask'),
+      );
+      expect(fake.calls.map((c) => c.kind), ['ask', 'permission']);
+    });
+
     test('snapshots hydrate without notifying', () {
       final fake = _RecordingNotifications();
       final state = AppState.test(user: _user(), notifications: fake);

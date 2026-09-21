@@ -203,6 +203,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get _pushEnabled;
   set _pushEnabled(bool value);
   Set<String> get _notifiedRunKeys;
+  Map<String, Set<String>> get _runAttentionNotified;
   void _maybeNotifyRunEvent(Map<String, dynamic> j);
   Map<int, GitRepoInfo> get _gitRepoInfo;
   Map<int, List<GitBranch>> get _gitBranches;

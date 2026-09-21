@@ -89,9 +89,12 @@ class NotificationService {
     }
   }
 
-  Future<void> setNotificationsEnabled(bool enabled) async {
+  Future<void> setNotificationsEnabled(
+    bool enabled, {
+    bool allowPrompt = true,
+  }) async {
     _notificationsEnabled = enabled;
-    if (!enabled || !_isMobile) return;
+    if (!enabled || !allowPrompt || !_isMobile) return;
     try {
       await _ensurePlugin();
       if (Platform.isAndroid) {
@@ -169,19 +172,29 @@ class NotificationService {
           body,
         ]).catchError((_) => ProcessResult(-1, 0, '', ''));
       } else if (Platform.isMacOS) {
+        // Thread titles are model-generated text; escape before embedding
+        // them in the AppleScript string literals.
+        final escapedTitle = title
+            .replaceAll('\\', '\\\\')
+            .replaceAll('"', '\\"');
+        final escapedBody = body
+            .replaceAll('\\', '\\\\')
+            .replaceAll('"', '\\"');
         final script =
-            'display notification "$body" with title "Devinorium" subtitle "$title"';
+            'display notification "$escapedBody" with title "Devinorium" subtitle "$escapedTitle"';
         Process.run('osascript', [
           '-e',
           script,
         ]).catchError((_) => ProcessResult(-1, 0, '', ''));
       } else if (Platform.isWindows) {
+        // PowerShell single-quoted strings escape ' by doubling it.
+        final escapedBody = body.replaceAll("'", "''");
         final psScript =
             'Add-Type -AssemblyName System.Windows.Forms;'
             '\$n = New-Object System.Windows.Forms.NotifyIcon;'
             '\$n.Icon = [System.Drawing.SystemIcons]::Information;'
             '\$n.Visible = \$true;'
-            "\$n.ShowBalloonTip(5000, 'Devinorium', '$body',"
+            "\$n.ShowBalloonTip(5000, 'Devinorium', '$escapedBody',"
             ' [System.Windows.Forms.ToolTipIcon]::Info);'
             'Start-Sleep -Seconds 6;'
             '\$n.Dispose()';

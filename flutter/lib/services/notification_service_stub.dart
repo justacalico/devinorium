@@ -19,7 +19,10 @@ class NotificationService {
 
   Future<String> permissionState() async => 'unsupported';
 
-  Future<void> setNotificationsEnabled(bool enabled) async {
+  Future<void> setNotificationsEnabled(
+    bool enabled, {
+    bool allowPrompt = true,
+  }) async {
     _notificationsEnabled = enabled;
   }
 
