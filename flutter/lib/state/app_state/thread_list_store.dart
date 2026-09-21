@@ -109,9 +109,12 @@ mixin ThreadListStore on AppStateBase {
       }
       _userThreadsOffset += chunk.length;
       _userThreadsHasMore = chunk.length == _threadChunkSize;
+      _clearKeyedError('threads');
     } catch (e) {
       _checkAuthFailure(e);
+      _setKeyedError('threads', '$e');
       debugLogFailure('threadList.loadUserThreadsChunk', e);
+      notifyListeners();
     } finally {
       _loadingMoreUserThreads = false;
     }
@@ -141,9 +144,12 @@ mixin ThreadListStore on AppStateBase {
       _mergeThreads(chunk);
       _projectThreadOffsets[projectId] = offset + chunk.length;
       _projectThreadsHasMore[projectId] = chunk.length == _threadChunkSize;
+      _clearKeyedError('threads');
     } catch (e) {
       _checkAuthFailure(e);
+      _setKeyedError('threads', '$e');
       debugLogFailure('threadList.loadProjectThreadsChunk', e);
+      notifyListeners();
     } finally {
       _loadingMoreProjectThreads[projectId] = false;
     }

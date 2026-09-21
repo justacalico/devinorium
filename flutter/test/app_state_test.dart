@@ -9,6 +9,7 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 import 'package:devinorium_frontend/services/local_server.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart' show Locale;
 import 'package:http/http.dart' as http;
@@ -1045,6 +1046,66 @@ void main() {
         state.serverProfiles.firstWhere((p) => p.id == 'test').token,
         'token',
       );
+    });
+
+    test('background thread errors coexist with user errors', () async {
+      SharedPreferences.setMockInitialValues({});
+      var fail = true;
+      final api = _StreamableApiService(
+        ApiClient.withClient(
+          MockClient((_) async => _json(200, [])),
+        ),
+      );
+      api.listThreadsBuilder = () async {
+        if (fail) throw ApiException('list down', 500);
+        return [];
+      };
+      final state = AppState.test(api: api);
+      addTearDown(state.dispose);
+
+      await state.refreshThreadsAndGroups();
+      expect(state.globalError, 'list down');
+
+      state.setGlobalError('user op failed');
+      expect(state.globalError, contains('list down'));
+      expect(state.globalError, contains('user op failed'));
+
+      fail = false;
+      await state.refreshThreadsAndGroups();
+      expect(state.globalError, 'user op failed');
+
+      state.clearGlobalError();
+      expect(state.globalError, isEmpty);
+    });
+
+    test('git refresh success does not clear unrelated errors', () {
+      fakeAsync((async) {
+        SharedPreferences.setMockInitialValues({});
+        final state = AppState.test(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
+                'is_repo': true,
+                'branch': 'main',
+                'worktree_path': '/x',
+                'toplevel': '/x',
+                'common_dir': '/x/.git',
+                'ahead': 0,
+                'behind': 0,
+              }),
+            ]),
+          ),
+          activeProjectId: 1,
+        );
+        addTearDown(state.dispose);
+
+        state.setGlobalError('user op failed');
+        state.startGitRefresh();
+        async.elapse(const Duration(seconds: 6));
+
+        expect(state.globalError, 'user op failed');
+        state.stopGitRefresh();
+      });
     });
 
     test(

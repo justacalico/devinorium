@@ -43,7 +43,7 @@ class NativeApiClient implements BaseApiClient {
 
   Uri _url(String path) {
     if (_baseUrl.isEmpty) {
-      throw ApiException(appL10n.serverUrlNotConfigured, 401);
+      throw ApiException(appL10n.serverUrlNotConfigured, 0);
     }
     final base = _baseUrl.endsWith('/')
         ? _baseUrl.substring(0, _baseUrl.length - 1)
@@ -119,7 +119,13 @@ class NativeApiClient implements BaseApiClient {
         throw ApiException(err['error'] as String, resp.statusCode, data: err);
       }
       if (text.isNotEmpty) {
-        throw ApiException(text, resp.statusCode);
+        throw ApiException(
+          sanitizeHttpErrorBody(
+            text,
+            appL10n.httpErrorStatus(resp.statusCode),
+          ),
+          resp.statusCode,
+        );
       }
       throw ApiException(
         appL10n.httpErrorStatus(resp.statusCode),
@@ -167,9 +173,10 @@ class NativeApiClient implements BaseApiClient {
       throw ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (resp.body.isNotEmpty
-                  ? resp.body
-                  : appL10n.httpErrorStatus(resp.statusCode)),
+            : sanitizeHttpErrorBody(
+                resp.body,
+                appL10n.httpErrorStatus(resp.statusCode),
+              ),
         resp.statusCode,
       );
     }

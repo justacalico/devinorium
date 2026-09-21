@@ -81,5 +81,71 @@ void main() {
         ),
       );
     });
+
+    test('keeps short plain-text error bodies', () async {
+      final mock = MockClient((_) async => http.Response('something broke', 500));
+      final client = NativeApiClient(client: mock);
+      await client.setServerUrl('http://localhost:7878');
+      expect(
+        client.get('/api/auth/me'),
+        throwsA(
+          isA<ApiException>().having((e) => e.message, 'message', 'something broke'),
+        ),
+      );
+    });
+
+    test('falls back to status for html error pages', () async {
+      final mock = MockClient(
+        (_) async => http.Response('<html><body>Bad Gateway</body></html>', 502),
+      );
+      final client = NativeApiClient(client: mock);
+      await client.setServerUrl('http://localhost:7878');
+      expect(
+        client.get('/api/auth/me'),
+        throwsA(
+          isA<ApiException>().having((e) => e.message, 'message', 'HTTP 502'),
+        ),
+      );
+    });
+
+    test('truncates very long error bodies', () async {
+      final mock = MockClient((_) async => http.Response('x' * 500, 500));
+      final client = NativeApiClient(client: mock);
+      await client.setServerUrl('http://localhost:7878');
+      expect(
+        client.get('/api/auth/me'),
+        throwsA(
+          isA<ApiException>().having((e) => e.message, 'message', '${'x' * 300}…'),
+        ),
+      );
+    });
+
+    test('sanitizes error body on list endpoints', () async {
+      final mock = MockClient((_) async => http.Response('<h1>oops</h1>', 503));
+      final client = NativeApiClient(client: mock);
+      await client.setServerUrl('http://localhost:7878');
+      expect(
+        client.getList('/api/threads'),
+        throwsA(
+          isA<ApiException>().having((e) => e.message, 'message', 'HTTP 503'),
+        ),
+      );
+    });
+
+    test('preserves structured data on json errors', () async {
+      final mock = MockClient(
+        (_) async => _json(400, {'error': 'bad request', 'code': 'E_BAD'}),
+      );
+      final client = NativeApiClient(client: mock);
+      await client.setServerUrl('http://localhost:7878');
+      expect(
+        client.get('/api/auth/me'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.message, 'message', 'bad request')
+              .having((e) => e.data?['code'], 'data.code', 'E_BAD'),
+        ),
+      );
+    });
   });
 }

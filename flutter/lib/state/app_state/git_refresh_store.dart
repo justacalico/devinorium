@@ -41,7 +41,7 @@ mixin GitRefreshStore on AppStateBase {
       if (gen != _serverSeq) return;
       _gitRepoInfo[projectId] = info;
       _syncProjectBranch(projectId, info);
-      _globalError = '';
+      _clearKeyedError('gitRefresh');
     } catch (e) {
       if (gen != _serverSeq) return;
       _checkAuthFailure(e);

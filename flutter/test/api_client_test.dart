@@ -105,6 +105,48 @@ void main() {
       );
     });
 
+    test('falls back to status for html error pages', () async {
+      final mock = MockClient((req) async => http.Response(
+            '<html><body><h1>502 Bad Gateway</h1></body></html>',
+            502,
+          ));
+      final client = ApiClient.withClient(mock);
+      expect(
+        () => client.get('/api/threads'),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', 'HTTP 502')),
+      );
+    });
+
+    test('truncates very long error bodies', () async {
+      final mock = MockClient((req) async => http.Response('x' * 500, 500));
+      final client = ApiClient.withClient(mock);
+      expect(
+        () => client.get('/api/threads'),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            '${'x' * 300}…',
+          ),
+        ),
+      );
+    });
+
+    test('preserves structured data on json errors', () async {
+      final mock = MockClient(
+        (req) async => _json(400, {'error': 'bad request', 'code': 'E_BAD'}),
+      );
+      final client = ApiClient.withClient(mock);
+      expect(
+        () => client.get('/api/threads'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.message, 'message', 'bad request')
+              .having((e) => e.data?['code'], 'data.code', 'E_BAD'),
+        ),
+      );
+    });
+
     test('throws for unexpected response shape', () async {
       final mock = MockClient((req) async => _json(200, 'plain string'));
       final client = ApiClient.withClient(mock);
@@ -140,6 +182,26 @@ void main() {
       expect(
         () => client.getList('/api/threads'),
         throwsA(isA<ApiException>().having((e) => e.message, 'message', 'unauthorized')),
+      );
+    });
+
+    test('sanitizes html error body on list endpoints', () async {
+      final mock = MockClient((req) async => http.Response('<h1>oops</h1>', 503));
+      final client = ApiClient.withClient(mock);
+      expect(
+        () => client.getList('/api/threads'),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', 'HTTP 503')),
+      );
+    });
+
+    test('truncates long error body on list endpoints', () async {
+      final mock = MockClient((req) async => http.Response('y' * 400, 500));
+      final client = ApiClient.withClient(mock);
+      expect(
+        () => client.getList('/api/threads'),
+        throwsA(
+          isA<ApiException>().having((e) => e.message, 'message', '${'y' * 300}…'),
+        ),
       );
     });
 

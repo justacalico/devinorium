@@ -825,7 +825,7 @@ mixin AuthStore on AppStateBase {
     _serverVersion = null;
     _page = MainPage.threads;
     _dialog = DialogKind.none;
-    _globalError = '';
+    _globalErrors.clear();
   }
 
   static String _serverLabel(String url) {

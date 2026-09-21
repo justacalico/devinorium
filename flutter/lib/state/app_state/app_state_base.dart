@@ -205,6 +205,11 @@ abstract class AppStateBase extends ChangeNotifier {
   set _activeStore(ThreadStore? value);
   String get _globalError;
   set _globalError(String value);
+  Map<String, String> get _globalErrors;
+  // Errors a periodic or background task owns; its clear must not erase
+  // failures other subsystems reported.
+  void _setKeyedError(String key, String message);
+  void _clearKeyedError(String key);
   String get _lastThreadError;
   set _lastThreadError(String value);
   Locale get _locale;
