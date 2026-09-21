@@ -35,6 +35,21 @@ pub struct Config {
     /// Push services use it to reach the operator when the instance
     /// misbehaves; a placeholder works but a real contact is kinder.
     pub push_contact: String,
+    /// Shared fleet secret for hub/satellite federation. On a hub it
+    /// authorizes satellite registrations and is sent as the bearer token on
+    /// proxied calls; on a satellite it authenticates requests arriving from
+    /// the hub (mapped onto the `local` owner account).
+    pub federation_token: Option<String>,
+    /// When set, this instance runs as a satellite: it registers itself with
+    /// the hub at this base URL and heartbeats to stay listed.
+    pub hub_url: Option<String>,
+    /// Display name for this node, advertised to the hub and shown in node
+    /// pickers. Defaults to the machine hostname.
+    pub node_name: String,
+    /// Base URL this node advertises to the hub (how the hub reaches it).
+    /// Defaults to the bound address, which is only right when the hub runs
+    /// on the same machine; set it for real LAN setups.
+    pub node_url: Option<String>,
 }
 
 impl Config {
@@ -88,7 +103,21 @@ impl Config {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
-        Ok(Self {
+        let federation_token = std::env::var("DEVINORIUM_FEDERATION_TOKEN")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let hub_url = std::env::var("DEVINORIUM_HUB_URL")
+            .ok()
+            .map(|s| s.trim().trim_end_matches('/').to_string())
+            .filter(|s| !s.is_empty());
+        let node_name = env_or("DEVINORIUM_NODE_NAME", "").trim().to_string();
+        let node_url = std::env::var("DEVINORIUM_NODE_URL")
+            .ok()
+            .map(|s| s.trim().trim_end_matches('/').to_string())
+            .filter(|s| !s.is_empty());
+
+        let cfg = Self {
             host,
             port,
             session_key,
@@ -105,7 +134,74 @@ impl Config {
             tailscale_bin: "tailscale".into(),
             dev_mode: false,
             push_contact: env_or("DEVINORIUM_PUSH_CONTACT", "mailto:devinorium@localhost"),
-        })
+            federation_token,
+            hub_url,
+            node_name,
+            node_url,
+        };
+        cfg.check_federation()?;
+        Ok(cfg)
+    }
+
+    /// Validate federation settings: a hub URL requires the shared token (it
+    /// is both the registration credential and the token the hub uses when
+    /// proxying), and the token must be long enough to resist guessing since
+    /// it is the only credential guarding a satellite's whole API. The token
+    /// travels as a bearer header, so it must be header-safe ASCII. The node
+    /// URL goes through the same check the hub applies at registration so a
+    /// satellite cannot configure an address its hub would reject on every
+    /// heartbeat.
+    pub fn check_federation(&self) -> Result<()> {
+        if let Some(token) = self.federation_token.as_deref() {
+            if token.len() < 16 {
+                bail!("DEVINORIUM_FEDERATION_TOKEN must be at least 16 characters long");
+            }
+            if !token.bytes().all(|b| (0x21..=0x7e).contains(&b)) {
+                bail!(
+                    "DEVINORIUM_FEDERATION_TOKEN must contain only printable ASCII without spaces"
+                );
+            }
+        }
+        if let Some(hub) = self.hub_url.as_deref() {
+            if self.federation_token.is_none() {
+                bail!("DEVINORIUM_HUB_URL requires DEVINORIUM_FEDERATION_TOKEN");
+            }
+            match reqwest::Url::parse(hub) {
+                Ok(u)
+                    if matches!(u.scheme(), "http" | "https")
+                        && u.host_str().is_some()
+                        && u.username().is_empty()
+                        && u.password().is_none()
+                        && u.query().is_none()
+                        && u.fragment().is_none() => {}
+                _ => bail!("DEVINORIUM_HUB_URL must be an http(s) URL without credentials, query, or fragment"),
+            }
+        }
+        if let Some(url) = self.node_url.as_deref() {
+            if crate::federation::clean_node_base_url(url).is_none() {
+                bail!("DEVINORIUM_NODE_URL must be a plain http(s) origin without path, query, credentials, or fragment");
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether this instance registers with a hub as a satellite.
+    pub fn is_satellite(&self) -> bool {
+        self.hub_url.is_some()
+    }
+
+    /// This node's display name: configured name, else the machine hostname,
+    /// else a generic label.
+    pub fn display_node_name(&self) -> String {
+        if !self.node_name.is_empty() {
+            return self.node_name.clone();
+        }
+        env::var("HOSTNAME")
+            .ok()
+            .or_else(|| env::var("COMPUTERNAME").ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "node".to_string())
     }
 
     /// Switch into `--dev` mode: bind a random OS-assigned port and use a
@@ -251,6 +347,10 @@ mod tests {
             tailscale_bin: "tailscale".into(),
             dev_mode,
             push_contact: "mailto:devinorium@localhost".into(),
+            federation_token: None,
+            hub_url: None,
+            node_name: String::new(),
+            node_url: None,
         }
     }
 
@@ -273,6 +373,58 @@ mod tests {
         assert!(cfg_with("0.0.0.0", None, false)
             .check_local_token_bind()
             .is_ok());
+    }
+
+    #[test]
+    fn federation_config_validation() {
+        // No federation settings at all is fine.
+        assert!(cfg_with("127.0.0.1", None, false)
+            .check_federation()
+            .is_ok());
+
+        // A short token is rejected.
+        let mut cfg = cfg_with("127.0.0.1", None, false);
+        cfg.federation_token = Some("short".into());
+        assert!(cfg.check_federation().is_err());
+
+        // A token with characters that cannot go in a header is rejected.
+        let mut cfg = cfg_with("127.0.0.1", None, false);
+        cfg.federation_token = Some("token with spaces 123".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.federation_token = Some("token\nwith\nnewlines".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.federation_token = Some("tokén-with-unicode-ok".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.federation_token = Some("a-long-enough-token-123".into());
+        assert!(cfg.check_federation().is_ok());
+
+        // A hub URL requires a token and a valid scheme.
+        let mut cfg = cfg_with("127.0.0.1", None, false);
+        cfg.hub_url = Some("http://hub.local:7878".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.federation_token = Some("a-long-enough-token-123".into());
+        assert!(cfg.check_federation().is_ok());
+        cfg.hub_url = Some("ftp://hub.local".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.hub_url = Some("http://hub.local?x=1".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.hub_url = Some("http://user:pass@hub.local".into());
+        assert!(cfg.check_federation().is_err());
+        // A path prefix is allowed so a hub behind a sub-path proxy works.
+        cfg.hub_url = Some("http://hub.local/base".into());
+        assert!(cfg.check_federation().is_ok());
+
+        // A bad node URL is rejected, including ones the hub would refuse
+        // at registration time.
+        let mut cfg = cfg_with("127.0.0.1", None, false);
+        cfg.node_url = Some("node.local:7878".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.node_url = Some("http://192.168.1.10:7878".into());
+        assert!(cfg.check_federation().is_ok());
+        cfg.node_url = Some("http://192.168.1.10:7878/sub".into());
+        assert!(cfg.check_federation().is_err());
+        cfg.node_url = Some("http://192.168.1.10:7878#frag".into());
+        assert!(cfg.check_federation().is_err());
     }
 
     #[test]

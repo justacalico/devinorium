@@ -109,6 +109,10 @@ async fn make_app() -> (Router, db::Db, MachineGrants) {
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
         push_contact: "mailto:test@localhost".into(),
+        federation_token: None,
+        hub_url: None,
+        node_name: String::new(),
+        node_url: None,
     };
 
     let machine_grants = MachineGrants::new();
@@ -132,6 +136,7 @@ async fn make_app() -> (Router, db::Db, MachineGrants) {
         machine_grants: machine_grants.clone(),
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
+        http_client: reqwest::Client::new(),
     };
     (devinorium::build_app(state), database, machine_grants)
 }

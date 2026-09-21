@@ -1565,6 +1565,36 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get federationNodes => 'Nodes';
+
+  @override
+  String get federationNodesHint =>
+      'Satellite machines registered with this server. Pick one to run the app against that machine through this server.';
+
+  @override
+  String get noNodesRegistered => 'No satellites registered.';
+
+  @override
+  String get switchNode => 'Switch node';
+
+  @override
+  String get thisHub => 'This hub';
+
+  @override
+  String get nodeOnline => 'online';
+
+  @override
+  String get nodeOffline => 'offline';
+
+  @override
+  String get removeNode => 'Remove node';
+
+  @override
+  String removeNodeConfirm(String name) {
+    return 'Remove \"$name\"? The satellite will appear again the next time it heartbeats unless it is stopped.';
+  }
+
+  @override
   String get tailscaleDescription =>
       'Access this server from other devices on your Tailnet.';
 

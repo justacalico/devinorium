@@ -55,10 +55,13 @@ async fn main() -> Result<()> {
     } else {
         // First-run bootstrap: create the initial owner account if none exist.
         auth::bootstrap::run(&database, &cfg.bootstrap_username, &cfg.bootstrap_password).await?;
-        if cfg.is_local_mode() {
-            // Bundled mode: the passwordless local account backs every request
-            // carrying the configured token.
+        if cfg.is_local_mode() || cfg.federation_token.is_some() {
+            // Bundled mode and satellites both need the passwordless `local`
+            // account: local-mode requests and a hub's proxied calls alike
+            // authenticate onto it via bearer token.
             auth::bootstrap::run_local(&database).await?;
+        }
+        if cfg.is_local_mode() {
             // The desktop app holds our stdin pipe; when it exits or crashes
             // the pipe closes and we shut down instead of lingering as an
             // orphan. Not wanted in dev mode: a detached run has no stdin.
@@ -165,6 +168,7 @@ async fn main() -> Result<()> {
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
         push,
         bound_addr: Arc::new(std::sync::OnceLock::new()),
+        http_client: devinorium::federation::http_client(),
     };
 
     // Turn run lifecycle transitions into pushes for closed clients.
@@ -175,6 +179,9 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     let addr = listener.local_addr()?;
     let _ = state.bound_addr.set(addr);
+    // Satellite mode: register with the hub now that the bound address is
+    // known, then keep the registration fresh on a heartbeat.
+    devinorium::federation::spawn_satellite_loop(state.clone());
     if dev_mode {
         if local_only {
             tracing::info!("--dev --local: serving http://{addr} (loopback only) with no authentication and a throwaway in-memory database");

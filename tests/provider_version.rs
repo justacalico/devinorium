@@ -42,6 +42,10 @@ async fn make_app() -> (Router, db::Db) {
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
         push_contact: "mailto:test@localhost".into(),
+        federation_token: None,
+        hub_url: None,
+        node_name: String::new(),
+        node_url: None,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -71,6 +75,7 @@ async fn make_app() -> (Router, db::Db) {
         machine_grants: devinorium::machine_grants::MachineGrants::new(),
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
+        http_client: reqwest::Client::new(),
     };
     (devinorium::build_app(state), database)
 }

@@ -923,6 +923,47 @@
       }
     }
   },
+  "federationNodes": "节点",
+  "@federationNodes": {
+    "description": "Federation satellites section title in settings"
+  },
+  "federationNodesHint": "注册到此服务器的卫星机器。选择一个节点后应用将通过此服务器在该机器上运行。",
+  "@federationNodesHint": {
+    "description": "Description under the federation nodes settings title"
+  },
+  "noNodesRegistered": "未注册任何卫星节点",
+  "@noNodesRegistered": {
+    "description": "Empty state when the active server has no federation satellites"
+  },
+  "switchNode": "切换节点",
+  "@switchNode": {
+    "description": "Tooltip for the federation node switcher"
+  },
+  "thisHub": "本枢纽",
+  "@thisHub": {
+    "description": "Label for the hub itself in the node switcher"
+  },
+  "nodeOnline": "在线",
+  "@nodeOnline": {
+    "description": "Badge for a federation node that heartbeats normally"
+  },
+  "nodeOffline": "离线",
+  "@nodeOffline": {
+    "description": "Badge for a federation node whose heartbeat has lapsed"
+  },
+  "removeNode": "移除节点",
+  "@removeNode": {
+    "description": "Button to deregister a federation satellite"
+  },
+  "removeNodeConfirm": "移除“{name}”？除非停止该卫星节点，否则它会在下次心跳时再次出现。",
+  "@removeNodeConfirm": {
+    "description": "Confirmation before deregistering a federation satellite",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tailscaleDescription": "从同一 Tailnet 中的其他设备访问此服务器",
   "@tailscaleDescription": {
     "description": "Tailscale 设置卡片中的帮助文本"

@@ -84,6 +84,14 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `DEVINORIUM_ALLOWED_ORIGIN` | (unset or empty) | Explicit allowed origin for CSRF checks |
 | `DEVINORIUM_PUSH_CONTACT` | `mailto:devinorium@localhost` | Contact URI in VAPID JWTs for Web Push. Set a real `mailto:` or `https:` address; some push providers reject sends without one |
 | `DEVINORIUM_LOCAL_TOKEN` | (unset) | Bundled desktop mode: requests bearing this token map onto the passwordless `local` owner account, and the process exits when stdin closes. Set automatically by the desktop app; not for normal servers |
+| `DEVINORIUM_FEDERATION_TOKEN` | (unset) | Shared fleet secret. On a hub it gates satellite registration and is sent as the bearer token on proxied calls; on a satellite it authenticates the hub. Required on both sides |
+| `DEVINORIUM_HUB_URL` | (unset) | Set on a satellite to register with a hub, e.g. `https://hub.example`. Re-registers every 30 s as the heartbeat |
+| `DEVINORIUM_NODE_NAME` | hostname | Display name a satellite advertises to the hub |
+| `DEVINORIUM_NODE_URL` | bound address | Base URL the hub dials to reach a satellite; set when behind NAT or a tunnel |
+
+Federation lets one public hub reach many private machines: satellites
+register with the hub and the owner picks a node in the sidebar. See
+[docs/federation.md](docs/federation.md).
 
 Tailscale serve is configured from the UI instead of env vars: Settings →
 Servers → Tailscale (owner only). See `docs/deployment.md` Option D.

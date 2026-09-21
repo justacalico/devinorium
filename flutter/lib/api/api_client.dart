@@ -78,6 +78,12 @@ abstract class BaseApiClient {
 
   /// The bearer token for native clients, null on web.
   Future<String?> get token;
+
+  /// Route prefix prepended to every request path. Empty for direct
+  /// connections; federated node clients carry the hub's proxy prefix
+  /// (e.g. `/api/federation/nodes/<id>/proxy`). Needed by callers that build
+  /// URLs outside the client's methods, like the terminal WebSocket.
+  String get pathPrefix => '';
 }
 
 /// Thin wrapper around [http] that:
@@ -133,6 +139,9 @@ class ApiClient implements BaseApiClient {
 
   @override
   Future<String?> get token => Future.value(null);
+
+  @override
+  String get pathPrefix => '';
 
   @override
   Future<Map<String, dynamic>> get(String path) async =>
