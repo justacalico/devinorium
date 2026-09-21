@@ -62,6 +62,35 @@ impl AcpProvider {
             .collect()
     }
 
+    /// The thread's permission allowlist reaches the Devin agent through its
+    /// user config: the child gets `XDG_CONFIG_HOME` pointing at a temp root
+    /// whose `devin/config.json` is the user's real config plus the thread
+    /// rules, and every other entry under the real config root is symlinked
+    /// in so nothing else changes. The temp root self-cleans when the turn
+    /// ends. Returns the env args to prepend and the guard holding the dir.
+    async fn permission_config_env(
+        &self,
+        options: &SendOptions,
+    ) -> anyhow::Result<(Vec<String>, Option<tempfile::TempDir>)> {
+        if self.kind != AgentKind::Devin {
+            return Ok((Vec::new(), None));
+        }
+        let rules = parse_permission_rules(options.permissions.as_deref());
+        if rules.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+        let Some(real_root) = real_config_root() else {
+            return Ok((Vec::new(), None));
+        };
+        let Some(temp) = write_permission_config(&real_root, &rules).await? else {
+            return Ok((Vec::new(), None));
+        };
+        Ok((
+            vec![format!("XDG_CONFIG_HOME={}", temp.path().display())],
+            Some(temp),
+        ))
+    }
+
     /// Verify the binary is on PATH and the ACP handshake succeeds
     /// without creating a session or sending a prompt.
     pub async fn do_health_check(&self) -> anyhow::Result<()> {
@@ -130,6 +159,9 @@ impl AcpProvider {
         let ask_callback = options.ask_callback.clone();
         let cancel_signal = options.cancel_signal.clone();
         let replaying = Arc::new(AtomicBool::new(maybe_session.is_some()));
+
+        let (env_args, _perm_cfg) = self.permission_config_env(options).await?;
+        let agent_args: Vec<String> = env_args.into_iter().chain(self.agent_args()).collect();
 
         let result = Client
             .builder()
@@ -200,7 +232,7 @@ impl AcpProvider {
                 agent_client_protocol::on_receive_request!(),
             )
             .connect_with(
-                AcpAgent::from_args(self.agent_args())?,
+                AcpAgent::from_args(agent_args)?,
                 async move |connection: ConnectionTo<Agent>| {
                     let init_response = connection
                         .send_request(
@@ -530,6 +562,127 @@ async fn new_session(
     Ok((resp.session_id.to_string(), resp.config_options))
 }
 
+/// Split a thread's allowlist text into rules: entries are comma or
+/// newline separated, e.g. "Exec(curl), Fetch(**)".
+fn parse_permission_rules(raw: Option<&str>) -> Vec<String> {
+    raw.unwrap_or("")
+        .split([',', '\n', '\r'])
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// The config root devin resolves `devin/config.json` under.
+fn real_config_root() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+}
+
+/// Fold `rules` into `config.permissions.allow`, preserving everything else
+/// the user configured. Returns false when the existing config cannot be
+/// merged safely (unparseable or non-object), in which case the allowlist
+/// is not applied rather than clobbering the user's settings.
+fn merge_permission_rules(config: &mut serde_json::Value, rules: &[String]) -> bool {
+    if !config.is_object() {
+        return false;
+    }
+    let root = config.as_object_mut().unwrap();
+    let perms = root
+        .entry("permissions".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !perms.is_object() {
+        return false;
+    }
+    let perms = perms.as_object_mut().unwrap();
+    let mut merged: Vec<String> = perms
+        .get("allow")
+        .and_then(|a| a.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    for rule in rules {
+        if !merged.contains(rule) {
+            merged.push(rule.clone());
+        }
+    }
+    perms.insert("allow".to_string(), serde_json::json!(merged));
+    true
+}
+
+/// Build the temp config root for a Devin child: mirrors the real config
+/// root with symlinks, writes a `devin/config.json` that merges the thread
+/// allowlist into the user's own. Returns None when the existing config
+/// cannot be merged without losing it.
+#[cfg(unix)]
+async fn write_permission_config(
+    real_root: &Path,
+    rules: &[String],
+) -> anyhow::Result<Option<tempfile::TempDir>> {
+    let real_devin = real_root.join("devin");
+    let mut config = match tokio::fs::read(real_devin.join("config.json")).await {
+        Ok(bytes) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "devin config is not plain JSON; thread permissions not applied"
+                );
+                return Ok(None);
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
+        Err(e) => return Err(e.into()),
+    };
+    if !merge_permission_rules(&mut config, rules) {
+        tracing::warn!("devin config permissions are not an object; thread permissions not applied");
+        return Ok(None);
+    }
+
+    let temp = tempfile::tempdir()?;
+    let xdg = temp.path();
+
+    if real_root.is_dir() {
+        let mut entries = tokio::fs::read_dir(real_root).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.file_name() == "devin" {
+                continue;
+            }
+            std::os::unix::fs::symlink(entry.path(), xdg.join(entry.file_name()))?;
+        }
+    }
+
+    let fake_devin = xdg.join("devin");
+    tokio::fs::create_dir_all(&fake_devin).await?;
+    if real_devin.is_dir() {
+        let mut entries = tokio::fs::read_dir(&real_devin).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.file_name() == "config.json" {
+                continue;
+            }
+            std::os::unix::fs::symlink(entry.path(), fake_devin.join(entry.file_name()))?;
+        }
+    }
+    tokio::fs::write(
+        fake_devin.join("config.json"),
+        serde_json::to_vec_pretty(&config)?,
+    )
+    .await?;
+    Ok(Some(temp))
+}
+
+#[cfg(not(unix))]
+async fn write_permission_config(
+    _real_root: &Path,
+    _rules: &[String],
+) -> anyhow::Result<Option<tempfile::TempDir>> {
+    Ok(None)
+}
+
 #[async_trait]
 impl Provider for AcpProvider {
     fn id(&self) -> &str {
@@ -854,6 +1007,135 @@ mod tests {
             "{methods:?}"
         );
         assert!(sessions.lock().await.is_empty());
+    }
+
+    #[test]
+    fn permission_rules_split_on_commas_and_newlines() {
+        assert_eq!(
+            parse_permission_rules(Some("Exec(curl), Fetch(**)\nRead(src/**)\r\n,\t")),
+            vec!["Exec(curl)", "Fetch(**)", "Read(src/**)"]
+        );
+        assert!(parse_permission_rules(None).is_empty());
+        assert!(parse_permission_rules(Some("  ,\n")).is_empty());
+    }
+
+    #[test]
+    fn merge_permission_rules_preserves_user_config() {
+        let mut config = serde_json::json!({
+            "agent": {"model": "x"},
+            "permissions": {
+                "allow": ["Exec(git status)"],
+                "deny": ["Exec(rm)"]
+            }
+        });
+        assert!(merge_permission_rules(
+            &mut config,
+            &["Exec(curl)".into(), "Exec(git status)".into()]
+        ));
+        assert_eq!(
+            config["permissions"]["allow"],
+            serde_json::json!(["Exec(git status)", "Exec(curl)"])
+        );
+        assert_eq!(config["permissions"]["deny"], serde_json::json!(["Exec(rm)"]));
+        assert_eq!(config["agent"]["model"], "x");
+    }
+
+    #[test]
+    fn merge_permission_rules_rejects_non_object_permissions() {
+        let mut config = serde_json::json!({"permissions": "oops"});
+        assert!(!merge_permission_rules(&mut config, &["Exec(ls)".into()]));
+        assert_eq!(config["permissions"], "oops");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn permission_config_merges_allowlist_and_mirrors_root() {
+        let root = tempfile::tempdir().unwrap();
+        let devin = root.path().join("devin");
+        fs::create_dir(&devin).unwrap();
+        fs::write(
+            devin.join("config.json"),
+            r#"{"agent":{"model":"x"},"permissions":{"allow":["Exec(git status)"],"deny":["Exec(rm)"]}}"#,
+        )
+        .unwrap();
+        fs::create_dir(devin.join("skills")).unwrap();
+        fs::create_dir(root.path().join("otherapp")).unwrap();
+
+        let temp = write_permission_config(
+            root.path(),
+            &["Exec(curl)".into(), "Fetch(**)".into()],
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let xdg = temp.path();
+
+        let written: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(xdg.join("devin/config.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(written["agent"]["model"], "x");
+        assert_eq!(
+            written["permissions"]["deny"],
+            serde_json::json!(["Exec(rm)"])
+        );
+        assert_eq!(
+            written["permissions"]["allow"],
+            serde_json::json!(["Exec(git status)", "Exec(curl)", "Fetch(**)"])
+        );
+
+        assert!(xdg
+            .join("devin/skills")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(xdg
+            .join("otherapp")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(!xdg
+            .join("devin/config.json")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn permission_config_skips_unmergeable_user_config() {
+        let root = tempfile::tempdir().unwrap();
+        let devin = root.path().join("devin");
+        fs::create_dir(&devin).unwrap();
+        fs::write(devin.join("config.json"), b"// jsonc comment").unwrap();
+        assert!(write_permission_config(root.path(), &["Exec(ls)".into()])
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn permission_config_env_only_for_devin_with_rules() {
+        let mut opts = send_options(std::env::temp_dir(), None);
+        let devin = AcpProvider::new(AgentKind::Devin, "devin".into(), "m".into());
+        let grok = AcpProvider::new(AgentKind::Grok, "grok".into(), "m".into());
+
+        opts.permissions = None;
+        let (env, cfg) = devin.permission_config_env(&opts).await.unwrap();
+        assert!(env.is_empty() && cfg.is_none());
+
+        opts.permissions = Some("Exec(ls)".into());
+        let (env, cfg) = grok.permission_config_env(&opts).await.unwrap();
+        assert!(env.is_empty() && cfg.is_none());
+
+        let (env, cfg) = devin.permission_config_env(&opts).await.unwrap();
+        assert_eq!(env.len(), 1);
+        assert!(env[0].starts_with("XDG_CONFIG_HOME="));
+        assert!(cfg.is_some());
     }
 
     #[tokio::test]
