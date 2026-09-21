@@ -44,12 +44,38 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         }
     }
 
-    // The shared federation token maps onto `local` the same way. On a
-    // satellite this is how the hub's proxied requests authenticate.
-    if let Some(expected) = state.config.federation_token.as_deref() {
-        if let Some(token) = bearer.as_deref() {
-            if constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes()) {
-                return run_as_local(state, req, next).await;
+    // Federation bearer auth. A hub authenticates proxied calls with the
+    // per-node token issued at registration, which maps onto `local`. The
+    // shared federation token only owns the register handshake: it keeps
+    // working as the proxied credential on a satellite that has no node
+    // token yet (pre-upgrade hubs), but once a node token exists — or the
+    // instance is not a satellite at all — the shared secret no longer
+    // grants API access.
+    if let Some(token) = bearer.as_deref() {
+        let node_token = state
+            .db
+            .get_server_setting(crate::federation::NODE_TOKEN_KEY)
+            .await
+            .ok()
+            .flatten()
+            .filter(|t| !t.is_empty());
+        match node_token {
+            Some(t) => {
+                if constant_time_eq::constant_time_eq(token.as_bytes(), t.as_bytes()) {
+                    return run_as_local(state, req, next).await;
+                }
+            }
+            None => {
+                if state.config.is_satellite() {
+                    if let Some(expected) = state.config.federation_token.as_deref() {
+                        if constant_time_eq::constant_time_eq(
+                            token.as_bytes(),
+                            expected.as_bytes(),
+                        ) {
+                            return run_as_local(state, req, next).await;
+                        }
+                    }
+                }
             }
         }
     }

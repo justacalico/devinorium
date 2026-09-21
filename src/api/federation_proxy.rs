@@ -28,9 +28,13 @@ use crate::AppState;
 const WS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// What the upstream leg needs beyond the URL: the federation credential
-/// and provenance headers describing who made the call.
+/// and provenance headers describing who made the call. `token` is the
+/// per-node credential issued at registration; `fallback_token` is the
+/// shared token, retried once on a 401 so pre-upgrade satellites that
+/// never learned their node token keep working.
 struct UpstreamMeta {
     token: String,
+    fallback_token: Option<String>,
     hop: u32,
     client_ip: Option<String>,
     username: String,
@@ -172,7 +176,7 @@ pub async fn proxy(
         Err(e) => return map_err_internal(e).into_response(),
     };
 
-    let Some(token) = state.config.federation_token.clone() else {
+    let Some(shared) = state.config.federation_token.clone() else {
         // Without the shared token the hub cannot authenticate to the
         // satellite at all; treat it as federation being off.
         return (
@@ -182,8 +186,16 @@ pub async fn proxy(
             .into_response();
     };
 
+    // Prefer the per-node token issued at registration; keep the shared
+    // token as a fallback for satellites that predate it.
+    let (token, fallback_token) = match node.token.as_deref() {
+        Some(t) if !t.is_empty() && t != shared => (t.to_string(), Some(shared)),
+        _ => (shared, None),
+    };
+
     let meta = UpstreamMeta {
         token,
+        fallback_token,
         hop,
         client_ip: req
             .extensions()
@@ -245,30 +257,62 @@ async fn proxy_http(
 ) -> Response {
     let url = node_url(node, sub_path, req.uri().query());
 
-    let mut out = state
-        .http_client
-        .request(req.method().clone(), &url)
-        .bearer_auth(&meta.token)
-        .header(PROXY_HOP_HEADER, (meta.hop + 1).to_string());
-    if let Ok(v) = axum::http::HeaderValue::from_str(&meta.username) {
-        out = out.header(PROXY_USER_HEADER, v);
-    }
-    if let Some(ip) = &meta.client_ip {
-        out = out.header("x-forwarded-for", ip);
-    }
-    for (name, value) in req.headers() {
-        if !is_stripped_request(name) {
-            out = out.header(name, value);
+    // Buffer the body so a 401 can be retried with the fallback token.
+    // Ingress is already capped by the body-limit layer, so this cannot
+    // grow past the configured maximum.
+    let headers = req.headers().clone();
+    let method = req.method().clone();
+    let body = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(node = %node.id, "federation proxy body read failed: {e}");
+            return bad_gateway("failed to read request body");
         }
-    }
+    };
 
-    let body = req.into_body().into_data_stream();
-    let res = match out.body(reqwest::Body::wrap_stream(body)).send().await {
+    let build = |token: &str| {
+        let mut out = state
+            .http_client
+            .request(method.clone(), &url)
+            .bearer_auth(token)
+            .header(PROXY_HOP_HEADER, (meta.hop + 1).to_string());
+        if let Ok(v) = axum::http::HeaderValue::from_str(&meta.username) {
+            out = out.header(PROXY_USER_HEADER, v);
+        }
+        if let Some(ip) = &meta.client_ip {
+            out = out.header("x-forwarded-for", ip);
+        }
+        for (name, value) in &headers {
+            if !is_stripped_request(name) {
+                out = out.header(name, value);
+            }
+        }
+        out.body(body.clone())
+    };
+
+    let res = match build(&meta.token).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(node = %node.id, "federation proxy upstream failed: {e}");
             return bad_gateway("node unreachable");
         }
+    };
+
+    // A node token the satellite does not know yet gets one retry with the
+    // shared credential.
+    let res = if res.status() == StatusCode::UNAUTHORIZED {
+        match &meta.fallback_token {
+            Some(fallback) => match build(fallback).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(node = %node.id, "federation proxy upstream failed: {e}");
+                    return bad_gateway("node unreachable");
+                }
+            },
+            None => res,
+        }
+    } else {
+        res
     };
 
     let status = res.status();
@@ -305,8 +349,6 @@ async fn tunnel_websocket(
     query: Option<&str>,
     meta: UpstreamMeta,
 ) {
-    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-
     let mut url = node_url(node, sub_path, query);
     if let Some(rest) = url.strip_prefix("https://") {
         url = format!("wss://{rest}");
@@ -314,38 +356,37 @@ async fn tunnel_websocket(
         url = format!("ws://{rest}");
     }
 
-    let upstream = async move {
-        let mut request = url.into_client_request()?;
-        let headers = request.headers_mut();
-        if let Ok(v) = format!("Bearer {}", meta.token).parse() {
-            headers.insert(header::AUTHORIZATION, v);
-        }
-        if let Ok(v) = (meta.hop + 1).to_string().parse() {
-            headers.insert(HeaderName::from_static(PROXY_HOP_HEADER), v);
-        }
-        if let Ok(v) = meta.username.parse() {
-            headers.insert(HeaderName::from_static(PROXY_USER_HEADER), v);
-        }
-        if let Some(ip) = meta.client_ip {
-            if let Ok(v) = ip.parse() {
-                headers.insert(header::HeaderName::from_static("x-forwarded-for"), v);
+    let upstream = match tokio::time::timeout(
+        WS_CONNECT_TIMEOUT,
+        connect_upstream(&url, &meta, &meta.token),
+    )
+    .await
+    {
+        Ok(Ok(pair)) => Some(pair),
+        // A satellite that predates node tokens rejects the credential at
+        // the handshake; retry once with the shared token.
+        Ok(Err(e)) if is_auth_rejection(&e) && meta.fallback_token.is_some() => {
+            match tokio::time::timeout(
+                WS_CONNECT_TIMEOUT,
+                connect_upstream(
+                    &url,
+                    &meta,
+                    meta.fallback_token.as_deref().unwrap_or_default(),
+                ),
+            )
+            .await
+            {
+                Ok(Ok(pair)) => Some(pair),
+                _ => None,
             }
         }
-        tokio_tungstenite::connect_async(request).await
+        _ => None,
     };
 
-    let (upstream, _) = match tokio::time::timeout(WS_CONNECT_TIMEOUT, upstream).await {
-        Ok(Ok(pair)) => pair,
-        Ok(Err(e)) => {
-            tracing::warn!(node = %node.id, "federation ws upstream failed: {e}");
-            let _ = socket.close().await;
-            return;
-        }
-        Err(_) => {
-            tracing::warn!(node = %node.id, "federation ws upstream timed out");
-            let _ = socket.close().await;
-            return;
-        }
+    let Some((upstream, _)) = upstream else {
+        tracing::warn!(node = %node.id, "federation ws upstream failed");
+        let _ = socket.close().await;
+        return;
     };
 
     let (mut up_tx, mut up_rx) = upstream.split();
@@ -388,6 +429,50 @@ async fn tunnel_websocket(
         _ = to_upstream => {},
         _ = to_client => {},
     }
+}
+
+/// Dial the upstream WebSocket with the given bearer credential.
+async fn connect_upstream(
+    url: &str,
+    meta: &UpstreamMeta,
+    token: &str,
+) -> Result<
+    (
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        tokio_tungstenite::tungstenite::handshake::client::Response,
+    ),
+    tokio_tungstenite::tungstenite::Error,
+> {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+    let mut request = url.into_client_request()?;
+    let headers = request.headers_mut();
+    if let Ok(v) = format!("Bearer {token}").parse() {
+        headers.insert(header::AUTHORIZATION, v);
+    }
+    if let Ok(v) = (meta.hop + 1).to_string().parse() {
+        headers.insert(HeaderName::from_static(PROXY_HOP_HEADER), v);
+    }
+    if let Ok(v) = meta.username.parse() {
+        headers.insert(HeaderName::from_static(PROXY_USER_HEADER), v);
+    }
+    if let Some(ip) = meta.client_ip.as_deref() {
+        if let Ok(v) = ip.parse() {
+            headers.insert(HeaderName::from_static("x-forwarded-for"), v);
+        }
+    }
+    tokio_tungstenite::connect_async(request).await
+}
+
+/// Whether a WS handshake failure was an HTTP 401 from the satellite.
+fn is_auth_rejection(e: &tokio_tungstenite::tungstenite::Error) -> bool {
+    matches!(
+        e,
+        tokio_tungstenite::tungstenite::Error::Http(resp)
+            if resp.status() == StatusCode::UNAUTHORIZED
+    )
 }
 
 fn into_tungstenite(

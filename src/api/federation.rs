@@ -92,6 +92,9 @@ pub struct RegisterRequest {
 struct RegisterResponse {
     ok: bool,
     hub: String,
+    /// Per-node credential the hub will send on proxied requests. The
+    /// satellite stores it and accepts it in place of the shared token.
+    node_token: String,
 }
 
 /// A satellite announcing itself. Doubles as the heartbeat: the node calls
@@ -154,6 +157,7 @@ async fn register(State(state): State<AppState>, req: axum::extract::Request) ->
             Json(RegisterResponse {
                 ok: true,
                 hub: state.config.display_node_name(),
+                node_token: node.token.clone().unwrap_or_default(),
             })
             .into_response()
         }

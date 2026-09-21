@@ -6,12 +6,15 @@
 //! non-owner users.
 
 /// A row from the `federation_nodes` table.
-#[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct FederationNodeRow {
     pub id: String,
     pub name: String,
     pub base_url: String,
     pub version: String,
+    /// Token this hub sends on proxied requests; issued at first
+    /// registration and stable across heartbeats. Never serialized out.
+    pub token: Option<String>,
     pub last_seen_at: String,
     pub created_at: String,
 }
@@ -19,7 +22,8 @@ pub struct FederationNodeRow {
 impl super::Db {
     /// Insert a node or refresh an existing registration. Re-registering
     /// updates the name, address, version, and heartbeat time so a node
-    /// that moved to a new address heals itself.
+    /// that moved to a new address heals itself. The node token is minted
+    /// once and kept stable so in-flight proxied calls do not break.
     pub async fn upsert_federation_node(
         &self,
         id: &str,
@@ -27,20 +31,27 @@ impl super::Db {
         base_url: &str,
         version: &str,
     ) -> anyhow::Result<FederationNodeRow> {
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
         let row = sqlx::query_as::<_, FederationNodeRow>(
-            "INSERT INTO federation_nodes (id, name, base_url, version, last_seen_at)
-             VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            "INSERT INTO federation_nodes (id, name, base_url, version, token, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
              ON CONFLICT(id) DO UPDATE SET
                  name = excluded.name,
                  base_url = excluded.base_url,
                  version = excluded.version,
-                 last_seen_at = excluded.last_seen_at
-             RETURNING id, name, base_url, version, last_seen_at, created_at",
+                 last_seen_at = excluded.last_seen_at,
+                 token = COALESCE(federation_nodes.token, excluded.token)
+             RETURNING id, name, base_url, version, token, last_seen_at, created_at",
         )
         .bind(id)
         .bind(name)
         .bind(base_url)
         .bind(version)
+        .bind(token)
         .fetch_one(self.pool())
         .await?;
         Ok(row)
@@ -48,7 +59,7 @@ impl super::Db {
 
     pub async fn list_federation_nodes(&self) -> anyhow::Result<Vec<FederationNodeRow>> {
         let rows = sqlx::query_as::<_, FederationNodeRow>(
-            "SELECT id, name, base_url, version, last_seen_at, created_at
+            "SELECT id, name, base_url, version, token, last_seen_at, created_at
              FROM federation_nodes ORDER BY name COLLATE NOCASE, id",
         )
         .fetch_all(self.pool())
@@ -58,7 +69,7 @@ impl super::Db {
 
     pub async fn get_federation_node(&self, id: &str) -> anyhow::Result<Option<FederationNodeRow>> {
         let row = sqlx::query_as::<_, FederationNodeRow>(
-            "SELECT id, name, base_url, version, last_seen_at, created_at
+            "SELECT id, name, base_url, version, token, last_seen_at, created_at
              FROM federation_nodes WHERE id = ?",
         )
         .bind(id)

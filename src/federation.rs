@@ -37,6 +37,11 @@ pub const MAX_PROXY_HOPS: u32 = 4;
 /// server_settings key for the satellite's self-issued stable node id.
 const NODE_ID_KEY: &str = "federation_node_id";
 
+/// server_settings key for the per-node token the hub issued at
+/// registration. Once set, proxied calls authenticate with it and the
+/// shared federation token stops owning this node's API.
+pub const NODE_TOKEN_KEY: &str = "federation_node_token";
+
 /// Normalize and validate a node base URL: it must be a plain http(s)
 /// origin with no userinfo, path, query, or fragment, since proxied paths
 /// are appended verbatim. Anything reachable from the hub is allowed by
@@ -165,6 +170,21 @@ async fn register_once(state: &AppState, node_id: &str) -> anyhow::Result<()> {
             body.chars().take(200).collect::<String>()
         );
     }
+
+    // Newer hubs issue a per-node token for proxied calls; persist it so
+    // the next requests authenticate with it instead of the shared secret.
+    #[derive(serde::Deserialize)]
+    struct RegisterReply {
+        node_token: Option<String>,
+    }
+    if let Ok(reply) = resp.json::<RegisterReply>().await {
+        if let Some(token) = reply.node_token.filter(|t| !t.is_empty()) {
+            if let Err(e) = state.db.set_server_setting(NODE_TOKEN_KEY, &token).await {
+                tracing::warn!("federation: failed to persist node token: {e:#}");
+            }
+        }
+    }
+
     tracing::debug!(%hub, %base_url, "federation: registered with hub");
     Ok(())
 }

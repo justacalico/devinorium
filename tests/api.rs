@@ -9732,6 +9732,150 @@ async fn git_connections_merge_request_action_requires_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// Bearer-token request without a session cookie, as federation calls use.
+fn bearer(method: &str, uri: &str, token: &str, body: &str) -> Request<Body> {
+    let mut b = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, "localhost")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"));
+    if !body.is_empty() {
+        b = b.header("content-type", "application/json");
+    }
+    b.body(Body::from(body.to_string())).unwrap()
+}
+
+#[tokio::test]
+async fn federation_register_issues_stable_node_token() {
+    let (mut state, db) = app_state().await;
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some("shared-secret-token-16".into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+
+    let body = r#"{"id":"node-1","name":"box","base_url":"http://10.0.0.2:7878"}"#;
+    let resp = app
+        .clone()
+        .oneshot(bearer(
+            "POST",
+            "/api/federation/register",
+            "shared-secret-token-16",
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let token = v["node_token"].as_str().unwrap().to_string();
+    assert_eq!(token.len(), 64);
+
+    // Heartbeat re-registration keeps the same token.
+    let resp = app
+        .clone()
+        .oneshot(bearer(
+            "POST",
+            "/api/federation/register",
+            "shared-secret-token-16",
+            body,
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["node_token"].as_str().unwrap(), token);
+
+    // The token lands on the node row for the proxy to use, and the node
+    // list payload does not leak it.
+    let node = db.get_federation_node("node-1").await.unwrap().unwrap();
+    assert_eq!(node.token.as_deref(), Some(token.as_str()));
+    let cookie = login(&app).await;
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/federation/nodes", &cookie, ""))
+        .await
+        .unwrap();
+    let listing = body_str(resp.into_body()).await;
+    assert!(!listing.contains(&token));
+
+    // A wrong shared token cannot register.
+    let resp = app
+        .oneshot(bearer(
+            "POST",
+            "/api/federation/register",
+            "wrong-token-00000000",
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn federation_shared_token_does_not_own_hub_api() {
+    // On a node that is not a satellite, the shared federation token must
+    // not authenticate the general API — it only gates registration.
+    let (mut state, _db) = app_state().await;
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some("shared-secret-token-16".into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+
+    for (method, uri) in [
+        ("GET", "/api/auth/me"),
+        ("GET", "/api/threads"),
+        ("POST", "/api/projects"),
+        ("GET", "/api/machines"),
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(bearer(method, uri, "shared-secret-token-16", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "{method} {uri}");
+    }
+}
+
+#[tokio::test]
+async fn federation_node_token_scopes_satellite_access() {
+    let (mut state, db) = app_state().await;
+    devinorium::auth::bootstrap::run_local(&db).await.unwrap();
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some("shared-secret-token-16".into());
+    cfg.hub_url = Some("http://hub.example.com".into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+
+    // Unprovisioned satellite: the shared token still authenticates
+    // proxied calls as the local owner.
+    let resp = app
+        .clone()
+        .oneshot(bearer("GET", "/api/auth/me", "shared-secret-token-16", ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value =
+        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["username"], "local");
+
+    // Once the hub has issued a node token the shared secret is dead on
+    // this node's API.
+    db.set_server_setting("federation_node_token", "node-secret-abc")
+        .await
+        .unwrap();
+    let resp = app
+        .clone()
+        .oneshot(bearer("GET", "/api/auth/me", "shared-secret-token-16", ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    let resp = app
+        .oneshot(bearer("GET", "/api/auth/me", "node-secret-abc", ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
 fn git_cli(args: &[&str], cwd: &std::path::Path) {
     let out = std::process::Command::new("git")
         .args(args)
