@@ -54,15 +54,18 @@ impl AppServer {
             // ETXTBSY can fire when exec'ing a binary that was written moments
             // ago (installer mid-copy, tests); retry briefly.
             for _ in 0..5 {
-                match Command::new(bin)
-                    .args(["app-server", "--stdio"])
+                let mut cmd = Command::new(bin);
+                cmd.args(["app-server", "--stdio"])
                     .current_dir(cwd)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    .kill_on_drop(true)
-                    .spawn()
-                {
+                    .kill_on_drop(true);
+                // A fresh process group lets teardown signal grandchildren
+                // too; kill_on_drop alone only reaches the direct child.
+                #[cfg(unix)]
+                cmd.process_group(0);
+                match cmd.spawn() {
                     Ok(c) => {
                         spawned = Some(c);
                         break;
@@ -165,6 +168,23 @@ impl AppServer {
         }))
     }
 
+    /// On unix the child leads its own process group, so teardown signals
+    /// the whole group — sandboxed grandchildren die with the app-server
+    /// instead of surviving a cancel.
+    #[cfg(unix)]
+    fn teardown(&self) {
+        if let Some(pgid) = self
+            ._child
+            .id()
+            .and_then(|raw| rustix::process::Pid::from_raw(raw as i32))
+        {
+            let _ = rustix::process::kill_process_group(pgid, rustix::process::Signal::KILL);
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn teardown(&self) {}
+
     /// Send a request and wait for its response.
     pub async fn request(&self, method: &str, params: Value) -> anyhow::Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
@@ -231,6 +251,12 @@ impl AppServer {
     }
 }
 
+impl Drop for AppServer {
+    fn drop(&mut self) {
+        self.teardown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,6 +299,55 @@ done
         let server = AppServer::spawn(&bin, dir.path()).await.unwrap();
         let resp = server.request("ping", json!({})).await.unwrap();
         assert_eq!(resp["pong"], true);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn drop_kills_the_process_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("codex");
+        // The fake spawns a grandchild in its process group and then blocks
+        // on stdin forever. kill_on_drop alone would leave the grandchild.
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\nsh -c 'echo $$ > \"{0}/grandchild.pid\"; exec sleep 600' &\nwhile IFS= read -r line; do :; done\n",
+                dir.path().display()
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let server = AppServer::spawn(&path.to_string_lossy(), dir.path())
+            .await
+            .unwrap();
+        let mut gpid = None;
+        for _ in 0..40 {
+            if let Ok(raw) = std::fs::read_to_string(dir.path().join("grandchild.pid")) {
+                gpid = raw.trim().parse::<i32>().ok();
+                if gpid.is_some() {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let gpid = rustix::process::Pid::from_raw(gpid.expect("grandchild pid")).unwrap();
+
+        drop(server);
+
+        let mut alive = true;
+        for _ in 0..60 {
+            if matches!(
+                rustix::process::test_kill_process(gpid),
+                Err(e) if e == rustix::io::Errno::SRCH
+            ) {
+                alive = false;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(!alive, "grandchild survived the app-server teardown");
     }
 
     #[tokio::test]
