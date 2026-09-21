@@ -18,6 +18,50 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 
 use super::wire::{parse_message, Incoming};
 
+/// Largest single JSON-RPC line accepted from stdout. Truncated lines fail
+/// parsing and are skipped, so a runaway server cannot grow memory without
+/// bound.
+const MAX_STDOUT_LINE: usize = 4 * 1024 * 1024;
+
+/// Per-line cap for stderr drain output; stderr is log noise only.
+const MAX_STDERR_LINE: usize = 16 * 1024;
+
+/// Backpressure bound on queued server events. Once full, the reader task
+/// pauses instead of buffering without limit.
+const EVENT_CHANNEL_CAP: usize = 1024;
+
+/// Read one `\n`-terminated line into `buf`, capping its length at `max`.
+/// Oversized lines are truncated and the remainder discarded up to the
+/// newline so framing stays intact. Returns `Ok(None)` on EOF.
+async fn next_capped_line<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    max: usize,
+) -> std::io::Result<Option<()>> {
+    buf.clear();
+    let mut skipping = false;
+    loop {
+        let avail = reader.fill_buf().await?;
+        if avail.is_empty() {
+            return Ok(if buf.is_empty() { None } else { Some(()) });
+        }
+        let (take, keep) = match avail.iter().position(|&b| b == b'\n') {
+            Some(pos) => (pos + 1, pos),
+            None => (avail.len(), avail.len()),
+        };
+        if !skipping {
+            let room = max.saturating_sub(buf.len());
+            let copy = keep.min(room);
+            buf.extend_from_slice(&avail[..copy]);
+            skipping = keep > room;
+        }
+        reader.consume(take);
+        if take > keep {
+            return Ok(Some(()));
+        }
+    }
+}
+
 /// A server-initiated message that needs the consumer's attention.
 #[derive(Debug)]
 pub enum ServerEvent {
@@ -40,7 +84,7 @@ type PendingMap = HashMap<u64, oneshot::Sender<Result<Value, String>>>;
 pub struct AppServer {
     stdin: Mutex<ChildStdin>,
     pending: Arc<Mutex<PendingMap>>,
-    events: Mutex<mpsc::UnboundedReceiver<ServerEvent>>,
+    events: Mutex<mpsc::Receiver<ServerEvent>>,
     next_id: AtomicU64,
     _child: Child,
 }
@@ -98,8 +142,11 @@ impl AppServer {
             .ok_or_else(|| anyhow::anyhow!("codex app-server has no stdout"))?;
         if let Some(stderr) = child.stderr.take() {
             tokio::spawn(async move {
-                let mut lines = BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stderr);
+                let mut buf = Vec::new();
+                while let Ok(Some(())) = next_capped_line(&mut reader, &mut buf, MAX_STDERR_LINE).await
+                {
+                    let line = String::from_utf8_lossy(&buf);
                     let line = line.trim();
                     if !line.is_empty() {
                         tracing::debug!(target: "codex-app-server", "{line}");
@@ -108,16 +155,17 @@ impl AppServer {
             });
         }
 
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<ServerEvent>();
+        let (event_tx, event_rx) = mpsc::channel::<ServerEvent>(EVENT_CHANNEL_CAP);
         let pending: Arc<Mutex<PendingMap>> = Arc::new(Mutex::new(HashMap::new()));
         let reader_pending = pending.clone();
 
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
+            let mut reader = BufReader::new(stdout);
+            let mut buf = Vec::new();
             loop {
-                match lines.next_line().await {
-                    Ok(Some(line)) => {
-                        let Some(msg) = parse_message(&line) else {
+                match next_capped_line(&mut reader, &mut buf, MAX_STDOUT_LINE).await {
+                    Ok(Some(())) => {
+                        let Some(msg) = parse_message(&String::from_utf8_lossy(&buf)) else {
                             continue;
                         };
                         match msg {
@@ -131,6 +179,7 @@ impl AppServer {
                             Incoming::Request { id, method, params } => {
                                 if event_tx
                                     .send(ServerEvent::Request { id, method, params })
+                                    .await
                                     .is_err()
                                 {
                                     return;
@@ -139,6 +188,7 @@ impl AppServer {
                             Incoming::Notification { method, params } => {
                                 if event_tx
                                     .send(ServerEvent::Notification { method, params })
+                                    .await
                                     .is_err()
                                 {
                                     return;
@@ -152,7 +202,7 @@ impl AppServer {
                         for (_, tx) in pending.drain() {
                             let _ = tx.send(Err("codex app-server exited".to_string()));
                         }
-                        let _ = event_tx.send(ServerEvent::Closed);
+                        let _ = event_tx.send(ServerEvent::Closed).await;
                         return;
                     }
                 }
@@ -299,6 +349,28 @@ done
         let server = AppServer::spawn(&bin, dir.path()).await.unwrap();
         let resp = server.request("ping", json!({})).await.unwrap();
         assert_eq!(resp["pong"], true);
+    }
+
+    #[tokio::test]
+    async fn capped_line_truncates_oversized_lines() {
+        let mut reader: &[u8] =
+            b"short\nthis is a very long line that exceeds the cap\nnext\n".as_slice();
+        let mut buf = Vec::new();
+
+        next_capped_line(&mut reader, &mut buf, 10).await.unwrap();
+        assert_eq!(buf, b"short");
+
+        next_capped_line(&mut reader, &mut buf, 10).await.unwrap();
+        assert_eq!(buf, b"this is a ");
+
+        // Framing survives the truncation: the next line reads cleanly.
+        next_capped_line(&mut reader, &mut buf, 10).await.unwrap();
+        assert_eq!(buf, b"next");
+
+        assert!(next_capped_line(&mut reader, &mut buf, 10)
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
