@@ -77,7 +77,10 @@ servers does. Choosing the hub entry switches back.
 
 A satellite that misses heartbeats shows as offline; requests to it return
 `502` until it re-registers. Nodes can be deregistered under Settings →
-Servers → Nodes.
+Servers → Nodes. Deregistration only removes the hub's row: a still-running
+satellite re-registers on its next heartbeat (within 30 s). To remove a
+node for good, stop its `DEVINORIUM_HUB_URL` config first; to evict a
+compromised one, rotate `DEVINORIUM_FEDERATION_TOKEN` on every machine.
 
 Non-owner accounts never see federation data: listing nodes and every
 proxied call are owner-only.
@@ -91,11 +94,20 @@ proxied call are owner-only.
 - `DELETE /api/federation/nodes/:id`: owner-only deregistration.
 - `ANY /api/federation/nodes/:id/proxy/*`: the hub forwards the request to
   the satellite's `base_url`, replacing the caller's credentials with the
-  federation token (which the satellite maps onto its local owner account).
-  Plain requests stream both ways, so SSE message streams work; WebSocket
-  upgrades are tunneled frame-for-frame so remote terminals work.
+  federation token (which the satellite maps onto its local owner account)
+  and tagging the caller's username in `x-devinorium-proxy-user` for the
+  satellite's logs. Plain requests stream both ways, so SSE message streams
+  work; WebSocket upgrades are tunneled frame-for-frame so remote terminals
+  work, including `wss://` when the satellite serves TLS.
 - A hop-count header caps forwarding so a misconfigured ring of hubs fails
   fast instead of looping.
+- Satellite response headers that would act on the hub's origin
+  (`Set-Cookie`, `Location`, `WWW-Authenticate`, `Clear-Site-Data`,
+  `Alt-Svc`) are dropped before relaying, so a node cannot overwrite the
+  caller's hub session.
+- Request bodies through the proxy are bounded by the hub's
+  `DEVINORIUM_MAX_BODY_BYTES` (default 16 MiB); raise it on the hub if
+  uploads to satellites must be larger.
 
 ## Security notes
 
