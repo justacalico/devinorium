@@ -237,6 +237,16 @@ impl AppServer {
 
     /// Send a request and wait for its response.
     pub async fn request(&self, method: &str, params: Value) -> anyhow::Result<Value> {
+        self.request_with_timeout(method, params, std::time::Duration::from_secs(120))
+            .await
+    }
+
+    async fn request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        dur: std::time::Duration,
+    ) -> anyhow::Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
@@ -249,10 +259,14 @@ impl AppServer {
             return Err(e);
         }
 
-        let result = tokio::time::timeout(std::time::Duration::from_secs(120), rx)
-            .await
-            .map_err(|_| anyhow::anyhow!("codex app-server request {method} timed out"))?
-            .map_err(|_| anyhow::anyhow!("codex app-server dropped response channel"))?;
+        let result = match tokio::time::timeout(dur, rx).await {
+            Err(_) => {
+                // Drop the pending entry or it lingers until the server dies.
+                self.pending.lock().await.remove(&id);
+                return Err(anyhow::anyhow!("codex app-server request {method} timed out"));
+            }
+            Ok(rx) => rx.map_err(|_| anyhow::anyhow!("codex app-server dropped response channel"))?,
+        };
 
         result.map_err(|e| anyhow::anyhow!("{method} failed: {e}"))
     }
@@ -371,6 +385,26 @@ done
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn timed_out_request_removes_its_pending_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("codex");
+        std::fs::write(&path, "#!/bin/sh\nwhile IFS= read -r line; do :; done\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let server = AppServer::spawn(&path.to_string_lossy(), dir.path())
+            .await
+            .unwrap();
+        let err = server
+            .request_with_timeout("ping", json!({}), std::time::Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("timed out"), "{err}");
+        assert!(server.pending.lock().await.is_empty());
     }
 
     #[tokio::test]
