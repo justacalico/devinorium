@@ -7127,6 +7127,123 @@ async fn thread_accepts_each_valid_permission_mode() {
 }
 
 #[tokio::test]
+async fn permission_response_to_other_thread_keeps_pending_request() {
+    let (state, db) = app_state().await;
+    let app = devinorium::build_app(state.clone());
+    let cookie = login(&app).await;
+    let owner_id = db
+        .get_user_by_username("owner")
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    let pid_a = create_project(&app, &cookie).await;
+    let pid_b = create_project(&app, &cookie).await;
+    let tid_a = make_thread(&app, &cookie, pid_a, "a").await;
+    let tid_b = make_thread(&app, &cookie, pid_b, "b").await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    state.pending_permission_requests.lock().await.insert(
+        "req-1".to_string(),
+        devinorium::PendingPermissionRequest {
+            user_id: owner_id,
+            thread_id: tid_a.clone(),
+            sender: tx,
+        },
+    );
+
+    // A response posted under a different thread must not consume the entry.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_b}/permission/req-1"),
+            &cookie,
+            r#"{"option_id":"yes"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert!(state
+        .pending_permission_requests
+        .lock()
+        .await
+        .contains_key("req-1"));
+
+    // The owning thread consumes it normally.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_a}/permission/req-1"),
+            &cookie,
+            r#"{"option_id":"yes"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(rx.await.unwrap(), "yes");
+}
+
+#[tokio::test]
+async fn ask_response_to_other_thread_keeps_pending_request() {
+    let (state, db) = app_state().await;
+    let app = devinorium::build_app(state.clone());
+    let cookie = login(&app).await;
+    let owner_id = db
+        .get_user_by_username("owner")
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    let pid_a = create_project(&app, &cookie).await;
+    let pid_b = create_project(&app, &cookie).await;
+    let tid_a = make_thread(&app, &cookie, pid_a, "a").await;
+    let tid_b = make_thread(&app, &cookie, pid_b, "b").await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    state.pending_ask_requests.lock().await.insert(
+        "req-1".to_string(),
+        devinorium::PendingAskRequest {
+            user_id: owner_id,
+            thread_id: tid_a.clone(),
+            sender: tx,
+        },
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_b}/ask/req-1"),
+            &cookie,
+            r#"{"answers":{"x":"y"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert!(state
+        .pending_ask_requests
+        .lock()
+        .await
+        .contains_key("req-1"));
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_a}/ask/req-1"),
+            &cookie,
+            r#"{"answers":{"x":"y"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let answers = rx.await.unwrap().unwrap();
+    assert_eq!(answers["x"], "y");
+}
+
+#[tokio::test]
 async fn disabled_user_cannot_access_protected_routes() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
