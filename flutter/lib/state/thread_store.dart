@@ -1440,9 +1440,9 @@ class ThreadStore {
       _optimisticMessages.clear();
       return;
     }
-    // A resend edit only reclaims the composer when it is empty; the text
-    // stays retriable from the original message and a live draft wins.
-    if (!pending.resendEdit || composerText.trim().isEmpty) {
+    // The pending snapshot only reclaims an empty composer; a draft typed
+    // after the send went out wins over restoring the failed prompt.
+    if (composerText.trim().isEmpty) {
       setComposerText(pending.composerText);
     }
     if (!pending.resendEdit) {

@@ -2821,6 +2821,82 @@ void main() {
       expect(state.composerText, 'hello');
     });
 
+    test('sendMessage keeps a newer draft on stream error', () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (state.globalError.isNotEmpty) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      // A draft typed while the run is in flight must not be overwritten by
+      // the failed prompt's pending-send restore.
+      state.setComposerText('next');
+      controller.addError(ApiException('network down', 500));
+
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+      expect(state.sending, isFalse);
+      expect(state.composerText, 'next');
+    });
+
     test('sendMessage handles stopped event', () async {
       final client = _clientFor([
         _json(200, {}),
