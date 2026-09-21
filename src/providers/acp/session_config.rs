@@ -280,8 +280,7 @@ fn output_token_option(
 ) -> Option<&SessionConfigOption> {
     let want = value.to_string();
     config_options.iter().find(|o| {
-        OUTPUT_TOKEN_OPTION_IDS.contains(&o.id.0.as_ref())
-            && select_values(o).iter().any(|v| *v == want)
+        OUTPUT_TOKEN_OPTION_IDS.contains(&o.id.0.as_ref()) && select_values(o).contains(&want)
     })
 }
 

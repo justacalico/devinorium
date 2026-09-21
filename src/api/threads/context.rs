@@ -54,15 +54,20 @@ pub struct ContextUsageOut {
     pub has_session: bool,
 }
 
+type ModelCache = HashMap<String, (Instant, Vec<ModelInfo>)>;
+
 /// Model catalogs keyed by provider binary. Mirrors the codex provider's
 /// `MODEL_CACHE`: providers are rebuilt per request, so the cache lives in
 /// the module rather than on the provider instance.
-static MODEL_CACHE: Lazy<Mutex<HashMap<String, (Instant, Vec<ModelInfo>)>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static MODEL_CACHE: Lazy<Mutex<ModelCache>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// The catalog a thread's provider serves, cached briefly because listing
 /// may spawn the provider binary. `None` when the lookup fails.
-async fn model_catalog(state: &AppState, user: &UserRow, provider_id: &str) -> Option<Vec<ModelInfo>> {
+async fn model_catalog(
+    state: &AppState,
+    user: &UserRow,
+    provider_id: &str,
+) -> Option<Vec<ModelInfo>> {
     let key = format!("{provider_id}|{}", user.command_for_provider(provider_id));
     if let Some((at, models)) = MODEL_CACHE.lock().unwrap().get(&key) {
         if at.elapsed() < MODEL_CACHE_TTL {
@@ -167,9 +172,7 @@ pub(crate) async fn check_context_budget(
     if model.max_context_tokens == 0 {
         return Ok(());
     }
-    let history = estimate_history_tokens(state, thread)
-        .await
-        .unwrap_or(0);
+    let history = estimate_history_tokens(state, thread).await.unwrap_or(0);
     let pending = estimate_send_input_tokens(state, input);
     let reserve = thread
         .max_output_tokens
@@ -227,9 +230,7 @@ pub(super) async fn get_context(
         used_tokens: used,
         context_limit: model.as_ref().map(|m| m.max_context_tokens).unwrap_or(0),
         output_limit: model.as_ref().map(|m| m.max_output_tokens).unwrap_or(0),
-        max_output_tokens: thread
-            .max_output_tokens
-            .and_then(|v| u64::try_from(v).ok()),
+        max_output_tokens: thread.max_output_tokens.and_then(|v| u64::try_from(v).ok()),
         has_session: thread.devin_session_id.is_some(),
     })
     .into_response()
@@ -254,11 +255,7 @@ pub(super) async fn reset_context(
         }
     }
     match state.db.reset_thread_context(&id, user.id).await {
-        Ok(0) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError::new("not found")),
-        )
-            .into_response(),
+        Ok(0) => (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response(),
         Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => map_err_internal(e).into_response(),
     }

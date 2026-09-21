@@ -221,7 +221,10 @@ pub fn estimate_message_tokens(
 /// Estimated tokens for a pending send: the composed prompt plus attachments.
 pub fn estimate_send_tokens(prompt: &str, attachments: &[Attachment]) -> u64 {
     estimate_tokens(prompt)
-        + attachments.iter().map(estimate_attachment_tokens).sum::<u64>()
+        + attachments
+            .iter()
+            .map(estimate_attachment_tokens)
+            .sum::<u64>()
         + MESSAGE_OVERHEAD_TOKENS
 }
 
@@ -255,7 +258,10 @@ mod tests {
         // prompt ~3 + attachment text ~4 + wrapper + overhead; must be > prompt-only.
         assert!(tokens > estimate_send_tokens("fix the bug", &[]));
         let bare = estimate_send_tokens("fix the bug", &[]);
-        assert_eq!(bare, estimate_tokens("fix the bug") + MESSAGE_OVERHEAD_TOKENS);
+        assert_eq!(
+            bare,
+            estimate_tokens("fix the bug") + MESSAGE_OVERHEAD_TOKENS
+        );
     }
 
     #[test]
@@ -290,7 +296,7 @@ mod tests {
         let junk = vec![0u8; 75_000];
         let tokens = estimate_attachment_tokens(&att("x.webp", "image/webp", &junk));
         // 75000/750 = 100, clamped up to 85 anyway, plus wrapper.
-        assert!(tokens >= 85 && tokens < 200, "webp estimate: {tokens}");
+        assert!((85..200).contains(&tokens), "webp estimate: {tokens}");
     }
 
     #[test]
@@ -340,12 +346,8 @@ mod tests {
     fn message_estimate_combines_body_and_attachments() {
         let tokens = estimate_message_tokens(400, 0, 0, "[]");
         assert_eq!(tokens, 100 + MESSAGE_OVERHEAD_TOKENS);
-        let with_ref = estimate_message_tokens(
-            400,
-            0,
-            0,
-            r#"[{"kind":"path","filename":"src/main.rs"}]"#,
-        );
+        let with_ref =
+            estimate_message_tokens(400, 0, 0, r#"[{"kind":"path","filename":"src/main.rs"}]"#);
         assert_eq!(with_ref, tokens + PATH_REF_TOKENS);
         // parts JSON covers text + thinking + tool calls: take the max, not
         // the sum, so the columns are not double counted.

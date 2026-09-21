@@ -130,9 +130,7 @@ impl From<ThreadRow> for ThreadOut {
             created_at: t.created_at,
             updated_at: t.updated_at,
             linked_mr,
-            max_output_tokens: t
-                .max_output_tokens
-                .and_then(|v| u64::try_from(v).ok()),
+            max_output_tokens: t.max_output_tokens.and_then(|v| u64::try_from(v).ok()),
             last_message_role: t.last_message_role,
         }
     }

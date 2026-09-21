@@ -13720,8 +13720,10 @@ async fn send_with_file(
     let boundary = "----sendfileboundary";
     let mut body: Vec<u8> = Vec::new();
     body.extend_from_slice(
-        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n{prompt}\r\n")
-            .as_bytes(),
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n{prompt}\r\n"
+        )
+        .as_bytes(),
     );
     body.extend_from_slice(
         format!(
@@ -13834,7 +13836,10 @@ async fn send_rejects_prompt_over_context_limit() {
     // History only counts once a provider session exists, so establish one
     // before inflating the stored rows.
     send_and_wait(&app, &cookie, &tid, "first").await;
-    wait_for_run(&app, &cookie, &tid, |b| !b.contains(r#""status":"running""#)).await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
 
     // History alone pushes past the 200k-token stub limit: 900k chars is
     // roughly 225k tokens.
@@ -13843,7 +13848,10 @@ async fn send_rejects_prompt_over_context_limit() {
     let resp = send_with_file(&app, &cookie, &tid, "hi", "n.txt", "text/plain", b"n").await;
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
     let body = body_str(resp.into_body()).await;
-    assert!(body.contains("context"), "error should name the limit: {body}");
+    assert!(
+        body.contains("context"),
+        "error should name the limit: {body}"
+    );
 
     // The rejected send must not have persisted a user message.
     let count = db.count_messages(&tid).await.unwrap();
@@ -13852,8 +13860,16 @@ async fn send_rejects_prompt_over_context_limit() {
     // A huge text attachment is rejected even with empty history.
     let tid2 = make_thread(&app, &cookie, pid, "big2").await;
     let big_text = vec![b'x'; 800_000];
-    let resp =
-        send_with_file(&app, &cookie, &tid2, "hi", "big.txt", "text/plain", &big_text).await;
+    let resp = send_with_file(
+        &app,
+        &cookie,
+        &tid2,
+        "hi",
+        "big.txt",
+        "text/plain",
+        &big_text,
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(db.count_messages(&tid2).await.unwrap(), 0);
 
@@ -13887,7 +13903,10 @@ async fn resend_counts_full_session_history() {
 
     send_and_wait(&app, &cookie, &tid, "first").await;
     send_and_wait(&app, &cookie, &tid, "second").await;
-    wait_for_run(&app, &cookie, &tid, |b| !b.contains(r#""status":"running""#)).await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
     let msgs = db.list_messages(&tid).await.unwrap();
     assert_eq!(msgs.len(), 4);
     let first_user = msgs[0].id;
@@ -13935,7 +13954,10 @@ async fn context_reset_drops_session_and_usage() {
     send_and_wait(&app, &cookie, &tid, "hello").await;
     // The SSE stream closes before the run task flips to a terminal status;
     // wait for it so the reset below is not refused as "still running".
-    wait_for_run(&app, &cookie, &tid, |b| !b.contains(r#""status":"running""#)).await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
     let ctx = get_context(&app, &cookie, &tid).await;
     assert!(ctx["used_tokens"].as_u64().unwrap() > 0);
     assert_eq!(ctx["has_session"], true);
@@ -14070,9 +14092,7 @@ async fn update_thread_sets_and_clears_output_cap() {
 async fn send_passes_output_cap_to_provider() {
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let (mut state, _db) = app_state().await;
-    state.provider = Arc::new(RecordingProvider {
-        seen: seen.clone(),
-    }) as Arc<dyn Provider>;
+    state.provider = Arc::new(RecordingProvider { seen: seen.clone() }) as Arc<dyn Provider>;
     let app = devinorium::build_app(state);
     let cookie = login(&app).await;
     let pid = create_project(&app, &cookie).await;
