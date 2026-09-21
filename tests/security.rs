@@ -468,7 +468,8 @@ async fn bearer_token_bypasses_csrf_with_cors() {
                 .uri("/api/auth/totp/disable")
                 .header(header::ORIGIN, "https://devinorium.example")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"password":"supersecret123"}"#))
                 .unwrap(),
         )
         .await
@@ -493,7 +494,8 @@ async fn bearer_token_bypasses_csrf_without_origin() {
                 .method("POST")
                 .uri("/api/auth/totp/disable")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                .body(Body::empty())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"password":"supersecret123"}"#))
                 .unwrap(),
         )
         .await

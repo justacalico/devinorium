@@ -22,6 +22,15 @@ use devinorium::{
 const FED_TOKEN: &str = "test-federation-token-0123456789";
 
 async fn make_state(federation_token: Option<&str>) -> (AppState, db::Db) {
+    make_state_as(federation_token, None).await
+}
+
+/// `hub_url` marks the instance as a satellite so the shared federation
+/// token keeps working until the hub issues a node token.
+async fn make_state_as(
+    federation_token: Option<&str>,
+    hub_url: Option<&str>,
+) -> (AppState, db::Db) {
     let dir = tempfile::tempdir().expect("tempdir").keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("fed.db").display());
     let database = db::Db::connect(&db_url).await.expect("db connect");
@@ -56,7 +65,7 @@ async fn make_state(federation_token: Option<&str>) -> (AppState, db::Db) {
         dev_mode: false,
         push_contact: "mailto:test@localhost".into(),
         federation_token: federation_token.map(str::to_string),
-        hub_url: None,
+        hub_url: hub_url.map(str::to_string),
         node_name: "test-hub".into(),
         node_url: None,
     };
@@ -361,18 +370,21 @@ async fn remove_node_requires_owner_and_deletes() {
 
 #[tokio::test]
 async fn proxy_forwards_requests_to_the_node() {
-    // A live satellite: the same app, with the shared token configured.
-    let (sat_state, _sat_db) = make_state(Some(FED_TOKEN)).await;
+    // A live satellite: the same app, marked as a satellite of this hub and
+    // holding the shared token until registration provisions a node token.
+    let (sat_state, sat_db) = make_state_as(Some(FED_TOKEN), Some("http://hub")).await;
     let sat_url = serve(devinorium::build_app(sat_state)).await;
 
     let (app, db) = make_hub(Some(FED_TOKEN)).await;
     let cookie = login(&app).await;
-    db.upsert_federation_node("sat-1", "satellite", &sat_url, "")
+    let node = db
+        .upsert_federation_node("sat-1", "satellite", &sat_url, "")
         .await
         .unwrap();
-
-    // GET through the proxy reaches the satellite's own API; the federation
-    // token authenticates as its `local` owner.
+    // The hub now proxies with the per-node token; the satellite knows it
+    // only after registration, so the first call exercises the shared-token
+    // fallback (pre-upgrade satellite), and a second call after seeding
+    // exercises the node token directly.
     let resp = app
         .clone()
         .oneshot(
@@ -388,6 +400,28 @@ async fn proxy_forwards_requests_to_the_node() {
     let json: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(json["username"], "local");
     assert_eq!(json["is_owner"], true);
+
+    // Once the satellite has persisted its node token, the proxied call
+    // authenticates with it directly — no fallback round trip.
+    sat_db
+        .set_server_setting(
+            devinorium::federation::NODE_TOKEN_KEY,
+            node.token.as_deref().unwrap(),
+        )
+        .await
+        .unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/federation/nodes/sat-1/proxy/api/auth/me")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 
     // The query string rides along.
     let resp = app
@@ -446,7 +480,8 @@ async fn proxy_replaces_credentials_and_tags_the_user() {
 
     let (app, db) = make_hub(Some(FED_TOKEN)).await;
     let cookie = login(&app).await;
-    db.upsert_federation_node("sat-1", "satellite", &sat_url, "")
+    let node = db
+        .upsert_federation_node("sat-1", "satellite", &sat_url, "")
         .await
         .unwrap();
 
@@ -467,9 +502,11 @@ async fn proxy_replaces_credentials_and_tags_the_user() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    // Proxied calls carry the per-node token issued at registration, never
+    // the shared federation secret.
     assert_eq!(
         json["authorization"],
-        serde_json::json!(format!("Bearer {FED_TOKEN}"))
+        serde_json::json!(format!("Bearer {}", node.token.unwrap()))
     );
     assert_eq!(json["proxy_user"], "owner");
     // The caller's session cookie and browser origin never cross over.
