@@ -123,6 +123,21 @@ class _PersonalizationSection extends StatelessWidget {
           value: state.notificationsEnabled,
           onChanged: (v) => state.setNotificationsEnabled(v),
         ),
+        _NotificationPermissionHint(state: state),
+        if (state.pushSupported)
+          _PushTile(state: state)
+        else if (!kIsWeb)
+          const SizedBox.shrink()
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              l.pushNotificationsUnsupported,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -191,6 +206,127 @@ class _DefaultPermissionDropdown extends StatelessWidget {
       onChanged: (v) {
         if (v != null) state.setDefaultPermission(v);
       },
+    );
+  }
+}
+
+/// Warning line under the notifications switch when the platform has the
+/// permission hard-denied — the toggle alone cannot turn them back on.
+class _NotificationPermissionHint extends StatelessWidget {
+  final AppState state;
+
+  const _NotificationPermissionHint({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = l10n(context);
+    final theme = Theme.of(context);
+    return FutureBuilder<String>(
+      future: state.notificationPermissionState(),
+      builder: (context, snapshot) {
+        if (snapshot.data != 'denied') return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            children: [
+              Icon(
+                Icons.notifications_off_outlined,
+                size: 16,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  l.notificationPermissionDenied,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The background-push row: subscription switch, live status, and a test
+/// button once the server accepts the endpoint.
+class _PushTile extends StatefulWidget {
+  final AppState state;
+
+  const _PushTile({required this.state});
+
+  @override
+  State<_PushTile> createState() => _PushTileState();
+}
+
+class _PushTileState extends State<_PushTile> {
+  bool _busy = false;
+
+  Future<void> _test() async {
+    setState(() => _busy = true);
+    try {
+      final sent = await widget.state.sendTestPushNotification();
+      if (!mounted) return;
+      final l = l10n(context);
+      showAppMessage(
+        context,
+        sent > 0 ? l.testNotificationSent : l.testNotificationFailed,
+        kind: sent > 0 ? MessageKind.info : MessageKind.error,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        l10n(context).testNotificationFailed,
+        kind: MessageKind.error,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = l10n(context);
+    final state = widget.state;
+    final status = state.pushStatus;
+    final subtitle = switch (status) {
+      'denied' => l.notificationPermissionDenied,
+      'unsupported' || 'unavailable' => l.pushNotificationsUnsupported,
+      _ => l.pushNotificationsDescription,
+    };
+    return Column(
+      children: [
+        SwitchListTile(
+          title: Text(l.pushNotifications),
+          subtitle: Text(subtitle),
+          value: state.pushEnabled && status == 'on',
+          onChanged: _busy
+              ? null
+              : (v) async {
+                  setState(() => _busy = true);
+                  try {
+                    await state.setPushEnabled(v);
+                  } finally {
+                    if (mounted) setState(() => _busy = false);
+                  }
+                },
+        ),
+        if (status == 'on')
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: TextButton(
+                onPressed: _busy ? null : _test,
+                child: Text(l.sendTestNotification),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -10,7 +10,7 @@ mixin SettingsStore on AppStateBase {
   static final _supportedLanguageCodes =
       AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet();
   @override
-  final _notifications = NotificationService();
+  NotificationService _notifications = NotificationService();
   @override
   Locale get locale => _locale;
   @override
@@ -84,23 +84,94 @@ mixin SettingsStore on AppStateBase {
         ? Locale(code)
         : const Locale('en');
   }
+
+  @override
+  bool _pushEnabled = false;
+  @override
+  bool get pushEnabled => _pushEnabled;
+  @override
+  bool get pushSupported => _notifications.pushSupported;
+  @override
+  String get pushStatus => _notifications.pushStatus;
+  @override
+  Future<String> notificationPermissionState() =>
+      _notifications.permissionState();
+  @override
+  Future<int> sendTestPushNotification() => api.sendTestPush();
+
+  /// The locale tag subscriptions are stored with; pushes render in it
+  /// server-side. "system" resolves to whatever the app currently shows.
+  String get _pushLang => _locale.languageCode;
+
   @override
   Future<void> setNotificationsEnabled(bool enabled) async {
-    _notifications.setNotificationsEnabled(enabled);
+    await _notifications.setNotificationsEnabled(enabled);
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('devinorium_notifications', enabled);
     } catch (_) {}
   }
+
   @override
-  Future<void> _loadNotificationPrefs() async {
+  Future<void> setPushEnabled(bool enabled) async {
+    _pushEnabled = enabled;
+    notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      _notifications.setNotificationsEnabled(
-        prefs.getBool('devinorium_notifications') ?? false,
-      );
+      await prefs.setBool('devinorium_push', enabled);
     } catch (_) {}
+    // Toggling from settings is a user gesture, so the browser permission
+    // prompt is allowed here — unlike the silent re-sync on login.
+    if (_user != null) {
+      await _notifications.syncPush(
+        api: api,
+        lang: _pushLang,
+        enabled: enabled,
+        allowPrompt: true,
+      );
+      notifyListeners();
+    }
+  }
+
+  /// Re-register the browser's push subscription with the active server.
+  /// Called after login and server switches: the same browser endpoint gets
+  /// bound to the current user, and a subscription the browser rotated
+  /// silently is picked back up. Never prompts for permission — a user who
+  /// enabled push before already has an active subscription.
+  @override
+  Future<void> _syncPushSubscription() async {
+    if (!_pushEnabled || _user == null) return;
+    await _notifications.syncPush(api: api, lang: _pushLang, enabled: true);
+    if (!_isDisposed) notifyListeners();
+  }
+
+  /// Drop the subscription while the session is still authenticated. The
+  /// preference is kept so the next login re-subscribes.
+  @override
+  Future<void> _teardownPushSubscription() async {
+    if (!_pushEnabled) return;
+    try {
+      await _notifications.syncPush(api: api, lang: _pushLang, enabled: false);
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> _loadNotificationPrefs() async {
+    var enabled = false;
+    var push = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      enabled = prefs.getBool('devinorium_notifications') ?? false;
+      push = prefs.getBool('devinorium_push') ?? false;
+    } catch (_) {}
+    _pushEnabled = push;
+    _notifications.initialize();
+    _notifications.onOpenThread = (id) => unawaited(openThread(id));
+    // Restoring a stored preference is not a user gesture — browsers may
+    // auto-deny a permission prompt fired outside one, so only the settings
+    // toggle is allowed to ask.
+    await _notifications.setNotificationsEnabled(enabled, allowPrompt: false);
     notifyListeners();
   }
 }

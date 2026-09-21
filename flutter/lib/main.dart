@@ -79,6 +79,7 @@ class _DevinoriumAppState extends State<DevinoriumApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final previous = _lastLifecycleState;
     _lastLifecycleState = state;
+    widget.appState.noteLifecycleState(state);
     if (state == AppLifecycleState.resumed &&
         previous != null &&
         previous != AppLifecycleState.resumed) {

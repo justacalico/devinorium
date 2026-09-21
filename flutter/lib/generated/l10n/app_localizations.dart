@@ -2153,14 +2153,68 @@ abstract class AppLocalizations {
   /// No description provided for @completionNotifications.
   ///
   /// In en, this message translates to:
-  /// **'Notify when a thread completes'**
+  /// **'Notify on thread events'**
   String get completionNotifications;
 
   /// No description provided for @completionNotificationsDescription.
   ///
   /// In en, this message translates to:
-  /// **'Show a browser notification when a thread run finishes while this tab is in the background.'**
+  /// **'Show a notification when a run finishes, fails, stops, or needs your input.'**
   String get completionNotificationsDescription;
+
+  /// No description provided for @pushNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Background notifications'**
+  String get pushNotifications;
+
+  /// No description provided for @pushNotificationsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Deliver notifications to this device even when the app is closed.'**
+  String get pushNotificationsDescription;
+
+  /// No description provided for @pushNotificationsUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Background push is not supported by this browser or server.'**
+  String get pushNotificationsUnsupported;
+
+  /// No description provided for @notificationPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are blocked. Allow them in your browser or system settings to enable them.'**
+  String get notificationPermissionDenied;
+
+  /// No description provided for @sendTestNotification.
+  ///
+  /// In en, this message translates to:
+  /// **'Send test notification'**
+  String get sendTestNotification;
+
+  /// No description provided for @testNotificationSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Test notification sent.'**
+  String get testNotificationSent;
+
+  /// No description provided for @testNotificationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'No push subscription accepted the test notification.'**
+  String get testNotificationFailed;
+
+  /// No description provided for @notificationChannelRuns.
+  ///
+  /// In en, this message translates to:
+  /// **'Thread runs'**
+  String get notificationChannelRuns;
+
+  /// No description provided for @notificationChannelAlerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Attention requests'**
+  String get notificationChannelAlerts;
 
   /// No description provided for @threadCompletedTitle.
   ///
@@ -2185,6 +2239,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{title} encountered an error.'**
   String threadFailedBody(String title);
+
+  /// No description provided for @threadStoppedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Thread stopped'**
+  String get threadStoppedTitle;
+
+  /// No description provided for @threadStoppedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} was stopped.'**
+  String threadStoppedBody(String title);
+
+  /// No description provided for @threadNeedsPermissionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Approval needed'**
+  String get threadNeedsPermissionTitle;
+
+  /// No description provided for @threadNeedsPermissionBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} is waiting for a permission decision.'**
+  String threadNeedsPermissionBody(String title);
+
+  /// No description provided for @threadAskTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Question from agent'**
+  String get threadAskTitle;
+
+  /// No description provided for @threadAskBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} is waiting for answers.'**
+  String threadAskBody(String title);
 
   /// No description provided for @copy.
   ///

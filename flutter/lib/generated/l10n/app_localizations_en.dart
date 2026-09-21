@@ -1204,11 +1204,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notifications => 'Notifications';
 
   @override
-  String get completionNotifications => 'Notify when a thread completes';
+  String get completionNotifications => 'Notify on thread events';
 
   @override
   String get completionNotificationsDescription =>
-      'Show a browser notification when a thread run finishes while this tab is in the background.';
+      'Show a notification when a run finishes, fails, stops, or needs your input.';
+
+  @override
+  String get pushNotifications => 'Background notifications';
+
+  @override
+  String get pushNotificationsDescription =>
+      'Deliver notifications to this device even when the app is closed.';
+
+  @override
+  String get pushNotificationsUnsupported =>
+      'Background push is not supported by this browser or server.';
+
+  @override
+  String get notificationPermissionDenied =>
+      'Notifications are blocked. Allow them in your browser or system settings to enable them.';
+
+  @override
+  String get sendTestNotification => 'Send test notification';
+
+  @override
+  String get testNotificationSent => 'Test notification sent.';
+
+  @override
+  String get testNotificationFailed =>
+      'No push subscription accepted the test notification.';
+
+  @override
+  String get notificationChannelRuns => 'Thread runs';
+
+  @override
+  String get notificationChannelAlerts => 'Attention requests';
 
   @override
   String get threadCompletedTitle => 'Thread completed';
@@ -1224,6 +1255,30 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String threadFailedBody(String title) {
     return '$title encountered an error.';
+  }
+
+  @override
+  String get threadStoppedTitle => 'Thread stopped';
+
+  @override
+  String threadStoppedBody(String title) {
+    return '$title was stopped.';
+  }
+
+  @override
+  String get threadNeedsPermissionTitle => 'Approval needed';
+
+  @override
+  String threadNeedsPermissionBody(String title) {
+    return '$title is waiting for a permission decision.';
+  }
+
+  @override
+  String get threadAskTitle => 'Question from agent';
+
+  @override
+  String threadAskBody(String title) {
+    return '$title is waiting for answers.';
   }
 
   @override

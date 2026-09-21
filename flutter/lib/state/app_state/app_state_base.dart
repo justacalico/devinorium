@@ -199,6 +199,12 @@ abstract class AppStateBase extends ChangeNotifier {
   int get _settingsTopicIndex;
   set _settingsTopicIndex(int value);
   NotificationService get _notifications;
+  set _notifications(NotificationService value);
+  bool get _pushEnabled;
+  set _pushEnabled(bool value);
+  Set<String> get _notifiedRunKeys;
+  Map<String, Set<String>> get _runAttentionNotified;
+  void _maybeNotifyRunEvent(Map<String, dynamic> j);
   Map<int, GitRepoInfo> get _gitRepoInfo;
   Map<int, List<GitBranch>> get _gitBranches;
   Map<int, List<GitWorktree>> get _gitWorktrees;
@@ -363,6 +369,9 @@ abstract class AppStateBase extends ChangeNotifier {
   String get language;
   int get settingsTopicIndex;
   bool get notificationsEnabled;
+  bool get pushEnabled;
+  bool get pushSupported;
+  String get pushStatus;
   bool get hasMoreProjects;
   bool get isLoadingMoreProjects;
   bool get hasMoreThreads;
@@ -453,7 +462,13 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> setLanguage(String language);
   Future<void> _loadLanguage();
   Future<void> setNotificationsEnabled(bool enabled);
+  Future<void> setPushEnabled(bool enabled);
+  Future<String> notificationPermissionState();
+  Future<int> sendTestPushNotification();
   Future<void> _loadNotificationPrefs();
+  Future<void> _syncPushSubscription();
+  Future<void> _teardownPushSubscription();
+  void noteLifecycleState(AppLifecycleState state);
   Future<void> openFilesPanel();
   void closeFilesPanel();
   Future<void> openGitPanel();

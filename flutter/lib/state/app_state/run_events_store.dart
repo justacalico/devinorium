@@ -84,6 +84,8 @@ mixin RunEventsStore on AppStateBase {
     _threadRunStatuses.clear();
     _threadRunAttention.clear();
     _runningThreadIds.clear();
+    _notifiedRunKeys.clear();
+    _runAttentionNotified.clear();
   }
 
   void _onRunEventsClosed(StreamSubscription<SseEvent> sub, Object? error) {
@@ -190,6 +192,7 @@ mixin RunEventsStore on AppStateBase {
       _threadRunAttention.remove(tid);
       _threadRunStatuses[tid] = status;
     }
+    _maybeNotifyRunEvent(j);
     notifyListeners();
   }
 

@@ -79,6 +79,7 @@ fn cache_control_for(path: &str) -> &'static str {
         || path == "favicon.png"
         || path == "flutter_service_worker.js"
         || path.starts_with("icons/")
+        || path.starts_with("push/")
     {
         return "public, max-age=3600";
     }

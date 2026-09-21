@@ -82,6 +82,7 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `DEVINORIUM_MAX_BODY_BYTES` | `16777216` | Max request body size in bytes |
 | `DEVINORIUM_SECURE_COOKIE` | `false` | Set the `Secure` cookie flag (enable over HTTPS) |
 | `DEVINORIUM_ALLOWED_ORIGIN` | (unset or empty) | Explicit allowed origin for CSRF checks |
+| `DEVINORIUM_PUSH_CONTACT` | `mailto:devinorium@localhost` | Contact URI in VAPID JWTs for Web Push. Set a real `mailto:` or `https:` address; some push providers reject sends without one |
 | `DEVINORIUM_LOCAL_TOKEN` | (unset) | Bundled desktop mode: requests bearing this token map onto the passwordless `local` owner account, and the process exits when stdin closes. Set automatically by the desktop app; not for normal servers |
 
 Tailscale serve is configured from the UI instead of env vars: Settings →
@@ -110,6 +111,26 @@ run it under `flutter run`, point the app at a binary you built yourself:
 cargo build --release
 flutter run --dart-define=DEVINORIUM_SERVER_BINARY="$PWD/target/release/devinorium"
 ```
+
+## Notifications
+
+Notifications cover every thread, not just the open one: run completion,
+failure, stops, permission prompts, and agent questions all surface through
+the global run-events stream. Enable them under Settings → Personalization.
+
+- **Foreground/backgrounded app**: local notifications via the OS
+  (`flutter_local_notifications` on Android and iOS, `notify-send` /
+  `osascript` / PowerShell on desktop, the Notifications API on web). On
+  Android 13+ the app requests `POST_NOTIFICATIONS` at runtime.
+- **Closed browser or PWA**: the server sends Web Push (VAPID + RFC 8291
+  encryption) to a dedicated `push/` service worker, so notifications arrive
+  with the tab closed. Requires HTTPS (or `localhost`) and a browser with
+  Push API support. Push text is localized per subscription language and
+  dead endpoints are pruned automatically.
+- Tapping a notification opens the relevant thread, including cold starts
+  launched by a notification.
+
+Set `DEVINORIUM_PUSH_CONTACT` to a real contact URI for reliable delivery.
 
 ## Testing
 

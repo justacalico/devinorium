@@ -21,6 +21,7 @@ pub mod messages;
 pub mod plans;
 pub mod project_groups;
 pub mod projects;
+pub mod push;
 pub mod server_settings;
 pub mod sessions;
 pub mod thread_groups;

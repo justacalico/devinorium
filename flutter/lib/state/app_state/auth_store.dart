@@ -375,8 +375,11 @@ mixin AuthStore on AppStateBase {
     _threadStores.clear();
     _setActiveStore(null);
     // Kill terminals while the old connection is still authenticated —
-    // after logout/server removal the kills would be rejected.
+    // after logout/server removal the kills would be rejected. Same for
+    // the push subscription: the logged-out browser should not keep
+    // receiving this account's notifications.
     await terminalStore.clear();
+    await _teardownPushSubscription();
     try {
       await api.logout();
     } catch (_) {}
@@ -413,8 +416,11 @@ mixin AuthStore on AppStateBase {
     stopGitRefresh();
     try {
       // Terminals belong to the current server — kill them before the
-      // active connection changes underneath us.
+      // active connection changes underneath us. Same for the push
+      // subscription: it must be removed while the old server is still
+      // authenticated, or it keeps pushing this account's events.
       await terminalStore.clear();
+      await _teardownPushSubscription();
       final ok = await multiServerState.setActiveServer(serverId);
       if (!ok) throw StateError('server not found');
       // The bundled server may have died while a remote profile was active;
@@ -452,6 +458,7 @@ mixin AuthStore on AppStateBase {
         stopHealthChecks();
         stopGitRefresh();
         await terminalStore.clear();
+        await _teardownPushSubscription();
       }
       await multiServerState.removeServer(serverId);
       if (wasActive) {
@@ -626,6 +633,13 @@ mixin AuthStore on AppStateBase {
     startHealthChecks();
     startGitRefresh();
     _ensureRunEvents();
+    // Re-register the browser push endpoint for this server+user and, on a
+    // push-notification cold start, jump straight to the tapped thread.
+    unawaited(_syncPushSubscription());
+    final deepLinkThread = _notifications.initialThreadId();
+    if (deepLinkThread != null) {
+      unawaited(openThread(deepLinkThread));
+    }
     // Machines power the composer's `@` picker; warm the cache so it is
     // ready without visiting settings first.
     unawaited(loadMachines());
