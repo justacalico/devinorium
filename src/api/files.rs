@@ -558,10 +558,10 @@ async fn upload(
         if filename.is_empty() || filename.len() > 255 {
             continue;
         }
-        if bytes.len() > 16 * 1024 * 1024 {
+        if bytes.len() > state.config.max_body_bytes {
             return (
                 StatusCode::PAYLOAD_TOO_LARGE,
-                Json(crate::api::ApiError::new("file too large (max 16 MiB)")),
+                Json(crate::api::ApiError::new("file too large")),
             )
                 .into_response();
         }

@@ -238,10 +238,10 @@ pub fn build_app(state: AppState) -> Router {
             "/api/auth/totp/disable",
             axum::routing::post(api::auth::totp_disable),
         )
-        // Allow multipart fields up to 10 MiB so the per-attachment 8 MiB
-        // check in the send handler is the effective gate (axum's default
-        // multipart field limit is 2 MiB, which would shadow it).
-        .route_layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024))
+        // Bound multipart fields by the configured body limit; axum's
+        // default 2 MiB field limit would otherwise reject large
+        // attachments before the handlers' own checks run.
+        .route_layer(axum::extract::DefaultBodyLimit::max(max_body))
         .route_layer(from_fn_with_state(
             state.clone(),
             auth::middleware::require_auth,
