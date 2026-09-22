@@ -99,7 +99,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libsqlite3-dev pkg-config libgit2-dev cmake
+          sudo apt-get install -y -qq pkg-config
 
       - name: Install cocogitto
         run: cargo install cocogitto --version 7.0.0
@@ -269,7 +269,7 @@ jobs:
         if: matrix.target == 'server'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libsqlite3-dev pkg-config libgit2-dev cmake
+          sudo apt-get install -y -qq pkg-config
 
       - name: Build server binary
         if: matrix.target == 'server'
