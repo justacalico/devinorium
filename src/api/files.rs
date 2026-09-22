@@ -7,20 +7,28 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, Weak};
 
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
-static FILE_WRITE_LOCKS: Lazy<StdMutex<HashMap<String, Arc<Mutex<()>>>>> =
+static FILE_WRITE_LOCKS: Lazy<StdMutex<HashMap<String, Weak<Mutex<()>>>>> =
     Lazy::new(|| StdMutex::new(HashMap::new()));
 
 fn file_write_lock(target: &Path) -> Arc<Mutex<()>> {
     let key = target.to_string_lossy().to_string();
     let mut map = FILE_WRITE_LOCKS.lock().unwrap();
-    map.entry(key)
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone()
+    if let Some(lock) = map.get(&key).and_then(Weak::upgrade) {
+        return lock;
+    }
+    // Entries expire once no writer holds them; sweep the dead ones so the
+    // map does not grow without bound across many distinct paths.
+    if map.len() >= 4096 {
+        map.retain(|_, v| v.strong_count() > 0);
+    }
+    let lock = Arc::new(Mutex::new(()));
+    map.insert(key, Arc::downgrade(&lock));
+    lock
 }
 
 use axum::extract::{Multipart, Query, State};
@@ -233,7 +241,7 @@ async fn list_dir(
         Ok(rd) => rd,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
-    let mut out = Vec::new();
+    let mut entries_sorted = Vec::new();
     while let Ok(Some(entry)) = entries.next_entry().await {
         let name = entry.file_name().to_string_lossy().to_string();
         // Skip hidden attachment and git metadata entries. Non-owners also
@@ -243,16 +251,14 @@ async fn list_dir(
         {
             continue;
         }
-        let ft = entry.file_type().await.ok();
-        let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
-        out.push(DirEntry {
-            name,
-            is_dir: ft.map(|t| t.is_dir()).unwrap_or(false),
-            size,
-            git_status: None,
-        });
+        let is_dir = entry
+            .file_type()
+            .await
+            .map(|t| t.is_dir())
+            .unwrap_or(false);
+        entries_sorted.push((is_dir, name, entry));
     }
-    out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+    entries_sorted.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
 
     let git_statuses = if state.git.is_enabled() {
         state.git.file_statuses(&target).await.unwrap_or_default()
@@ -265,18 +271,23 @@ async fn list_dir(
         .filter(|&l| l > 0)
         .map(|l| (l as usize).min(crate::api::pagination::Pagination::MAX_LIMIT as usize));
     let offset = q.offset.unwrap_or(0).max(0) as usize;
-    if offset > 0 || limit.is_some() {
-        out = out
-            .into_iter()
-            .skip(offset)
-            .take(limit.unwrap_or(usize::MAX))
-            .collect();
-    }
+    let page: Vec<_> = entries_sorted
+        .into_iter()
+        .skip(offset)
+        .take(limit.unwrap_or(usize::MAX))
+        .collect();
 
-    for e in &mut out {
-        if let Some(status) = git_statuses.get(&e.name) {
-            e.git_status = Some(status.clone());
-        }
+    // Stat only the entries that survive pagination; on huge directories the
+    // metadata call is the expensive part.
+    let mut out = Vec::with_capacity(page.len());
+    for (is_dir, name, entry) in page {
+        let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+        out.push(DirEntry {
+            git_status: git_statuses.get(&name).cloned(),
+            name,
+            is_dir,
+            size,
+        });
     }
 
     Json(out).into_response()

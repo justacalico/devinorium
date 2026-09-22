@@ -22,7 +22,8 @@ impl super::Db {
     pub async fn list_machines(&self) -> anyhow::Result<Vec<MachineRow>> {
         let rows = sqlx::query_as::<_, MachineRow>(
             "SELECT id, name, host, port, password, created_at, updated_at
-             FROM machines ORDER BY name COLLATE NOCASE, id",
+             FROM machines ORDER BY name COLLATE NOCASE, id
+             LIMIT 1000",
         )
         .fetch_all(self.pool())
         .await?;

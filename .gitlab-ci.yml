@@ -16,12 +16,11 @@ stages:
   - release
 
 variables:
-  GH_TOKEN: $GH_TOKEN
   GLAB_ENABLE_CI_AUTOLOGIN: "true"
   GLAB_VERSION: "1.113.0"
   GIT_DEPTH: "0"
   GIT_STRATEGY: "fetch"
-  GIT_CLEAN_FLAGS: "-ffdx -e .ci-tools/ -e target/"
+  GIT_CLEAN_FLAGS: "-ffdx -e target/"
 
 .github-common: &github-common
   tags: [linux-truenas]
@@ -36,8 +35,6 @@ github-sync:
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG
-  variables:
-    GH_TOKEN: $GH_TOKEN
   before_script:
     - apk add --no-cache bash git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
@@ -94,8 +91,6 @@ github-dispatch:
   timeout: 3h
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
-  variables:
-    GH_TOKEN: $GH_TOKEN
   before_script:
     - apk add --no-cache bash curl jq git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
@@ -114,8 +109,6 @@ github-mr-build:
   timeout: 3h
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  variables:
-    GH_TOKEN: $GH_TOKEN
   before_script:
     - apk add --no-cache bash curl jq git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
@@ -169,7 +162,6 @@ github-release-sync:
     - if: $CI_PIPELINE_SOURCE == "trigger"
     - if: $CI_PIPELINE_SOURCE == "api"
   variables:
-    GH_TOKEN: $GH_TOKEN
     GLAB_ENABLE_CI_AUTOLOGIN: "true"
     GLAB_VERSION: "1.113.0"
   before_script:
