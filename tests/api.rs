@@ -14854,3 +14854,48 @@ async fn send_passes_output_cap_to_provider() {
     send_and_wait(&app, &cookie, &tid, "without cap").await;
     assert_eq!(seen.lock().unwrap().as_slice(), &[Some(4096), None]);
 }
+#[tokio::test]
+#[cfg(unix)]
+async fn file_manager_delete_rejects_midpath_symlink() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    // A mid-path symlink escapes the browse root when canonicalized, so the
+    // delete must be refused and the victim left untouched.
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("victim.txt"), "keep").unwrap();
+    let work = home.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::os::unix::fs::symlink(outside.path(), work.join("portal")).unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/files/delete?path=work/portal/victim.txt",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(outside.path().join("victim.txt").exists());
+    assert!(work.join("portal").symlink_metadata().is_ok());
+
+    // The normal path still works: a real file under a real dir deletes.
+    std::fs::write(work.join("doomed.txt"), "x").unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/files/delete?path=work/doomed.txt",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(!work.join("doomed.txt").exists());
+}

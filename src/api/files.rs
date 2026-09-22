@@ -31,6 +31,67 @@ fn file_write_lock(target: &Path) -> Arc<Mutex<()>> {
     lock
 }
 
+/// Pin a canonical directory's ancestor chain so a component cannot be
+/// swapped for a symlink between the scope check and the delete. On Linux
+/// every component is opened relative to the previous fd with O_NOFOLLOW
+/// and the returned path goes through /proc/self/fd, so the removal stays
+/// anchored to the inodes that were verified. On systems without procfs we
+/// fall back to re-checking that every ancestor is still a real directory
+/// at call time — a swap then fails the delete instead of redirecting it.
+#[cfg(target_os = "linux")]
+fn pin_delete_dir(
+    canon_parent: &Path,
+) -> std::io::Result<(Option<rustix::fd::OwnedFd>, PathBuf)> {
+    use rustix::fs::{openat, Mode, OFlags};
+    use std::os::unix::io::AsRawFd;
+
+    if !Path::new("/proc/self/fd").is_dir() {
+        return real_dir_parent(canon_parent).map(|p| (None, p));
+    }
+    let flags = OFlags::PATH | OFlags::NOFOLLOW | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    let mut fd = openat(rustix::fs::CWD, "/", flags, Mode::empty())?;
+    for comp in canon_parent.components() {
+        let std::path::Component::Normal(name) = comp else {
+            continue;
+        };
+        fd = openat(&fd, name, flags, Mode::empty())?;
+    }
+    let pinned = PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()));
+    Ok((Some(fd), pinned))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pin_delete_dir(canon_parent: &Path) -> std::io::Result<(Option<()>, PathBuf)> {
+    real_dir_parent(canon_parent).map(|p| (None, p))
+}
+
+#[cfg(unix)]
+fn real_dir_parent(canon_parent: &Path) -> std::io::Result<PathBuf> {
+    for anc in canon_parent.ancestors().skip(1) {
+        let meta = std::fs::symlink_metadata(anc)?;
+        if !meta.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "path component is not a directory",
+            ));
+        }
+    }
+    Ok(canon_parent.to_path_buf())
+}
+
+#[cfg(windows)]
+fn real_dir_parent(canon_parent: &Path) -> std::io::Result<PathBuf> {
+    Ok(canon_parent.to_path_buf())
+}
+
+fn multipart_err(e: axum::extract::multipart::MultipartError) -> Response {
+    (
+        e.status(),
+        Json(crate::api::ApiError::new(e.body_text())),
+    )
+        .into_response()
+}
+
 use axum::extract::{Multipart, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -546,12 +607,17 @@ async fn upload(
     let mut thread_id: Option<String> = None;
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(f)) => f,
+            Ok(None) => break,
+            Err(e) => return multipart_err(e),
+        };
         let name = field.name().unwrap_or("").to_string();
         let filename = field.file_name().unwrap_or("").to_string();
         let bytes = match field.bytes().await {
             Ok(b) => b,
-            Err(e) => return crate::api::map_err_internal(e).into_response(),
+            Err(e) => return multipart_err(e),
         };
         if name == "path" {
             dest_dir_rel = Some(String::from_utf8_lossy(&bytes).to_string());
@@ -730,14 +796,36 @@ async fn delete(
     {
         return invalid();
     }
-    let meta = match tokio::fs::symlink_metadata(&target).await {
+    let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+        return invalid();
+    };
+    // `resolve` scope-checked the path when it was read; a mid-path
+    // component swapped for a symlink since then would redirect the delete
+    // outside the authorized root, so pin the parent first.
+    let canon_parent = match tokio::fs::canonicalize(parent).await {
+        Ok(p) => p,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+    if !user.is_owner {
+        let mut allowed = scope::non_owner_roots(&state, &user).await;
+        allowed.push(root.clone());
+        if scope::outside_scope(&canon_parent, &allowed, &scope::db_file_paths(&state)) {
+            return invalid();
+        }
+    }
+    let (_pinned, op_dir) = match pin_delete_dir(&canon_parent) {
+        Ok(v) => v,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+    let op_target = op_dir.join(name);
+    let meta = match tokio::fs::symlink_metadata(&op_target).await {
         Ok(m) => m,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
     let result = if meta.is_dir() {
-        tokio::fs::remove_dir_all(&target).await
+        tokio::fs::remove_dir_all(&op_target).await
     } else {
-        tokio::fs::remove_file(&target).await
+        tokio::fs::remove_file(&op_target).await
     };
     if let Err(e) = result {
         return crate::api::map_err_internal(e).into_response();
