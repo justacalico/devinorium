@@ -228,21 +228,8 @@ async fn update(
         }
     }
 
-    if let Some(disabled) = req.disabled {
-        if let Err(e) = state.db.set_user_disabled(id, disabled).await {
-            return map_err_internal(e).into_response();
-        }
-        let _ = state
-            .db
-            .audit(
-                Some(user.id),
-                if disabled { "user.disable" } else { "user.enable" },
-                &serde_json::json!({"target_user_id": id}),
-                None,
-            )
-            .await;
-    }
-
+    // Apply the password change first: it is the part that can fail before
+    // any mutation, so a failure cannot leave a half-applied update behind.
     if let Some(new_password) = req.password.as_deref() {
         let hash = match password::hash(new_password) {
             Ok(h) => h,
@@ -260,6 +247,21 @@ async fn update(
             .audit(
                 Some(user.id),
                 "user.password_reset",
+                &serde_json::json!({"target_user_id": id}),
+                None,
+            )
+            .await;
+    }
+
+    if let Some(disabled) = req.disabled {
+        if let Err(e) = state.db.set_user_disabled(id, disabled).await {
+            return map_err_internal(e).into_response();
+        }
+        let _ = state
+            .db
+            .audit(
+                Some(user.id),
+                if disabled { "user.disable" } else { "user.enable" },
                 &serde_json::json!({"target_user_id": id}),
                 None,
             )
