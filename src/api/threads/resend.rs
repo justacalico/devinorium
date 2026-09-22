@@ -118,9 +118,11 @@ pub(super) async fn resend(
     } else {
         regen_input(&anchor, fields.mode)
     };
-    resolve_context_refs(&state, &thread, &mut input).await;
+    resolve_context_refs(&state, &user, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
-    resolve_machine_refs(&state, &mut input).await;
+    if let Err(resp) = resolve_machine_refs(&state, &user, &mut input).await {
+        return resp;
+    }
 
     // Nothing to send: the resolved prompt and every reference came up
     // empty (e.g. a refs-only message whose paths no longer exist).

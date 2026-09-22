@@ -1,7 +1,8 @@
 //! Git host connection settings API.
 
-use axum::extract::{Query, State};
+use axum::extract::{Query, Request, State};
 use axum::http::StatusCode;
+use axum::middleware::{from_fn, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, Router};
 use axum::Json;
@@ -34,6 +35,16 @@ pub fn router() -> Router<AppState> {
             "/api/git-connections/gitlab/merge-requests/actions",
             post(gitlab_merge_request_action),
         )
+        .route_layer(from_fn(owner_only))
+}
+
+/// Git host connections drive the operator's shared `glab` identity, so
+/// every route here is owner-only.
+async fn owner_only(req: Request, next: Next) -> Response {
+    match req.extensions().get::<CurrentUser>() {
+        Some(CurrentUser(user)) if user.is_owner => next.run(req).await,
+        _ => (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response(),
+    }
 }
 
 #[derive(Debug, Deserialize)]

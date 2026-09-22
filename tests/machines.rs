@@ -137,6 +137,7 @@ async fn make_app() -> (Router, db::Db, MachineGrants) {
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (devinorium::build_app(state), database, machine_grants)
 }
@@ -470,7 +471,8 @@ async fn machine_write_routes_require_owner() {
         create_machine(&app, &member, r#"{"name":"m","host":"h","password":"p"}"#).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // Members can still list for the composer picker, without secrets.
+    // The list is owner-only too: referencing a machine mints a VNC
+    // control grant, so members never enumerate the operator's hosts.
     let (status, _) =
         create_machine(&app, &cookie, r#"{"name":"m","host":"h","password":"p"}"#).await;
     assert_eq!(status, StatusCode::CREATED);
@@ -479,9 +481,7 @@ async fn machine_write_routes_require_owner() {
         .oneshot(authed("GET", "/api/machines", &member, ""))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_str(resp.into_body()).await;
-    assert!(!body.contains("\"password\""), "body: {body}");
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
     let mid = db.list_machines().await.unwrap()[0].id;
     for (method, uri, body) in [
@@ -914,6 +914,56 @@ fn bearer_token(reply: &str) -> String {
         .and_then(|s| s.split_whitespace().next())
         .expect("token in prompt")
         .to_string()
+}
+
+#[tokio::test]
+async fn machine_ids_on_send_require_owner() {
+    let (app, db, _g) = make_app().await;
+    let cookie = login(&app).await;
+    let machine = db
+        .create_machine("desktop", "127.0.0.1", 5900, "sekrit")
+        .await
+        .unwrap();
+
+    db.create_user(db::NewUser {
+        username: "member".into(),
+        password_hash: auth::password::hash("memberpass123").unwrap(),
+        is_owner: false,
+    })
+    .await
+    .unwrap();
+    let member = login_as(&app, "member", "memberpass123").await;
+    let pid = create_project(&app, &member).await;
+    let tid = make_thread(&app, &member, pid, "T").await;
+
+    let resp = app
+        .clone()
+        .oneshot(multipart(
+            format!("/api/threads/{tid}/send/stream"),
+            &member,
+            &[("prompt", "reboot it"), ("machine_ids", "[1]")],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // And the owner's own send still resolves the reference.
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+    let resp = app
+        .clone()
+        .oneshot(multipart(
+            format!("/api/threads/{tid}/send/stream"),
+            &cookie,
+            &[
+                ("prompt", "reboot it"),
+                ("machine_ids", &format!("[{}]", machine.id)),
+            ],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(done_reply(&body_str(resp.into_body()).await).contains("\"desktop\""));
 }
 
 #[tokio::test]

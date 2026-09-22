@@ -16,12 +16,11 @@ stages:
   - release
 
 variables:
-  GH_TOKEN: $GH_TOKEN
   GLAB_ENABLE_CI_AUTOLOGIN: "true"
   GLAB_VERSION: "1.113.0"
   GIT_DEPTH: "0"
   GIT_STRATEGY: "fetch"
-  GIT_CLEAN_FLAGS: "-ffdx -e .ci-tools/ -e target/"
+  GIT_CLEAN_FLAGS: "-ffdx -e target/"
 
 .github-common: &github-common
   tags: [linux-truenas]
@@ -36,8 +35,6 @@ github-sync:
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG
-  variables:
-    GH_TOKEN: $GH_TOKEN
   before_script:
     - apk add --no-cache bash git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
@@ -48,16 +45,20 @@ github-sync:
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
         LOCAL_SHA=$(git rev-parse "$CI_COMMIT_TAG")
         REMOTE_SHA=$(git ls-remote --tags github "refs/tags/$CI_COMMIT_TAG" | awk '{print $1}' | head -n1)
+        # Only a real push triggers a fresh run; an already-mirrored tag
+        # legitimately reuses the run that already exists for its commit.
+        SINCE=""
         if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" = "$LOCAL_SHA" ]; then
           echo "Tag $CI_COMMIT_TAG already mirrored to GitHub at $REMOTE_SHA, skipping"
         else
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           git push -f github "$CI_COMMIT_TAG"
         fi
         # v* tags trigger the release build on GitHub; watch it so a failed
         # release build fails this pipeline.
         if echo "$CI_COMMIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
           SHA=$(git rev-parse "$CI_COMMIT_TAG^{commit}")
-          RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push || true)
+          RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push ${SINCE:+--since "$SINCE"} || true)
           if [ -z "$RUN_ID" ]; then
             echo "No GitHub run found for tag $CI_COMMIT_TAG" >&2
             exit 1
@@ -65,11 +66,18 @@ github-sync:
           bash scripts/watch-github-run.sh "$RUN_ID"
         fi
       else
+        SHA=$(git rev-parse HEAD)
+        # A push that transfers nothing triggers no new run; only gate on
+        # the trigger time when the ref actually moved.
+        REMOTE_MAIN=$(git ls-remote github refs/heads/main | awk '{print $1}')
+        SINCE=""
+        if [ "$REMOTE_MAIN" != "$SHA" ]; then
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        fi
         git push github HEAD:main
         # Watch the GitHub build for the pushed commit so a failed job on
         # GitHub also fails this pipeline.
-        SHA=$(git rev-parse HEAD)
-        RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push --branch main || true)
+        RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push --branch main ${SINCE:+--since "$SINCE"} || true)
         if [ -z "$RUN_ID" ]; then
           echo "No GitHub run found for pushed commit $SHA" >&2
           exit 1
@@ -83,8 +91,6 @@ github-dispatch:
   timeout: 3h
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
-  variables:
-    GH_TOKEN: $GH_TOKEN
   before_script:
     - apk add --no-cache bash curl jq git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
@@ -103,8 +109,6 @@ github-mr-build:
   timeout: 3h
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  variables:
-    GH_TOKEN: $GH_TOKEN
   before_script:
     - apk add --no-cache bash curl jq git github-cli openssh-client
     - sh scripts/setup-ssh-key.sh GITHUB_SSH_PRIVATE_KEY github.com
@@ -158,7 +162,6 @@ github-release-sync:
     - if: $CI_PIPELINE_SOURCE == "trigger"
     - if: $CI_PIPELINE_SOURCE == "api"
   variables:
-    GH_TOKEN: $GH_TOKEN
     GLAB_ENABLE_CI_AUTOLOGIN: "true"
     GLAB_VERSION: "1.113.0"
   before_script:
@@ -167,3 +170,23 @@ github-release-sync:
     - sh scripts/setup-ssh-key.sh GITLAB_RELEASE_SSH_KEY gitlab.com
   script:
     - bash scripts/sync-from-github.sh
+
+docker-image:
+  stage: release
+  tags: [linux-truenas]
+  image: docker:29
+  services:
+    - docker:29-dind
+  resource_group: docker-image
+  timeout: 2h
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  variables:
+    DOCKER_BUILDKIT: "1"
+    IMAGE: $CI_REGISTRY_IMAGE/devinorium
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build --pull --tag "$IMAGE:$CI_COMMIT_TAG" --tag "$IMAGE:latest" .
+    - docker push "$IMAGE:$CI_COMMIT_TAG"
+    - docker push "$IMAGE:latest"

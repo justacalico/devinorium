@@ -136,13 +136,19 @@ pub(super) async fn respond_permission(
         return StatusCode::NOT_FOUND;
     }
 
+    // Look up the entry before removing it: a request_id that belongs to a
+    // different user or thread must not pop (and thereby cancel) the real
+    // pending prompt.
     let sender = {
         let mut map = state.pending_permission_requests.lock().await;
-        map.remove(&request_id)
+        match map.get(&request_id) {
+            Some(p) if p.user_id == user.id && p.thread_id == thread_id => map.remove(&request_id),
+            _ => None,
+        }
     };
 
     match sender {
-        Some(pending) if pending.user_id == user.id && pending.thread_id == thread_id => {
+        Some(pending) => {
             if let Some(option_id) = body.option_id {
                 match pending.sender.send(option_id) {
                     Ok(()) => StatusCode::OK,
@@ -265,16 +271,17 @@ pub(super) async fn respond_ask(
 
     let sender = {
         let mut map = state.pending_ask_requests.lock().await;
-        map.remove(&request_id)
+        match map.get(&request_id) {
+            Some(p) if p.user_id == user.id && p.thread_id == thread_id => map.remove(&request_id),
+            _ => None,
+        }
     };
 
     match sender {
-        Some(pending) if pending.user_id == user.id && pending.thread_id == thread_id => {
-            match pending.sender.send(body.answers) {
-                Ok(()) => StatusCode::OK,
-                Err(_) => StatusCode::GONE,
-            }
-        }
+        Some(pending) => match pending.sender.send(body.answers) {
+            Ok(()) => StatusCode::OK,
+            Err(_) => StatusCode::GONE,
+        },
         _ => StatusCode::NOT_FOUND,
     }
 }

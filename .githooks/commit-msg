@@ -39,5 +39,15 @@ if echo "$subject" | grep -qE "^($types)(\([^)]+\))?!?: "; then
   exit 0
 fi
 
-# Prepend `misc:` to the subject.
-sed -i "0,/^$(echo "$subject" | sed 's/[\/.*+?|\\&]/\\&/g')$/s/^/misc: /" "$msg_file"
+# Prepend `misc:` to the first non-blank, non-comment line. awk keeps the
+# subject literal so regex metacharacters cannot break the match, and it
+# avoids the GNU-vs-BSD `sed -i` difference entirely.
+tmp_file="${msg_file}.tmp.$$"
+awk '
+  !done && $0 !~ /^[[:space:]]*$/ && $0 !~ /^#/ {
+    $0 = "misc: " $0
+    done = 1
+  }
+  { print }
+' "$msg_file" > "$tmp_file"
+mv "$tmp_file" "$msg_file"

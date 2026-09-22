@@ -55,7 +55,7 @@ pub enum EndpointClass {
 }
 
 impl EndpointClass {
-    fn cost(self) -> f64 {
+    pub(crate) fn cost(self) -> f64 {
         match self {
             EndpointClass::AuthSensitive => 20.0,
             EndpointClass::TotpVerify => 15.0,
@@ -177,6 +177,16 @@ pub struct WeightedRateLimit {
     pub class: EndpointClass,
 }
 
+/// Top the request's tab up to the `UnauthProbe` price after an
+/// authentication check fails. `upfront` is what the global classifier
+/// already charged for this request's shape, so every credential failure
+/// costs exactly the probe rate no matter which headers it carried.
+/// Returns false when the bucket is dry and the caller should answer 429.
+pub(crate) async fn charge_auth_failure(limiter: &RateLimiter, ip: &str, upfront: f64) -> bool {
+    let owed = (EndpointClass::UnauthProbe.cost() - upfront).max(0.0);
+    owed <= 0.0 || limiter.check("unauth", ip, owed).await
+}
+
 /// Middleware: enforce weighted rate limiting.
 ///
 /// The `class` determines the cost. If the request has a valid session
@@ -201,7 +211,11 @@ pub async fn weighted_rate_limit(cfg: WeightedRateLimit, req: Request, next: Nex
 pub fn classify(req: &Request) -> EndpointClass {
     let path = req.uri().path();
     let method = req.method();
-    let has_cookie = req.headers().get(header::COOKIE).is_some();
+    // Any `Cookie` header used to count as authenticated, so `Cookie: x=y`
+    // laundered a probe into a cheap write. Only the session cookie counts;
+    // even that is just the upfront cost since `require_auth` debits the
+    // probe rate when the credential actually fails.
+    let has_cookie = crate::auth::session::extract_cookie_token(req).is_some();
     let has_bearer = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -531,7 +545,7 @@ mod tests {
         let req = Request::builder()
             .method(Method::POST)
             .uri("/api/auth/logout")
-            .header(axum::http::header::COOKIE, "session=abc")
+            .header(axum::http::header::COOKIE, "devinorium_session=abc")
             .body(axum::body::Body::empty())
             .unwrap();
         assert!(matches!(classify(&req), EndpointClass::AuthRead));
@@ -542,7 +556,7 @@ mod tests {
         let req = Request::builder()
             .method(Method::GET)
             .uri("/api/threads")
-            .header(axum::http::header::COOKIE, "session=abc")
+            .header(axum::http::header::COOKIE, "devinorium_session=abc")
             .body(axum::body::Body::empty())
             .unwrap();
         assert!(matches!(classify(&req), EndpointClass::AuthRead));
@@ -553,7 +567,7 @@ mod tests {
         let req = Request::builder()
             .method(Method::POST)
             .uri("/api/threads")
-            .header(axum::http::header::COOKIE, "session=abc")
+            .header(axum::http::header::COOKIE, "devinorium_session=abc")
             .body(axum::body::Body::empty())
             .unwrap();
         assert!(matches!(classify(&req), EndpointClass::AuthWrite));
@@ -564,7 +578,7 @@ mod tests {
         let req = Request::builder()
             .method(Method::POST)
             .uri("/api/users")
-            .header(axum::http::header::COOKIE, "session=abc")
+            .header(axum::http::header::COOKIE, "devinorium_session=abc")
             .body(axum::body::Body::empty())
             .unwrap();
         assert!(matches!(classify(&req), EndpointClass::AuthWrite));
@@ -585,6 +599,17 @@ mod tests {
         let req = Request::builder()
             .method(Method::DELETE)
             .uri("/api/threads/123")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert!(matches!(classify(&req), EndpointClass::UnauthProbe));
+    }
+
+    #[test]
+    fn classify_post_with_random_cookie_is_probe() {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/threads")
+            .header(axum::http::header::COOKIE, "x=y; prefs=dark")
             .body(axum::body::Body::empty())
             .unwrap();
         assert!(matches!(classify(&req), EndpointClass::UnauthProbe));

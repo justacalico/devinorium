@@ -114,6 +114,11 @@ abstract class AppStateBase extends ChangeNotifier {
   set _gitPanelProjectId(int? value);
   int get _gitPanelSeq;
   set _gitPanelSeq(int value);
+  // Bumped by `_resetServerState`; async loads capture it at entry and
+  // compare after each await so a stale response cannot write old-server
+  // data into the reset state.
+  int get _serverSeq;
+  set _serverSeq(int value);
   Map<String, FileDiff?> get _gitDiffs;
   Set<String> get _gitDiffsLoading;
   Set<String> get _gitDiffsExpanded;
@@ -200,6 +205,11 @@ abstract class AppStateBase extends ChangeNotifier {
   set _activeStore(ThreadStore? value);
   String get _globalError;
   set _globalError(String value);
+  Map<String, String> get _globalErrors;
+  // Errors a periodic or background task owns; its clear must not erase
+  // failures other subsystems reported.
+  void _setKeyedError(String key, String message);
+  void _clearKeyedError(String key);
   String get _lastThreadError;
   set _lastThreadError(String value);
   Locale get _locale;
@@ -559,6 +569,11 @@ abstract class AppStateBase extends ChangeNotifier {
   bool get _switchingServer;
   set _switchingServer(bool value);
   Future<void> _resetServerState();
+  // Routes a mid-session expired credential to login; true when [e] was an
+  // auth failure. Mid-session only a 401 counts — a 403 can be a real
+  // owner-only denial and must not sign the user out.
+  bool _checkAuthFailure(Object e);
+  Future<void> _routeToLogin();
   Future<void> _loadUserAndData();
   Future<void> _loadUserAndDataWithNodeFallback();
   Future<void> _loadUserThreadsChunk({bool reset = false});
@@ -572,6 +587,8 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadSettingsData();
   Future<void> createUser({required String username, required String password});
   Future<void> setUserDisabled(int id, bool disabled);
+  Future<String?> changePassword(String current, String newPassword);
+  Future<String?> resetUserPassword(int id, String password);
   Future<void> logout();
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
@@ -613,9 +630,9 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> stopThread();
   Future<void> resetThreadContext();
   Future<void> setThreadMaxOutputTokens(int? tokens);
-  Future<void> openTotpSetup();
+  Future<void> openTotpSetup(String proof);
   Future<void> verifyTotp(String code);
-  Future<void> disableTotp();
+  Future<void> disableTotp(String proof);
   Future<void> respondToPermissionRequest(String? optionId);
   Future<void> respondToAskRequest(Map<String, dynamic>? answers);
   Future<void> loadGitRepoInfo(int projectId, {bool force = false});

@@ -591,6 +591,7 @@ class _ServerUpdateSectionState extends State<_ServerUpdateSection> {
           final reason = switch (check.reason) {
             'local_mode' => l.serverUpdateLocalMode,
             'dev_mode' => l.serverUpdateDevMode,
+            'unwritable_exe_dir' => l.serverUpdateUnwritableExeDir,
             _ => l.serverUpdateUnsupported,
           };
           status = Text(

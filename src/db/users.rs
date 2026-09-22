@@ -89,9 +89,36 @@ impl super::Db {
         secret: Option<String>,
         enabled: bool,
     ) -> anyhow::Result<()> {
-        sqlx::query("UPDATE users SET totp_secret = ?, totp_enabled = ? WHERE id = ?")
+        sqlx::query(
+            "UPDATE users SET totp_secret = ?, totp_enabled = ?, \
+             totp_pending_secret = NULL WHERE id = ?",
+        )
+        .bind(secret)
+        .bind(enabled)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_user_password(&self, user_id: i64, hash: String) -> anyhow::Result<()> {
+        sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+            .bind(hash)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Stage (or clear) the pending TOTP secret produced by `/totp/setup`
+    /// without touching the active factor.
+    pub async fn set_totp_pending(
+        &self,
+        user_id: i64,
+        secret: Option<String>,
+    ) -> anyhow::Result<()> {
+        sqlx::query("UPDATE users SET totp_pending_secret = ? WHERE id = ?")
             .bind(secret)
-            .bind(enabled)
             .bind(user_id)
             .execute(self.pool())
             .await?;

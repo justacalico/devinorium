@@ -194,6 +194,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get password => 'Password';
 
   @override
+  String get changePassword => 'Change password';
+
+  @override
+  String get currentPassword => 'Current password';
+
+  @override
+  String get newPassword => 'New password';
+
+  @override
+  String get confirmNewPassword => 'Confirm new password';
+
+  @override
+  String get passwordsDoNotMatch => 'Passwords do not match';
+
+  @override
+  String get resetPassword => 'Reset password';
+
+  @override
+  String resetPasswordHint(String name) {
+    return 'Set a new password for \"$name\". All of their sessions are revoked.';
+  }
+
+  @override
   String get test => 'Test';
 
   @override
@@ -577,6 +600,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get disable2fa => 'Disable 2FA';
 
   @override
+  String get totpProofPrompt =>
+      'Enter your current password or 2FA code to continue.';
+
+  @override
+  String get passwordOrTotpCode => 'Password or 2FA code';
+
+  @override
   String get twoFactorAuthentication => 'Two-factor authentication';
 
   @override
@@ -720,6 +750,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get serverUpdateUnsupported =>
       'No prebuilt server release exists for this platform';
+
+  @override
+  String get serverUpdateUnwritableExeDir =>
+      'Self-update cannot write to the executable directory; update the package instead';
 
   @override
   String get topics => 'Topics';
@@ -1641,9 +1675,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get machinesEmpty => 'No machines configured.';
 
   @override
-  String get machinesOnlyOwner => 'Only the owner can manage machines.';
-
-  @override
   String get machineAdd => 'Add machine';
 
   @override
@@ -2029,4 +2060,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get maxOutputTokensInvalid => 'Enter a value between 1 and 4,000,000';
+
+  @override
+  String get editorUnsavedSwitchProjects =>
+      'Editor has unsaved changes. Save or discard them before switching projects.';
+
+  @override
+  String get editorUnsavedNewProject =>
+      'Editor has unsaved changes. Save or discard them before creating a new project.';
+
+  @override
+  String get editorUnsavedDeleteProject =>
+      'Editor has unsaved changes. Save or discard them before deleting this project.';
+
+  @override
+  String get editorUnsavedSwitch =>
+      'Editor has unsaved changes. Save or discard them before switching.';
+
+  @override
+  String get projectNotFoundAfterClone => 'Project not found after clone.';
+
+  @override
+  String get threadTitleFallback => 'Thread';
+
+  @override
+  String get webSocketClosed => 'WebSocket closed';
 }

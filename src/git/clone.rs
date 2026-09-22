@@ -88,6 +88,7 @@ pub async fn clone_repo(
     db: &crate::db::Db,
     config: &crate::config::Config,
     user_id: i64,
+    is_owner: bool,
     remote_url: &str,
 ) -> Result<PathBuf, CloneError> {
     let parsed = parse_remote_url(remote_url)?;
@@ -152,8 +153,6 @@ pub async fn clone_repo(
         }
     }
 
-    let clone_url = build_clone_url(git_remote, user_id, &parsed).await;
-
     let git_bin = git.binary().ok_or(CloneError::NotEnabled)?;
     let mut cmd = Command::new(git_bin);
     cmd.env("LC_ALL", "C")
@@ -166,9 +165,23 @@ pub async fn clone_repo(
         .stderr(Stdio::piped())
         .arg("clone")
         .arg("--")
-        .arg(&clone_url)
+        .arg(&parsed.clean_url)
         .arg(&resolved_target);
 
+    // Credentials ride in an env-only `http.extraHeader` scoped to the
+    // remote host, so the token never lands in remote.origin.url or
+    // .git/config where agents running in the project could read it.
+    let auth = clone_auth(git_remote, user_id, is_owner, &parsed).await;
+    if let Some(header) = &auth {
+        cmd.env("GIT_CONFIG_COUNT", "1")
+            .env(
+                "GIT_CONFIG_KEY_0",
+                format!("http.https://{}/.extraHeader", parsed.host_with_port),
+            )
+            .env("GIT_CONFIG_VALUE_0", header);
+    }
+
+    let authed = auth.is_some();
     match run_git_clone(&mut cmd, Duration::from_secs(300)).await {
         Ok(()) => {}
         Err(e) => {
@@ -176,6 +189,25 @@ pub async fn clone_repo(
             let _ = tokio::fs::remove_dir_all(&resolved_target).await;
             return Err(e);
         }
+    }
+
+    if authed {
+        // Future fetch/pull/push need credentials too. Point the repo at
+        // glab's credential helper so the token is never stored in
+        // .git/config, only the helper command is.
+        let mut cfg = Command::new(git_bin);
+        cfg.current_dir(&resolved_target)
+            .env("LC_ALL", "C")
+            .env("HOME", &config.home_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .arg("config")
+            .arg(format!(
+                "credential.https://{}/.helper",
+                parsed.host_with_port
+            ))
+            .arg("!glab auth git-credential");
+        let _ = cfg.output().await;
     }
 
     let final_path = tokio::fs::canonicalize(&resolved_target)
@@ -378,29 +410,34 @@ fn decode_and_validate_segment(s: &str) -> Result<String, CloneError> {
     Ok(decoded)
 }
 
-async fn build_clone_url(
+/// Build the `Authorization` header for a private GitLab clone over HTTPS.
+///
+/// The token is read from the operator's `glab` config, so only the owner
+/// may borrow that identity; everyone else clones anonymously. Non-HTTPS
+/// remotes get no header.
+async fn clone_auth(
     git_remote: &GitRemoteService,
     user_id: i64,
+    is_owner: bool,
     parsed: &ParsedRemote,
-) -> String {
-    if parsed.is_gitlab {
-        match git_remote
-            .gitlab_token_for_host(user_id, &parsed.host)
-            .await
-        {
-            Ok(Some(token)) => {
-                return format!(
-                    "https://oauth2:{}@{}/{}",
-                    token, parsed.host_with_port, parsed.raw_project_path
-                );
-            }
-            Ok(None) => {}
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to get gitlab token; using plain clone");
-            }
-        }
+) -> Option<String> {
+    if !is_owner || !parsed.is_gitlab || !parsed.clean_url.starts_with("https://") {
+        return None;
     }
-    parsed.clean_url.clone()
+    let token = match git_remote
+        .gitlab_token_for_host(user_id, &parsed.host)
+        .await
+    {
+        Ok(Some(token)) => token,
+        Ok(None) => return None,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to get gitlab token; using plain clone");
+            return None;
+        }
+    };
+    use base64::Engine;
+    let basic = base64::engine::general_purpose::STANDARD.encode(format!("oauth2:{token}"));
+    Some(format!("Authorization: Basic {basic}"))
 }
 
 async fn unique_project_name(
@@ -571,5 +608,55 @@ mod tests {
             redact_token("fatal: https://oauth2:abc123@gitlab.com/foo"),
             "fatal: https://oauth2:***@gitlab.com/foo"
         );
+    }
+
+    /// Fake `glab` that answers `config get token` with a fixed token.
+    #[cfg(unix)]
+    fn write_token_glab(dir: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let bin_dir = dir.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let bin = bin_dir.join("glab");
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\nif [ \"$1\" = \"config\" ] && [ \"$2\" = \"get\" ]; then echo glpat-secret; exit 0; fi\nexit 1\n",
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&bin, perms).unwrap();
+        bin
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn clone_auth_owner_gets_basic_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let svc = GitRemoteService::with_glab_bin(dir.path(), Some(write_token_glab(dir.path())));
+        let parsed = parse_remote_url("https://gitlab.com/o/r.git").unwrap();
+        let header = clone_auth(&svc, 1, true, &parsed).await.unwrap();
+        let b64 = header.strip_prefix("Authorization: Basic ").unwrap();
+        use base64::Engine;
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap();
+        assert_eq!(String::from_utf8(raw).unwrap(), "oauth2:glpat-secret");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn clone_auth_skips_non_owner_and_non_https() {
+        let dir = tempfile::tempdir().unwrap();
+        let svc = GitRemoteService::with_glab_bin(dir.path(), Some(write_token_glab(dir.path())));
+
+        // Non-owners never borrow the operator's GitLab identity.
+        let parsed = parse_remote_url("https://gitlab.com/o/r.git").unwrap();
+        assert!(clone_auth(&svc, 1, false, &parsed).await.is_none());
+
+        // Tokens are only attached to HTTPS remotes.
+        let ssh = parse_remote_url("git@gitlab.com:o/r.git").unwrap();
+        assert!(clone_auth(&svc, 1, true, &ssh).await.is_none());
+        let http = parse_remote_url("http://gitlab.com/o/r.git").unwrap();
+        assert!(clone_auth(&svc, 1, true, &http).await.is_none());
     }
 }

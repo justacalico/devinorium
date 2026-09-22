@@ -10,7 +10,13 @@
 
 use std::collections::HashSet;
 
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+
+use crate::api::ApiError;
 use crate::db::machines::MachineRow;
+use crate::db::UserRow;
 use crate::AppState;
 
 use super::send::SendInput;
@@ -50,7 +56,22 @@ pub(crate) fn parse_machine_ids(raw: &str) -> Result<Vec<i64>, String> {
 /// Resolve `input.machine_ids` into `input.machine_refs`. Machines that no
 /// longer exist are dropped silently — the composer may hold a stale id —
 /// and each survivor is recorded in `input.att_meta` as a `machine` chip.
-pub(crate) async fn resolve_machine_refs(state: &AppState, input: &mut SendInput) {
+///
+/// Machine control is owner-only: the machines table holds the operator's
+/// hosts and a run-scoped grant would let any user drive them over VNC.
+pub(crate) async fn resolve_machine_refs(
+    state: &AppState,
+    user: &UserRow,
+    input: &mut SendInput,
+) -> Result<(), Response> {
+    if !input.machine_ids.is_empty() && !user.is_owner {
+        input.machine_ids.clear();
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ApiError::new("machine references are owner-only")),
+        )
+            .into_response());
+    }
     // Dedupe and cap again: a multipart body may repeat the field and skip
     // the per-field limit in the parser.
     let mut seen = HashSet::new();
@@ -72,6 +93,7 @@ pub(crate) async fn resolve_machine_refs(state: &AppState, input: &mut SendInput
         }));
         input.machine_refs.push(machine);
     }
+    Ok(())
 }
 
 /// Build the prompt sent to the provider: the user's text plus a block

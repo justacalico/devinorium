@@ -167,8 +167,12 @@ class _ProviderCommandRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        _ProviderCommandField(state: state, providerId: provider.id),
-        const SizedBox(height: 12),
+        // Provider commands execute on the host, so editing and testing them
+        // is owner-only.
+        if (state.isOwner) ...[
+          _ProviderCommandField(state: state, providerId: provider.id),
+          const SizedBox(height: 12),
+        ],
         _ProviderVersionRow(state: state, providerId: provider.id),
       ],
     );

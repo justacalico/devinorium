@@ -95,11 +95,13 @@ mixin ThreadListStore on AppStateBase {
     }
     if (!_userThreadsHasMore || _loadingMoreUserThreads) return;
     _loadingMoreUserThreads = true;
+    final gen = _serverSeq;
     try {
       final chunk = await api.listThreads(
         limit: _threadChunkSize,
         offset: _userThreadsOffset,
       );
+      if (gen != _serverSeq) return;
       if (reset) {
         _threads = chunk;
       } else {
@@ -107,10 +109,15 @@ mixin ThreadListStore on AppStateBase {
       }
       _userThreadsOffset += chunk.length;
       _userThreadsHasMore = chunk.length == _threadChunkSize;
+      _clearKeyedError('threads');
     } catch (e) {
+      _checkAuthFailure(e);
+      _setKeyedError('threads', '$e');
       debugLogFailure('threadList.loadUserThreadsChunk', e);
+      notifyListeners();
+    } finally {
+      _loadingMoreUserThreads = false;
     }
-    _loadingMoreUserThreads = false;
   }
 
   @override
@@ -126,19 +133,26 @@ mixin ThreadListStore on AppStateBase {
     final hasMore = _projectThreadsHasMore[projectId] ?? true;
     if (!hasMore || (_loadingMoreProjectThreads[projectId] ?? false)) return;
     _loadingMoreProjectThreads[projectId] = true;
+    final gen = _serverSeq;
     try {
       final chunk = await api.listThreadsForProject(
         projectId,
         limit: _threadChunkSize,
         offset: offset,
       );
+      if (gen != _serverSeq) return;
       _mergeThreads(chunk);
       _projectThreadOffsets[projectId] = offset + chunk.length;
       _projectThreadsHasMore[projectId] = chunk.length == _threadChunkSize;
+      _clearKeyedError('threads');
     } catch (e) {
+      _checkAuthFailure(e);
+      _setKeyedError('threads', '$e');
       debugLogFailure('threadList.loadProjectThreadsChunk', e);
+      notifyListeners();
+    } finally {
+      _loadingMoreProjectThreads[projectId] = false;
     }
-    _loadingMoreProjectThreads[projectId] = false;
   }
 
   @override
@@ -199,6 +213,7 @@ mixin ThreadListStore on AppStateBase {
     } catch (e) {
       // A failed poll must not erase state the lifecycle stream already
       // delivered; keep the last known ids instead.
+      _checkAuthFailure(e);
       debugLogFailure('threadList.refreshRunningThreads', e);
     }
     notifyListeners();
@@ -290,11 +305,13 @@ mixin ThreadListStore on AppStateBase {
     _threadReferences = [];
     _machineReferences = [];
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final provider = selectedProvider;
       // Switch the catalog before creating so the stored model is one the
       // provider actually offers.
       await ensureModelsFor(provider);
+      if (gen != _serverSeq) return;
       final model = _selectedModel;
       final reasoning = _selectedReasoning;
       final t = await api.createThread(
@@ -305,6 +322,7 @@ mixin ThreadListStore on AppStateBase {
         permissionMode: _selectedPermission,
         reasoningEffort: reasoning.isEmpty ? null : reasoning,
       );
+      if (gen != _serverSeq) return;
       final store = _createStore(
         t.id,
         projectId: targetId,
@@ -317,6 +335,7 @@ mixin ThreadListStore on AppStateBase {
       _threadStores[t.id] = store;
       _setActiveStore(store);
       await store.load();
+      if (gen != _serverSeq) return;
       await refreshThreadsAndGroups();
     } catch (e) {
       debugLogFailure('threadList.createNewThread', e);
@@ -333,11 +352,13 @@ mixin ThreadListStore on AppStateBase {
     _activeThreadId = id;
     _threadOpening = true;
     notifyListeners();
+    final gen = _serverSeq;
     try {
       final results = await Future.wait([
         api.getThread(id, includeMessages: false),
         api.getThreadProject(id),
       ]);
+      if (gen != _serverSeq) return;
       final detail = results[0] as ThreadDetail;
       _mergeThreads([detail.thread]);
       notifyListeners();
@@ -358,6 +379,7 @@ mixin ThreadListStore on AppStateBase {
       // Load the threads list for the active project.
       _globalError = '';
       await refreshThreadsAndGroups();
+      if (gen != _serverSeq) return;
 
       // Dispose the outgoing store first: a still-pending send restores its
       // text into previous.composerText and the draft map, so the
@@ -387,15 +409,16 @@ mixin ThreadListStore on AppStateBase {
 
       // If the backend is already running this thread, reconnect to it.
       await store.resume();
+      if (gen != _serverSeq) return;
 
       final currentDetail = store.detail.valueOrNull;
       if (currentDetail != null &&
           currentDetail.totalMessages > 0 &&
           currentDetail.messages.isEmpty) {
         await store.ensureInitialMessagesLoaded();
+        if (gen != _serverSeq) return;
       }
 
-      _threadOpening = false;
       if (stopwatch != null && store.globalError.isEmpty) {
         stopwatch.stop();
         debugPrint('Thread $id opened in ${stopwatch.elapsedMilliseconds}ms');
@@ -403,10 +426,13 @@ mixin ThreadListStore on AppStateBase {
       unawaited(refreshLinkedMergeRequest());
     } catch (e) {
       stopwatch?.stop();
-      _threadOpening = false;
       debugLogFailure('threadList.openThread', e, threadId: id);
-      _globalError = '$e';
-      notifyListeners();
+      if (gen == _serverSeq && !_checkAuthFailure(e)) {
+        _globalError = '$e';
+        notifyListeners();
+      }
+    } finally {
+      _threadOpening = false;
     }
   }
 

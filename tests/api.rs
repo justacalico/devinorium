@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
-use axum::http::{header, Request, StatusCode};
+use axum::http::{header, HeaderMap, Request, StatusCode};
 use axum::Router;
 
 use tower::ServiceExt;
@@ -443,6 +443,7 @@ async fn app_state() -> (AppState, db::Db) {
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (state, database)
 }
@@ -3693,6 +3694,56 @@ async fn file_manager_rejects_traversal() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn file_manager_delete_removes_symlink_not_target() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let real_dir = home.join("real_dir");
+    std::fs::create_dir_all(&real_dir).unwrap();
+    std::fs::write(real_dir.join("keep.txt"), "keep").unwrap();
+    std::os::unix::fs::symlink(&real_dir, home.join("link")).unwrap();
+
+    for path in ["link", "link/"] {
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "DELETE",
+                &format!("/api/files/delete?path={path}"),
+                &cookie,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "path: {path}");
+        assert!(!home.join("link").exists(), "link should be gone");
+        assert!(
+            real_dir.join("keep.txt").exists(),
+            "target contents must survive"
+        );
+        std::os::unix::fs::symlink(&real_dir, home.join("link")).unwrap();
+    }
+
+    // The browse root itself and `.`/`..` final components are refused.
+    for path in ["", ".", "..", "real_dir/.", "real_dir/.."] {
+        let uri = if path.is_empty() {
+            "/api/files/delete".to_string()
+        } else {
+            format!("/api/files/delete?path={path}")
+        };
+        let resp = app
+            .clone()
+            .oneshot(authed("DELETE", &uri, &cookie, ""))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "path: {path}");
+    }
+    assert!(real_dir.join("keep.txt").exists());
+}
+
 #[tokio::test]
 async fn file_manager_list_paginates() {
     let (app, _db) = make_app().await;
@@ -6124,6 +6175,269 @@ async fn file_manager_lists_absolute_path_with_spaces() {
 }
 
 #[tokio::test]
+async fn file_manager_confines_non_owner_to_project_roots() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // The managed project root defaults to the server home dir.
+    let inside = home.join("scratch.txt");
+    std::fs::write(&inside, "hello").unwrap();
+    let creds = home.join(".ssh");
+    std::fs::create_dir_all(&creds).unwrap();
+    std::fs::write(creds.join("id_rsa"), "secret").unwrap();
+
+    // Absolute path outside every authorized root -> rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/files/content?path=/etc/hostname",
+            &alice_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Credential locations are rejected even inside an authorized root.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?path={}", creds.join("id_rsa").display()),
+            &alice_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Absolute path inside the managed root -> allowed.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files/content?path={}", inside.display()),
+            &alice_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The owner is unaffected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            "/api/files/content?path=/etc/hostname",
+            &owner_cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn file_manager_non_owner_listing_hides_credentials() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".env"), "SECRET=1").unwrap();
+    std::fs::write(home.join("notes.txt"), "hi").unwrap();
+
+    // Non-owner listing of the managed root hides credential entries.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/files", &alice_cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("notes.txt"), "body: {body}");
+    assert!(!body.contains(".ssh"), "body: {body}");
+    assert!(!body.contains(".env"), "body: {body}");
+
+    // The owner still sees them.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/files", &owner_cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains(".ssh"), "body: {body}");
+    assert!(body.contains(".env"), "body: {body}");
+}
+
+#[tokio::test]
+async fn file_manager_non_owner_write_outside_roots_rejected() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    let outside = tempfile::tempdir().unwrap().keep().join("evil.txt");
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/files/content",
+            &alice_cookie,
+            &format!(r#"{{"path":"{}","content":"x"}}"#, outside.display()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(!outside.exists());
+
+    // Inside the managed root works.
+    let inside = home.join("ok.txt");
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/files/content",
+            &alice_cookie,
+            &format!(r#"{{"path":"{}","content":"x"}}"#, inside.display()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn file_manager_non_owner_upload_outside_roots_rejected() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    let outside = tempfile::tempdir().unwrap().keep();
+    let boundary = "----fmboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n{}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"evil.txt\"\r\nContent-Type: text/plain\r\n\r\nhi\r\n--{boundary}--\r\n",
+        outside.display()
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/files")
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &alice_cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(!outside.join("evil.txt").exists());
+}
+
+#[tokio::test]
+async fn non_owner_project_create_is_confined_to_managed_roots() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // Relative path lands under the managed project root.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            r#"{"name":"mine","path":"mine"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+
+    // Absolute path outside the managed roots is rejected.
+    let outside = tempfile::tempdir().unwrap().keep();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            &format!(
+                r#"{{"name":"escape","path":"{}"}}"#,
+                outside.join("x").display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // The managed root itself and credential locations are rejected.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            &format!(r#"{{"name":"root","path":"{}"}}"#, home.display()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &alice_cookie,
+            &format!(
+                r#"{{"name":"ssh","path":"{}"}}"#,
+                home.join(".ssh").display()
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // The owner can still register an arbitrary directory.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/projects",
+            &owner_cookie,
+            &format!(r#"{{"name":"anywhere","path":"{}"}}"#, outside.display()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
 async fn file_manager_uploads_to_absolute_dir_with_spaces() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
@@ -6807,6 +7121,113 @@ async fn thread_accepts_each_valid_permission_mode() {
 }
 
 #[tokio::test]
+async fn permission_response_to_other_thread_keeps_pending_request() {
+    let (state, db) = app_state().await;
+    let app = devinorium::build_app(state.clone());
+    let cookie = login(&app).await;
+    let owner_id = db.get_user_by_username("owner").await.unwrap().unwrap().id;
+    let pid_a = create_project(&app, &cookie).await;
+    let pid_b = create_project(&app, &cookie).await;
+    let tid_a = make_thread(&app, &cookie, pid_a, "a").await;
+    let tid_b = make_thread(&app, &cookie, pid_b, "b").await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    state.pending_permission_requests.lock().await.insert(
+        "req-1".to_string(),
+        devinorium::PendingPermissionRequest {
+            user_id: owner_id,
+            thread_id: tid_a.clone(),
+            sender: tx,
+        },
+    );
+
+    // A response posted under a different thread must not consume the entry.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_b}/permission/req-1"),
+            &cookie,
+            r#"{"option_id":"yes"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert!(state
+        .pending_permission_requests
+        .lock()
+        .await
+        .contains_key("req-1"));
+
+    // The owning thread consumes it normally.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_a}/permission/req-1"),
+            &cookie,
+            r#"{"option_id":"yes"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(rx.await.unwrap(), "yes");
+}
+
+#[tokio::test]
+async fn ask_response_to_other_thread_keeps_pending_request() {
+    let (state, db) = app_state().await;
+    let app = devinorium::build_app(state.clone());
+    let cookie = login(&app).await;
+    let owner_id = db.get_user_by_username("owner").await.unwrap().unwrap().id;
+    let pid_a = create_project(&app, &cookie).await;
+    let pid_b = create_project(&app, &cookie).await;
+    let tid_a = make_thread(&app, &cookie, pid_a, "a").await;
+    let tid_b = make_thread(&app, &cookie, pid_b, "b").await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    state.pending_ask_requests.lock().await.insert(
+        "req-1".to_string(),
+        devinorium::PendingAskRequest {
+            user_id: owner_id,
+            thread_id: tid_a.clone(),
+            sender: tx,
+        },
+    );
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_b}/ask/req-1"),
+            &cookie,
+            r#"{"answers":{"x":"y"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert!(state
+        .pending_ask_requests
+        .lock()
+        .await
+        .contains_key("req-1"));
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid_a}/ask/req-1"),
+            &cookie,
+            r#"{"answers":{"x":"y"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let answers = rx.await.unwrap().unwrap();
+    assert_eq!(answers["x"], "y");
+}
+
+#[tokio::test]
 async fn disabled_user_cannot_access_protected_routes() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
@@ -7070,6 +7491,71 @@ async fn update_provider_persists_and_validates() {
 }
 
 #[tokio::test]
+async fn provider_commands_are_owner_only() {
+    let (app, db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // A non-owner cannot set a provider command or the per-provider map.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &alice_cookie,
+            r#"{"provider_command":"/tmp/evil"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &alice_cookie,
+            r#"{"provider_commands":{"opencode":"/tmp/evil"}}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // Switching providers is still allowed.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            "/api/auth/me",
+            &alice_cookie,
+            r#"{"provider_id":"opencode"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "body: {}",
+        body_str(resp.into_body()).await
+    );
+
+    // A custom command written directly into a non-owner's row is ignored:
+    // the built-in default is used instead.
+    sqlx::query(
+        "UPDATE users SET provider_commands = '{\"opencode\":\"/nonexistent/evil\"}' WHERE username = 'alice'",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+    let alice = db.get_user_by_username("alice").await.unwrap().unwrap();
+    assert_eq!(
+        alice.command_for_provider("opencode"),
+        devinorium::providers::default_command("opencode")
+    );
+}
+
+#[tokio::test]
 async fn provider_health_rejects_invalid_input() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;
@@ -7099,6 +7585,41 @@ async fn provider_health_rejects_invalid_input() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn provider_health_requires_owner() {
+    let (app, _db) = make_app().await;
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    // A non-owner must not be able to probe (i.e. spawn) a binary. `true`
+    // would exit 0 if it ran, so a success-shaped answer proves a spawn.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &alice_cookie,
+            r#"{"provider_id":"devin-cli","command":"true"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // The owner can still run the check.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            "/api/providers/health",
+            &owner_cookie,
+            r#"{"provider_id":"devin-cli","command":"/nonexistent/devin"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
 
 #[tokio::test]
@@ -8657,6 +9178,47 @@ async fn git_connections_list_login_logout() {
 }
 
 #[tokio::test]
+async fn git_connections_routes_require_owner() {
+    let (mut state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let glab = write_fake_glab(&home);
+    state.git_remote = Arc::new(GitRemoteService::with_glab_bin(home, Some(glab)));
+
+    let app = devinorium::build_app(state);
+    let owner_cookie = login(&app).await;
+    create_user(&app, &owner_cookie, "mallory", "mallorypass123").await;
+    let cookie = login_as(&app, "mallory", "mallorypass123").await;
+
+    for (method, uri, body) in [
+        ("GET", "/api/git-connections", ""),
+        ("POST", "/api/git-connections/gitlab", "{}"),
+        ("DELETE", "/api/git-connections/gitlab", "{}"),
+        (
+            "GET",
+            "/api/git-connections/gitlab/proxy?path=projects/foo",
+            "",
+        ),
+        (
+            "GET",
+            "/api/git-connections/gitlab/pipelines?project=g/p&iid=1",
+            "",
+        ),
+        (
+            "POST",
+            "/api/git-connections/gitlab/merge-requests/actions",
+            r#"{"project":"g/p","iid":1,"action":"merge"}"#,
+        ),
+    ] {
+        let status = request_status(app.clone(), &cookie, method, uri, body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}");
+    }
+
+    // The owner is unaffected.
+    let status = request_status(app, &owner_cookie, "GET", "/api/git-connections", "").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn git_connections_login_fails_when_glab_not_authed() {
     let (mut state, _db) = app_state().await;
     let home = state.config.home_dir.clone();
@@ -9320,6 +9882,147 @@ async fn git_connections_merge_request_action_requires_auth() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Bearer-token request without a session cookie, as federation calls use.
+fn bearer(method: &str, uri: &str, token: &str, body: &str) -> Request<Body> {
+    let mut b = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, "localhost")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"));
+    if !body.is_empty() {
+        b = b.header("content-type", "application/json");
+    }
+    b.body(Body::from(body.to_string())).unwrap()
+}
+
+#[tokio::test]
+async fn federation_register_issues_stable_node_token() {
+    let (mut state, db) = app_state().await;
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some("shared-secret-token-16".into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+
+    let body = r#"{"id":"node-1","name":"box","base_url":"http://10.0.0.2:7878"}"#;
+    let resp = app
+        .clone()
+        .oneshot(bearer(
+            "POST",
+            "/api/federation/register",
+            "shared-secret-token-16",
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let token = v["node_token"].as_str().unwrap().to_string();
+    assert_eq!(token.len(), 64);
+
+    // Heartbeat re-registration keeps the same token.
+    let resp = app
+        .clone()
+        .oneshot(bearer(
+            "POST",
+            "/api/federation/register",
+            "shared-secret-token-16",
+            body,
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["node_token"].as_str().unwrap(), token);
+
+    // The token lands on the node row for the proxy to use, and the node
+    // list payload does not leak it.
+    let node = db.get_federation_node("node-1").await.unwrap().unwrap();
+    assert_eq!(node.token.as_deref(), Some(token.as_str()));
+    let cookie = login(&app).await;
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/federation/nodes", &cookie, ""))
+        .await
+        .unwrap();
+    let listing = body_str(resp.into_body()).await;
+    assert!(!listing.contains(&token));
+
+    // A wrong shared token cannot register.
+    let resp = app
+        .oneshot(bearer(
+            "POST",
+            "/api/federation/register",
+            "wrong-token-00000000",
+            body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn federation_shared_token_does_not_own_hub_api() {
+    // On a node that is not a satellite, the shared federation token must
+    // not authenticate the general API — it only gates registration.
+    let (mut state, _db) = app_state().await;
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some("shared-secret-token-16".into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+
+    for (method, uri) in [
+        ("GET", "/api/auth/me"),
+        ("GET", "/api/threads"),
+        ("POST", "/api/projects"),
+        ("GET", "/api/machines"),
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(bearer(method, uri, "shared-secret-token-16", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "{method} {uri}");
+    }
+}
+
+#[tokio::test]
+async fn federation_node_token_scopes_satellite_access() {
+    let (mut state, db) = app_state().await;
+    devinorium::auth::bootstrap::run_local(&db).await.unwrap();
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some("shared-secret-token-16".into());
+    cfg.hub_url = Some("http://hub.example.com".into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+
+    // Unprovisioned satellite: the shared token still authenticates
+    // proxied calls as the local owner.
+    let resp = app
+        .clone()
+        .oneshot(bearer("GET", "/api/auth/me", "shared-secret-token-16", ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["username"], "local");
+
+    // Once the hub has issued a node token the shared secret is dead on
+    // this node's API.
+    db.set_server_setting("federation_node_token", "node-secret-abc")
+        .await
+        .unwrap();
+    let resp = app
+        .clone()
+        .oneshot(bearer("GET", "/api/auth/me", "shared-secret-token-16", ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    let resp = app
+        .oneshot(bearer("GET", "/api/auth/me", "node-secret-abc", ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 fn git_cli(args: &[&str], cwd: &std::path::Path) {
@@ -14131,4 +14834,149 @@ async fn send_passes_output_cap_to_provider() {
     assert_eq!(resp.status(), StatusCode::OK);
     send_and_wait(&app, &cookie, &tid, "without cap").await;
     assert_eq!(seen.lock().unwrap().as_slice(), &[Some(4096), None]);
+}
+#[tokio::test]
+#[cfg(unix)]
+async fn file_manager_delete_rejects_midpath_symlink() {
+    let (state, _db) = app_state().await;
+    let home = state.config.home_dir.clone();
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    // A mid-path symlink escapes the browse root when canonicalized, so the
+    // delete must be refused and the victim left untouched.
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("victim.txt"), "keep").unwrap();
+    let work = home.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::os::unix::fs::symlink(outside.path(), work.join("portal")).unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/files/delete?path=work/portal/victim.txt",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(outside.path().join("victim.txt").exists());
+    assert!(work.join("portal").symlink_metadata().is_ok());
+
+    // The normal path still works: a real file under a real dir deletes.
+    std::fs::write(work.join("doomed.txt"), "x").unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "DELETE",
+            "/api/files/delete?path=work/doomed.txt",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(!work.join("doomed.txt").exists());
+}
+#[tokio::test]
+async fn federation_proxy_retries_shared_token_on_upstream_403() {
+    const SHARED: &str = "shared-secret-token-16";
+
+    // Satellite stub: 403s the node token, accepts the shared credential.
+    let satellite = axum::Router::new().route(
+        "/healthz",
+        axum::routing::get(|headers: HeaderMap| async move {
+            match headers
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|t| t.strip_prefix("Bearer "))
+            {
+                Some(SHARED) => StatusCode::OK,
+                _ => StatusCode::FORBIDDEN,
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, satellite).await.unwrap();
+    });
+
+    let (mut state, db) = app_state().await;
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some(SHARED.into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let node = db
+        .upsert_federation_node("sat-1", "sat", &format!("http://{addr}"), "1.0")
+        .await
+        .unwrap();
+    assert!(node.token.is_some());
+
+    let resp = app
+        .oneshot(authed(
+            "GET",
+            "/api/federation/nodes/sat-1/proxy/healthz",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+#[tokio::test]
+async fn bootstrap_rejects_password_outside_policy() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
+    let database = db::Db::connect(&db_url).await.unwrap();
+
+    auth::bootstrap::run(&database, "owner", "short")
+        .await
+        .unwrap();
+    assert_eq!(database.count_users().await.unwrap(), 0);
+
+    auth::bootstrap::run(&database, "owner", "supersecret123")
+        .await
+        .unwrap();
+    assert_eq!(database.count_users().await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn node_token_is_cached_and_invalidated_on_change() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
+    let database = db::Db::connect(&db_url).await.unwrap();
+
+    database
+        .set_server_setting("federation_node_token", "tok-a")
+        .await
+        .unwrap();
+    assert_eq!(
+        database.node_token().await.unwrap().as_deref(),
+        Some("tok-a")
+    );
+
+    // A write that bypasses Db stays hidden behind the cache.
+    sqlx::query("UPDATE server_settings SET value = 'tok-b' WHERE key = 'federation_node_token'")
+        .execute(database.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        database.node_token().await.unwrap().as_deref(),
+        Some("tok-a")
+    );
+
+    // A write through Db drops the cache and the new value is read.
+    database
+        .set_server_setting("federation_node_token", "tok-c")
+        .await
+        .unwrap();
+    assert_eq!(
+        database.node_token().await.unwrap().as_deref(),
+        Some("tok-c")
+    );
 }

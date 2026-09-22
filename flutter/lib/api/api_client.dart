@@ -191,7 +191,13 @@ class ApiClient implements BaseApiClient {
         throw ApiException(err['error'] as String, resp.statusCode, data: err);
       }
       if (text.isNotEmpty) {
-        throw ApiException(text, resp.statusCode);
+        throw ApiException(
+          sanitizeHttpErrorBody(
+            text,
+            appL10n.httpErrorStatus(resp.statusCode),
+          ),
+          resp.statusCode,
+        );
       }
       throw ApiException(
         appL10n.httpErrorStatus(resp.statusCode),
@@ -216,9 +222,10 @@ class ApiClient implements BaseApiClient {
       throw ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (resp.body.isNotEmpty
-                  ? resp.body
-                  : appL10n.httpErrorStatus(resp.statusCode)),
+            : sanitizeHttpErrorBody(
+                resp.body,
+                appL10n.httpErrorStatus(resp.statusCode),
+              ),
         resp.statusCode,
       );
     }

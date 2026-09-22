@@ -1,10 +1,10 @@
 //! Machine routes: the owner-managed list of VNC machines an AI thread can
 //! remote-control.
 //!
-//! Any signed-in user can list machines — the composer needs them for `@`
-//! references — but only the owner can create, update, delete, or probe
-//! them. The stored VNC password is never serialized: responses carry
-//! `has_password` instead.
+//! All routes are owner-only: referencing a machine mints a run-scoped VNC
+//! control grant, so even listing (the composer `@` picker's data source)
+//! stays behind the owner boundary. The stored VNC password is never
+//! serialized: responses carry `has_password` instead.
 
 use std::time::Duration;
 
@@ -182,7 +182,12 @@ fn not_found() -> Response {
     (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
 }
 
-async fn list(State(state): State<AppState>, CurrentUser(_user): CurrentUser) -> Response {
+async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
+    // Owner-only: the list exists to feed the `@` machine picker, and
+    // referencing a machine mints a VNC control grant — also owner-only.
+    if !user.is_owner {
+        return forbidden();
+    }
     match state.db.list_machines().await {
         Ok(machines) => Json(
             machines

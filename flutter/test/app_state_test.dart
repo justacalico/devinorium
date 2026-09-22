@@ -9,6 +9,7 @@ import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 import 'package:devinorium_frontend/services/local_server.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart' show Locale;
 import 'package:http/http.dart' as http;
@@ -41,6 +42,8 @@ class _StreamableApiService extends ApiService {
   Map<String, dynamic>? runResponse;
   Future<MessagePage>? messagesResponse;
   int getThreadMessagesCalls = 0;
+  int listThreadsCalls = 0;
+  Future<List<Thread>> Function()? listThreadsBuilder;
   String? stoppedThread;
   String? lastClientMessageId;
   Future<MergeRequestLink?> Function(int, int)? findMergeRequestByIidBuilder;
@@ -75,6 +78,13 @@ class _StreamableApiService extends ApiService {
 
   @override
   Future<List<String>> getThreadRuns() async => [];
+
+  @override
+  Future<List<Thread>> listThreads({int? limit, int? offset}) {
+    listThreadsCalls++;
+    return listThreadsBuilder?.call() ??
+        super.listThreads(limit: limit, offset: offset);
+  }
 
   @override
   Stream<SseEvent> watchThreadEvents(String id) {
@@ -577,6 +587,21 @@ void main() {
       expect(state.view, AppView.app);
     });
 
+    test('bootstrap keeps the token on a real 403', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([http.Response('forbidden', 403)]),
+        ),
+      );
+      await state.bootstrap();
+      expect(state.view, AppView.app);
+      expect(
+        state.serverProfiles.firstWhere((p) => p.id == 'default').token,
+        isNotEmpty,
+      );
+    });
+
     test('bootstrap lands on app when no server is configured', () async {
       SharedPreferences.setMockInitialValues({});
       // A real manager would adopt a devinorium server already running on the
@@ -612,6 +637,69 @@ void main() {
       expect(prefs.getString('devinorium_selected_provider'), isNull);
       expect(prefs.getString('devinorium_selected_model'), isNull);
       expect(prefs.getString('devinorium_selected_permission'), isNull);
+    });
+
+    test('changePassword logs out after the server revokes sessions',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      var patchCalls = 0;
+      final state = AppState(
+        api: ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              if (req.url.path == '/api/auth/me/password') {
+                patchCalls++;
+                final body = jsonDecode(req.body);
+                expect(body['current_password'], 'old-password-1');
+                expect(body['new_password'], 'new-password-1');
+                return _json(200, {'ok': true});
+              }
+              return _json(200, {});
+            }),
+          ),
+        ),
+      );
+      final error =
+          await state.changePassword('old-password-1', 'new-password-1');
+      expect(error, isNull);
+      expect(patchCalls, 1);
+      expect(state.user, isNull);
+      expect(state.serverProfiles, isEmpty);
+    });
+
+    test('changePassword returns the error and stays logged in', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(
+        api: ApiService(
+          client: _clientFor([_json(401, {'error': 'wrong password'})]),
+        ),
+      );
+      final error =
+          await state.changePassword('bad-password-1', 'new-password-1');
+      expect(error, isNotNull);
+    });
+
+    test('resetUserPassword patches the user password', () async {
+      SharedPreferences.setMockInitialValues({});
+      var patchCalls = 0;
+      final state = AppState(
+        api: ApiService(
+          client: ApiClient.withClient(
+            MockClient((req) async {
+              if (req.url.path == '/api/users/2') {
+                patchCalls++;
+                final body = jsonDecode(req.body);
+                expect(body['password'], 'fresh-password-1');
+                return _json(200, {'ok': true});
+              }
+              return _json(404, {'error': 'unexpected ${req.url.path}'});
+            }),
+          ),
+        ),
+      );
+      final error = await state.resetUserPassword(2, 'fresh-password-1');
+      expect(error, isNull);
+      expect(patchCalls, 1);
     });
 
     test('addServer adds a profile without changing the active view', () async {
@@ -885,6 +973,139 @@ void main() {
       expect(base.composerText, 'draft text');
       expect(base.attachments, hasLength(1));
       expect(base.threads, hasLength(1));
+    });
+
+    test('stale in-flight thread load cannot write after reset', () async {
+      SharedPreferences.setMockInitialValues({});
+      final pending = Completer<List<Thread>>();
+      final api = _StreamableApiService(
+        ApiClient.withClient(
+          MockClient((_) async => _json(404, {'error': 'none'})),
+        ),
+      );
+      api.listThreadsBuilder = () => pending.future;
+      final state = AppState.test(api: api);
+
+      final refresh = state.refreshThreadsAndGroups();
+      expect(api.listThreadsCalls, 1);
+
+      // A node switch runs the same reset as a server switch; the post-
+      // switch data load unwinds through the fallback when me() 404s.
+      final switching = state.switchNode('n1');
+      pending.complete([
+        Thread(
+          id: 'stale',
+          title: 'stale',
+          projectId: 1,
+          model: '',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ]);
+      await refresh;
+      await switching;
+
+      expect(state.threads, isEmpty);
+
+      // The loading flag must also be cleared so the next target can load
+      // instead of early-returning on a stuck flag.
+      api.listThreadsBuilder = () async => [];
+      await state.loadMoreThreads();
+      expect(api.listThreadsCalls, 2);
+    });
+
+    test('mid-session 401 clears the token', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test(
+        api: ApiService(
+          client: _clientFor([http.Response('expired', 401)]),
+        ),
+        activeProjectId: 1,
+      );
+      await state.openThread('a');
+      expect(state.globalError, isEmpty);
+      expect(
+        state.serverProfiles.firstWhere((p) => p.id == 'test').token,
+        isEmpty,
+      );
+    });
+
+    test('mid-session 403 from an owner-gated route keeps the token',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test(
+        api: ApiService(
+          client: _clientFor([http.Response('forbidden', 403)]),
+        ),
+        activeProjectId: 1,
+      );
+      await state.openThread('a');
+      expect(state.globalError, isNotEmpty);
+      expect(
+        state.serverProfiles.firstWhere((p) => p.id == 'test').token,
+        'token',
+      );
+    });
+
+    test('background thread errors coexist with user errors', () async {
+      SharedPreferences.setMockInitialValues({});
+      var fail = true;
+      final api = _StreamableApiService(
+        ApiClient.withClient(
+          MockClient((_) async => _json(200, [])),
+        ),
+      );
+      api.listThreadsBuilder = () async {
+        if (fail) throw ApiException('list down', 500);
+        return [];
+      };
+      final state = AppState.test(api: api);
+      addTearDown(state.dispose);
+
+      await state.refreshThreadsAndGroups();
+      expect(state.globalError, 'list down');
+
+      state.setGlobalError('user op failed');
+      expect(state.globalError, contains('list down'));
+      expect(state.globalError, contains('user op failed'));
+
+      fail = false;
+      await state.refreshThreadsAndGroups();
+      expect(state.globalError, 'user op failed');
+
+      state.clearGlobalError();
+      expect(state.globalError, isEmpty);
+    });
+
+    test('git refresh success does not clear unrelated errors', () {
+      fakeAsync((async) {
+        SharedPreferences.setMockInitialValues({});
+        final state = AppState.test(
+          api: ApiService(
+            client: _clientFor([
+              _json(200, {
+                'is_repo': true,
+                'branch': 'main',
+                'worktree_path': '/x',
+                'toplevel': '/x',
+                'common_dir': '/x/.git',
+                'ahead': 0,
+                'behind': 0,
+              }),
+            ]),
+          ),
+          activeProjectId: 1,
+        );
+        addTearDown(state.dispose);
+
+        state.setGlobalError('user op failed');
+        state.startGitRefresh();
+        async.elapse(const Duration(seconds: 6));
+
+        expect(state.globalError, 'user op failed');
+        state.stopGitRefresh();
+      });
     });
 
     test(
@@ -2694,6 +2915,82 @@ void main() {
       expect(state.composerText, 'hello');
     });
 
+    test('sendMessage keeps a newer draft on stream error', () async {
+      final client = _clientFor([
+        _json(200, {}),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+        _json(200, {
+          'thread': {
+            'id': 'a',
+            'title': 't',
+            'project_id': 1,
+            'model': 'glm-5-2',
+            'permission_mode': 'normal',
+            'created_at': '',
+            'updated_at': '',
+          },
+          'messages': [],
+        }),
+        _json(200, []),
+        _json(200, []),
+      ]);
+      final api = _StreamableApiService(client);
+      final controller = StreamController<SseEvent>();
+      api.streamBuilder = () => controller.stream;
+
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setSelectedModel('glm-5-2');
+      state.setSelectedPermission('normal');
+      state.setComposerText('hello');
+
+      final completer = Completer<void>();
+      state.addListener(() {
+        if (state.globalError.isNotEmpty) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await state.sendMessage();
+      // A draft typed while the run is in flight must not be overwritten by
+      // the failed prompt's pending-send restore.
+      state.setComposerText('next');
+      controller.addError(ApiException('network down', 500));
+
+      await completer.future.timeout(Duration(seconds: 2));
+      await controller.close();
+      expect(state.sending, isFalse);
+      expect(state.composerText, 'next');
+    });
+
     test('sendMessage handles stopped event', () async {
       final client = _clientFor([
         _json(200, {}),
@@ -3670,7 +3967,7 @@ void main() {
           ]),
         ),
       );
-      await state.openTotpSetup();
+      await state.openTotpSetup('pw');
       expect(state.totpSecret, 's');
       expect(state.dialog, DialogKind.totpSetup);
     });

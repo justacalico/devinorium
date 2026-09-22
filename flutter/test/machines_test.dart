@@ -333,6 +333,27 @@ void main() {
       expect(state.machines.single.name, 'alpha');
     });
 
+    test('loadMachines skips the API for non-owners', () async {
+      final api = _MachinesApi()..machineList = [_machine(1, 'gaming pc')];
+      final state = AppState.test(
+        api: api,
+        user: User(
+          id: 2,
+          username: 'alice',
+          role: 'user',
+          totpEnabled: false,
+          isOwner: false,
+          providerId: 'devin-cli',
+          providerCommand: 'devin',
+        ),
+      );
+      addTearDown(state.dispose);
+
+      await state.loadMachines();
+      expect(api.machinesCalls, 0);
+      expect(state.machines, isEmpty);
+    });
+
     test('loadMachines failure leaves an empty list', () async {
       final api = _MachinesApi();
       api.machinesCalls = 0;
@@ -677,7 +698,7 @@ void main() {
       expect(find.byKey(const Key('machine_add')), findsOneWidget);
     });
 
-    testWidgets('non-owners see the list without controls', (tester) async {
+    testWidgets('non-owners never see the machines section', (tester) async {
       bigSurface(tester);
       final api = _MachinesApi()..machineList = [_machine(1, 'gaming pc')];
       final state = AppState.test(
@@ -691,17 +712,18 @@ void main() {
           providerId: 'devin-cli',
           providerCommand: 'devin',
         ),
-        settingsTopicIndex: 6,
+        settingsTopicIndex: 5,
       );
       addTearDown(state.dispose);
 
       await tester.pumpWidget(settings(state));
       await tester.pumpAndSettle();
 
-      expect(find.text('gaming pc'), findsOneWidget);
+      // The whole card is hidden: machine control is owner-only, so even
+      // the operator's host list stays off non-owner screens.
+      expect(find.text('Machines'), findsNothing);
+      expect(find.text('gaming pc'), findsNothing);
       expect(find.byKey(const Key('machine_add')), findsNothing);
-      expect(find.byKey(const Key('machine_edit_1')), findsNothing);
-      expect(find.text('Only the owner can manage machines.'), findsOneWidget);
     });
 
     testWidgets('add dialog validates and posts a new machine', (tester) async {

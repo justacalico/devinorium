@@ -26,9 +26,6 @@
 /frontend/dist/favicon.png
 /frontend/dist/.last_build_id
 
-# CI tool cache
-/.ci-tools/
-
 # Android signing files (generated in CI from secrets)
 /flutter/android/app/key.properties
 /flutter/android/app/*.jks
@@ -40,7 +37,6 @@
 /flutter/.flutter-plugins
 /flutter/.flutter-plugins-dependencies
 /flutter/.packages
-/flutter/pubspec.lock
 
 # Node.js / Tailwind
 /frontend/node_modules/

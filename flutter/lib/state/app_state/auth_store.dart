@@ -3,6 +3,8 @@ part of 'package:devinorium_frontend/state/app_state.dart';
 mixin AuthStore on AppStateBase {
   @override
   bool _switchingServer = false;
+  @override
+  int _serverSeq = 0;
 
   @override
   User? _user;
@@ -52,7 +54,7 @@ mixin AuthStore on AppStateBase {
       }
       await _loadUserAndDataWithNodeFallback();
     } catch (e) {
-      if (e is ApiException && e.statusCode == 401) {
+      if (e is ApiException && _isUnauthenticated(e)) {
         if (multiServerState.activeProfile?.isLocal == true) {
           // The bundled server may have restarted with a fresh token while a
           // stale profile survived — re-ensure once before giving up.
@@ -67,7 +69,7 @@ mixin AuthStore on AppStateBase {
         _globalError = '$e';
       }
       await _resetServerState();
-      if (kIsWeb && e is ApiException && e.statusCode == 401) {
+      if (kIsWeb && e is ApiException && _isUnauthenticated(e)) {
         _dialog = DialogKind.webLogin;
       }
       if (multiServerState.activeProfile?.isLocal == true) {
@@ -340,7 +342,6 @@ mixin AuthStore on AppStateBase {
   Future<void> loadSettingsData() async {
     if (multiServerState.activeApi == null) return;
     final futures = <Future<void>>[
-      loadGitConnections(),
       loadCloneRoot(),
       loadWorktreeRoot(),
       loadProjectRoot(),
@@ -350,6 +351,7 @@ mixin AuthStore on AppStateBase {
       refreshFederationNodes(),
     ];
     if (isOwner) {
+      futures.add(loadGitConnections());
       futures.add(loadUsers());
     }
     await Future.wait(futures);
@@ -379,6 +381,35 @@ mixin AuthStore on AppStateBase {
     } catch (e) {
       _globalError = '$e';
       notifyListeners();
+    }
+  }
+
+  /// Change the signed-in account's password. On success the server has
+  /// revoked every session, so the user is logged out to sign in again.
+  /// Returns an error string on failure.
+  @override
+  Future<String?> changePassword(String current, String newPassword) async {
+    try {
+      await hubApi.changePassword(
+        currentPassword: current,
+        newPassword: newPassword,
+      );
+    } catch (e) {
+      return '$e';
+    }
+    await logout();
+    return null;
+  }
+
+  /// Owner path: reset another account's password. Returns an error string
+  /// on failure.
+  @override
+  Future<String?> resetUserPassword(int id, String password) async {
+    try {
+      await hubApi.resetUserPassword(id, password);
+      return null;
+    } catch (e) {
+      return '$e';
     }
   }
 
@@ -430,7 +461,7 @@ mixin AuthStore on AppStateBase {
     if (_switchingServer) return;
     if (hasDirtyEditorTabs) {
       _globalError =
-          'Editor has unsaved changes. Save or discard them before switching.';
+          appL10n.editorUnsavedSwitch;
       notifyListeners();
       return;
     }
@@ -528,10 +559,14 @@ mixin AuthStore on AppStateBase {
     final user = _user;
     if (user == null) return;
     try {
+      // Provider commands are owner-only; non-owners omit them so a
+      // provider switch is not rejected.
+      final commands = user.isOwner;
       _user = await api.updateMe(
         providerId: providerId ?? user.providerId,
-        providerCommand: providerCommand ?? user.providerCommand,
-        providerCommands: providerCommands,
+        providerCommand:
+            commands ? (providerCommand ?? user.providerCommand) : null,
+        providerCommands: commands ? providerCommands : null,
       );
       if (providerId != null && providerId != user.providerId) {
         // The global composer selection followed the old default provider;
@@ -607,11 +642,24 @@ mixin AuthStore on AppStateBase {
     }
   }
 
+  // The backend accepts either the account password or a current TOTP code
+  // as proof for enrollment changes. Codes are exactly 6 digits; passwords
+  // are at least 12 chars, so the shape decides which field to send.
+  static ({String? password, String? code}) _totpProof(String proof) {
+    final p = proof.trim();
+    return RegExp(r'^\d{6}$').hasMatch(p)
+        ? (password: null, code: p)
+        : (password: p, code: null);
+  }
+
   @override
-  Future<void> openTotpSetup() async {
+  Future<void> openTotpSetup(String proof) async {
     try {
       // TOTP guards the hub login, not the satellite's `local` account.
-      final res = await hubApi.totpSetup();
+      final res = await hubApi.totpSetup(
+        password: _totpProof(proof).password,
+        code: _totpProof(proof).code,
+      );
       _totpSecret = res.secret;
       _dialog = DialogKind.totpSetup;
       _userMenuOpen = false;
@@ -637,9 +685,12 @@ mixin AuthStore on AppStateBase {
   }
 
   @override
-  Future<void> disableTotp() async {
+  Future<void> disableTotp(String proof) async {
     try {
-      await hubApi.totpDisable();
+      await hubApi.totpDisable(
+        password: _totpProof(proof).password,
+        code: _totpProof(proof).code,
+      );
       _user = await api.me();
       _globalError = '';
       notifyListeners();
@@ -681,6 +732,9 @@ mixin AuthStore on AppStateBase {
 
   @override
   Future<void> _resetServerState() async {
+    // Bump first: every guarded async load from the old server notices the
+    // generation change and stops writing before the fields clear.
+    _serverSeq++;
     _stopRunEvents();
     _user = null;
     _users = [];
@@ -696,6 +750,8 @@ mixin AuthStore on AppStateBase {
     _threads = [];
     _userThreadsOffset = 0;
     _userThreadsHasMore = true;
+    _loadingMoreUserThreads = false;
+    _threadOpening = false;
     _projectThreadOffsets.clear();
     _projectThreadsHasMore.clear();
     _loadingMoreProjectThreads.clear();
@@ -769,7 +825,7 @@ mixin AuthStore on AppStateBase {
     _serverVersion = null;
     _page = MainPage.threads;
     _dialog = DialogKind.none;
-    _globalError = '';
+    _globalErrors.clear();
   }
 
   static String _serverLabel(String url) {
@@ -779,4 +835,29 @@ mixin AuthStore on AppStateBase {
       return url;
     }
   }
+
+  /// Only 401 means the credential itself was rejected; a 403 is a real
+  /// forbidden (CSRF, a non-owner route, an owner-gated proxy call) and
+  /// must surface as an error rather than bounce the user to login.
+  bool _isUnauthenticated(ApiException e) => e.statusCode == 401;
+
+  @override
+  bool _checkAuthFailure(Object e) {
+    if (e is! ApiException || e.statusCode != 401) return false;
+    unawaited(_routeToLogin());
+    return true;
+  }
+
+  @override
+  Future<void> _routeToLogin() async {
+    await multiServerState.clearActiveToken();
+    await _resetServerState();
+    if (kIsWeb) _dialog = DialogKind.webLogin;
+    if (multiServerState.activeProfile?.isLocal == true) {
+      startHealthChecks();
+    }
+    _view = AppView.app;
+    notifyListeners();
+  }
 }
+

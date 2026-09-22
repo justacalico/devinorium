@@ -98,6 +98,7 @@ async fn app_state(push_enabled: bool) -> (AppState, db::Db) {
         push,
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (state, database)
 }

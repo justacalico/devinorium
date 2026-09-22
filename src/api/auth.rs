@@ -57,6 +57,25 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> 
                 .into_response()
         }
     };
+    // Per-username throttle on top of the per-IP one: rotating source IPs
+    // cannot spray guesses at one account faster than this bucket refills.
+    // The block runs before argon2 so a dry bucket costs the attacker no
+    // verify work and the server no CPU; a targeted sender can throttle a
+    // known username, which is the accepted price of stuffing protection
+    // on a self-hosted install (the in-memory bucket resets on restart).
+    let uname_key = username.trim().to_lowercase();
+    if !state
+        .rate_limiter
+        .check("login-user", &uname_key, 25.0)
+        .await
+    {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(auth_json_err("rate limited")),
+        )
+            .into_response();
+    }
+
     // Load user by username. To avoid user-enumeration timing, we always do
     // a dummy hash verify even when the user doesn't exist.
     let user = state.db.get_user_by_username(username).await.ok().flatten();
@@ -195,6 +214,12 @@ pub async fn update_me(
     CurrentUser(user): CurrentUser,
     Json(req): Json<UpdateMeRequest>,
 ) -> Response {
+    // Provider commands execute as the server user; only the owner may set
+    // them. Non-owners can still pick which provider a thread uses.
+    if !user.is_owner && (req.provider_command.is_some() || req.provider_commands.is_some()) {
+        return (StatusCode::FORBIDDEN, Json(auth_json_err("forbidden"))).into_response();
+    }
+
     let provider_id = req
         .provider_id
         .as_deref()
@@ -345,9 +370,54 @@ pub struct TotpSetupResponse {
     pub secret: String,
 }
 
+/// Proof required before changing TOTP enrollment: the current TOTP code, or
+/// the account password when it has a real one. Accounts with neither (the
+/// bundled passwordless `local` account with no TOTP yet) pass without proof.
+#[derive(Debug, Deserialize, Default)]
+pub struct TotpProofRequest {
+    pub password: Option<String>,
+    pub code: Option<String>,
+}
+
+fn totp_proof_satisfied(user: &crate::db::UserRow, req: Option<&TotpProofRequest>) -> bool {
+    if !user.totp_enabled && user.password_hash == crate::auth::bootstrap::LOCAL_PASSWORD_SENTINEL {
+        return true;
+    }
+    let Some(req) = req else { return false };
+    if user.totp_enabled {
+        if let (Some(secret), Some(code)) = (user.totp_secret.as_deref(), req.code.as_deref()) {
+            if totp::verify(secret, code) {
+                return true;
+            }
+        }
+    }
+    if let Some(pw) = req.password.as_deref() {
+        if password::verify(pw, &user.password_hash).unwrap_or(false) {
+            return true;
+        }
+    }
+    false
+}
+
+fn totp_proof_denied() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(auth_json_err("current password or TOTP code required")),
+    )
+        .into_response()
+}
+
 /// Begin TOTP enrollment. Returns the secret + otpauth URI. The secret is
-/// NOT enabled until verified with a valid code via `/totp/verify`.
-pub async fn totp_setup(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
+/// staged as pending and is NOT enabled until verified with a valid code via
+/// `/totp/verify`, so an existing factor keeps working in the meantime.
+pub async fn totp_setup(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    body: Option<Json<TotpProofRequest>>,
+) -> Response {
+    if !totp_proof_satisfied(&user, body.as_ref().map(|Json(r)| r)) {
+        return totp_proof_denied();
+    }
     let setup = match totp::generate("devinorium", &user.username) {
         Ok(s) => s,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
@@ -355,7 +425,7 @@ pub async fn totp_setup(State(state): State<AppState>, CurrentUser(user): Curren
     // Store the pending secret (not yet enabled) so verify can confirm it.
     if let Err(e) = state
         .db
-        .set_totp(user.id, Some(setup.secret_base32.clone()), false)
+        .set_totp_pending(user.id, Some(setup.secret_base32.clone()))
         .await
     {
         return crate::api::map_err_internal(e).into_response();
@@ -377,9 +447,9 @@ pub async fn totp_verify(
     CurrentUser(user): CurrentUser,
     Json(req): Json<TotpVerifyRequest>,
 ) -> Response {
-    let secret = match user.totp_secret {
-        Some(ref s) if !user.totp_enabled => s.clone(),
-        _ => {
+    let secret = match user.totp_pending_secret {
+        Some(ref s) => s.clone(),
+        None => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(auth_json_err("no pending totp setup")),
@@ -407,7 +477,11 @@ pub async fn totp_verify(
 pub async fn totp_disable(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
+    body: Option<Json<TotpProofRequest>>,
 ) -> Response {
+    if !totp_proof_satisfied(&user, body.as_ref().map(|Json(r)| r)) {
+        return totp_proof_denied();
+    }
     if let Err(e) = state.db.set_totp(user.id, None, false).await {
         return crate::api::map_err_internal(e).into_response();
     }
@@ -420,4 +494,82 @@ pub async fn totp_disable(
 
 fn auth_json_err(msg: &str) -> serde_json::Value {
     serde_json::json!({ "error": msg })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: Option<String>,
+    pub new_password: Option<String>,
+}
+
+/// `PATCH /api/auth/me/password` — change the caller's own password. Requires
+/// the current password; the passwordless `local` account cannot gain one
+/// here (that would silently enable interactive login for it). Every session
+/// is revoked, so the client must log in again.
+pub async fn change_password(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<ChangePasswordRequest>,
+) -> Response {
+    if user.password_hash == crate::auth::bootstrap::LOCAL_PASSWORD_SENTINEL {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("this account has no password sign-in")),
+        )
+            .into_response();
+    }
+    let current = match req.current_password.as_deref().filter(|s| !s.is_empty()) {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("current password is required")),
+            )
+                .into_response()
+        }
+    };
+    let new_password = match req.new_password.as_deref().filter(|s| !s.is_empty()) {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(auth_json_err("new password is required")),
+            )
+                .into_response()
+        }
+    };
+    if !password::is_valid(new_password) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(auth_json_err("password must be 12-1024 characters")),
+        )
+            .into_response();
+    }
+    if !password::verify(current, &user.password_hash).unwrap_or(false) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(auth_json_err("current password is incorrect")),
+        )
+            .into_response();
+    }
+    let hash = match password::hash(new_password) {
+        Ok(h) => h,
+        Err(e) => return crate::api::map_err_internal(e).into_response(),
+    };
+    if let Err(e) = state.db.set_user_password(user.id, hash).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+    if let Err(e) = state.db.delete_user_sessions(user.id).await {
+        return crate::api::map_err_internal(e).into_response();
+    }
+    let _ = state
+        .db
+        .audit(
+            Some(user.id),
+            "user.password_change",
+            &serde_json::json!({}),
+            None,
+        )
+        .await;
+    Json(serde_json::json!({"ok": true})).into_response()
 }

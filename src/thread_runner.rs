@@ -131,7 +131,16 @@ impl RunState {
         if is_update {
             return;
         }
-        parts.push(part);
+        // Deltas arrive one part per chunk; fold consecutive text or
+        // thinking parts so a long turn stays a handful of parts instead
+        // of thousands of single-token ones.
+        match (parts.last_mut(), &part) {
+            (Some(MessagePart::Text { content: last }), MessagePart::Text { content })
+            | (Some(MessagePart::Thinking { content: last }), MessagePart::Thinking { content }) => {
+                last.push_str(content)
+            }
+            _ => parts.push(part),
+        }
     }
 
     pub fn set_permission_request(self: &Arc<Self>, req: Option<PermissionRequest>) {
@@ -582,6 +591,45 @@ impl ThreadRunner {
         Some(run.snapshot().await)
     }
 
+    /// Cancel every live run, then wait up to `deadline` for their tasks to
+    /// end before hard-aborting stragglers. Called on shutdown so provider
+    /// children get killed instead of orphaned.
+    pub async fn stop_all(&self, deadline: std::time::Duration) {
+        let runs = self.all_runs().await;
+        for run in &runs {
+            if *run.status.read().await == RunStatus::Running {
+                run.cancelled.store(true, Ordering::SeqCst);
+                let _ = run.set_status(RunStatus::Stopped).await;
+                run.emit("stopped", r#"{"status":"stopped"}"#);
+                run.close();
+            }
+        }
+        let end = tokio::time::Instant::now() + deadline;
+        loop {
+            if runs.iter().all(|r| r.task_finished()) {
+                return;
+            }
+            if tokio::time::Instant::now() >= end {
+                for run in &runs {
+                    if !run.task_finished() {
+                        if let Some(h) = run.abort.lock().unwrap().as_ref() {
+                            h.abort();
+                        }
+                    }
+                }
+                // Give the aborted tasks' drop guards a moment to kill their
+                // children before the process exits.
+                let grace = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+                while !runs.iter().all(|r| r.task_finished()) && tokio::time::Instant::now() < grace
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
     /// Wait until the run's provider task has actually ended, gracefully or
     /// via the hard abort `stop` schedules, up to `timeout`. Returns early
     /// when the thread has no run. A run that was displaced in the map by a
@@ -988,6 +1036,36 @@ mod tests {
         let ev = rx.recv().await.unwrap();
         assert_eq!(ev.thread_id, "t1");
         assert_eq!(ev.status, RunStatus::Stopped);
+    }
+
+    #[tokio::test]
+    async fn stop_all_cancels_and_drains_runs() {
+        let runner = ThreadRunner::new();
+        runner
+            .start("t1".into(), 1, |state| async move {
+                while !state.cancelled.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let stubborn = runner
+            .start("t2".into(), 1, |_state| async {
+                tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        runner.stop_all(std::time::Duration::from_millis(300)).await;
+
+        let t1 = runner.get("t1").await.unwrap();
+        assert_eq!(*t1.status.read().await, RunStatus::Stopped);
+        assert!(t1.task_finished());
+        // The sleeper ignored cancellation and got hard-aborted.
+        assert!(stubborn.task_finished());
+        assert_eq!(*stubborn.status.read().await, RunStatus::Stopped);
     }
 
     #[tokio::test]

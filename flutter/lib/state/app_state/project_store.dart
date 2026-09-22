@@ -37,7 +37,8 @@ mixin ProjectStore on AppStateBase {
       _projects = chunk;
       _projectsOffset = chunk.length;
       _projectsHasMore = chunk.length == _projectChunkSize;
-    } catch (_) {
+    } catch (e) {
+      _checkAuthFailure(e);
       _projects = [];
       _projectsOffset = 0;
       _projectsHasMore = false;
@@ -72,7 +73,7 @@ mixin ProjectStore on AppStateBase {
     final willSwitch = _activeThreadId == null && _activeProjectId != id;
     if (willSwitch) {
       if (hasDirtyEditorTabs) {
-        _globalError = 'Editor has unsaved changes. Save or discard them before switching projects.';
+        _globalError = appL10n.editorUnsavedSwitchProjects;
         notifyListeners();
         return;
       }
@@ -91,7 +92,7 @@ mixin ProjectStore on AppStateBase {
   Future<void> selectAllProjects() async {
     if (_activeThreadId == null && _activeProjectId != null) {
       if (hasDirtyEditorTabs) {
-        _globalError = 'Editor has unsaved changes. Save or discard them before switching projects.';
+        _globalError = appL10n.editorUnsavedSwitchProjects;
         notifyListeners();
         return;
       }
@@ -115,7 +116,7 @@ mixin ProjectStore on AppStateBase {
     _globalError = '';
     notifyListeners();
     if (hasDirtyEditorTabs) {
-      _globalError = 'Editor has unsaved changes. Save or discard them before creating a new project.';
+      _globalError = appL10n.editorUnsavedNewProject;
       notifyListeners();
       return;
     }
@@ -152,7 +153,7 @@ mixin ProjectStore on AppStateBase {
     );
     if (project.id != 0) {
       if (hasDirtyEditorTabs) {
-        _globalError = 'Editor has unsaved changes. Save or discard them before switching projects.';
+        _globalError = appL10n.editorUnsavedSwitchProjects;
         notifyListeners();
         return;
       }
@@ -165,14 +166,14 @@ mixin ProjectStore on AppStateBase {
       await refreshThreadsAndGroups();
       notifyListeners();
     } else {
-      _globalError = 'Project not found after clone.';
+      _globalError = appL10n.projectNotFoundAfterClone;
       notifyListeners();
     }
   }
   @override
   Future<void> deleteProject(int id) async {
     if (_activeProjectId == id && hasDirtyEditorTabs) {
-      _globalError = 'Editor has unsaved changes. Save or discard them before deleting this project.';
+      _globalError = appL10n.editorUnsavedDeleteProject;
       notifyListeners();
       return;
     }

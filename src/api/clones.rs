@@ -48,6 +48,7 @@ async fn clone(
         &state.db,
         &state.config,
         user.id,
+        user.is_owner,
         url,
     )
     .await

@@ -19,6 +19,16 @@ pub fn random_alnum(n: usize) -> String {
         .collect()
 }
 
+/// SHA-256 of a session token, hex-encoded. Sessions are stored by hash so a
+/// database leak does not expose live credentials; the plaintext token only
+/// ever exists in the cookie/response that created it.
+pub fn token_hash(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
 /// base64url encoding without padding.
 pub fn base64_url_encode(bytes: &[u8]) -> String {
     use base64::Engine;

@@ -194,10 +194,13 @@ pub(crate) async fn persist_assistant_reply(
         if run.cancelled.load(Ordering::SeqCst) {
             return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
         }
-        let _ = state
+        if let Err(e) = state
             .db
             .update_thread_session(&thread.id, &thread.provider_id, &sid, new_title.as_deref())
-            .await;
+            .await
+        {
+            tracing::warn!(error = %e, "failed to persist thread session id");
+        }
     }
 
     if run.cancelled.load(Ordering::SeqCst) {

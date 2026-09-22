@@ -192,6 +192,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get password => '密码';
 
   @override
+  String get changePassword => '修改密码';
+
+  @override
+  String get currentPassword => '当前密码';
+
+  @override
+  String get newPassword => '新密码';
+
+  @override
+  String get confirmNewPassword => '确认新密码';
+
+  @override
+  String get passwordsDoNotMatch => '两次输入的密码不一致';
+
+  @override
+  String get resetPassword => '重置密码';
+
+  @override
+  String resetPasswordHint(String name) {
+    return '为 \"$name\" 设置新密码，其所有会话将失效。';
+  }
+
+  @override
   String get test => '测试';
 
   @override
@@ -564,6 +587,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get disable2fa => '禁用 2FA';
 
   @override
+  String get totpProofPrompt => '请输入当前密码或 2FA 验证码以继续。';
+
+  @override
+  String get passwordOrTotpCode => '密码或 2FA 验证码';
+
+  @override
   String get twoFactorAuthentication => '双因素认证';
 
   @override
@@ -701,6 +730,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get serverUpdateUnsupported => '此平台没有预构建的服务器版本';
+
+  @override
+  String get serverUpdateUnwritableExeDir => '自更新无法写入可执行文件目录，请改用软件包更新';
 
   @override
   String get topics => '主题';
@@ -1565,9 +1597,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get machinesEmpty => '未配置机器';
 
   @override
-  String get machinesOnlyOwner => '只有所有者可以管理机器';
-
-  @override
   String get machineAdd => '添加机器';
 
   @override
@@ -1945,4 +1974,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get maxOutputTokensInvalid => '请输入 1 到 4,000,000 之间的数值';
+
+  @override
+  String get editorUnsavedSwitchProjects => '编辑器有未保存的更改。请先保存或放弃更改，然后再切换项目。';
+
+  @override
+  String get editorUnsavedNewProject => '编辑器有未保存的更改。请先保存或放弃更改，然后再创建新项目。';
+
+  @override
+  String get editorUnsavedDeleteProject => '编辑器有未保存的更改。请先保存或放弃更改，然后再删除此项目。';
+
+  @override
+  String get editorUnsavedSwitch => '编辑器有未保存的更改。请先保存或放弃更改，然后再切换。';
+
+  @override
+  String get projectNotFoundAfterClone => '克隆后未找到项目。';
+
+  @override
+  String get threadTitleFallback => '线程';
+
+  @override
+  String get webSocketClosed => 'WebSocket 已关闭';
 }

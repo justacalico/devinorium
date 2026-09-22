@@ -23,6 +23,7 @@ import '../widgets/owner_badge.dart';
 import '../widgets/provider_icons.dart';
 import 'create_user_dialog.dart';
 import 'folder_picker_dialog.dart';
+import 'password_dialogs.dart';
 import 'settings/topics.dart';
 import 'window_title_drag.dart';
 

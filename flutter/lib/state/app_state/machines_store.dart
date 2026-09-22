@@ -9,13 +9,13 @@ mixin MachinesStore on AppStateBase {
   @override
   List<Machine> get machines => _machines;
 
-  /// Pull `GET /api/machines` for the active server. A missing endpoint
-  /// (older server) just leaves the section and `@` picker empty. The seq
-  /// guard keeps a response from the previous server from landing after a
-  /// switch.
+  /// Pull `GET /api/machines` for the active server. Owner-only: machine
+  /// references mint VNC control grants, so non-owners keep an empty list
+  /// and the `@` picker stays shut. The seq guard keeps a response from the
+  /// previous server from landing after a switch.
   @override
   Future<void> loadMachines() async {
-    if (multiServerState.activeApi == null) return;
+    if (multiServerState.activeApi == null || !isOwner) return;
     final seq = ++_machinesSeq;
     try {
       final machines = await api.machines();

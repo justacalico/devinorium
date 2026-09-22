@@ -90,6 +90,7 @@ async fn make_app(bootstrap_user: &str, bootstrap_pw: &str) -> (AppState, db::Db
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (state, database)
 }
@@ -98,6 +99,10 @@ fn build_router(state: AppState) -> Router {
     let public = devinorium::api::auth::router();
     let protected = Router::new()
         .route("/api/auth/me", get(devinorium::api::auth::me))
+        .route(
+            "/api/auth/me/password",
+            axum::routing::patch(devinorium::api::auth::change_password),
+        )
         .route(
             "/api/auth/totp/setup",
             axum::routing::post(devinorium::api::auth::totp_setup),
@@ -173,6 +178,151 @@ async fn login_token(app: &Router, username: &str, password: &str) -> String {
     let body = read_body(resp.into_body()).await;
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
     v["token"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn session_tokens_are_stored_hashed() {
+    let (state, database) = make_app("owner", "supersecret123").await;
+    let app = build_router(state);
+    let cookie = login(&app, "owner", "supersecret123").await;
+    let token = cookie
+        .strip_prefix("devinorium_session=")
+        .unwrap()
+        .to_string();
+
+    let stored: String = sqlx::query_scalar("SELECT token FROM sessions LIMIT 1")
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+    // The database holds SHA-256(token), never the bearer credential itself.
+    assert_ne!(stored, token);
+    assert_eq!(stored.len(), 64);
+    assert!(stored.chars().all(|c| c.is_ascii_hexdigit()));
+    assert_eq!(stored, devinorium::auth::tokens::token_hash(&token));
+}
+
+fn totp_code(secret: &str) -> String {
+    use totp_rs::{Algorithm, Secret, TOTP};
+    TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        Secret::Encoded(secret.to_string()).to_bytes().unwrap(),
+        Some("devinorium".into()),
+        "owner".into(),
+    )
+    .unwrap()
+    .generate_current()
+    .unwrap()
+}
+
+/// POST /api/auth/totp/setup with an optional JSON proof body.
+async fn totp_setup_request(
+    app: &Router,
+    cookie: &str,
+    body: Option<&str>,
+) -> (StatusCode, String) {
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/api/auth/totp/setup")
+        .header("cookie", cookie);
+    if let Some(b) = body {
+        req = req.header("content-type", "application/json");
+        let resp = app
+            .clone()
+            .oneshot(req.body(Body::from(b.to_string())).unwrap())
+            .await
+            .unwrap();
+        return (resp.status(), read_body(resp.into_body()).await);
+    }
+    let resp = app
+        .clone()
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    (resp.status(), read_body(resp.into_body()).await)
+}
+
+async fn totp_disable_request(app: &Router, cookie: &str, body: Option<&str>) -> StatusCode {
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/api/auth/totp/disable")
+        .header("cookie", cookie);
+    if let Some(b) = body {
+        req = req.header("content-type", "application/json");
+        let resp = app
+            .clone()
+            .oneshot(req.body(Body::from(b.to_string())).unwrap())
+            .await
+            .unwrap();
+        return resp.status();
+    }
+    app.clone()
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+        .status()
+}
+
+async fn totp_verify_request(app: &Router, cookie: &str, code: &str) -> StatusCode {
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/totp/verify")
+                .header("cookie", cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(format!(r#"{{"code":"{code}"}}"#)))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status()
+}
+
+/// Whether a fresh password login is challenged for a TOTP code.
+async fn login_totp_required(app: &Router, username: &str, password: &str) -> bool {
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"username":"{username}","password":"{password}"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_body(resp.into_body()).await;
+    serde_json::from_str::<serde_json::Value>(&body).unwrap()["totp_required"]
+        .as_bool()
+        .unwrap()
+}
+
+/// Full enrollment: setup with password proof, then verify the new code.
+async fn enroll_totp(app: &Router, cookie: &str, password: &str) -> String {
+    let (status, body) = totp_setup_request(
+        app,
+        cookie,
+        Some(&format!(r#"{{"password":"{password}"}}"#)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let secret = serde_json::from_str::<serde_json::Value>(&body).unwrap()["secret"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let code = totp_code(&secret);
+    assert_eq!(
+        totp_verify_request(app, cookie, &code).await,
+        StatusCode::OK
+    );
+    secret
 }
 
 #[tokio::test]
@@ -605,7 +755,7 @@ async fn totp_setup_and_verify_flow() {
         .unwrap()
         .to_string();
 
-    // TOTP setup returns a secret.
+    // TOTP setup requires the account password as proof.
     let resp = app
         .clone()
         .oneshot(
@@ -613,7 +763,8 @@ async fn totp_setup_and_verify_flow() {
                 .method("POST")
                 .uri("/api/auth/totp/setup")
                 .header("cookie", format!("devinorium_session={token}"))
-                .body(Body::empty())
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"password":"supersecret123"}"#))
                 .unwrap(),
         )
         .await
@@ -627,18 +778,7 @@ async fn totp_setup_and_verify_flow() {
         .to_string();
 
     // Generate a valid current code from the secret.
-    use totp_rs::{Algorithm, Secret, TOTP};
-    let totp = TOTP::new(
-        Algorithm::SHA1,
-        6,
-        1,
-        30,
-        Secret::Encoded(secret.clone()).to_bytes().unwrap(),
-        Some("devinorium".into()),
-        "owner".into(),
-    )
-    .unwrap();
-    let code = totp.generate_current().unwrap();
+    let code = totp_code(&secret);
 
     // Verify -> enables TOTP.
     let resp = app
@@ -673,6 +813,338 @@ async fn totp_setup_and_verify_flow() {
         .unwrap();
     let body = read_body(resp.into_body()).await;
     assert!(body.contains("\"totp_required\":true"), "body: {body}");
+}
+
+#[tokio::test]
+async fn totp_setup_requires_password_proof() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    // No proof at all.
+    let (status, _) = totp_setup_request(&app, &cookie, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Wrong password.
+    let (status, _) =
+        totp_setup_request(&app, &cookie, Some(r#"{"password":"wrongwrongwrong"}"#)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Correct password.
+    let (status, body) =
+        totp_setup_request(&app, &cookie, Some(r#"{"password":"supersecret123"}"#)).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+}
+
+#[tokio::test]
+async fn totp_reenroll_keeps_active_factor_until_verified() {
+    let (state, db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let old_secret = enroll_totp(&app, &cookie, "supersecret123").await;
+    assert!(login_totp_required(&app, "owner", "supersecret123").await);
+
+    // Re-enroll with the current code as proof: returns a different secret
+    // and must NOT disable the existing factor.
+    let (status, body) = totp_setup_request(
+        &app,
+        &cookie,
+        Some(&format!(r#"{{"code":"{}"}}"#, totp_code(&old_secret))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let new_secret = serde_json::from_str::<serde_json::Value>(&body).unwrap()["secret"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(old_secret, new_secret);
+
+    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
+    assert!(user.totp_enabled, "reenroll must not disable totp");
+    assert_eq!(user.totp_secret.as_deref(), Some(old_secret.as_str()));
+
+    // The old factor still satisfies login while the replacement is pending.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"username":"owner","password":"supersecret123","totp":"{}"}}"#,
+                    totp_code(&old_secret)
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_body(resp.into_body()).await;
+    assert!(body.contains("\"totp_required\":false"), "body: {body}");
+
+    // A wrong code does not promote the pending secret.
+    assert_eq!(
+        totp_verify_request(&app, &cookie, "000000").await,
+        StatusCode::UNAUTHORIZED
+    );
+    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
+    assert_eq!(user.totp_secret.as_deref(), Some(old_secret.as_str()));
+
+    // The new code promotes the pending secret.
+    assert_eq!(
+        totp_verify_request(&app, &cookie, &totp_code(&new_secret)).await,
+        StatusCode::OK
+    );
+    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
+    assert!(user.totp_enabled);
+    assert_eq!(user.totp_secret.as_deref(), Some(new_secret.as_str()));
+    assert!(user.totp_pending_secret.is_none());
+}
+
+#[tokio::test]
+async fn totp_disable_requires_proof() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+    enroll_totp(&app, &cookie, "supersecret123").await;
+
+    // No proof, wrong password: both denied and the factor survives.
+    assert_eq!(
+        totp_disable_request(&app, &cookie, None).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        totp_disable_request(&app, &cookie, Some(r#"{"password":"wrongwrongwrong"}"#)).await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(login_totp_required(&app, "owner", "supersecret123").await);
+
+    // The password disables it.
+    assert_eq!(
+        totp_disable_request(&app, &cookie, Some(r#"{"password":"supersecret123"}"#)).await,
+        StatusCode::OK
+    );
+    assert!(!login_totp_required(&app, "owner", "supersecret123").await);
+
+    // A current TOTP code also works.
+    let secret = enroll_totp(&app, &cookie, "supersecret123").await;
+    assert_eq!(
+        totp_disable_request(
+            &app,
+            &cookie,
+            Some(&format!(r#"{{"code":"{}"}}"#, totp_code(&secret))),
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert!(!login_totp_required(&app, "owner", "supersecret123").await);
+}
+
+#[tokio::test]
+async fn totp_disable_clears_pending_secret() {
+    let (state, db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+    let secret = enroll_totp(&app, &cookie, "supersecret123").await;
+
+    // Start a re-enrollment, then disable: pending must be wiped too.
+    let (status, _) = totp_setup_request(
+        &app,
+        &cookie,
+        Some(&format!(r#"{{"code":"{}"}}"#, totp_code(&secret))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        totp_disable_request(&app, &cookie, Some(r#"{"password":"supersecret123"}"#)).await,
+        StatusCode::OK
+    );
+    let user = db.get_user_by_username("owner").await.unwrap().unwrap();
+    assert!(user.totp_pending_secret.is_none());
+    assert!(!user.totp_enabled);
+    assert!(user.totp_secret.is_none());
+}
+
+#[tokio::test]
+async fn change_password_requires_current_and_revokes_sessions() {
+    let (state, _db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let patch = |body: &str, cookie: &str| {
+        let app = app.clone();
+        let cookie = cookie.to_string();
+        let body = body.to_string();
+        async move {
+            app.oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/api/auth/me/password")
+                    .header("cookie", cookie)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+        }
+    };
+
+    // Missing fields, weak new password, wrong current: all rejected.
+    assert_eq!(patch(r#"{}"#, &cookie).await, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        patch(
+            r#"{"current_password":"supersecret123","new_password":"short"}"#,
+            &cookie
+        )
+        .await,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        patch(
+            r#"{"current_password":"wrongwrongwrong","new_password":"newsecret456"}"#,
+            &cookie
+        )
+        .await,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // Correct current password succeeds and kills every session.
+    assert_eq!(
+        patch(
+            r#"{"current_password":"supersecret123","new_password":"newsecret456"}"#,
+            &cookie
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    // The old session cookie is dead.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    // Old password fails, new password logs in.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"username":"owner","password":"supersecret123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    login(&app, "owner", "newsecret456").await;
+}
+
+#[tokio::test]
+async fn owner_password_reset_revokes_target_sessions() {
+    let (state, db) = make_app("owner", "supersecret123").await;
+    let app = build_router(state.clone());
+    let cookie = login(&app, "owner", "supersecret123").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/users")
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(
+                    r#"{"username":"alice","password":"alicepass123"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let alice_id = serde_json::from_str::<serde_json::Value>(&read_body(resp.into_body()).await)
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    let alice_cookie = login(&app, "alice", "alicepass123").await;
+
+    // A member cannot use the reset path.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/users/{alice_id}"))
+                .header("content-type", "application/json")
+                .header("cookie", &alice_cookie)
+                .body(Body::from(r#"{"password":"takenover12345"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // The owner resets it: alice's session dies and the new password works.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/users/{alice_id}"))
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(r#"{"password":"resetpass456"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", &alice_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    login(&app, "alice", "resetpass456").await;
+
+    // Owner accounts cannot be reset through this path.
+    let owner_id = db.get_user_by_username("owner").await.unwrap().unwrap().id;
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/users/{owner_id}"))
+                .header("content-type", "application/json")
+                .header("cookie", &cookie)
+                .body(Body::from(r#"{"password":"resetpass456"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

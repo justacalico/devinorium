@@ -17,6 +17,7 @@ pub mod project_groups;
 pub mod projects;
 pub mod providers;
 pub mod push;
+pub(crate) mod scope;
 pub mod server;
 pub mod settings;
 pub mod tailscale;

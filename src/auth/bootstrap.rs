@@ -18,7 +18,7 @@ pub const LOCAL_USERNAME: &str = "local";
 /// valid argon2 encoding, so `password::verify` always fails on it and
 /// interactive login is impossible. Also used to recognize accounts this
 /// code created.
-const LOCAL_PASSWORD_SENTINEL: &str = "!local-mode";
+pub(crate) const LOCAL_PASSWORD_SENTINEL: &str = "!local-mode";
 
 /// If no users exist and a bootstrap password is configured, create the
 /// bootstrap user and mark them as owner. Idempotent.
@@ -33,6 +33,10 @@ pub async fn run(db: &crate::db::Db, username: &str, password_str: &str) -> anyh
     }
     if password_str == "change-me-to-a-strong-password" {
         tracing::warn!("bootstrap skipped: default password not changed");
+        return Ok(());
+    }
+    if !password::is_valid(password_str) {
+        tracing::warn!("bootstrap skipped: password does not meet the policy");
         return Ok(());
     }
     let hash = password::hash(password_str)?;

@@ -146,6 +146,21 @@
   "otherHint": "输入你的答案",
   "username": "用户名",
   "password": "密码",
+  "changePassword": "修改密码",
+  "currentPassword": "当前密码",
+  "newPassword": "新密码",
+  "confirmNewPassword": "确认新密码",
+  "passwordsDoNotMatch": "两次输入的密码不一致",
+  "resetPassword": "重置密码",
+  "resetPasswordHint": "为 \"{name}\" 设置新密码，其所有会话将失效。",
+  "@resetPasswordHint": {
+    "description": "Hint above the owner password reset field",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "test": "测试",
   "error": "错误",
   "on": "开",
@@ -345,6 +360,8 @@
   "disable2faTitle": "禁用 2FA？",
   "disable2faConfirmation": "这将移除基于 TOTP 的双因素认证。确定吗？",
   "disable2fa": "禁用 2FA",
+  "totpProofPrompt": "请输入当前密码或 2FA 验证码以继续。",
+  "passwordOrTotpCode": "密码或 2FA 验证码",
   "twoFactorAuthentication": "双因素认证",
   "twoFactorShort": "2FA",
   "user": "用户",
@@ -454,6 +471,7 @@
   "serverUpdateLocalMode": "内置服务器随应用一起更新",
   "serverUpdateDevMode": "开发实例无法通过此方式更新",
   "serverUpdateUnsupported": "此平台没有预构建的服务器版本",
+  "serverUpdateUnwritableExeDir": "自更新无法写入可执行文件目录，请改用软件包更新",
   "topics": "主题",
   "timeAgoJustNow": "刚刚",
   "timeAgoMinutes": "{count} 分钟前",
@@ -1016,10 +1034,6 @@
   "@machinesEmpty": {
     "description": "Shown when the server has no machines"
   },
-  "machinesOnlyOwner": "只有所有者可以管理机器",
-  "@machinesOnlyOwner": {
-    "description": "Hint shown to non-owner users"
-  },
   "machineAdd": "添加机器",
   "@machineAdd": {
     "description": "Button and dialog title for adding a machine"
@@ -1508,5 +1522,33 @@
   "maxOutputTokensInvalid": "请输入 1 到 4,000,000 之间的数值",
   "@maxOutputTokensInvalid": {
     "description": "Validation error for the output token field"
+  },
+  "editorUnsavedSwitchProjects": "编辑器有未保存的更改。请先保存或放弃更改，然后再切换项目。",
+  "@editorUnsavedSwitchProjects": {
+    "description": "Error shown when switching projects while the editor has unsaved changes"
+  },
+  "editorUnsavedNewProject": "编辑器有未保存的更改。请先保存或放弃更改，然后再创建新项目。",
+  "@editorUnsavedNewProject": {
+    "description": "Error shown when creating a project while the editor has unsaved changes"
+  },
+  "editorUnsavedDeleteProject": "编辑器有未保存的更改。请先保存或放弃更改，然后再删除此项目。",
+  "@editorUnsavedDeleteProject": {
+    "description": "Error shown when deleting a project while the editor has unsaved changes"
+  },
+  "editorUnsavedSwitch": "编辑器有未保存的更改。请先保存或放弃更改，然后再切换。",
+  "@editorUnsavedSwitch": {
+    "description": "Error shown when switching servers or nodes while the editor has unsaved changes"
+  },
+  "projectNotFoundAfterClone": "克隆后未找到项目。",
+  "@projectNotFoundAfterClone": {
+    "description": "Error shown when a cloned project cannot be loaded"
+  },
+  "threadTitleFallback": "线程",
+  "@threadTitleFallback": {
+    "description": "Notification title used when a thread has no title"
+  },
+  "webSocketClosed": "WebSocket 已关闭",
+  "@webSocketClosed": {
+    "description": "Terminal error recorded when the socket closes unexpectedly"
   }
 }

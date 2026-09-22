@@ -146,6 +146,21 @@
   "otherHint": "Type your answer",
   "username": "Username",
   "password": "Password",
+  "changePassword": "Change password",
+  "currentPassword": "Current password",
+  "newPassword": "New password",
+  "confirmNewPassword": "Confirm new password",
+  "passwordsDoNotMatch": "Passwords do not match",
+  "resetPassword": "Reset password",
+  "resetPasswordHint": "Set a new password for \"{name}\". All of their sessions are revoked.",
+  "@resetPasswordHint": {
+    "description": "Hint above the owner password reset field",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "test": "Test",
   "error": "Error",
   "on": "On",
@@ -345,6 +360,8 @@
   "disable2faTitle": "Disable 2FA?",
   "disable2faConfirmation": "This will remove TOTP-based two-factor authentication from your account. Are you sure?",
   "disable2fa": "Disable 2FA",
+  "totpProofPrompt": "Enter your current password or 2FA code to continue.",
+  "passwordOrTotpCode": "Password or 2FA code",
   "twoFactorAuthentication": "Two-factor authentication",
   "twoFactorShort": "2FA",
   "user": "User",
@@ -454,6 +471,7 @@
   "serverUpdateLocalMode": "The bundled server is updated together with the app",
   "serverUpdateDevMode": "Development instances cannot be updated this way",
   "serverUpdateUnsupported": "No prebuilt server release exists for this platform",
+  "serverUpdateUnwritableExeDir": "Self-update cannot write to the executable directory; update the package instead",
   "topics": "Topics",
   "timeAgoJustNow": "just now",
   "timeAgoMinutes": "{count}m ago",
@@ -1037,10 +1055,6 @@
   "@machinesEmpty": {
     "description": "Shown when the server has no machines"
   },
-  "machinesOnlyOwner": "Only the owner can manage machines.",
-  "@machinesOnlyOwner": {
-    "description": "Hint shown to non-owner users"
-  },
   "machineAdd": "Add machine",
   "@machineAdd": {
     "description": "Button and dialog title for adding a machine"
@@ -1529,5 +1543,33 @@
   "maxOutputTokensInvalid": "Enter a value between 1 and 4,000,000",
   "@maxOutputTokensInvalid": {
     "description": "Validation error for the output token field"
+  },
+  "editorUnsavedSwitchProjects": "Editor has unsaved changes. Save or discard them before switching projects.",
+  "@editorUnsavedSwitchProjects": {
+    "description": "Error shown when switching projects while the editor has unsaved changes"
+  },
+  "editorUnsavedNewProject": "Editor has unsaved changes. Save or discard them before creating a new project.",
+  "@editorUnsavedNewProject": {
+    "description": "Error shown when creating a project while the editor has unsaved changes"
+  },
+  "editorUnsavedDeleteProject": "Editor has unsaved changes. Save or discard them before deleting this project.",
+  "@editorUnsavedDeleteProject": {
+    "description": "Error shown when deleting a project while the editor has unsaved changes"
+  },
+  "editorUnsavedSwitch": "Editor has unsaved changes. Save or discard them before switching.",
+  "@editorUnsavedSwitch": {
+    "description": "Error shown when switching servers or nodes while the editor has unsaved changes"
+  },
+  "projectNotFoundAfterClone": "Project not found after clone.",
+  "@projectNotFoundAfterClone": {
+    "description": "Error shown when a cloned project cannot be loaded"
+  },
+  "threadTitleFallback": "Thread",
+  "@threadTitleFallback": {
+    "description": "Notification title used when a thread has no title"
+  },
+  "webSocketClosed": "WebSocket closed",
+  "@webSocketClosed": {
+    "description": "Terminal error recorded when the socket closes unexpectedly"
   }
 }

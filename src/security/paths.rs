@@ -6,8 +6,42 @@ use std::path::{Path, PathBuf};
 /// Names that the file manager must hide and protect from user actions.
 pub const HIDDEN_NAMES: &[&str] = &[".devinorium-attachments", ".git"];
 
+/// Locations that hold credentials or host secrets. Non-owner users may not
+/// read, write, list, or register these anywhere the API can reach — the
+/// check is on every path component, not just the basename.
+pub const SENSITIVE_NAMES: &[&str] = &[
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".azure",
+    ".kube",
+    ".docker",
+    ".config",
+    ".netrc",
+    ".git-credentials",
+    ".npmrc",
+    ".pypirc",
+    ".envrc",
+];
+
 fn is_hidden_os(name: &OsStr) -> bool {
     HIDDEN_NAMES.iter().any(|&h| name == OsStr::new(h))
+}
+
+/// Check whether a single file or directory name is a sensitive location.
+/// `.env` and variants like `.env.local` count as sensitive.
+pub fn is_sensitive_name(name: &str) -> bool {
+    SENSITIVE_NAMES.contains(&name) || name == ".env" || name.starts_with(".env.")
+}
+
+/// Check whether any component of `path` names a sensitive location.
+pub fn has_sensitive_component(path: &Path) -> bool {
+    path.components().any(|c| {
+        c.as_os_str()
+            .to_str()
+            .map(is_sensitive_name)
+            .unwrap_or(false)
+    })
 }
 
 /// Check whether a single file or directory name is hidden.
@@ -132,6 +166,22 @@ pub fn is_within(child: &Path, parent: &Path) -> bool {
     child == parent || child.starts_with(parent)
 }
 
+/// Normalize `.` and `..` components purely lexically, without touching the
+/// filesystem. `..` at the root stays at the root.
+pub fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +193,30 @@ mod tests {
         assert!(!is_hidden_name(".gitignore"));
         assert!(!is_hidden_name(".Git"));
         assert!(!is_hidden_name("git"));
+    }
+
+    #[test]
+    fn sensitive_names_match_credentials() {
+        assert!(is_sensitive_name(".ssh"));
+        assert!(is_sensitive_name(".config"));
+        assert!(is_sensitive_name(".env"));
+        assert!(is_sensitive_name(".env.local"));
+        assert!(is_sensitive_name(".netrc"));
+        assert!(!is_sensitive_name(".envnotes"));
+        assert!(!is_sensitive_name("env"));
+        assert!(!is_sensitive_name(".git"));
+        assert!(!is_sensitive_name(".gitignore"));
+        assert!(!is_sensitive_name("config"));
+    }
+
+    #[test]
+    fn sensitive_component_checks_any_component() {
+        assert!(has_sensitive_component(Path::new("/home/u/.ssh")));
+        assert!(has_sensitive_component(Path::new("/home/u/.ssh/id_rsa")));
+        assert!(has_sensitive_component(Path::new("/home/u/.config/glab")));
+        assert!(has_sensitive_component(Path::new("/proj/.env.production")));
+        assert!(!has_sensitive_component(Path::new("/proj/src/main.rs")));
+        assert!(!has_sensitive_component(Path::new("/proj/.envnotes")));
     }
 
     #[test]
@@ -228,6 +302,23 @@ mod tests {
         assert!(
             resolved.is_none(),
             "traversal through non-existent dir should be rejected"
+        );
+    }
+
+    #[test]
+    fn normalize_lexical_collapses_dot_segments() {
+        assert_eq!(
+            normalize_lexical(Path::new("/a/b/../c")),
+            PathBuf::from("/a/c")
+        );
+        assert_eq!(
+            normalize_lexical(Path::new("/a/./b")),
+            PathBuf::from("/a/b")
+        );
+        assert_eq!(normalize_lexical(Path::new("/a/..")), PathBuf::from("/"));
+        assert_eq!(
+            normalize_lexical(Path::new("/a/b/../../..")),
+            PathBuf::from("/")
         );
     }
 

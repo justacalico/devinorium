@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 
 import '../l10n/global_l10n.dart';
-import '../models/models.dart' show tryDecodeJson;
+import '../models/models.dart' show tryDecodeJson, sanitizeHttpErrorBody;
 import 'api_types.dart';
 import 'sse_parser.dart';
 
@@ -76,12 +76,14 @@ Future<void> _runSse({
     if (response.status >= 400) {
       final text = (await response.text().toDart).toDart;
       final err = tryDecodeJson(text);
+      final fallback = appL10n.httpErrorStatus(response.status);
+      final sanitized = sanitizeHttpErrorBody(text, fallback);
       throw ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (text.isNotEmpty
-                ? appL10n.httpErrorWithText(response.status, text)
-                : appL10n.httpErrorStatus(response.status)),
+            : (sanitized == fallback
+                ? fallback
+                : appL10n.httpErrorWithText(response.status, sanitized)),
         response.status,
       );
     }

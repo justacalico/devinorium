@@ -343,6 +343,7 @@ class AppState extends AppStateBase
         lastRunStatus: lastRunStatus,
         contextUsage: threadContextUsage,
       );
+      store.onAuthFailure = () => unawaited(_routeToLogin());
       _threadStores[threadId] = store;
       _setActiveStore(store);
     } else {
@@ -484,7 +485,7 @@ class AppState extends AppStateBase
     final draftKey = _draftKey(id);
     store.onComposerTextChanged = (text) => _saveDraftKey(draftKey, text);
     store.onRunFinished = (failed) {
-      final title = _threadTitle(id) ?? 'Thread';
+      final title = _threadTitle(id) ?? appL10n.threadTitleFallback;
       // The lifecycle stream already covers completion notifications for
       // every thread; this callback is the fallback for servers too old to
       // have it. Suppressed when the user is looking at this very thread.
@@ -569,6 +570,7 @@ class AppState extends AppStateBase
       selectedPermission: selectedPermission,
       selectedProvider: selectedProvider,
     );
+    store.onAuthFailure = () => unawaited(_routeToLogin());
     return store;
   }
 }

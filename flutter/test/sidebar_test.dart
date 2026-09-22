@@ -5,6 +5,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/views/project_icon.dart';
+import 'package:devinorium_frontend/views/settings/topics.dart';
 import 'package:devinorium_frontend/views/sidebar.dart';
 import 'package:devinorium_frontend/widgets/provider_icons.dart';
 import 'package:devinorium_frontend/widgets/thread_tag.dart';
@@ -486,7 +487,10 @@ void main() {
     await tester.tap(find.text('Servers'));
     await tester.pumpAndSettle();
 
-    expect(state.settingsTopicIndex, 6);
+    expect(
+      state.settingsTopicIndex,
+      settingsTopicOrder(false).indexOf(SettingsTopic.servers),
+    );
   });
 
   testWidgets('Projects header has a single add project button', (
@@ -2211,7 +2215,8 @@ void main() {
 
     expect(tile('Account').enabled, isFalse);
     expect(tile('Providers').enabled, isFalse);
-    expect(tile('Git').enabled, isFalse);
+    // Git is owner-only and absent without a signed-in owner.
+    expect(find.text('Git'), findsNothing);
     expect(tile('Directories').enabled, isFalse);
     expect(tile('About').enabled, isTrue);
     expect(tile('Personalization').enabled, isTrue);

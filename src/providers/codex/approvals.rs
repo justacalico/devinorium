@@ -78,7 +78,7 @@ pub async fn handle_server_request(
                 .to_string();
             approval_response(
                 PermissionRequest {
-                    request_id: request_id(params),
+                    request_id: request_id(method, params),
                     scope: "exec".into(),
                     title,
                     input: params
@@ -103,7 +103,7 @@ pub async fn handle_server_request(
                 .to_string();
             approval_response(
                 PermissionRequest {
-                    request_id: request_id(params),
+                    request_id: request_id(method, params),
                     scope: "edit".into(),
                     title,
                     input: None,
@@ -125,7 +125,7 @@ pub async fn handle_server_request(
                 .to_string();
             approval_response(
                 PermissionRequest {
-                    request_id: request_id(params),
+                    request_id: request_id(method, params),
                     scope: "permissions".into(),
                     title,
                     input: params.get("permissions").map(|p| p.to_string()),
@@ -168,13 +168,18 @@ async fn approval_response(
     ServerRequestResponse::Result(build(decision))
 }
 
-fn request_id(params: &Value) -> String {
-    params
+/// Pending prompts are keyed by request id. Codex does not always send one,
+/// and the same `itemId` can appear on different approval kinds, so the id
+/// is namespaced by method and falls back to a uuid when absent.
+fn request_id(method: &str, params: &Value) -> String {
+    let id = params
         .get("approvalId")
         .and_then(Value::as_str)
         .or_else(|| params.get("itemId").and_then(Value::as_str))
-        .unwrap_or_default()
-        .to_string()
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    format!("{method}:{id}")
 }
 
 /// Accept / accept-for-session / decline / cancel, labelled the way the
@@ -223,7 +228,7 @@ async fn user_input_response(
     }
 
     let ask = AskRequest {
-        request_id: request_id(params),
+        request_id: request_id("item/tool/requestUserInput", params),
         message: "Codex is asking for input".into(),
         questions: questions
             .iter()
@@ -404,5 +409,34 @@ mod tests {
             handle_server_request("account/chatgptAuthTokens/refresh", &json!({}), None, None)
                 .await;
         assert!(matches!(resp, ServerRequestResponse::MethodNotFound));
+    }
+
+    #[test]
+    fn request_id_namespaces_by_method() {
+        let params = json!({"itemId":"i1"});
+        let exec = request_id("item/commandExecution/requestApproval", &params);
+        let edit = request_id("item/fileChange/requestApproval", &params);
+        assert_ne!(exec, edit);
+        assert!(exec.starts_with("item/commandExecution/requestApproval:"));
+        assert!(exec.ends_with(":i1"));
+    }
+
+    #[test]
+    fn request_id_falls_back_to_unique_id() {
+        for params in [json!({}), json!({"itemId":""}), json!({"approvalId":"  "})] {
+            let a = request_id("item/commandExecution/requestApproval", &params);
+            let b = request_id("item/commandExecution/requestApproval", &params);
+            assert_ne!(a, b, "empty ids must not collide: {params}");
+            assert!(a.len() > "item/commandExecution/requestApproval:".len());
+        }
+    }
+
+    #[test]
+    fn request_id_prefers_approval_id() {
+        let params = json!({"approvalId":"ap-1","itemId":"i1"});
+        assert_eq!(
+            request_id("execCommandApproval", &params),
+            "execCommandApproval:ap-1"
+        );
     }
 }

@@ -173,17 +173,37 @@ impl GitRemoteService {
     }
 
     pub(super) fn check_api_path(path: &str) -> Result<(), RemoteError> {
-        if path.starts_with('/') {
+        // Validate the decoded form so encoded traversal like `%2E%2E` cannot
+        // slip a `..` through to the GitLab API. Repeat until stable to also
+        // catch multiply-encoded input.
+        let mut decoded = path.to_string();
+        for _ in 0..10 {
+            let next = percent_decode(decoded.as_bytes())
+                .decode_utf8_lossy()
+                .into_owned();
+            if next == decoded {
+                break;
+            }
+            decoded = next;
+        }
+        // Still changing after ten rounds means the input was encoded more
+        // deeply than any legitimate path — refuse it rather than guess.
+        if percent_decode(decoded.as_bytes()).decode_utf8_lossy() != decoded {
+            return Err(RemoteError::StatusFailed(
+                "api path is encoded too deeply".into(),
+            ));
+        }
+        if decoded.starts_with('/') {
             return Err(RemoteError::StatusFailed(
                 "api path must not start with /".into(),
             ));
         }
-        if !path.starts_with("projects/") {
+        if !decoded.starts_with("projects/") {
             return Err(RemoteError::StatusFailed(
                 "only project api paths are supported".into(),
             ));
         }
-        if path.contains("..") || path.contains('\n') || path.contains('\r') {
+        if decoded.contains("..") || decoded.contains('\n') || decoded.contains('\r') {
             return Err(RemoteError::StatusFailed(
                 "invalid characters in api path".into(),
             ));
@@ -326,6 +346,18 @@ mod tests {
         assert!(GitRemoteService::check_api_path("/projects/foo").is_err());
         assert!(GitRemoteService::check_api_path("projects/foo\nbar").is_err());
         assert!(GitRemoteService::check_api_path("projects/foo/../bar").is_err());
+        // Percent-encoded traversal is validated after decoding.
+        assert!(GitRemoteService::check_api_path("projects/foo/%2E%2E/bar").is_err());
+        assert!(GitRemoteService::check_api_path("projects/%2e%2E/user").is_err());
+        assert!(GitRemoteService::check_api_path("projects/%252E%252E/x").is_err());
+        assert!(GitRemoteService::check_api_path("%2Fprojects/foo").is_err());
+        assert!(GitRemoteService::check_api_path("projects/foo%0Abar").is_err());
+        // Encoded more deeply than the decode cap is refused outright.
+        let mut deep = "%2E".to_string();
+        for _ in 0..11 {
+            deep = deep.replace('%', "%25");
+        }
+        assert!(GitRemoteService::check_api_path(&format!("projects/{deep}/x")).is_err());
     }
 
     #[test]

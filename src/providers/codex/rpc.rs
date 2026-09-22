@@ -18,6 +18,50 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 
 use super::wire::{parse_message, Incoming};
 
+/// Largest single JSON-RPC line accepted from stdout. Truncated lines fail
+/// parsing and are skipped, so a runaway server cannot grow memory without
+/// bound.
+const MAX_STDOUT_LINE: usize = 4 * 1024 * 1024;
+
+/// Per-line cap for stderr drain output; stderr is log noise only.
+const MAX_STDERR_LINE: usize = 16 * 1024;
+
+/// Backpressure bound on queued server events. Once full, the reader task
+/// pauses instead of buffering without limit.
+const EVENT_CHANNEL_CAP: usize = 1024;
+
+/// Read one `\n`-terminated line into `buf`, capping its length at `max`.
+/// Oversized lines are truncated and the remainder discarded up to the
+/// newline so framing stays intact. Returns `Ok(None)` on EOF.
+async fn next_capped_line<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    max: usize,
+) -> std::io::Result<Option<()>> {
+    buf.clear();
+    let mut skipping = false;
+    loop {
+        let avail = reader.fill_buf().await?;
+        if avail.is_empty() {
+            return Ok(if buf.is_empty() { None } else { Some(()) });
+        }
+        let (take, keep) = match avail.iter().position(|&b| b == b'\n') {
+            Some(pos) => (pos + 1, pos),
+            None => (avail.len(), avail.len()),
+        };
+        if !skipping {
+            let room = max.saturating_sub(buf.len());
+            let copy = keep.min(room);
+            buf.extend_from_slice(&avail[..copy]);
+            skipping = keep > room;
+        }
+        reader.consume(take);
+        if take > keep {
+            return Ok(Some(()));
+        }
+    }
+}
+
 /// A server-initiated message that needs the consumer's attention.
 #[derive(Debug)]
 pub enum ServerEvent {
@@ -40,7 +84,7 @@ type PendingMap = HashMap<u64, oneshot::Sender<Result<Value, String>>>;
 pub struct AppServer {
     stdin: Mutex<ChildStdin>,
     pending: Arc<Mutex<PendingMap>>,
-    events: Mutex<mpsc::UnboundedReceiver<ServerEvent>>,
+    events: Mutex<mpsc::Receiver<ServerEvent>>,
     next_id: AtomicU64,
     _child: Child,
 }
@@ -54,15 +98,18 @@ impl AppServer {
             // ETXTBSY can fire when exec'ing a binary that was written moments
             // ago (installer mid-copy, tests); retry briefly.
             for _ in 0..5 {
-                match Command::new(bin)
-                    .args(["app-server", "--stdio"])
+                let mut cmd = Command::new(bin);
+                cmd.args(["app-server", "--stdio"])
                     .current_dir(cwd)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    .kill_on_drop(true)
-                    .spawn()
-                {
+                    .kill_on_drop(true);
+                // A fresh process group lets teardown signal grandchildren
+                // too; kill_on_drop alone only reaches the direct child.
+                #[cfg(unix)]
+                cmd.process_group(0);
+                match cmd.spawn() {
                     Ok(c) => {
                         spawned = Some(c);
                         break;
@@ -95,8 +142,12 @@ impl AppServer {
             .ok_or_else(|| anyhow::anyhow!("codex app-server has no stdout"))?;
         if let Some(stderr) = child.stderr.take() {
             tokio::spawn(async move {
-                let mut lines = BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
+                let mut reader = BufReader::new(stderr);
+                let mut buf = Vec::new();
+                while let Ok(Some(())) =
+                    next_capped_line(&mut reader, &mut buf, MAX_STDERR_LINE).await
+                {
+                    let line = String::from_utf8_lossy(&buf);
                     let line = line.trim();
                     if !line.is_empty() {
                         tracing::debug!(target: "codex-app-server", "{line}");
@@ -105,16 +156,17 @@ impl AppServer {
             });
         }
 
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<ServerEvent>();
+        let (event_tx, event_rx) = mpsc::channel::<ServerEvent>(EVENT_CHANNEL_CAP);
         let pending: Arc<Mutex<PendingMap>> = Arc::new(Mutex::new(HashMap::new()));
         let reader_pending = pending.clone();
 
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
+            let mut reader = BufReader::new(stdout);
+            let mut buf = Vec::new();
             loop {
-                match lines.next_line().await {
-                    Ok(Some(line)) => {
-                        let Some(msg) = parse_message(&line) else {
+                match next_capped_line(&mut reader, &mut buf, MAX_STDOUT_LINE).await {
+                    Ok(Some(())) => {
+                        let Some(msg) = parse_message(&String::from_utf8_lossy(&buf)) else {
                             continue;
                         };
                         match msg {
@@ -128,6 +180,7 @@ impl AppServer {
                             Incoming::Request { id, method, params } => {
                                 if event_tx
                                     .send(ServerEvent::Request { id, method, params })
+                                    .await
                                     .is_err()
                                 {
                                     return;
@@ -136,6 +189,7 @@ impl AppServer {
                             Incoming::Notification { method, params } => {
                                 if event_tx
                                     .send(ServerEvent::Notification { method, params })
+                                    .await
                                     .is_err()
                                 {
                                     return;
@@ -149,7 +203,7 @@ impl AppServer {
                         for (_, tx) in pending.drain() {
                             let _ = tx.send(Err("codex app-server exited".to_string()));
                         }
-                        let _ = event_tx.send(ServerEvent::Closed);
+                        let _ = event_tx.send(ServerEvent::Closed).await;
                         return;
                     }
                 }
@@ -165,8 +219,35 @@ impl AppServer {
         }))
     }
 
+    /// On unix the child leads its own process group, so teardown signals
+    /// the whole group — sandboxed grandchildren die with the app-server
+    /// instead of surviving a cancel.
+    #[cfg(unix)]
+    fn teardown(&self) {
+        if let Some(pgid) = self
+            ._child
+            .id()
+            .and_then(|raw| rustix::process::Pid::from_raw(raw as i32))
+        {
+            let _ = rustix::process::kill_process_group(pgid, rustix::process::Signal::KILL);
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn teardown(&self) {}
+
     /// Send a request and wait for its response.
     pub async fn request(&self, method: &str, params: Value) -> anyhow::Result<Value> {
+        self.request_with_timeout(method, params, std::time::Duration::from_secs(120))
+            .await
+    }
+
+    async fn request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        dur: std::time::Duration,
+    ) -> anyhow::Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
@@ -179,10 +260,18 @@ impl AppServer {
             return Err(e);
         }
 
-        let result = tokio::time::timeout(std::time::Duration::from_secs(120), rx)
-            .await
-            .map_err(|_| anyhow::anyhow!("codex app-server request {method} timed out"))?
-            .map_err(|_| anyhow::anyhow!("codex app-server dropped response channel"))?;
+        let result = match tokio::time::timeout(dur, rx).await {
+            Err(_) => {
+                // Drop the pending entry or it lingers until the server dies.
+                self.pending.lock().await.remove(&id);
+                return Err(anyhow::anyhow!(
+                    "codex app-server request {method} timed out"
+                ));
+            }
+            Ok(rx) => {
+                rx.map_err(|_| anyhow::anyhow!("codex app-server dropped response channel"))?
+            }
+        };
 
         result.map_err(|e| anyhow::anyhow!("{method} failed: {e}"))
     }
@@ -231,6 +320,12 @@ impl AppServer {
     }
 }
 
+impl Drop for AppServer {
+    fn drop(&mut self) {
+        self.teardown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,6 +368,97 @@ done
         let server = AppServer::spawn(&bin, dir.path()).await.unwrap();
         let resp = server.request("ping", json!({})).await.unwrap();
         assert_eq!(resp["pong"], true);
+    }
+
+    #[tokio::test]
+    async fn capped_line_truncates_oversized_lines() {
+        let mut reader: &[u8] =
+            b"short\nthis is a very long line that exceeds the cap\nnext\n".as_slice();
+        let mut buf = Vec::new();
+
+        next_capped_line(&mut reader, &mut buf, 10).await.unwrap();
+        assert_eq!(buf, b"short");
+
+        next_capped_line(&mut reader, &mut buf, 10).await.unwrap();
+        assert_eq!(buf, b"this is a ");
+
+        // Framing survives the truncation: the next line reads cleanly.
+        next_capped_line(&mut reader, &mut buf, 10).await.unwrap();
+        assert_eq!(buf, b"next");
+
+        assert!(next_capped_line(&mut reader, &mut buf, 10)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn timed_out_request_removes_its_pending_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("codex");
+        std::fs::write(&path, "#!/bin/sh\nwhile IFS= read -r line; do :; done\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let server = AppServer::spawn(&path.to_string_lossy(), dir.path())
+            .await
+            .unwrap();
+        let err = server
+            .request_with_timeout("ping", json!({}), std::time::Duration::from_millis(50))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("timed out"), "{err}");
+        assert!(server.pending.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn drop_kills_the_process_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("codex");
+        // The fake spawns a grandchild in its process group and then blocks
+        // on stdin forever. kill_on_drop alone would leave the grandchild.
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\nsh -c 'echo $$ > \"{0}/grandchild.pid\"; exec sleep 600' &\nwhile IFS= read -r line; do :; done\n",
+                dir.path().display()
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let server = AppServer::spawn(&path.to_string_lossy(), dir.path())
+            .await
+            .unwrap();
+        let mut gpid = None;
+        for _ in 0..40 {
+            if let Ok(raw) = std::fs::read_to_string(dir.path().join("grandchild.pid")) {
+                gpid = raw.trim().parse::<i32>().ok();
+                if gpid.is_some() {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let gpid = rustix::process::Pid::from_raw(gpid.expect("grandchild pid")).unwrap();
+
+        drop(server);
+
+        let mut alive = true;
+        for _ in 0..60 {
+            if matches!(
+                rustix::process::test_kill_process(gpid),
+                Err(e) if e == rustix::io::Errno::SRCH
+            ) {
+                alive = false;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(!alive, "grandchild survived the app-server teardown");
     }
 
     #[tokio::test]

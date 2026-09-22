@@ -179,6 +179,10 @@ class ThreadStore {
   /// the draft.
   void Function(String text)? onComposerTextChanged;
 
+  /// Called when a request fails with an expired credential so the app can
+  /// drop the token and route to login instead of a dead banner.
+  VoidCallback? onAuthFailure;
+
   // ---- getters ----
 
   ThreadStoreStatus get status => _status;
@@ -851,6 +855,7 @@ class ThreadStore {
     onRunFinished = null;
     onAgentEditedFiles = null;
     onComposerTextChanged = null;
+    onAuthFailure = null;
     _emit();
   }
 
@@ -949,10 +954,6 @@ class ThreadStore {
       detail: d,
       snapshot: _streaming,
       event: ev,
-      appL10nInvalidPermission: appL10n.invalidPermissionRequest(''),
-      appL10nFailedPermission: appL10n.failedToDecodePermissionRequest,
-      appL10nInvalidAsk: appL10n.invalidAskRequest,
-      appL10nFailedAsk: appL10n.failedToDecodeAskRequest,
     );
     _streaming = result.snapshot;
     _lastRunStatus = _statusFromPhase(result.snapshot.phase);
@@ -1159,6 +1160,10 @@ class ThreadStore {
 
   void _handleStreamError(Object e, int token) {
     if (token != _streamToken) return;
+    if (e is ApiException && e.statusCode == 401) {
+      onAuthFailure?.call();
+      return;
+    }
     if (_resendAnchorId != null) {
       _resendAnchorId = null;
       if (e is! ApiException || e.statusCode < 400 || e.statusCode >= 500) {
@@ -1440,9 +1445,9 @@ class ThreadStore {
       _optimisticMessages.clear();
       return;
     }
-    // A resend edit only reclaims the composer when it is empty; the text
-    // stays retriable from the original message and a live draft wins.
-    if (!pending.resendEdit || composerText.trim().isEmpty) {
+    // The pending snapshot only reclaims an empty composer; a draft typed
+    // after the send went out wins over restoring the failed prompt.
+    if (composerText.trim().isEmpty) {
       setComposerText(pending.composerText);
     }
     if (!pending.resendEdit) {

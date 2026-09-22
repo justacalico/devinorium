@@ -1,5 +1,6 @@
 import '../api/api_client.dart';
 import '../api/api_service.dart';
+import '../l10n/global_l10n.dart';
 import '../models/models.dart';
 import 'streaming_state.dart';
 
@@ -25,10 +26,6 @@ StreamingReduceResult reduceStreamingEvent({
   required ThreadDetail? detail,
   required StreamingSnapshot snapshot,
   required SseEvent event,
-  String? appL10nInvalidPermission,
-  String? appL10nFailedPermission,
-  String? appL10nInvalidAsk,
-  String? appL10nFailedAsk,
 }) {
   final seq = _parseSeq(event.id);
   if (seq != null && event.event != 'state' && seq <= snapshot.lastSeq) {
@@ -110,7 +107,7 @@ StreamingReduceResult reduceStreamingEvent({
         return StreamingReduceResult(
           detail: detail,
           snapshot: snapshot.copyWith(
-            error: appL10nInvalidPermission ?? 'Invalid permission request',
+            error: appL10n.failedToDecodePermissionRequest,
             lastSeq: seq ?? snapshot.lastSeq,
           ),
         );
@@ -136,7 +133,7 @@ StreamingReduceResult reduceStreamingEvent({
         return StreamingReduceResult(
           detail: detail,
           snapshot: snapshot.copyWith(
-            error: appL10nFailedAsk ?? 'Invalid ask request',
+            error: appL10n.failedToDecodeAskRequest,
             lastSeq: seq ?? snapshot.lastSeq,
           ),
         );

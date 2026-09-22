@@ -20,10 +20,10 @@ use agent_client_protocol::{
     schema::v1::{
         ClientCapabilities, ContentBlock, CreateElicitationRequest, CreateElicitationResponse,
         ElicitationAction, ElicitationCapabilities, ElicitationFormCapabilities, ImageContent,
-        InitializeRequest, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-        NewSessionResponse, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SessionId, SessionNotification, SessionUpdate,
-        SetSessionModeRequest, TextContent,
+        InitializeRequest, LoadSessionRequest, NewSessionRequest, NewSessionResponse,
+        PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
+        RequestPermissionResponse, SessionConfigOption, SessionId, SessionNotification,
+        SessionUpdate, SetSessionModeRequest, TextContent,
     },
     schema::ProtocolVersion as ProtocolVersionEnum,
     AcpAgent, Agent, Client, ConnectionTo,
@@ -60,6 +60,35 @@ impl AcpProvider {
         std::iter::once(self.bin.clone())
             .chain(self.kind.acp_args().iter().map(|s| s.to_string()))
             .collect()
+    }
+
+    /// The thread's permission allowlist reaches the Devin agent through its
+    /// user config: the child gets `XDG_CONFIG_HOME` pointing at a temp root
+    /// whose `devin/config.json` is the user's real config plus the thread
+    /// rules, and every other entry under the real config root is symlinked
+    /// in so nothing else changes. The temp root self-cleans when the turn
+    /// ends. Returns the env args to prepend and the guard holding the dir.
+    async fn permission_config_env(
+        &self,
+        options: &SendOptions,
+    ) -> anyhow::Result<(Vec<String>, Option<tempfile::TempDir>)> {
+        if self.kind != AgentKind::Devin {
+            return Ok((Vec::new(), None));
+        }
+        let rules = parse_permission_rules(options.permissions.as_deref());
+        if rules.is_empty() {
+            return Ok((Vec::new(), None));
+        }
+        let Some(real_root) = real_config_root() else {
+            return Ok((Vec::new(), None));
+        };
+        let Some(temp) = write_permission_config(&real_root, &rules).await? else {
+            return Ok((Vec::new(), None));
+        };
+        Ok((
+            vec![format!("XDG_CONFIG_HOME={}", temp.path().display())],
+            Some(temp),
+        ))
     }
 
     /// Verify the binary is on PATH and the ACP handshake succeeds
@@ -131,6 +160,9 @@ impl AcpProvider {
         let cancel_signal = options.cancel_signal.clone();
         let replaying = Arc::new(AtomicBool::new(maybe_session.is_some()));
 
+        let (env_args, _perm_cfg) = self.permission_config_env(options).await?;
+        let agent_args: Vec<String> = env_args.into_iter().chain(self.agent_args()).collect();
+
         let result = Client
             .builder()
             .name("devinorium")
@@ -200,9 +232,9 @@ impl AcpProvider {
                 agent_client_protocol::on_receive_request!(),
             )
             .connect_with(
-                AcpAgent::from_args(self.agent_args())?,
+                AcpAgent::from_args(agent_args)?,
                 async move |connection: ConnectionTo<Agent>| {
-                    let _init_response = connection
+                    let init_response = connection
                         .send_request(
                             InitializeRequest::new(ProtocolVersionEnum::V1)
                                 .client_capabilities(client_capabilities()),
@@ -210,24 +242,46 @@ impl AcpProvider {
                         .block_task()
                         .await?;
 
-                    let (session_id, config_options) = if let Some(ref sid) = maybe_session {
-                        let load_resp: LoadSessionResponse = connection
+                    // `session/load` only exists when the agent advertises
+                    // `loadSession`, and even then a stored session may be
+                    // gone (agent restart, expired history). Fall back to a
+                    // fresh session and persist the new id.
+                    let can_load =
+                        maybe_session.is_some() && init_response.agent_capabilities.load_session;
+                    if maybe_session.is_some() && !can_load {
+                        tracing::info!(
+                            "acp agent does not support session/load; starting a new session"
+                        );
+                    }
+
+                    let (session_id, config_options) = if can_load {
+                        let sid = maybe_session.as_deref().unwrap();
+                        match connection
                             .send_request(LoadSessionRequest::new(
-                                SessionId::new(sid.clone()),
+                                SessionId::new(sid.to_string()),
                                 cwd.clone(),
                             ))
                             .block_task()
-                            .await?;
-                        (sid.clone(), load_resp.config_options)
+                            .await
+                        {
+                            Ok(load_resp) => (sid.to_string(), load_resp.config_options),
+                            Err(e) => {
+                                tracing::warn!(
+                                    session_id = %sid,
+                                    error = %e,
+                                    "acp session/load failed; starting a new session"
+                                );
+                                new_session(&connection, &cwd).await?
+                            }
+                        }
                     } else {
-                        let resp: NewSessionResponse = connection
-                            .send_request(NewSessionRequest::new(cwd.clone()))
-                            .block_task()
-                            .await?;
-                        (resp.session_id.to_string(), resp.config_options)
+                        new_session(&connection, &cwd).await?
                     };
 
-                    if maybe_session.is_none() {
+                    // Persist the session id when it differs from the stored
+                    // one: a fresh session, or a fallback after a failed or
+                    // unsupported load.
+                    if maybe_session.as_deref() != Some(session_id.as_str()) {
                         if let Some(ref cb) = options.session_callback {
                             cb(session_id.clone()).await;
                         }
@@ -265,10 +319,10 @@ impl AcpProvider {
                         Self::apply_interaction_mode_prefix(prompt, &options.interaction_mode);
 
                     let mut prompt_blocks = vec![ContentBlock::Text(TextContent::new(prompt))];
-                    prompt_blocks.extend(
-                        self.attachment_blocks(&options.attachments, &options.working_dir)
-                            .await?,
-                    );
+                    let (attachment_blocks, _staged) = self
+                        .attachment_blocks(&options.attachments, &options.working_dir)
+                        .await?;
+                    prompt_blocks.extend(attachment_blocks);
 
                     replaying.store(false, Ordering::SeqCst);
                     let sent = connection
@@ -336,16 +390,20 @@ impl AcpProvider {
         result
     }
 
+    /// Stage non-image attachments to disk and build the prompt blocks that
+    /// reference them. The returned guard removes the staging dir when the
+    /// turn ends (or when a write fails mid-way and the error propagates).
     async fn attachment_blocks(
         &self,
         attachments: &[Attachment],
         working_dir: &Path,
-    ) -> anyhow::Result<Vec<ContentBlock>> {
+    ) -> anyhow::Result<(Vec<ContentBlock>, StagedAttachments)> {
         if attachments.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), StagedAttachments::none()));
         }
 
         let att_dir = ensure_writable_attachment_dir(working_dir).await?;
+        let staged = StagedAttachments::new(att_dir.clone());
         let mut blocks = Vec::new();
 
         for (i, att) in attachments.iter().enumerate() {
@@ -369,7 +427,7 @@ impl AcpProvider {
             }
         }
 
-        Ok(blocks)
+        Ok((blocks, staged))
     }
 
     async fn fetch_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
@@ -476,12 +534,16 @@ fn usage_from_acp(usage: &agent_client_protocol::schema::v1::Usage) -> UsageSnap
 }
 
 pub(crate) async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow::Result<PathBuf> {
+    // A fresh subdirectory per turn so cleanup can remove it wholesale
+    // without touching files a concurrent send in the same worktree staged.
     let preferred = working_dir.join(".devinorium-attachments");
     if tokio::fs::create_dir_all(&preferred).await.is_ok() {
         let probe = preferred.join(format!(".probe-{}", uuid::Uuid::new_v4()));
         if tokio::fs::write(&probe, b"").await.is_ok() {
             let _ = tokio::fs::remove_file(&probe).await;
-            return Ok(preferred);
+            let dir = preferred.join(uuid::Uuid::new_v4().to_string());
+            tokio::fs::create_dir(&dir).await?;
+            return Ok(dir);
         }
     }
 
@@ -492,9 +554,174 @@ pub(crate) async fn ensure_writable_attachment_dir(working_dir: &Path) -> anyhow
     Ok(fallback)
 }
 
+/// Removes a turn's attachment staging dir on drop. The agent reads the
+/// staged files while the prompt runs, so the guard is dropped only after
+/// the turn resolves; the now-empty parent is removed too when possible.
+pub(crate) struct StagedAttachments(Option<PathBuf>);
+
+impl StagedAttachments {
+    pub(crate) fn none() -> Self {
+        Self(None)
+    }
+
+    pub(crate) fn new(dir: PathBuf) -> Self {
+        Self(Some(dir))
+    }
+}
+
+impl Drop for StagedAttachments {
+    fn drop(&mut self) {
+        if let Some(dir) = self.0.take() {
+            let _ = std::fs::remove_dir_all(&dir);
+            if let Some(parent) = dir.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
+        }
+    }
+}
+
 pub(crate) fn client_capabilities() -> ClientCapabilities {
     ClientCapabilities::new()
         .elicitation(ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()))
+}
+
+async fn new_session(
+    connection: &ConnectionTo<Agent>,
+    cwd: &Path,
+) -> anyhow::Result<(String, Option<Vec<SessionConfigOption>>)> {
+    let resp: NewSessionResponse = connection
+        .send_request(NewSessionRequest::new(cwd.to_path_buf()))
+        .block_task()
+        .await?;
+    Ok((resp.session_id.to_string(), resp.config_options))
+}
+
+/// Split a thread's allowlist text into rules: entries are comma or
+/// newline separated, e.g. "Exec(curl), Fetch(**)".
+fn parse_permission_rules(raw: Option<&str>) -> Vec<String> {
+    raw.unwrap_or("")
+        .split([',', '\n', '\r'])
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// The config root devin resolves `devin/config.json` under.
+fn real_config_root() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+}
+
+/// Fold `rules` into `config.permissions.allow`, preserving everything else
+/// the user configured. Returns false when the existing config cannot be
+/// merged safely (unparseable or non-object), in which case the allowlist
+/// is not applied rather than clobbering the user's settings.
+fn merge_permission_rules(config: &mut serde_json::Value, rules: &[String]) -> bool {
+    if !config.is_object() {
+        return false;
+    }
+    let root = config.as_object_mut().unwrap();
+    let perms = root
+        .entry("permissions".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !perms.is_object() {
+        return false;
+    }
+    let perms = perms.as_object_mut().unwrap();
+    let mut merged: Vec<String> = perms
+        .get("allow")
+        .and_then(|a| a.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    for rule in rules {
+        if !merged.contains(rule) {
+            merged.push(rule.clone());
+        }
+    }
+    perms.insert("allow".to_string(), serde_json::json!(merged));
+    true
+}
+
+/// Build the temp config root for a Devin child: mirrors the real config
+/// root with symlinks, writes a `devin/config.json` that merges the thread
+/// allowlist into the user's own. Returns None when the existing config
+/// cannot be merged without losing it.
+#[cfg(unix)]
+async fn write_permission_config(
+    real_root: &Path,
+    rules: &[String],
+) -> anyhow::Result<Option<tempfile::TempDir>> {
+    let real_devin = real_root.join("devin");
+    let mut config = match tokio::fs::read(real_devin.join("config.json")).await {
+        Ok(bytes) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "devin config is not plain JSON; thread permissions not applied"
+                );
+                return Ok(None);
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
+        Err(e) => return Err(e.into()),
+    };
+    if !merge_permission_rules(&mut config, rules) {
+        tracing::warn!(
+            "devin config permissions are not an object; thread permissions not applied"
+        );
+        return Ok(None);
+    }
+
+    let temp = tempfile::tempdir()?;
+    let xdg = temp.path();
+
+    if real_root.is_dir() {
+        let mut entries = tokio::fs::read_dir(real_root).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.file_name() == "devin" {
+                continue;
+            }
+            std::os::unix::fs::symlink(entry.path(), xdg.join(entry.file_name()))?;
+        }
+    }
+
+    let fake_devin = xdg.join("devin");
+    tokio::fs::create_dir_all(&fake_devin).await?;
+    if real_devin.is_dir() {
+        let mut entries = tokio::fs::read_dir(&real_devin).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.file_name() == "config.json" {
+                continue;
+            }
+            std::os::unix::fs::symlink(entry.path(), fake_devin.join(entry.file_name()))?;
+        }
+    }
+    tokio::fs::write(
+        fake_devin.join("config.json"),
+        serde_json::to_vec_pretty(&config)?,
+    )
+    .await?;
+    Ok(Some(temp))
+}
+
+#[cfg(not(unix))]
+async fn write_permission_config(
+    _real_root: &Path,
+    rules: &[String],
+) -> anyhow::Result<Option<tempfile::TempDir>> {
+    if !rules.is_empty() {
+        tracing::warn!(
+            "thread permission rules cannot be injected into devin acp on this platform"
+        );
+    }
+    Ok(None)
 }
 
 #[async_trait]
@@ -554,8 +781,10 @@ impl Provider for AcpProvider {
 mod tests {
     use super::*;
     use std::fs;
+    use std::future::Future;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    use std::pin::Pin;
 
     fn provider() -> AcpProvider {
         AcpProvider::new(AgentKind::Devin, "devin".into(), "swe-1-7".into())
@@ -698,6 +927,248 @@ mod tests {
         );
     }
 
+    /// Fake ACP agent for session/load tests: logs every request line,
+    /// reports the `loadSession` capability per `capable`, and answers
+    /// `session/load` with either an empty result or a JSON-RPC error.
+    #[cfg(unix)]
+    fn fake_acp_agent_load(capable: bool, load_ok: bool) -> (tempfile::TempDir, String, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("fake-agent");
+        let log = dir.path().join("requests.log");
+        let load_result = if load_ok {
+            r#""result":{"configOptions":[]}"#
+        } else {
+            r#""error":{"code":-32602,"message":"unknown session"}"#
+        };
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n\
+                 while IFS= read -r line; do\n\
+                 \x20 id=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\(\"[^\"]*\"\\|[0-9][0-9]*\\).*/\\1/p')\n\
+                 \x20 [ -z \"$id\" ] && continue\n\
+                 \x20 printf '%s\\n' \"$line\" >> '{}'\n\
+                 \x20 case \"$line\" in\n\
+                 \x20   *'\"initialize\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',\"result\":{{\"protocolVersion\":1,\"agentCapabilities\":{{\"loadSession\":{capable}}}}}}}' ;;\n\
+                 \x20   *'\"session/load\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',{load_result}}}' ;;\n\
+                 \x20   *'\"session/new\"'*)\n\
+                 \x20     printf '%s\\n' '{{\"jsonrpc\":\"2.0\",\"id\":'$id',\"result\":{{\"sessionId\":\"new-session\",\"configOptions\":[]}}}}' ;;\n\
+                 \x20   *'\"session/prompt\"'*)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{\"stopReason\":\"end_turn\"}}}}\\n' \"$id\" ;;\n\
+                 \x20   *)\n\
+                 \x20     printf '{{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{{}}}}\\n' \"$id\" ;;\n\
+                 \x20 esac\n\
+                 done\n",
+                log.display(),
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (dir, script.to_string_lossy().to_string(), log)
+    }
+
+    #[cfg(unix)]
+    fn logged_methods(log: &Path) -> Vec<String> {
+        fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter_map(|v| v["method"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[cfg(unix)]
+    async fn send_with_stored_session(bin: &str) -> (SendResponse, Arc<Mutex<Vec<String>>>) {
+        let provider = AcpProvider::new(AgentKind::Devin, bin.to_string(), "swe-1-7".into());
+        let workdir = tempfile::tempdir().unwrap();
+        let sessions = Arc::new(Mutex::new(Vec::<String>::new()));
+        let mut opts = send_options(workdir.path().to_path_buf(), None);
+        let recorded = sessions.clone();
+        opts.session_callback = Some(Arc::new(move |sid: String| {
+            let recorded = recorded.clone();
+            Box::pin(async move { recorded.lock().await.push(sid) })
+                as Pin<Box<dyn Future<Output = ()> + Send>>
+        }));
+        let res = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.send(SendRequest {
+                session_id: "stored-session".into(),
+                prompt: "hi".into(),
+                options: opts,
+            }),
+        )
+        .await
+        .expect("send timed out")
+        .unwrap();
+        (res, sessions)
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn send_without_load_capability_starts_new_session() {
+        let (_dir, bin, log) = fake_acp_agent_load(false, true);
+        let (_res, sessions) = send_with_stored_session(&bin).await;
+        let methods = logged_methods(&log);
+        assert!(methods.contains(&"session/new".to_string()), "{methods:?}");
+        assert!(
+            !methods.contains(&"session/load".to_string()),
+            "{methods:?}"
+        );
+        assert_eq!(*sessions.lock().await, vec!["new-session".to_string()]);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn send_falls_back_when_session_load_fails() {
+        let (_dir, bin, log) = fake_acp_agent_load(true, false);
+        let (_res, sessions) = send_with_stored_session(&bin).await;
+        let methods = logged_methods(&log);
+        assert!(methods.contains(&"session/load".to_string()), "{methods:?}");
+        assert!(methods.contains(&"session/new".to_string()), "{methods:?}");
+        assert_eq!(*sessions.lock().await, vec!["new-session".to_string()]);
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn send_reuses_session_when_load_succeeds() {
+        let (_dir, bin, log) = fake_acp_agent_load(true, true);
+        let (_res, sessions) = send_with_stored_session(&bin).await;
+        let methods = logged_methods(&log);
+        assert!(methods.contains(&"session/load".to_string()), "{methods:?}");
+        assert!(!methods.contains(&"session/new".to_string()), "{methods:?}");
+        assert!(sessions.lock().await.is_empty());
+    }
+
+    #[test]
+    fn permission_rules_split_on_commas_and_newlines() {
+        assert_eq!(
+            parse_permission_rules(Some("Exec(curl), Fetch(**)\nRead(src/**)\r\n,\t")),
+            vec!["Exec(curl)", "Fetch(**)", "Read(src/**)"]
+        );
+        assert!(parse_permission_rules(None).is_empty());
+        assert!(parse_permission_rules(Some("  ,\n")).is_empty());
+    }
+
+    #[test]
+    fn merge_permission_rules_preserves_user_config() {
+        let mut config = serde_json::json!({
+            "agent": {"model": "x"},
+            "permissions": {
+                "allow": ["Exec(git status)"],
+                "deny": ["Exec(rm)"]
+            }
+        });
+        assert!(merge_permission_rules(
+            &mut config,
+            &["Exec(curl)".into(), "Exec(git status)".into()]
+        ));
+        assert_eq!(
+            config["permissions"]["allow"],
+            serde_json::json!(["Exec(git status)", "Exec(curl)"])
+        );
+        assert_eq!(
+            config["permissions"]["deny"],
+            serde_json::json!(["Exec(rm)"])
+        );
+        assert_eq!(config["agent"]["model"], "x");
+    }
+
+    #[test]
+    fn merge_permission_rules_rejects_non_object_permissions() {
+        let mut config = serde_json::json!({"permissions": "oops"});
+        assert!(!merge_permission_rules(&mut config, &["Exec(ls)".into()]));
+        assert_eq!(config["permissions"], "oops");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn permission_config_merges_allowlist_and_mirrors_root() {
+        let root = tempfile::tempdir().unwrap();
+        let devin = root.path().join("devin");
+        fs::create_dir(&devin).unwrap();
+        fs::write(
+            devin.join("config.json"),
+            r#"{"agent":{"model":"x"},"permissions":{"allow":["Exec(git status)"],"deny":["Exec(rm)"]}}"#,
+        )
+        .unwrap();
+        fs::create_dir(devin.join("skills")).unwrap();
+        fs::create_dir(root.path().join("otherapp")).unwrap();
+
+        let temp = write_permission_config(root.path(), &["Exec(curl)".into(), "Fetch(**)".into()])
+            .await
+            .unwrap()
+            .unwrap();
+        let xdg = temp.path();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(xdg.join("devin/config.json")).unwrap())
+                .unwrap();
+        assert_eq!(written["agent"]["model"], "x");
+        assert_eq!(
+            written["permissions"]["deny"],
+            serde_json::json!(["Exec(rm)"])
+        );
+        assert_eq!(
+            written["permissions"]["allow"],
+            serde_json::json!(["Exec(git status)", "Exec(curl)", "Fetch(**)"])
+        );
+
+        assert!(xdg
+            .join("devin/skills")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(xdg
+            .join("otherapp")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(!xdg
+            .join("devin/config.json")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn permission_config_skips_unmergeable_user_config() {
+        let root = tempfile::tempdir().unwrap();
+        let devin = root.path().join("devin");
+        fs::create_dir(&devin).unwrap();
+        fs::write(devin.join("config.json"), b"// jsonc comment").unwrap();
+        assert!(write_permission_config(root.path(), &["Exec(ls)".into()])
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn permission_config_env_only_for_devin_with_rules() {
+        let mut opts = send_options(std::env::temp_dir(), None);
+        let devin = AcpProvider::new(AgentKind::Devin, "devin".into(), "m".into());
+        let grok = AcpProvider::new(AgentKind::Grok, "grok".into(), "m".into());
+
+        opts.permissions = None;
+        let (env, cfg) = devin.permission_config_env(&opts).await.unwrap();
+        assert!(env.is_empty() && cfg.is_none());
+
+        opts.permissions = Some("Exec(ls)".into());
+        let (env, cfg) = grok.permission_config_env(&opts).await.unwrap();
+        assert!(env.is_empty() && cfg.is_none());
+
+        let (env, cfg) = devin.permission_config_env(&opts).await.unwrap();
+        assert_eq!(env.len(), 1);
+        assert!(env[0].starts_with("XDG_CONFIG_HOME="));
+        assert!(cfg.is_some());
+    }
+
     #[tokio::test]
     #[cfg(unix)]
     async fn fallback_to_temp_when_working_dir_not_writable() {
@@ -722,7 +1193,7 @@ mod tests {
             data: png.clone(),
         }];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -747,7 +1218,7 @@ mod tests {
             data: b"PINEAPPLE".to_vec(),
         }];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -760,15 +1231,39 @@ mod tests {
         assert!(text.text.contains("secret.txt"));
 
         let att_dir = root.path().join(".devinorium-attachments");
-        let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        let staged_dirs: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        assert_eq!(staged_dirs.len(), 1);
+        let entries: Vec<_> = fs::read_dir(staged_dirs[0].path())
+            .unwrap()
+            .flatten()
+            .collect();
         assert_eq!(entries.len(), 1);
         let content = fs::read_to_string(entries[0].path()).unwrap();
         assert_eq!(content, "PINEAPPLE");
     }
 
     #[tokio::test]
+    async fn staged_dir_is_removed_when_guard_drops() {
+        let root = tempfile::tempdir().unwrap();
+        let attachments = vec![Attachment {
+            filename: "a.txt".into(),
+            mime: "text/plain".into(),
+            data: b"x".to_vec(),
+        }];
+        let (_, staged) = provider()
+            .attachment_blocks(&attachments, root.path())
+            .await
+            .unwrap();
+        let parent = root.path().join(".devinorium-attachments");
+        assert!(parent.is_dir());
+        drop(staged);
+        // The turn subdir is removed and the emptied parent goes with it.
+        assert!(!parent.exists());
+    }
+
+    #[tokio::test]
     async fn empty_attachments_returns_empty_blocks() {
-        let blocks = provider()
+        let (blocks, _) = provider()
             .attachment_blocks(&[], std::env::temp_dir().as_path())
             .await
             .unwrap();
@@ -785,7 +1280,7 @@ mod tests {
             data: svg,
         }];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -814,7 +1309,7 @@ mod tests {
             },
         ];
 
-        let blocks = provider()
+        let (blocks, _staged) = provider()
             .attachment_blocks(&attachments, root.path())
             .await
             .unwrap();
@@ -830,7 +1325,12 @@ mod tests {
         assert_ne!(first.text, second.text);
 
         let att_dir = root.path().join(".devinorium-attachments");
-        let entries: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        let staged_dirs: Vec<_> = fs::read_dir(&att_dir).unwrap().flatten().collect();
+        assert_eq!(staged_dirs.len(), 1);
+        let entries: Vec<_> = fs::read_dir(staged_dirs[0].path())
+            .unwrap()
+            .flatten()
+            .collect();
         assert_eq!(entries.len(), 2);
     }
 }

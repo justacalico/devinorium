@@ -124,6 +124,20 @@ class RemoteTerminalSession extends TerminalSession {
   bool _disposed = false;
   static const _maxReconnectAttempts = 5;
 
+  // Reset only after the socket survives this window; resetting on every
+  // short-lived connect would let a flapping link retry forever.
+  static const _stableWindow = Duration(seconds: 10);
+  Timer? _stabilityTimer;
+
+  // Keystrokes typed while the socket reconnects, flushed on reconnect.
+  final _inputBuffer = StringBuffer();
+  static const _inputBufferLimit = 4096;
+
+  // Binary frames arrive independently but UTF-8 sequences can span them;
+  // the sink buffers partial code units between frames. Recreated on every
+  // connect since a new socket carries no pending bytes.
+  ByteConversionSink? _utf8Sink;
+
   @override
   void _attach() {
     terminal.onOutput = _onOutput;
@@ -132,6 +146,9 @@ class RemoteTerminalSession extends TerminalSession {
 
   void _connect() {
     _setStatus(TerminalStatus.connecting);
+    _utf8Sink = utf8.decoder.startChunkedConversion(
+      _TerminalTextSink(terminal.write),
+    );
     try {
       _channel = _connector(uri, token: token);
       _sub = _channel!.stream.listen(
@@ -140,8 +157,12 @@ class RemoteTerminalSession extends TerminalSession {
         onDone: _onDone,
       );
       _setStatus(TerminalStatus.connected);
-      _reconnectAttempts = 0;
+      _stabilityTimer?.cancel();
+      _stabilityTimer = Timer(_stableWindow, () {
+        if (_status == TerminalStatus.connected) _reconnectAttempts = 0;
+      });
       _sendResize(terminal.viewWidth, terminal.viewHeight);
+      _flushInputBuffer();
     } catch (e) {
       terminal.write('${appL10n.terminalConnectionError('$e')}\r\n');
       _onError(e);
@@ -151,14 +172,14 @@ class RemoteTerminalSession extends TerminalSession {
   void _onMessage(dynamic message) {
     if (_disposed) return;
     if (message is List<int>) {
-      final text = utf8.decode(message, allowMalformed: true);
-      terminal.write(text);
+      _utf8Sink?.add(message);
     } else if (message is String) {
       try {
         final data = jsonDecode(message) as Map<String, dynamic>;
         if (data['type'] == 'exited') {
           final code = data['code'];
           terminal.write('\r\n${appL10n.terminalSessionExited('$code')}\r\n');
+          _stabilityTimer?.cancel();
           _setStatus(TerminalStatus.exited);
           _complete();
         }
@@ -173,7 +194,11 @@ class RemoteTerminalSession extends TerminalSession {
     _setStatus(TerminalStatus.disconnected);
     _sub?.cancel();
     _channel = null;
+    _utf8Sink?.close();
+    _utf8Sink = null;
     if (!reconnect || _reconnectAttempts >= _maxReconnectAttempts) {
+      _stabilityTimer?.cancel();
+      _inputBuffer.clear();
       _setStatus(TerminalStatus.exited);
       _complete();
       return;
@@ -189,11 +214,35 @@ class RemoteTerminalSession extends TerminalSession {
 
   void _onDone() {
     if (_disposed || _status == TerminalStatus.exited) return;
-    _onError('WebSocket closed');
+    _onError(appL10n.webSocketClosed);
   }
 
   void _onOutput(String data) {
+    if (_status != TerminalStatus.connected) {
+      // A dead or idle session drops input as before; a reconnecting one
+      // holds a bounded tail so keystrokes are not silently lost.
+      if (_status == TerminalStatus.connecting ||
+          _status == TerminalStatus.disconnected) {
+        // Keep the most recent input: once the buffer is full the oldest
+        // keystrokes are the least relevant to replay.
+        final combined = '$_inputBuffer$data';
+        _inputBuffer.clear();
+        _inputBuffer.write(
+          combined.length > _inputBufferLimit
+              ? combined.substring(combined.length - _inputBufferLimit)
+              : combined,
+        );
+      }
+      return;
+    }
     _send(jsonEncode({'type': 'input', 'data': data}));
+  }
+
+  void _flushInputBuffer() {
+    if (_inputBuffer.isEmpty) return;
+    final pending = _inputBuffer.toString();
+    _inputBuffer.clear();
+    _send(jsonEncode({'type': 'input', 'data': pending}));
   }
 
   void _onResize(int w, int h, int pw, int ph) => _sendResize(w, h);
@@ -212,10 +261,28 @@ class RemoteTerminalSession extends TerminalSession {
   @override
   void dispose() {
     _disposed = true;
+    _stabilityTimer?.cancel();
     _sub?.cancel();
     _channel?.sink.close();
+    _utf8Sink?.close();
     super.dispose();
   }
+}
+
+/// Delivers each decoded text chunk to the terminal as it completes; a
+/// [StringConversionSink.withCallback] would accumulate until close.
+class _TerminalTextSink implements Sink<String> {
+  _TerminalTextSink(this._write);
+
+  final void Function(String) _write;
+
+  @override
+  void add(String data) {
+    if (data.isNotEmpty) _write(data);
+  }
+
+  @override
+  void close() {}
 }
 
 /// Factory signature for creating a [TerminalSession].

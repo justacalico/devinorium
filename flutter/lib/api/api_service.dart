@@ -43,8 +43,11 @@ class ApiService {
     await _client.post('/api/auth/logout', {});
   }
 
-  Future<TotpSetupResponse> totpSetup() async {
-    final j = await _client.post('/api/auth/totp/setup', {});
+  Future<TotpSetupResponse> totpSetup({String? password, String? code}) async {
+    final j = await _client.post('/api/auth/totp/setup', {
+      'password': ?password,
+      'code': ?code,
+    });
     return TotpSetupResponse.fromJson(j);
   }
 
@@ -52,8 +55,11 @@ class ApiService {
     await _client.post('/api/auth/totp/verify', {'code': code});
   }
 
-  Future<void> totpDisable() async {
-    await _client.post('/api/auth/totp/disable', {});
+  Future<void> totpDisable({String? password, String? code}) async {
+    await _client.post('/api/auth/totp/disable', {
+      'password': ?password,
+      'code': ?code,
+    });
   }
 
   // ---- Git ----
@@ -709,13 +715,15 @@ class ApiService {
 
   Future<User> updateMe({
     required String providerId,
-    required String providerCommand,
+    String? providerCommand,
     Map<String, String>? providerCommands,
   }) async {
-    final body = <String, dynamic>{
-      'provider_id': providerId,
-      'provider_command': providerCommand,
-    };
+    final body = <String, dynamic>{'provider_id': providerId};
+    // Provider command fields are owner-only; non-owners must omit them or
+    // the server rejects the whole update.
+    if (providerCommand != null) {
+      body['provider_command'] = providerCommand;
+    }
     if (providerCommands != null) {
       body['provider_commands'] = providerCommands;
     }
@@ -862,6 +870,23 @@ class ApiService {
 
   Future<void> setUserDisabled(int id, bool disabled) async {
     await _client.patch('/api/users/$id', {'disabled': disabled});
+  }
+
+  /// Owner path: set another account's password. Revokes their sessions.
+  Future<void> resetUserPassword(int id, String password) async {
+    await _client.patch('/api/users/$id', {'password': password});
+  }
+
+  /// Self-service password change. Succeeds only with the current password;
+  /// the server revokes every session on success.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _client.patch('/api/auth/me/password', {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
   }
 
   // ---- Audit log ----

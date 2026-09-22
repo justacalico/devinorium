@@ -21,7 +21,7 @@ find_run() {
   [ -n "$branch" ] && args+=(-f "branch=$branch")
 
   echo "Looking for GitHub run (sha=$sha event=${event:-any})..." >&2
-  for _ in {1..30}; do
+  for _ in {1..60}; do
     sleep 5
     runs=$(gh api --method GET "repos/$REPO/actions/workflows/$WORKFLOW/runs" "${args[@]}" \
       -q '.workflow_runs[] | "\(.id) \(.created_at)"' 2>/dev/null || true)

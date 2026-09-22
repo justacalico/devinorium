@@ -75,44 +75,68 @@ pub(crate) fn parse_context_paths(raw: &str) -> Result<Vec<ContextPathIn>, Strin
 
 /// Resolve a single client-supplied context path against `root`.
 ///
-/// Relative paths must stay inside `root`; absolute paths are allowed but
-/// still screened for hidden components. Returns `None` for traversal attempts
-/// and protected (`.git`, `.devinorium-attachments`) paths.
-fn resolve_context_path(root: &Path, rel: &str) -> Option<PathBuf> {
+/// Relative paths must stay inside `root`. Absolute paths are unrestricted
+/// for owners but must stay inside the authorized root set for non-owners
+/// (`allowed`), and credential locations are always dropped for them.
+/// Returns `None` for traversal attempts and protected
+/// (`.git`, `.devinorium-attachments`) paths.
+fn resolve_context_path(
+    root: &Path,
+    rel: &str,
+    allowed: Option<(&[PathBuf], &[PathBuf])>,
+) -> Option<PathBuf> {
     let path = Path::new(rel);
-    if path.is_absolute() {
-        let resolved = paths::resolve(path, None, None)?;
-        if paths::is_hidden_path(&resolved) {
-            return None;
+    let resolved = if path.is_absolute() {
+        match allowed {
+            Some((roots, _)) => paths::resolve(path, None, Some(roots))?,
+            None => paths::resolve(path, None, None)?,
         }
-        Some(resolved)
     } else {
-        let roots = [root.to_path_buf()];
-        let resolved = paths::resolve_within(path, Some(root), &roots)?;
-        if paths::is_hidden_within(root, &resolved) {
+        paths::resolve_within(path, Some(root), std::slice::from_ref(&root.to_path_buf()))?
+    };
+    if paths::is_hidden_within(root, &resolved) {
+        return None;
+    }
+    if let Some((roots, db_files)) = allowed {
+        if crate::api::scope::outside_scope(&resolved, roots, db_files) {
             return None;
         }
-        Some(resolved)
     }
+    Some(resolved)
 }
 
 /// The directory context paths resolve against: the thread's working
 /// directory — its worktree in worktree mode, the project root otherwise.
-/// Project-less threads fall back to the user's home directory; a thread whose
-/// project row is gone resolves nothing (`None`).
-async fn context_root(state: &AppState, thread: &ThreadRow) -> Option<PathBuf> {
+/// Project-less threads fall back to the owner's home directory, or the
+/// managed project root for non-owners; a thread whose project row is gone
+/// resolves nothing (`None`).
+async fn context_root(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    thread: &ThreadRow,
+) -> Option<PathBuf> {
     if let Some(pid) = thread.project_id {
         // Keep the "project row gone means no refs" behavior; the helper
         // falls back to home_dir, so gate on the project lookup first.
         state.db.get_project(pid, thread.user_id).await.ok()??;
         return project_working_dir_for_thread(state, thread).await.ok();
     }
-    Some(state.config.home_dir.clone())
+    if user.is_owner {
+        Some(state.config.home_dir.clone())
+    } else {
+        crate::api::settings::project_root(state, user.id)
+            .await
+            .ok()
+    }
 }
 
 /// Resolve the raw client paths against `root`, dropping empties, traversal,
 /// and protected paths, deduplicating by resolved path.
-fn resolve_refs(root: &Path, raws: Vec<ContextPathIn>) -> Vec<(ContextPathIn, PathBuf)> {
+fn resolve_refs(
+    root: &Path,
+    raws: Vec<ContextPathIn>,
+    allowed: Option<(&[PathBuf], &[PathBuf])>,
+) -> Vec<(ContextPathIn, PathBuf)> {
     let mut seen = HashSet::new();
     raws.into_iter()
         .filter_map(|raw| {
@@ -120,7 +144,7 @@ fn resolve_refs(root: &Path, raws: Vec<ContextPathIn>) -> Vec<(ContextPathIn, Pa
             if rel.is_empty() {
                 return None;
             }
-            resolve_context_path(root, rel).map(|abs| (raw, abs))
+            resolve_context_path(root, rel, allowed).map(|abs| (raw, abs))
         })
         .filter(|(_, abs)| seen.insert(abs.clone()))
         .collect()
@@ -131,17 +155,28 @@ fn resolve_refs(root: &Path, raws: Vec<ContextPathIn>) -> Vec<(ContextPathIn, Pa
 /// Unresolvable or protected paths are dropped silently.
 pub(crate) async fn resolve_context_refs(
     state: &AppState,
+    user: &crate::db::UserRow,
     thread: &ThreadRow,
     input: &mut SendInput,
 ) {
     if input.context_paths.is_empty() {
         return;
     }
-    let Some(root) = context_root(state, thread).await else {
+    let Some(root) = context_root(state, user, thread).await else {
         input.context_paths.clear();
         return;
     };
-    for (raw, abs) in resolve_refs(&root, std::mem::take(&mut input.context_paths)) {
+    let allowed = if user.is_owner {
+        None
+    } else {
+        let mut roots = crate::api::scope::non_owner_roots(state, user).await;
+        roots.push(root.clone());
+        Some((roots, crate::api::scope::db_file_paths(state)))
+    };
+    let allowed = allowed
+        .as_ref()
+        .map(|(roots, db_files)| (roots.as_slice(), db_files.as_slice()));
+    for (raw, abs) in resolve_refs(&root, std::mem::take(&mut input.context_paths), allowed) {
         let rel = raw.path.trim().to_string();
         let meta = tokio::fs::metadata(&abs).await.ok();
         let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(raw.is_dir);
@@ -231,7 +266,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap().keep();
         std::fs::create_dir_all(tmp.join("src")).unwrap();
         std::fs::write(tmp.join("src/main.rs"), "fn main() {}").unwrap();
-        let resolved = resolve_context_path(&tmp, "src/main.rs").unwrap();
+        let resolved = resolve_context_path(&tmp, "src/main.rs", None).unwrap();
         assert!(resolved.ends_with("src/main.rs"));
         assert!(resolved.starts_with(&tmp));
     }
@@ -239,9 +274,9 @@ mod tests {
     #[test]
     fn resolve_context_path_rejects_traversal_and_hidden() {
         let tmp = tempfile::tempdir().unwrap().keep();
-        assert!(resolve_context_path(&tmp, "../outside.txt").is_none());
-        assert!(resolve_context_path(&tmp, ".git/config").is_none());
-        assert!(resolve_context_path(&tmp, "sub/.devinorium-attachments/x").is_none());
+        assert!(resolve_context_path(&tmp, "../outside.txt", None).is_none());
+        assert!(resolve_context_path(&tmp, ".git/config", None).is_none());
+        assert!(resolve_context_path(&tmp, "sub/.devinorium-attachments/x", None).is_none());
     }
 
     #[test]
@@ -249,8 +284,31 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap().keep();
         let file = tmp.join("abs.txt");
         std::fs::write(&file, "x").unwrap();
-        let resolved = resolve_context_path(&tmp, file.to_str().unwrap()).unwrap();
+        let resolved = resolve_context_path(&tmp, file.to_str().unwrap(), None).unwrap();
         assert_eq!(resolved, file.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn resolve_context_path_confines_absolute_paths_to_allowed_roots() {
+        let tmp = tempfile::tempdir().unwrap().keep();
+        let proj = tmp.join("proj");
+        std::fs::create_dir_all(&proj).unwrap();
+        let inside = proj.join("ok.txt");
+        std::fs::write(&inside, "x").unwrap();
+        let outside = tmp.join("secret.txt");
+        std::fs::write(&outside, "x").unwrap();
+        let sensitive = proj.join(".ssh").join("key");
+        std::fs::create_dir_all(proj.join(".ssh")).unwrap();
+        std::fs::write(&sensitive, "x").unwrap();
+
+        let roots = vec![proj.canonicalize().unwrap()];
+        let scoped = Some((roots.as_slice(), &[][..]));
+        assert!(resolve_context_path(&proj, inside.to_str().unwrap(), scoped).is_some());
+        assert!(resolve_context_path(&proj, outside.to_str().unwrap(), scoped).is_none());
+        assert!(resolve_context_path(&proj, sensitive.to_str().unwrap(), scoped).is_none());
+        // Owners (None) are unrestricted.
+        assert!(resolve_context_path(&proj, outside.to_str().unwrap(), None).is_some());
+        assert!(resolve_context_path(&proj, sensitive.to_str().unwrap(), None).is_some());
     }
 
     #[test]
@@ -276,7 +334,7 @@ mod tests {
                 is_dir: true,
             },
         ];
-        let refs = resolve_refs(&tmp, raws);
+        let refs = resolve_refs(&tmp, raws, None);
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].0.path, "src/main.rs");
         assert_eq!(refs[1].0.path, "src");

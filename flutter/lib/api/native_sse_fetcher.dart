@@ -19,10 +19,10 @@ Stream<SseEvent> nativeSseStream({
   List<({String filename, String mime, Uint8List bytes})>? attachments,
 }) {
   if (baseUrl.isEmpty) {
-    return Stream.error(ApiException(appL10n.serverUrlNotConfigured, 401));
+    return Stream.error(ApiException(appL10n.serverUrlNotConfigured, 0));
   }
   if (token.isEmpty) {
-    return Stream.error(ApiException(appL10n.authenticationTokenNotSet, 401));
+    return Stream.error(ApiException(appL10n.authenticationTokenNotSet, 0));
   }
 
   final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
@@ -76,7 +76,10 @@ Future<void> _run(
       controller.addError(ApiException(
         err != null && err['error'] is String
             ? err['error'] as String
-            : (body.isNotEmpty ? body : appL10n.httpErrorStatus(streamed.statusCode)),
+            : sanitizeHttpErrorBody(
+                body,
+                appL10n.httpErrorStatus(streamed.statusCode),
+              ),
         streamed.statusCode,
       ));
       return;

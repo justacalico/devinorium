@@ -10,9 +10,10 @@ if [ -z "$VERSION_TAG" ]; then
   exit 1
 fi
 
-if [ -z "$REPO" ]; then
-  echo "Error: CI_PROJECT_PATH is not set" >&2
-  exit 1
+# Outside CI, glab infers the repo from the git remote.
+repo_args=()
+if [ -n "$REPO" ]; then
+  repo_args=(--repo "$REPO")
 fi
 
 if [ ! -f "$BIN" ]; then
@@ -54,6 +55,6 @@ do
 done
 
 glab release create "$VERSION_TAG" \
-  --repo "$REPO" \
+  ${repo_args[@]+"${repo_args[@]}"} \
   --notes-file "$NOTES_FILE" \
   "${ASSETS[@]}"

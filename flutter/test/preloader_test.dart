@@ -132,5 +132,29 @@ void main() {
       });
       expect(logs, ['slow']);
     });
+
+    test('invalidate keeps an in-flight result out of the cache', () async {
+      final preloader = Preloader();
+      final completer = Completer<int>();
+      var calls = 0;
+
+      Future<int> fetch() async {
+        calls++;
+        return completer.future;
+      }
+
+      final pending = preloader.load<int>('key', fetch);
+      preloader.invalidate('key');
+      completer.complete(1);
+      expect(await pending, 1);
+      expect(calls, 1);
+
+      // The invalidated result resolved for its caller but must not be
+      // served from the cache — the next load refetches.
+      var second = 0;
+      final value = await preloader.load<int>('key', () async => ++second);
+      expect(value, 1);
+      expect(second, 1);
+    });
   });
 }

@@ -1,10 +1,10 @@
 part of '../settings_page.dart';
 
 /// Machines card under the Servers topic: the VNC endpoints an AI thread can
-/// remote-control when a message references them with `@`. Everyone signed
-/// in sees the list; only the owner can add, edit, delete, or probe entries.
-/// The stored VNC password never comes back from the server — a lock badge
-/// marks machines that have one.
+/// remote-control when a message references them with `@`. Owner-only —
+/// referencing a machine mints a control grant, so non-owners never see the
+/// list. The stored VNC password never comes back from the server — a lock
+/// badge marks machines that have one.
 class _MachinesSection extends StatefulWidget {
   const _MachinesSection();
 
@@ -84,6 +84,9 @@ class _MachinesSectionState extends State<_MachinesSection> {
         activeServerId: s.activeServerId,
       ),
       builder: (context, model, _) {
+        if (!model.isOwner) {
+          return const SizedBox.shrink();
+        }
         if (model.activeServerId != _seenServerId) {
           _seenServerId = model.activeServerId;
           _testResults.clear();
@@ -168,63 +171,45 @@ class _MachinesSectionState extends State<_MachinesSection> {
                           ),
                       ],
                     ),
-                    trailing: model.isOwner
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (testing)
-                                const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              else
-                                IconButton(
-                                  key: Key('machine_test_${m.id}'),
-                                  icon: const Icon(Icons.wifi_tethering),
-                                  tooltip: l.machineTest,
-                                  onPressed: () => unawaited(_test(state, m)),
-                                ),
-                              IconButton(
-                                key: Key('machine_edit_${m.id}'),
-                                icon: const Icon(Icons.edit_outlined),
-                                tooltip: l.machineEdit,
-                                onPressed: () =>
-                                    unawaited(_openEditor(state, m)),
-                              ),
-                              IconButton(
-                                key: Key('machine_delete_${m.id}'),
-                                icon: const Icon(Icons.delete_outline),
-                                tooltip: l.delete,
-                                onPressed: () =>
-                                    unawaited(_delete(context, state, m)),
-                              ),
-                            ],
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (testing)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : null,
+                        else
+                          IconButton(
+                            key: Key('machine_test_${m.id}'),
+                            icon: const Icon(Icons.wifi_tethering),
+                            tooltip: l.machineTest,
+                            onPressed: () => unawaited(_test(state, m)),
+                          ),
+                        IconButton(
+                          key: Key('machine_edit_${m.id}'),
+                          icon: const Icon(Icons.edit_outlined),
+                          tooltip: l.machineEdit,
+                          onPressed: () => unawaited(_openEditor(state, m)),
+                        ),
+                        IconButton(
+                          key: Key('machine_delete_${m.id}'),
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: l.delete,
+                          onPressed: () => unawaited(_delete(context, state, m)),
+                        ),
+                      ],
+                    ),
                   );
                 },
               ),
-            if (!model.isOwner && model.machines.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  l.machinesOnlyOwner,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            if (model.isOwner) ...[
-              const SizedBox(height: 8),
-              FilledButton.tonal(
-                key: const Key('machine_add'),
-                onPressed: () => unawaited(_openEditor(state)),
-                child: Text(l.machineAdd),
-              ),
-            ],
+            const SizedBox(height: 8),
+            FilledButton.tonal(
+              key: const Key('machine_add'),
+              onPressed: () => unawaited(_openEditor(state)),
+              child: Text(l.machineAdd),
+            ),
           ],
         );
       },

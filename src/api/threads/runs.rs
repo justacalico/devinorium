@@ -208,25 +208,41 @@ pub(crate) async fn events_stream(
     // Subscribe first so events emitted while the snapshot is being built are
     // captured in the live stream and not lost.
     let live: BoxStream<'static, Result<Event, std::convert::Infallible>> = match run.subscribe() {
-        Some(receiver) => FuturesStreamExt::boxed(TokioStreamExt::filter_map(
-            BroadcastStream::new(receiver),
-            |res| match res {
-                Ok(ev) => {
-                    let data = if ev.event == "error" {
-                        super::send::sanitize_sse_data(&ev.data)
-                    } else {
-                        ev.data
-                    };
-                    Some(Ok::<_, std::convert::Infallible>(
-                        Event::default()
-                            .event(&ev.event)
-                            .id(ev.seq.to_string())
-                            .data(data),
-                    ))
-                }
-                Err(_) => None,
-            },
-        )),
+        Some(receiver) => {
+            let run = run.clone();
+            FuturesStreamExt::boxed(TokioStreamExt::then(
+                BroadcastStream::new(receiver),
+                move |res| {
+                    let run = run.clone();
+                    async move {
+                        match res {
+                            Ok(ev) => {
+                                let data = if ev.event == "error" {
+                                    super::send::sanitize_sse_data(&ev.data)
+                                } else {
+                                    ev.data
+                                };
+                                Ok::<_, std::convert::Infallible>(
+                                    Event::default()
+                                        .event(&ev.event)
+                                        .id(ev.seq.to_string())
+                                        .data(data),
+                                )
+                            }
+                            // The client fell behind and events were dropped.
+                            // A missed `permission_request` would strand the
+                            // run, so send a fresh snapshot to resync from.
+                            Err(_) => {
+                                let snapshot = run.snapshot().await;
+                                let state_json = serde_json::to_string(&snapshot)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                Ok(Event::default().event("state").data(state_json))
+                            }
+                        }
+                    }
+                },
+            ))
+        }
         None => FuturesStreamExt::boxed(tokio_stream::empty()),
     };
 
@@ -397,10 +413,13 @@ pub(crate) async fn run_thread(
         };
         let parts = strip_plan_markup_from_parts(parts);
         if let Some(ref sid) = new_session_id {
-            let _ = state
+            if let Err(e) = state
                 .db
                 .update_thread_session(&thread.id, &thread.provider_id, sid, new_title.as_deref())
-                .await;
+                .await
+            {
+                tracing::warn!(error = %e, "failed to persist session id on stopped run");
+            }
         }
         if !parts.is_empty() {
             let reply = collect_text(&parts);
@@ -483,16 +502,16 @@ pub(crate) async fn run_thread(
         usage,
     } = outcome;
 
-    if let Some(usage) = usage {
-        record_run_usage(&state, user.id, &thread, new_session_id.clone(), usage).await;
-    }
-
     if run.cancelled.load(Ordering::SeqCst) {
         sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
             .await;
+        if let Some(usage) = usage {
+            record_run_usage(&state, user.id, &thread, new_session_id.clone(), usage).await;
+        }
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
+    let session_for_usage = new_session_id.clone();
     let assistant_msg = match persist_assistant_reply(
         &state,
         &thread,
@@ -517,6 +536,12 @@ pub(crate) async fn run_thread(
             return Err(anyhow::anyhow!("failed to save assistant message"));
         }
     };
+
+    // Record after the session id is persisted so a lost session write
+    // cannot leave an orphaned baseline that skews later diffs.
+    if let Some(usage) = usage {
+        record_run_usage(&state, user.id, &thread, session_for_usage, usage).await;
+    }
 
     persist_run_plan(&state.db, &thread.id, &run).await;
 
@@ -631,6 +656,40 @@ mod tests {
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("event: state"), "body: {text}");
         assert!(text.contains("event: done"), "body: {text}");
+    }
+
+    #[tokio::test]
+    async fn lagged_client_gets_a_fresh_state_snapshot() {
+        let runner = ThreadRunner::new();
+        let run = runner
+            .start("t1".into(), 1, |_run| async move {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        let response = events_stream(run.clone()).await.into_response();
+        // Flood past the 256-event broadcast capacity before the stream is
+        // polled so the first live read reports Lagged.
+        for i in 0..300 {
+            run.emit("tick", &i.to_string());
+        }
+
+        let body = tokio::time::timeout(
+            Duration::from_secs(1),
+            to_bytes(response.into_body(), 1 << 20),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let text = String::from_utf8_lossy(&body);
+        // One `state` from the subscribe-time snapshot plus at least one more
+        // emitted in place of the dropped events.
+        assert!(
+            text.matches("event: state").count() >= 2,
+            "expected a resync snapshot after lag, body: {text}"
+        );
     }
 
     use crate::db::ThreadRow;

@@ -159,7 +159,7 @@ mixin NodeStore on AppStateBase {
     if (_switchingServer || nodeId == _activeNodeId) return;
     if (!force && hasDirtyEditorTabs) {
       _globalError =
-          'Editor has unsaved changes. Save or discard them before switching.';
+          appL10n.editorUnsavedSwitch;
       notifyListeners();
       return;
     }

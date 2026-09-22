@@ -54,9 +54,11 @@ pub(super) async fn send_stream(
         Ok(parsed) => parsed,
         Err(resp) => return resp,
     };
-    resolve_context_refs(&state, &thread, &mut input).await;
+    resolve_context_refs(&state, &user, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
-    resolve_machine_refs(&state, &mut input).await;
+    if let Err(resp) = resolve_machine_refs(&state, &user, &mut input).await {
+        return resp;
+    }
     if input.prompt.trim().is_empty()
         && input.context_refs.is_empty()
         && input.thread_refs.is_empty()
@@ -171,13 +173,7 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
             // A truncated body must not be mistaken for missing fields; on
             // the resend endpoint "no prompt" means regenerate and deletes
             // the tail.
-            Err(e) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ApiError::new(format!("malformed multipart body: {e}"))),
-                )
-                    .into_response())
-            }
+            Err(e) => return Err(crate::api::files::multipart_err(e)),
         };
         let name = field.name().unwrap_or("").to_string();
         let filename = field.file_name().unwrap_or("").to_string();
@@ -187,7 +183,7 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
             .to_string();
         let bytes = match field.bytes().await {
             Ok(b) => b,
-            Err(e) => return Err(map_err_internal(e).into_response()),
+            Err(e) => return Err(crate::api::files::multipart_err(e)),
         };
         if name == "prompt" {
             fields.prompt = Some(String::from_utf8_lossy(&bytes).to_string());

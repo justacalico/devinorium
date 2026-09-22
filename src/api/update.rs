@@ -46,6 +46,9 @@ fn not_updatable_response(reason: NotUpdatable) -> Response {
         NotUpdatable::LocalMode => "the bundled server is updated with the app",
         NotUpdatable::DevMode => "development instances cannot be updated",
         NotUpdatable::UnsupportedPlatform => "no prebuilt release is published for this platform",
+        NotUpdatable::UnwritableExeDir => {
+            "the executable directory is not writable; update the package instead"
+        }
     };
     (StatusCode::CONFLICT, Json(ApiError::new(message))).into_response()
 }

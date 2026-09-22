@@ -42,7 +42,8 @@ if [ "$(id -u)" -eq 0 ]; then
   if command -v runuser >/dev/null 2>&1; then
     exec runuser -u aur-builder -- env HOME=/home/aur-builder bash "$ROOT/scripts/aur-publish.sh" "$@"
   fi
-  exec su aur-builder -s /bin/bash -c "cd '$ROOT' && HOME=/home/aur-builder bash '$ROOT/scripts/aur-publish.sh' $*"
+  inner="cd $(printf '%q' "$ROOT") && HOME=/home/aur-builder bash $(printf '%q' "$ROOT/scripts/aur-publish.sh") $(printf '%q ' "$@")"
+  exec su aur-builder -s /bin/bash -c "$inner"
 fi
 
 if [ -n "${AUR_SSH_PRIVATE_KEY:-}" ]; then

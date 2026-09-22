@@ -76,6 +76,10 @@ pub struct AppState {
     /// heartbeats and hub-side request proxying. Has no overall timeout so
     /// proxied SSE streams can run indefinitely.
     pub http_client: reqwest::Client,
+    /// Shared weighted token bucket. The global middleware charges by
+    /// endpoint class; auth/login code debits extra on failures so probes
+    /// cannot hide behind header tricks or rotating source IPs.
+    pub rate_limiter: security::RateLimiter,
 }
 
 impl AppState {
@@ -183,7 +187,9 @@ pub fn build_app(state: AppState) -> Router {
     // This means a brute-force attacker depletes the bucket in ~25 tries,
     // while a normal authenticated user can browse freely and send many
     // messages before being throttled. After depletion, 1 login every 10s.
-    let limiter = security::RateLimiter::new(500, 2.0);
+    // The instance lives on AppState so auth handlers can debit the same
+    // buckets on credential failures.
+    let limiter = state.rate_limiter.clone();
 
     // Public routes (no auth). Machine-control endpoints authenticate
     // with per-run capability tokens inside their handlers; the federation
@@ -217,6 +223,10 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/auth/me", get(api::auth::me))
         .route("/api/auth/me", axum::routing::patch(api::auth::update_me))
         .route(
+            "/api/auth/me/password",
+            axum::routing::patch(api::auth::change_password),
+        )
+        .route(
             "/api/auth/totp/setup",
             axum::routing::post(api::auth::totp_setup),
         )
@@ -228,10 +238,10 @@ pub fn build_app(state: AppState) -> Router {
             "/api/auth/totp/disable",
             axum::routing::post(api::auth::totp_disable),
         )
-        // Allow multipart fields up to 10 MiB so the per-attachment 8 MiB
-        // check in the send handler is the effective gate (axum's default
-        // multipart field limit is 2 MiB, which would shadow it).
-        .route_layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024))
+        // Bound multipart fields by the configured body limit; axum's
+        // default 2 MiB field limit would otherwise reject large
+        // attachments before the handlers' own checks run.
+        .route_layer(axum::extract::DefaultBodyLimit::max(max_body))
         .route_layer(from_fn_with_state(
             state.clone(),
             auth::middleware::require_auth,

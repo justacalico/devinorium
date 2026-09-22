@@ -31,7 +31,36 @@ impl super::Db {
     }
 
     pub async fn set_server_setting(&self, key: &str, value: &str) -> anyhow::Result<()> {
-        upsert_setting(self.pool(), key, value).await
+        upsert_setting(self.pool(), key, value).await?;
+        // The node token is the only cached setting; drop the cached value
+        // so a re-registration is picked up on the next read.
+        *self
+            .node_token_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        Ok(())
+    }
+
+    /// The federation node token, cached in memory — the auth middleware
+    /// reads it on every bearer call and it only changes on re-registration.
+    pub async fn node_token(&self) -> anyhow::Result<Option<String>> {
+        {
+            let cache = self
+                .node_token_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(v) = &*cache {
+                return Ok(v.clone());
+            }
+        }
+        let token = self
+            .get_server_setting(crate::federation::NODE_TOKEN_KEY)
+            .await?;
+        *self
+            .node_token_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(token.clone());
+        Ok(token)
     }
 
     /// The persisted Tailscale serve preference: whether the owner wants the
