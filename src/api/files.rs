@@ -39,9 +39,7 @@ fn file_write_lock(target: &Path) -> Arc<Mutex<()>> {
 /// fall back to re-checking that every ancestor is still a real directory
 /// at call time — a swap then fails the delete instead of redirecting it.
 #[cfg(target_os = "linux")]
-fn pin_delete_dir(
-    canon_parent: &Path,
-) -> std::io::Result<(Option<rustix::fd::OwnedFd>, PathBuf)> {
+fn pin_delete_dir(canon_parent: &Path) -> std::io::Result<(Option<rustix::fd::OwnedFd>, PathBuf)> {
     use rustix::fs::{openat, Mode, OFlags};
     use std::os::unix::io::AsRawFd;
 
@@ -85,11 +83,7 @@ fn real_dir_parent(canon_parent: &Path) -> std::io::Result<PathBuf> {
 }
 
 pub(crate) fn multipart_err(e: axum::extract::multipart::MultipartError) -> Response {
-    (
-        e.status(),
-        Json(crate::api::ApiError::new(e.body_text())),
-    )
-        .into_response()
+    (e.status(), Json(crate::api::ApiError::new(e.body_text()))).into_response()
 }
 
 use axum::extract::{Multipart, Query, State};
@@ -101,8 +95,8 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::auth::session::CurrentUser;
 use crate::api::scope;
+use crate::auth::session::CurrentUser;
 use crate::security::paths;
 use crate::AppState;
 
@@ -183,12 +177,10 @@ async fn resolve(
         },
         // Non-owners have no home-directory scope; their default browse root
         // is the managed project root.
-        None if !user.is_owner => {
-            match crate::api::settings::project_root(state, user.id).await {
-                Ok(root) => root,
-                Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
-            }
-        }
+        None if !user.is_owner => match crate::api::settings::project_root(state, user.id).await {
+            Ok(root) => root,
+            Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
+        },
         None => match home_dir.canonicalize() {
             Ok(c) => c,
             Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
@@ -307,16 +299,10 @@ async fn list_dir(
         let name = entry.file_name().to_string_lossy().to_string();
         // Skip hidden attachment and git metadata entries. Non-owners also
         // never see credential locations in listings.
-        if paths::is_hidden_name(&name)
-            || (!user.is_owner && paths::is_sensitive_name(&name))
-        {
+        if paths::is_hidden_name(&name) || (!user.is_owner && paths::is_sensitive_name(&name)) {
             continue;
         }
-        let is_dir = entry
-            .file_type()
-            .await
-            .map(|t| t.is_dir())
-            .unwrap_or(false);
+        let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
         entries_sorted.push((is_dir, name, entry));
     }
     entries_sorted.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
@@ -693,8 +679,7 @@ async fn upload(
         let resolved = match resolved {
             Some(p)
                 if !paths::is_hidden_within(&root_base, &p)
-                    && (user.is_owner
-                        || !scope::outside_scope(&p, &allowed, &db_files)) =>
+                    && (user.is_owner || !scope::outside_scope(&p, &allowed, &db_files)) =>
             {
                 p
             }
@@ -790,9 +775,9 @@ async fn delete(
     // targets must also stay under the root so `..` cannot delete the root
     // itself.
     let last = rel.rsplit('/').next().unwrap_or("");
-    if last == "." || last == ".."
-        || (!Path::new(rel).is_absolute()
-            && !paths::normalize_lexical(&target).starts_with(&root))
+    if last == "."
+        || last == ".."
+        || (!Path::new(rel).is_absolute() && !paths::normalize_lexical(&target).starts_with(&root))
     {
         return invalid();
     }

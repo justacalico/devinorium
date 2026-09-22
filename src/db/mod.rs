@@ -46,9 +46,7 @@ pub struct Db {
     /// Cached federation node token: it is read on every bearer request by
     /// the auth middleware and only changes when a satellite re-registers.
     /// `None` = not loaded yet.
-    node_token_cache: std::sync::Arc<
-        std::sync::Mutex<Option<Option<String>>>,
-    >,
+    node_token_cache: std::sync::Arc<std::sync::Mutex<Option<Option<String>>>>,
 }
 
 impl Db {

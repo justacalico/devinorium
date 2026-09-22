@@ -182,11 +182,7 @@ pub struct WeightedRateLimit {
 /// already charged for this request's shape, so every credential failure
 /// costs exactly the probe rate no matter which headers it carried.
 /// Returns false when the bucket is dry and the caller should answer 429.
-pub(crate) async fn charge_auth_failure(
-    limiter: &RateLimiter,
-    ip: &str,
-    upfront: f64,
-) -> bool {
+pub(crate) async fn charge_auth_failure(limiter: &RateLimiter, ip: &str, upfront: f64) -> bool {
     let owed = (EndpointClass::UnauthProbe.cost() - upfront).max(0.0);
     owed <= 0.0 || limiter.check("unauth", ip, owed).await
 }
@@ -219,7 +215,7 @@ pub fn classify(req: &Request) -> EndpointClass {
     // laundered a probe into a cheap write. Only the session cookie counts;
     // even that is just the upfront cost since `require_auth` debits the
     // probe rate when the credential actually fails.
-    let has_cookie = crate::auth::session::extract_cookie_token(&req).is_some();
+    let has_cookie = crate::auth::session::extract_cookie_token(req).is_some();
     let has_bearer = req
         .headers()
         .get(header::AUTHORIZATION)

@@ -261,7 +261,11 @@ async fn update(
             .db
             .audit(
                 Some(user.id),
-                if disabled { "user.disable" } else { "user.enable" },
+                if disabled {
+                    "user.disable"
+                } else {
+                    "user.enable"
+                },
                 &serde_json::json!({"target_user_id": id}),
                 None,
             )

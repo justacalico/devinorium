@@ -186,7 +186,10 @@ impl GitService {
     /// point the host at the `glab` credential helper so fetches keep
     /// authenticating without a stored secret. Best-effort remediation.
     async fn scrub_remote_tokens(&self, path: &Path) {
-        let Ok(remotes) = self.run_with(path, &["remote"], Duration::from_secs(5)).await else {
+        let Ok(remotes) = self
+            .run_with(path, &["remote"], Duration::from_secs(5))
+            .await
+        else {
             return;
         };
         for remote in remotes.lines() {

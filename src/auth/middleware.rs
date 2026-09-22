@@ -68,10 +68,8 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
             None => {
                 if state.config.is_satellite() {
                     if let Some(expected) = state.config.federation_token.as_deref() {
-                        if constant_time_eq::constant_time_eq(
-                            token.as_bytes(),
-                            expected.as_bytes(),
-                        ) {
+                        if constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes())
+                        {
                             return run_as_local(state, req, next).await;
                         }
                     }

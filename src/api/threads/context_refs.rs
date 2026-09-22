@@ -124,7 +124,9 @@ async fn context_root(
     if user.is_owner {
         Some(state.config.home_dir.clone())
     } else {
-        crate::api::settings::project_root(state, user.id).await.ok()
+        crate::api::settings::project_root(state, user.id)
+            .await
+            .ok()
     }
 }
 

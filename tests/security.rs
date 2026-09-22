@@ -383,7 +383,10 @@ async fn rate_limit_login_throttles_per_username() {
     }
     assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
     // A different username still reaches the verifier (401, not 429).
-    assert_eq!(bad_login(app, "someone-else").await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        bad_login(app, "someone-else").await,
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]

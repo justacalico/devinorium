@@ -144,7 +144,8 @@ impl AppServer {
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr);
                 let mut buf = Vec::new();
-                while let Ok(Some(())) = next_capped_line(&mut reader, &mut buf, MAX_STDERR_LINE).await
+                while let Ok(Some(())) =
+                    next_capped_line(&mut reader, &mut buf, MAX_STDERR_LINE).await
                 {
                     let line = String::from_utf8_lossy(&buf);
                     let line = line.trim();
@@ -263,9 +264,13 @@ impl AppServer {
             Err(_) => {
                 // Drop the pending entry or it lingers until the server dies.
                 self.pending.lock().await.remove(&id);
-                return Err(anyhow::anyhow!("codex app-server request {method} timed out"));
+                return Err(anyhow::anyhow!(
+                    "codex app-server request {method} timed out"
+                ));
             }
-            Ok(rx) => rx.map_err(|_| anyhow::anyhow!("codex app-server dropped response channel"))?,
+            Ok(rx) => {
+                rx.map_err(|_| anyhow::anyhow!("codex app-server dropped response channel"))?
+            }
         };
 
         result.map_err(|e| anyhow::anyhow!("{method} failed: {e}"))

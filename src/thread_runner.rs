@@ -620,8 +620,7 @@ impl ThreadRunner {
                 // Give the aborted tasks' drop guards a moment to kill their
                 // children before the process exits.
                 let grace = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-                while !runs.iter().all(|r| r.task_finished())
-                    && tokio::time::Instant::now() < grace
+                while !runs.iter().all(|r| r.task_finished()) && tokio::time::Instant::now() < grace
                 {
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
@@ -1059,9 +1058,7 @@ mod tests {
             .await
             .unwrap();
 
-        runner
-            .stop_all(std::time::Duration::from_millis(300))
-            .await;
+        runner.stop_all(std::time::Duration::from_millis(300)).await;
 
         let t1 = runner.get("t1").await.unwrap();
         assert_eq!(*t1.status.read().await, RunStatus::Stopped);

@@ -43,11 +43,7 @@ pub fn router() -> Router<AppState> {
 async fn owner_only(req: Request, next: Next) -> Response {
     match req.extensions().get::<CurrentUser>() {
         Some(CurrentUser(user)) if user.is_owner => next.run(req).await,
-        _ => (
-            StatusCode::FORBIDDEN,
-            Json(ApiError::new("forbidden")),
-        )
-            .into_response(),
+        _ => (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response(),
     }
 }
 

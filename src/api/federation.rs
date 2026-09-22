@@ -106,12 +106,8 @@ async fn register(State(state): State<AppState>, req: axum::extract::Request) ->
         // public route must not ride the cheap write classification.
         let upfront = crate::security::rate_limit::classify(&req).cost();
         let ip = crate::security::ip::from_req(&req);
-        if !crate::security::rate_limit::charge_auth_failure(
-            &state.rate_limiter,
-            &ip,
-            upfront,
-        )
-        .await
+        if !crate::security::rate_limit::charge_auth_failure(&state.rate_limiter, &ip, upfront)
+            .await
         {
             return (StatusCode::TOO_MANY_REQUESTS, "rate limited").into_response();
         }

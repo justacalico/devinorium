@@ -673,7 +673,9 @@ async fn write_permission_config(
         Err(e) => return Err(e.into()),
     };
     if !merge_permission_rules(&mut config, rules) {
-        tracing::warn!("devin config permissions are not an object; thread permissions not applied");
+        tracing::warn!(
+            "devin config permissions are not an object; thread permissions not applied"
+        );
         return Ok(None);
     }
 
@@ -1023,10 +1025,7 @@ mod tests {
         let (_dir, bin, log) = fake_acp_agent_load(true, false);
         let (_res, sessions) = send_with_stored_session(&bin).await;
         let methods = logged_methods(&log);
-        assert!(
-            methods.contains(&"session/load".to_string()),
-            "{methods:?}"
-        );
+        assert!(methods.contains(&"session/load".to_string()), "{methods:?}");
         assert!(methods.contains(&"session/new".to_string()), "{methods:?}");
         assert_eq!(*sessions.lock().await, vec!["new-session".to_string()]);
     }
@@ -1037,14 +1036,8 @@ mod tests {
         let (_dir, bin, log) = fake_acp_agent_load(true, true);
         let (_res, sessions) = send_with_stored_session(&bin).await;
         let methods = logged_methods(&log);
-        assert!(
-            methods.contains(&"session/load".to_string()),
-            "{methods:?}"
-        );
-        assert!(
-            !methods.contains(&"session/new".to_string()),
-            "{methods:?}"
-        );
+        assert!(methods.contains(&"session/load".to_string()), "{methods:?}");
+        assert!(!methods.contains(&"session/new".to_string()), "{methods:?}");
         assert!(sessions.lock().await.is_empty());
     }
 
@@ -1075,7 +1068,10 @@ mod tests {
             config["permissions"]["allow"],
             serde_json::json!(["Exec(git status)", "Exec(curl)"])
         );
-        assert_eq!(config["permissions"]["deny"], serde_json::json!(["Exec(rm)"]));
+        assert_eq!(
+            config["permissions"]["deny"],
+            serde_json::json!(["Exec(rm)"])
+        );
         assert_eq!(config["agent"]["model"], "x");
     }
 
@@ -1100,19 +1096,15 @@ mod tests {
         fs::create_dir(devin.join("skills")).unwrap();
         fs::create_dir(root.path().join("otherapp")).unwrap();
 
-        let temp = write_permission_config(
-            root.path(),
-            &["Exec(curl)".into(), "Fetch(**)".into()],
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let temp = write_permission_config(root.path(), &["Exec(curl)".into(), "Fetch(**)".into()])
+            .await
+            .unwrap()
+            .unwrap();
         let xdg = temp.path();
 
-        let written: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(xdg.join("devin/config.json")).unwrap(),
-        )
-        .unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(xdg.join("devin/config.json")).unwrap())
+                .unwrap();
         assert_eq!(written["agent"]["model"], "x");
         assert_eq!(
             written["permissions"]["deny"],

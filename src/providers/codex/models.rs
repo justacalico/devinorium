@@ -225,11 +225,7 @@ done
     async fn fresh_cache_hit_skips_spawn() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("missing-codex"); // would fail if spawned
-        seed(
-            bin.to_str().unwrap(),
-            Duration::ZERO,
-            Some(static_models()),
-        );
+        seed(bin.to_str().unwrap(), Duration::ZERO, Some(static_models()));
         let got = known_models(bin.to_str().unwrap(), dir.path()).await;
         assert!(got.is_some());
     }
@@ -263,7 +259,11 @@ done
         let dir = tempfile::tempdir().unwrap();
         let bin = fake_codex(dir.path());
         let key = bin.to_str().unwrap().to_string();
-        seed(&key, MODEL_CACHE_TTL + Duration::from_secs(1), Some(static_models()));
+        seed(
+            &key,
+            MODEL_CACHE_TTL + Duration::from_secs(1),
+            Some(static_models()),
+        );
 
         let got = known_models(&key, dir.path()).await.unwrap();
         assert_eq!(got[0].id, "m1");

@@ -142,9 +142,7 @@ pub(super) async fn respond_permission(
     let sender = {
         let mut map = state.pending_permission_requests.lock().await;
         match map.get(&request_id) {
-            Some(p) if p.user_id == user.id && p.thread_id == thread_id => {
-                map.remove(&request_id)
-            }
+            Some(p) if p.user_id == user.id && p.thread_id == thread_id => map.remove(&request_id),
             _ => None,
         }
     };
@@ -274,9 +272,7 @@ pub(super) async fn respond_ask(
     let sender = {
         let mut map = state.pending_ask_requests.lock().await;
         match map.get(&request_id) {
-            Some(p) if p.user_id == user.id && p.thread_id == thread_id => {
-                map.remove(&request_id)
-            }
+            Some(p) if p.user_id == user.id && p.thread_id == thread_id => map.remove(&request_id),
             _ => None,
         }
     };

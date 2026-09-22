@@ -649,7 +649,7 @@ void main() {
             MockClient((req) async {
               if (req.url.path == '/api/auth/me/password') {
                 patchCalls++;
-                final body = jsonDecode((req as http.Request).body);
+                final body = jsonDecode(req.body);
                 expect(body['current_password'], 'old-password-1');
                 expect(body['new_password'], 'new-password-1');
                 return _json(200, {'ok': true});
@@ -688,7 +688,7 @@ void main() {
             MockClient((req) async {
               if (req.url.path == '/api/users/2') {
                 patchCalls++;
-                final body = jsonDecode((req as http.Request).body);
+                final body = jsonDecode(req.body);
                 expect(body['password'], 'fresh-password-1');
                 return _json(200, {'ok': true});
               }

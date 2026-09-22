@@ -147,6 +147,7 @@ void main() {
       preloader.invalidate('key');
       completer.complete(1);
       expect(await pending, 1);
+      expect(calls, 1);
 
       // The invalidated result resolved for its caller but must not be
       // served from the cache — the next load refetches.

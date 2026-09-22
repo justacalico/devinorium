@@ -693,7 +693,10 @@ done
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        assert!(!alive, "codex app-server {raw} still running after the turn");
+        assert!(
+            !alive,
+            "codex app-server {raw} still running after the turn"
+        );
     }
 
     #[tokio::test]

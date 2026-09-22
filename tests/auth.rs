@@ -218,17 +218,29 @@ fn totp_code(secret: &str) -> String {
 }
 
 /// POST /api/auth/totp/setup with an optional JSON proof body.
-async fn totp_setup_request(app: &Router, cookie: &str, body: Option<&str>) -> (StatusCode, String) {
+async fn totp_setup_request(
+    app: &Router,
+    cookie: &str,
+    body: Option<&str>,
+) -> (StatusCode, String) {
     let mut req = Request::builder()
         .method("POST")
         .uri("/api/auth/totp/setup")
         .header("cookie", cookie);
     if let Some(b) = body {
         req = req.header("content-type", "application/json");
-        let resp = app.clone().oneshot(req.body(Body::from(b.to_string())).unwrap()).await.unwrap();
+        let resp = app
+            .clone()
+            .oneshot(req.body(Body::from(b.to_string())).unwrap())
+            .await
+            .unwrap();
         return (resp.status(), read_body(resp.into_body()).await);
     }
-    let resp = app.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
     (resp.status(), read_body(resp.into_body()).await)
 }
 
@@ -239,7 +251,11 @@ async fn totp_disable_request(app: &Router, cookie: &str, body: Option<&str>) ->
         .header("cookie", cookie);
     if let Some(b) = body {
         req = req.header("content-type", "application/json");
-        let resp = app.clone().oneshot(req.body(Body::from(b.to_string())).unwrap()).await.unwrap();
+        let resp = app
+            .clone()
+            .oneshot(req.body(Body::from(b.to_string())).unwrap())
+            .await
+            .unwrap();
         return resp.status();
     }
     app.clone()
@@ -1114,12 +1130,7 @@ async fn owner_password_reset_revokes_target_sessions() {
     login(&app, "alice", "resetpass456").await;
 
     // Owner accounts cannot be reset through this path.
-    let owner_id = db
-        .get_user_by_username("owner")
-        .await
-        .unwrap()
-        .unwrap()
-        .id;
+    let owner_id = db.get_user_by_username("owner").await.unwrap().unwrap().id;
     let resp = app
         .clone()
         .oneshot(

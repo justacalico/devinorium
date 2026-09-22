@@ -273,8 +273,7 @@ async fn proxy_http(
             } else {
                 StatusCode::BAD_REQUEST
             };
-            return (status, Json(ApiError::new("failed to read request body")))
-                .into_response();
+            return (status, Json(ApiError::new("failed to read request body"))).into_response();
         }
     };
 
@@ -309,7 +308,10 @@ async fn proxy_http(
     // A node token the satellite does not know yet gets one retry with the
     // shared credential. Some satellites answer 403 for a credential they
     // do not recognize, so cover both rejection statuses.
-    let res = if matches!(res.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+    let res = if matches!(
+        res.status(),
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+    ) {
         match &meta.fallback_token {
             Some(fallback) => match build(fallback).send().await {
                 Ok(r) => r,

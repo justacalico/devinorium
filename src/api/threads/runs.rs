@@ -676,11 +676,13 @@ mod tests {
             run.emit("tick", &i.to_string());
         }
 
-        let body =
-            tokio::time::timeout(Duration::from_secs(1), to_bytes(response.into_body(), 1 << 20))
-                .await
-                .unwrap()
-                .unwrap();
+        let body = tokio::time::timeout(
+            Duration::from_secs(1),
+            to_bytes(response.into_body(), 1 << 20),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         let text = String::from_utf8_lossy(&body);
         // One `state` from the subscribe-time snapshot plus at least one more
         // emitted in place of the dropped events.

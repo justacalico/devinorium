@@ -138,6 +138,10 @@ mod tests {
             &roots,
             &db_files
         ));
-        assert!(!outside_scope(&roots[0].join("src/main.rs"), &roots, &db_files));
+        assert!(!outside_scope(
+            &roots[0].join("src/main.rs"),
+            &roots,
+            &db_files
+        ));
     }
 }

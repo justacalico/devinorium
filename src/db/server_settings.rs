@@ -53,7 +53,9 @@ impl super::Db {
                 return Ok(v.clone());
             }
         }
-        let token = self.get_server_setting(crate::federation::NODE_TOKEN_KEY).await?;
+        let token = self
+            .get_server_setting(crate::federation::NODE_TOKEN_KEY)
+            .await?;
         *self
             .node_token_cache
             .lock()

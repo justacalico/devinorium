@@ -195,7 +195,7 @@ pub async fn clone_repo(
         // Future fetch/pull/push need credentials too. Point the repo at
         // glab's credential helper so the token is never stored in
         // .git/config, only the helper command is.
-        let mut cfg = Command::new(&git_bin);
+        let mut cfg = Command::new(git_bin);
         cfg.current_dir(&resolved_target)
             .env("LC_ALL", "C")
             .env("HOME", &config.home_dir)

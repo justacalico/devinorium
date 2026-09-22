@@ -172,7 +172,10 @@ async fn resolve_non_owner_dir(
     let resolved = paths::resolve(&candidate, None, None).ok_or_else(invalid)?;
 
     // Strictly inside a managed root: the root itself is not registrable.
-    if !roots.iter().any(|r| resolved != *r && resolved.starts_with(r)) {
+    if !roots
+        .iter()
+        .any(|r| resolved != *r && resolved.starts_with(r))
+    {
         return Err(invalid());
     }
     if paths::is_hidden_path(&resolved) || paths::has_sensitive_component(&resolved) {

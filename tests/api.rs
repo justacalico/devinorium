@@ -6208,10 +6208,7 @@ async fn file_manager_confines_non_owner_to_project_roots() {
         .clone()
         .oneshot(authed(
             "GET",
-            &format!(
-                "/api/files/content?path={}",
-                creds.join("id_rsa").display()
-            ),
+            &format!("/api/files/content?path={}", creds.join("id_rsa").display()),
             &alice_cookie,
             "",
         ))
@@ -6298,10 +6295,7 @@ async fn file_manager_non_owner_write_outside_roots_rejected() {
             "PUT",
             "/api/files/content",
             &alice_cookie,
-            &format!(
-                r#"{{"path":"{}","content":"x"}}"#,
-                outside.display()
-            ),
+            &format!(r#"{{"path":"{}","content":"x"}}"#, outside.display()),
         ))
         .await
         .unwrap();
@@ -6420,7 +6414,10 @@ async fn non_owner_project_create_is_confined_to_managed_roots() {
             "POST",
             "/api/projects",
             &alice_cookie,
-            &format!(r#"{{"name":"ssh","path":"{}"}}"#, home.join(".ssh").display()),
+            &format!(
+                r#"{{"name":"ssh","path":"{}"}}"#,
+                home.join(".ssh").display()
+            ),
         ))
         .await
         .unwrap();
@@ -6433,10 +6430,7 @@ async fn non_owner_project_create_is_confined_to_managed_roots() {
             "POST",
             "/api/projects",
             &owner_cookie,
-            &format!(
-                r#"{{"name":"anywhere","path":"{}"}}"#,
-                outside.display()
-            ),
+            &format!(r#"{{"name":"anywhere","path":"{}"}}"#, outside.display()),
         ))
         .await
         .unwrap();
@@ -7131,12 +7125,7 @@ async fn permission_response_to_other_thread_keeps_pending_request() {
     let (state, db) = app_state().await;
     let app = devinorium::build_app(state.clone());
     let cookie = login(&app).await;
-    let owner_id = db
-        .get_user_by_username("owner")
-        .await
-        .unwrap()
-        .unwrap()
-        .id;
+    let owner_id = db.get_user_by_username("owner").await.unwrap().unwrap().id;
     let pid_a = create_project(&app, &cookie).await;
     let pid_b = create_project(&app, &cookie).await;
     let tid_a = make_thread(&app, &cookie, pid_a, "a").await;
@@ -7190,12 +7179,7 @@ async fn ask_response_to_other_thread_keeps_pending_request() {
     let (state, db) = app_state().await;
     let app = devinorium::build_app(state.clone());
     let cookie = login(&app).await;
-    let owner_id = db
-        .get_user_by_username("owner")
-        .await
-        .unwrap()
-        .unwrap()
-        .id;
+    let owner_id = db.get_user_by_username("owner").await.unwrap().unwrap().id;
     let pid_a = create_project(&app, &cookie).await;
     let pid_b = create_project(&app, &cookie).await;
     let tid_a = make_thread(&app, &cookie, pid_a, "a").await;
@@ -9933,8 +9917,7 @@ async fn federation_register_issues_stable_node_token() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     let token = v["node_token"].as_str().unwrap().to_string();
     assert_eq!(token.len(), 64);
 
@@ -9949,8 +9932,7 @@ async fn federation_register_issues_stable_node_token() {
         ))
         .await
         .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["node_token"].as_str().unwrap(), token);
 
     // The token lands on the node row for the proxy to use, and the node
@@ -10022,8 +10004,7 @@ async fn federation_node_token_scopes_satellite_access() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let v: serde_json::Value =
-        serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(v["username"], "local");
 
     // Once the hub has issued a node token the shared secret is dead on
@@ -14974,20 +14955,28 @@ async fn node_token_is_cached_and_invalidated_on_change() {
         .set_server_setting("federation_node_token", "tok-a")
         .await
         .unwrap();
-    assert_eq!(database.node_token().await.unwrap().as_deref(), Some("tok-a"));
+    assert_eq!(
+        database.node_token().await.unwrap().as_deref(),
+        Some("tok-a")
+    );
 
     // A write that bypasses Db stays hidden behind the cache.
     sqlx::query("UPDATE server_settings SET value = 'tok-b' WHERE key = 'federation_node_token'")
         .execute(database.pool())
         .await
         .unwrap();
-    assert_eq!(database.node_token().await.unwrap().as_deref(), Some("tok-a"));
+    assert_eq!(
+        database.node_token().await.unwrap().as_deref(),
+        Some("tok-a")
+    );
 
     // A write through Db drops the cache and the new value is read.
     database
         .set_server_setting("federation_node_token", "tok-c")
         .await
         .unwrap();
-    assert_eq!(database.node_token().await.unwrap().as_deref(), Some("tok-c"));
+    assert_eq!(
+        database.node_token().await.unwrap().as_deref(),
+        Some("tok-c")
+    );
 }
-

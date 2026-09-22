@@ -217,11 +217,7 @@ pub async fn update_me(
     // Provider commands execute as the server user; only the owner may set
     // them. Non-owners can still pick which provider a thread uses.
     if !user.is_owner && (req.provider_command.is_some() || req.provider_commands.is_some()) {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(auth_json_err("forbidden")),
-        )
-            .into_response();
+        return (StatusCode::FORBIDDEN, Json(auth_json_err("forbidden"))).into_response();
     }
 
     let provider_id = req
@@ -383,13 +379,8 @@ pub struct TotpProofRequest {
     pub code: Option<String>,
 }
 
-fn totp_proof_satisfied(
-    user: &crate::db::UserRow,
-    req: Option<&TotpProofRequest>,
-) -> bool {
-    if !user.totp_enabled
-        && user.password_hash == crate::auth::bootstrap::LOCAL_PASSWORD_SENTINEL
-    {
+fn totp_proof_satisfied(user: &crate::db::UserRow, req: Option<&TotpProofRequest>) -> bool {
+    if !user.totp_enabled && user.password_hash == crate::auth::bootstrap::LOCAL_PASSWORD_SENTINEL {
         return true;
     }
     let Some(req) = req else { return false };
