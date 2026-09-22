@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       build_all:
-        description: 'Build all targets (server, server-windows, server-macos, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
+        description: 'Build all targets (server, server-linux-arm64, server-windows, server-macos, android, linux, linux-arm64, windows, windows-arm64, macos, ios)'
         type: boolean
         default: true
       create_release:
@@ -69,7 +69,7 @@ jobs:
             BUILD_ALL="true"
           fi
           if [ "$BUILD_ALL" = "true" ]; then
-            TARGETS='[{"target":"server","os":"ubuntu-latest"},{"target":"server-windows","os":"windows-latest"},{"target":"server-macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"android","os":"ubuntu-latest"},{"target":"linux","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"windows","os":"windows-latest"},{"target":"windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"ios","os":"macos-latest","flutter_arch":"arm64"}]'
+            TARGETS='[{"target":"server","os":"ubuntu-latest"},{"target":"server-linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"server-windows","os":"windows-latest"},{"target":"server-macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"android","os":"ubuntu-latest"},{"target":"linux","os":"ubuntu-latest"},{"target":"linux-arm64","os":"ubuntu-24.04-arm","flutter":"git"},{"target":"windows","os":"windows-latest"},{"target":"windows-arm64","os":"windows-11-arm","flutter":"git"},{"target":"macos","os":"macos-latest","flutter_arch":"arm64"},{"target":"ios","os":"macos-latest","flutter_arch":"arm64"}]'
           else
             TARGETS='[{"target":"server","os":"ubuntu-latest"}]'
           fi
@@ -195,6 +195,8 @@ jobs:
           echo "$HOME/flutter-sdk/bin" >> "$GITHUB_PATH"
           if [ "${{ matrix.target }}" = "linux-arm64" ]; then
             "$HOME/flutter-sdk/bin/flutter" precache --linux
+          elif [ "${{ matrix.target }}" = "server-linux-arm64" ]; then
+            "$HOME/flutter-sdk/bin/flutter" precache --web
           else
             "$HOME/flutter-sdk/bin/flutter" precache --windows
           fi
@@ -266,19 +268,23 @@ jobs:
           echo "signing=release" >> "$GITHUB_OUTPUT"
 
       - name: Install system dependencies
-        if: matrix.target == 'server'
+        if: matrix.target == 'server' || matrix.target == 'server-linux-arm64'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq pkg-config
 
       - name: Build server binary
-        if: matrix.target == 'server'
+        if: matrix.target == 'server' || matrix.target == 'server-linux-arm64'
         run: |
           set -euo pipefail
           ./scripts/build-flutter.sh
           cargo build --release
           mkdir -p artifacts
-          cp target/release/devinorium artifacts/devinorium
+          if [ "${{ matrix.target }}" = "server-linux-arm64" ]; then
+            cp target/release/devinorium artifacts/devinorium-linux-arm64
+          else
+            cp target/release/devinorium artifacts/devinorium
+          fi
 
       - name: Build server binary (Windows/macOS)
         if: matrix.target == 'server-windows' || matrix.target == 'server-macos'
@@ -512,6 +518,10 @@ jobs:
             chmod +x release-assets/devinorium
             mv release-assets/devinorium "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-x86_64"
           fi
+          if [ -f release-assets/devinorium-linux-arm64 ]; then
+            chmod +x release-assets/devinorium-linux-arm64
+            mv release-assets/devinorium-linux-arm64 "release-assets/devinorium-${{ needs.setup.outputs.version }}-linux-arm64"
+          fi
           if [ -f release-assets/devinorium-windows-x86_64.exe ]; then
             mv release-assets/devinorium-windows-x86_64.exe "release-assets/devinorium-${{ needs.setup.outputs.version }}-windows-x86_64.exe"
           fi
@@ -618,6 +628,10 @@ jobs:
             chmod +x release-assets/devinorium
             mv release-assets/devinorium "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-x86_64"
           fi
+          if [ -f release-assets/devinorium-linux-arm64 ]; then
+            chmod +x release-assets/devinorium-linux-arm64
+            mv release-assets/devinorium-linux-arm64 "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-linux-arm64"
+          fi
           if [ -f release-assets/devinorium-windows-x86_64.exe ]; then
             mv release-assets/devinorium-windows-x86_64.exe "release-assets/devinorium-${{ steps.meta.outputs.release_tag }}-windows-x86_64.exe"
           fi
@@ -649,7 +663,7 @@ jobs:
             **Commit:** ${{ github.sha }}
 
             ### Artifacts
-            - Server binaries (Linux x86_64, Windows x86_64, macOS arm64)
+            - Server binaries (Linux x86_64 + arm64, Windows x86_64, macOS arm64)
             - Android APK + AAB
             - Linux desktop bundle (x86_64 + arm64: tar.gz, zip, deb, rpm)
             - Windows package (x86_64 + arm64: zip)

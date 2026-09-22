@@ -519,6 +519,8 @@ impl UpdateService {
 pub fn platform_asset_suffix() -> Option<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     return Some("linux-x86_64");
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    return Some("linux-arm64");
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
     return Some("windows-x86_64.exe");
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
