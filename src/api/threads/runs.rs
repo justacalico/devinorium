@@ -505,6 +505,9 @@ pub(crate) async fn run_thread(
     if run.cancelled.load(Ordering::SeqCst) {
         sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
             .await;
+        if let Some(usage) = usage {
+            record_run_usage(&state, user.id, &thread, new_session_id.clone(), usage).await;
+        }
         return Err(anyhow::anyhow!("stopped by user"));
     }
 
