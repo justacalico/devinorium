@@ -67,7 +67,7 @@ fn pin_delete_dir(canon_parent: &Path) -> std::io::Result<(Option<()>, PathBuf)>
 
 #[cfg(unix)]
 fn real_dir_parent(canon_parent: &Path) -> std::io::Result<PathBuf> {
-    for anc in canon_parent.ancestors().skip(1) {
+    for anc in canon_parent.ancestors() {
         let meta = std::fs::symlink_metadata(anc)?;
         if !meta.is_dir() {
             return Err(std::io::Error::new(
@@ -84,7 +84,7 @@ fn real_dir_parent(canon_parent: &Path) -> std::io::Result<PathBuf> {
     Ok(canon_parent.to_path_buf())
 }
 
-fn multipart_err(e: axum::extract::multipart::MultipartError) -> Response {
+pub(crate) fn multipart_err(e: axum::extract::multipart::MultipartError) -> Response {
     (
         e.status(),
         Json(crate::api::ApiError::new(e.body_text())),

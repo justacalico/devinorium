@@ -475,12 +475,14 @@ async fn connect_upstream(
     tokio_tungstenite::connect_async(request).await
 }
 
-/// Whether a WS handshake failure was an HTTP 401 from the satellite.
+/// Whether a WS handshake failure was an auth rejection from the satellite.
+/// Some satellites answer 403 for a credential they do not recognize, so
+/// both statuses get the shared-token retry like the HTTP path.
 fn is_auth_rejection(e: &tokio_tungstenite::tungstenite::Error) -> bool {
     matches!(
         e,
         tokio_tungstenite::tungstenite::Error::Http(resp)
-            if resp.status() == StatusCode::UNAUTHORIZED
+            if matches!(resp.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
     )
 }
 

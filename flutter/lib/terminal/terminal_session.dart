@@ -225,13 +225,12 @@ class RemoteTerminalSession extends TerminalSession {
           _status == TerminalStatus.disconnected) {
         // Keep the most recent input: once the buffer is full the oldest
         // keystrokes are the least relevant to replay.
-        if (_inputBuffer.length + data.length > _inputBufferLimit) {
-          _inputBuffer.clear();
-        }
+        final combined = '$_inputBuffer$data';
+        _inputBuffer.clear();
         _inputBuffer.write(
-          data.length > _inputBufferLimit
-              ? data.substring(data.length - _inputBufferLimit)
-              : data,
+          combined.length > _inputBufferLimit
+              ? combined.substring(combined.length - _inputBufferLimit)
+              : combined,
         );
       }
       return;
