@@ -471,6 +471,7 @@
   "serverUpdateLocalMode": "内置服务器随应用一起更新",
   "serverUpdateDevMode": "开发实例无法通过此方式更新",
   "serverUpdateUnsupported": "此平台没有预构建的服务器版本",
+  "serverUpdateUnwritableExeDir": "自更新无法写入可执行文件目录，请改用软件包更新",
   "topics": "主题",
   "timeAgoJustNow": "刚刚",
   "timeAgoMinutes": "{count} 分钟前",

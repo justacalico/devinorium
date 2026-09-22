@@ -471,6 +471,7 @@
   "serverUpdateLocalMode": "The bundled server is updated together with the app",
   "serverUpdateDevMode": "Development instances cannot be updated this way",
   "serverUpdateUnsupported": "No prebuilt server release exists for this platform",
+  "serverUpdateUnwritableExeDir": "Self-update cannot write to the executable directory; update the package instead",
   "topics": "Topics",
   "timeAgoJustNow": "just now",
   "timeAgoMinutes": "{count}m ago",

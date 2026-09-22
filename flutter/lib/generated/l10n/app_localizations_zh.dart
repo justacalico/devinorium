@@ -732,6 +732,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get serverUpdateUnsupported => '此平台没有预构建的服务器版本';
 
   @override
+  String get serverUpdateUnwritableExeDir => '自更新无法写入可执行文件目录，请改用软件包更新';
+
+  @override
   String get topics => '主题';
 
   @override

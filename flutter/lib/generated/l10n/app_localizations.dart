@@ -1448,6 +1448,12 @@ abstract class AppLocalizations {
   /// **'No prebuilt server release exists for this platform'**
   String get serverUpdateUnsupported;
 
+  /// No description provided for @serverUpdateUnwritableExeDir.
+  ///
+  /// In en, this message translates to:
+  /// **'Self-update cannot write to the executable directory; update the package instead'**
+  String get serverUpdateUnwritableExeDir;
+
   /// No description provided for @topics.
   ///
   /// In en, this message translates to:

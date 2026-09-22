@@ -752,6 +752,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'No prebuilt server release exists for this platform';
 
   @override
+  String get serverUpdateUnwritableExeDir =>
+      'Self-update cannot write to the executable directory; update the package instead';
+
+  @override
   String get topics => 'Topics';
 
   @override

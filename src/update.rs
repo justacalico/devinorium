@@ -70,6 +70,7 @@ pub enum NotUpdatable {
     LocalMode,
     DevMode,
     UnsupportedPlatform,
+    UnwritableExeDir,
 }
 
 /// Facts about the running instance that gate self-update.
@@ -92,8 +93,30 @@ impl UpdateEnv {
         if platform_asset_suffix().is_none() {
             return Some(NotUpdatable::UnsupportedPlatform);
         }
+        // Packaged installs (e.g. /usr/bin owned by root) cannot stage the
+        // swap; offering the update would just fail at write time.
+        if !exe_dir_writable() {
+            return Some(NotUpdatable::UnwritableExeDir);
+        }
         None
     }
+}
+
+fn exe_dir_writable() -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let Some(dir) = exe.parent() else {
+        return false;
+    };
+    dir_writable(dir)
+}
+
+fn dir_writable(dir: &std::path::Path) -> bool {
+    // The swap renames the staged binary into this directory, which needs
+    // create+unlink permission; a real file probe is the only reliable
+    // check across filesystems and privilege models.
+    tempfile::NamedTempFile::new_in(dir).is_ok()
 }
 
 #[derive(Debug, Serialize)]
@@ -1170,5 +1193,24 @@ mod tests {
         svc.updating.store(true, Ordering::SeqCst);
         let err = svc.apply(TEST_ENV, &exe).await.unwrap_err();
         assert!(matches!(err, UpdateError::InProgress));
+    }
+
+    #[test]
+    fn dir_writable_accepts_a_normal_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(dir_writable(dir.path()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dir_writable_matches_a_raw_create_attempt() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+        // Root can still write into a 0555 dir, so compare against a raw
+        // create attempt rather than assuming the mode alone blocks us.
+        let direct = std::fs::File::create(dir.path().join("probe")).is_ok();
+        assert_eq!(dir_writable(dir.path()), direct);
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 }
