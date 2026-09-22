@@ -48,16 +48,20 @@ github-sync:
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
         LOCAL_SHA=$(git rev-parse "$CI_COMMIT_TAG")
         REMOTE_SHA=$(git ls-remote --tags github "refs/tags/$CI_COMMIT_TAG" | awk '{print $1}' | head -n1)
+        # Only a real push triggers a fresh run; an already-mirrored tag
+        # legitimately reuses the run that already exists for its commit.
+        SINCE=""
         if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" = "$LOCAL_SHA" ]; then
           echo "Tag $CI_COMMIT_TAG already mirrored to GitHub at $REMOTE_SHA, skipping"
         else
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           git push -f github "$CI_COMMIT_TAG"
         fi
         # v* tags trigger the release build on GitHub; watch it so a failed
         # release build fails this pipeline.
         if echo "$CI_COMMIT_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
           SHA=$(git rev-parse "$CI_COMMIT_TAG^{commit}")
-          RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push || true)
+          RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push ${SINCE:+--since "$SINCE"} || true)
           if [ -z "$RUN_ID" ]; then
             echo "No GitHub run found for tag $CI_COMMIT_TAG" >&2
             exit 1
@@ -65,11 +69,18 @@ github-sync:
           bash scripts/watch-github-run.sh "$RUN_ID"
         fi
       else
+        SHA=$(git rev-parse HEAD)
+        # A push that transfers nothing triggers no new run; only gate on
+        # the trigger time when the ref actually moved.
+        REMOTE_MAIN=$(git ls-remote github refs/heads/main | awk '{print $1}')
+        SINCE=""
+        if [ "$REMOTE_MAIN" != "$SHA" ]; then
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        fi
         git push github HEAD:main
         # Watch the GitHub build for the pushed commit so a failed job on
         # GitHub also fails this pipeline.
-        SHA=$(git rev-parse HEAD)
-        RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push --branch main || true)
+        RUN_ID=$(bash scripts/watch-github-run.sh find --sha "$SHA" --event push --branch main ${SINCE:+--since "$SINCE"} || true)
         if [ -z "$RUN_ID" ]; then
           echo "No GitHub run found for pushed commit $SHA" >&2
           exit 1
