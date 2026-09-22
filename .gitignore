@@ -40,7 +40,6 @@
 /flutter/.flutter-plugins
 /flutter/.flutter-plugins-dependencies
 /flutter/.packages
-/flutter/pubspec.lock
 
 # Node.js / Tailwind
 /frontend/node_modules/
