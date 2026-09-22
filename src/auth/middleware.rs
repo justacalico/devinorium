@@ -54,7 +54,7 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
     if let Some(token) = bearer.as_deref() {
         let node_token = state
             .db
-            .get_server_setting(crate::federation::NODE_TOKEN_KEY)
+            .node_token()
             .await
             .ok()
             .flatten()

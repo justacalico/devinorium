@@ -43,6 +43,12 @@ pub use users::NewUser;
 #[derive(Clone)]
 pub struct Db {
     pool: SqlitePool,
+    /// Cached federation node token: it is read on every bearer request by
+    /// the auth middleware and only changes when a satellite re-registers.
+    /// `None` = not loaded yet.
+    node_token_cache: std::sync::Arc<
+        std::sync::Mutex<Option<Option<String>>>,
+    >,
 }
 
 impl Db {
@@ -92,7 +98,10 @@ impl Db {
             .await
             .context("running migrations")?;
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            node_token_cache: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        })
     }
 
     pub fn pool(&self) -> &SqlitePool {

@@ -14964,3 +14964,30 @@ async fn bootstrap_rejects_password_outside_policy() {
     assert_eq!(database.count_users().await.unwrap(), 1);
 }
 
+#[tokio::test]
+async fn node_token_is_cached_and_invalidated_on_change() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
+    let database = db::Db::connect(&db_url).await.unwrap();
+
+    database
+        .set_server_setting("federation_node_token", "tok-a")
+        .await
+        .unwrap();
+    assert_eq!(database.node_token().await.unwrap().as_deref(), Some("tok-a"));
+
+    // A write that bypasses Db stays hidden behind the cache.
+    sqlx::query("UPDATE server_settings SET value = 'tok-b' WHERE key = 'federation_node_token'")
+        .execute(database.pool())
+        .await
+        .unwrap();
+    assert_eq!(database.node_token().await.unwrap().as_deref(), Some("tok-a"));
+
+    // A write through Db drops the cache and the new value is read.
+    database
+        .set_server_setting("federation_node_token", "tok-c")
+        .await
+        .unwrap();
+    assert_eq!(database.node_token().await.unwrap().as_deref(), Some("tok-c"));
+}
+
