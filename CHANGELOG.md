@@ -2,6 +2,64 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.85.0 - 2026-09-22
+#### Features
+- 发布 Linux ARM64 服务器二进制 - (2003d6e) - HttpAnimations
+- 添加 Docker 镜像 compose 部署与发布流水线并完善部署文档 - (d0e330d) - HttpAnimations
+- 添加密码修改与管理员重置并吊销会话 - (036b1d2) - HttpAnimations
+#### Bug Fixes
+- 修复 CI 的 rustfmt clippy 与 analyze 告警 - (26a7ba7) - HttpAnimations
+- 补齐审查遗漏的边界处理 - (b5b5d3a) - HttpAnimations
+- 修复审查发现的杂项问题 - (ee404e5) - HttpAnimations
+- 账户更新先应用密码变更再切换禁用状态 - (4820478) - HttpAnimations
+- 缓存节点令牌避免每次请求查询数据库 - (31e152d) - HttpAnimations
+- bootstrap 密码不满足策略时拒绝创建 - (4c9c40f) - HttpAnimations
+- 仅将 401 视为未认证并让代理在 403 时回退共享凭证 - (1438cf0) - HttpAnimations
+- 取消的运行也记录 token 用量 - (daaa5ee) - HttpAnimations
+- 加固文件删除与上传错误处理 - (ecbd508) - HttpAnimations
+- 可执行目录不可写时不再提供自更新 - (6b890cb) - HttpAnimations
+- 提高 GitHub 运行监视超时并按推送时间过滤过期运行 - (ff33852) - HttpAnimations
+- 重写 commit-msg 钩子兼容 BSD sed 与特殊字符 - (cc89d31) - HttpAnimations
+- 发布构建缺少签名配置时不再回退 debug 签名 - (76474d3) - HttpAnimations
+- DEVINORIUM_MAX_BODY_BYTES 现在也约束 multipart 字段上限 - (a85a475) - HttpAnimations
+- 放宽 file_picker desktop_drop pasteboard 的版本约束 - (9b1d8a7) - HttpAnimations
+- 用户可见文案改为本地化字符串 - (bc1f4e6) - HttpAnimations
+- 全局错误按子系统隔离并清洗原始错误响应 - (0f9adfc) - HttpAnimations
+- 终端重连计数仅稳定连接后重置并缓存断线输入 - (d2c3769) - HttpAnimations
+- 预加载失效后不再写入过期结果 - (75b97da) - HttpAnimations
+- 会话中 401 统一清理令牌并跳转登录 - (50af971) - HttpAnimations
+- 终端输出跨帧解码多字节字符 - (d6cbdba) - HttpAnimations
+- 流式失败后恢复发送内容时保留正在输入的草稿 - (77ccaf6) - HttpAnimations
+- 中继返回 403 时也按未认证处理 - (00c6678) - HttpAnimations
+- 切换服务器后丢弃迟到的旧请求写入 - (3803cb3) - HttpAnimations
+- 合并连续文本和思考分片防止 parts 无界增长 - (ccba85c) - HttpAnimations
+- 轮次结束后清理暂存附件目录 - (a092ba1) - HttpAnimations
+- 会话持久化后再记录用量并补充失败告警 - (0aebfb7) - HttpAnimations
+- 关闭时排空运行并回收 PTY 会话 - (aa95e72) - HttpAnimations
+- codex 模型缓存加 TTL 并为 model/list 加超时 - (ee578f9) - HttpAnimations
+- 线程权限通过临时 XDG 配置注入 devin acp - (5311892) - HttpAnimations
+- codex 中断请求使用最新的 rollout 线程 id - (ae92f11) - HttpAnimations
+- acp session/load 检查能力并在失败时回退新会话 - (48c03f0) - HttpAnimations
+- codex 审批请求 id 加方法命名空间并为空 id 生成 uuid - (58354a1) - HttpAnimations
+- 响应权限和提问前先校验归属再移除挂起请求 - (e29fc62) - HttpAnimations
+- SSE 客户端滞后时补发状态快照 - (7f05d52) - HttpAnimations
+- 请求超时后清理挂起的响应通道 - (2576689) - HttpAnimations
+- 限制 codex rpc 通道与单行缓冲上限 - (738068a) - HttpAnimations
+- app-server 退出时终止整个进程组 - (03c9457) - HttpAnimations
+- 回合结束后中止取消监听避免泄漏进程 - (7b8563a) - HttpAnimations
+- 阻止编码路径穿越并修复删除符号链接误删目标 - (ac37171) - HttpAnimations
+- 认证失败统一计入共享限流器 - (264fd28) - HttpAnimations
+- 会话令牌改为哈希存储 - (5fc441e) - HttpAnimations
+- 机器列表与控制引用仅限所有者 - (3ef92bc) - HttpAnimations
+- TOTP 换绑不再降级且禁用需验证身份 - (7d9e9be) - HttpAnimations
+- 联邦节点改用每节点令牌 - (d46925b) - HttpAnimations
+- git 连接仅限所有者且克隆不落盘令牌 - (0dd8482) - HttpAnimations
+- provider 命令配置仅限所有者 - (81a9637) - HttpAnimations
+- 限制非所有者文件与项目路径范围 - (823a750) - HttpAnimations
+- provider 健康检查仅所有者可用 - (7b01941) - HttpAnimations
+
+- - -
+
 ## v0.84.0 - 2026-09-21
 #### Features
 - 侧边栏节点切换器与设置节点列表 - (73107af) - HttpAnimations
