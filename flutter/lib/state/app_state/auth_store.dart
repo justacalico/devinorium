@@ -836,6 +836,11 @@ mixin AuthStore on AppStateBase {
     }
   }
 
+  /// Only 401 means the credential itself was rejected; a 403 is a real
+  /// forbidden (CSRF, a non-owner route, an owner-gated proxy call) and
+  /// must surface as an error rather than bounce the user to login.
+  bool _isUnauthenticated(ApiException e) => e.statusCode == 401;
+
   @override
   bool _checkAuthFailure(Object e) {
     if (e is! ApiException || e.statusCode != 401) return false;
@@ -855,9 +860,4 @@ mixin AuthStore on AppStateBase {
     notifyListeners();
   }
 }
-
-/// A relayed satellite answers 403 for a credential it does not accept
-/// (expired or insufficient scope); treat it like a 401 from the hub.
-bool _isUnauthenticated(ApiException e) =>
-    e.statusCode == 401 || e.statusCode == 403;
 

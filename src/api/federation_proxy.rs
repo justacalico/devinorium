@@ -299,8 +299,9 @@ async fn proxy_http(
     };
 
     // A node token the satellite does not know yet gets one retry with the
-    // shared credential.
-    let res = if res.status() == StatusCode::UNAUTHORIZED {
+    // shared credential. Some satellites answer 403 for a credential they
+    // do not recognize, so cover both rejection statuses.
+    let res = if matches!(res.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
         match &meta.fallback_token {
             Some(fallback) => match build(fallback).send().await {
                 Ok(r) => r,

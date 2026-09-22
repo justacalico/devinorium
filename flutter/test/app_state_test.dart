@@ -587,7 +587,7 @@ void main() {
       expect(state.view, AppView.app);
     });
 
-    test('bootstrap clears a token a relay answered 403 for', () async {
+    test('bootstrap keeps the token on a real 403', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(
         api: ApiService(
@@ -598,7 +598,7 @@ void main() {
       expect(state.view, AppView.app);
       expect(
         state.serverProfiles.firstWhere((p) => p.id == 'default').token,
-        isEmpty,
+        isNotEmpty,
       );
     });
 

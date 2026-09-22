@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
-use axum::http::{header, Request, StatusCode};
+use axum::http::{header, HeaderMap, Request, StatusCode};
 use axum::Router;
 
 use tower::ServiceExt;
@@ -14898,4 +14898,52 @@ async fn file_manager_delete_rejects_midpath_symlink() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(!work.join("doomed.txt").exists());
+}
+#[tokio::test]
+async fn federation_proxy_retries_shared_token_on_upstream_403() {
+    const SHARED: &str = "shared-secret-token-16";
+
+    // Satellite stub: 403s the node token, accepts the shared credential.
+    let satellite = axum::Router::new().route(
+        "/healthz",
+        axum::routing::get(|headers: HeaderMap| async move {
+            match headers
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|t| t.strip_prefix("Bearer "))
+            {
+                Some(SHARED) => StatusCode::OK,
+                _ => StatusCode::FORBIDDEN,
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, satellite).await.unwrap();
+    });
+
+    let (mut state, db) = app_state().await;
+    let mut cfg = (*state.config).clone();
+    cfg.federation_token = Some(SHARED.into());
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let node = db
+        .upsert_federation_node("sat-1", "sat", &format!("http://{addr}"), "1.0")
+        .await
+        .unwrap();
+    assert!(node.token.is_some());
+
+    let resp = app
+        .oneshot(authed(
+            "GET",
+            "/api/federation/nodes/sat-1/proxy/healthz",
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
