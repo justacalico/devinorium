@@ -322,6 +322,38 @@ void main() {
       await tester.pump(const Duration(seconds: 10));
     });
 
+    testWidgets('input buffer keeps the tail when overfull', (tester) async {
+      final fakes = <_FakeWebSocketChannel>[];
+      final session = RemoteTerminalSession(
+        id: 'r8',
+        uri: Uri.parse('ws://localhost/ws'),
+        reconnect: true,
+        connector: (Uri uri, {String? token}) {
+          final fake = _FakeWebSocketChannel();
+          fakes.add(fake);
+          return fake;
+        },
+      );
+      addTearDown(session.dispose);
+
+      fakes.first.remoteSink.close();
+      expect(session.status, TerminalStatus.disconnected);
+
+      session.terminal.onOutput!('x' * 5000);
+      session.terminal.onOutput!('tail');
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(fakes.length, 2);
+      final sent = (fakes.last.sink as _FakeWebSocketSink).sent;
+      final inputs = sent
+          .map((e) => jsonDecode(e as String) as Map<String, dynamic>)
+          .where((m) => m['type'] == 'input');
+      expect(inputs.single['data'], endsWith('tail'));
+      expect((inputs.single['data'] as String).length, lessThanOrEqualTo(4096));
+
+      await tester.pump(const Duration(seconds: 10));
+    });
+
     test('exited message completes the session', () {
       final fake = _FakeWebSocketChannel();
       final session = RemoteTerminalSession(

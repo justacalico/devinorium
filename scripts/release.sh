@@ -55,6 +55,6 @@ do
 done
 
 glab release create "$VERSION_TAG" \
-  "${repo_args[@]}" \
+  ${repo_args[@]+"${repo_args[@]}"} \
   --notes-file "$NOTES_FILE" \
   "${ASSETS[@]}"

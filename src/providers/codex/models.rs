@@ -116,7 +116,7 @@ static MODEL_CACHE: Lazy<Mutex<HashMap<String, CacheEntry>>> =
 /// failures only [`MODEL_CACHE_FAIL_TTL`].
 pub async fn known_models(bin: &str, cwd: &Path) -> Option<Vec<ModelInfo>> {
     {
-        let cache = MODEL_CACHE.lock().unwrap();
+        let cache = MODEL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = cache.get(bin) {
             let ttl = if entry.models.is_some() {
                 MODEL_CACHE_TTL
@@ -129,13 +129,16 @@ pub async fn known_models(bin: &str, cwd: &Path) -> Option<Vec<ModelInfo>> {
         }
     }
     let fetched = fetch_models(bin, cwd).await.ok();
-    MODEL_CACHE.lock().unwrap().insert(
-        bin.to_string(),
-        CacheEntry {
-            at: Instant::now(),
-            models: fetched.clone(),
-        },
-    );
+    MODEL_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            bin.to_string(),
+            CacheEntry {
+                at: Instant::now(),
+                models: fetched.clone(),
+            },
+        );
     fetched
 }
 

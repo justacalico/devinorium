@@ -223,9 +223,16 @@ class RemoteTerminalSession extends TerminalSession {
       // holds a bounded tail so keystrokes are not silently lost.
       if (_status == TerminalStatus.connecting ||
           _status == TerminalStatus.disconnected) {
-        if (_inputBuffer.length < _inputBufferLimit) {
-          _inputBuffer.write(data);
+        // Keep the most recent input: once the buffer is full the oldest
+        // keystrokes are the least relevant to replay.
+        if (_inputBuffer.length + data.length > _inputBufferLimit) {
+          _inputBuffer.clear();
         }
+        _inputBuffer.write(
+          data.length > _inputBufferLimit
+              ? data.substring(data.length - _inputBufferLimit)
+              : data,
+        );
       }
       return;
     }

@@ -33,7 +33,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
 COPY migrations/ migrations/
 COPY --from=frontend /app/frontend/dist/ frontend/dist/
-RUN cargo build --release
+RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
 # git: repository clone/worktree operations. openssh-client: SSH remotes.

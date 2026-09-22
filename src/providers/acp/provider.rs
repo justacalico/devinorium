@@ -712,8 +712,13 @@ async fn write_permission_config(
 #[cfg(not(unix))]
 async fn write_permission_config(
     _real_root: &Path,
-    _rules: &[String],
+    rules: &[String],
 ) -> anyhow::Result<Option<tempfile::TempDir>> {
+    if !rules.is_empty() {
+        tracing::warn!(
+            "thread permission rules cannot be injected into devin acp on this platform"
+        );
+    }
     Ok(None)
 }
 

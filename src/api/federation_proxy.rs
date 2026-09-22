@@ -265,8 +265,16 @@ async fn proxy_http(
     let body = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
         Ok(b) => b,
         Err(e) => {
+            // A body past the configured limit fails mid-read; report the
+            // real status rather than a misleading upstream error.
             tracing::warn!(node = %node.id, "federation proxy body read failed: {e}");
-            return bad_gateway("failed to read request body");
+            let status = if e.to_string().contains("length limit") {
+                StatusCode::PAYLOAD_TOO_LARGE
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            return (status, Json(ApiError::new("failed to read request body")))
+                .into_response();
         }
     };
 
