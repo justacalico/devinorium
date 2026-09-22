@@ -1,0 +1,19 @@
+# Minimal example deployment. Generate secrets before starting:
+#   export DEVINORIUM_SESSION_KEY=$(openssl rand -base64 48)
+#   export DEVINORIUM_BOOTSTRAP_PASSWORD=<a strong password>
+services:
+  devinorium:
+    build: .
+    image: devinorium:latest
+    ports:
+      # HTTP only; terminate TLS in a reverse proxy for public exposure.
+      - "127.0.0.1:7878:7878"
+    volumes:
+      - devinorium-data:/home/devinorium/data
+    environment:
+      DEVINORIUM_SESSION_KEY: ${DEVINORIUM_SESSION_KEY:?set a random session key}
+      DEVINORIUM_BOOTSTRAP_PASSWORD: ${DEVINORIUM_BOOTSTRAP_PASSWORD:?set a bootstrap password}
+    restart: unless-stopped
+
+volumes:
+  devinorium-data:

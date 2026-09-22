@@ -167,3 +167,23 @@ github-release-sync:
     - sh scripts/setup-ssh-key.sh GITLAB_RELEASE_SSH_KEY gitlab.com
   script:
     - bash scripts/sync-from-github.sh
+
+docker-image:
+  stage: release
+  tags: [linux-truenas]
+  image: docker:29
+  services:
+    - docker:29-dind
+  resource_group: docker-image
+  timeout: 2h
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  variables:
+    DOCKER_BUILDKIT: "1"
+    IMAGE: $CI_REGISTRY_IMAGE/devinorium
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build --pull --tag "$IMAGE:$CI_COMMIT_TAG" --tag "$IMAGE:latest" .
+    - docker push "$IMAGE:$CI_COMMIT_TAG"
+    - docker push "$IMAGE:latest"

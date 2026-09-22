@@ -8,7 +8,9 @@ TLS. This guide covers the common deployment patterns.
 
 - A Rust toolchain (or a pre-built `devinorium` binary)
 - The Flutter SDK, used to build the web frontend
-- The `devin` CLI installed and authenticated (`devin login`)
+- `git` — repositories are cloned and managed through the git CLI
+- The agent provider CLIs you plan to use (e.g. `devin`), installed and
+  authenticated; threads cannot run without one
 - A directory for the SQLite database
 
 ## 1. Build
@@ -39,7 +41,7 @@ cp .env.example .env
 
 | Variable | Notes |
 |---|---|
-| `DEVINORIUM_SESSION_KEY` | Generate with `openssl rand -base64 48`. Must be ≥64 chars. |
+| `DEVINORIUM_SESSION_KEY` | Generate with `openssl rand -base64 48`. Must be ≥32 chars. |
 | `DEVINORIUM_BOOTSTRAP_PASSWORD` | A strong password for the first owner account. |
 | `DEVINORIUM_SECURE_COOKIE` | Set `true` when serving over HTTPS. |
 | `DEVINORIUM_TRUST_PROXY` | Set `true` when behind a reverse proxy (so client IPs are read from `X-Forwarded-For`). |
@@ -75,7 +77,8 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket support (for future streaming features)
+        # WebSocket support — required by the terminal view and by
+        # federation node links.
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -203,28 +206,83 @@ Notes:
 - The bundled desktop server cannot use Tailscale; its loopback-only server
   must not be republished, and the settings card is greyed out there.
 
-## 5. Run as a systemd service
+## 5. Deploy with Docker
+
+The repo ships a multi-stage `Dockerfile` that builds the Flutter web
+bundle, compiles the server with the assets embedded, and produces a slim
+runtime image:
+
+```sh
+docker build -t devinorium .
+```
+
+Run it with a named volume for the SQLite database:
+
+```sh
+docker run -d --name devinorium \
+  -p 127.0.0.1:7878:7878 \
+  -v devinorium-data:/home/devinorium/data \
+  -e DEVINORIUM_SESSION_KEY=$(openssl rand -base64 48) \
+  -e DEVINORIUM_BOOTSTRAP_PASSWORD=<a strong password> \
+  devinorium
+```
+
+Or use the bundled `docker-compose.yml`:
+
+```sh
+export DEVINORIUM_SESSION_KEY=$(openssl rand -base64 48)
+export DEVINORIUM_BOOTSTRAP_PASSWORD=<a strong password>
+docker compose up -d
+```
+
+Notes:
+
+- The image exposes plain HTTP on 7878. For anything beyond localhost,
+  terminate TLS in front of it (see §4) and set
+  `DEVINORIUM_TRUST_PROXY`/`DEVINORIUM_SECURE_COOKIE` accordingly.
+- The database lives at `/home/devinorium/data/devinorium.db` inside the
+  volume — that volume is the only state that needs backups.
+- Agent provider CLIs (e.g. `devin`) are not part of the image. Threads
+  that need a provider CLI require it to be installed into the image or
+  mounted, and any credentials the CLI needs (config directories, SSH
+  keys) must be mounted as well.
+- Release pipelines build and push the image to the project's GitLab
+  container registry as `devinorium:<tag>` and `devinorium:latest`.
+
+## 6. Run as a systemd service
+
+Create the service user, install the binary, and write the unit:
+
+```sh
+sudo useradd --system --create-home --shell /usr/sbin/nologin devinorium
+sudo install -d -m 750 -o devinorium -g devinorium /etc/devinorium
+sudo install -m 600 -o devinorium -g devinorium .env /etc/devinorium/devinorium.env
+sudo install -m 755 target/release/devinorium /usr/bin/devinorium
+```
 
 ```ini
 # /etc/systemd/system/devinorium.service
 [Unit]
 Description=Devinorium
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=devinorium
-WorkingDirectory=/opt/devinorium
-EnvironmentFile=/opt/devinorium/.env
-ExecStart=/opt/devinorium/devinorium
+Group=devinorium
+StateDirectory=devinorium devinorium/data
+WorkingDirectory=/var/lib/devinorium
+EnvironmentFile=-/etc/devinorium/devinorium.env
+ExecStart=/usr/bin/devinorium
 Restart=on-failure
 RestartSec=5
 
-# Hardening
+# Hardening — deliberately limited: agents must be able to clone
+# repositories and edit files outside /var/lib/devinorium, so no
+# ProtectHome or ReadWritePaths restriction.
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/devinorium/data
+ProtectSystem=full
 PrivateTmp=true
 
 [Install]
@@ -236,7 +294,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now devinorium
 ```
 
-## 6. Post-deployment
+## 7. Post-deployment
 
 - **Create accounts** for other users via the user menu → Accounts (owner only).
 - **Enable TOTP** (2FA) on your account via the user menu → Enable 2FA.
@@ -244,6 +302,12 @@ sudo systemctl enable --now devinorium
   only state you need to back up. Project paths can live anywhere
   on the filesystem, so back those up separately if desired. Stop
   the service before copying the db file, or use `sqlite3 ... ".backup"`.
-- **Updates:** pull the latest main, rebuild the frontend with
+- **Health checks:** `GET /healthz` returns `{"status": "ok"}` and needs no
+  credentials — point uptime monitors, load balancer probes, or a Docker
+  `HEALTHCHECK` at it.
+- **Updates:** self-hosted servers can update in-app via Settings →
+  Servers → Server update (downloads the release asset for your platform,
+  verifies its SHA-256, swaps the binary, and restarts). For source builds,
+  pull the latest main, rebuild the frontend with
   `./scripts/build-flutter.sh`, then `cargo build --release`, and restart
   the service. Migrations run automatically on startup.

@@ -1,0 +1,8 @@
+.git
+target
+**/target
+frontend/dist
+flutter/build
+flutter/.dart_tool
+data
+.env
