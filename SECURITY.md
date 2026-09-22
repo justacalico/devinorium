@@ -19,8 +19,9 @@ the server as privileged:
 
 - Put it behind TLS and a strong password in production.
 - Set `DEVINORIUM_SESSION_KEY` to a random value of at least 32 characters.
-- Treat `DEVINORIUM_FEDERATION_TOKEN` like a root password for every
-  federated node.
+- Keep `DEVINORIUM_FEDERATION_TOKEN` secret: it owns the node registration
+  handshake and, on unregistered satellites, still acts as a full-access
+  credential.
 - Do not expose the plain `--dev` mode on a network interface; it disables
   authentication.
 

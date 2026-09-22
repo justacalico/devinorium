@@ -241,7 +241,10 @@ Notes:
   terminate TLS in front of it (see §4) and set
   `DEVINORIUM_TRUST_PROXY`/`DEVINORIUM_SECURE_COOKIE` accordingly.
 - The database lives at `/home/devinorium/data/devinorium.db` inside the
-  volume — that volume is the only state that needs backups.
+  volume. Project, worktree, and clone roots default to the container's
+  home directory, which is *not* in the volume — set the project root
+  under `/home/devinorium/data` (Settings → Servers) or widen the volume
+  to `/home/devinorium` if projects must survive container recreation.
 - Agent provider CLIs (e.g. `devin`) are not part of the image. Threads
   that need a provider CLI require it to be installed into the image or
   mounted, and any credentials the CLI needs (config directories, SSH
@@ -297,6 +300,12 @@ sudo systemctl enable --now devinorium
 ## 7. Post-deployment
 
 - **Create accounts** for other users via the user menu → Accounts (owner only).
+  Non-owner accounts are a trust reduction, not full isolation: they are
+  confined to the managed project/worktree/clone roots and the project
+  scopes you give them, but those managed roots are *shared* — every
+  non-owner can read, write, and delete inside them. Create non-owner
+  accounts only for people you would trust with every project's files;
+  there is no per-user file isolation today.
 - **Enable TOTP** (2FA) on your account via the user menu → Enable 2FA.
 - **Backups:** the SQLite database (`data/devinorium.db`) is the
   only state you need to back up. Project paths can live anywhere
