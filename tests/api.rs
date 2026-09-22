@@ -14947,3 +14947,20 @@ async fn federation_proxy_retries_shared_token_on_upstream_403() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
+#[tokio::test]
+async fn bootstrap_rejects_password_outside_policy() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
+    let database = db::Db::connect(&db_url).await.unwrap();
+
+    auth::bootstrap::run(&database, "owner", "short")
+        .await
+        .unwrap();
+    assert_eq!(database.count_users().await.unwrap(), 0);
+
+    auth::bootstrap::run(&database, "owner", "supersecret123")
+        .await
+        .unwrap();
+    assert_eq!(database.count_users().await.unwrap(), 1);
+}
+

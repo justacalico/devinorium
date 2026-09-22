@@ -35,6 +35,10 @@ pub async fn run(db: &crate::db::Db, username: &str, password_str: &str) -> anyh
         tracing::warn!("bootstrap skipped: default password not changed");
         return Ok(());
     }
+    if !password::is_valid(password_str) {
+        tracing::warn!("bootstrap skipped: password does not meet the policy");
+        return Ok(());
+    }
     let hash = password::hash(password_str)?;
     let user = db
         .create_user(NewUser {
