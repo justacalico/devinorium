@@ -9,7 +9,6 @@ import '../l10n/global_l10n.dart';
 import '../models/composer_mode.dart';
 import '../models/models.dart';
 import '../utils/debug_log.dart';
-import '../utils/token_estimate.dart';
 import 'async_value.dart';
 import 'command_scheduler.dart';
 import 'streaming_reducer.dart';
@@ -224,28 +223,6 @@ class ThreadStore {
       _streaming.isActive ? _streaming.plan : _detail.valueOrNull?.plan;
   String? get startedAt => _streaming.startedAt;
 
-  /// The thread's output-token override, mirrored from the detail.
-  int? get maxOutputTokens => _detail.valueOrNull?.thread.maxOutputTokens;
-
-  /// Estimated tokens the current composer draft would add to the next
-  /// send, including its mode instruction and reference chips.
-  int get draftTokens => estimateDraftTokens(
-    prompt: _promptForMode(composerText.trim()),
-    mode: composerMode.name,
-    attachments: attachments,
-    pathRefs: pathRefs,
-    threadReferences: threadReferences,
-    machineReferences: machineReferences,
-  );
-
-  /// True when the model advertises a window and the draft plus history plus
-  /// the output reserve would overflow it.
-  bool get sendExceedsContext {
-    final u = contextUsage;
-    if (u == null || !u.hasLimit) return false;
-    return u.exceedsLimit(draftTokens);
-  }
-
   /// Refresh the context usage estimate. Called on load and after each run;
   /// failures keep the stale value so a flaky network never blanks the meter.
   Future<void> refreshContextUsage() async {
@@ -266,19 +243,6 @@ class ThreadStore {
       unawaited(refreshContextUsage());
     } catch (e) {
       debugLogFailure('thread.resetContext', e, threadId: threadId);
-      _globalError = '$e';
-      _emit();
-    }
-  }
-
-  /// Set or clear the thread's output-token cap.
-  Future<void> setThreadMaxOutputTokens(int? tokens) async {
-    try {
-      await api.setThreadMaxOutputTokens(threadId, tokens);
-      await reloadDetail();
-      unawaited(refreshContextUsage());
-    } catch (e) {
-      debugLogFailure('thread.setMaxOutputTokens', e, threadId: threadId);
       _globalError = '$e';
       _emit();
     }
@@ -442,11 +406,6 @@ class ThreadStore {
       return;
     }
     if (_pendingSend != null) return;
-    if (sendExceedsContext) {
-      _globalError = appL10n.contextExceeded;
-      _emit();
-      return;
-    }
     _globalError = '';
 
     final messageAttachments =

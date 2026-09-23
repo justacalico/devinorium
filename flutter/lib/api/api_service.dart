@@ -566,12 +566,6 @@ class ApiService {
     }
   }
 
-  /// Set or clear the thread's reply-token cap. `null` sends JSON null,
-  /// clearing the override so the model's advertised limit applies.
-  Future<void> setThreadMaxOutputTokens(String id, int? tokens) async {
-    await _client.patch('/api/threads/$id', {'max_output_tokens': tokens});
-  }
-
   /// The server's estimate of the tokens the provider session would carry
   /// into the next send, plus the model's advertised limits.
   Future<ThreadContextUsage> getThreadContext(String id) async {

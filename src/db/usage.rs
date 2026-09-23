@@ -266,6 +266,62 @@ async fn record_locked(conn: &mut SqliteConnection, event: &NewUsageEvent) -> an
 }
 
 impl super::Db {
+    /// Sum one thread's recorded usage events. This is the all-time total the
+    /// thread usage readout shows, independent of the day-windowed summary.
+    pub async fn thread_usage_totals(
+        &self,
+        user_id: i64,
+        thread_id: &str,
+    ) -> anyhow::Result<UsageTotals> {
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS records,
+                    COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                    COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                    COALESCE(SUM(thought_tokens), 0) AS thought_tokens,
+                    COALESCE(SUM(cached_read_tokens), 0) AS cached_read_tokens,
+                    COALESCE(SUM(cached_write_tokens), 0) AS cached_write_tokens,
+                    COALESCE(SUM(total_tokens), 0) AS total_tokens
+             FROM usage_events
+             WHERE user_id = ? AND thread_id = ?",
+        )
+        .bind(user_id)
+        .bind(thread_id)
+        .fetch_one(self.pool())
+        .await?;
+
+        // Costs only sum within one currency, so they are grouped separately.
+        let cost_rows = sqlx::query(
+            "SELECT cost_currency, SUM(cost_amount) AS amount
+             FROM usage_events
+             WHERE user_id = ? AND thread_id = ? AND cost_amount IS NOT NULL
+             GROUP BY cost_currency
+             ORDER BY cost_currency",
+        )
+        .bind(user_id)
+        .bind(thread_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(UsageTotals {
+            records: row.get("records"),
+            input_tokens: row.get("input_tokens"),
+            output_tokens: row.get("output_tokens"),
+            thought_tokens: row.get("thought_tokens"),
+            cached_read_tokens: row.get("cached_read_tokens"),
+            cached_write_tokens: row.get("cached_write_tokens"),
+            total_tokens: row.get("total_tokens"),
+            costs: cost_rows
+                .iter()
+                .map(|r| UsageCost {
+                    currency: r
+                        .get::<Option<String>, _>("cost_currency")
+                        .unwrap_or_default(),
+                    amount: r.get("amount"),
+                })
+                .collect(),
+        })
+    }
+
     /// Aggregate the user's usage into `(local day, provider, model)` buckets
     /// plus window totals. `tz_offset_minutes` is the offset to add to UTC to
     /// get the viewer's local time (e.g. -300 for UTC-5); `since_day` is an
@@ -540,5 +596,71 @@ mod tests {
         // Events recorded today are excluded by a future since_day.
         let (buckets, _) = db.usage_summary(uid, "2999-01-01", 0).await.unwrap();
         assert!(buckets.is_empty());
+    }
+
+    #[tokio::test]
+    async fn thread_usage_totals_sums_one_thread() {
+        let (db, uid) = test_db().await;
+        db.record_turn_usage(event(uid, "s1", true, snap(100, 50)))
+            .await
+            .unwrap();
+        db.record_turn_usage(event(uid, "s1", false, snap(300, 120)))
+            .await
+            .unwrap();
+        let mut other_thread = event(uid, "s2", true, snap(1000, 500));
+        other_thread.thread_id = "t2".into();
+        db.record_turn_usage(other_thread).await.unwrap();
+
+        let totals = db.thread_usage_totals(uid, "t1").await.unwrap();
+        assert_eq!(totals.records, 2);
+        assert_eq!(totals.input_tokens, 300);
+        assert_eq!(totals.output_tokens, 120);
+        assert_eq!(totals.total_tokens, 420);
+
+        // Another thread's events stay out of t1's totals.
+        let t2 = db.thread_usage_totals(uid, "t2").await.unwrap();
+        assert_eq!(t2.total_tokens, 1500);
+
+        // A thread with no events reports zeros, not an error.
+        let empty = db.thread_usage_totals(uid, "nope").await.unwrap();
+        assert_eq!(empty.records, 0);
+        assert_eq!(empty.total_tokens, 0);
+    }
+
+    #[tokio::test]
+    async fn thread_usage_totals_is_scoped_per_user_and_groups_costs() {
+        let (db, uid) = test_db().await;
+        let other = db
+            .create_user(NewUser {
+                username: "other".into(),
+                password_hash: "x".into(),
+                is_owner: false,
+            })
+            .await
+            .unwrap();
+
+        let mut s = snap(10, 5);
+        s.cost_amount = Some(1.0);
+        s.cost_currency = Some("USD".into());
+        db.record_turn_usage(event(uid, "s1", true, s))
+            .await
+            .unwrap();
+        let mut s2 = snap(20, 10);
+        s2.cost_amount = Some(2.5);
+        s2.cost_currency = Some("USD".into());
+        db.record_turn_usage(event(uid, "s1", false, s2))
+            .await
+            .unwrap();
+        // Same thread id under a different user must not leak in.
+        let mut foreign = event(other.id, "s1", true, snap(999, 999));
+        foreign.thread_id = "t1".into();
+        db.record_turn_usage(foreign).await.unwrap();
+
+        let totals = db.thread_usage_totals(uid, "t1").await.unwrap();
+        assert_eq!(totals.records, 2);
+        assert_eq!(totals.total_tokens, 30);
+        assert_eq!(totals.costs.len(), 1);
+        assert_eq!(totals.costs[0].currency, "USD");
+        assert!((totals.costs[0].amount - 2.5).abs() < 1e-9);
     }
 }

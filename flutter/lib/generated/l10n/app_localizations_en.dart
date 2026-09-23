@@ -2031,19 +2031,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devMergeRequestClose => 'Close';
 
   @override
-  String contextUsage(String used, String max) {
-    return '~$used / $max tokens';
+  String threadUsage(String input, String output) {
+    return '$input in · $output out';
   }
-
-  @override
-  String get contextNearlyFull => 'context nearly full';
-
-  @override
-  String get contextOverLimit => 'over limit';
-
-  @override
-  String get contextExceeded =>
-      'Message exceeds the model\'s context window. Shorten it or reset the thread\'s context.';
 
   @override
   String get resetContext => 'Reset context';
@@ -2051,15 +2041,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get resetContextTooltip =>
       'Drop the provider session and start fresh. History stays visible but is no longer sent to the model.';
-
-  @override
-  String get maxOutputTokens => 'Max output tokens';
-
-  @override
-  String get maxOutputTokensHint => 'Model default';
-
-  @override
-  String get maxOutputTokensInvalid => 'Enter a value between 1 and 4,000,000';
 
   @override
   String get editorUnsavedSwitchProjects =>

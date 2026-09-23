@@ -14505,17 +14505,15 @@ async fn context_endpoint_reports_thread_usage() {
     let tid = make_thread(&app, &cookie, pid, "ctx").await;
 
     let ctx = get_context(&app, &cookie, &tid).await;
-    assert_eq!(ctx["used_tokens"], 0);
-    assert_eq!(ctx["context_limit"], 200_000);
-    assert_eq!(ctx["output_limit"], 32_000);
-    assert_eq!(ctx["max_output_tokens"], serde_json::Value::Null);
     assert_eq!(ctx["has_session"], false);
+    assert_eq!(ctx["usage"]["records"], 0);
+    assert_eq!(ctx["usage"]["total_tokens"], 0);
 
     send_and_wait(&app, &cookie, &tid, "hello there").await;
     let ctx = get_context(&app, &cookie, &tid).await;
-    let used = ctx["used_tokens"].as_u64().unwrap();
-    assert!(used > 0, "usage should grow after a send: {ctx}");
     assert_eq!(ctx["has_session"], true);
+    // The default stub reports no usage snapshot, so nothing is recorded.
+    assert_eq!(ctx["usage"]["records"], 0);
 
     // Another user's view of the same id must not leak usage.
     let other = create_user(&app, &cookie, "bob", "bobsecret123").await;
@@ -14535,37 +14533,65 @@ async fn context_endpoint_reports_thread_usage() {
 }
 
 #[tokio::test]
-async fn send_rejects_prompt_over_context_limit() {
+async fn context_endpoint_reports_recorded_thread_usage() {
+    let (app, _db) = make_app_with_provider(Arc::new(UsageStubProvider {
+        calls: std::sync::atomic::AtomicU64::new(0),
+    }))
+    .await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "Usage").await;
+
+    send_prompt(&app, &cookie, &tid, "first").await;
+    send_prompt(&app, &cookie, &tid, "second").await;
+
+    // The context endpoint carries the thread's recorded totals: two turns
+    // of cumulative 100/50 snapshots diffed per turn.
+    let ctx = get_context(&app, &cookie, &tid).await;
+    assert_eq!(ctx["usage"]["records"], 2);
+    assert_eq!(ctx["usage"]["input_tokens"], 200);
+    assert_eq!(ctx["usage"]["output_tokens"], 100);
+    assert_eq!(ctx["usage"]["total_tokens"], 300);
+    assert_eq!(ctx["usage"]["costs"][0]["currency"], "USD");
+    assert_eq!(ctx["usage"]["costs"][0]["amount"], 1.0);
+
+    // Usage never leaks across threads. The sibling is created after the
+    // sends: creating a thread sweeps empty threads in the same project,
+    // and a thread with messages is no longer empty.
+    let tid2 = make_thread(&app, &cookie, pid, "Idle").await;
+    let ctx2 = get_context(&app, &cookie, &tid2).await;
+    assert_eq!(ctx2["usage"]["records"], 0);
+    assert_eq!(ctx2["usage"]["total_tokens"], 0);
+}
+
+#[tokio::test]
+async fn send_allows_prompt_over_context_limit() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
     let pid = create_project(&app, &cookie).await;
     let tid = make_thread(&app, &cookie, pid, "big").await;
 
-    // History only counts once a provider session exists, so establish one
-    // before inflating the stored rows.
+    // Establish a provider session, then inflate the stored rows past the
+    // stub's 200k-token window: 900k chars is roughly 225k tokens. Sends go
+    // through anyway; the provider compacts its own context.
     send_and_wait(&app, &cookie, &tid, "first").await;
     wait_for_run(&app, &cookie, &tid, |b| {
         !b.contains(r#""status":"running""#)
     })
     .await;
-
-    // History alone pushes past the 200k-token stub limit: 900k chars is
-    // roughly 225k tokens.
     seed_raw_message(&db, &tid, "user", &"x".repeat(900_000)).await;
 
     let resp = send_with_file(&app, &cookie, &tid, "hi", "n.txt", "text/plain", b"n").await;
-    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-    let body = body_str(resp.into_body()).await;
-    assert!(
-        body.contains("context"),
-        "error should name the limit: {body}"
-    );
-
-    // The rejected send must not have persisted a user message.
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
     let count = db.count_messages(&tid).await.unwrap();
-    assert_eq!(count, 3, "only the first turn and seeded row should remain");
+    assert_eq!(count, 5, "the send is persisted like any other turn");
 
-    // A huge text attachment is rejected even with empty history.
+    // A large text attachment under the 8 MiB cap sends fine too.
     let tid2 = make_thread(&app, &cookie, pid, "big2").await;
     let big_text = vec![b'x'; 800_000];
     let resp = send_with_file(
@@ -14578,10 +14604,11 @@ async fn send_rejects_prompt_over_context_limit() {
         &big_text,
     )
     .await;
-    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-    assert_eq!(db.count_messages(&tid2).await.unwrap(), 0);
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+    assert_eq!(db.count_messages(&tid2).await.unwrap(), 2);
 
-    // An output cap that alone exceeds the window gets its own message.
+    // An output cap larger than the window is a provider concern, not ours.
     let resp = app
         .clone()
         .oneshot(authed(
@@ -14594,16 +14621,11 @@ async fn send_rejects_prompt_over_context_limit() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let resp = send_with_file(&app, &cookie, &tid2, "hi", "n.txt", "text/plain", b"n").await;
-    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-    let body = body_str(resp.into_body()).await;
-    assert!(
-        body.contains("output token cap"),
-        "error should name the cap: {body}"
-    );
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
-async fn resend_counts_full_session_history() {
+async fn resend_works_with_full_history() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;
     let pid = create_project(&app, &cookie).await;
@@ -14620,7 +14642,8 @@ async fn resend_counts_full_session_history() {
     let first_user = msgs[0].id;
     let second_user = msgs[2].id;
 
-    // Inflate the first turn's assistant reply past the stub's 200k limit.
+    // Inflate the first turn's assistant reply past the stub's 200k limit;
+    // resends are never gated on the estimate.
     sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
         .bind("y".repeat(900_000))
         .bind(msgs[1].id)
@@ -14628,33 +14651,23 @@ async fn resend_counts_full_session_history() {
         .await
         .unwrap();
 
-    // The provider session is never rewound, so a resend still carries the
-    // full history — both anchors reject while the session lives.
     let resp = resend_message(&app, &cookie, &tid, second_user, &[]).await;
-    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-    let resp = resend_message(&app, &cookie, &tid, first_user, &[]).await;
-    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-
-    // After a context reset the session is gone and history stops counting;
-    // replaying the tiny first prompt fits again.
-    let resp = app
-        .clone()
-        .oneshot(authed(
-            "POST",
-            &format!("/api/threads/{tid}/context/reset"),
-            &cookie,
-            "",
-        ))
-        .await
-        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+    wait_for_run(&app, &cookie, &tid, |b| {
+        !b.contains(r#""status":"running""#)
+    })
+    .await;
     let resp = resend_message(&app, &cookie, &tid, first_user, &[]).await;
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
-async fn context_reset_drops_session_and_usage() {
-    let (app, db) = make_app().await;
+async fn context_reset_drops_session_but_keeps_usage() {
+    let (app, db) = make_app_with_provider(Arc::new(UsageStubProvider {
+        calls: std::sync::atomic::AtomicU64::new(0),
+    }))
+    .await;
     let cookie = login(&app).await;
     let pid = create_project(&app, &cookie).await;
     let tid = make_thread(&app, &cookie, pid, "reset").await;
@@ -14667,8 +14680,9 @@ async fn context_reset_drops_session_and_usage() {
     })
     .await;
     let ctx = get_context(&app, &cookie, &tid).await;
-    assert!(ctx["used_tokens"].as_u64().unwrap() > 0);
     assert_eq!(ctx["has_session"], true);
+    assert_eq!(ctx["usage"]["records"], 1);
+    assert_eq!(ctx["usage"]["total_tokens"], 150);
 
     let resp = app
         .clone()
@@ -14682,15 +14696,18 @@ async fn context_reset_drops_session_and_usage() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
+    // Reset drops the provider session; the recorded usage totals are
+    // all-time figures and stay put.
     let ctx = get_context(&app, &cookie, &tid).await;
-    assert_eq!(ctx["used_tokens"], 0);
     assert_eq!(ctx["has_session"], false);
+    assert_eq!(ctx["usage"]["records"], 1);
+    assert_eq!(ctx["usage"]["total_tokens"], 150);
     let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
     assert!(thread.devin_session_id.is_none());
     assert!(thread.context_cleared_seq > 0);
 
-    // After the reset the thread behaves like a fresh session: an oversized
-    // old history no longer counts against the limit.
+    // After the reset the thread behaves like a fresh session and sends
+    // regardless of how large the old stored history is.
     sqlx::query("UPDATE messages SET content = ? WHERE thread_id = ?")
         .bind("z".repeat(900_000))
         .bind(&tid)

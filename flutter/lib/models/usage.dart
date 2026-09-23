@@ -58,6 +58,15 @@ class UsageCost {
     currency: j['currency'] as String? ?? '',
     amount: (j['amount'] as num?)?.toDouble() ?? 0,
   );
+
+  @override
+  bool operator ==(Object other) =>
+      other is UsageCost &&
+      other.currency == currency &&
+      other.amount == amount;
+
+  @override
+  int get hashCode => Object.hash(currency, amount);
 }
 
 /// Window-wide totals.
@@ -100,7 +109,48 @@ class UsageTotals {
           : const [],
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! UsageTotals) return false;
+    if (other.costs.length != costs.length) return false;
+    for (var i = 0; i < costs.length; i++) {
+      if (costs[i] != other.costs[i]) return false;
+    }
+    return records == other.records &&
+        inputTokens == other.inputTokens &&
+        outputTokens == other.outputTokens &&
+        thoughtTokens == other.thoughtTokens &&
+        cachedReadTokens == other.cachedReadTokens &&
+        cachedWriteTokens == other.cachedWriteTokens &&
+        totalTokens == other.totalTokens;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    records,
+    inputTokens,
+    outputTokens,
+    thoughtTokens,
+    cachedReadTokens,
+    cachedWriteTokens,
+    totalTokens,
+    Object.hashAll(costs),
+  );
 }
+
+/// Zero totals, used when the response carries no `usage` object.
+const emptyUsageTotals = UsageTotals(
+  records: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  thoughtTokens: 0,
+  cachedReadTokens: 0,
+  cachedWriteTokens: 0,
+  totalTokens: 0,
+  costs: [],
+);
 
 /// Response of `GET /api/usage`.
 class UsageSummary {
@@ -144,85 +194,38 @@ class UsageSummary {
   }
 }
 
-/// Response of `GET /api/threads/:id/context`: the server's estimate of the
-/// tokens the provider session would carry into the next send.
+/// Response of `GET /api/threads/:id/context`: the thread's recorded token
+/// totals plus whether a live provider session exists.
 class ThreadContextUsage {
-  final int usedTokens;
-
-  /// The model's advertised context window; 0 when unknown.
-  final int contextLimit;
-
-  /// The model's advertised output cap; 0 when unknown.
-  final int outputLimit;
-
-  /// The thread's own output cap, when one is set.
-  final int? maxOutputTokens;
-
-  /// Whether a provider session exists, i.e. whether [usedTokens] describes
-  /// history the next send will actually carry.
+  /// Whether a provider session exists, i.e. whether resetting the context
+  /// would drop anything.
   final bool hasSession;
 
+  /// Recorded token usage for this thread across all turns.
+  final UsageTotals usage;
+
   const ThreadContextUsage({
-    required this.usedTokens,
-    required this.contextLimit,
-    required this.outputLimit,
-    this.maxOutputTokens,
     this.hasSession = false,
+    this.usage = emptyUsageTotals,
   });
 
   factory ThreadContextUsage.fromJson(Map<String, dynamic> j) =>
       ThreadContextUsage(
-        usedTokens: (j['used_tokens'] as num?)?.toInt() ?? 0,
-        contextLimit: (j['context_limit'] as num?)?.toInt() ?? 0,
-        outputLimit: (j['output_limit'] as num?)?.toInt() ?? 0,
-        maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt(),
         hasSession: j['has_session'] as bool? ?? false,
+        usage: j['usage'] is Map<String, dynamic>
+            ? UsageTotals.fromJson(j['usage'] as Map<String, dynamic>)
+            : emptyUsageTotals,
       );
-
-  /// Whether the model advertises a context window. Zero means the limit is
-  /// unknown and no warning or gating applies.
-  bool get hasLimit => contextLimit > 0;
-
-  /// Tokens reserved for the model's reply: the thread override first, then
-  /// the model's advertised cap, then the same fallback the backend uses.
-  int get outputReserve {
-    final own = maxOutputTokens;
-    if (own != null && own > 0) return own;
-    if (outputLimit > 0) return outputLimit;
-    return 8192;
-  }
-
-  /// Estimated window occupancy if a message of [pendingTokens] were sent:
-  /// history plus the draft plus the output reserve.
-  int projectedTotal(int pendingTokens) =>
-      usedTokens + pendingTokens + outputReserve;
-
-  /// Fraction of the window the next send would occupy; over 1.0 is over.
-  double usageRatio(int pendingTokens) =>
-      hasLimit ? projectedTotal(pendingTokens) / contextLimit : 0;
-
-  bool exceedsLimit(int pendingTokens) =>
-      hasLimit && projectedTotal(pendingTokens) > contextLimit;
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! ThreadContextUsage) return false;
-    return usedTokens == other.usedTokens &&
-        contextLimit == other.contextLimit &&
-        outputLimit == other.outputLimit &&
-        maxOutputTokens == other.maxOutputTokens &&
-        hasSession == other.hasSession;
+    return hasSession == other.hasSession && usage == other.usage;
   }
 
   @override
-  int get hashCode => Object.hash(
-    usedTokens,
-    contextLimit,
-    outputLimit,
-    maxOutputTokens,
-    hasSession,
-  );
+  int get hashCode => Object.hash(hasSession, usage);
 }
 
 /// Compacts a token count to three significant figures with a unit suffix

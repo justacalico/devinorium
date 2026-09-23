@@ -17,8 +17,6 @@ typedef _ComposerModel = ({
   bool providerLocked,
   List<ModelInfo> models,
   List<ProviderInfo> providers,
-  ThreadContextUsage? contextUsage,
-  int draftTokens,
 });
 
 /// The available width for the composer dropdowns below which they switch to
@@ -417,8 +415,7 @@ class _ComposerState extends State<_Composer> {
             state.threadReferences.isNotEmpty ||
             state.machineReferences.isNotEmpty) &&
         state.hasActiveThreadStore &&
-        !state.sending &&
-        !state.sendExceedsContext) {
+        !state.sending) {
       widget.controller.clear();
       state.sendMessage();
     }
@@ -558,8 +555,6 @@ class _ComposerState extends State<_Composer> {
         providerLocked: s.activeThreadDetail?.thread.devinSessionId != null,
         models: s.models,
         providers: s.providers,
-        contextUsage: s.threadContextUsage,
-        draftTokens: s.draftContextTokens,
       ),
       builder: (context, model, _) {
         final isSending = model.sending;
@@ -572,8 +567,6 @@ class _ComposerState extends State<_Composer> {
 
         final isBypass = model.selectedPermission == 'bypass';
         final showOutline = mode != ComposerMode.code || isBypass;
-        final usage = model.contextUsage;
-        final overLimit = usage?.exceedsLimit(model.draftTokens) ?? false;
         final cardRadius = showOutline ? _innerRadius : _outerRadius;
         final cardElevation = showOutline ? 0.0 : 1.0;
 
@@ -895,15 +888,6 @@ class _ComposerState extends State<_Composer> {
                               },
                             ),
                           ),
-                          if (usage != null && usage.hasLimit)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: _ContextMeter(
-                                usage: usage,
-                                draftTokens: model.draftTokens,
-                                sending: isSending,
-                              ),
-                            ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
@@ -1018,16 +1002,13 @@ class _ComposerState extends State<_Composer> {
                                         if (isSending) {
                                           state.stopThread();
                                         } else if ((_effectivePrompt(
-                                                  state,
-                                                ).isNotEmpty ||
-                                                model.pathRefs.isNotEmpty ||
-                                                model
-                                                    .threadReferences
-                                                    .isNotEmpty ||
-                                                model
-                                                    .machineReferences
-                                                    .isNotEmpty) &&
-                                            !overLimit) {
+                                              state,
+                                            ).isNotEmpty ||
+                                            model.pathRefs.isNotEmpty ||
+                                            model.threadReferences.isNotEmpty ||
+                                            model
+                                                .machineReferences
+                                                .isNotEmpty)) {
                                           widget.controller.clear();
                                           state.sendMessage();
                                         }
@@ -1070,121 +1051,6 @@ class _ComposerState extends State<_Composer> {
           ),
         );
       },
-    );
-  }
-}
-
-/// Thin usage meter under the input: estimated occupancy of the model's
-/// context window if the current draft were sent now (history + draft +
-/// reserved reply space). Warns at 80% and blocks the send past 100%.
-class _ContextMeter extends StatelessWidget {
-  final ThreadContextUsage usage;
-  final int draftTokens;
-  final bool sending;
-
-  const _ContextMeter({
-    required this.usage,
-    required this.draftTokens,
-    required this.sending,
-  });
-
-  static const _warnAt = 0.8;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final l = l10n(context);
-    final state = context.read<AppState>();
-    final over = usage.exceedsLimit(draftTokens);
-    final warn = !over && usage.usageRatio(draftTokens) >= _warnAt;
-    final color = over
-        ? theme.colorScheme.error
-        : warn
-        ? SemanticColors.of(context).warning
-        : theme.colorScheme.onSurfaceVariant;
-    final projected = usage.projectedTotal(draftTokens);
-    return Row(
-      children: [
-        Icon(
-          over
-              ? Icons.error_outline
-              : warn
-              ? Icons.warning_amber
-              : Icons.data_usage,
-          size: 13,
-          color: color,
-        ),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            l.contextUsage(
-              formatTokens(projected),
-              formatTokens(usage.contextLimit),
-            ),
-            key: const Key('context_meter_text'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(color: color),
-          ),
-        ),
-        if (over) ...[
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              l.contextOverLimit,
-              key: const Key('context_exceeded_text'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(color: color),
-            ),
-          ),
-        ] else if (warn) ...[
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              l.contextNearlyFull,
-              key: const Key('context_warning_text'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(color: color),
-            ),
-          ),
-        ],
-        if (over)
-          TextButton(
-            key: const Key('context_reset_button'),
-            style: TextButton.styleFrom(
-              minimumSize: Size.zero,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            onPressed: () => state.resetThreadContext(),
-            child: Text(
-              l.resetContext,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.error,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          )
-        else if (usage.hasSession && !sending)
-          Tooltip(
-            message: l.resetContextTooltip,
-            child: InkWell(
-              key: const Key('context_reset_icon'),
-              borderRadius: BorderRadius.circular(4),
-              onTap: () => state.resetThreadContext(),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(
-                  Icons.restart_alt,
-                  size: 14,
-                  color: warn ? color : theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

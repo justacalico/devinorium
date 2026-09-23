@@ -19,7 +19,6 @@ use crate::providers::{
 };
 use crate::AppState;
 
-use super::context::check_context_budget;
 use super::context_refs::{prompt_with_refs, resolve_context_refs, ContextPathIn, ContextRef};
 use super::machine_refs::{parse_machine_ids, prompt_with_machine_refs, resolve_machine_refs};
 use super::persistence::persist_user_message;
@@ -69,10 +68,6 @@ pub(super) async fn send_stream(
             Json(ApiError::new("prompt is required")),
         )
             .into_response();
-    }
-
-    if let Err(resp) = check_context_budget(&state, &user, &thread, &input).await {
-        return resp;
     }
 
     let user_msg = match persist_user_message(&state, &thread, &input).await {

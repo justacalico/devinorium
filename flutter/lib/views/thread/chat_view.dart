@@ -289,7 +289,20 @@ class _ChatViewState extends State<ChatView> {
                   child: _Composer(controller: _composerController),
                 ),
               ),
-              if (!model.loading) const BranchToolbar(),
+              if (!model.loading)
+                const SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(child: BranchToolbar()),
+                        ThreadUsageIndicator(),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ],
         );
