@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.86.0 - 2026-09-23
+#### Features
+- 显示线程实际 token 用量并移除上下文估算拦截 - (f37ba6b) - HttpAnimations
+
+- - -
+
 ## v0.85.0 - 2026-09-22
 #### Features
 - 发布 Linux ARM64 服务器二进制 - (2003d6e) - HttpAnimations
