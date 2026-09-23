@@ -3590,29 +3590,11 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get devMergeRequestClose;
 
-  /// Estimated context usage shown under the composer input
+  /// Recorded token usage for the active thread shown under the composer
   ///
   /// In en, this message translates to:
-  /// **'~{used} / {max} tokens'**
-  String contextUsage(String used, String max);
-
-  /// Short warning shown next to the context meter at 80% usage
-  ///
-  /// In en, this message translates to:
-  /// **'context nearly full'**
-  String get contextNearlyFull;
-
-  /// Short label next to the context meter when the draft exceeds the window
-  ///
-  /// In en, this message translates to:
-  /// **'over limit'**
-  String get contextOverLimit;
-
-  /// Error shown when a send is blocked by the context limit
-  ///
-  /// In en, this message translates to:
-  /// **'Message exceeds the model\'s context window. Shorten it or reset the thread\'s context.'**
-  String get contextExceeded;
+  /// **'{input} in · {output} out'**
+  String threadUsage(String input, String output);
 
   /// Button that drops the provider session so the next message starts fresh
   ///
@@ -3625,24 +3607,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Drop the provider session and start fresh. History stays visible but is no longer sent to the model.'**
   String get resetContextTooltip;
-
-  /// Label for the per-thread output token cap field
-  ///
-  /// In en, this message translates to:
-  /// **'Max output tokens'**
-  String get maxOutputTokens;
-
-  /// Placeholder for the output token field when no override is set
-  ///
-  /// In en, this message translates to:
-  /// **'Model default'**
-  String get maxOutputTokensHint;
-
-  /// Validation error for the output token field
-  ///
-  /// In en, this message translates to:
-  /// **'Enter a value between 1 and 4,000,000'**
-  String get maxOutputTokensInvalid;
 
   /// Error shown when switching projects while the editor has unsaved changes
   ///

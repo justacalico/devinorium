@@ -34,6 +34,7 @@ import 'code_block.dart';
 import 'edit_file_tool.dart';
 import 'elapsed_time_indicator.dart';
 import 'plan_overlay.dart';
+import 'thread_usage_indicator.dart';
 import 'read_file_tool.dart';
 import 'run_command_tool.dart';
 import 'window_title_drag.dart';
@@ -104,8 +105,7 @@ class ThreadPage extends StatelessWidget {
             leading: isNarrow
                 ? IconButton(
                     icon: const Icon(Icons.menu),
-                    onPressed: () =>
-                        context.read<AppState>().openSidebar(),
+                    onPressed: () => context.read<AppState>().openSidebar(),
                   )
                 : null,
             title: WindowTitleDrag(

@@ -109,88 +109,76 @@ class _BranchToolbarState extends State<BranchToolbar> {
                   ? worktreeBranch!
                   : (activeWorktree?.head ?? repo.branch));
 
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 420;
+            return Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 420;
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        _buildBranchButton(
-                          state: state,
-                          projectId: projectId,
-                          threadId: threadId,
-                          repo: repo,
-                          branches: branches,
-                          effectiveBranch: effectiveBranch,
-                          isOnMainWorktree: isOnMainWorktree,
-                          sending: model.sending,
-                          compact: compact,
-                          theme: theme,
-                          l: l,
-                        ),
-                        if (repo.behind > 0) ...[
-                          const SizedBox(width: 2),
-                          _HeaderAction(
-                            label: '↓${repo.behind}',
-                            tooltip: l.pull,
-                            loading: _pulling,
-                            onPressed: isOnMainWorktree && !model.sending
-                                ? () => _pull(state, projectId)
-                                : null,
-                          ),
-                        ],
-                        if (repo.ahead > 0) ...[
-                          const SizedBox(width: 2),
-                          _HeaderAction(
-                            label: '↑${repo.ahead}',
-                            tooltip: l.push,
-                            loading: _pushing,
-                            onPressed: isOnMainWorktree && !model.sending
-                                ? () => _push(state, projectId)
-                                : null,
-                          ),
-                        ],
-                        const SizedBox(width: 8),
-                        _buildWorktreeButton(
-                          state: state,
-                          projectId: projectId,
-                          threadId: threadId,
-                          repo: repo,
-                          worktrees: worktrees,
-                          mainWorktreePath: mainWorktreePath,
-                          activeWorktree: activeWorktree,
-                          activeWorktreePath: activeWorktreePath,
-                          sending: model.sending,
-                          compact: compact,
-                          theme: theme,
-                          l: l,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildEnvModeButton(
-                          state: state,
-                          threadId: threadId,
-                          envMode: model.envMode,
-                          sending: model.sending,
-                          compact: compact,
-                          theme: theme,
-                          l: l,
-                        ),
-                      ],
-                    );
-                  },
+                _buildBranchButton(
+                  state: state,
+                  projectId: projectId,
+                  threadId: threadId,
+                  repo: repo,
+                  branches: branches,
+                  effectiveBranch: effectiveBranch,
+                  isOnMainWorktree: isOnMainWorktree,
+                  sending: model.sending,
+                  compact: compact,
+                  theme: theme,
+                  l: l,
+                ),
+                if (repo.behind > 0) ...[
+                  const SizedBox(width: 2),
+                  _HeaderAction(
+                    label: '↓${repo.behind}',
+                    tooltip: l.pull,
+                    loading: _pulling,
+                    onPressed: isOnMainWorktree && !model.sending
+                        ? () => _pull(state, projectId)
+                        : null,
+                  ),
+                ],
+                if (repo.ahead > 0) ...[
+                  const SizedBox(width: 2),
+                  _HeaderAction(
+                    label: '↑${repo.ahead}',
+                    tooltip: l.push,
+                    loading: _pushing,
+                    onPressed: isOnMainWorktree && !model.sending
+                        ? () => _push(state, projectId)
+                        : null,
+                  ),
+                ],
+                const SizedBox(width: 8),
+                _buildWorktreeButton(
+                  state: state,
+                  projectId: projectId,
+                  threadId: threadId,
+                  repo: repo,
+                  worktrees: worktrees,
+                  mainWorktreePath: mainWorktreePath,
+                  activeWorktree: activeWorktree,
+                  activeWorktreePath: activeWorktreePath,
+                  sending: model.sending,
+                  compact: compact,
+                  theme: theme,
+                  l: l,
+                ),
+                const SizedBox(width: 8),
+                _buildEnvModeButton(
+                  state: state,
+                  threadId: threadId,
+                  envMode: model.envMode,
+                  sending: model.sending,
+                  compact: compact,
+                  theme: theme,
+                  l: l,
                 ),
               ],
-            ),
-          ),
+            );
+          },
         );
       },
     );

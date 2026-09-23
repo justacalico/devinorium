@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/api/api_service.dart';
-import 'package:devinorium_frontend/l10n/global_l10n.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/state/thread_store.dart';
@@ -21,17 +20,10 @@ class _ThrowingClient implements BaseApiClient {
 class _FakeApi extends ApiService {
   _FakeApi() : super(client: _ThrowingClient());
 
-  ThreadContextUsage usage = const ThreadContextUsage(
-    usedTokens: 1000,
-    contextLimit: 200000,
-    outputLimit: 4000,
-    hasSession: true,
-  );
+  ThreadContextUsage usage = const ThreadContextUsage(hasSession: true);
   int getContextCalls = 0;
   int resetCalls = 0;
   int sendCalls = 0;
-  int? lastMaxOutputTokens;
-  var setMaxOutputTokensCalled = false;
 
   @override
   Future<ThreadContextUsage> getThreadContext(String id) {
@@ -42,13 +34,6 @@ class _FakeApi extends ApiService {
   @override
   Future<void> resetThreadContext(String id) {
     resetCalls++;
-    return Future.value();
-  }
-
-  @override
-  Future<void> setThreadMaxOutputTokens(String id, int? tokens) {
-    setMaxOutputTokensCalled = true;
-    lastMaxOutputTokens = tokens;
     return Future.value();
   }
 
@@ -142,166 +127,132 @@ void main() {
   group('ThreadContextUsage', () {
     test('parses the context endpoint response', () {
       final u = ThreadContextUsage.fromJson(const {
-        'used_tokens': 1500,
-        'context_limit': 200000,
-        'output_limit': 8192,
-        'max_output_tokens': 4096,
         'has_session': true,
+        'usage': {
+          'records': 3,
+          'input_tokens': 12000,
+          'output_tokens': 450,
+          'thought_tokens': 800,
+          'cached_read_tokens': 2000,
+          'cached_write_tokens': 0,
+          'total_tokens': 15250,
+          'costs': [
+            {'currency': 'USD', 'amount': 0.42},
+          ],
+        },
       });
-      expect(u.usedTokens, 1500);
-      expect(u.contextLimit, 200000);
-      expect(u.outputLimit, 8192);
-      expect(u.maxOutputTokens, 4096);
       expect(u.hasSession, isTrue);
+      expect(u.usage.records, 3);
+      expect(u.usage.inputTokens, 12000);
+      expect(u.usage.outputTokens, 450);
+      expect(u.usage.thoughtTokens, 800);
+      expect(u.usage.cachedReadTokens, 2000);
+      expect(u.usage.totalTokens, 15250);
+      expect(u.usage.costs, [const UsageCost(currency: 'USD', amount: 0.42)]);
     });
 
-    test('output reserve prefers the thread override', () {
-      const u = ThreadContextUsage(
-        usedTokens: 0,
-        contextLimit: 100,
-        outputLimit: 8000,
-        maxOutputTokens: 2000,
-      );
-      expect(u.outputReserve, 2000);
-      const noOverride = ThreadContextUsage(
-        usedTokens: 0,
-        contextLimit: 100,
-        outputLimit: 8000,
-      );
-      expect(noOverride.outputReserve, 8000);
-      const unknown = ThreadContextUsage(
-        usedTokens: 0,
-        contextLimit: 100,
-        outputLimit: 0,
-      );
-      expect(unknown.outputReserve, 8192);
+    test('defaults usage to zero totals when absent', () {
+      final u = ThreadContextUsage.fromJson(const {});
+      expect(u.usage, emptyUsageTotals);
     });
 
-    test('exceedsLimit accounts for draft and reserve', () {
-      const u = ThreadContextUsage(
-        usedTokens: 900,
-        contextLimit: 2000,
-        outputLimit: 1000,
+    test('equality includes the usage totals', () {
+      const base = ThreadContextUsage();
+      const withUsage = ThreadContextUsage(
+        usage: UsageTotals(
+          records: 1,
+          inputTokens: 5,
+          outputTokens: 2,
+          thoughtTokens: 0,
+          cachedReadTokens: 0,
+          cachedWriteTokens: 0,
+          totalTokens: 7,
+          costs: [],
+        ),
       );
-      expect(u.exceedsLimit(50), isFalse);
-      expect(u.exceedsLimit(200), isTrue);
+      expect(base == withUsage, isFalse);
+      expect(withUsage == withUsage, isTrue);
     });
   });
 
   group('ThreadStore context', () {
-    test('load fetches the usage estimate', () async {
+    test('load fetches the thread usage', () async {
       final api = _FakeApi();
       final store = _store(api);
       await store.load();
       await pumpEventQueue();
       expect(api.getContextCalls, greaterThan(0));
-      expect(store.contextUsage?.usedTokens, 1000);
+      expect(store.contextUsage?.hasSession, isTrue);
     });
 
-    test('send proceeds when the estimate fits', () async {
-      final api = _FakeApi();
+    test('send proceeds regardless of recorded usage', () async {
+      final api = _FakeApi()
+        ..usage = const ThreadContextUsage(
+          hasSession: true,
+          usage: UsageTotals(
+            records: 40,
+            inputTokens: 900000,
+            outputTokens: 60000,
+            thoughtTokens: 0,
+            cachedReadTokens: 0,
+            cachedWriteTokens: 0,
+            totalTokens: 960000,
+            costs: [],
+          ),
+        );
       final store = _store(api, composerText: 'hi');
+      await store.refreshContextUsage();
       await store.sendMessage();
       await pumpEventQueue();
       expect(api.sendCalls, 1);
       expect(store.globalError, isEmpty);
     });
 
-    test('send is blocked when the draft overflows the window', () async {
-      final api = _FakeApi()
-        ..usage = const ThreadContextUsage(
-          usedTokens: 197000,
-          contextLimit: 200000,
-          outputLimit: 4000,
-          hasSession: true,
-        );
-      final store = _store(api, composerText: 'hi');
-      await store.refreshContextUsage();
-      expect(store.sendExceedsContext, isTrue);
-      await store.sendMessage();
-      await pumpEventQueue();
-      expect(api.sendCalls, 0);
-      expect(store.globalError, appL10n.contextExceeded);
-      expect(store.composerText, 'hi');
-    });
-
-    test('no limit means no gating', () async {
-      final api = _FakeApi()
-        ..usage = const ThreadContextUsage(
-          usedTokens: 0,
-          contextLimit: 0,
-          outputLimit: 0,
-        );
-      final store = _store(api, composerText: 'hi');
-      await store.refreshContextUsage();
-      expect(store.sendExceedsContext, isFalse);
-      await store.sendMessage();
-      await pumpEventQueue();
-      expect(api.sendCalls, 1);
-    });
-
-    test('resetContext drops the session estimate', () async {
+    test('resetContext clears the session flag', () async {
       final api = _FakeApi();
       final store = _store(api);
       await store.load();
       await pumpEventQueue();
-      api.usage = const ThreadContextUsage(
-        usedTokens: 0,
-        contextLimit: 200000,
-        outputLimit: 4000,
-      );
+      api.usage = const ThreadContextUsage();
       await store.resetContext();
       expect(api.resetCalls, 1);
       await pumpEventQueue();
-      expect(store.contextUsage?.usedTokens, 0);
       expect(store.contextUsage?.hasSession, isFalse);
-    });
-
-    test('setThreadMaxOutputTokens patches the thread', () async {
-      final api = _FakeApi();
-      final store = _store(api);
-      await store.setThreadMaxOutputTokens(4096);
-      expect(api.setMaxOutputTokensCalled, isTrue);
-      expect(api.lastMaxOutputTokens, 4096);
-      await store.setThreadMaxOutputTokens(null);
-      expect(api.lastMaxOutputTokens, isNull);
     });
   });
 
-  group('composer meter', () {
+  group('thread usage indicator', () {
     AppState buildState(
       _FakeApi api, {
       ThreadContextUsage? usage,
-      String composerText = '',
-      int? maxOutputTokens,
+      bool sending = false,
     }) => AppState.test(
-      api: api,
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-      activeThreadId: 't1',
-      activeThreadDetail: ThreadDetail(
-        thread: Thread(
-          id: 't1',
-          title: 'Test',
-          projectId: 1,
-          model: 'm1',
-          permissionMode: 'normal',
-          createdAt: '',
-          updatedAt: '',
-          maxOutputTokens: maxOutputTokens,
-        ),
-        messages: const [],
-      ),
-      threadContextUsage: usage,
-      composerText: composerText,
-    );
+          api: api,
+          sending: sending,
+          user: User(
+            id: 1,
+            username: 'owner',
+            role: 'user',
+            totpEnabled: false,
+            isOwner: true,
+            providerId: 'devin-cli',
+            providerCommand: 'devin',
+          ),
+          activeThreadId: 't1',
+          activeThreadDetail: ThreadDetail(
+            thread: Thread(
+              id: 't1',
+              title: 'Test',
+              projectId: 1,
+              model: 'm1',
+              permissionMode: 'normal',
+              createdAt: '',
+              updatedAt: '',
+            ),
+            messages: const [],
+          ),
+          threadContextUsage: usage,
+        );
 
     Widget app(AppState state) => MaterialApp(
       theme: ThemeData(platform: TargetPlatform.linux),
@@ -311,106 +262,94 @@ void main() {
       ),
     );
 
-    testWidgets('shows usage under the composer', (tester) async {
+    ThreadContextUsage usage({
+      int input = 12000,
+      int output = 3500,
+      bool hasSession = true,
+    }) => ThreadContextUsage(
+      hasSession: hasSession,
+      usage: UsageTotals(
+        records: 4,
+        inputTokens: input,
+        outputTokens: output,
+        thoughtTokens: 0,
+        cachedReadTokens: 0,
+        cachedWriteTokens: 0,
+        totalTokens: input + output,
+        costs: const [],
+      ),
+    );
+
+    testWidgets('shows recorded in/out usage under the composer', (
+      tester,
+    ) async {
       final api = _FakeApi();
-      final state = buildState(
-        api,
-        usage: const ThreadContextUsage(
-          usedTokens: 50000,
-          contextLimit: 200000,
-          outputLimit: 4000,
-          hasSession: true,
-        ),
-      );
+      final state = buildState(api, usage: usage());
       addTearDown(state.dispose);
       await tester.pumpWidget(app(state));
       await tester.pumpAndSettle();
-      final meter = tester.widget<Text>(
-        find.byKey(const Key('context_meter_text')),
+      final text = tester.widget<Text>(
+        find.byKey(const Key('thread_usage_text')),
       );
-      expect(meter.data, contains('200K'));
-      expect(find.byKey(const Key('context_warning_text')), findsNothing);
-      expect(find.byKey(const Key('context_exceeded_text')), findsNothing);
+      expect(text.data, '12K in · 3.5K out');
     });
 
-    testWidgets('warns near the limit and blocks the send', (tester) async {
+    testWidgets('hides until the first fetch completes', (tester) async {
       final api = _FakeApi();
-      final state = buildState(
-        api,
-        usage: const ThreadContextUsage(
-          usedTokens: 197000,
-          contextLimit: 200000,
-          outputLimit: 3900,
-          hasSession: true,
-        ),
-        composerText: 'hi',
-      );
+      final state = buildState(api, usage: null);
       addTearDown(state.dispose);
       await tester.pumpWidget(app(state));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('context_warning_text')), findsNothing);
-      expect(find.byKey(const Key('context_exceeded_text')), findsOneWidget);
-      expect(find.byKey(const Key('context_reset_button')), findsOneWidget);
-
-      // The send button must not dispatch while over the limit.
-      await tester.tap(find.byIcon(Icons.send));
-      await tester.pump();
-      expect(api.sendCalls, 0);
-      expect(state.composerText, 'hi');
+      expect(find.byKey(const Key('thread_usage_indicator')), findsNothing);
     });
 
-    testWidgets('shows the warning state between 80% and 100%', (tester) async {
+    testWidgets('tapping opens the breakdown dialog', (tester) async {
       final api = _FakeApi();
-      final state = buildState(
-        api,
-        usage: const ThreadContextUsage(
-          usedTokens: 165000,
-          contextLimit: 200000,
-          outputLimit: 4000,
-          hasSession: true,
-        ),
-      );
+      final state = buildState(api, usage: usage());
       addTearDown(state.dispose);
       await tester.pumpWidget(app(state));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('context_warning_text')), findsOneWidget);
-      expect(find.byKey(const Key('context_exceeded_text')), findsNothing);
-      expect(find.byKey(const Key('context_reset_icon')), findsOneWidget);
-    });
-
-    testWidgets('hides the meter when the model has no limit', (tester) async {
-      final api = _FakeApi();
-      final state = buildState(
-        api,
-        usage: const ThreadContextUsage(
-          usedTokens: 0,
-          contextLimit: 0,
-          outputLimit: 0,
-        ),
-      );
-      addTearDown(state.dispose);
-      await tester.pumpWidget(app(state));
+      await tester.tap(find.byKey(const Key('thread_usage_indicator')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('context_meter_text')), findsNothing);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('12K'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget); // turns
+      expect(find.byKey(const Key('thread_usage_reset')), findsOneWidget);
     });
 
     testWidgets('reset button calls the api', (tester) async {
       final api = _FakeApi();
-      final state = buildState(
-        api,
-        usage: const ThreadContextUsage(
-          usedTokens: 50000,
-          contextLimit: 200000,
-          outputLimit: 4000,
-          hasSession: true,
-        ),
-      );
+      final state = buildState(api, usage: usage());
       addTearDown(state.dispose);
       await tester.pumpWidget(app(state));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('context_reset_icon')));
+      await tester.tap(find.byKey(const Key('thread_usage_indicator')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('thread_usage_reset')));
       await tester.pumpAndSettle();
       expect(api.resetCalls, 1);
+    });
+
+    testWidgets('hides reset without a provider session', (tester) async {
+      final api = _FakeApi();
+      final state = buildState(api, usage: usage(hasSession: false));
+      addTearDown(state.dispose);
+      await tester.pumpWidget(app(state));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('thread_usage_indicator')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('thread_usage_reset')), findsNothing);
+    });
+
+    testWidgets('hides reset while a run is active', (tester) async {
+      final api = _FakeApi();
+      final state = buildState(api, usage: usage(), sending: true);
+      addTearDown(state.dispose);
+      await tester.pumpWidget(app(state));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('thread_usage_indicator')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('thread_usage_reset')), findsNothing);
     });
   });
 }

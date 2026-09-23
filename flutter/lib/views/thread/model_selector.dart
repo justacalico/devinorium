@@ -159,13 +159,6 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
         break;
       }
     }
-    ModelInfo? selectedModelInfo;
-    for (final m in models) {
-      if (m.id == selectedModel) {
-        selectedModelInfo = m;
-        break;
-      }
-    }
     final filtered = _query.isEmpty
         ? models
         : models
@@ -247,8 +240,6 @@ class _ModelSelectorDialogState extends State<_ModelSelectorDialog> {
                             },
                           ),
                   ),
-                  if (state.hasActiveThreadStore)
-                    _MaxOutputTokensField(model: selectedModelInfo),
                 ],
               ),
             ),
@@ -378,127 +369,6 @@ class _ModelRow extends StatelessWidget {
           ? Icon(Icons.check, size: 16, color: theme.colorScheme.primary)
           : null,
       onTap: onTap,
-    );
-  }
-}
-
-/// Per-thread output-token cap shown under the model list. Empty means the
-/// model's advertised default; a number between 1 and 4,000,000 overrides it.
-class _MaxOutputTokensField extends StatefulWidget {
-  final ModelInfo? model;
-
-  const _MaxOutputTokensField({required this.model});
-
-  @override
-  State<_MaxOutputTokensField> createState() => _MaxOutputTokensFieldState();
-}
-
-class _MaxOutputTokensFieldState extends State<_MaxOutputTokensField> {
-  final _controller = TextEditingController();
-  final _focus = FocusNode();
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _focus.addListener(() {
-      // Focus can drop during teardown (dialog popped while focused); the
-      // field must not apply or setState on a dead element.
-      if (!mounted || _focus.hasFocus) return;
-      _apply(_controller.text);
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  void _apply(String raw) {
-    final state = context.read<AppState>();
-    final l = l10n(context);
-    final text = raw.trim();
-    // Skip the PATCH when nothing changed; focus loss alone must not write.
-    final stored = state.activeThreadDetail?.thread.maxOutputTokens;
-    if (text == (stored?.toString() ?? '')) {
-      if (_error != null) setState(() => _error = null);
-      return;
-    }
-    if (text.isEmpty) {
-      setState(() => _error = null);
-      unawaited(state.setThreadMaxOutputTokens(null));
-      return;
-    }
-    final value = int.tryParse(text);
-    if (value == null || value < 1 || value > 4000000) {
-      setState(() => _error = l.maxOutputTokensInvalid);
-      return;
-    }
-    setState(() => _error = null);
-    unawaited(state.setThreadMaxOutputTokens(value));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final l = l10n(context);
-    final state = context.watch<AppState>();
-    // Keep the field in step with the stored value while it is not being
-    // edited; mid-edit text is never clobbered.
-    final stored = state.activeThreadDetail?.thread.maxOutputTokens;
-    final storedText = stored?.toString() ?? '';
-    if (!_focus.hasFocus && _controller.text != storedText) {
-      _controller.text = storedText;
-    }
-    final defaultHint =
-        widget.model != null && widget.model!.maxOutputTokens > 0
-        ? formatTokens(widget.model!.maxOutputTokens)
-        : l.maxOutputTokensHint;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      child: Row(
-        children: [
-          Icon(
-            Icons.output,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            l.maxOutputTokens,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 130,
-            child: TextField(
-              key: const Key('max_output_tokens_field'),
-              controller: _controller,
-              focusNode: _focus,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: theme.textTheme.bodySmall,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: defaultHint,
-                errorText: _error,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onSubmitted: _apply,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

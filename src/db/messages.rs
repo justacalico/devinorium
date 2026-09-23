@@ -318,26 +318,6 @@ impl super::Db {
         Ok(row.0)
     }
 
-    /// Size columns for every message in the context window: rows after the
-    /// `after_seq` watermark. Feeds the token estimate; returns
-    /// `(content_length, thinking_len, parts_length, attachments_json)`.
-    pub async fn context_size_rows(
-        &self,
-        thread_id: &str,
-        after_seq: i64,
-    ) -> anyhow::Result<Vec<(i64, i64, i64, String)>> {
-        let sql = "SELECT content_length, COALESCE(length(thinking), 0), COALESCE(parts_length, 0), attachments
-             FROM messages
-             WHERE thread_id = ? AND seq > ?
-             ORDER BY seq ASC";
-        sqlx::query_as::<_, (i64, i64, i64, String)>(sql)
-            .bind(thread_id)
-            .bind(after_seq)
-            .fetch_all(self.pool())
-            .await
-            .map_err(Into::into)
-    }
-
     /// Returns a chunk of a single message's content.
     pub async fn get_message_chunk(
         &self,

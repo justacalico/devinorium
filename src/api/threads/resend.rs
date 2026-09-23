@@ -13,7 +13,6 @@ use crate::db::MessageRow;
 use crate::providers::Attachment;
 use crate::AppState;
 
-use super::context::check_context_budget;
 use super::context_refs::{resolve_context_refs, ContextPathIn};
 use super::machine_refs::resolve_machine_refs;
 use super::persistence::persist_user_message;
@@ -136,12 +135,6 @@ pub(super) async fn resend(
             Json(ApiError::new("prompt is required")),
         )
             .into_response();
-    }
-
-    // The provider session is never rewound, so the whole post-watermark
-    // history stays in context; the anchor is re-sent on top of it.
-    if let Err(resp) = check_context_budget(&state, &user, &thread, &input).await {
-        return resp;
     }
 
     let run = match state
