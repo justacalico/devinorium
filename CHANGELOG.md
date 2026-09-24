@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.87.0 - 2026-09-24
+#### Features
+- 在文件查看器和编辑器中内联预览图片 - (95274c6) - HttpAnimations
+
+- - -
+
 ## v0.86.0 - 2026-09-23
 #### Features
 - 显示线程实际 token 用量并移除上下文估算拦截 - (f37ba6b) - HttpAnimations
