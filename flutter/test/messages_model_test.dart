@@ -245,5 +245,14 @@ void main() {
       expect(isImageMime('text/plain'), isFalse);
       expect(isImageMime(''), isFalse);
     });
+
+    test('isImageMime accepts aliases and parameters', () {
+      expect(isImageMime('IMAGE/PNG'), isTrue);
+      expect(isImageMime('image/apng'), isTrue);
+      expect(isImageMime('image/x-png'), isTrue);
+      expect(isImageMime('image/jpg'), isTrue);
+      expect(isImageMime('image/png; charset=binary'), isTrue);
+      expect(isImageMime('image/svg+xml; charset=utf-8'), isFalse);
+    });
   });
 }

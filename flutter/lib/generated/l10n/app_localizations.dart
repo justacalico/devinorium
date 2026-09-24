@@ -1766,6 +1766,12 @@ abstract class AppLocalizations {
   /// **'{count} MB'**
   String sizeMegabytes(String count);
 
+  /// No description provided for @sizeGigabytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} GB'**
+  String sizeGigabytes(String count);
+
   /// No description provided for @breadcrumbSeparator.
   ///
   /// In en, this message translates to:

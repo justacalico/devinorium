@@ -607,6 +607,14 @@
       }
     }
   },
+  "sizeGigabytes": "{count} GB",
+  "@sizeGigabytes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
   "breadcrumbSeparator": " / ",
   "messageLoading": "...",
   "readFileTitle": "读取 {fileName}",

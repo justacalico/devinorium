@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/file_size.dart';
 import '../utils/git_status.dart';
 import 'file_viewer.dart';
 
@@ -272,7 +273,7 @@ class _FilesPanelBody extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _formatSize(node.entry.size, l10n(context)),
+                  formatFileSize(node.entry.size, l10n(context)),
                   style: theme.textTheme.labelSmall,
                 ),
                 _deleteButton(context, state, node),
@@ -549,14 +550,6 @@ class _FilesPanelBody extends StatelessWidget {
     }
 
     return theme.colorScheme.onSurfaceVariant;
-  }
-
-  String _formatSize(int n, AppLocalizations l) {
-    if (n < 1024) return l.sizeBytes('$n');
-    if (n < 1048576) {
-      return l.sizeKilobytes((n / 1024).toStringAsFixed(1));
-    }
-    return l.sizeMegabytes((n / 1048576).toStringAsFixed(1));
   }
 
   Future<void> _promptMkdir(BuildContext context, AppState state) async {

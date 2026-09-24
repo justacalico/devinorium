@@ -92,6 +92,69 @@ void main() {
       expect(find.textContaining('1.0 KB'), findsOneWidget);
     });
 
+    testWidgets('renders image files inline', (tester) async {
+      const png =
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      final content = FileContent(
+        path: '/x/pic.png',
+        mime: 'image/png',
+        size: 68,
+        base64: png,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: FileViewer(content: content)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(find.textContaining('image/png'), findsOneWidget);
+      expect(find.textContaining('1×1'), findsOneWidget);
+      expect(find.textContaining('Binary file'), findsNothing);
+    });
+
+    testWidgets('shows svg sources as text rather than as an image',
+        (tester) async {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+      final content = FileContent(
+        path: '/x/icon.svg',
+        mime: 'image/svg+xml',
+        size: svg.length,
+        base64: base64Encode(utf8.encode(svg)),
+        text: svg,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: FileViewer(content: content)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.textContaining('<svg'), findsOneWidget);
+    });
+
+    testWidgets('shows a placeholder when image bytes cannot be decoded',
+        (tester) async {
+      final content = FileContent(
+        path: '/x/pic.png',
+        mime: 'image/png',
+        size: 3,
+        base64: '!!!',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: FileViewer(content: content)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+    });
+
     testWidgets('shows empty content placeholder for empty files', (tester) async {
       final content = FileContent(
         path: '/x.dart',

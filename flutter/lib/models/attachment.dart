@@ -5,12 +5,16 @@ import 'dart:typed_data';
 /// codec cannot rasterize.
 bool isImageMime(String mime) => const {
   'image/png',
+  'image/x-png',
+  'image/apng',
   'image/jpeg',
+  'image/jpg',
+  'image/pjpeg',
   'image/gif',
   'image/webp',
   'image/bmp',
   'image/x-ms-bmp',
-}.contains(mime.toLowerCase());
+}.contains(mime.split(';').first.trim().toLowerCase());
 
 class Attachment {
   final String filename;

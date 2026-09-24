@@ -8,7 +8,9 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
+import '../utils/file_size.dart';
 import 'diff_view.dart';
+import 'image_file_view.dart';
 import 'syntax_highlighter.dart';
 
 /// Number of content lines shown before the user has to opt in to the full
@@ -223,10 +225,14 @@ class _ContentTabState extends State<_ContentTab> {
     final theme = Theme.of(context);
     final l = l10n(context);
 
+    if (isImageMime(widget.content.mime)) {
+      return ImageFileView(content: widget.content);
+    }
+
     if (widget.content.text == null) {
       return Center(
         child: Text(
-          '${l.fileViewerBinaryFile} • ${widget.content.mime} • ${_formatSize(widget.content.size, l)}',
+          '${l.fileViewerBinaryFile} • ${widget.content.mime} • ${formatFileSize(widget.content.size, l)}',
           style: theme.textTheme.bodyMedium,
         ),
       );
@@ -318,12 +324,4 @@ String _languageFromPath(String path) {
     'swift' => 'swift',
     _ => 'text',
   };
-}
-
-String _formatSize(int n, AppLocalizations l) {
-  if (n < 1024) return l.sizeBytes('$n');
-  if (n < 1048576) {
-    return l.sizeKilobytes((n / 1024).toStringAsFixed(1));
-  }
-  return l.sizeMegabytes((n / 1048576).toStringAsFixed(1));
 }
