@@ -923,6 +923,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String sizeGigabytes(String count) {
+    return '$count GB';
+  }
+
+  @override
   String get breadcrumbSeparator => ' / ';
 
   @override

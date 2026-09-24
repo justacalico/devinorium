@@ -8,6 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../file_viewer.dart';
+import '../image_file_view.dart';
 import '../syntax_highlighter.dart';
 
 class FileEditor extends StatefulWidget {
@@ -114,6 +115,10 @@ class _FileEditorState extends State<FileEditor> {
 
         if (model.showDiff) {
           return FileViewer(content: model.content!, initialShowDiff: true);
+        }
+
+        if (isImageMime(model.content!.mime)) {
+          return ImageFileView(content: model.content!);
         }
 
         if (model.content!.text == null) {
