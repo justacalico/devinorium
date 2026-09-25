@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.88.0 - 2026-09-25
+#### Features
+- 打开 Git 面板时默认展开提交历史 - (2b49b4b) - HttpAnimations
+
+- - -
+
 ## v0.87.0 - 2026-09-24
 #### Features
 - 在文件查看器和编辑器中内联预览图片 - (95274c6) - HttpAnimations
