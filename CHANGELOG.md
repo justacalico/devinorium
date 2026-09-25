@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.89.0 - 2026-09-25
+#### Features
+- 侧边栏支持按线程状态筛选 - (cf32da9) - HttpAnimations
+
+- - -
+
 ## v0.88.0 - 2026-09-25
 #### Features
 - 打开 Git 面板时默认展开提交历史 - (2b49b4b) - HttpAnimations
