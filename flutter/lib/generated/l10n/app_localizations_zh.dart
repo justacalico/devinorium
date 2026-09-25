@@ -1469,6 +1469,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noSearchResults => '未找到会话';
 
   @override
+  String get statusFilterAll => '全部状态';
+
+  @override
   String get threadStatusWorking => '进行中';
 
   @override

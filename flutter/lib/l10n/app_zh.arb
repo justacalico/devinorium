@@ -882,6 +882,10 @@
   "searchKeyboardShortcut": "⌘K",
   "searchKeyboardShortcutNonMac": "Ctrl+H",
   "noSearchResults": "未找到会话",
+  "statusFilterAll": "全部状态",
+  "@statusFilterAll": {
+    "description": "Default sidebar status filter showing every thread"
+  },
   "threadStatusWorking": "进行中",
   "threadStatusDone": "完成",
   "threadStatusFailed": "失败",

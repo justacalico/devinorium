@@ -903,6 +903,10 @@
   "searchKeyboardShortcut": "⌘K",
   "searchKeyboardShortcutNonMac": "Ctrl+H",
   "noSearchResults": "No threads found.",
+  "statusFilterAll": "All statuses",
+  "@statusFilterAll": {
+    "description": "Default sidebar status filter showing every thread"
+  },
   "threadStatusWorking": "Working",
   "threadStatusDone": "Done",
   "threadStatusFailed": "Failed",
