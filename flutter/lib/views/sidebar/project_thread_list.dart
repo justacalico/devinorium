@@ -3,8 +3,12 @@ part of '../sidebar.dart';
 /// A combined list of projects, each expandable to show its threads.
 class _ProjectThreadList extends StatefulWidget {
   final String searchQuery;
+  final _ThreadStatusFilter statusFilter;
 
-  const _ProjectThreadList({this.searchQuery = ''});
+  const _ProjectThreadList({
+    this.searchQuery = '',
+    this.statusFilter = _ThreadStatusFilter.all,
+  });
 
   @override
   State<_ProjectThreadList> createState() => _ProjectThreadListState();
@@ -95,6 +99,7 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       bool isLoadingMoreProjects,
       int? selectedGroupId,
       List<ProjectGroup> groups,
+      String statusDigest,
     })>(
       selector: (_, s) => (
         projects: s.projects,
@@ -104,6 +109,14 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
         isLoadingMoreProjects: s.isLoadingMoreProjects,
         selectedGroupId: s.selectedProjectGroupId,
         groups: s.projectGroups,
+        // The thread list keeps the same identity across run-status
+        // events; the digest forces a rebuild when a tile's status flips
+        // so an active filter drops or picks up the thread.
+        statusDigest: widget.statusFilter == _ThreadStatusFilter.all
+            ? ''
+            : s.threads
+                  .map((t) => '${t.id}:${_threadTag(s, t) ?? ''}')
+                  .join('|'),
       ),
       builder: (context, model, _) {
         // A selection that no longer exists (deleted by another session)
@@ -137,7 +150,29 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
           });
         }
 
-        final visibleProjects = _filterProjects(projects, threadsByProject, query);
+        final statusFiltering = widget.statusFilter != _ThreadStatusFilter.all;
+        if (statusFiltering) {
+          for (final list in threadsByProject.values) {
+            list.retainWhere(
+              (t) => _matchesStatusFilter(
+                _threadTag(state, t),
+                widget.statusFilter,
+              ),
+            );
+          }
+          threadsByProject.removeWhere((_, list) => list.isEmpty);
+        }
+
+        var visibleProjects = _filterProjects(
+          projects,
+          threadsByProject,
+          query,
+        );
+        if (statusFiltering) {
+          visibleProjects = visibleProjects
+              .where((p) => threadsByProject.containsKey(p.id))
+              .toList();
+        }
         final visibleThreadsByProject = _filterThreads(
           visibleProjects,
           threadsByProject,
@@ -161,8 +196,10 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                   final p = visibleProjects[index];
                   final projectThreads = visibleThreadsByProject[p.id] ?? [];
                   final isExpanded = query.isNotEmpty ||
+                      statusFiltering ||
                       _expandedIds.contains(p.id);
                   final showAll = query.isNotEmpty ||
+                      statusFiltering ||
                       _showAllProjectIds.contains(p.id);
 
                   return _ProjectExpandableTile(
@@ -180,7 +217,8 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
                     },
                     onThreadTap: (id) => state.openThread(id),
                     onShowMore: () => _onShowMore(p.id),
-                    reorderEnabled: query.isEmpty && groupId == null,
+                    reorderEnabled:
+                        query.isEmpty && groupId == null && !statusFiltering,
                   );
                 },
               ),
@@ -258,7 +296,11 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
   void _onReorder(int oldIndex, int newIndex) {
     final state = context.read<AppState>();
     final query = widget.searchQuery.trim().toLowerCase();
-    if (query.isNotEmpty || state.selectedProjectGroupId != null) return;
+    if (query.isNotEmpty ||
+        state.selectedProjectGroupId != null ||
+        widget.statusFilter != _ThreadStatusFilter.all) {
+      return;
+    }
 
     final ids = state.projects.map((p) => p.id).toList();
     final moved = ids.removeAt(oldIndex);

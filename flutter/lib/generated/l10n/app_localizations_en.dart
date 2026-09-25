@@ -1536,6 +1536,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noSearchResults => 'No threads found.';
 
   @override
+  String get statusFilterAll => 'All statuses';
+
+  @override
   String get threadStatusWorking => 'Working';
 
   @override

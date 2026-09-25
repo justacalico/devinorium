@@ -2744,6 +2744,12 @@ abstract class AppLocalizations {
   /// **'No threads found.'**
   String get noSearchResults;
 
+  /// Default sidebar status filter showing every thread
+  ///
+  /// In en, this message translates to:
+  /// **'All statuses'**
+  String get statusFilterAll;
+
   /// No description provided for @threadStatusWorking.
   ///
   /// In en, this message translates to:

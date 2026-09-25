@@ -37,6 +37,7 @@ part 'sidebar/section_header.dart';
 part 'sidebar/settings_nav.dart';
 part 'sidebar/server_switcher.dart';
 part 'sidebar/node_switcher.dart';
+part 'sidebar/status_filter.dart';
 
 Color _projectColor(String name) {
   final colors = [
@@ -85,36 +86,54 @@ String _timeAgo(String iso, AppLocalizations l) {
   return timeAgo(dt, l);
 }
 
+/// The status buckets the sidebar filter can narrow threads down to.
+enum _ThreadStatusFilter { all, running, done, failed }
+
+/// The raw status tag a thread currently resolves to, before localization.
+/// Shared by the tile badge and the sidebar status filter.
+String? _threadTag(AppState state, Thread thread) {
+  final isRunning = state.runningThreadIds.contains(thread.id);
+  final active = state.activeThreadDetail?.thread.id == thread.id;
+
+  if (active) {
+    if (isRunning || state.sending) return 'running';
+    return activeThreadTag(
+      sending: state.sending,
+      messages: state.activeThreadDetail?.messages ?? const [],
+      pendingPermissionRequest: state.pendingPermissionRequest,
+      pendingAskRequest: state.pendingAskRequest,
+      runStatus: state.lastRunStatus,
+    );
+  }
+  return backgroundThreadTag(
+    running: isRunning,
+    runStatus: state.threadRunStatus(thread.id),
+    attention: state.threadRunAttention(thread.id),
+    lastMessageRole: thread.lastMessageRole,
+  );
+}
+
+bool _matchesStatusFilter(String? tag, _ThreadStatusFilter filter) {
+  return switch (filter) {
+    _ThreadStatusFilter.all => true,
+    // A run waiting on approval or an answer is still a live run.
+    _ThreadStatusFilter.running =>
+      tag == 'running' ||
+          tag == 'working' ||
+          tag == 'needs approval' ||
+          tag == 'needs answer',
+    _ThreadStatusFilter.done => tag == 'done',
+    _ThreadStatusFilter.failed => tag == 'failed',
+  };
+}
+
 ({Color color, String label})? _threadStatus(
   BuildContext context,
   AppState state,
   Thread thread,
 ) {
   final l = l10n(context);
-  final isRunning = state.runningThreadIds.contains(thread.id);
-  final active = state.activeThreadDetail?.thread.id == thread.id;
-
-  String? tag;
-  if (active) {
-    if (isRunning || state.sending) {
-      tag = 'running';
-    } else {
-      tag = activeThreadTag(
-        sending: state.sending,
-        messages: state.activeThreadDetail?.messages ?? const [],
-        pendingPermissionRequest: state.pendingPermissionRequest,
-        pendingAskRequest: state.pendingAskRequest,
-        runStatus: state.lastRunStatus,
-      );
-    }
-  } else {
-    tag = backgroundThreadTag(
-      running: isRunning,
-      runStatus: state.threadRunStatus(thread.id),
-      attention: state.threadRunAttention(thread.id),
-      lastMessageRole: thread.lastMessageRole,
-    );
-  }
+  final tag = _threadTag(state, thread);
 
   if (tag == null) return null;
 
@@ -143,6 +162,7 @@ class Sidebar extends StatefulWidget {
 class _SidebarState extends State<Sidebar> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+  _ThreadStatusFilter _statusFilter = _ThreadStatusFilter.all;
 
   @override
   void initState() {
@@ -225,6 +245,7 @@ class _SidebarState extends State<Sidebar> {
               User? user,
               bool hasServer,
               bool localActive,
+              bool groupsUnsupported,
             })
           >(
             selector: (_, state) => (
@@ -235,6 +256,7 @@ class _SidebarState extends State<Sidebar> {
               hasServer: state.multiServerState.hasAnyServer,
               localActive:
                   state.multiServerState.activeProfile?.isLocal ?? false,
+              groupsUnsupported: state.projectGroupsUnsupported,
             ),
             builder: (context, model, _) {
               final user = model.user;
@@ -259,7 +281,24 @@ class _SidebarState extends State<Sidebar> {
                       controller: _searchController,
                       focusNode: _searchFocus,
                     ),
-                    const _GroupFilter(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: Row(
+                        children: [
+                          if (!model.groupsUnsupported) ...[
+                            const Expanded(child: _GroupFilter()),
+                            const SizedBox(width: 8),
+                          ],
+                          Expanded(
+                            child: _StatusFilter(
+                              value: _statusFilter,
+                              onChanged: (f) =>
+                                  setState(() => _statusFilter = f),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     _ProjectsHeader(),
                   ],
                   Expanded(
@@ -271,6 +310,7 @@ class _SidebarState extends State<Sidebar> {
                         ? const FilesPanel()
                         : _ProjectThreadList(
                             searchQuery: _searchController.text,
+                            statusFilter: _statusFilter,
                           ),
                   ),
                   if (model.hasServer)
