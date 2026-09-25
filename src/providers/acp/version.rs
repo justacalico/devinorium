@@ -144,18 +144,25 @@ mod tests {
     }
 
     async fn manifest_server(version: &str) -> String {
+        // A unique path per server keeps fetch_latest_version's URL-keyed
+        // cache honest: without it a freed port reassigned to the next
+        // test's server would reuse the same URL and return a stale
+        // version.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let unique = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let body = serde_json::json!({"version": version, "platforms": {}});
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
+        let path = format!("/manifest-{unique}.json");
         let app = axum::Router::new().route(
-            "/manifest.json",
+            &path,
             axum::routing::get(move || {
                 let body = body.clone();
                 async move { axum::Json(body) }
             }),
         );
         tokio::spawn(axum::serve(listener, app).into_future());
-        format!("http://127.0.0.1:{port}/manifest.json")
+        format!("http://127.0.0.1:{port}{path}")
     }
 
     #[cfg(unix)]
