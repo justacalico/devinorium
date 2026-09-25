@@ -115,6 +115,9 @@ mixin GitPanelStore on AppStateBase {
     _gitPanelOpen = true;
     _filesPanelOpen = false;
     _gitPanelError = '';
+    // The history section opens with the panel; the forced reload below
+    // refetches its first page for the current scope.
+    _gitHistoryOpen = true;
     notifyListeners();
     await _loadGitPanel(force: true);
   }
@@ -176,6 +179,17 @@ mixin GitPanelStore on AppStateBase {
     if (force || scopeChanged || _gitPanelChanges == null) {
       _gitPanelLoading = true;
     }
+    // An explicit reload (panel open, refresh button, post-mutation)
+    // drops the loaded history page; the refill below fetches it again
+    // when the section is open. Loaded rows stay visible until the new
+    // page lands. The periodic refresh passes force: false and keeps
+    // the current page.
+    if (force) {
+      _gitHistoryLoaded = false;
+      _gitHistoryError = '';
+      _gitHistorySeq++;
+      _gitHistoryLoading = false;
+    }
     _gitPanelUnsupported = false;
     notifyListeners();
 
@@ -201,15 +215,6 @@ mixin GitPanelStore on AppStateBase {
       _gitPanelError = '';
       _gitPanelUnsupported = false;
       _refreshExpandedDiffs();
-      // The scope just changed under an open history section; fill it
-      // again. A persistent error does not retry on every refresh tick —
-      // reopening the section or a mutation does.
-      if (_gitHistoryOpen &&
-          !_gitHistoryLoaded &&
-          !_gitHistoryLoading &&
-          _gitHistoryError.isEmpty) {
-        unawaited(_loadGitHistory());
-      }
     } on ApiException catch (e) {
       if (seq != _gitPanelSeq) return;
       if (e.statusCode == 404 && e.message == 'not a git repository') {
@@ -231,21 +236,33 @@ mixin GitPanelStore on AppStateBase {
       if (seq != _gitPanelSeq) return;
       _gitPanelError = '$e';
     }
+    // Fill an open history section once the panel has data — also when
+    // the repo-info fetch failed but the change list still rendered.
+    // A persistent error does not retry on every refresh tick —
+    // reopening the section or a mutation does.
+    if (_gitPanelOpen &&
+        _gitPanelChanges != null &&
+        _gitHistoryOpen &&
+        !_gitHistoryLoaded &&
+        !_gitHistoryLoading &&
+        _gitHistoryError.isEmpty) {
+      unawaited(_loadGitHistory());
+    }
     _gitPanelLoading = false;
     notifyListeners();
   }
 
   /// Refresh the panel plus the project-level repo info the thread toolbar
-  /// reads its ahead/behind badge from.
+  /// reads its ahead/behind badge from. The forced reload drops the
+  /// loaded history page too: a commit/discard/pull changes what the
+  /// section shows, so a closed section must not keep serving the
+  /// pre-mutation list on reopen.
   Future<void> _afterGitMutation() async {
     await _loadGitPanel(force: true);
     final projectId = _gitPanelProjectId ?? _activeProjectId;
     if (projectId != null) {
       unawaited(loadGitRepoInfo(projectId, force: true));
     }
-    // A commit/discard/pull changes what history shows, so a closed
-    // section must not keep serving the pre-mutation list on reopen.
-    invalidateGitHistory();
   }
 
   /// Drop the loaded history so the next open refetches. Bumping the seq
@@ -256,7 +273,8 @@ mixin GitPanelStore on AppStateBase {
     _gitHistoryLoaded = false;
     _gitHistorySeq++;
     _gitHistoryLoading = false;
-    if (_gitHistoryOpen) unawaited(_loadGitHistory());
+    // A closed panel skips the fetch; openGitPanel refetches on entry.
+    if (_gitPanelOpen && _gitHistoryOpen) unawaited(_loadGitHistory());
   }
 
   // ---- Inline diff previews ----

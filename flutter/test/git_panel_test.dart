@@ -54,6 +54,7 @@ class _Harness {
           return _json(200, changesResponse);
         }
         if (path == '/api/projects/1/git') {
+          if (repoFails) return _json(500, {'error': 'boom'});
           return _json(200, repoResponse);
         }
         if (path == '/api/projects/1/git/diff') {
@@ -96,6 +97,9 @@ class _Harness {
   /// Simulates a backend that predates the diff/discard/log routes: they
   /// answer with the SPA fallback's plain-text 404.
   bool legacyBackend = false;
+
+  /// `/git` repo-info answers 500 while the rest of the panel still works.
+  bool repoFails = false;
 
   _Harness({
     Map<String, dynamic>? changes,
@@ -653,7 +657,7 @@ void main() {
     });
 
     test(
-      'history loads the first page on open and appends on loadMore',
+      'history opens with the panel and appends on loadMore',
       () async {
         final h = _Harness(
           log: (url) {
@@ -675,8 +679,9 @@ void main() {
         addTearDown(state.dispose);
         await state.openGitPanel();
 
-        await state.toggleGitHistory();
+        // The section opens with the panel and fetches its first page.
         expect(state.gitHistoryOpen, isTrue);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
         expect(state.gitHistory, hasLength(1));
         expect(state.gitHistory.first.subject, 'newer commit');
         expect(state.gitHistoryHasMore, isTrue);
@@ -722,7 +727,7 @@ void main() {
       addTearDown(state.dispose);
       await state.openGitPanel();
 
-      await state.toggleGitHistory();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(state.gitHistory, hasLength(1));
       expect(
         h.lastTo('/api/projects/1/git/log').url.queryParameters['thread_id'],
@@ -736,7 +741,7 @@ void main() {
       addTearDown(state.dispose);
       await state.openGitPanel();
 
-      await state.toggleGitHistory();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(state.gitHistory, isEmpty);
       expect(state.gitHistoryError, isEmpty);
       expect(state.gitHistoryHasMore, isFalse);
@@ -797,7 +802,7 @@ void main() {
         final state = _state(h.api);
         addTearDown(state.dispose);
         await state.openGitPanel();
-        await state.toggleGitHistory();
+        await Future<void>.delayed(const Duration(milliseconds: 10));
         expect(state.gitHistory, hasLength(1));
 
         await state.loadMoreGitHistory();
@@ -857,8 +862,9 @@ void main() {
       await state.openGitPanel();
       expect(state.gitPanelScopeKey, 'project:1');
 
-      unawaited(state.toggleGitHistory());
-      // Move the active thread into its worktree, then refresh the panel
+      // The panel open already started the first history page, which is
+      // still held by the gate. Move the active thread into its worktree,
+      // then refresh the panel
       // so it picks up the new scope before the first page returns.
       await state.openThread('t1');
       await state.reloadGitChanges();
@@ -885,7 +891,7 @@ void main() {
       final state = _state(h.api);
       addTearDown(state.dispose);
       await state.openGitPanel();
-      await state.toggleGitHistory();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(state.gitHistory.map((c) => c.subject), ['first page']);
 
       await state.toggleGitHistory(); // close
@@ -900,6 +906,54 @@ void main() {
         h.requests.where((r) => r.url.path == '/api/projects/1/git/log'),
         hasLength(2),
       );
+    });
+
+    test('reopening the panel re-expands and refetches history', () async {
+      final h = _Harness(
+        log: (_) => {
+          'commits': [_commit('aaaa', 'first page')],
+          'has_more': false,
+        },
+      );
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(state.gitHistory, hasLength(1));
+
+      // Collapsing the section and closing the panel does not keep it
+      // collapsed; the next open expands it again and refetches.
+      await state.toggleGitHistory();
+      state.closeGitPanel();
+      expect(state.gitHistoryOpen, isFalse);
+
+      await state.openGitPanel();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(state.gitHistoryOpen, isTrue);
+      expect(state.gitHistory, hasLength(1));
+      expect(
+        h.requests.where((r) => r.url.path == '/api/projects/1/git/log'),
+        hasLength(2),
+      );
+    });
+
+    test('history still loads when repo info fails', () async {
+      final h = _Harness(
+        log: (_) => {
+          'commits': [_commit('aaaa', 'first page')],
+          'has_more': false,
+        },
+      )..repoFails = true;
+      final state = _state(h.api);
+      addTearDown(state.dispose);
+      await state.openGitPanel();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      // The change list rendered, so the open section still fetches its
+      // page instead of showing an empty "no commits" state.
+      expect(state.gitPanelChanges, isNotNull);
+      expect(state.gitHistory, hasLength(1));
+      expect(state.gitHistoryError, isEmpty);
     });
   });
 
@@ -1436,9 +1490,7 @@ void main() {
       await tester.pumpWidget(_buildWithState(state));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('HISTORY'));
-      await tester.pumpAndSettle();
-
+      // The section is already expanded and its first page loaded.
       expect(find.text('aaaa000'), findsOneWidget);
       expect(find.text('newer commit'), findsOneWidget);
       expect(find.textContaining('Test ·'), findsOneWidget);
