@@ -1330,6 +1330,7 @@ class ThreadStore {
             size: 0,
             mime: 'application/x-devinorium-machine',
             isMachineRef: true,
+            machineKind: r.kind,
           ),
       ],
     );

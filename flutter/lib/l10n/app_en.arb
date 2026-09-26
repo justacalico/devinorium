@@ -1059,7 +1059,7 @@
   "@machines": {
     "description": "Machines section title under server settings"
   },
-  "machinesHint": "VNC machines this server can hand to an agent. Type @ in the composer to reference one; the thread can then remote-control it.",
+  "machinesHint": "Machines this server can hand to an agent: VNC for screen control, SSH for a remote shell. Type @ in the composer to reference one.",
   "@machinesHint": {
     "description": "Description under the Machines settings title"
   },
@@ -1079,7 +1079,7 @@
   "@machineName": {
     "description": "Label for the machine name field"
   },
-  "machineHost": "VNC host",
+  "machineHost": "Host",
   "@machineHost": {
     "description": "Label for the machine host field"
   },
@@ -1091,7 +1091,7 @@
   "@machinePort": {
     "description": "Label for the machine port field"
   },
-  "machinePassword": "VNC password",
+  "machinePassword": "Password",
   "@machinePassword": {
     "description": "Label for the machine password field"
   },
@@ -1105,11 +1105,11 @@
   },
   "machineHasPassword": "Password saved",
   "@machineHasPassword": {
-    "description": "Badge shown on a machine that has a stored VNC password"
+    "description": "Badge shown on a machine that has a stored password"
   },
   "machineTest": "Test connection",
   "@machineTest": {
-    "description": "Button that probes a machine's VNC handshake"
+    "description": "Button that probes a machine's endpoint"
   },
   "machineTestOk": "Connected to {name} ({width}x{height})",
   "@machineTestOk": {
@@ -1138,6 +1138,56 @@
   "machineDeleteConfirm": "Delete \"{name}\"? Threads can no longer remote-control it.",
   "@machineDeleteConfirm": {
     "description": "Confirmation before deleting a machine",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "machineKind": "Scope",
+  "@machineKind": {
+    "description": "Label for the machine scope (VNC or SSH) selector"
+  },
+  "machineUser": "Username",
+  "@machineUser": {
+    "description": "Label for the SSH username field"
+  },
+  "machineHostSshHint": "192.168.1.10 or ssh://user@host",
+  "@machineHostSshHint": {
+    "description": "Placeholder for the machine host field on ssh machines"
+  },
+  "machineSshKey": "Private key (optional)",
+  "@machineSshKey": {
+    "description": "Label for the SSH private key field"
+  },
+  "machineSshKeyKeep": "Leave blank to keep the stored key.",
+  "@machineSshKeyKeep": {
+    "description": "Helper under the key field when editing a machine"
+  },
+  "machineSshKeyClear": "Clear stored key",
+  "@machineSshKeyClear": {
+    "description": "Checkbox that removes the stored SSH private key"
+  },
+  "machineHasSshKey": "Private key saved",
+  "@machineHasSshKey": {
+    "description": "Badge shown on a machine that has a stored SSH key"
+  },
+  "machinePinnedKey": "Pinned host key {fp}",
+  "@machinePinnedKey": {
+    "description": "Fingerprint of the pinned SSH host key",
+    "placeholders": {
+      "fp": {
+        "type": "String"
+      }
+    }
+  },
+  "machineResetFingerprint": "Reset pinned host key",
+  "@machineResetFingerprint": {
+    "description": "Checkbox that clears the pinned SSH host key so the next connection re-learns it"
+  },
+  "machineTestOkSsh": "Connected to {name}",
+  "@machineTestOkSsh": {
+    "description": "Result of a successful ssh machine connection probe",
     "placeholders": {
       "name": {
         "type": "String"

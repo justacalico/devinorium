@@ -1,10 +1,11 @@
 part of '../settings_page.dart';
 
-/// Machines card under the Servers topic: the VNC endpoints an AI thread can
-/// remote-control when a message references them with `@`. Owner-only —
-/// referencing a machine mints a control grant, so non-owners never see the
-/// list. The stored VNC password never comes back from the server — a lock
-/// badge marks machines that have one.
+/// Machines card under the Servers topic: the endpoints an AI thread can
+/// remote-control when a message references them with `@`. Each entry has
+/// one scope — VNC for screen control or SSH for a remote shell. Owner-only
+/// — referencing a machine mints a control grant, so non-owners never see
+/// the list. Stored secrets never come back from the server — lock/key
+/// badges mark machines that have one.
 class _MachinesSection extends StatefulWidget {
   const _MachinesSection();
 
@@ -118,7 +119,9 @@ class _MachinesSectionState extends State<_MachinesSection> {
                   return ListTile(
                     key: Key('machine_${m.id}'),
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.computer),
+                    leading: Icon(
+                      m.isSsh ? Icons.terminal : Icons.computer,
+                    ),
                     title: Row(
                       children: [
                         Flexible(
@@ -126,6 +129,16 @@ class _MachinesSectionState extends State<_MachinesSection> {
                             m.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Tooltip(
+                          message: m.isSsh ? 'SSH' : 'VNC',
+                          child: Text(
+                            m.kind.toUpperCase(),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                         if (m.hasPassword) ...[
@@ -139,13 +152,24 @@ class _MachinesSectionState extends State<_MachinesSection> {
                             ),
                           ),
                         ],
+                        if (m.hasSshKey) ...[
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: l.machineHasSshKey,
+                            child: Icon(
+                              Icons.key_outlined,
+                              size: 14,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${m.host}:${m.port}',
+                          m.endpoint,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -155,11 +179,15 @@ class _MachinesSectionState extends State<_MachinesSection> {
                         if (result != null)
                           Text(
                             result.ok
-                                ? l.machineTestOk(
-                                    result.name ?? m.name,
-                                    result.width ?? 0,
-                                    result.height ?? 0,
-                                  )
+                                ? m.isSsh
+                                      ? l.machineTestOkSsh(
+                                          result.name ?? m.name,
+                                        )
+                                      : l.machineTestOk(
+                                          result.name ?? m.name,
+                                          result.width ?? 0,
+                                          result.height ?? 0,
+                                        )
                                 : l.machineTestFailed(result.error ?? ''),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -217,8 +245,9 @@ class _MachinesSectionState extends State<_MachinesSection> {
   }
 }
 
-/// Create/edit dialog for one machine. On edit, a blank password keeps the
-/// stored one and the clear checkbox removes it.
+/// Create/edit dialog for one machine. A scope selector picks the protocol
+/// (VNC or SSH) and swaps which fields show; on edit, a blank password/key
+/// keeps the stored one and the clear checkboxes remove them.
 class _MachineDialog extends StatefulWidget {
   const _MachineDialog({required this.state, this.machine});
 
@@ -234,21 +263,30 @@ class _MachineDialogState extends State<_MachineDialog> {
   late final TextEditingController _name;
   late final TextEditingController _host;
   late final TextEditingController _port;
+  late final TextEditingController _user;
   late final TextEditingController _password;
+  late final TextEditingController _sshKey;
+  late String _kind;
   bool _clearPassword = false;
+  bool _clearSshKey = false;
+  bool _resetFingerprint = false;
   String _error = '';
   bool _loading = false;
 
   bool get _editing => widget.machine != null;
+  bool get _isSsh => _kind == Machine.kindSsh;
 
   @override
   void initState() {
     super.initState();
     final m = widget.machine;
+    _kind = m?.kind ?? Machine.kindVnc;
     _name = TextEditingController(text: m?.name ?? '');
     _host = TextEditingController(text: m?.host ?? '');
     _port = TextEditingController(text: '${m?.port ?? 5900}');
+    _user = TextEditingController(text: m?.sshUser ?? '');
     _password = TextEditingController();
+    _sshKey = TextEditingController();
   }
 
   @override
@@ -256,8 +294,23 @@ class _MachineDialogState extends State<_MachineDialog> {
     _name.dispose();
     _host.dispose();
     _port.dispose();
+    _user.dispose();
     _password.dispose();
+    _sshKey.dispose();
     super.dispose();
+  }
+
+  void _setKind(String kind) {
+    if (kind == _kind) return;
+    setState(() {
+      // Swap the port field when it still holds the other scope's default
+      // so switching to SSH pre-fills 22 and back fills 5900.
+      final defaults = {Machine.kindVnc: '5900', Machine.kindSsh: '22'};
+      if (_port.text.trim() == defaults[_kind]) {
+        _port.text = defaults[kind]!;
+      }
+      _kind = kind;
+    });
   }
 
   Future<void> _submit() async {
@@ -272,16 +325,26 @@ class _MachineDialogState extends State<_MachineDialog> {
           ? await state.updateMachine(
               widget.machine!.id,
               name: _name.text,
+              kind: _kind,
               host: _host.text,
               port: int.parse(_port.text.trim()),
+              sshUser: _isSsh ? _user.text : null,
               password: _password.text,
+              sshKey: _isSsh ? _sshKey.text : null,
               clearPassword: _clearPassword,
+              // The clear-key flag is only meaningful while the ssh scope
+              // is selected; switching to VNC must not wipe the stored key.
+              clearSshKey: _isSsh && _clearSshKey,
+              resetFingerprint: _isSsh && _resetFingerprint,
             )
           : await state.createMachine(
               name: _name.text,
+              kind: _kind,
               host: _host.text,
               port: int.parse(_port.text.trim()),
+              sshUser: _isSsh ? _user.text : null,
               password: _password.text,
+              sshKey: _isSsh ? _sshKey.text : null,
             );
       if (!mounted) return;
       if (error != null) {
@@ -320,6 +383,7 @@ class _MachineDialogState extends State<_MachineDialog> {
     }
 
     final hasStoredPassword = widget.machine?.hasPassword ?? false;
+    final hasStoredKey = widget.machine?.hasSshKey ?? false;
 
     return AlertDialog(
       title: Text(_editing ? l.machineEdit : l.machineAdd),
@@ -329,6 +393,26 @@ class _MachineDialogState extends State<_MachineDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              SegmentedButton<String>(
+                key: const Key('machine_kind'),
+                segments: [
+                  ButtonSegment(
+                    value: Machine.kindVnc,
+                    label: const Text('VNC'),
+                    icon: const Icon(Icons.computer, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: Machine.kindSsh,
+                    label: const Text('SSH'),
+                    icon: const Icon(Icons.terminal, size: 16),
+                  ),
+                ],
+                selected: {_kind},
+                onSelectionChanged: _loading
+                    ? null
+                    : (s) => _setKind(s.first),
+              ),
+              const SizedBox(height: 8),
               TextFormField(
                 key: const Key('machine_name'),
                 controller: _name,
@@ -341,7 +425,7 @@ class _MachineDialogState extends State<_MachineDialog> {
                 controller: _host,
                 decoration: InputDecoration(
                   labelText: l.machineHost,
-                  hintText: l.machineHostHint,
+                  hintText: _isSsh ? l.machineHostSshHint : l.machineHostHint,
                 ),
                 validator: validateHost,
                 enabled: !_loading,
@@ -355,6 +439,14 @@ class _MachineDialogState extends State<_MachineDialog> {
                 validator: validatePort,
                 enabled: !_loading,
               ),
+              if (_isSsh)
+                TextFormField(
+                  key: const Key('machine_ssh_user'),
+                  controller: _user,
+                  decoration: InputDecoration(labelText: l.machineUser),
+                  validator: validateRequired,
+                  enabled: !_loading,
+                ),
               TextFormField(
                 key: const Key('machine_password'),
                 controller: _password,
@@ -381,6 +473,58 @@ class _MachineDialogState extends State<_MachineDialog> {
                       ? null
                       : (v) => setState(() => _clearPassword = v ?? false),
                 ),
+              if (_isSsh)
+                TextFormField(
+                  key: const Key('machine_ssh_key'),
+                  controller: _sshKey,
+                  decoration: InputDecoration(
+                    labelText: l.machineSshKey,
+                    helperText: _editing && hasStoredKey
+                        ? l.machineSshKeyKeep
+                        : null,
+                  ),
+                  maxLines: 3,
+                  enabled: !_loading && !_clearSshKey,
+                ),
+              if (_isSsh && _editing && hasStoredKey)
+                CheckboxListTile(
+                  key: const Key('machine_clear_ssh_key'),
+                  value: _clearSshKey,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(
+                    l.machineSshKeyClear,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  onChanged: _loading
+                      ? null
+                      : (v) => setState(() => _clearSshKey = v ?? false),
+                ),
+              if (_isSsh && _editing && widget.machine!.sshFingerprint.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    l.machinePinnedKey(widget.machine!.sshFingerprint),
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                CheckboxListTile(
+                  key: const Key('machine_reset_fingerprint'),
+                  value: _resetFingerprint,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(
+                    l.machineResetFingerprint,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  onChanged: _loading
+                      ? null
+                      : (v) =>
+                          setState(() => _resetFingerprint = v ?? false),
+                ),
+              ],
               if (_error.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(

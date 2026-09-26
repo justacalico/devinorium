@@ -10,7 +10,7 @@ mixin MachinesStore on AppStateBase {
   List<Machine> get machines => _machines;
 
   /// Pull `GET /api/machines` for the active server. Owner-only: machine
-  /// references mint VNC control grants, so non-owners keep an empty list
+  /// references mint control grants, so non-owners keep an empty list
   /// and the `@` picker stays shut. The seq guard keeps a response from the
   /// previous server from landing after a switch.
   @override
@@ -32,38 +32,55 @@ mixin MachinesStore on AppStateBase {
   @override
   Future<String?> createMachine({
     required String name,
+    required String kind,
     required String host,
     required int port,
+    String? sshUser,
     String? password,
+    String? sshKey,
   }) => _mutateMachines(
     () => api.createMachine(
       name: name,
+      kind: kind,
       host: host,
       port: port,
+      sshUser: sshUser,
       password: password,
+      sshKey: sshKey,
     ),
   );
 
   /// Edit a machine (owner only). Null fields keep their stored values;
-  /// [clearPassword] drops the stored VNC password. Returns an error string
-  /// on failure.
+  /// [clearPassword]/[clearSshKey] drop the stored secrets. Returns an
+  /// error string on failure.
   @override
   Future<String?> updateMachine(
     int id, {
     String? name,
+    String? kind,
     String? host,
     int? port,
+    String? sshUser,
     String? password,
+    String? sshKey,
     bool clearPassword = false,
+    bool clearSshKey = false,
+    bool resetFingerprint = false,
   }) => _mutateMachines(
     () => api.updateMachine(
       id,
       name: name,
+      kind: kind,
       host: host,
       port: port,
+      sshUser: sshUser,
       password: clearPassword
           ? ''
           : (password == null || password.isEmpty ? null : password),
+      sshKey: clearSshKey
+          ? ''
+          : (sshKey == null || sshKey.trim().isEmpty ? null : sshKey),
+      sshFingerprint: resetFingerprint ? '' : null,
     ),
   );
 
@@ -73,21 +90,21 @@ mixin MachinesStore on AppStateBase {
       _mutateMachines(() => api.deleteMachine(id));
 
   Future<String?> _mutateMachines(Future<Object?> Function() op) async {
-    final seq = _machinesSeq;
     try {
       await op();
       await loadMachines();
       return null;
     } on ApiException catch (e) {
-      return seq != _machinesSeq ? null : e.message;
+      return e.message;
     } catch (e) {
-      return seq != _machinesSeq ? null : '$e';
+      return '$e';
     }
   }
 
-  /// Probe the machine's VNC endpoint (owner only). The result carries the
-  /// framebuffer geometry on success or the failure string; transport-level
-  /// errors are folded into a failed result so the UI has one shape.
+  /// Probe the machine's endpoint (owner only). The result carries the
+  /// framebuffer geometry (VNC) or remote hostname (SSH) on success, or
+  /// the failure string; transport-level errors are folded into a failed
+  /// result so the UI has one shape.
   @override
   Future<MachineTestResult> testMachine(int id) async {
     try {

@@ -20,11 +20,19 @@ class _ThrowingClient implements BaseApiClient {
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
-Machine _machine(int id, String name, {String host = '10.0.0.1'}) => Machine(
+Machine _machine(
+  int id,
+  String name, {
+  String host = '10.0.0.1',
+  String kind = Machine.kindVnc,
+  String sshUser = '',
+}) => Machine(
   id: id,
   name: name,
+  kind: kind,
   host: host,
-  port: 5900,
+  port: kind == Machine.kindSsh ? 22 : 5900,
+  sshUser: sshUser,
   hasPassword: true,
   createdAt: 'now',
   updatedAt: 'now',
@@ -51,22 +59,31 @@ class _MachinesApi extends ApiService {
   @override
   Future<Machine> createMachine({
     required String name,
+    required String kind,
     required String host,
     required int port,
+    String? sshUser,
     String? password,
+    String? sshKey,
   }) async {
     created.add({
       'name': name,
+      'kind': kind,
       'host': host,
       'port': port,
+      'ssh_user': sshUser,
       'password': password,
+      'ssh_key': sshKey,
     });
     final m = Machine(
       id: machineList.length + 1,
       name: name.trim(),
+      kind: kind,
       host: host.trim(),
       port: port,
+      sshUser: sshUser ?? '',
       hasPassword: password != null && password.isNotEmpty,
+      hasSshKey: sshKey != null && sshKey.trim().isNotEmpty,
     );
     machineList.add(m);
     return m;
@@ -76,24 +93,36 @@ class _MachinesApi extends ApiService {
   Future<Machine> updateMachine(
     int id, {
     String? name,
+    String? kind,
     String? host,
     int? port,
+    String? sshUser,
     String? password,
+    String? sshKey,
+    String? sshFingerprint,
   }) async {
     updated[id] = {
       'name': name,
+      'kind': kind,
       'host': host,
       'port': port,
+      'ssh_user': sshUser,
       'password': password,
+      'ssh_key': sshKey,
+      'ssh_fingerprint': sshFingerprint,
     };
     final i = machineList.indexWhere((m) => m.id == id);
     final old = machineList[i];
     final m = Machine(
       id: id,
       name: name?.trim() ?? old.name,
+      kind: kind ?? old.kind,
       host: host?.trim() ?? old.host,
       port: port ?? old.port,
+      sshUser: sshUser ?? old.sshUser,
+      sshFingerprint: sshFingerprint ?? old.sshFingerprint,
       hasPassword: password == null ? old.hasPassword : password.isNotEmpty,
+      hasSshKey: sshKey == null ? old.hasSshKey : sshKey.isNotEmpty,
     );
     machineList[i] = m;
     return m;
@@ -219,6 +248,7 @@ void main() {
       final m = Machine.fromJson({
         'id': 3,
         'name': 'gaming pc',
+        'kind': 'vnc',
         'host': 'vnc.local',
         'port': 5901,
         'has_password': true,
@@ -227,15 +257,36 @@ void main() {
       });
       expect(m.id, 3);
       expect(m.name, 'gaming pc');
+      expect(m.kind, 'vnc');
+      expect(m.isSsh, isFalse);
       expect(m.host, 'vnc.local');
       expect(m.port, 5901);
       expect(m.hasPassword, isTrue);
+      expect(m.endpoint, 'vnc.local:5901');
+    });
+
+    test('parses ssh fields and formats the endpoint', () {
+      final m = Machine.fromJson({
+        'id': 4,
+        'name': 'deploy box',
+        'kind': 'ssh',
+        'host': '10.0.0.9',
+        'port': 22,
+        'ssh_user': 'deploy',
+        'has_ssh_key': true,
+      });
+      expect(m.isSsh, isTrue);
+      expect(m.sshUser, 'deploy');
+      expect(m.hasSshKey, isTrue);
+      expect(m.endpoint, 'deploy@10.0.0.9:22');
     });
 
     test('defaults port and flags when absent', () {
       final m = Machine.fromJson({'id': 1});
       expect(m.port, 5900);
+      expect(m.kind, 'vnc');
       expect(m.hasPassword, isFalse);
+      expect(m.hasSshKey, isFalse);
       expect(m.name, '');
     });
 
@@ -372,6 +423,7 @@ void main() {
 
       final error = await state.createMachine(
         name: '  ws ',
+        kind: 'vnc',
         host: ' vnc.local ',
         port: 5901,
         password: 'pw',
@@ -380,8 +432,34 @@ void main() {
       // The store passes the raw field values through; trimming happens in
       // ApiService, which this fake bypasses.
       expect(api.created.single['name'], '  ws ');
+      expect(api.created.single['kind'], 'vnc');
       expect(state.machines.single.name, 'ws');
       expect(state.machines.single.hasPassword, isTrue);
+    });
+
+    test('updateMachine clears a stored ssh key on flag', () async {
+      final api = _MachinesApi()
+        ..machineList = [
+          Machine(
+            id: 1,
+            name: 'box',
+            kind: 'ssh',
+            host: 'h',
+            port: 22,
+            sshUser: 'agent',
+            hasSshKey: true,
+          ),
+        ];
+      final state = AppState.test(api: api, user: _owner());
+      addTearDown(state.dispose);
+
+      await state.updateMachine(1, sshKey: 'new key');
+      expect(api.updated[1]!['ssh_key'], 'new key');
+      expect(state.machines.single.hasSshKey, isTrue);
+
+      await state.updateMachine(1, clearSshKey: true);
+      expect(api.updated[1]!['ssh_key'], '');
+      expect(state.machines.single.hasSshKey, isFalse);
     });
 
     test(
@@ -764,10 +842,82 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.created.single['name'], 'gaming pc');
+      expect(api.created.single['kind'], 'vnc');
       expect(api.created.single['host'], 'vnc://10.0.0.9');
       expect(api.created.single['port'], 5901);
       expect(api.created.single['password'], 'secret');
       expect(find.text('gaming pc'), findsOneWidget);
+    });
+
+    testWidgets('ssh scope shows its fields and posts the ssh shape', (
+      tester,
+    ) async {
+      bigSurface(tester);
+      final api = _MachinesApi();
+      final state = AppState.test(
+        api: api,
+        user: _owner(),
+        settingsTopicIndex: 7,
+      );
+      addTearDown(state.dispose);
+
+      await tester.pumpWidget(settings(state));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('machine_add')));
+      await tester.pumpAndSettle();
+
+      // VNC is the default scope; ssh-only fields stay hidden.
+      expect(find.byKey(const Key('machine_ssh_user')), findsNothing);
+      expect(find.byKey(const Key('machine_ssh_key')), findsNothing);
+
+      await tester.tap(find.text('SSH'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('machine_ssh_user')), findsOneWidget);
+      expect(find.byKey(const Key('machine_ssh_key')), findsOneWidget);
+      // The port field followed the scope default.
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('machine_port')))
+            .controller!
+            .text,
+        '22',
+      );
+
+      // Username is required for ssh machines.
+      await tester.enterText(
+        find.byKey(const Key('machine_name')),
+        'deploy box',
+      );
+      await tester.enterText(
+        find.byKey(const Key('machine_host')),
+        'ssh://deploy@10.0.0.9',
+      );
+      await tester.tap(find.byKey(const Key('machine_save')));
+      await tester.pumpAndSettle();
+      expect(find.text('Required'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('machine_ssh_user')),
+        'deploy',
+      );
+      await tester.enterText(
+        find.byKey(const Key('machine_ssh_key')),
+        '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
+      );
+      await tester.tap(find.byKey(const Key('machine_save')));
+      await tester.pumpAndSettle();
+
+      expect(api.created.single['kind'], 'ssh');
+      expect(api.created.single['port'], 22);
+      expect(api.created.single['ssh_user'], 'deploy');
+      expect(
+        api.created.single['ssh_key'],
+        contains('PRIVATE KEY'),
+      );
+      expect(find.text('deploy box'), findsOneWidget);
+      expect(find.byIcon(Icons.terminal), findsWidgets);
     });
 
     testWidgets('test button reports the probe result', (tester) async {

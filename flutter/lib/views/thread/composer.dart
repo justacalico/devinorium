@@ -257,7 +257,7 @@ class _ComposerState extends State<_Composer> {
   }
 
   void _updateMachinePicker(String text, AppState state) {
-    // Machine references mint VNC control grants — owner-only.
+    // Machine references mint control grants — owner-only.
     if (!state.isOwner) return;
     final sel = widget.controller.selection;
     final caret = sel.isValid ? sel.baseOffset : text.length;
@@ -294,7 +294,8 @@ class _ComposerState extends State<_Composer> {
         if (!referenced.contains(m.id) &&
             (q.isEmpty ||
                 m.name.toLowerCase().contains(q) ||
-                m.host.toLowerCase().contains(q)))
+                m.host.toLowerCase().contains(q) ||
+                m.sshUser.toLowerCase().contains(q)))
           m,
     ];
   }
@@ -327,7 +328,11 @@ class _ComposerState extends State<_Composer> {
     );
     _updateComposerFromText(newText, state);
     state.addMachineReference(
-      MachineReference(id: machine.id, name: machine.name),
+      MachineReference(
+        id: machine.id,
+        name: machine.name,
+        kind: machine.kind,
+      ),
     );
     setState(() {
       _machineQuery = null;
@@ -633,8 +638,11 @@ class _ComposerState extends State<_Composer> {
                                       key: Key(
                                         'machine_ref_${model.machineReferences[i].id}',
                                       ),
-                                      avatar: const Icon(
-                                        Icons.computer,
+                                      avatar: Icon(
+                                        model.machineReferences[i].kind ==
+                                                Machine.kindSsh
+                                            ? Icons.terminal
+                                            : Icons.computer,
                                         size: 14,
                                       ),
                                       label: ConstrainedBox(
@@ -1139,6 +1147,12 @@ class _MachinePicker extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Row(
                           children: [
+                            Icon(
+                              m.isSsh ? Icons.terminal : Icons.computer,
+                              size: 14,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 m.name,
@@ -1149,7 +1163,7 @@ class _MachinePicker extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '${m.host}:${m.port}',
+                              m.endpoint,
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                                 fontFamily: 'monospace',

@@ -46,6 +46,10 @@ class Attachment {
   /// For path refs: whether the referenced path is a directory.
   final bool isDir;
 
+  /// For machine refs: the machine's scope (`vnc` or `ssh`), empty for
+  /// anything else.
+  final String machineKind;
+
   Attachment({
     required this.filename,
     required this.size,
@@ -56,6 +60,7 @@ class Attachment {
     this.isThreadRef = false,
     this.isMachineRef = false,
     this.isDir = false,
+    this.machineKind = '',
   });
 
   bool get isImage => isImageMime(mime);
@@ -70,6 +75,7 @@ class Attachment {
     isThreadRef: isThreadRef,
     isMachineRef: isMachineRef,
     isDir: isDir,
+    machineKind: machineKind,
   );
 
   factory Attachment.fromJson(Map<String, dynamic> j) => Attachment(
@@ -81,6 +87,9 @@ class Attachment {
     isThreadRef: j['kind'] == 'thread',
     isMachineRef: j['kind'] == 'machine',
     isDir: j['is_dir'] as bool? ?? false,
+    machineKind: j['kind'] == 'machine'
+        ? j['machine_kind'] as String? ?? ''
+        : '',
   );
 
   @override
@@ -94,7 +103,8 @@ class Attachment {
         isPathRef == other.isPathRef &&
         isThreadRef == other.isThreadRef &&
         isMachineRef == other.isMachineRef &&
-        isDir == other.isDir;
+        isDir == other.isDir &&
+        machineKind == other.machineKind;
   }
 
   @override
@@ -107,5 +117,6 @@ class Attachment {
     isThreadRef,
     isMachineRef,
     isDir,
+    machineKind,
   );
 }

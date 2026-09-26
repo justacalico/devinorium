@@ -1677,7 +1677,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get machinesHint =>
-      'VNC machines this server can hand to an agent. Type @ in the composer to reference one; the thread can then remote-control it.';
+      'Machines this server can hand to an agent: VNC for screen control, SSH for a remote shell. Type @ in the composer to reference one.';
 
   @override
   String get machinesEmpty => 'No machines configured.';
@@ -1692,7 +1692,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get machineName => 'Name';
 
   @override
-  String get machineHost => 'VNC host';
+  String get machineHost => 'Host';
 
   @override
   String get machineHostHint => '192.168.1.10 or vnc://host';
@@ -1701,7 +1701,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get machinePort => 'Port';
 
   @override
-  String get machinePassword => 'VNC password';
+  String get machinePassword => 'Password';
 
   @override
   String get machinePasswordKeep => 'Leave blank to keep the stored password.';
@@ -1728,6 +1728,40 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String machineDeleteConfirm(String name) {
     return 'Delete \"$name\"? Threads can no longer remote-control it.';
+  }
+
+  @override
+  String get machineKind => 'Scope';
+
+  @override
+  String get machineUser => 'Username';
+
+  @override
+  String get machineHostSshHint => '192.168.1.10 or ssh://user@host';
+
+  @override
+  String get machineSshKey => 'Private key (optional)';
+
+  @override
+  String get machineSshKeyKeep => 'Leave blank to keep the stored key.';
+
+  @override
+  String get machineSshKeyClear => 'Clear stored key';
+
+  @override
+  String get machineHasSshKey => 'Private key saved';
+
+  @override
+  String machinePinnedKey(String fp) {
+    return 'Pinned host key $fp';
+  }
+
+  @override
+  String get machineResetFingerprint => 'Reset pinned host key';
+
+  @override
+  String machineTestOkSsh(String name) {
+    return 'Connected to $name';
   }
 
   @override

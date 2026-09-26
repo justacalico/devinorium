@@ -1156,7 +1156,7 @@ class ApiService {
 
   // ---- Machines ----
 
-  /// Machines configured on this server (VNC endpoints an agent can
+  /// Machines configured on this server (VNC/SSH endpoints an agent can
   /// remote-control when a message references them).
   Future<List<Machine>> machines() async {
     final list = await _client.getList('/api/machines');
@@ -1165,41 +1165,56 @@ class ApiService {
 
   Future<Machine> createMachine({
     required String name,
+    required String kind,
     required String host,
     required int port,
+    String? sshUser,
     String? password,
+    String? sshKey,
   }) async {
     final j = await _client.post('/api/machines', {
       'name': name.trim(),
+      'kind': kind,
       'host': host.trim(),
       'port': port,
+      if (sshUser != null && sshUser.isNotEmpty) 'ssh_user': sshUser.trim(),
       if (password != null && password.isNotEmpty) 'password': password,
+      if (sshKey != null && sshKey.trim().isNotEmpty) 'ssh_key': sshKey,
     });
     return Machine.fromJson(j);
   }
 
-  /// Update a machine. A null [password] keeps the stored one; an empty
-  /// string clears it; any other value replaces it.
+  /// Update a machine. Null fields keep their stored values; an empty
+  /// [password], [sshKey], or [sshUser] clears the stored value; any other
+  /// value replaces it.
   Future<Machine> updateMachine(
     int id, {
     String? name,
+    String? kind,
     String? host,
     int? port,
+    String? sshUser,
     String? password,
+    String? sshKey,
+    String? sshFingerprint,
   }) async {
     final j = await _client.patch('/api/machines/$id', {
       if (name != null) 'name': name.trim(),
+      'kind': ?kind,
       if (host != null) 'host': host.trim(),
       'port': ?port,
+      'ssh_user': ?sshUser,
       'password': ?password,
+      'ssh_key': ?sshKey,
+      'ssh_fingerprint': ?sshFingerprint,
     });
     return Machine.fromJson(j);
   }
 
   Future<void> deleteMachine(int id) => _client.delete('/api/machines/$id');
 
-  /// Probe the machine's VNC endpoint (owner only). Reports the negotiated
-  /// framebuffer size and desktop name on success.
+  /// Probe the machine's endpoint (owner only). VNC reports the negotiated
+  /// framebuffer size and desktop name; SSH reports the remote hostname.
   Future<MachineTestResult> testMachine(int id) async {
     final j = await _client.post('/api/machines/$id/test', const {});
     return MachineTestResult.fromJson(j);
