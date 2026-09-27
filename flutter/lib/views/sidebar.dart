@@ -107,6 +107,7 @@ String? _threadTag(AppState state, Thread thread) {
   }
   return backgroundThreadTag(
     running: isRunning,
+    unread: thread.unread,
     runStatus: state.threadRunStatus(thread.id),
     attention: state.threadRunAttention(thread.id),
     lastMessageRole: thread.lastMessageRole,

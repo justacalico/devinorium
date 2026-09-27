@@ -170,6 +170,10 @@ pub(super) async fn get_one(
     Path(id): Path<String>,
     Query(query): Query<GetThread>,
 ) -> Response {
+    // Fetching the detail means the user is looking at the thread, so the
+    // seen watermark moves first: the response already reports read, and
+    // output landing between the mark and the read still counts as unread.
+    let _ = state.db.mark_thread_viewed(&id, user.id).await;
     match state.db.get_thread(&id, user.id).await {
         Ok(Some(t)) => {
             let total = state.db.count_messages(&id).await.unwrap_or(0);
@@ -564,6 +568,24 @@ pub(super) async fn pin(
             Json(crate::api::ApiError::new("not found")),
         )
             .into_response(),
+        Err(e) => map_err_internal(e).into_response(),
+    }
+}
+
+/// Watermark the thread as seen: the "done" tag clears until new output
+/// arrives. Rows-matched doubles as the ownership check.
+pub(super) async fn mark_viewed(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.db.mark_thread_viewed(&id, user.id).await {
+        Ok(0) => (
+            StatusCode::NOT_FOUND,
+            Json(crate::api::ApiError::new("not found")),
+        )
+            .into_response(),
+        Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => map_err_internal(e).into_response(),
     }
 }

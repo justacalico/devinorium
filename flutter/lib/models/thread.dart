@@ -146,6 +146,12 @@ class Thread {
   /// tag for threads that have no live run event to go by.
   final String? lastMessageRole;
 
+  /// True while the thread holds unseen output. The sidebar's "done" tag is
+  /// only shown for unread threads, so opening one clears the badge until a
+  /// new result lands. Defaults to true so older servers without the field
+  /// keep the previous always-shown behavior.
+  final bool unread;
+
   Thread({
     required this.id,
     required this.title,
@@ -166,6 +172,7 @@ class Thread {
     this.linkedMr,
     this.maxOutputTokens,
     this.lastMessageRole,
+    this.unread = true,
   });
 
   factory Thread.fromJson(Map<String, dynamic> j) => Thread(
@@ -188,6 +195,7 @@ class Thread {
     linkedMr: _parseLinkedMr(j['linked_mr']),
     maxOutputTokens: (j['max_output_tokens'] as num?)?.toInt(),
     lastMessageRole: j['last_message_role'] as String?,
+    unread: j['unread'] as bool? ?? true,
   );
 
   /// A short display name for the thread's active worktree.
@@ -210,6 +218,7 @@ class Thread {
     String? title,
     String? updatedAt,
     bool? pinned,
+    bool? unread,
     String? envMode,
     LinkedMergeRequestRef? linkedMr,
     Object? linkedMrOrNull = const _Unset(),
@@ -242,6 +251,7 @@ class Thread {
         ? this.maxOutputTokens
         : (maxOutputTokens as int?),
     lastMessageRole: lastMessageRole,
+    unread: unread ?? this.unread,
   );
 
   @override
@@ -266,7 +276,8 @@ class Thread {
         updatedAt == other.updatedAt &&
         linkedMr == other.linkedMr &&
         maxOutputTokens == other.maxOutputTokens &&
-        lastMessageRole == other.lastMessageRole;
+        lastMessageRole == other.lastMessageRole &&
+        unread == other.unread;
   }
 
   @override
@@ -290,6 +301,7 @@ class Thread {
     linkedMr,
     maxOutputTokens,
     lastMessageRole,
+    unread,
   );
 }
 

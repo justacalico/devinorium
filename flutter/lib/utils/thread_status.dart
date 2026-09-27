@@ -67,8 +67,13 @@ String? activeThreadTag({
 /// Status tag for a thread that is not currently open. Live values come from
 /// the global run-events stream; when no event is known the thread's last
 /// persisted message role stands in so cold tiles still show a tag.
+///
+/// [unread] is the server's seen-watermark flag: it gates "done" so a thread
+/// the user already opened stops asking for attention until new output
+/// arrives. Failure and stop tags stay put either way.
 String? backgroundThreadTag({
   required bool running,
+  required bool unread,
   String? runStatus,
   String? attention,
   String? lastMessageRole,
@@ -82,9 +87,11 @@ String? backgroundThreadTag({
   }
   if (runStatus == 'failed') return 'failed';
   if (runStatus == 'stopped') return 'stopped';
-  if (runStatus == 'completed') return 'done';
+  // A completed run asks for attention only until the thread is opened;
+  // once read, the persisted message role decides like any cold tile.
+  if (runStatus == 'completed' && unread) return 'done';
   return switch (lastMessageRole) {
-    'assistant' => 'done',
+    'assistant' => unread ? 'done' : null,
     'error' => 'failed',
     'user' => 'working',
     _ => null,

@@ -39,6 +39,7 @@ pub fn router() -> Router<AppState> {
                 .delete(routes::delete),
         )
         .route("/api/threads/:id/pin", post(routes::pin))
+        .route("/api/threads/:id/viewed", post(routes::mark_viewed))
         .route("/api/threads/:id/context", get(context::get_context))
         .route(
             "/api/threads/:id/context/reset",
@@ -105,6 +106,10 @@ pub struct ThreadOut {
     /// Role of the newest persisted message. The sidebar uses it to show a
     /// status tag for threads that have no live run event to go by.
     pub last_message_role: Option<String>,
+    /// True while the thread holds a result the user has not opened yet.
+    /// The sidebar shows the "done" tag only for unread threads, so opening
+    /// one clears the badge until new output arrives.
+    pub unread: bool,
 }
 
 impl From<ThreadRow> for ThreadOut {
@@ -132,6 +137,7 @@ impl From<ThreadRow> for ThreadOut {
             linked_mr,
             max_output_tokens: t.max_output_tokens.and_then(|v| u64::try_from(v).ok()),
             last_message_role: t.last_message_role,
+            unread: t.unread,
         }
     }
 }
@@ -375,9 +381,11 @@ mod tests {
             pinned: true,
             title_user_set: true,
             linked_mr: None,
+            viewed_message_id: 0,
             max_output_tokens: None,
             context_cleared_seq: 0,
             last_message_role: Some("assistant".into()),
+            unread: true,
         };
         let out = ThreadOut::from(row);
         assert_eq!(out.id, "th-1");

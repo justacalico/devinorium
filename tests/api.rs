@@ -1078,6 +1078,115 @@ async fn thread_unpin_success() {
     assert!(body.contains(r#""pinned":false"#), "body: {body}");
 }
 
+/// Insert one message with the given role directly into the database.
+async fn seed_message(db: &db::Db, thread_id: &str, role: &str) {
+    sqlx::query(
+        "INSERT INTO messages (thread_id, role, content, thinking, parts, attachments, model, turn_id, seq)
+         VALUES (?, ?, 'm', NULL, '[]', '[]', '', 1, 1)",
+    )
+    .bind(thread_id)
+    .bind(role)
+    .execute(db.pool())
+    .await
+    .expect("insert message");
+}
+
+/// Read the `unread` flag off the thread list payload. The detail endpoint
+/// watermarks a thread as seen on fetch, so it cannot be used to observe
+/// the flag.
+async fn thread_unread(app: &Router, cookie: &str, tid: &str) -> bool {
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let list: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+    list.iter().find(|t| t["id"] == tid).unwrap()["unread"]
+        .as_bool()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn thread_viewed_watermark_tracks_unread_output() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // An empty thread, and one holding only a user prompt, are not unread.
+    assert!(!thread_unread(&app, &cookie, &tid).await);
+    seed_message(&db, &tid, "user").await;
+    assert!(!thread_unread(&app, &cookie, &tid).await);
+
+    // An assistant reply flags the thread as unread.
+    seed_message(&db, &tid, "assistant").await;
+    assert!(thread_unread(&app, &cookie, &tid).await);
+
+    // Marking the thread viewed clears the flag.
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "POST",
+        &format!("/api/threads/{tid}/viewed"),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!thread_unread(&app, &cookie, &tid).await);
+
+    // Fetching the thread detail (what the UI does when a thread is opened)
+    // clears it too: the response reports read and the flag stays down.
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", &format!("/api/threads/{tid}"), &cookie, ""))
+        .await
+        .unwrap();
+    let body = body_str(resp.into_body()).await;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["thread"]["unread"],
+        serde_json::Value::Bool(false),
+        "body: {body}"
+    );
+
+    // Output landing after the watermark flags it again.
+    seed_message(&db, &tid, "assistant").await;
+    assert!(thread_unread(&app, &cookie, &tid).await);
+}
+
+#[tokio::test]
+async fn thread_viewed_requires_an_existing_owned_thread() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    // An unknown thread id is a 404.
+    let status = request_status(
+        app.clone(),
+        &cookie,
+        "POST",
+        "/api/threads/does-not-exist/viewed",
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Another user's thread is a 404 as well.
+    create_user(&app, &cookie, "other", "otherpass123").await;
+    let other = login_as(&app, "other", "otherpass123").await;
+    let status = request_status(
+        app.clone(),
+        &other,
+        "POST",
+        &format!("/api/threads/{tid}/viewed"),
+        "",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn thread_no_op_pin_does_not_update_updated_at() {
     let (app, _db) = make_app().await;

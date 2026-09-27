@@ -69,7 +69,11 @@ impl super::Db {
         offset: i64,
     ) -> anyhow::Result<Vec<ThreadRow>> {
         let mut sql =
-            "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role
+            "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role,
+             EXISTS(SELECT 1 FROM messages unseen
+                    WHERE unseen.thread_id = threads.id
+                      AND unseen.role IN ('assistant', 'error')
+                      AND unseen.id > threads.viewed_message_id) AS unread
              FROM threads WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC, id DESC"
                 .to_string();
         if let Some(l) = limit {
@@ -84,7 +88,11 @@ impl super::Db {
 
     pub async fn get_thread(&self, id: &str, user_id: i64) -> anyhow::Result<Option<ThreadRow>> {
         sqlx::query_as::<_, ThreadRow>(
-            "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role
+            "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role,
+             EXISTS(SELECT 1 FROM messages unseen
+                    WHERE unseen.thread_id = threads.id
+                      AND unseen.role IN ('assistant', 'error')
+                      AND unseen.id > threads.viewed_message_id) AS unread
              FROM threads WHERE id = ? AND user_id = ?",
         )
             .bind(id)
@@ -128,6 +136,24 @@ impl super::Db {
             anyhow::bail!("thread provider changed while the session was starting");
         }
         Ok(())
+    }
+
+    /// Watermark the thread as seen by its owner: the viewed message id moves
+    /// to whatever is newest right now. `updated_at` is left alone so simply
+    /// viewing a thread does not reorder the sidebar. Returns the matched
+    /// row count; zero means no such thread.
+    pub async fn mark_thread_viewed(&self, id: &str, user_id: i64) -> anyhow::Result<u64> {
+        let changed = sqlx::query(
+            "UPDATE threads
+             SET viewed_message_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE thread_id = ?)
+             WHERE id = ? AND user_id = ?",
+        )
+        .bind(id)
+        .bind(id)
+        .bind(user_id)
+        .execute(self.pool())
+        .await?;
+        Ok(changed.rows_affected())
     }
 
     pub async fn touch_thread(&self, id: &str) -> anyhow::Result<()> {
