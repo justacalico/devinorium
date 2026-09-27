@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.90.0 - 2026-09-27
+#### Features
+- 添加 SSH 机器支持 - (5557161) - HttpAnimations
+#### Bug Fixes
+- 固定 pageant 版本兼容 Windows 工具链 - (a6c169b) - HttpAnimations
+- 锁定 aes 版本兼容 CI 工具链 - (c93a25d) - HttpAnimations
+- 固定 russh 版本兼容旧版 rustc - (b55af9c) - HttpAnimations
+
+- - -
+
 ## v0.89.0 - 2026-09-25
 #### Features
 - 侧边栏支持按线程状态筛选 - (cf32da9) - HttpAnimations
