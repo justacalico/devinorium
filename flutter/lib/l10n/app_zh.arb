@@ -1038,7 +1038,7 @@
   "@machines": {
     "description": "Machines section title under server settings"
   },
-  "machinesHint": "此服务器可交给 AI 远程控制的 VNC 机器。在输入框中输入 @ 引用一台机器后，该线程即可远程控制它。",
+  "machinesHint": "此服务器可交给 AI 的机器：VNC 用于屏幕控制，SSH 用于远程命令行。在输入框中输入 @ 即可引用一台机器。",
   "@machinesHint": {
     "description": "Description under the Machines settings title"
   },
@@ -1058,7 +1058,7 @@
   "@machineName": {
     "description": "Label for the machine name field"
   },
-  "machineHost": "VNC 地址",
+  "machineHost": "主机",
   "@machineHost": {
     "description": "Label for the machine host field"
   },
@@ -1070,7 +1070,7 @@
   "@machinePort": {
     "description": "Label for the machine port field"
   },
-  "machinePassword": "VNC 密码",
+  "machinePassword": "密码",
   "@machinePassword": {
     "description": "Label for the machine password field"
   },
@@ -1117,6 +1117,56 @@
   "machineDeleteConfirm": "删除 \"{name}\"？线程将无法再远程控制它。",
   "@machineDeleteConfirm": {
     "description": "Confirmation before deleting a machine",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "machineKind": "范围",
+  "@machineKind": {
+    "description": "Label for the machine scope (VNC or SSH) selector"
+  },
+  "machineUser": "用户名",
+  "@machineUser": {
+    "description": "Label for the SSH username field"
+  },
+  "machineHostSshHint": "192.168.1.10 或 ssh://user@host",
+  "@machineHostSshHint": {
+    "description": "Placeholder for the machine host field on ssh machines"
+  },
+  "machineSshKey": "私钥（可选）",
+  "@machineSshKey": {
+    "description": "Label for the SSH private key field"
+  },
+  "machineSshKeyKeep": "留空则保留已保存的私钥",
+  "@machineSshKeyKeep": {
+    "description": "Helper under the key field when editing a machine"
+  },
+  "machineSshKeyClear": "清除已保存的私钥",
+  "@machineSshKeyClear": {
+    "description": "Checkbox that removes the stored SSH private key"
+  },
+  "machinePinnedKey": "已固定主机密钥 {fp}",
+  "@machinePinnedKey": {
+    "description": "已固定的 SSH 主机密钥指纹",
+    "placeholders": {
+      "fp": {
+        "type": "String"
+      }
+    }
+  },
+  "machineResetFingerprint": "重置已固定的主机密钥",
+  "@machineResetFingerprint": {
+    "description": "清除已固定的 SSH 主机密钥，下次连接时重新学习"
+  },
+  "machineHasSshKey": "已保存私钥",
+  "@machineHasSshKey": {
+    "description": "Badge shown on a machine that has a stored SSH key"
+  },
+  "machineTestOkSsh": "已连接 {name}",
+  "@machineTestOkSsh": {
+    "description": "Result of a successful ssh machine connection probe",
     "placeholders": {
       "name": {
         "type": "String"

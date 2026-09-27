@@ -2993,7 +2993,7 @@ abstract class AppLocalizations {
   /// Description under the Machines settings title
   ///
   /// In en, this message translates to:
-  /// **'VNC machines this server can hand to an agent. Type @ in the composer to reference one; the thread can then remote-control it.'**
+  /// **'Machines this server can hand to an agent: VNC for screen control, SSH for a remote shell. Type @ in the composer to reference one.'**
   String get machinesHint;
 
   /// Shown when the server has no machines
@@ -3023,7 +3023,7 @@ abstract class AppLocalizations {
   /// Label for the machine host field
   ///
   /// In en, this message translates to:
-  /// **'VNC host'**
+  /// **'Host'**
   String get machineHost;
 
   /// Placeholder for the machine host field
@@ -3041,7 +3041,7 @@ abstract class AppLocalizations {
   /// Label for the machine password field
   ///
   /// In en, this message translates to:
-  /// **'VNC password'**
+  /// **'Password'**
   String get machinePassword;
 
   /// Helper under the password field when editing a machine
@@ -3056,13 +3056,13 @@ abstract class AppLocalizations {
   /// **'Clear stored password'**
   String get machinePasswordClear;
 
-  /// Badge shown on a machine that has a stored VNC password
+  /// Badge shown on a machine that has a stored password
   ///
   /// In en, this message translates to:
   /// **'Password saved'**
   String get machineHasPassword;
 
-  /// Button that probes a machine's VNC handshake
+  /// Button that probes a machine's endpoint
   ///
   /// In en, this message translates to:
   /// **'Test connection'**
@@ -3085,6 +3085,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete \"{name}\"? Threads can no longer remote-control it.'**
   String machineDeleteConfirm(String name);
+
+  /// Label for the machine scope (VNC or SSH) selector
+  ///
+  /// In en, this message translates to:
+  /// **'Scope'**
+  String get machineKind;
+
+  /// Label for the SSH username field
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get machineUser;
+
+  /// Placeholder for the machine host field on ssh machines
+  ///
+  /// In en, this message translates to:
+  /// **'192.168.1.10 or ssh://user@host'**
+  String get machineHostSshHint;
+
+  /// Label for the SSH private key field
+  ///
+  /// In en, this message translates to:
+  /// **'Private key (optional)'**
+  String get machineSshKey;
+
+  /// Helper under the key field when editing a machine
+  ///
+  /// In en, this message translates to:
+  /// **'Leave blank to keep the stored key.'**
+  String get machineSshKeyKeep;
+
+  /// Checkbox that removes the stored SSH private key
+  ///
+  /// In en, this message translates to:
+  /// **'Clear stored key'**
+  String get machineSshKeyClear;
+
+  /// Badge shown on a machine that has a stored SSH key
+  ///
+  /// In en, this message translates to:
+  /// **'Private key saved'**
+  String get machineHasSshKey;
+
+  /// Fingerprint of the pinned SSH host key
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned host key {fp}'**
+  String machinePinnedKey(String fp);
+
+  /// Checkbox that clears the pinned SSH host key so the next connection re-learns it
+  ///
+  /// In en, this message translates to:
+  /// **'Reset pinned host key'**
+  String get machineResetFingerprint;
+
+  /// Result of a successful ssh machine connection probe
+  ///
+  /// In en, this message translates to:
+  /// **'Connected to {name}'**
+  String machineTestOkSsh(String name);
 
   /// Header of the @ machine picker in the composer
   ///

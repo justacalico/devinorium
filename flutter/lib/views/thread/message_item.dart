@@ -681,7 +681,7 @@ Widget _attachmentChip(ThemeData theme, Attachment a) {
   return Chip(
     avatar: Icon(
       a.isMachineRef
-          ? Icons.computer
+          ? (a.machineKind == 'ssh' ? Icons.terminal : Icons.computer)
           : a.isThreadRef
           ? Icons.chat_bubble_outline
           : a.isPathRef

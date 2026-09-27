@@ -692,17 +692,25 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadMachines();
   Future<String?> createMachine({
     required String name,
+    required String kind,
     required String host,
     required int port,
+    String? sshUser,
     String? password,
+    String? sshKey,
   });
   Future<String?> updateMachine(
     int id, {
     String? name,
+    String? kind,
     String? host,
     int? port,
+    String? sshUser,
     String? password,
+    String? sshKey,
     bool clearPassword,
+    bool clearSshKey,
+    bool resetFingerprint,
   });
   Future<String?> deleteMachine(int id);
   Future<MachineTestResult> testMachine(int id);

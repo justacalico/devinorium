@@ -1599,7 +1599,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get machinesHint =>
-      '此服务器可交给 AI 远程控制的 VNC 机器。在输入框中输入 @ 引用一台机器后，该线程即可远程控制它。';
+      '此服务器可交给 AI 的机器：VNC 用于屏幕控制，SSH 用于远程命令行。在输入框中输入 @ 即可引用一台机器。';
 
   @override
   String get machinesEmpty => '未配置机器';
@@ -1614,7 +1614,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get machineName => '名称';
 
   @override
-  String get machineHost => 'VNC 地址';
+  String get machineHost => '主机';
 
   @override
   String get machineHostHint => '192.168.1.10 或 vnc://host';
@@ -1623,7 +1623,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get machinePort => '端口';
 
   @override
-  String get machinePassword => 'VNC 密码';
+  String get machinePassword => '密码';
 
   @override
   String get machinePasswordKeep => '留空则保留已保存的密码';
@@ -1650,6 +1650,40 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String machineDeleteConfirm(String name) {
     return '删除 \"$name\"？线程将无法再远程控制它。';
+  }
+
+  @override
+  String get machineKind => '范围';
+
+  @override
+  String get machineUser => '用户名';
+
+  @override
+  String get machineHostSshHint => '192.168.1.10 或 ssh://user@host';
+
+  @override
+  String get machineSshKey => '私钥（可选）';
+
+  @override
+  String get machineSshKeyKeep => '留空则保留已保存的私钥';
+
+  @override
+  String get machineSshKeyClear => '清除已保存的私钥';
+
+  @override
+  String get machineHasSshKey => '已保存私钥';
+
+  @override
+  String machinePinnedKey(String fp) {
+    return '已固定主机密钥 $fp';
+  }
+
+  @override
+  String get machineResetFingerprint => '重置已固定的主机密钥';
+
+  @override
+  String machineTestOkSsh(String name) {
+    return '已连接 $name';
   }
 
   @override

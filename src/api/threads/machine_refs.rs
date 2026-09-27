@@ -1,11 +1,11 @@
 //! Machine references: `@`-picked machines the user wants the agent to
-//! remote-control over VNC.
+//! remote-control over VNC or SSH.
 //!
 //! The frontend sends machine ids in the `machine_ids` multipart field (a
 //! JSON array of integers). Each id is resolved against the machines table
 //! and recorded in the message's attachment metadata so it renders as a
 //! chip. The provider prompt gains a control block with the endpoint URLs
-//! and the run-scoped token — never the VNC password, which stays
+//! and the run-scoped token — never the stored secrets, which stay
 //! server-side in the control endpoints.
 
 use std::collections::HashSet;
@@ -90,6 +90,7 @@ pub(crate) async fn resolve_machine_refs(
             "size": 0,
             "kind": "machine",
             "machine_id": machine.id,
+            "machine_kind": machine.kind,
         }));
         input.machine_refs.push(machine);
     }
@@ -98,8 +99,9 @@ pub(crate) async fn resolve_machine_refs(
 
 /// Build the prompt sent to the provider: the user's text plus a block
 /// describing how to drive each referenced machine through the local
-/// machine-control API. The token authorizes exactly these machines and
-/// dies with the run.
+/// machine-control API. Only the endpoint docs for the referenced kinds
+/// are included. The token authorizes exactly these machines and dies
+/// with the run.
 pub(crate) fn prompt_with_machine_refs(
     prompt: &str,
     refs: &[MachineRow],
@@ -109,19 +111,25 @@ pub(crate) fn prompt_with_machine_refs(
     if refs.is_empty() {
         return prompt.to_string();
     }
-    let mut out = String::with_capacity(prompt.len() + refs.len() * 256 + 1024);
+    let mut out = String::with_capacity(prompt.len() + refs.len() * 256 + 2048);
     let trimmed = prompt.trim_end();
     if !trimmed.is_empty() {
         out.push_str(trimmed);
         out.push_str("\n\n");
     }
-    out.push_str("The user referenced these machines for remote control (VNC):");
+    out.push_str("The user referenced these machines for remote control:");
     for m in refs {
         out.push_str("\n- \"");
         out.push_str(&m.name);
         out.push_str("\" (id ");
         out.push_str(&m.id.to_string());
-        out.push_str(", ");
+        if m.is_ssh() {
+            out.push_str(", ssh ");
+            out.push_str(&m.ssh_user);
+            out.push('@');
+        } else {
+            out.push_str(", vnc ");
+        }
         out.push_str(&m.host);
         out.push(':');
         out.push_str(&m.port.to_string());
@@ -134,23 +142,40 @@ pub(crate) fn prompt_with_machine_refs(
                  The token below covers only the referenced machines and expires when this turn ends.\n",
             );
             out.push_str(&format!(
-                "Authorization: Bearer {token}\nBase URL: {base_url}\n\n\
-                 Screenshot (PNG, framebuffer pixels):\n  \
-                 curl -sS -H \"Authorization: Bearer {token}\" \
-                 {base_url}/api/machine-control/<id>/screenshot -o /tmp/machine-<id>.png\n\
-                 Input:\n  \
-                 curl -sS -X POST -H \"Authorization: Bearer {token}\" \
-                 -H \"Content-Type: application/json\" \
-                 {base_url}/api/machine-control/<id>/input -d '<json>'\n\n\
-                 Input kinds:\n  \
-                 {{\"kind\":\"move\",\"x\":0,\"y\":0}}\n  \
-                 {{\"kind\":\"click\",\"x\":0,\"y\":0,\"button\":\"left|middle|right\"}}\n  \
-                 {{\"kind\":\"key\",\"key\":\"a|Return|ctrl+c|ctrl+alt+del\"}}\n  \
-                 {{\"kind\":\"type\",\"text\":\"text to type\"}}\n  \
-                 {{\"kind\":\"scroll\",\"x\":0,\"y\":0,\"dy\":3}}\n\n\
-                 Take a screenshot first to learn the layout, then act on it. \
-                 The VNC password is never exposed; the API authenticates for you."
+                "Authorization: Bearer {token}\nBase URL: {base_url}\n"
             ));
+            if refs.iter().any(|m| m.is_ssh()) {
+                out.push_str(&format!(
+                    "\nRun a shell command (ssh machines):\n  \
+                     curl -sS -X POST -H \"Authorization: Bearer {token}\" \
+                     -H \"Content-Type: application/json\" \
+                     {base_url}/api/machine-control/<id>/exec \
+                     -d '{{\"command\":\"uname -a\",\"timeout_secs\":60}}'\n\n\
+                     Returns {{\"code\":0,\"signal\":null,\"stdout\":\"...\",\"stderr\":\"...\",\"truncated\":false}}. \
+                     `code` and `signal` are null when the server closes without a status. \
+                     The command runs as the configured SSH user in a non-interactive shell. \
+                     SSH credentials are never exposed; the API authenticates for you.\n"
+                ));
+            }
+            if refs.iter().any(|m| !m.is_ssh()) {
+                out.push_str(&format!(
+                    "\nScreenshot (PNG, framebuffer pixels; vnc machines):\n  \
+                     curl -sS -H \"Authorization: Bearer {token}\" \
+                     {base_url}/api/machine-control/<id>/screenshot -o /tmp/machine-<id>.png\n\
+                     Input (vnc machines):\n  \
+                     curl -sS -X POST -H \"Authorization: Bearer {token}\" \
+                     -H \"Content-Type: application/json\" \
+                     {base_url}/api/machine-control/<id>/input -d '<json>'\n\n\
+                     Input kinds:\n  \
+                     {{\"kind\":\"move\",\"x\":0,\"y\":0}}\n  \
+                     {{\"kind\":\"click\",\"x\":0,\"y\":0,\"button\":\"left|middle|right\"}}\n  \
+                     {{\"kind\":\"key\",\"key\":\"a|Return|ctrl+c|ctrl+alt+del\"}}\n  \
+                     {{\"kind\":\"type\",\"text\":\"text to type\"}}\n  \
+                     {{\"kind\":\"scroll\",\"x\":0,\"y\":0,\"dy\":3}}\n\n\
+                     Take a screenshot first to learn the layout, then act on it. \
+                     The VNC password is never exposed; the API authenticates for you.\n"
+                ));
+            }
         }
         None => {
             out.push_str(
@@ -170,11 +195,24 @@ mod tests {
         MachineRow {
             id,
             name: name.into(),
+            kind: "vnc".into(),
             host: "192.168.1.10".into(),
             port: 5900,
+            ssh_user: String::new(),
+            ssh_fingerprint: String::new(),
             password: "secret".into(),
+            ssh_key: String::new(),
             created_at: String::new(),
             updated_at: String::new(),
+        }
+    }
+
+    fn ssh_machine(id: i64, name: &str) -> MachineRow {
+        MachineRow {
+            kind: "ssh".into(),
+            port: 22,
+            ssh_user: "deploy".into(),
+            ..machine(id, name)
         }
     }
 
@@ -201,10 +239,31 @@ mod tests {
         let out =
             prompt_with_machine_refs("reboot it", &refs, Some("mc_tok"), "http://127.0.0.1:7878");
         assert!(out.starts_with("reboot it\n\n"));
-        assert!(out.contains("\"gaming pc\" (id 3, 192.168.1.10:5900)"));
+        assert!(out.contains("\"gaming pc\" (id 3, vnc 192.168.1.10:5900)"));
         assert!(out.contains("Bearer mc_tok"));
         assert!(out.contains("/api/machine-control/"));
+        assert!(out.contains("/screenshot"));
+        // No ssh refs, no ssh docs.
+        assert!(!out.contains("/exec"));
         assert!(!out.contains("secret"));
+    }
+
+    #[test]
+    fn ssh_refs_get_exec_docs_and_user_in_listing() {
+        let refs = vec![ssh_machine(4, "deploy box")];
+        let out = prompt_with_machine_refs("check it", &refs, Some("mc_tok"), "http://h");
+        assert!(out.contains("\"deploy box\" (id 4, ssh deploy@192.168.1.10:22)"));
+        assert!(out.contains("/api/machine-control/<id>/exec"));
+        assert!(!out.contains("/screenshot"), "vnc docs stay out: {out}");
+        assert!(!out.contains("secret"));
+    }
+
+    #[test]
+    fn mixed_refs_document_both_protocols() {
+        let refs = vec![machine(1, "desk"), ssh_machine(2, "shell")];
+        let out = prompt_with_machine_refs("", &refs, Some("t"), "http://h");
+        assert!(out.contains("/exec"));
+        assert!(out.contains("/screenshot"));
     }
 
     #[test]

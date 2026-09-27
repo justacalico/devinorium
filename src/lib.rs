@@ -17,6 +17,7 @@ pub mod projects;
 pub mod providers;
 pub mod push;
 pub mod security;
+pub mod ssh;
 pub mod tailscale;
 pub mod terminal;
 pub mod thread_runner;

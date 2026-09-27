@@ -584,7 +584,10 @@ fn grant_request(method: &str, uri: &str, token: &str, body: &str) -> Request<Bo
 #[tokio::test]
 async fn machine_control_rejects_bad_tokens() {
     let (app, db, grants) = make_app().await;
-    let machine = db.create_machine("m", "127.0.0.1", 5900, "").await.unwrap();
+    let machine = db
+        .create_machine("m", "vnc", "127.0.0.1", 5900, "", "", "")
+        .await
+        .unwrap();
 
     // No token, then a bogus one.
     let resp = app
@@ -645,7 +648,7 @@ async fn machine_control_screenshot_and_input() {
     let (app, db, grants) = make_app().await;
     let fake = FakeVnc::start(8, 4).await;
     let machine = db
-        .create_machine("m", "127.0.0.1", fake.port as i64, "")
+        .create_machine("m", "vnc", "127.0.0.1", fake.port as i64, "", "", "")
         .await
         .unwrap();
     let token = grants.create(1, vec![machine.id]).unwrap();
@@ -777,7 +780,15 @@ async fn send_with_machine_ids_scopes_the_run_and_chips_the_message() {
     // stalling the poll on a dead TCP connect.
     let fake = FakeVnc::start(4, 4).await;
     let machine = db
-        .create_machine("desktop", "127.0.0.1", fake.port as i64, "sekrit")
+        .create_machine(
+            "desktop",
+            "vnc",
+            "127.0.0.1",
+            fake.port as i64,
+            "",
+            "sekrit",
+            "",
+        )
         .await
         .unwrap();
 
@@ -921,7 +932,7 @@ async fn machine_ids_on_send_require_owner() {
     let (app, db, _g) = make_app().await;
     let cookie = login(&app).await;
     let machine = db
-        .create_machine("desktop", "127.0.0.1", 5900, "sekrit")
+        .create_machine("desktop", "vnc", "127.0.0.1", 5900, "", "sekrit", "")
         .await
         .unwrap();
 
@@ -972,7 +983,15 @@ async fn resend_keeps_machine_refs_and_mints_a_fresh_grant() {
     let cookie = login(&app).await;
     let fake = FakeVnc::start(4, 4).await;
     let machine = db
-        .create_machine("desktop", "127.0.0.1", fake.port as i64, "sekrit")
+        .create_machine(
+            "desktop",
+            "vnc",
+            "127.0.0.1",
+            fake.port as i64,
+            "",
+            "sekrit",
+            "",
+        )
         .await
         .unwrap();
 
@@ -1046,4 +1065,534 @@ async fn resend_keeps_machine_refs_and_mints_a_fresh_grant() {
         }
         assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
+}
+
+/// Minimal SSH server (russh): accepts `agent`/`hunter2` password auth and
+/// any public key, answers `exec` with canned output, and records the
+/// command strings for assertions.
+struct FakeSsh {
+    port: u16,
+    commands: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+const SSH_HOST_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACBIas4qmA5vkzPNY7Vg37sO2kumynMONXRY9NZVgFeHiAAAAJgD9TFCA/Ux
+QgAAAAtzc2gtZWQyNTUxOQAAACBIas4qmA5vkzPNY7Vg37sO2kumynMONXRY9NZVgFeHiA
+AAAECBGkQS7pVG0eez+dQfvN82Sje+tqiKKogkrGOXKj/kfEhqziqYDm+TM81jtWDfuw7a
+S6bKcw41dFj01lWAV4eIAAAADmNhbGljb0BvbWFyY2h5AQIDBAUGBw==
+-----END OPENSSH PRIVATE KEY-----
+";
+
+/// A real ed25519 client key so the publickey auth path gets exercised
+/// end to end; the fake server accepts every key.
+const SSH_CLIENT_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACDr9WUFQZQ+EyB5TtLJZOAFki4r/fpankJcldUCV4FakgAAAJgw38HiMN/B
+4gAAAAtzc2gtZWQyNTUxOQAAACDr9WUFQZQ+EyB5TtLJZOAFki4r/fpankJcldUCV4Fakg
+AAAEBS1cvhqmSjsWi+tRjcDHj5Ri4XyyW8MbpUoBX9DODn8uv1ZQVBlD4TIHlO0slk4AWS
+Liv9+lqeQlyV1QJXgVqSAAAADmNhbGljb0BvbWFyY2h5AQIDBAUGBw==
+-----END OPENSSH PRIVATE KEY-----
+";
+
+use russh::server::Server as _;
+
+#[derive(Clone)]
+struct FakeSshHandler {
+    commands: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl russh::server::Server for FakeSshHandler {
+    type Handler = Self;
+    fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+        self.clone()
+    }
+}
+
+impl russh::server::Handler for FakeSshHandler {
+    type Error = russh::Error;
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: russh::Channel<russh::server::Msg>,
+        reply: russh::server::ChannelOpenHandle,
+        _session: &mut russh::server::Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn auth_password(
+        &mut self,
+        user: &str,
+        password: &str,
+    ) -> Result<russh::server::Auth, Self::Error> {
+        if user == "agent" && password == "hunter2" {
+            Ok(russh::server::Auth::Accept)
+        } else {
+            Ok(russh::server::Auth::reject())
+        }
+    }
+
+    async fn auth_publickey(
+        &mut self,
+        _user: &str,
+        _key: &russh::keys::ssh_key::PublicKey,
+    ) -> Result<russh::server::Auth, Self::Error> {
+        Ok(russh::server::Auth::Accept)
+    }
+
+    async fn exec_request(
+        &mut self,
+        channel: russh::ChannelId,
+        data: &[u8],
+        session: &mut russh::server::Session,
+    ) -> Result<(), Self::Error> {
+        let command = String::from_utf8_lossy(data).to_string();
+        session.channel_success(channel)?;
+        self.commands.lock().unwrap().push(command.clone());
+        // `slow` holds the channel quiet for a moment so tests can check
+        // the exec deadline path against a command that produces nothing.
+        if command == "slow" {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+        let (stdout, stderr, code): (String, String, u32) = match command.as_str() {
+            "hostname" => ("fakebox\n".into(), String::new(), 0),
+            "fail" => (String::new(), "boom\n".into(), 3),
+            other => (format!("ran: {other}\n"), String::new(), 0),
+        };
+        if !stdout.is_empty() {
+            session.data(channel, stdout.as_bytes().to_vec())?;
+        }
+        if !stderr.is_empty() {
+            session.extended_data(channel, 1, stderr.as_bytes().to_vec())?;
+        }
+        session.exit_status_request(channel, code)?;
+        session.eof(channel)?;
+        session.close(channel)?;
+        Ok(())
+    }
+}
+
+impl FakeSsh {
+    async fn start() -> Self {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let handler = FakeSshHandler {
+            commands: commands.clone(),
+        };
+        let host_key = russh::keys::decode_secret_key(SSH_HOST_KEY, None).expect("test host key");
+        let config = std::sync::Arc::new(russh::server::Config {
+            auth_rejection_time: std::time::Duration::from_millis(10),
+            auth_rejection_time_initial: Some(std::time::Duration::from_millis(0)),
+            keys: vec![host_key],
+            ..Default::default()
+        });
+        tokio::spawn(async move {
+            let mut srv = handler;
+            let _ = srv.run_on_socket(config, &listener).await;
+        });
+        Self { port, commands }
+    }
+}
+
+#[tokio::test]
+async fn ssh_machine_crud_and_validation() {
+    let (app, _db, _g) = make_app().await;
+    let cookie = login(&app).await;
+
+    // An ssh machine without a username is a 400.
+    let (status, body) = create_machine(
+        &app,
+        &cookie,
+        r#"{"name":"box","kind":"ssh","host":"10.0.0.5"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+
+    let (status, body) = create_machine(
+        &app,
+        &cookie,
+        r#"{"name":"box","kind":"ssh","host":"ssh://agent@10.0.0.5:2222","password":"pw","ssh_key":"-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let id = v["id"].as_i64().unwrap();
+    assert_eq!(v["kind"], "ssh");
+    assert_eq!(v["host"], "10.0.0.5");
+    assert_eq!(v["port"], 2222);
+    assert_eq!(v["ssh_user"], "agent");
+    assert_eq!(v["has_password"], true);
+    assert_eq!(v["has_ssh_key"], true);
+    // Secrets never serialize.
+    assert!(v.get("password").is_none());
+    assert!(v.get("ssh_key").is_none());
+
+    // Garbage kinds and malformed keys are rejected.
+    for body in [
+        r#"{"name":"m","kind":"rdp","host":"h"}"#,
+        r#"{"name":"m","kind":"ssh","host":"h","ssh_user":"a","ssh_key":"not a key"}"#,
+        r#"{"name":"m","kind":"ssh","host":"h","ssh_user":"has space"}"#,
+    ] {
+        let (status, body) = create_machine(&app, &cookie, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+    }
+
+    // Flipping scope back to vnc works; flipping to ssh without a stored
+    // user fails on the merged row.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/machines/{id}"),
+            &cookie,
+            r#"{"kind":"vnc","ssh_user":""}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/machines/{id}"),
+            &cookie,
+            r#"{"kind":"ssh"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn ssh_test_connection_and_exec_end_to_end() {
+    let (app, db, grants) = make_app().await;
+    let cookie = login(&app).await;
+    let ssh = FakeSsh::start().await;
+
+    let machine = db
+        .create_machine(
+            "box",
+            "ssh",
+            "127.0.0.1",
+            ssh.port as i64,
+            "agent",
+            "hunter2",
+            "",
+        )
+        .await
+        .unwrap();
+
+    // The owner probe runs `hostname` and reports the remote name.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/machines/{}/test", machine.id),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["ok"], true, "body: {v}");
+    assert_eq!(v["name"], "fakebox");
+
+    // The grant-scoped exec endpoint runs commands for the agent.
+    let token = grants.create(1, vec![machine.id]).unwrap();
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "POST",
+            &format!("/api/machine-control/{}/exec", machine.id),
+            &token,
+            r#"{"command":"hostname"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["code"], 0);
+    assert_eq!(v["stdout"], "fakebox\n");
+
+    // Non-zero exit is a result, not a request failure; stderr comes back.
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "POST",
+            &format!("/api/machine-control/{}/exec", machine.id),
+            &token,
+            r#"{"command":"fail","timeout_secs":30}"#,
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["code"], 3);
+    assert_eq!(v["stderr"], "boom\n");
+
+    // Protocol scope is enforced: exec on a vnc machine, screenshot on an
+    // ssh machine, both 400s rather than upstream protocol garbage.
+    let vnc = db
+        .create_machine("screen", "vnc", "127.0.0.1", 5900, "", "", "")
+        .await
+        .unwrap();
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "POST",
+            &format!("/api/machine-control/{}/exec", machine.id),
+            &token,
+            r#"{"command":"hostname"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "POST",
+            &format!("/api/machine-control/{}/exec", vnc.id),
+            &grants.create(1, vec![vnc.id]).unwrap(),
+            r#"{"command":"hostname"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "GET",
+            &format!("/api/machine-control/{}/screenshot", machine.id),
+            &token,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // The server recorded every exec the grant allowed through.
+    let seen = ssh.commands.lock().unwrap().clone();
+    assert!(seen.iter().filter(|c| *c == "hostname").count() >= 2);
+    assert!(seen.contains(&"fail".to_string()));
+
+    // A quiet command under a tight deadline is a 504, not a fake success.
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "POST",
+            &format!("/api/machine-control/{}/exec", machine.id),
+            &token,
+            r#"{"command":"slow","timeout_secs":1}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::GATEWAY_TIMEOUT);
+
+    // Wrong credentials surface as a failed probe, never leaking them.
+    let bad = db
+        .create_machine(
+            "bad",
+            "ssh",
+            "127.0.0.1",
+            ssh.port as i64,
+            "agent",
+            "wrongpass",
+            "",
+        )
+        .await
+        .unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/machines/{}/test", bad.id),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["ok"], false);
+    assert!(!v["error"].as_str().unwrap().contains("wrongpass"));
+}
+
+#[tokio::test]
+async fn ssh_key_auth_and_host_key_pinning() {
+    let (app, db, grants) = make_app().await;
+    let cookie = login(&app).await;
+    let ssh = FakeSsh::start().await;
+
+    // Key-only machine: no password, a real client key on file.
+    let machine = db
+        .create_machine(
+            "keybox",
+            "ssh",
+            "127.0.0.1",
+            ssh.port as i64,
+            "agent",
+            "",
+            SSH_CLIENT_KEY,
+        )
+        .await
+        .unwrap();
+
+    // The first probe learns the host key and pins it.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/machines/{}/test", machine.id),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["ok"], true, "body: {v}");
+    let pinned = db.get_machine(machine.id).await.unwrap().unwrap();
+    assert!(pinned.ssh_fingerprint.starts_with("SHA256:"), "{pinned:?}");
+
+    // Publickey auth against the same key still works through exec.
+    let token = grants.create(1, vec![machine.id]).unwrap();
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "POST",
+            &format!("/api/machine-control/{}/exec", machine.id),
+            &token,
+            r#"{"command":"hostname"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // A stored fingerprint that does not match fails before credentials
+    // are sent: the probe reports the key change, not an auth failure.
+    let patch = devinorium::db::machines::MachineUpdate {
+        ssh_fingerprint: Some("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into()),
+        ..Default::default()
+    };
+    db.update_machine(machine.id, &patch).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/machines/{}/test", machine.id),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["ok"], false);
+    assert!(
+        v["error"].as_str().unwrap().contains("host key"),
+        "error: {v}"
+    );
+
+    // Clearing the pin re-learns the key on the next probe.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/machines/{}", machine.id),
+            &cookie,
+            r#"{"ssh_fingerprint":""}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/machines/{}/test", machine.id),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(v["ok"], true);
+
+    // Resaving the same endpoint keeps the pin; a move drops it.
+    let pinned = db.get_machine(machine.id).await.unwrap().unwrap();
+    assert!(!pinned.ssh_fingerprint.is_empty());
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/machines/{}", machine.id),
+            &cookie,
+            &format!(
+                r#"{{"name":"keybox renamed","host":"127.0.0.1","port":{}}}"#,
+                ssh.port
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let still = db.get_machine(machine.id).await.unwrap().unwrap();
+    assert_eq!(still.ssh_fingerprint, pinned.ssh_fingerprint);
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/machines/{}", machine.id),
+            &cookie,
+            r#"{"port":1}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let moved = db.get_machine(machine.id).await.unwrap().unwrap();
+    assert!(moved.ssh_fingerprint.is_empty());
+}
+
+#[tokio::test]
+async fn send_with_ssh_machine_mentions_exec_endpoint() {
+    let (app, db, _g) = make_app().await;
+    let cookie = login(&app).await;
+    let ssh = FakeSsh::start().await;
+    let machine = db
+        .create_machine(
+            "box",
+            "ssh",
+            "127.0.0.1",
+            ssh.port as i64,
+            "agent",
+            "hunter2",
+            "",
+        )
+        .await
+        .unwrap();
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let resp = app
+        .clone()
+        .oneshot(multipart(
+            format!("/api/threads/{tid}/send/stream"),
+            &cookie,
+            &[
+                ("prompt", "check disk space"),
+                ("machine_ids", &format!("[{}]", machine.id)),
+            ],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let reply = done_reply(&body_str(resp.into_body()).await);
+    assert!(reply.contains("ssh agent@127.0.0.1"), "reply: {reply}");
+    assert!(
+        reply.contains("/api/machine-control/<id>/exec"),
+        "reply: {reply}"
+    );
+    // VNC docs stay out when no vnc machine is referenced.
+    assert!(!reply.contains("/screenshot"), "reply: {reply}");
+    assert!(!reply.contains("hunter2"), "reply: {reply}");
 }

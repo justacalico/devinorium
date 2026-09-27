@@ -4,8 +4,8 @@
 //! per-run capability token minted when a send references machines
 //! (`Authorization: Bearer mc_...`), not a session. A token only covers the
 //! machines the user referenced, so an agent can never reach a machine the
-//! user did not hand it. The VNC password stays server-side — the agent
-//! only ever sees the token.
+//! user did not hand it. Machine secrets (VNC/SSH passwords, private
+//! keys) stay server-side — the agent only ever sees the token.
 
 use std::time::Duration;
 
@@ -18,6 +18,7 @@ use axum::Json;
 use serde::Deserialize;
 
 use crate::api::{map_err_internal, ApiError};
+use crate::db::machines::{MachineRow, KIND_SSH, KIND_VNC};
 use crate::machine_grants::GrantInfo;
 use crate::security::ip::ClientIp;
 use crate::security::rate_limit::{charge_auth_failure, EndpointClass};
@@ -30,6 +31,7 @@ pub fn router() -> Router<AppState> {
             get(screenshot),
         )
         .route("/api/machine-control/:machine_id/input", post(input))
+        .route("/api/machine-control/:machine_id/exec", post(exec))
 }
 
 /// Whole-request budget for one control call: handshake plus the operation.
@@ -81,6 +83,32 @@ async fn auth_fail(state: &AppState, ip: &str, upfront: f64, r: Response) -> Res
     r
 }
 
+/// Fetch the machine row and check it speaks the protocol the endpoint
+/// drives, so e.g. a screenshot request against an SSH host fails as a
+/// client error instead of an upstream VNC timeout.
+#[allow(clippy::result_large_err)]
+async fn load_machine(
+    state: &AppState,
+    machine_id: i64,
+    kind: &str,
+) -> Result<MachineRow, Response> {
+    let machine = match state.db.get_machine(machine_id).await {
+        Ok(Some(m)) => m,
+        Ok(None) => {
+            return Err((StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response())
+        }
+        Err(e) => return Err(map_err_internal(e).into_response()),
+    };
+    if machine.kind != kind {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new(format!("machine is not {kind}"))),
+        )
+            .into_response());
+    }
+    Ok(machine)
+}
+
 async fn screenshot(
     State(state): State<AppState>,
     Extension(client_ip): Extension<ClientIp>,
@@ -94,12 +122,9 @@ async fn screenshot(
             return auth_fail(&state, &client_ip.0, EndpointClass::AuthRead.cost(), r).await;
         }
     };
-    let machine = match state.db.get_machine(machine_id).await {
-        Ok(Some(m)) => m,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
-        }
-        Err(e) => return map_err_internal(e).into_response(),
+    let machine = match load_machine(&state, machine_id, KIND_VNC).await {
+        Ok(m) => m,
+        Err(r) => return r,
     };
     let port = match u16::try_from(machine.port) {
         Ok(p) => p,
@@ -313,12 +338,9 @@ async fn input(
     if let Err(r) = validate_input(&req) {
         return r;
     }
-    let machine = match state.db.get_machine(machine_id).await {
-        Ok(Some(m)) => m,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
-        }
-        Err(e) => return map_err_internal(e).into_response(),
+    let machine = match load_machine(&state, machine_id, KIND_VNC).await {
+        Ok(m) => m,
+        Err(r) => return r,
     };
     let port = match u16::try_from(machine.port) {
         Ok(p) => p,
@@ -390,6 +412,129 @@ async fn input(
         Err(_) => (
             StatusCode::GATEWAY_TIMEOUT,
             Json(ApiError::new("vnc request timed out")),
+        )
+            .into_response(),
+    }
+}
+
+/// Longest shell command (bytes) the exec endpoint accepts.
+const MAX_COMMAND_LEN: usize = 64 * 1024;
+/// Caller-tunable exec deadline; clamped to keep a handler bounded.
+const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_EXEC_TIMEOUT: Duration = Duration::from_secs(600);
+
+#[derive(Debug, Deserialize)]
+struct ExecRequest {
+    command: String,
+    /// Wall-clock cap for the remote command; defaults to 60s.
+    timeout_secs: Option<u64>,
+}
+
+/// Run a shell command on an SSH machine. A non-zero exit status is a
+/// result, not a failure — the response carries `code`, `stdout`, and
+/// `stderr` so the agent can react. A command that outlives the timeout
+/// is cut off by dropping the session; the remote process may keep
+/// running, same as closing an `ssh` client mid-command.
+async fn exec(
+    State(state): State<AppState>,
+    Extension(client_ip): Extension<ClientIp>,
+    Path(machine_id): Path<i64>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<ExecRequest>,
+) -> Response {
+    let grant = match authorize(&state, &headers, machine_id) {
+        Ok(g) => g,
+        Err((seen, r)) => {
+            let upfront = if seen {
+                EndpointClass::AuthWrite
+            } else {
+                EndpointClass::UnauthProbe
+            }
+            .cost();
+            return auth_fail(&state, &client_ip.0, upfront, r).await;
+        }
+    };
+    if req.command.is_empty() || req.command.len() > MAX_COMMAND_LEN {
+        return bad_request("command empty or too long");
+    }
+    let machine = match load_machine(&state, machine_id, KIND_SSH).await {
+        Ok(m) => m,
+        Err(r) => return r,
+    };
+    let port = match u16::try_from(machine.port) {
+        Ok(p) => p,
+        Err(_) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ApiError::new("invalid stored port")),
+            )
+                .into_response()
+        }
+    };
+    let timeout = req
+        .timeout_secs
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_EXEC_TIMEOUT)
+        .clamp(Duration::from_secs(1), MAX_EXEC_TIMEOUT);
+
+    let outcome = tokio::time::timeout(timeout, async {
+        let mut session = crate::ssh::SshSession::connect(
+            &machine.host,
+            port,
+            &machine.ssh_user,
+            &machine.password,
+            &machine.ssh_key,
+            &machine.ssh_fingerprint,
+        )
+        .await?;
+        // Trust-on-first-use: pin the host key once so later runs reject a
+        // different server.
+        if machine.ssh_fingerprint.is_empty() && !session.fingerprint.is_empty() {
+            if let Err(e) = state
+                .db
+                .pin_machine_fingerprint(machine_id, &session.fingerprint)
+                .await
+            {
+                tracing::warn!(machine_id, "failed to pin ssh host key: {e}");
+            }
+        }
+        let out = session.exec(&req.command).await?;
+        session.disconnect().await;
+        anyhow::Ok(out)
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok(out)) => {
+            let _ = state
+                .db
+                .audit(
+                    Some(grant.user_id),
+                    "machine.exec",
+                    &serde_json::json!({
+                        "machine_id": machine_id,
+                        "command_len": req.command.len(),
+                    }),
+                    None,
+                )
+                .await;
+            Json(serde_json::json!({
+                "code": out.code,
+                "signal": out.signal,
+                "stdout": String::from_utf8_lossy(&out.stdout),
+                "stderr": String::from_utf8_lossy(&out.stderr),
+                "truncated": out.truncated,
+            }))
+            .into_response()
+        }
+        Ok(Err(e)) => (
+            StatusCode::BAD_GATEWAY,
+            Json(ApiError::new(format!("ssh request failed: {e:#}"))),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(ApiError::new("ssh request timed out")),
         )
             .into_response(),
     }
