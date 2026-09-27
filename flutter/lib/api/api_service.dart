@@ -542,6 +542,12 @@ class ApiService {
     return Thread.fromJson(j);
   }
 
+  /// Watermark the thread as seen: clears its unread flag so the sidebar
+  /// drops the done badge until new output arrives.
+  Future<void> markThreadViewed(String id) async {
+    await _client.post('/api/threads/$id/viewed');
+  }
+
   Future<void> updateThreadSettings(
     String id, {
     String? provider,

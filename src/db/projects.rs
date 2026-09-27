@@ -212,7 +212,11 @@ impl Db {
         limit: Option<i64>,
         offset: i64,
     ) -> anyhow::Result<Vec<super::ThreadRow>> {
-        let mut sql = "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role
+        let mut sql = "SELECT threads.*, (SELECT role FROM messages WHERE messages.thread_id = threads.id ORDER BY id DESC LIMIT 1) AS last_message_role,
+             EXISTS(SELECT 1 FROM messages unseen
+                    WHERE unseen.thread_id = threads.id
+                      AND unseen.role IN ('assistant', 'error')
+                      AND unseen.id > threads.viewed_message_id) AS unread
              FROM threads
              WHERE project_id = ? AND user_id = ?
              ORDER BY pinned DESC, updated_at DESC, id DESC"

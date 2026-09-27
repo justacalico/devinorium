@@ -139,6 +139,7 @@ mixin RunEventsStore on AppStateBase {
       return;
     }
     final seen = <String>{};
+    var staleResult = false;
     for (final r in runs) {
       if (r is! Map<String, dynamic>) continue;
       final tid = r['thread_id'];
@@ -146,6 +147,20 @@ mixin RunEventsStore on AppStateBase {
       seen.add(tid);
       final status = r['status'];
       _threadRunStatuses[tid] = status is String ? status : 'running';
+      if (tid == _activeThreadId &&
+          (status == 'completed' ||
+              status == 'failed' ||
+              status == 'stopped')) {
+        // A terminal run on the open thread was watched live, so it counts
+        // as seen instead of flagging the tile once the user navigates away.
+        unawaited(_markThreadViewed(tid));
+      } else if ((status == 'completed' || status == 'failed') &&
+          !_isThreadUnread(tid)) {
+        // A run that finished while we were disconnected. Whether its result
+        // is really unseen is server state, so refetch the list instead of
+        // trusting the stale local flag.
+        staleResult = true;
+      }
       final attention = r['attention'];
       if (attention is String) {
         _threadRunAttention[tid] = attention;
@@ -162,7 +177,7 @@ mixin RunEventsStore on AppStateBase {
       dropped = true;
       return true;
     });
-    if (dropped) {
+    if (dropped || staleResult) {
       // The fallback reads lastMessageRole off the thread list, which may
       // be stale after a disconnect; refetch so the tile settles correctly.
       unawaited(refreshThreadsAndGroups());
@@ -191,6 +206,13 @@ mixin RunEventsStore on AppStateBase {
       _runningThreadIds.remove(tid);
       _threadRunAttention.remove(tid);
       _threadRunStatuses[tid] = status;
+      if (tid == _activeThreadId) {
+        unawaited(_markThreadViewed(tid));
+      } else if (status == 'completed' || status == 'failed') {
+        // Fresh unseen output on a background thread; the stopped case is
+        // left alone because a cancelled run may not have produced any.
+        _setThreadUnread(tid, true);
+      }
     }
     _maybeNotifyRunEvent(j);
     notifyListeners();

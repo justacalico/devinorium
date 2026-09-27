@@ -172,7 +172,11 @@ void main() {
   group('backgroundThreadTag', () {
     test('returns running while the run is live', () {
       expect(
-        backgroundThreadTag(running: true, lastMessageRole: 'user'),
+        backgroundThreadTag(
+          running: true,
+          unread: true,
+          lastMessageRole: 'user',
+        ),
         'running',
       );
     });
@@ -181,6 +185,7 @@ void main() {
       expect(
         backgroundThreadTag(
           running: true,
+          unread: true,
           attention: 'permission',
           lastMessageRole: 'user',
         ),
@@ -192,6 +197,7 @@ void main() {
       expect(
         backgroundThreadTag(
           running: true,
+          unread: true,
           attention: 'ask',
           lastMessageRole: 'user',
         ),
@@ -203,6 +209,7 @@ void main() {
       expect(
         backgroundThreadTag(
           running: false,
+          unread: true,
           runStatus: 'completed',
           attention: 'permission',
         ),
@@ -212,13 +219,48 @@ void main() {
 
     test('maps terminal run statuses', () {
       expect(
-        backgroundThreadTag(running: false, runStatus: 'completed'),
+        backgroundThreadTag(running: false, unread: true, runStatus: 'completed'),
         'done',
       );
-      expect(backgroundThreadTag(running: false, runStatus: 'failed'), 'failed');
       expect(
-        backgroundThreadTag(running: false, runStatus: 'stopped'),
+        backgroundThreadTag(running: false, unread: true, runStatus: 'failed'),
+        'failed',
+      );
+      expect(
+        backgroundThreadTag(running: false, unread: true, runStatus: 'stopped'),
         'stopped',
+      );
+    });
+
+    test('a completed run on a viewed thread shows no tag', () {
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          runStatus: 'completed',
+        ),
+        isNull,
+      );
+    });
+
+    test('a viewed completed run falls back to the last message role', () {
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          runStatus: 'completed',
+          lastMessageRole: 'user',
+        ),
+        'working',
+      );
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          runStatus: 'completed',
+          lastMessageRole: 'error',
+        ),
+        'failed',
       );
     });
 
@@ -226,6 +268,7 @@ void main() {
       expect(
         backgroundThreadTag(
           running: false,
+          unread: true,
           runStatus: 'failed',
           lastMessageRole: 'assistant',
         ),
@@ -234,6 +277,7 @@ void main() {
       expect(
         backgroundThreadTag(
           running: false,
+          unread: true,
           runStatus: 'stopped',
           lastMessageRole: 'user',
         ),
@@ -243,18 +287,73 @@ void main() {
 
     test('falls back to the last message role without a run event', () {
       expect(
-        backgroundThreadTag(running: false, lastMessageRole: 'assistant'),
+        backgroundThreadTag(
+          running: false,
+          unread: true,
+          lastMessageRole: 'assistant',
+        ),
         'done',
       );
       expect(
-        backgroundThreadTag(running: false, lastMessageRole: 'error'),
+        backgroundThreadTag(
+          running: false,
+          unread: true,
+          lastMessageRole: 'error',
+        ),
         'failed',
       );
       expect(
-        backgroundThreadTag(running: false, lastMessageRole: 'user'),
+        backgroundThreadTag(
+          running: false,
+          unread: true,
+          lastMessageRole: 'user',
+        ),
         'working',
       );
-      expect(backgroundThreadTag(running: false), isNull);
+      expect(backgroundThreadTag(running: false, unread: true), isNull);
+    });
+
+    test('a viewed thread drops the done tag but keeps the rest', () {
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          lastMessageRole: 'assistant',
+        ),
+        isNull,
+      );
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          lastMessageRole: 'error',
+        ),
+        'failed',
+      );
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          lastMessageRole: 'user',
+        ),
+        'working',
+      );
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          runStatus: 'failed',
+        ),
+        'failed',
+      );
+      expect(
+        backgroundThreadTag(
+          running: false,
+          unread: false,
+          runStatus: 'stopped',
+        ),
+        'stopped',
+      );
     });
   });
 

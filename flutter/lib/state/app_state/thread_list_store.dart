@@ -156,6 +156,33 @@ mixin ThreadListStore on AppStateBase {
   }
 
   @override
+  bool _isThreadUnread(String threadId) {
+    for (final t in _threads) {
+      if (t.id == threadId) return t.unread;
+    }
+    // Not loaded: treat as unseen so a finished run still gets its badge.
+    return true;
+  }
+
+  @override
+  void _setThreadUnread(String threadId, bool unread) {
+    final index = _threads.indexWhere((t) => t.id == threadId);
+    if (index < 0 || _threads[index].unread == unread) return;
+    _threads = [..._threads];
+    _threads[index] = _threads[index].copyWith(unread: unread);
+  }
+
+  @override
+  Future<void> _markThreadViewed(String threadId) async {
+    _setThreadUnread(threadId, false);
+    try {
+      await api.markThreadViewed(threadId);
+    } catch (e) {
+      debugLogFailure('threadList.markViewed', e, threadId: threadId);
+    }
+  }
+
+  @override
   void _mergeThreads(List<Thread> incoming) {
     final existing = <String>{for (final t in _threads) t.id};
     final fresh = incoming.where((t) => !existing.contains(t.id)).toList();
@@ -354,6 +381,8 @@ mixin ThreadListStore on AppStateBase {
     notifyListeners();
     final gen = _serverSeq;
     try {
+      // The detail fetch watermarks the thread as seen server-side; the
+      // local flag catches up for list entries the merge leaves stale.
       final results = await Future.wait([
         api.getThread(id, includeMessages: false),
         api.getThreadProject(id),
@@ -361,6 +390,7 @@ mixin ThreadListStore on AppStateBase {
       if (gen != _serverSeq) return;
       final detail = results[0] as ThreadDetail;
       _mergeThreads([detail.thread]);
+      _setThreadUnread(id, false);
       notifyListeners();
 
       // Discover the thread's project and switch the active project.

@@ -245,6 +245,9 @@ pub struct ThreadRow {
     pub pinned: bool,
     pub title_user_set: bool,
     pub linked_mr: Option<String>,
+    /// Newest message id the user has seen. Zero means never opened, so
+    /// every existing message counts as unseen until the first view.
+    pub viewed_message_id: i64,
     /// Per-thread output token cap. `None` means the model's advertised
     /// default applies.
     #[sqlx(default)]
@@ -258,6 +261,11 @@ pub struct ThreadRow {
     /// a correlated subquery on the list/get queries that need it.
     #[sqlx(default)]
     pub last_message_role: Option<String>,
+    /// Whether the thread has result output (an assistant or error message)
+    /// above the `viewed_message_id` watermark. Not a real column —
+    /// populated by the same subqueries as `last_message_role`.
+    #[sqlx(default)]
+    pub unread: bool,
 }
 
 /// A row from the `projects` table.

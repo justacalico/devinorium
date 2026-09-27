@@ -577,6 +577,15 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> _loadUserThreadsChunk({bool reset = false});
   Future<void> _loadProjectThreadsChunk(int projectId, {bool reset = false});
   void _mergeThreads(List<Thread> incoming);
+  /// Whether the loaded sidebar copy of a thread is flagged unread.
+  /// Threads that are not loaded count as unseen.
+  bool _isThreadUnread(String threadId);
+  /// Update the loaded sidebar copy of a thread's unseen-result flag. No-op
+  /// when the thread is not in the list.
+  void _setThreadUnread(String threadId, bool unread);
+  /// Watermark a thread as seen locally and on the server. Never throws; a
+  /// failed call only means the done badge may resurface on the next fetch.
+  Future<void> _markThreadViewed(String threadId);
   Future<void> refreshThreadsAndGroups();
   Future<void> loadMoreThreads();
   Future<void> loadMoreProjectThreads(int projectId);
