@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.91.0 - 2026-09-27
+#### Features
+- 打开线程时清除完成标记 - (a0cb831) - HttpAnimations
+
+- - -
+
 ## v0.90.0 - 2026-09-27
 #### Features
 - 添加 SSH 机器支持 - (5557161) - HttpAnimations
