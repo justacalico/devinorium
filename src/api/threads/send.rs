@@ -139,6 +139,14 @@ pub(crate) struct SendInput {
     pub machine_token: Option<String>,
 }
 
+/// Per-file attachment cap, enforced while streaming so an oversized file
+/// is rejected before its whole body sits in memory.
+const MAX_ATTACHMENT_BYTES: usize = 8 * 1024 * 1024;
+/// Combined attachment cap per message. Prompt bodies are uncapped, but
+/// attachments are not: without a total, many under-cap files could still
+/// exhaust memory.
+const MAX_ATTACHMENTS_TOTAL_BYTES: usize = 64 * 1024 * 1024;
+
 pub(crate) fn sanitize_sse_data(s: &str) -> String {
     s.replace("\r\n", "\n").replace('\r', "\n")
 }
@@ -161,8 +169,9 @@ pub(crate) struct SendFields {
 pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFields, Response> {
     let mut fields = SendFields::default();
 
+    let mut attachments_total = 0usize;
     loop {
-        let field = match multipart.next_field().await {
+        let mut field = match multipart.next_field().await {
             Ok(Some(field)) => field,
             Ok(None) => break,
             // A truncated body must not be mistaken for missing fields; on
@@ -176,6 +185,67 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
             .content_type()
             .unwrap_or("application/octet-stream")
             .to_string();
+        if !filename.is_empty() {
+            let mut data = Vec::new();
+            loop {
+                match field.chunk().await {
+                    Ok(Some(chunk)) => {
+                        if data.len() + chunk.len() > MAX_ATTACHMENT_BYTES {
+                            return Err((
+                                StatusCode::PAYLOAD_TOO_LARGE,
+                                Json(ApiError::new("attachment too large (max 8 MiB)")),
+                            )
+                                .into_response());
+                        }
+                        data.extend_from_slice(&chunk);
+                    }
+                    Ok(None) => break,
+                    Err(e) => return Err(crate::api::files::multipart_err(e)),
+                }
+            }
+            attachments_total += data.len();
+            if attachments_total > MAX_ATTACHMENTS_TOTAL_BYTES {
+                return Err((
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    Json(ApiError::new("attachments too large (max 64 MiB total)")),
+                )
+                    .into_response());
+            }
+            fields.att_meta.push(serde_json::json!({
+                "filename": filename,
+                "mime": mime,
+                "size": data.len(),
+                // Position in `attachments`; lets clients fetch the stored
+                // blob from the attachment endpoint.
+                "index": fields.attachments.len(),
+            }));
+            fields.attachments.push(Attachment {
+                filename: filename.clone(),
+                mime,
+                data,
+            });
+            continue;
+        }
+        match name.as_str() {
+            "prompt"
+            | "mode"
+            | "client_message_id"
+            | "context_paths"
+            | "referenced_thread_ids"
+            | "machine_ids" => {}
+            // Drain unrecognized fields without buffering them; send bodies
+            // are uncapped, so a stray huge field must not land in memory.
+            _ => {
+                loop {
+                    match field.chunk().await {
+                        Ok(Some(_)) => {}
+                        Ok(None) => break,
+                        Err(e) => return Err(crate::api::files::multipart_err(e)),
+                    }
+                }
+                continue;
+            }
+        }
         let bytes = match field.bytes().await {
             Ok(b) => b,
             Err(e) => return Err(crate::api::files::multipart_err(e)),
@@ -221,27 +291,6 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
                     return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
                 }
             }
-        } else if !filename.is_empty() {
-            if bytes.len() > 8 * 1024 * 1024 {
-                return Err((
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    Json(ApiError::new("attachment too large (max 8 MiB)")),
-                )
-                    .into_response());
-            }
-            fields.att_meta.push(serde_json::json!({
-                "filename": filename,
-                "mime": mime,
-                "size": bytes.len(),
-                // Position in `attachments`; lets clients fetch the stored
-                // blob from the attachment endpoint.
-                "index": fields.attachments.len(),
-            }));
-            fields.attachments.push(Attachment {
-                filename: filename.clone(),
-                mime,
-                data: bytes.to_vec(),
-            });
         }
     }
     if fields.mode.is_empty() {
@@ -272,13 +321,6 @@ pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Re
                 .into_response())
         }
     };
-    if prompt.chars().count() > 64 * 1024 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("prompt too long (max 64K characters)")),
-        )
-            .into_response());
-    }
     Ok(SendInput {
         prompt,
         mode: fields.mode,
