@@ -198,7 +198,8 @@ pub fn build_app(state: AppState) -> Router {
     let public = api::auth::router()
         .merge(api::server::router())
         .merge(api::machine_control::router())
-        .merge(api::federation::public_router());
+        .merge(api::federation::public_router())
+        .route_layer(RequestBodyLimitLayer::new(max_body));
 
     // Protected routes (require auth + role=user).
     let protected = api::threads::router()
@@ -243,6 +244,17 @@ pub fn build_app(state: AppState) -> Router {
         // default 2 MiB field limit would otherwise reject large
         // attachments before the handlers' own checks run.
         .route_layer(axum::extract::DefaultBodyLimit::max(max_body))
+        .route_layer(RequestBodyLimitLayer::new(max_body))
+        .route_layer(from_fn_with_state(
+            state.clone(),
+            auth::middleware::require_auth,
+        ));
+
+    // Message sends carry user text of any length, so they opt out of both
+    // body caps. Auth still runs first, rejecting unauthenticated posts
+    // before the body is read.
+    let protected_sends = api::threads::send_router()
+        .route_layer(axum::extract::DefaultBodyLimit::disable())
         .route_layer(from_fn_with_state(
             state.clone(),
             auth::middleware::require_auth,
@@ -255,6 +267,7 @@ pub fn build_app(state: AppState) -> Router {
         )
         .merge(public)
         .merge(protected)
+        .merge(protected_sends)
         .merge(assets::router())
         .layer(from_fn(security::security_headers))
         .layer(from_fn(move |req, next| {
@@ -263,7 +276,8 @@ pub fn build_app(state: AppState) -> Router {
         }))
         // Global weighted rate limiter — runs after IP extraction (so it
         // can read the client IP from extensions). Layers registered later
-        // run first, so body limit and trace have already run by now.
+        // run first, so the trace layer has already run by now. Per-route
+        // body limits run inside routing, after this point.
         .layer(from_fn(move |req, next| {
             let lim = limiter.clone();
             async move { security::global_weighted_rate_limit(lim, req, next).await }
@@ -272,7 +286,6 @@ pub fn build_app(state: AppState) -> Router {
             let tp = trust_proxy;
             async move { security::extract_client_ip(tp, req, next).await }
         }))
-        .layer(RequestBodyLimitLayer::new(max_body))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new());
 

@@ -14734,6 +14734,81 @@ async fn send_allows_prompt_over_context_limit() {
 }
 
 #[tokio::test]
+async fn send_allows_prompt_past_body_and_char_limits() {
+    // Send/resend endpoints are exempt from the configured body cap so a
+    // pasted document of any size goes through.
+    let (mut state, db) = app_state().await;
+    let mut cfg = (*state.config).clone();
+    cfg.max_body_bytes = 4096;
+    state.config = Arc::new(cfg);
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "huge").await;
+
+    let prompt = "x".repeat(100_000);
+    send_prompt(&app, &cookie, &tid, &prompt).await;
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs[0].content_length as usize, prompt.len());
+
+    // Resend with an oversized edit goes through the same exemption.
+    let edited = "y".repeat(100_000);
+    let boundary = "----resendboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\n{edited}\r\n--{boundary}--\r\n"
+    );
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/messages/{}/resend", msgs[0].id))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", &cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    body_str(resp.into_body()).await;
+
+    // Unauthenticated sends are still rejected before the body is read.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/threads/{tid}/send/stream"))
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("content-type", "multipart/form-data; boundary=x")
+                .body(Body::from("--x--\r\n"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    // Other routes still enforce the configured cap.
+    let resp = app
+        .oneshot(authed(
+            "PATCH",
+            &format!("/api/threads/{tid}"),
+            &cookie,
+            &format!(r#"{{"title":"{}"}}"#, "z".repeat(5000)),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
 async fn resend_works_with_full_history() {
     let (app, db) = make_app().await;
     let cookie = login(&app).await;

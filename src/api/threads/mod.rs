@@ -62,11 +62,6 @@ pub fn router() -> Router<AppState> {
             "/api/threads/:id/messages/:message_id/attachments/:idx",
             get(routes::get_message_attachment),
         )
-        .route(
-            "/api/threads/:id/messages/:message_id/resend",
-            post(resend::resend),
-        )
-        .route("/api/threads/:id/send/stream", post(send::send_stream))
         .route("/api/threads/:id/run", get(runs::get_run))
         .route("/api/threads/:id/stop", post(runs::stop))
         .route("/api/threads/:id/events", get(runs::events))
@@ -80,6 +75,18 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/threads/:id/project", get(plan::get_project_path))
         .route("/api/threads/:id/plan", get(plan::get_plan))
+}
+
+/// Send and resend routes, kept apart from [`router`] so the app can exempt
+/// them from the generic request body cap. Message bodies are unbounded:
+/// pasting a huge log or document should just work.
+pub fn send_router() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/api/threads/:id/messages/:message_id/resend",
+            post(resend::resend),
+        )
+        .route("/api/threads/:id/send/stream", post(send::send_stream))
 }
 
 #[derive(Debug, Serialize)]
