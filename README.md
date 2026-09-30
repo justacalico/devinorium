@@ -47,13 +47,7 @@ mkdir -p data                # creates a place to store the database
 Then open `http://localhost:7878` and log in with the bootstrap credentials.
 
 For a throwaway instance that skips login entirely, run the backend with
-`--dev` (or `-dev`): it binds a random free port on all interfaces, serves
-every request as the passwordless `local` owner account, and keeps the
-database in memory so nothing persists once the process exits. The URL it
-bound is printed on startup. Anyone who can reach the port gets full owner
-access, including other machines on the network, which is the point: it
-exists to test the UI from a device other than the one running the
-backend. Pass `--local` (or `-local`) to bind loopback only.
+`--dev`.
 
 ```bash
 cargo run -- --dev          # reachable from other machines on the network
