@@ -36,6 +36,13 @@ TOPDIR="$(mktemp -d)"
 trap 'rm -rf "$TOPDIR"' EXIT
 mkdir -p "$TOPDIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
+# rpmbuild turns every DT_NEEDED of the bundled binaries into a Requires, but
+# the plugin and flutter libs we ship are excluded from Provides below. Filter
+# out Requires on any soname that exists inside the bundle, otherwise installs
+# fail unless some unrelated package happens to provide the same sonames.
+BUNDLED_SOS="$(find "$BUNDLE_DIR" -type f -name '*.so*' -printf '%f\n' | sort -u | sed 's/\./[.]/g' | paste -sd'|')"
+REQUIRES_EXCLUDE="^(${BUNDLED_SOS})([(].*[)])*$"
+
 cat > "$TOPDIR/SPECS/devinorium.spec" <<'EOF'
 Name: devinorium
 Version: %{pkg_version}
@@ -50,6 +57,7 @@ URL: https://gitlab.com/HttpAnimations/devinorium
 %global __os_install_post %{nil}
 # Bundled libs must not leak into the rpm provides namespace.
 %global __provides_exclude_from ^/opt/devinorium/.*
+%global __requires_exclude %{requires_exclude}
 
 %description
 A secure, self-hostable Material 3 client for managing Devin work.
@@ -70,6 +78,7 @@ rpmbuild -bb \
   --define "pkg_version $RPM_VERSION" \
   --define "pkg_release $RELEASE" \
   --define "bundle_dir $(realpath "$BUNDLE_DIR")" \
+  --define "requires_exclude $REQUIRES_EXCLUDE" \
   "$TOPDIR/SPECS/devinorium.spec"
 
 RPM_PATH="$(find "$TOPDIR/RPMS" -name '*.rpm' -print -quit)"
