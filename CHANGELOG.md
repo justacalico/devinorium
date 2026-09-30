@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.94.0 - 2026-09-30
+#### Features
+- 编辑器支持 Java 语法高亮 - (d11334c) - HttpAnimations
+#### Bug Fixes
+- 修复 RPM 安装时捆绑插件库依赖冲突 - (a3ba01e) - HttpAnimations
+
+- - -
+
 ## v0.93.0 - 2026-09-30
 #### Features
 - 终端标签页支持右键或长按重命名 - (9c7a347) - HttpAnimations
