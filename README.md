@@ -130,13 +130,6 @@ the global run-events stream. Enable them under Settings → Personalization.
   (`flutter_local_notifications` on Android and iOS, `notify-send` /
   `osascript` / PowerShell on desktop, the Notifications API on web). On
   Android 13+ the app requests `POST_NOTIFICATIONS` at runtime.
-- **Closed browser or PWA**: the server sends Web Push (VAPID + RFC 8291
-  encryption) to a dedicated `push/` service worker, so notifications arrive
-  with the tab closed. Requires HTTPS (or `localhost`) and a browser with
-  Push API support. Push text is localized per subscription language and
-  dead endpoints are pruned automatically.
-- Tapping a notification opens the relevant thread, including cold starts
-  launched by a notification.
 
 Set `DEVINORIUM_PUSH_CONTACT` to a real contact URI for reliable delivery.
 
