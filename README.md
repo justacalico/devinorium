@@ -2,8 +2,8 @@
 
 A self-hosted web UI for AI coding agents.
 
-- Backend: Rust (axum + tokio + SQLite)
-- Frontend: Flutter web, built with `./scripts/build-flutter.sh` and embedded from `frontend/dist/` at compile time
+- Backend: Rust
+- Frontend: Flutter web
 
 <p align="center">
   <img src="docs/images/running.png" width="100%" alt="Devinorium running" />
