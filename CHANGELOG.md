@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.94.1 - 2026-09-30
+#### Bug Fixes
+- 机器控制令牌在运行期间自动续期 - (8ad2fdf) - HttpAnimations
+
+- - -
+
 ## v0.94.0 - 2026-09-30
 #### Features
 - 编辑器支持 Java 语法高亮 - (d11334c) - HttpAnimations
