@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.93.0 - 2026-09-30
+#### Features
+- 终端标签页支持右键或长按重命名 - (9c7a347) - HttpAnimations
+
+- - -
+
 ## v0.92.0 - 2026-09-29
 #### Features
 - 移除消息发送的 64K 字符上限 - (27a5f96) - HttpAnimations
