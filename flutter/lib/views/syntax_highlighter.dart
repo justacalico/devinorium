@@ -4,6 +4,7 @@ import 'styles/bash.dart';
 import 'styles/css.dart';
 import 'styles/dart.dart';
 import 'styles/html.dart';
+import 'styles/java.dart';
 import 'styles/js.dart';
 import 'styles/json.dart';
 import 'styles/palette.dart';
@@ -38,6 +39,7 @@ class SyntaxHighlighter {
       'sql' => highlightSql(code, _palette),
       'html' || 'xml' => highlightHtml(code, _palette),
       'css' => highlightCss(code, _palette),
+      'java' || 'kotlin' || 'kt' || 'kts' => highlightJava(code, _palette),
       _ => TextSpan(
           text: code,
           style: TextStyle(color: _palette.base, fontFamily: 'monospace'),
