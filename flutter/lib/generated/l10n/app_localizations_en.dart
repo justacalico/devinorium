@@ -1879,6 +1879,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalCloseTab => 'Close tab';
 
   @override
+  String get terminalRenameTab => 'Rename tab';
+
+  @override
   String get terminalClose => 'Close terminal';
 
   @override

@@ -3350,6 +3350,12 @@ abstract class AppLocalizations {
   /// **'Close tab'**
   String get terminalCloseTab;
 
+  /// Title of the dialog for renaming a terminal tab
+  ///
+  /// In en, this message translates to:
+  /// **'Rename tab'**
+  String get terminalRenameTab;
+
   /// Tooltip for closing a terminal session
   ///
   /// In en, this message translates to:

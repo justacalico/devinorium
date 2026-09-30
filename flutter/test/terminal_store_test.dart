@@ -176,6 +176,42 @@ void main() {
       expect(store.activeTabIndex, 0);
     });
 
+    test('renameTab sets, trims, and clears the custom name', () {
+      final store = _store();
+      addTearDown(store.dispose);
+
+      store.addTab();
+      final tab = store.tabs.single;
+
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      store.renameTab(tab, '  builds  ');
+      expect(tab.name, 'builds');
+      expect(notified, 1);
+
+      store.renameTab(tab, 'builds');
+      expect(notified, 1);
+
+      store.renameTab(tab, '   ');
+      expect(tab.name, isNull);
+      expect(notified, 2);
+    });
+
+    test('renameTab ignores tabs the store does not own', () {
+      final store = _store();
+      addTearDown(store.dispose);
+
+      final orphan = TerminalTab(id: 'orphan');
+      var notified = 0;
+      store.addListener(() => notified++);
+
+      store.renameTab(orphan, 'nope');
+
+      expect(orphan.name, isNull);
+      expect(notified, 0);
+    });
+
     test('removeSession disposes the session and notifies', () async {
       final store = _store(sessionFactory: _fakeFactory());
       addTearDown(store.dispose);

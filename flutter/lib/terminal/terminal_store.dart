@@ -10,6 +10,10 @@ class TerminalTab {
   TerminalTab({required this.id});
 
   final String id;
+
+  /// User-assigned label shown instead of the default "Tab N".
+  String? name;
+
   final List<TerminalSession> sessions = [];
 }
 
@@ -138,6 +142,16 @@ class TerminalStore extends ChangeNotifier {
       _disposeSession(session);
       return;
     }
+  }
+
+  /// Sets a custom label for [tab]; an empty name restores the default.
+  void renameTab(TerminalTab tab, String name) {
+    if (!_tabs.contains(tab)) return;
+    final trimmed = name.trim();
+    final value = trimmed.isEmpty ? null : trimmed;
+    if (tab.name == value) return;
+    tab.name = value;
+    _notify();
   }
 
   void removeTab(TerminalTab tab) {
