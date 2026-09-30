@@ -233,6 +233,7 @@ String _languageFor(String name) {
     'css' || 'scss' || 'sass' || 'less' => 'css',
     'sh' || 'bash' || 'zsh' || 'fish' => 'bash',
     'sql' => 'sql',
+    'java' || 'kt' || 'kts' => 'java',
     _ => '',
   };
 }

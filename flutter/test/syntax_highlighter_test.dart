@@ -68,6 +68,13 @@ void main() {
       expect(span.children, isNotNull);
     });
 
+    test('highlight returns TextSpan for java', () {
+      final span =
+          highlighter.highlight('public static void main() {}', 'java');
+      expect(span, isA<TextSpan>());
+      expect(span.children, isNotNull);
+    });
+
     test('highlight falls back to plain text for unknown language', () {
       final span = highlighter.highlight('some code', 'brainfuck');
       expect(span, isA<TextSpan>());
@@ -99,6 +106,34 @@ void main() {
         return false;
       });
       expect(hasStringColor, isTrue);
+    });
+
+    test('java highlighter colorizes keywords', () {
+      final span =
+          highlighter.highlight('public class App extends Object {}', 'java');
+      expect(span.children, isNotNull);
+      final hasKeywordColor = span.children!.any((child) {
+        if (child is TextSpan) {
+          return child.style?.fontWeight == FontWeight.w600;
+        }
+        return false;
+      });
+      expect(hasKeywordColor, isTrue);
+    });
+
+    test('java highlighter colorizes comments', () {
+      final span = highlighter.highlight(
+        '// hello\nint x = 1; /* block */',
+        'java',
+      );
+      expect(span.children, isNotNull);
+      final hasItalic = span.children!.any((child) {
+        if (child is TextSpan) {
+          return child.style?.fontStyle == FontStyle.italic;
+        }
+        return false;
+      });
+      expect(hasItalic, isTrue);
     });
 
     test('dart highlighter colorizes keywords', () {
