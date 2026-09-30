@@ -1311,6 +1311,10 @@
   "@terminalCloseTab": {
     "description": "Tooltip for closing a terminal tab"
   },
+  "terminalRenameTab": "重命名标签页",
+  "@terminalRenameTab": {
+    "description": "Title of the dialog for renaming a terminal tab"
+  },
   "terminalClose": "关闭终端",
   "@terminalClose": {
     "description": "Tooltip for closing a terminal session"

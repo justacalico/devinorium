@@ -1332,6 +1332,10 @@
   "@terminalCloseTab": {
     "description": "Tooltip for closing a terminal tab"
   },
+  "terminalRenameTab": "Rename tab",
+  "@terminalRenameTab": {
+    "description": "Title of the dialog for renaming a terminal tab"
+  },
   "terminalClose": "Close terminal",
   "@terminalClose": {
     "description": "Tooltip for closing a terminal session"

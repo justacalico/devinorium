@@ -2,6 +2,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/terminal/terminal_panel.dart';
 import 'package:devinorium_frontend/terminal/terminal_session.dart';
 import 'package:devinorium_frontend/terminal/terminal_store.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -241,6 +242,75 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('s-3'), findsNothing);
     expect(find.text('s-1'), findsOneWidget);
+  });
+
+  testWidgets('right-click on a tab opens the rename dialog', (tester) async {
+    final store = _openStore()..addTab();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+    expect(find.text('Tab 1'), findsOneWidget);
+
+    await tester.tap(find.text('Tab 1'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Rename tab'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'builds');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(store.tabs.single.name, 'builds');
+    expect(find.text('builds'), findsOneWidget);
+    expect(find.text('Tab 1'), findsNothing);
+  });
+
+  testWidgets('long-press on a tab opens the rename dialog', (tester) async {
+    final store = _openStore()..addTab();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('Tab 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rename tab'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'scratch');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(store.tabs.single.name, 'scratch');
+    expect(find.text('scratch'), findsOneWidget);
+  });
+
+  testWidgets('rename dialog cancel and empty name keep the default label', (
+    tester,
+  ) async {
+    final store = _openStore()..addTab();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+
+    // Cancel leaves the tab untouched.
+    await tester.longPress(find.text('Tab 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(store.tabs.single.name, isNull);
+    expect(find.text('Tab 1'), findsOneWidget);
+
+    // Saving an empty name restores the default label.
+    store.renameTab(store.tabs.single, 'builds');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('builds'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '   ');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(store.tabs.single.name, isNull);
+    expect(find.text('Tab 1'), findsOneWidget);
   });
 
   testWidgets('confirms before closing non-blank terminal or tab', (

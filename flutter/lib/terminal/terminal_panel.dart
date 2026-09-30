@@ -109,6 +109,44 @@ class TerminalPanel extends StatelessWidget {
     }
   }
 
+  Future<void> _renameTab(BuildContext context, TerminalTab tab) async {
+    var name = tab.name ?? '';
+    final index = store.tabs.indexOf(tab);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n(context).terminalRenameTab),
+        content: TextFormField(
+          initialValue: name,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: l10n(context).name,
+            hintText: index == -1
+                ? null
+                : l10n(context).terminalTab(index + 1),
+            border: const OutlineInputBorder(),
+          ),
+          textInputAction: TextInputAction.done,
+          onChanged: (value) => name = value,
+          onFieldSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n(context).cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(name),
+            child: Text(l10n(context).save),
+          ),
+        ],
+      ),
+    );
+    if (result != null && context.mounted) {
+      store.renameTab(tab, result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -157,6 +195,7 @@ class TerminalPanel extends StatelessWidget {
                       onAddTab: store.addTab,
                       onCloseSession: (s) => _confirmCloseSession(context, s),
                       onCloseTab: (t) => _confirmCloseTab(context, t),
+                      onRenameTab: (t) => _renameTab(context, t),
                     ),
                   ),
                 ],

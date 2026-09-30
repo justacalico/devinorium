@@ -16,6 +16,7 @@ class TerminalTabs extends StatelessWidget {
     required this.onAddTab,
     required this.onCloseSession,
     required this.onCloseTab,
+    required this.onRenameTab,
   });
 
   final List<TerminalTab> tabs;
@@ -24,6 +25,7 @@ class TerminalTabs extends StatelessWidget {
   final VoidCallback onAddTab;
   final ValueChanged<TerminalSession> onCloseSession;
   final ValueChanged<TerminalTab> onCloseTab;
+  final ValueChanged<TerminalTab> onRenameTab;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +40,7 @@ class TerminalTabs extends StatelessWidget {
           onTap: onTabChanged,
           onClose: onCloseTab,
           onAddTab: onAddTab,
+          onRename: onRenameTab,
         ),
         Expanded(
           child: tab == null
@@ -56,6 +59,7 @@ class _TabBar extends StatelessWidget {
     required this.onTap,
     required this.onClose,
     required this.onAddTab,
+    required this.onRename,
   });
 
   final List<TerminalTab> tabs;
@@ -63,6 +67,7 @@ class _TabBar extends StatelessWidget {
   final ValueChanged<int> onTap;
   final ValueChanged<TerminalTab> onClose;
   final VoidCallback onAddTab;
+  final ValueChanged<TerminalTab> onRename;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +93,7 @@ class _TabBar extends StatelessWidget {
                   active: index == activeIndex,
                   onTap: () => onTap(index),
                   onClose: () => onClose(tab),
+                  onRename: () => onRename(tab),
                 );
               },
             ),
@@ -106,6 +112,7 @@ class _Tab extends StatelessWidget {
     required this.active,
     required this.onTap,
     required this.onClose,
+    required this.onRename,
   });
 
   final int index;
@@ -113,6 +120,7 @@ class _Tab extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
   final VoidCallback onClose;
+  final VoidCallback onRename;
 
   @override
   Widget build(BuildContext context) {
@@ -126,6 +134,8 @@ class _Tab extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onSecondaryTap: onRename,
+      onLongPress: onRename,
       child: Container(
         width: 140,
         color: background,
@@ -134,7 +144,7 @@ class _Tab extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                l10n(context).terminalTab(index + 1),
+                tab.name ?? l10n(context).terminalTab(index + 1),
                 style: Theme.of(
                   context,
                 ).textTheme.labelMedium?.copyWith(color: foreground),
