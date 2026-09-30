@@ -61,10 +61,6 @@ cargo run -- --dev --local  # loopback only
 cargo run -- --local        # same thing
 ```
 
-Browsers work as-is. Non-browser clients (curl, scripts) must still send a
-matching `Origin` header or any `Authorization: Bearer ...` value on
-writes; the CSRF check applies in dev mode too.
-
 ## Configuration
 
 All configuration is via environment variables. See `.env.example` for the full list.
