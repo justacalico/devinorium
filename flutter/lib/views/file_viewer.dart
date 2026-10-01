@@ -131,11 +131,10 @@ class _FileViewerPageState extends State<FileViewerPage> {
     );
   }
 
+  /// Changed files open on the diff; new files open on the content since
+  /// their diff is just the whole file anyway.
   static bool _defaultToDiff(String? status) {
-    return status == 'modified' ||
-        status == 'conflict' ||
-        status == 'added' ||
-        status == 'untracked';
+    return status == 'modified' || status == 'conflict';
   }
 
   static String _basename(String path) {
@@ -173,27 +172,30 @@ class _FileViewerState extends State<FileViewer> {
     final hasDiff = widget.content.diff != null;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (hasDiff) ...[
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: SegmentedButton<bool>(
-              selected: {_showDiff},
-              onSelectionChanged: (s) {
-                if (s.isNotEmpty) {
-                  setState(() => _showDiff = s.first);
-                }
-              },
-              segments: [
-                ButtonSegment<bool>(
-                  value: false,
-                  label: Text(l.fileViewerContent),
-                ),
-                ButtonSegment<bool>(
-                  value: true,
-                  label: Text(l.fileViewerDiff),
-                ),
-              ],
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SegmentedButton<bool>(
+                selected: {_showDiff},
+                onSelectionChanged: (s) {
+                  if (s.isNotEmpty) {
+                    setState(() => _showDiff = s.first);
+                  }
+                },
+                segments: [
+                  ButtonSegment<bool>(
+                    value: false,
+                    label: Text(l.fileViewerContent),
+                  ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    label: Text(l.fileViewerDiff),
+                  ),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),
