@@ -31,8 +31,7 @@ class _ThrowingClient extends BaseApiClient {
     Map<String, String> fields = const {},
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
@@ -1143,6 +1142,72 @@ void main() {
       expect(
         api.calls.where((c) => c.startsWith('gitDeleteWorktree')),
         isEmpty,
+      );
+    });
+
+    testWidgets('long labels shrink instead of overflowing', (tester) async {
+      final api = _FakeApiService();
+      api.currentBranch = 'refactor/66-api-domain-model-split';
+      api.ahead = 2;
+      api.behind = 1;
+      api.worktrees = [
+        GitWorktree(
+          path: '/x/wt',
+          head: 'abc',
+          branch: 'refactor/66-api-domain-model-split',
+          isMain: false,
+        ),
+      ];
+      final state = AppState.test(
+        api: api,
+        projects: [
+          Project(
+            id: 1,
+            name: 'p',
+            path: '/x',
+            isRepo: true,
+            gitBranch: 'refactor/66-api-domain-model-split',
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ],
+        activeProjectId: 1,
+        activeThreadId: 't1',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            branch: 'refactor/66-api-domain-model-split',
+            worktreePath: '/x/wt',
+            envMode: 'worktree',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const Scaffold(
+              body: SizedBox(width: 430, child: BranchToolbar()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getRect(find.byKey(const Key('branch_toolbar_env_mode'))).right,
+        lessThanOrEqualTo(430),
       );
     });
   });

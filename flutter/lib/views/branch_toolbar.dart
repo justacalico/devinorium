@@ -116,18 +116,20 @@ class _BranchToolbarState extends State<BranchToolbar> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _buildBranchButton(
-                  state: state,
-                  projectId: projectId,
-                  threadId: threadId,
-                  repo: repo,
-                  branches: branches,
-                  effectiveBranch: effectiveBranch,
-                  isOnMainWorktree: isOnMainWorktree,
-                  sending: model.sending,
-                  compact: compact,
-                  theme: theme,
-                  l: l,
+                Flexible(
+                  child: _buildBranchButton(
+                    state: state,
+                    projectId: projectId,
+                    threadId: threadId,
+                    repo: repo,
+                    branches: branches,
+                    effectiveBranch: effectiveBranch,
+                    isOnMainWorktree: isOnMainWorktree,
+                    sending: model.sending,
+                    compact: compact,
+                    theme: theme,
+                    l: l,
+                  ),
                 ),
                 if (repo.behind > 0) ...[
                   const SizedBox(width: 2),
@@ -152,29 +154,33 @@ class _BranchToolbarState extends State<BranchToolbar> {
                   ),
                 ],
                 const SizedBox(width: 8),
-                _buildWorktreeButton(
-                  state: state,
-                  projectId: projectId,
-                  threadId: threadId,
-                  repo: repo,
-                  worktrees: worktrees,
-                  mainWorktreePath: mainWorktreePath,
-                  activeWorktree: activeWorktree,
-                  activeWorktreePath: activeWorktreePath,
-                  sending: model.sending,
-                  compact: compact,
-                  theme: theme,
-                  l: l,
+                Flexible(
+                  child: _buildWorktreeButton(
+                    state: state,
+                    projectId: projectId,
+                    threadId: threadId,
+                    repo: repo,
+                    worktrees: worktrees,
+                    mainWorktreePath: mainWorktreePath,
+                    activeWorktree: activeWorktree,
+                    activeWorktreePath: activeWorktreePath,
+                    sending: model.sending,
+                    compact: compact,
+                    theme: theme,
+                    l: l,
+                  ),
                 ),
                 const SizedBox(width: 8),
-                _buildEnvModeButton(
-                  state: state,
-                  threadId: threadId,
-                  envMode: model.envMode,
-                  sending: model.sending,
-                  compact: compact,
-                  theme: theme,
-                  l: l,
+                Flexible(
+                  child: _buildEnvModeButton(
+                    state: state,
+                    threadId: threadId,
+                    envMode: model.envMode,
+                    sending: model.sending,
+                    compact: compact,
+                    theme: theme,
+                    l: l,
+                  ),
                 ),
               ],
             );
@@ -1008,13 +1014,17 @@ class _ToolbarButton extends StatelessWidget {
           Icon(icon, size: 14, color: foreground?.withValues(alpha: 0.85)),
           if (!compact) ...[
             const SizedBox(width: 4),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 160),
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(color: foreground),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: foreground,
+                  ),
+                ),
               ),
             ),
           ],
