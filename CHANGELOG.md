@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.94.2 - 2026-10-01
+#### Bug Fixes
+- 修复分支工具栏溢出遮挡 token 用量 - (da1d0a7) - HttpAnimations
+
+- - -
+
 ## v0.94.1 - 2026-09-30
 #### Bug Fixes
 - 机器控制令牌在运行期间自动续期 - (8ad2fdf) - HttpAnimations
