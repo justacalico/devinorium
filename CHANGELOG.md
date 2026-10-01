@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.94.3 - 2026-10-01
+#### Bug Fixes
+- 修复文件查看器内容居中，新增文件默认显示内容页 - (3748ce0) - HttpAnimations
+
+- - -
+
 ## v0.94.2 - 2026-10-01
 #### Bug Fixes
 - 修复分支工具栏溢出遮挡 token 用量 - (da1d0a7) - HttpAnimations
