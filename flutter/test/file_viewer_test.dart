@@ -74,6 +74,66 @@ void main() {
       expect(find.textContaining('+ new text'), findsOneWidget);
     });
 
+    testWidgets('content fills the width and is left-aligned',
+        (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final content = FileContent(
+        path: '/x.dart',
+        mime: 'text/plain',
+        size: 12,
+        base64: '',
+        text: 'short line\n' * 50,
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: FileViewer(content: content))),
+      );
+      await tester.pumpAndSettle();
+
+      // The text widget shrink-wraps to the longest line, but must sit at
+      // the left edge of the padded scroll area rather than being centered.
+      final rect = tester.getRect(find.byType(EditableText).first);
+      expect(rect.left, 16.0);
+      expect(rect.top, 16.0);
+    });
+
+    testWidgets('diff tab fills the width and is left-aligned',
+        (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final content = FileContent(
+        path: '/x.dart',
+        mime: 'text/plain',
+        size: 12,
+        base64: '',
+        text: 'b',
+        diff: const FileDiff(
+          path: '/x.dart',
+          oldText: 'a',
+          newText: 'b',
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FileViewer(content: content, initialShowDiff: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final rect = tester.getRect(find.byType(EditableText).first);
+      expect(rect.left, 20.0);
+
+      // The Content/Diff toggle stays compact and centered.
+      final toggle = tester.getRect(find.byType(SegmentedButton<bool>));
+      expect(toggle.center.dx, 600.0);
+    });
+
     testWidgets('shows binary placeholder for non-text files', (tester) async {
       final content = FileContent(
         path: '/x.bin',
@@ -327,6 +387,99 @@ void main() {
 
       expect(find.text('foo.rs'), findsOneWidget);
       expect(find.textContaining('+ new'), findsOneWidget);
+    });
+
+    testWidgets('added files open on the content tab', (tester) async {
+      final mock = MockClient((req) async => _json({
+            'path': '/foo.rs',
+            'mime': 'text/x-rust',
+            'size': 7,
+            'base64': 'Zm9vIGJhcg==',
+            'text': 'foo bar',
+            'diff': {
+              'path': '/foo.rs',
+              'old_text': null,
+              'new_text': 'foo bar',
+            },
+          }));
+      final state = AppState(api: _serviceFor(mock));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child: const FileViewerPage(path: 'foo.rs', gitStatus: 'added'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('foo bar'), findsOneWidget);
+      expect(find.textContaining('+ foo bar'), findsNothing);
+
+      // The diff is still available behind the Diff tab.
+      await tester.tap(find.text('Diff'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('+ foo bar'), findsOneWidget);
+    });
+
+    testWidgets('conflicting files open on the diff tab', (tester) async {
+      final mock = MockClient((req) async => _json({
+            'path': '/foo.rs',
+            'mime': 'text/x-rust',
+            'size': 7,
+            'base64': 'Zm9vIGJhcg==',
+            'text': 'foo bar',
+            'diff': {
+              'path': '/foo.rs',
+              'old_text': 'foo',
+              'new_text': 'foo bar',
+            },
+          }));
+      final state = AppState(api: _serviceFor(mock));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child:
+                const FileViewerPage(path: 'foo.rs', gitStatus: 'conflict'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('+ foo bar'), findsOneWidget);
+    });
+
+    testWidgets('untracked files open on the content tab', (tester) async {
+      final mock = MockClient((req) async => _json({
+            'path': '/foo.rs',
+            'mime': 'text/x-rust',
+            'size': 7,
+            'base64': 'Zm9vIGJhcg==',
+            'text': 'foo bar',
+            'diff': {
+              'path': '/foo.rs',
+              'old_text': null,
+              'new_text': 'foo bar',
+            },
+          }));
+      final state = AppState(api: _serviceFor(mock));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: state,
+            child:
+                const FileViewerPage(path: 'foo.rs', gitStatus: 'untracked'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('+ foo bar'), findsNothing);
+      expect(find.textContaining('foo bar'), findsOneWidget);
     });
 
     testWidgets('shows error when readFile fails', (tester) async {
