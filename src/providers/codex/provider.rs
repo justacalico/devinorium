@@ -226,7 +226,8 @@ impl CodexProvider {
         session: Option<&str>,
         prompt: String,
     ) -> anyhow::Result<PromptResult> {
-        let server = AppServer::spawn(&self.bin, &options.working_dir).await?;
+        let (mcp_env, mcp_home) = super::mcp::codex_home_env(&options.mcp_servers).await?;
+        let server = AppServer::spawn(&self.bin, &options.working_dir, &mcp_env).await?;
         handshake(&server).await?;
 
         let model = self.resolve_model(options).await;
@@ -396,6 +397,13 @@ impl CodexProvider {
             .request("thread/unsubscribe", json!({ "threadId": thread_id }))
             .await;
 
+        // The temp CODEX_HOME only exists for the run; entries the child
+        // created under it (a new sessions dir, a rewritten auth.json)
+        // move back to the real home before the mirror is dropped.
+        if let Some(ref home) = mcp_home {
+            home.sync_back().await;
+        }
+
         if completed_turn.status == "failed" {
             let message = completed_turn
                 .error
@@ -497,7 +505,7 @@ impl Provider for CodexProvider {
             anyhow::bail!("provider command not found: {}", self.bin);
         }
         let cwd = std::env::temp_dir();
-        let server = AppServer::spawn(&self.bin, &cwd).await?;
+        let server = AppServer::spawn(&self.bin, &cwd, &[]).await?;
         tokio::time::timeout(std::time::Duration::from_secs(15), handshake(&server))
             .await
             .map_err(|_| anyhow::anyhow!("codex app-server handshake timed out"))??;
@@ -524,6 +532,10 @@ mod tests {
         let path = dir.join("codex");
         let script = r#"#!/bin/sh
 echo $$ > "__LOGDIR__/codex.pid"
+if [ -n "$CODEX_HOME" ]; then
+  echo "$CODEX_HOME" > "__LOGDIR__/codex_home.txt"
+  cp "$CODEX_HOME/config.toml" "__LOGDIR__/codex_config.toml"
+fi
 id_of() { printf '%s' "$1" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'; }
 while IFS= read -r line; do
   case "$line" in
@@ -627,6 +639,7 @@ done
             interaction_mode: "code".into(),
             cancel_signal: None,
             max_output_tokens: None,
+            mcp_servers: Vec::new(),
         }
     }
 
@@ -653,6 +666,46 @@ done
             resp.parts
                 .iter()
                 .any(|p| matches!(p, MessagePart::ToolCall { payload } if payload.command.as_deref() == Some("echo hi")))
+        );
+    }
+
+    /// A configured MCP server hands the child a temp CODEX_HOME whose
+    /// config.toml carries the `[mcp_servers]` entry.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn mcp_servers_get_a_merged_codex_home() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = fake_codex(dir.path());
+        let provider = CodexProvider::new(bin.to_string_lossy().into(), String::new());
+        let mut opts = options(dir.path());
+        opts.mcp_servers = vec![crate::mcp::McpServerConfig {
+            name: "tools".into(),
+            enabled: true,
+            transport: "stdio".into(),
+            command: "npx".into(),
+            args: vec!["-y".into(), "tools-mcp".into()],
+            env: Default::default(),
+            url: String::new(),
+            headers: Default::default(),
+        }];
+
+        provider
+            .start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            })
+            .await
+            .unwrap();
+
+        let home = std::fs::read_to_string(dir.path().join("codex_home.txt")).unwrap();
+        assert!(!home.trim().is_empty(), "child did not see CODEX_HOME");
+        // The temp home is gone by the time the turn ends, so the fake
+        // snapshot of config.toml is what we assert on.
+        let merged = std::fs::read_to_string(dir.path().join("codex_config.toml")).unwrap();
+        let merged: toml::Value = toml::from_str(&merged).unwrap();
+        assert_eq!(
+            merged["mcp_servers"]["tools"]["command"].as_str(),
+            Some("npx")
         );
     }
 

@@ -15,6 +15,7 @@ enum SettingsTopic {
   audit,
   about,
   servers,
+  mcp,
 }
 
 /// Sidebar topic order; `git`, `manage` and `audit` are owner-only.
@@ -33,6 +34,7 @@ List<SettingsTopic> settingsTopicOrder(bool isOwner) {
     SettingsTopic.usage,
     // New topics go last so existing topic positions do not shift.
     if (isOwner) SettingsTopic.audit,
+    if (isOwner) SettingsTopic.mcp,
   ];
 }
 
@@ -94,6 +96,11 @@ List<({SettingsTopic topic, IconData icon, String label})> settingsTopics(
             topic: topic,
             icon: Icons.receipt_long_outlined,
             label: l.auditLog,
+          ),
+        SettingsTopic.mcp => (
+            topic: topic,
+            icon: Icons.hub_outlined,
+            label: l.mcpServers,
           ),
       },
   ];

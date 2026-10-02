@@ -2111,4 +2111,74 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webSocketClosed => 'WebSocket closed';
+
+  @override
+  String get mcpServers => 'MCP servers';
+
+  @override
+  String get mcpServersHint =>
+      'Tool servers agents connect to when a run starts. stdio runs a command; HTTP and SSE connect to a URL. Enabled servers apply to every provider.';
+
+  @override
+  String get mcpServersEmpty => 'No MCP servers configured.';
+
+  @override
+  String get mcpServerAdd => 'Add server';
+
+  @override
+  String get mcpServerEdit => 'Edit server';
+
+  @override
+  String mcpServerDeleteConfirm(String name) {
+    return 'Delete \"$name\"? Agents will no longer connect to it.';
+  }
+
+  @override
+  String get mcpServerName => 'Name';
+
+  @override
+  String get mcpServerNameInvalid =>
+      'Use 1-64 letters, digits, -, _ or ., starting with a letter or digit';
+
+  @override
+  String get mcpServerNameTaken => 'A server with this name already exists';
+
+  @override
+  String get mcpServerCommand => 'Command';
+
+  @override
+  String get mcpServerArgs => 'Arguments';
+
+  @override
+  String get mcpServerArgsHint => 'One argument per line';
+
+  @override
+  String get mcpServerEnv => 'Environment';
+
+  @override
+  String get mcpServerUrl => 'URL';
+
+  @override
+  String get mcpServerUrlInvalid => 'URL must start with http:// or https://';
+
+  @override
+  String get mcpServerHeaders => 'Headers';
+
+  @override
+  String get mcpServerPairsHint => 'One KEY=VALUE pair per line';
+
+  @override
+  String get mcpServerEnabled => 'Enabled';
+
+  @override
+  String get mcpServerDisabled => 'Disabled';
+
+  @override
+  String get skillPickerHint => 'Select a skill';
+
+  @override
+  String get skillsEmpty => 'No skills found for this thread.';
+
+  @override
+  String get skillPickerEmpty => 'No matching skills.';
 }

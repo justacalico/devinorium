@@ -348,6 +348,7 @@ mixin AuthStore on AppStateBase {
       refreshProviderVersion(),
       loadTailscaleStatus(),
       loadMachines(),
+      loadMcpServers(),
       refreshFederationNodes(),
     ];
     if (isOwner) {

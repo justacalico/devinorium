@@ -391,6 +391,17 @@ pub(crate) async fn call_provider(
         })
     };
 
+    // MCP servers are owner-managed and a stdio entry is arbitrary code
+    // execution as the server user, matching the provider-command rule.
+    let mcp_servers = if user.is_owner {
+        state.db.get_mcp_servers(user.id).await.unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "failed to load mcp servers; running without them");
+            Vec::new()
+        })
+    } else {
+        Vec::new()
+    };
+
     let options = SendOptions {
         model: thread.model.clone(),
         reasoning_effort: if thread.reasoning_effort.is_empty() {
@@ -412,11 +423,27 @@ pub(crate) async fn call_provider(
             .max_output_tokens
             .and_then(|v| u64::try_from(v).ok())
             .filter(|v| *v > 0),
+        mcp_servers,
     };
 
+    // A leading `/skill args` reaches the Devin CLI verbatim — its ACP
+    // server resolves slash commands natively. Other providers get the
+    // skill body expanded inline so the workflow still applies. Expansion
+    // runs on the user's text alone so the context/machine blocks appended
+    // below land after the skill body instead of inside its args.
+    let user_prompt = if thread.provider_id == crate::providers::acp::AgentKind::Devin.id() {
+        input.prompt.clone()
+    } else {
+        crate::skills::expand_skill_prompt(
+            &input.prompt,
+            &options.working_dir,
+            &state.config.home_dir,
+        )
+        .await
+    };
     let prompt = prompt_with_machine_refs(
         &prompt_with_thread_refs(
-            &prompt_with_refs(&input.prompt, &input.context_refs),
+            &prompt_with_refs(&user_prompt, &input.context_refs),
             &input.thread_refs,
         ),
         &input.machine_refs,

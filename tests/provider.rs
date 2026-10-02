@@ -79,6 +79,7 @@ async fn provider_start_and_send_text() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![],
             },
         })
@@ -104,6 +105,7 @@ async fn provider_start_and_send_text() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![],
             },
         })
@@ -151,6 +153,7 @@ async fn provider_start_with_image_attachment() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![providers::Attachment {
                     filename: "pixel.png".to_string(),
                     mime: "image/png".to_string(),
@@ -231,6 +234,7 @@ async fn provider_grok_start() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![],
             },
         })
@@ -291,6 +295,7 @@ async fn provider_acp_start() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![],
             },
         })
@@ -326,6 +331,7 @@ async fn provider_generates_code() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![],
             },
         })
@@ -366,6 +372,7 @@ async fn provider_writes_file_in_working_dir() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![],
             },
         })
@@ -424,6 +431,7 @@ async fn provider_accepts_all_permission_modes() {
                     interaction_mode: "code".into(),
                     cancel_signal: None,
                     max_output_tokens: None,
+                    mcp_servers: Vec::new(),
                     attachments: vec![],
                 },
             })
@@ -465,6 +473,7 @@ async fn provider_accepts_text_attachment() {
                 interaction_mode: "code".into(),
                 cancel_signal: None,
                 max_output_tokens: None,
+                mcp_servers: Vec::new(),
                 attachments: vec![providers::Attachment {
                     filename: "secret.txt".to_string(),
                     mime: "text/plain".to_string(),

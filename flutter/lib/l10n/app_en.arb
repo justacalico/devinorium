@@ -421,7 +421,7 @@
   "deleteThread": "Delete thread",
   "connected": "Connected",
   "disconnected": "Disconnected",
-  "checkingConnection": "Checking connection\u2026",
+  "checkingConnection": "Checking connection…",
   "serverVersion": "Server version",
   "@serverVersion": {
     "description": "Label for the connected server version row in settings"
@@ -441,7 +441,7 @@
       }
     }
   },
-  "serverUpdateApplying": "Downloading the update and restarting the server\u2026",
+  "serverUpdateApplying": "Downloading the update and restarting the server…",
   "serverUpdateAvailable": "Version {version} is available",
   "@serverUpdateAvailable": {
     "placeholders": {
@@ -1613,5 +1613,98 @@
   "webSocketClosed": "WebSocket closed",
   "@webSocketClosed": {
     "description": "Terminal error recorded when the socket closes unexpectedly"
+  },
+  "mcpServers": "MCP servers",
+  "@mcpServers": {
+    "description": "Settings topic and section title for MCP servers"
+  },
+  "mcpServersHint": "Tool servers agents connect to when a run starts. stdio runs a command; HTTP and SSE connect to a URL. Enabled servers apply to every provider.",
+  "@mcpServersHint": {
+    "description": "Explanation shown above the MCP server list"
+  },
+  "mcpServersEmpty": "No MCP servers configured.",
+  "@mcpServersEmpty": {
+    "description": "Shown when no MCP servers exist"
+  },
+  "mcpServerAdd": "Add server",
+  "@mcpServerAdd": {
+    "description": "Button and dialog title for adding an MCP server"
+  },
+  "mcpServerEdit": "Edit server",
+  "@mcpServerEdit": {
+    "description": "Dialog title for editing an MCP server"
+  },
+  "mcpServerDeleteConfirm": "Delete \"{name}\"? Agents will no longer connect to it.",
+  "@mcpServerDeleteConfirm": {
+    "description": "Confirmation before deleting an MCP server",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "mcpServerName": "Name",
+  "@mcpServerName": {
+    "description": "MCP server name field"
+  },
+  "mcpServerNameInvalid": "Use 1-64 letters, digits, -, _ or ., starting with a letter or digit",
+  "@mcpServerNameInvalid": {
+    "description": "Error for an invalid MCP server name"
+  },
+  "mcpServerNameTaken": "A server with this name already exists",
+  "@mcpServerNameTaken": {
+    "description": "Error when the server name is already in use"
+  },
+  "mcpServerCommand": "Command",
+  "@mcpServerCommand": {
+    "description": "MCP stdio command field"
+  },
+  "mcpServerArgs": "Arguments",
+  "@mcpServerArgs": {
+    "description": "MCP stdio arguments field"
+  },
+  "mcpServerArgsHint": "One argument per line",
+  "@mcpServerArgsHint": {
+    "description": "Helper under the args field"
+  },
+  "mcpServerEnv": "Environment",
+  "@mcpServerEnv": {
+    "description": "MCP env vars field"
+  },
+  "mcpServerUrl": "URL",
+  "@mcpServerUrl": {
+    "description": "MCP remote endpoint field"
+  },
+  "mcpServerUrlInvalid": "URL must start with http:// or https://",
+  "@mcpServerUrlInvalid": {
+    "description": "Error for an invalid MCP server URL"
+  },
+  "mcpServerHeaders": "Headers",
+  "@mcpServerHeaders": {
+    "description": "MCP request headers field"
+  },
+  "mcpServerPairsHint": "One KEY=VALUE pair per line",
+  "@mcpServerPairsHint": {
+    "description": "Helper under env/headers fields"
+  },
+  "mcpServerEnabled": "Enabled",
+  "@mcpServerEnabled": {
+    "description": "Switch label for an MCP server"
+  },
+  "mcpServerDisabled": "Disabled",
+  "@mcpServerDisabled": {
+    "description": "Badge on a disabled MCP server"
+  },
+  "skillPickerHint": "Select a skill",
+  "@skillPickerHint": {
+    "description": "Header of the / skill picker in the composer"
+  },
+  "skillsEmpty": "No skills found for this thread.",
+  "@skillsEmpty": {
+    "description": "Shown in the / picker when the thread has no skills"
+  },
+  "skillPickerEmpty": "No matching skills.",
+  "@skillPickerEmpty": {
+    "description": "Shown in the / picker when nothing matches the query"
   }
 }

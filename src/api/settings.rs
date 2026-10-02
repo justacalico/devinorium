@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use crate::api::{map_err_internal, ApiError};
 use crate::auth::session::CurrentUser;
+use crate::mcp::{validate_servers, McpServerConfig};
 use crate::security::paths;
 use crate::AppState;
 
@@ -25,6 +26,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/settings/worktree-root", put(set_worktree_root))
         .route("/api/settings/project-root", get(get_project_root))
         .route("/api/settings/project-root", put(set_project_root))
+        .route("/api/settings/mcp-servers", get(get_mcp_servers))
+        .route("/api/settings/mcp-servers", put(set_mcp_servers))
 }
 
 #[derive(Debug, Serialize)]
@@ -319,6 +322,64 @@ async fn set_project_root(
 
     Json(ProjectRootResponse {
         path: paths::normalize_path(&stored, &state.config.home_dir),
+    })
+    .into_response()
+}
+
+#[derive(Debug, Serialize)]
+struct McpServersResponse {
+    servers: Vec<McpServerConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetMcpServersRequest {
+    servers: Vec<McpServerConfig>,
+}
+
+/// The owner's MCP server list. Owner-only on read too: `env` and `headers`
+/// carry credentials.
+async fn get_mcp_servers(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> Response {
+    if !user.is_owner {
+        return (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response();
+    }
+    match state.db.get_mcp_servers(user.id).await {
+        Ok(servers) => Json(McpServersResponse { servers }).into_response(),
+        Err(e) => map_err_internal(e).into_response(),
+    }
+}
+
+/// Replace the owner's MCP server list wholesale; the client sends the full
+/// list so adds, edits, deletes, and enable toggles share one write path.
+async fn set_mcp_servers(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<SetMcpServersRequest>,
+) -> Response {
+    if !user.is_owner {
+        return (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response();
+    }
+    if let Err(msg) = validate_servers(&req.servers) {
+        return (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response();
+    }
+    if let Err(e) = state.db.set_mcp_servers(user.id, &req.servers).await {
+        return map_err_internal(e).into_response();
+    }
+
+    let _ = state
+        .db
+        .audit(
+            Some(user.id),
+            "mcp_servers.set",
+            &serde_json::json!({"count": req.servers.len()}),
+            None,
+        )
+        .await;
+
+    Json(McpServersResponse {
+        servers: req.servers,
     })
     .into_response()
 }

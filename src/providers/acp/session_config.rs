@@ -15,6 +15,11 @@ impl AcpProvider {
     /// `interaction_mode` session config option, and a supplement for those
     /// that do: the markup conventions are devinorium's own.
     pub fn apply_interaction_mode_prefix(prompt: String, mode: &str) -> String {
+        // A leading / is a native slash command (a skill, /compact, ...) —
+        // prepending a mode preamble would stop the agent from resolving it.
+        if prompt.starts_with('/') {
+            return prompt;
+        }
         crate::providers::apply_interaction_mode_prefix(prompt, mode)
     }
 }
@@ -435,5 +440,13 @@ mod tests {
         let out = AcpProvider::apply_interaction_mode_prefix("go".into(), "code");
         assert!(out.starts_with("go\n\n"));
         assert!(out.contains("update_plan"));
+    }
+
+    #[test]
+    fn apply_interaction_mode_prefix_leaves_slash_commands_alone() {
+        // A leading / is a native ACP command — a mode preamble in front of
+        // it would stop the agent from resolving the command name.
+        let out = AcpProvider::apply_interaction_mode_prefix("/review src".into(), "plan");
+        assert_eq!(out, "/review src");
     }
 }

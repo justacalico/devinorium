@@ -59,6 +59,7 @@ part 'app_state/dialog_store.dart';
 part 'app_state/settings_store.dart';
 part 'app_state/tailscale_store.dart';
 part 'app_state/machines_store.dart';
+part 'app_state/mcp_store.dart';
 part 'app_state/node_store.dart';
 part 'app_state/version_store.dart';
 part 'app_state/editor_store.dart';
@@ -117,6 +118,7 @@ class AppState extends AppStateBase
         SettingsStore,
         TailscaleStore,
         MachinesStore,
+        McpStore,
         NodeStore,
         VersionStore,
         EditorStore {
@@ -228,6 +230,8 @@ class AppState extends AppStateBase
     List<ThreadReference> threadReferences = const [],
     List<MachineReference> machineReferences = const [],
     List<Machine> machines = const [],
+    List<McpServerConfig> mcpServers = const [],
+    List<Skill> skills = const [],
     String? selectedModel,
     String? selectedReasoning,
     String? selectedPermission,
@@ -268,6 +272,8 @@ class AppState extends AppStateBase
     _loadingGitConnections = loadingGitConnections;
     _tailscaleInfo = tailscaleInfo;
     _machines = List.of(machines);
+    _mcpServers = List.of(mcpServers);
+    _skills = List.of(skills);
     _cloneRoot = cloneRoot;
     _worktreeRoot = worktreeRoot;
     _projectRoot = projectRoot;
@@ -357,6 +363,7 @@ class AppState extends AppStateBase
       _selectedPermission = selectedPermission ?? 'normal';
       _selectedProvider = selectedProvider ?? user?.providerId ?? '';
     }
+    _skillsThreadId = _activeThreadId;
   }
 
   @override

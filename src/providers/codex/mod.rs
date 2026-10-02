@@ -10,11 +10,13 @@
 //! - `approvals`: server→client requests (approvals, user input, elicitations)
 //!   and the permission-mode → sandbox mapping
 //! - `models`: `model/list` catalog
+//! - `mcp`: merged `config.toml` under a temp `CODEX_HOME`
 //! - `version`: installed/latest version reporting
 //! - `provider`: the [`Provider`] impl and per-prompt orchestration
 
 pub mod approvals;
 pub mod events;
+pub mod mcp;
 pub mod models;
 mod provider;
 pub mod rpc;

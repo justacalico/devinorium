@@ -3727,6 +3727,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'WebSocket closed'**
   String get webSocketClosed;
+
+  /// Settings topic and section title for MCP servers
+  ///
+  /// In en, this message translates to:
+  /// **'MCP servers'**
+  String get mcpServers;
+
+  /// Explanation shown above the MCP server list
+  ///
+  /// In en, this message translates to:
+  /// **'Tool servers agents connect to when a run starts. stdio runs a command; HTTP and SSE connect to a URL. Enabled servers apply to every provider.'**
+  String get mcpServersHint;
+
+  /// Shown when no MCP servers exist
+  ///
+  /// In en, this message translates to:
+  /// **'No MCP servers configured.'**
+  String get mcpServersEmpty;
+
+  /// Button and dialog title for adding an MCP server
+  ///
+  /// In en, this message translates to:
+  /// **'Add server'**
+  String get mcpServerAdd;
+
+  /// Dialog title for editing an MCP server
+  ///
+  /// In en, this message translates to:
+  /// **'Edit server'**
+  String get mcpServerEdit;
+
+  /// Confirmation before deleting an MCP server
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{name}\"? Agents will no longer connect to it.'**
+  String mcpServerDeleteConfirm(String name);
+
+  /// MCP server name field
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get mcpServerName;
+
+  /// Error for an invalid MCP server name
+  ///
+  /// In en, this message translates to:
+  /// **'Use 1-64 letters, digits, -, _ or ., starting with a letter or digit'**
+  String get mcpServerNameInvalid;
+
+  /// Error when the server name is already in use
+  ///
+  /// In en, this message translates to:
+  /// **'A server with this name already exists'**
+  String get mcpServerNameTaken;
+
+  /// MCP stdio command field
+  ///
+  /// In en, this message translates to:
+  /// **'Command'**
+  String get mcpServerCommand;
+
+  /// MCP stdio arguments field
+  ///
+  /// In en, this message translates to:
+  /// **'Arguments'**
+  String get mcpServerArgs;
+
+  /// Helper under the args field
+  ///
+  /// In en, this message translates to:
+  /// **'One argument per line'**
+  String get mcpServerArgsHint;
+
+  /// MCP env vars field
+  ///
+  /// In en, this message translates to:
+  /// **'Environment'**
+  String get mcpServerEnv;
+
+  /// MCP remote endpoint field
+  ///
+  /// In en, this message translates to:
+  /// **'URL'**
+  String get mcpServerUrl;
+
+  /// Error for an invalid MCP server URL
+  ///
+  /// In en, this message translates to:
+  /// **'URL must start with http:// or https://'**
+  String get mcpServerUrlInvalid;
+
+  /// MCP request headers field
+  ///
+  /// In en, this message translates to:
+  /// **'Headers'**
+  String get mcpServerHeaders;
+
+  /// Helper under env/headers fields
+  ///
+  /// In en, this message translates to:
+  /// **'One KEY=VALUE pair per line'**
+  String get mcpServerPairsHint;
+
+  /// Switch label for an MCP server
+  ///
+  /// In en, this message translates to:
+  /// **'Enabled'**
+  String get mcpServerEnabled;
+
+  /// Badge on a disabled MCP server
+  ///
+  /// In en, this message translates to:
+  /// **'Disabled'**
+  String get mcpServerDisabled;
+
+  /// Header of the / skill picker in the composer
+  ///
+  /// In en, this message translates to:
+  /// **'Select a skill'**
+  String get skillPickerHint;
+
+  /// Shown in the / picker when the thread has no skills
+  ///
+  /// In en, this message translates to:
+  /// **'No skills found for this thread.'**
+  String get skillsEmpty;
+
+  /// Shown in the / picker when nothing matches the query
+  ///
+  /// In en, this message translates to:
+  /// **'No matching skills.'**
+  String get skillPickerEmpty;
 }
 
 class _AppLocalizationsDelegate
