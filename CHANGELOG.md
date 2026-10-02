@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.95.0 - 2026-10-02
+#### Features
+- 添加 MCP 服务器配置和 / 技能调用 - (b984dad) - HttpAnimations
+
+- - -
+
 ## v0.94.3 - 2026-10-01
 #### Bug Fixes
 - 修复文件查看器内容居中，新增文件默认显示内容页 - (3748ce0) - HttpAnimations
