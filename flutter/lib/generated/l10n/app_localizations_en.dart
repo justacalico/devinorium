@@ -2174,6 +2174,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mcpServerDisabled => 'Disabled';
 
   @override
+  String get mcpBundleInstall => 'Install .mcpb';
+
+  @override
+  String mcpBundlePickFailed(String error) {
+    return 'Couldn\'t read the bundle: $error';
+  }
+
+  @override
+  String get mcpBundleWarnings => 'Warnings';
+
+  @override
+  String get mcpBundleConfig => 'Configuration';
+
+  @override
+  String get mcpBundleMultipleHint => 'One value per line';
+
+  @override
+  String get mcpBundleNumberInvalid => 'Enter a number';
+
+  @override
+  String get mcpBundleInstallAction => 'Install';
+
+  @override
   String get skillPickerHint => 'Select a skill';
 
   @override

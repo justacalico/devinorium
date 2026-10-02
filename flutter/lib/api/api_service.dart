@@ -1251,6 +1251,38 @@ class ApiService {
     ];
   }
 
+  /// Inspect an `.mcpb` bundle without installing it: the manifest metadata
+  /// and the `user_config` fields the owner has to fill in.
+  Future<McpbInfo> inspectMcpb({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final j = await _client.uploadMultipart(
+      '/api/settings/mcp-servers/mcpb/inspect',
+      const {},
+      [(filename: filename, mime: 'application/octet-stream', bytes: bytes)],
+    );
+    return McpbInfo.fromJson(j);
+  }
+
+  /// Install an `.mcpb` bundle: the server extracts it, resolves the
+  /// manifest's `user_config` values, and returns the updated server list.
+  Future<List<McpServerConfig>> installMcpb({
+    required String filename,
+    required Uint8List bytes,
+    required Map<String, dynamic> config,
+  }) async {
+    final j = await _client.uploadMultipart(
+      '/api/settings/mcp-servers/mcpb/install',
+      {'config': jsonEncode(config)},
+      [(filename: filename, mime: 'application/octet-stream', bytes: bytes)],
+    );
+    return [
+      for (final s in (j['servers'] as List? ?? const []))
+        McpServerConfig.fromJson(s as Map<String, dynamic>),
+    ];
+  }
+
   // ---- Skills ----
 
   /// Skills discoverable in the thread's working directory, feeding the

@@ -1674,6 +1674,39 @@
   "@mcpServerDisabled": {
     "description": "Badge on a disabled MCP server"
   },
+  "mcpBundleInstall": "安装 .mcpb",
+  "@mcpBundleInstall": {
+    "description": "Button that installs an MCP server from an .mcpb bundle file"
+  },
+  "mcpBundlePickFailed": "无法读取包：{error}",
+  "@mcpBundlePickFailed": {
+    "description": "Error when picking or inspecting an .mcpb bundle fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "mcpBundleWarnings": "警告",
+  "@mcpBundleWarnings": {
+    "description": "Header above bundle warnings in the install dialog"
+  },
+  "mcpBundleConfig": "配置",
+  "@mcpBundleConfig": {
+    "description": "Header above the bundle's user_config fields"
+  },
+  "mcpBundleMultipleHint": "每行一个值",
+  "@mcpBundleMultipleHint": {
+    "description": "Helper under bundle config fields that take a list"
+  },
+  "mcpBundleNumberInvalid": "请输入数字",
+  "@mcpBundleNumberInvalid": {
+    "description": "Error for a bundle config field that needs a number"
+  },
+  "mcpBundleInstallAction": "安装",
+  "@mcpBundleInstallAction": {
+    "description": "Button that confirms the .mcpb bundle install"
+  },
   "skillPickerHint": "选择技能",
   "@skillPickerHint": {
     "description": "Header of the / skill picker in the composer"

@@ -54,6 +54,29 @@ mixin McpStore on AppStateBase {
     }
   }
 
+  /// Install an `.mcpb` bundle on the server. The response replaces the
+  /// stored list; returns an error string on failure.
+  @override
+  Future<String?> installMcpb(
+    String filename,
+    Uint8List bytes,
+    Map<String, dynamic> config,
+  ) async {
+    try {
+      _mcpServers = await api.installMcpb(
+        filename: filename,
+        bytes: bytes,
+        config: config,
+      );
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   // ---- Skills ----
 
   @override

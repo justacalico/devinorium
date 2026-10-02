@@ -4,10 +4,10 @@
 //! stored on the owner user row. Non-owner users can read them so they know
 //! where clones, worktrees, and new project folders will land.
 
-use axum::extract::State;
+use axum::extract::{Multipart, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put, Router};
+use axum::routing::{get, post, put, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use crate::api::{map_err_internal, ApiError};
 use crate::auth::session::CurrentUser;
 use crate::mcp::{validate_servers, McpServerConfig};
+use crate::mcpb;
 use crate::security::paths;
 use crate::AppState;
 
@@ -29,6 +30,20 @@ pub fn router() -> Router<AppState> {
         .route("/api/settings/mcp-servers", get(get_mcp_servers))
         .route("/api/settings/mcp-servers", put(set_mcp_servers))
 }
+
+/// `.mcpb` bundle routes. Separate from `router()` so `build_app` can give
+/// them a larger body limit than the rest of the API: bundles shipping
+/// `node_modules` are far bigger than the default `max_body_bytes`.
+pub fn mcpb_router() -> Router<AppState> {
+    Router::new()
+        .route("/api/settings/mcp-servers/mcpb/inspect", post(inspect_mcpb))
+        .route("/api/settings/mcp-servers/mcpb/install", post(install_mcpb))
+}
+
+/// Serializes MCP server list writes and bundle installs: install extracts
+/// files before the merged list commits, so a concurrent `set_mcp_servers`
+/// prune could otherwise delete the in-flight bundle or lose the update.
+static MCP_SERVERS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[derive(Debug, Serialize)]
 struct CloneRootResponse {
@@ -364,9 +379,16 @@ async fn set_mcp_servers(
     if let Err(msg) = validate_servers(&req.servers) {
         return (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response();
     }
+    let _guard = MCP_SERVERS_LOCK.lock().await;
     if let Err(e) = state.db.set_mcp_servers(user.id, &req.servers).await {
         return map_err_internal(e).into_response();
     }
+
+    // The list is the single write path for deletes and renames too, so
+    // bundle dirs no server still references get cleaned up here.
+    let root = mcpb::bundle_root(&state.config);
+    let servers = req.servers.clone();
+    let _ = tokio::task::spawn_blocking(move || mcpb::prune_bundles(&root, &servers)).await;
 
     let _ = state
         .db
@@ -382,4 +404,153 @@ async fn set_mcp_servers(
         servers: req.servers,
     })
     .into_response()
+}
+
+/// Pull the `file` field (the `.mcpb` archive) plus the optional `config`
+/// JSON field out of a bundle multipart body.
+async fn read_mcpb_multipart(
+    mut multipart: Multipart,
+) -> Result<(Vec<u8>, serde_json::Map<String, serde_json::Value>), Response> {
+    let mut file = None;
+    let mut config = serde_json::Map::new();
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(crate::api::files::multipart_err)?
+    {
+        match field.name().unwrap_or("") {
+            "file" => {
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(crate::api::files::multipart_err)?;
+                if bytes.len() > mcpb::MAX_MCPB_BYTES {
+                    return Err((
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        Json(ApiError::new("bundle too large")),
+                    )
+                        .into_response());
+                }
+                file = Some(bytes.to_vec());
+            }
+            "config" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(crate::api::files::multipart_err)?;
+                match serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text) {
+                    Ok(map) => config = map,
+                    Err(_) => {
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(ApiError::new("config must be a JSON object")),
+                        )
+                            .into_response())
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let file = file.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("no .mcpb file uploaded")),
+        )
+            .into_response()
+    })?;
+    Ok((file, config))
+}
+
+fn bad_request(msg: String) -> Response {
+    (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response()
+}
+
+/// Inspect an uploaded `.mcpb` without installing it: returns the manifest
+/// metadata and the `user_config` fields the owner has to fill in.
+async fn inspect_mcpb(
+    State(_state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    multipart: Multipart,
+) -> Response {
+    if !user.is_owner {
+        return (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response();
+    }
+    let (bytes, _) = match read_mcpb_multipart(multipart).await {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    match tokio::task::spawn_blocking(move || mcpb::inspect_bundle(&bytes)).await {
+        Ok(Ok(info)) => Json(info).into_response(),
+        Ok(Err(msg)) => bad_request(msg),
+        Err(e) => map_err_internal(e).into_response(),
+    }
+}
+
+/// Install an uploaded `.mcpb`: extract it under the bundle root, resolve
+/// `${__dirname}` and `${user_config.*}` placeholders into a stdio server
+/// entry, and merge it into the owner's server list (replacing a same-name
+/// entry, which makes reinstalls the upgrade path).
+async fn install_mcpb(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    multipart: Multipart,
+) -> Response {
+    if !user.is_owner {
+        return (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response();
+    }
+    let (bytes, config) = match read_mcpb_multipart(multipart).await {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let _guard = MCP_SERVERS_LOCK.lock().await;
+    let root = mcpb::bundle_root(&state.config);
+    let home = state.config.home_dir.clone();
+    let install = {
+        let root = root.clone();
+        match tokio::task::spawn_blocking(move || {
+            mcpb::install_bundle(&bytes, &root, &home, &config)
+        })
+        .await
+        {
+            Ok(Ok(i)) => i,
+            Ok(Err(msg)) => return bad_request(msg),
+            Err(e) => return map_err_internal(e).into_response(),
+        }
+    };
+
+    let mut servers = match state.db.get_mcp_servers(user.id).await {
+        Ok(s) => s,
+        Err(e) => return map_err_internal(e).into_response(),
+    };
+    // Reinstalling keeps the previous entry's enabled flag.
+    let mut server = install.server;
+    if let Some(existing) = servers.iter().find(|s| s.name == server.name) {
+        server.enabled = existing.enabled;
+    }
+    let installed_name = server.name.clone();
+    servers.retain(|s| s.name != server.name);
+    let mut merged = servers.clone();
+    merged.push(server);
+    if let Err(msg) = validate_servers(&merged) {
+        // Roll the files back so a rejected list leaves nothing behind.
+        let _ = tokio::task::spawn_blocking(move || mcpb::prune_bundles(&root, &servers)).await;
+        return bad_request(msg);
+    }
+    if let Err(e) = state.db.set_mcp_servers(user.id, &merged).await {
+        let _ = tokio::task::spawn_blocking(move || mcpb::prune_bundles(&root, &servers)).await;
+        return map_err_internal(e).into_response();
+    }
+
+    let _ = state
+        .db
+        .audit(
+            Some(user.id),
+            "mcp_servers.install_mcpb",
+            &serde_json::json!({"name": installed_name}),
+            None,
+        )
+        .await;
+
+    Json(McpServersResponse { servers: merged }).into_response()
 }

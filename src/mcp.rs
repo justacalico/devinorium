@@ -175,7 +175,7 @@ pub const MAX_MCP_SERVERS: usize = 64;
 
 /// The character set MCP tool namespaces rely on (`mcp__<name>__<tool>`):
 /// alphanumerics, `-`, `_`, `.`; must start with an alphanumeric.
-fn valid_name(name: &str) -> bool {
+pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
         && name

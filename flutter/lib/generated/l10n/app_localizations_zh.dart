@@ -2084,6 +2084,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mcpServerDisabled => '已禁用';
 
   @override
+  String get mcpBundleInstall => '安装 .mcpb';
+
+  @override
+  String mcpBundlePickFailed(String error) {
+    return '无法读取包：$error';
+  }
+
+  @override
+  String get mcpBundleWarnings => '警告';
+
+  @override
+  String get mcpBundleConfig => '配置';
+
+  @override
+  String get mcpBundleMultipleHint => '每行一个值';
+
+  @override
+  String get mcpBundleNumberInvalid => '请输入数字';
+
+  @override
+  String get mcpBundleInstallAction => '安装';
+
+  @override
   String get skillPickerHint => '选择技能';
 
   @override

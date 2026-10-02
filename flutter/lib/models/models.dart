@@ -9,6 +9,7 @@ export 'git.dart';
 export 'json_utils.dart';
 export 'machine.dart';
 export 'mcp_server.dart';
+export 'mcpb.dart';
 export 'skill.dart';
 export 'messages.dart';
 export 'permissions.dart';

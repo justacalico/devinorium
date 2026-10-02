@@ -60,6 +60,34 @@ class _McpApi extends ApiService {
     return List.of(skillList);
   }
 
+  McpbInfo inspectInfo = const McpbInfo(name: 'demo');
+  Object? inspectError;
+  String? inspectedFile;
+  String? installedFile;
+  Map<String, dynamic>? installedConfig;
+
+  @override
+  Future<McpbInfo> inspectMcpb({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    inspectedFile = filename;
+    if (inspectError != null) throw inspectError!;
+    return inspectInfo;
+  }
+
+  @override
+  Future<List<McpServerConfig>> installMcpb({
+    required String filename,
+    required Uint8List bytes,
+    required Map<String, dynamic> config,
+  }) async {
+    installedFile = filename;
+    installedConfig = config;
+    serverList = [...serverList, _stdio('demo', command: 'node')];
+    return List.of(serverList);
+  }
+
   // Settings-page loaders.
   @override
   Future<List<GitConnection>> listGitConnections() async => [];
@@ -770,6 +798,225 @@ void main() {
 
       expect(find.byKey(const Key('skill_picker')), findsOneWidget);
       expect(find.text('No skills found for this thread.'), findsOneWidget);
+    });
+  });
+  group('mcpb bundles', () {
+    final bundleBytes = Uint8List.fromList(utf8.encode('fake-mcpb'));
+    const info = McpbInfo(
+      name: 'demo',
+      displayName: 'Demo Bundle',
+      version: '1.0',
+      description: 'A demo bundle',
+      author: 'T',
+      serverType: 'node',
+      warnings: ['heads up'],
+      userConfig: [
+        McpbUserConfig(
+          key: 'token',
+          type: 'string',
+          title: 'Token',
+          description: 'Your API token',
+          required: true,
+          sensitive: true,
+        ),
+        McpbUserConfig(key: 'verbose', type: 'boolean', title: 'Verbose'),
+      ],
+    );
+
+    group('McpbInfo model', () {
+      test('parses inspect responses', () {
+        final m = McpbInfo.fromJson({
+          'name': 'demo',
+          'displayName': 'Demo Bundle',
+          'version': '1.2.0',
+          'description': 'd',
+          'author': 'A',
+          'serverType': 'python',
+          'warnings': ['w1'],
+          'userConfig': [
+            {
+              'key': 'api_key',
+              'type': 'string',
+              'title': 'API Key',
+              'required': true,
+              'sensitive': true,
+            },
+            {
+              'key': 'dirs',
+              'type': 'directory',
+              'multiple': true,
+              'default': ['a'],
+            },
+          ],
+        });
+        expect(m.name, 'demo');
+        expect(m.serverType, 'python');
+        expect(m.warnings, ['w1']);
+        expect(m.userConfig[0].key, 'api_key');
+        expect(m.userConfig[0].required, isTrue);
+        expect(m.userConfig[1].multiple, isTrue);
+        expect(m.userConfig[1].defaultValue, ['a']);
+      });
+    });
+
+    group('ApiService', () {
+      test('inspectMcpb posts the bundle as multipart', () async {
+        final mock = MockClient((req) async {
+          expect(req.method, 'POST');
+          expect(req.url.path, '/api/settings/mcp-servers/mcpb/inspect');
+          expect(
+            req.headers['content-type'],
+            startsWith('multipart/form-data'),
+          );
+          return _json(200, {
+            'name': 'demo',
+            'serverType': 'node',
+            'userConfig': [
+              {'key': 'token', 'required': true},
+            ],
+          });
+        });
+        final service = ApiService(client: ApiClient.withClient(mock));
+        final m = await service.inspectMcpb(
+          filename: 'demo.mcpb',
+          bytes: bundleBytes,
+        );
+        expect(m.name, 'demo');
+        expect(m.userConfig.single.key, 'token');
+      });
+
+      test('installMcpb sends config and returns the new list', () async {
+        String? sentBody;
+        final mock = MockClient((req) async {
+          expect(req.method, 'POST');
+          expect(req.url.path, '/api/settings/mcp-servers/mcpb/install');
+          expect(
+            req.headers['content-type'],
+            startsWith('multipart/form-data'),
+          );
+          sentBody = req.body;
+          return _json(200, {
+            'servers': [
+              {'name': 'demo', 'command': 'node'},
+            ],
+          });
+        });
+        final service = ApiService(client: ApiClient.withClient(mock));
+        final servers = await service.installMcpb(
+          filename: 'demo.mcpb',
+          bytes: bundleBytes,
+          config: {'token': 'abc'},
+        );
+        expect(sentBody, contains('name="config"'));
+        expect(sentBody, contains('"token":"abc"'));
+        expect(sentBody, contains('demo.mcpb'));
+        expect(servers.single.name, 'demo');
+      });
+    });
+
+    group('McpStore', () {
+      test('installMcpb replaces the stored list', () async {
+        final api = _McpApi()..serverList = [_stdio('old')];
+        final state = AppState.test(api: api, user: _owner());
+        addTearDown(state.dispose);
+        await state.loadMcpServers();
+
+        final error = await state.installMcpb('demo.mcpb', bundleBytes, {
+          'token': 'abc',
+        });
+        expect(error, isNull);
+        expect(api.installedFile, 'demo.mcpb');
+        expect(api.installedConfig, {'token': 'abc'});
+        expect(state.mcpServers.map((s) => s.name), ['old', 'demo']);
+      });
+    });
+
+    group('mcp settings section', () {
+      void bigSurface(WidgetTester tester) {
+        tester.view.physicalSize = const Size(1600, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+      }
+
+      Widget settings(AppState state) => MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const SettingsPage(),
+        ),
+      );
+
+      const mcpTopicIndex = 10;
+
+      testWidgets('install flow inspects then installs the bundle', (
+        tester,
+      ) async {
+        bigSurface(tester);
+        final api = _McpApi()..inspectInfo = info;
+        final state = AppState.test(
+          api: api,
+          user: _owner(),
+          settingsTopicIndex: mcpTopicIndex,
+        );
+        addTearDown(state.dispose);
+        final previous = mcpbBundlePicker;
+        mcpbBundlePicker = () async => (name: 'demo.mcpb', bytes: bundleBytes);
+        addTearDown(() => mcpbBundlePicker = previous);
+
+        await tester.pumpWidget(settings(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('mcp_install_bundle')));
+        await tester.pumpAndSettle();
+
+        // The dialog shows the inspected manifest and its config fields.
+        expect(api.inspectedFile, 'demo.mcpb');
+        expect(find.text('Demo Bundle'), findsOneWidget);
+        expect(find.text('heads up'), findsOneWidget);
+        expect(find.byKey(const Key('mcpb_cfg_token')), findsOneWidget);
+        expect(find.byKey(const Key('mcpb_cfg_verbose')), findsOneWidget);
+
+        // Required fields block the install.
+        await tester.tap(find.byKey(const Key('mcpb_install')));
+        await tester.pumpAndSettle();
+        expect(api.installedFile, isNull);
+
+        await tester.enterText(
+          find.byKey(const Key('mcpb_cfg_token')),
+          'sekret',
+        );
+        await tester.tap(find.byKey(const Key('mcpb_cfg_verbose')));
+        await tester.tap(find.byKey(const Key('mcpb_install')));
+        await tester.pumpAndSettle();
+
+        expect(api.installedFile, 'demo.mcpb');
+        expect(api.installedConfig, {'token': 'sekret', 'verbose': true});
+        expect(state.mcpServers.single.name, 'demo');
+      });
+
+      testWidgets('an inspect failure surfaces the error', (tester) async {
+        bigSurface(tester);
+        final api = _McpApi()..inspectError = ApiException('bad bundle', 400);
+        final state = AppState.test(
+          api: api,
+          user: _owner(),
+          settingsTopicIndex: mcpTopicIndex,
+        );
+        addTearDown(state.dispose);
+        final previous = mcpbBundlePicker;
+        mcpbBundlePicker = () async => (name: 'demo.mcpb', bytes: bundleBytes);
+        addTearDown(() => mcpbBundlePicker = previous);
+
+        await tester.pumpWidget(settings(state));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('mcp_install_bundle')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('mcpb_install')), findsNothing);
+        expect(state.globalError, contains('bad bundle'));
+      });
     });
   });
 }

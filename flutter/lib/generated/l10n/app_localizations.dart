@@ -3842,6 +3842,48 @@ abstract class AppLocalizations {
   /// **'Disabled'**
   String get mcpServerDisabled;
 
+  /// Button that installs an MCP server from an .mcpb bundle file
+  ///
+  /// In en, this message translates to:
+  /// **'Install .mcpb'**
+  String get mcpBundleInstall;
+
+  /// Error when picking or inspecting an .mcpb bundle fails
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read the bundle: {error}'**
+  String mcpBundlePickFailed(String error);
+
+  /// Header above bundle warnings in the install dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Warnings'**
+  String get mcpBundleWarnings;
+
+  /// Header above the bundle's user_config fields
+  ///
+  /// In en, this message translates to:
+  /// **'Configuration'**
+  String get mcpBundleConfig;
+
+  /// Helper under bundle config fields that take a list
+  ///
+  /// In en, this message translates to:
+  /// **'One value per line'**
+  String get mcpBundleMultipleHint;
+
+  /// Error for a bundle config field that needs a number
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a number'**
+  String get mcpBundleNumberInvalid;
+
+  /// Button that confirms the .mcpb bundle install
+  ///
+  /// In en, this message translates to:
+  /// **'Install'**
+  String get mcpBundleInstallAction;
+
   /// Header of the / skill picker in the composer
   ///
   /// In en, this message translates to:

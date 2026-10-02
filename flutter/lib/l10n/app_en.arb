@@ -1695,6 +1695,39 @@
   "@mcpServerDisabled": {
     "description": "Badge on a disabled MCP server"
   },
+  "mcpBundleInstall": "Install .mcpb",
+  "@mcpBundleInstall": {
+    "description": "Button that installs an MCP server from an .mcpb bundle file"
+  },
+  "mcpBundlePickFailed": "Couldn't read the bundle: {error}",
+  "@mcpBundlePickFailed": {
+    "description": "Error when picking or inspecting an .mcpb bundle fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "mcpBundleWarnings": "Warnings",
+  "@mcpBundleWarnings": {
+    "description": "Header above bundle warnings in the install dialog"
+  },
+  "mcpBundleConfig": "Configuration",
+  "@mcpBundleConfig": {
+    "description": "Header above the bundle's user_config fields"
+  },
+  "mcpBundleMultipleHint": "One value per line",
+  "@mcpBundleMultipleHint": {
+    "description": "Helper under bundle config fields that take a list"
+  },
+  "mcpBundleNumberInvalid": "Enter a number",
+  "@mcpBundleNumberInvalid": {
+    "description": "Error for a bundle config field that needs a number"
+  },
+  "mcpBundleInstallAction": "Install",
+  "@mcpBundleInstallAction": {
+    "description": "Button that confirms the .mcpb bundle install"
+  },
   "skillPickerHint": "Select a skill",
   "@skillPickerHint": {
     "description": "Header of the / skill picker in the composer"
