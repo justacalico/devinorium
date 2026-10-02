@@ -716,6 +716,11 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> loadMachines();
   Future<void> loadMcpServers();
   Future<String?> saveMcpServers(List<McpServerConfig> servers);
+  Future<String?> installMcpb(
+    String filename,
+    Uint8List bytes,
+    Map<String, dynamic> config,
+  );
   Future<void> loadSkills();
   Future<String?> createMachine({
     required String name,

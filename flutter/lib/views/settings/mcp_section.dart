@@ -1,5 +1,22 @@
 part of '../settings_page.dart';
 
+/// Picks an `.mcpb` bundle and returns its name and bytes, or null when the
+/// user cancelled. A top-level variable so tests can swap in a fixture.
+Future<({String name, Uint8List bytes})?> Function() mcpbBundlePicker =
+    _defaultMcpbPicker;
+
+Future<({String name, Uint8List bytes})?> _defaultMcpbPicker() async {
+  final file = await FilePicker.pickFile(
+    type: FileType.custom,
+    allowedExtensions: const ['mcpb'],
+    windowsOptions: const WindowsOptions(lockParentWindow: true),
+    linuxOptions: const LinuxOptions(lockParentWindow: true),
+  );
+  if (file == null) return null;
+  final bytes = await file.readAsBytes();
+  return (name: file.name, bytes: bytes);
+}
+
 /// MCP servers card: the tool servers agents connect to at run start. The
 /// whole list is edited client-side and written back in one shot, so add,
 /// edit, delete, and the enable switch all share `saveMcpServers`.
@@ -70,6 +87,34 @@ class _McpSectionState extends State<_McpSection> {
       context: context,
       builder: (_) => _McpServerDialog(state: state, server: server),
     );
+  }
+
+  /// Pick a `.mcpb` file, inspect it on the server, and open the install
+  /// dialog with the manifest's `user_config` fields.
+  Future<void> _installBundle(AppState state) async {
+    final l = l10n(context);
+    try {
+      final picked = await mcpbBundlePicker();
+      if (picked == null || !mounted) return;
+      final info = await state.api.inspectMcpb(
+        filename: picked.name,
+        bytes: picked.bytes,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => McpbInstallDialog(
+          state: state,
+          info: info,
+          filename: picked.name,
+          bytes: picked.bytes,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        state.setGlobalError(l.mcpBundlePickFailed('$e'));
+      }
+    }
   }
 
   @override
@@ -178,10 +223,21 @@ class _McpSectionState extends State<_McpSection> {
                 },
               ),
             const SizedBox(height: 8),
-            FilledButton.tonal(
-              key: const Key('mcp_add'),
-              onPressed: () => unawaited(_openEditor(state)),
-              child: Text(l.mcpServerAdd),
+            Wrap(
+              spacing: 8,
+              children: [
+                FilledButton.tonal(
+                  key: const Key('mcp_add'),
+                  onPressed: () => unawaited(_openEditor(state)),
+                  child: Text(l.mcpServerAdd),
+                ),
+                OutlinedButton.icon(
+                  key: const Key('mcp_install_bundle'),
+                  icon: const Icon(Icons.upload_file_outlined, size: 18),
+                  label: Text(l.mcpBundleInstall),
+                  onPressed: () => unawaited(_installBundle(state)),
+                ),
+              ],
             ),
           ],
         );
@@ -461,6 +517,261 @@ class _McpServerDialogState extends State<_McpServerDialog> {
           key: const Key('mcp_save'),
           onPressed: _loading ? null : _submit,
           child: Text(l.save),
+        ),
+      ],
+    );
+  }
+}
+
+/// Install dialog for an `.mcpb` bundle after the server inspected it:
+/// shows the manifest identity and warnings, then one input per
+/// `user_config` field (sensitive values masked, `multiple` one per line,
+/// boolean a switch). Installing uploads the bundle again with the values
+/// and the response replaces the server list.
+class McpbInstallDialog extends StatefulWidget {
+  const McpbInstallDialog({
+    super.key,
+    required this.state,
+    required this.info,
+    required this.filename,
+    required this.bytes,
+  });
+
+  final AppState state;
+  final McpbInfo info;
+  final String filename;
+  final Uint8List bytes;
+
+  @override
+  State<McpbInstallDialog> createState() => _McpbInstallDialogState();
+}
+
+class _McpbInstallDialogState extends State<McpbInstallDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _controllers = <String, TextEditingController>{};
+  final _bools = <String, bool>{};
+  String _error = '';
+  bool _loading = false;
+
+  McpbInfo get info => widget.info;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final f in info.userConfig) {
+      if (f.isBoolean) {
+        _bools[f.key] = f.defaultValue == true;
+      } else {
+        final d = f.defaultValue;
+        final text = switch (d) {
+          List l => l.map((e) => '$e').join('\n'),
+          _ => d?.toString() ?? '',
+        };
+        _controllers[f.key] = TextEditingController(text: text);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Build the `config` JSON for the install call. Optional empty fields are
+  /// omitted so the manifest's own default can still apply.
+  Map<String, dynamic> _collectConfig() {
+    final out = <String, dynamic>{};
+    for (final f in info.userConfig) {
+      if (f.isBoolean) {
+        out[f.key] = _bools[f.key] ?? false;
+        continue;
+      }
+      final text = _controllers[f.key]!.text.trim();
+      if (f.multiple) {
+        final items = [
+          for (final line in text.split('\n'))
+            if (line.trim().isNotEmpty) line.trim(),
+        ];
+        // An empty list would clobber the manifest default; omit it.
+        if (items.isNotEmpty) out[f.key] = items;
+        continue;
+      }
+      if (text.isEmpty) continue;
+      out[f.key] = f.isNumber ? num.tryParse(text) ?? text : text;
+    }
+    return out;
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _error = '';
+      _loading = true;
+    });
+    try {
+      final error = await widget.state.installMcpb(
+        widget.filename,
+        widget.bytes,
+        _collectConfig(),
+      );
+      if (!mounted) return;
+      if (error != null) {
+        setState(() => _error = error);
+        return;
+      }
+      Navigator.of(context).pop();
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  String? _validateField(McpbUserConfig f, String? value) {
+    final l = l10n(context);
+    final text = value?.trim() ?? '';
+    if (f.multiple) {
+      final items = [
+        for (final line in text.split('\n'))
+          if (line.trim().isNotEmpty) line,
+      ];
+      if (f.required && items.isEmpty) return l.required;
+      return null;
+    }
+    if (text.isEmpty) return f.required ? l.required : null;
+    if (f.isNumber) {
+      final n = num.tryParse(text);
+      if (n == null) return l.mcpBundleNumberInvalid;
+      if (f.min != null && n < f.min!) {
+        return '${l.mcpBundleNumberInvalid} (≥ ${f.min})';
+      }
+      if (f.max != null && n > f.max!) {
+        return '${l.mcpBundleNumberInvalid} (≤ ${f.max})';
+      }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l = l10n(context);
+    final meta = [
+      if (info.version.isNotEmpty) 'v${info.version}',
+      if (info.author.isNotEmpty) info.author,
+      if (info.serverType.isNotEmpty) info.serverType,
+      if (info.license.isNotEmpty) info.license,
+    ].join(' · ');
+
+    return AlertDialog(
+      title: Text(info.displayName.isNotEmpty ? info.displayName : info.name),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (meta.isNotEmpty)
+                Text(
+                  meta,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              if (info.description.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(info.description),
+                ),
+              if (info.warnings.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l.mcpBundleWarnings,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                for (final w in info.warnings)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber,
+                          size: 16,
+                          color: theme.colorScheme.error,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(w, style: theme.textTheme.bodySmall),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+              if (info.userConfig.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(l.mcpBundleConfig, style: theme.textTheme.labelLarge),
+              ],
+              for (final f in info.userConfig) ...[
+                const SizedBox(height: 8),
+                if (f.isBoolean)
+                  SwitchListTile(
+                    key: Key('mcpb_cfg_${f.key}'),
+                    value: _bools[f.key] ?? false,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(f.title, style: theme.textTheme.bodyMedium),
+                    subtitle: f.description.isEmpty
+                        ? null
+                        : Text(f.description),
+                    onChanged: _loading
+                        ? null
+                        : (v) => setState(() => _bools[f.key] = v),
+                  )
+                else
+                  TextFormField(
+                    key: Key('mcpb_cfg_${f.key}'),
+                    controller: _controllers[f.key],
+                    decoration: InputDecoration(
+                      labelText: f.required ? '${f.title} *' : f.title,
+                      helperText: [
+                        if (f.description.isNotEmpty) f.description,
+                        if (f.multiple) l.mcpBundleMultipleHint,
+                      ].join('\n'),
+                    ),
+                    obscureText: f.sensitive,
+                    // Obscured fields must stay single-line, so a sensitive
+                    // multi-value field collapses to one line.
+                    maxLines: f.multiple && !f.sensitive ? 3 : 1,
+                    keyboardType: f.isNumber
+                        ? TextInputType.number
+                        : TextInputType.text,
+                    validator: (v) => _validateField(f, v),
+                    enabled: !_loading,
+                  ),
+              ],
+              if (_error.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(_error, style: TextStyle(color: theme.colorScheme.error)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: Text(l.cancel),
+        ),
+        FilledButton(
+          key: const Key('mcpb_install'),
+          onPressed: _loading ? null : _submit,
+          child: Text(l.mcpBundleInstallAction),
         ),
       ],
     );

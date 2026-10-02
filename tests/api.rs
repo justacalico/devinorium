@@ -15181,3 +15181,265 @@ async fn node_token_is_cached_and_invalidated_on_change() {
         Some("tok-c")
     );
 }
+
+// ---------- .mcpb bundle install ----------
+
+/// Build a `.mcpb` archive in memory for the endpoints under test.
+fn mcpb_zip(manifest: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write;
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let opts =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    w.start_file("manifest.json", opts).unwrap();
+    w.write_all(manifest.as_bytes()).unwrap();
+    for (name, content) in files {
+        w.start_file(*name, opts).unwrap();
+        w.write_all(content).unwrap();
+    }
+    w.finish().unwrap().into_inner()
+}
+
+const MCPB_MANIFEST: &str = r#"{
+  "manifest_version": "0.3",
+  "name": "demo-bundle",
+  "version": "1.2.0",
+  "description": "Demo bundle",
+  "author": {"name": "T"},
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {"TOKEN": "${user_config.token}"}
+    }
+  },
+  "user_config": {
+    "token": {"type": "string", "title": "Token", "required": true, "sensitive": true}
+  }
+}"#;
+
+/// POST a `.mcpb` multipart body (`file` + optional `config`) to `uri`.
+async fn post_mcpb(
+    app: &Router,
+    cookie: &str,
+    uri: &str,
+    bundle: &[u8],
+    config: Option<&str>,
+) -> axum::response::Response {
+    let boundary = "----mcpbboundary";
+    let mut body: Vec<u8> = Vec::new();
+    if let Some(config) = config {
+        body.extend(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"config\"\r\n\r\n{config}\r\n")
+                .as_bytes(),
+        );
+    }
+    body.extend(
+        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"demo.mcpb\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+            .as_bytes(),
+    );
+    body.extend(bundle);
+    body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header(header::HOST, "localhost")
+                .header(header::ORIGIN, "http://localhost")
+                .header("cookie", cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn mcpb_inspect_returns_manifest_metadata() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let bundle = mcpb_zip(MCPB_MANIFEST, &[("server/index.js", b"x")]);
+
+    let resp = post_mcpb(
+        &app,
+        &cookie,
+        "/api/settings/mcp-servers/mcpb/inspect",
+        &bundle,
+        None,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["name"], "demo-bundle");
+    assert_eq!(body["version"], "1.2.0");
+    assert_eq!(body["serverType"], "node");
+    assert_eq!(body["userConfig"][0]["key"], "token");
+    assert_eq!(body["userConfig"][0]["required"], true);
+    assert_eq!(body["userConfig"][0]["sensitive"], true);
+}
+
+#[tokio::test]
+async fn mcpb_endpoints_are_owner_only() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    create_user(&app, &cookie, "bob", "bobsecret123").await;
+    let bob_cookie = login_as(&app, "bob", "bobsecret123").await;
+    let bundle = mcpb_zip(MCPB_MANIFEST, &[("server/index.js", b"x")]);
+
+    for uri in [
+        "/api/settings/mcp-servers/mcpb/inspect",
+        "/api/settings/mcp-servers/mcpb/install",
+    ] {
+        let resp = post_mcpb(&app, &bob_cookie, uri, &bundle, None).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn mcpb_install_extracts_and_registers_stdio_server() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let bundle = mcpb_zip(MCPB_MANIFEST, &[("server/index.js", b"x")]);
+
+    let resp = post_mcpb(
+        &app,
+        &cookie,
+        "/api/settings/mcp-servers/mcpb/install",
+        &bundle,
+        Some(r#"{"token":"sekret"}"#),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let server = &body["servers"][0];
+    assert_eq!(server["name"], "demo-bundle");
+    assert_eq!(server["transport"], "stdio");
+    assert_eq!(server["command"], "node");
+    let entry = server["args"][0].as_str().unwrap().to_string();
+    assert!(
+        entry.ends_with("mcp-bundles/demo-bundle/server/index.js"),
+        "{entry}"
+    );
+    // The resolved path is absolute and the file really landed on disk.
+    assert!(Path::new(&entry).is_file(), "{entry}");
+    assert_eq!(server["env"]["TOKEN"], "sekret");
+}
+
+#[tokio::test]
+async fn mcpb_install_requires_user_config_and_rejects_garbage() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let bundle = mcpb_zip(MCPB_MANIFEST, &[("server/index.js", b"x")]);
+
+    // Required `token` missing → 400, and nothing is registered.
+    let resp = post_mcpb(
+        &app,
+        &cookie,
+        "/api/settings/mcp-servers/mcpb/install",
+        &bundle,
+        None,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_str(resp.into_body()).await;
+    assert!(body.contains("token"), "{body}");
+
+    let resp = post_mcpb(
+        &app,
+        &cookie,
+        "/api/settings/mcp-servers/mcpb/install",
+        b"not a zip at all",
+        None,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn mcpb_delete_prunes_bundle_dir() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let bundle = mcpb_zip(MCPB_MANIFEST, &[("server/index.js", b"x")]);
+
+    let resp = post_mcpb(
+        &app,
+        &cookie,
+        "/api/settings/mcp-servers/mcpb/install",
+        &bundle,
+        Some(r#"{"token":"sekret"}"#),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let entry = body["servers"][0]["args"][0].as_str().unwrap().to_string();
+    let bundle_dir = Path::new(&entry)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    assert!(bundle_dir.is_dir());
+
+    // Write the list back without the bundle — its dir should be pruned.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/mcp-servers",
+            &cookie,
+            r#"{"servers":[]}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(!bundle_dir.exists());
+}
+
+#[tokio::test]
+async fn mcpb_reinstall_keeps_disabled_flag() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    let bundle = mcpb_zip(MCPB_MANIFEST, &[("server/index.js", b"x")]);
+
+    let resp = post_mcpb(
+        &app,
+        &cookie,
+        "/api/settings/mcp-servers/mcpb/install",
+        &bundle,
+        Some(r#"{"token":"sekret"}"#),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Disable the server through the normal list write.
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "PUT",
+            "/api/settings/mcp-servers",
+            &cookie,
+            r#"{"servers":[{"name":"demo-bundle","enabled":false,"transport":"stdio","command":"node","args":["x"],"env":{"TOKEN":"sekret"}}]}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Reinstalling must not silently re-enable it.
+    let resp = post_mcpb(
+        &app,
+        &cookie,
+        "/api/settings/mcp-servers/mcpb/install",
+        &bundle,
+        Some(r#"{"token":"sekret"}"#),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    assert_eq!(body["servers"][0]["enabled"], false);
+}

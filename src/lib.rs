@@ -13,6 +13,7 @@ pub mod git;
 pub mod lock;
 pub mod machine_grants;
 pub mod mcp;
+pub mod mcpb;
 pub mod plan;
 pub mod projects;
 pub mod providers;
@@ -262,6 +263,16 @@ pub fn build_app(state: AppState) -> Router {
             auth::middleware::require_auth,
         ));
 
+    // .mcpb uploads are full server bundles — bigger than the default body
+    // cap, so they get their own limit instead of `max_body`.
+    let protected_mcpb = api::settings::mcpb_router()
+        .route_layer(axum::extract::DefaultBodyLimit::max(mcpb::MAX_MCPB_BYTES))
+        .route_layer(RequestBodyLimitLayer::new(mcpb::MAX_MCPB_BYTES))
+        .route_layer(from_fn_with_state(
+            state.clone(),
+            auth::middleware::require_auth,
+        ));
+
     let mut app = Router::new()
         .route(
             "/healthz",
@@ -270,6 +281,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(public)
         .merge(protected)
         .merge(protected_sends)
+        .merge(protected_mcpb)
         .merge(assets::router())
         .layer(from_fn(security::security_headers))
         .layer(from_fn(move |req, next| {
