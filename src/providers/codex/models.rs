@@ -33,7 +33,7 @@ async fn fetch_models_timed(
 }
 
 async fn fetch_catalog(bin: &str, cwd: &Path) -> anyhow::Result<Vec<ModelInfo>> {
-    let server = AppServer::spawn(bin, cwd).await?;
+    let server = AppServer::spawn(bin, cwd, &[]).await?;
     super::provider::handshake(&server).await?;
 
     let result = server

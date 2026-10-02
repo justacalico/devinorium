@@ -1226,6 +1226,43 @@ class ApiService {
     return MachineTestResult.fromJson(j);
   }
 
+  // ---- MCP servers ----
+
+  /// The owner's configured MCP servers (owner only — entries carry
+  /// credentials in `env`/`headers`).
+  Future<List<McpServerConfig>> mcpServers() async {
+    final j = await _client.get('/api/settings/mcp-servers');
+    return [
+      for (final s in (j['servers'] as List? ?? const []))
+        McpServerConfig.fromJson(s as Map<String, dynamic>),
+    ];
+  }
+
+  /// Replace the whole MCP server list. Returns the stored list.
+  Future<List<McpServerConfig>> saveMcpServers(
+    List<McpServerConfig> servers,
+  ) async {
+    final j = await _client.put('/api/settings/mcp-servers', {
+      'servers': [for (final s in servers) s.toJson()],
+    });
+    return [
+      for (final s in (j['servers'] as List? ?? const []))
+        McpServerConfig.fromJson(s as Map<String, dynamic>),
+    ];
+  }
+
+  // ---- Skills ----
+
+  /// Skills discoverable in the thread's working directory, feeding the
+  /// composer `/` picker.
+  Future<List<Skill>> skills(String threadId) async {
+    final j = await _client.get('/api/threads/$threadId/skills');
+    return [
+      for (final s in (j['skills'] as List? ?? const []))
+        Skill.fromJson(s as Map<String, dynamic>),
+    ];
+  }
+
   // ---- Federation ----
 
   /// Satellite nodes registered with this hub (owner only). Always queried

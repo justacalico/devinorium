@@ -60,6 +60,36 @@ impl super::Db {
         Ok(())
     }
 
+    /// The user's MCP server list, parsed from the JSON column. A corrupt
+    /// stored value reads as empty rather than failing the call.
+    pub async fn get_mcp_servers(
+        &self,
+        user_id: i64,
+    ) -> anyhow::Result<Vec<crate::mcp::McpServerConfig>> {
+        let row: Option<(String,)> = sqlx::query_as("SELECT mcp_servers FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(self.pool())
+            .await?;
+        let servers = row
+            .map(|(s,)| serde_json::from_str(&s).unwrap_or_default())
+            .unwrap_or_default();
+        Ok(servers)
+    }
+
+    /// Replace the user's MCP server list. Callers validate first.
+    pub async fn set_mcp_servers(
+        &self,
+        user_id: i64,
+        servers: &[crate::mcp::McpServerConfig],
+    ) -> anyhow::Result<()> {
+        sqlx::query("UPDATE users SET mcp_servers = ? WHERE id = ?")
+            .bind(serde_json::to_string(servers)?)
+            .bind(user_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_user_by_username(&self, username: &str) -> anyhow::Result<Option<UserRow>> {
         sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE username = ?")
             .bind(username)

@@ -14,6 +14,7 @@ pub(crate) mod resend;
 pub(crate) mod routes;
 pub(crate) mod runs;
 pub(crate) mod send;
+pub(crate) mod skills;
 pub(crate) mod stream;
 pub(crate) mod thread_refs;
 pub(crate) mod worktree;
@@ -75,6 +76,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/threads/:id/project", get(plan::get_project_path))
         .route("/api/threads/:id/plan", get(plan::get_plan))
+        .route("/api/threads/:id/skills", get(skills::list_skills))
 }
 
 /// Send and resend routes, kept apart from [`router`] so the app can exempt

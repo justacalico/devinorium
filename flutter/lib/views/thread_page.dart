@@ -47,6 +47,7 @@ part 'thread/message_actions.dart';
 part 'thread/thinking_block.dart';
 part 'thread/thinking_dots.dart';
 part 'thread/composer.dart';
+part 'thread/skill_picker.dart';
 part 'thread/permission_dropdown.dart';
 part 'thread/model_selector.dart';
 part 'thread/reasoning_dropdown.dart';

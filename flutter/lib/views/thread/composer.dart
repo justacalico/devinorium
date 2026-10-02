@@ -10,6 +10,7 @@ typedef _ComposerModel = ({
   List<ThreadReference> threadReferences,
   List<MachineReference> machineReferences,
   List<Machine> machines,
+  List<Skill> skills,
   String selectedModel,
   String selectedReasoning,
   String selectedPermission,
@@ -123,6 +124,13 @@ class _ComposerState extends State<_Composer> {
   // retyped token opens it again.
   int? _machineDismissedAt;
   String _machineDismissedQuery = '';
+
+  // `/` skill picker: the text after the leading `/` token, or null when
+  // the picker is closed. The trigger only fires at the very start of the
+  // input, so the dismissal is tracked by query alone.
+  String? _skillQuery;
+  int _skillHighlight = 0;
+  String? _skillDismissedQuery;
 
   static const _pasteShortcut = SingleActivator(
     LogicalKeyboardKey.keyV,
@@ -238,6 +246,7 @@ class _ComposerState extends State<_Composer> {
     state.setComposerText(text);
     _applySlashCommandMode(text, state);
     _updateMachinePicker(text, state);
+    _updateSkillPicker(text, state);
   }
 
   /// Index of the `@` starting the token the caret sits in, or null. The
@@ -377,6 +386,114 @@ class _ComposerState extends State<_Composer> {
     });
   }
 
+  /// True while the caret sits inside a `/name` token at the very start of
+  /// the input. Slashes mid-text (paths, `a/b`) never trigger, and a second
+  /// `/` inside the token (an absolute path like `/usr`) closes it.
+  static bool _skillTriggerActive(String text, int caret) {
+    if (caret <= 0 || caret > text.length || !text.startsWith('/')) {
+      return false;
+    }
+    return !text.substring(1, caret).contains(RegExp(r'[\s/\\]'));
+  }
+
+  void _updateSkillPicker(String text, AppState state) {
+    if (!state.hasActiveThreadStore) return;
+    final sel = widget.controller.selection;
+    final caret = sel.isValid ? sel.baseOffset : text.length;
+    String? next;
+    if (_skillTriggerActive(text, caret)) {
+      final query = text.substring(1, caret);
+      final dismissed =
+          _skillDismissedQuery != null &&
+          query.startsWith(_skillDismissedQuery!);
+      if (!dismissed) next = query;
+    }
+    if (next == _skillQuery) return;
+    final opened = next != null && _skillQuery == null;
+    setState(() {
+      _skillQuery = next;
+      _skillHighlight = 0;
+      if (next != null) _skillDismissedQuery = null;
+    });
+    if (opened) {
+      unawaited(state.loadSkills());
+    }
+  }
+
+  List<Skill> _filteredSkills(AppState state) {
+    final q = (_skillQuery ?? '').toLowerCase();
+    return [
+      for (final s in state.skills)
+        if (q.isEmpty ||
+            s.name.toLowerCase().contains(q) ||
+            s.description.toLowerCase().contains(q))
+          s,
+    ];
+  }
+
+  /// Complete the `/name` token and leave a trailing space ready for the
+  /// skill's arguments. Text already typed after the caret (args the user
+  /// wrote ahead of picking) is kept.
+  void _acceptSkill(Skill skill) {
+    final state = context.read<AppState>();
+    final value = widget.controller.value;
+    final caret = value.selection.isValid
+        ? value.selection.baseOffset
+        : value.text.length;
+    if (!_skillTriggerActive(value.text, caret)) {
+      setState(() => _skillQuery = null);
+      return;
+    }
+    // Replace the whole `/query` token (the caret may sit inside it) and
+    // leave exactly one space before any already-typed args.
+    final ws = value.text.indexOf(RegExp(r'\s'), 1);
+    final tokenEnd = ws < 0 ? value.text.length : ws;
+    final suffix = value.text.substring(tokenEnd).trimLeft();
+    final newText = '/${skill.name} $suffix';
+    final caretAfter = newText.length - suffix.length;
+    widget.controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: caretAfter),
+    );
+    setState(() {
+      _skillQuery = null;
+      _skillDismissedQuery = null;
+    });
+    _updateComposerFromText(newText, state);
+    _focusNode.requestFocus();
+  }
+
+  void _acceptHighlightedSkill(AppState state) {
+    final skills = _filteredSkills(state);
+    if (skills.isEmpty) {
+      _dismissSkillPicker();
+      return;
+    }
+    _acceptSkill(skills[_skillHighlight.clamp(0, skills.length - 1)]);
+  }
+
+  void _moveSkillHighlight(int delta, AppState state) {
+    final count = _filteredSkills(state).length;
+    if (count == 0) return;
+    setState(() {
+      _skillHighlight = (_skillHighlight + delta) % count;
+      if (_skillHighlight < 0) _skillHighlight += count;
+    });
+  }
+
+  void _dismissSkillPicker() {
+    final value = widget.controller.value;
+    final caret = value.selection.isValid
+        ? value.selection.baseOffset
+        : value.text.length;
+    setState(() {
+      _skillDismissedQuery = _skillTriggerActive(value.text, caret)
+          ? value.text.substring(1, caret)
+          : null;
+      _skillQuery = null;
+    });
+  }
+
   void _applySlashCommandMode(String text, AppState state) {
     final has = hasAskPrefix(text);
     if (has && state.composerMode != ComposerMode.ask) {
@@ -464,11 +581,13 @@ class _ComposerState extends State<_Composer> {
       _preAskMode = null;
       _promptDrivenAsk = false;
       _wasSending = state.sending;
-      // The `@` picker belongs to the old thread's text; never carry it
-      // across a switch or keys keep getting hijacked.
+      // The `@` and `/` pickers belong to the old thread's text; never
+      // carry them across a switch or keys keep getting hijacked.
       _machineQuery = null;
       _machineDismissedAt = null;
       _machineDismissedQuery = '';
+      _skillQuery = null;
+      _skillDismissedQuery = null;
       _applySlashCommandMode(state.composerText, state);
       if (state.composerMode == ComposerMode.ask &&
           hasAskPrefix(state.composerText)) {
@@ -485,6 +604,7 @@ class _ComposerState extends State<_Composer> {
     final state = _appState;
     if (state == null) return;
     _updateMachinePicker(widget.controller.text, state);
+    _updateSkillPicker(widget.controller.text, state);
   }
 
   void _onAppStateChanged() {
@@ -553,6 +673,7 @@ class _ComposerState extends State<_Composer> {
         threadReferences: s.threadReferences,
         machineReferences: s.machineReferences,
         machines: s.machines,
+        skills: s.skills,
         selectedModel: s.selectedModel,
         selectedReasoning: s.selectedReasoning,
         selectedPermission: s.selectedPermission,
@@ -621,6 +742,14 @@ class _ComposerState extends State<_Composer> {
                               highlight: _machineHighlight,
                               noneConfigured: model.machines.isEmpty,
                               onPick: _acceptMachine,
+                            ),
+                          if (_skillQuery != null)
+                            _SkillPicker(
+                              key: const Key('skill_picker'),
+                              skills: _filteredSkills(state),
+                              highlight: _skillHighlight,
+                              noneFound: model.skills.isEmpty,
+                              onPick: _acceptSkill,
                             ),
                           if (model.machineReferences.isNotEmpty)
                             Padding(
@@ -833,15 +962,17 @@ class _ComposerState extends State<_Composer> {
                               _sendShortcut: () {
                                 if (_machineQuery != null) {
                                   _acceptHighlightedMachine(state);
+                                } else if (_skillQuery != null) {
+                                  _acceptHighlightedSkill(state);
                                 } else {
                                   _submit(state);
                                 }
                               },
                               _cycleModeShortcut: () =>
                                   _cycleComposerMode(state),
-                              // The `@` picker owns navigation and dismiss
-                              // keys while it is open; otherwise the field
-                              // keeps its normal caret behavior.
+                              // The `@` and `/` pickers own navigation and
+                              // dismiss keys while open; otherwise the
+                              // field keeps its normal caret behavior.
                               if (_machineQuery != null) ...{
                                 const SingleActivator(
                                   LogicalKeyboardKey.arrowDown,
@@ -858,6 +989,23 @@ class _ComposerState extends State<_Composer> {
                                 const SingleActivator(
                                   LogicalKeyboardKey.escape,
                                 ): _dismissMachinePicker,
+                              },
+                              if (_skillQuery != null) ...{
+                                const SingleActivator(
+                                  LogicalKeyboardKey.arrowDown,
+                                ): () =>
+                                    _moveSkillHighlight(1, state),
+                                const SingleActivator(
+                                  LogicalKeyboardKey.arrowUp,
+                                ): () =>
+                                    _moveSkillHighlight(-1, state),
+                                const SingleActivator(
+                                  LogicalKeyboardKey.tab,
+                                ): () =>
+                                    _acceptHighlightedSkill(state),
+                                const SingleActivator(
+                                  LogicalKeyboardKey.escape,
+                                ): _dismissSkillPicker,
                               },
                             },
                             child: TextField(

@@ -150,6 +150,11 @@ pub struct SendOptions {
     /// Providers apply it only when they expose a matching config option;
     /// otherwise it is carried for display only.
     pub max_output_tokens: Option<u64>,
+    /// The user's MCP server list. Each provider maps it onto its own
+    /// mechanism: ACP agents get the enabled subset through `session/new` /
+    /// `session/load`, while Devin and Codex get the full list merged into
+    /// their config files so `disabled` flags round-trip.
+    pub mcp_servers: Vec<crate::mcp::McpServerConfig>,
 }
 
 impl std::fmt::Debug for SendOptions {
@@ -166,6 +171,7 @@ impl std::fmt::Debug for SendOptions {
             .field("part_callback", &self.part_callback.is_some())
             .field("session_callback", &self.session_callback.is_some())
             .field("interaction_mode", &self.interaction_mode)
+            .field("mcp_servers", &self.mcp_servers.len())
             .finish()
     }
 }
@@ -319,6 +325,86 @@ Only one step should be `in_progress` at a time."
     }
 }
 
+/// Copy entries a provider child created or replaced inside a mirrored
+/// home dir back into the real one.
+///
+/// The mirror sets everything up as symlinks except the files we rewrite;
+/// once the child is done, entries that are still symlinks are shared and
+/// need nothing, while real (non-symlink) entries — a sessions dir the real
+/// home lacked, an `auth.json` refreshed via write-temp+rename — only exist
+/// in the temp copy and would be lost when it drops. `skip` names entries
+/// that must never round-trip (our own rewritten config files).
+///
+/// Async recursion needs the boxed future; `Send` keeps it usable inside
+/// the provider's spawned contexts.
+pub(crate) fn sync_back_mirrored_dir<'a>(
+    fake: &'a std::path::Path,
+    real: &'a std::path::Path,
+    skip: &'a [&'a str],
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        let mut entries = match tokio::fs::read_dir(fake).await {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.into()),
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name();
+            let Some(name_str) = name.to_str() else {
+                continue;
+            };
+            if skip.contains(&name_str) {
+                continue;
+            }
+            // DirEntry::file_type does not follow symlinks, so mirrored
+            // entries report as links and shared state is never copied back.
+            let ty = entry.file_type().await?;
+            if ty.is_symlink() {
+                continue;
+            }
+            let fake_path = entry.path();
+            let real_path = real.join(&name);
+            if ty.is_dir() {
+                let real_is_dir = real_path.is_dir() && !real_path.is_symlink();
+                if real_is_dir {
+                    // The child created real entries inside a dir we
+                    // created in the mirror; recurse to pick them up.
+                    sync_back_mirrored_dir(&fake_path, &real_path, &[]).await?;
+                } else if real_path.symlink_metadata().is_err() {
+                    copy_dir_all(&fake_path, &real_path).await?;
+                }
+                // A real file where the child wants a dir: skip rather than
+                // clobber something we did not create.
+            } else {
+                tokio::fs::copy(&fake_path, &real_path).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Recursive copy used by [`sync_back_mirrored_dir`] for directories the
+/// real home does not have yet.
+fn copy_dir_all<'a>(
+    src: &'a std::path::Path,
+    dst: &'a std::path::Path,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        tokio::fs::create_dir_all(dst).await?;
+        let mut entries = tokio::fs::read_dir(src).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let ty = entry.file_type().await?;
+            let target = dst.join(entry.file_name());
+            if ty.is_dir() {
+                copy_dir_all(&entry.path(), &target).await?;
+            } else if ty.is_file() {
+                tokio::fs::copy(entry.path(), &target).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
 /// Derive a short title from the first non-empty line of a prompt.
 pub fn title_from_prompt(prompt: &str) -> String {
     let title = prompt
@@ -436,5 +522,58 @@ mod tests {
     #[test]
     fn title_from_prompt_falls_back_for_whitespace_only() {
         assert_eq!(title_from_prompt("   \n   \n"), "New thread");
+    }
+
+    /// A child that writes a new file under the mirrored home gets it
+    /// copied back; symlinked (shared) entries and skipped names do not.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn sync_back_restores_child_writes_only() {
+        let real = tempfile::tempdir().unwrap();
+        let fake = tempfile::tempdir().unwrap();
+        std::fs::write(real.path().join("config.toml"), "x").unwrap();
+        std::fs::write(real.path().join("auth.json"), "old").unwrap();
+        std::fs::create_dir(real.path().join("sessions")).unwrap();
+
+        // Mirror: symlinks for existing entries, plus the child-created
+        // artifacts the real home never had or had replaced via rename.
+        std::os::unix::fs::symlink(real.path().join("sessions"), fake.path().join("sessions"))
+            .unwrap();
+        std::fs::write(fake.path().join("config.toml"), "merged").unwrap();
+        std::fs::write(fake.path().join("auth.json"), "new").unwrap();
+        std::fs::write(fake.path().join("history.jsonl"), "new-file").unwrap();
+        let nested = fake.path().join("logs");
+        std::fs::create_dir(&nested).unwrap();
+        std::fs::write(nested.join("a.log"), "l").unwrap();
+
+        super::sync_back_mirrored_dir(fake.path(), real.path(), &["config.toml"])
+            .await
+            .unwrap();
+
+        // Shared dir: the symlink was skipped, nothing was copied over.
+        assert!(real.path().join("sessions").read_dir().unwrap().count() == 0);
+        // Skipped file stays untouched in the real home.
+        assert_eq!(
+            std::fs::read_to_string(real.path().join("config.toml")).unwrap(),
+            "x"
+        );
+        // Replaced and created files round-trip.
+        assert_eq!(
+            std::fs::read_to_string(real.path().join("auth.json")).unwrap(),
+            "new"
+        );
+        assert_eq!(
+            std::fs::read_to_string(real.path().join("history.jsonl")).unwrap(),
+            "new-file"
+        );
+        assert_eq!(
+            std::fs::read_to_string(real.path().join("logs/a.log")).unwrap(),
+            "l"
+        );
+        // The mirror itself is unchanged.
+        assert_eq!(
+            std::fs::read_to_string(fake.path().join("config.toml")).unwrap(),
+            "merged"
+        );
     }
 }

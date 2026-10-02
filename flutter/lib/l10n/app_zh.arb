@@ -1592,5 +1592,98 @@
   "webSocketClosed": "WebSocket 已关闭",
   "@webSocketClosed": {
     "description": "Terminal error recorded when the socket closes unexpectedly"
+  },
+  "mcpServers": "MCP 服务器",
+  "@mcpServers": {
+    "description": "Settings topic and section title for MCP servers"
+  },
+  "mcpServersHint": "运行开始时代理连接的工具服务器。stdio 运行本地命令，HTTP 和 SSE 连接远程地址。已启用的服务器对所有提供方生效。",
+  "@mcpServersHint": {
+    "description": "Explanation shown above the MCP server list"
+  },
+  "mcpServersEmpty": "未配置 MCP 服务器。",
+  "@mcpServersEmpty": {
+    "description": "Shown when no MCP servers exist"
+  },
+  "mcpServerAdd": "添加服务器",
+  "@mcpServerAdd": {
+    "description": "Button and dialog title for adding an MCP server"
+  },
+  "mcpServerEdit": "编辑服务器",
+  "@mcpServerEdit": {
+    "description": "Dialog title for editing an MCP server"
+  },
+  "mcpServerDeleteConfirm": "删除 \"{name}\"？代理将无法再连接它。",
+  "@mcpServerDeleteConfirm": {
+    "description": "Confirmation before deleting an MCP server",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "mcpServerName": "名称",
+  "@mcpServerName": {
+    "description": "MCP server name field"
+  },
+  "mcpServerNameInvalid": "使用 1-64 个字母、数字、-、_ 或 .，且以字母或数字开头",
+  "@mcpServerNameInvalid": {
+    "description": "Error for an invalid MCP server name"
+  },
+  "mcpServerNameTaken": "已存在同名服务器",
+  "@mcpServerNameTaken": {
+    "description": "Error when the server name is already in use"
+  },
+  "mcpServerCommand": "命令",
+  "@mcpServerCommand": {
+    "description": "MCP stdio command field"
+  },
+  "mcpServerArgs": "参数",
+  "@mcpServerArgs": {
+    "description": "MCP stdio arguments field"
+  },
+  "mcpServerArgsHint": "每行一个参数",
+  "@mcpServerArgsHint": {
+    "description": "Helper under the args field"
+  },
+  "mcpServerEnv": "环境变量",
+  "@mcpServerEnv": {
+    "description": "MCP env vars field"
+  },
+  "mcpServerUrl": "URL",
+  "@mcpServerUrl": {
+    "description": "MCP remote endpoint field"
+  },
+  "mcpServerUrlInvalid": "URL 必须以 http:// 或 https:// 开头",
+  "@mcpServerUrlInvalid": {
+    "description": "Error for an invalid MCP server URL"
+  },
+  "mcpServerHeaders": "请求头",
+  "@mcpServerHeaders": {
+    "description": "MCP request headers field"
+  },
+  "mcpServerPairsHint": "每行一个 KEY=VALUE",
+  "@mcpServerPairsHint": {
+    "description": "Helper under env/headers fields"
+  },
+  "mcpServerEnabled": "启用",
+  "@mcpServerEnabled": {
+    "description": "Switch label for an MCP server"
+  },
+  "mcpServerDisabled": "已禁用",
+  "@mcpServerDisabled": {
+    "description": "Badge on a disabled MCP server"
+  },
+  "skillPickerHint": "选择技能",
+  "@skillPickerHint": {
+    "description": "Header of the / skill picker in the composer"
+  },
+  "skillsEmpty": "此线程没有可用的技能。",
+  "@skillsEmpty": {
+    "description": "Shown in the / picker when the thread has no skills"
+  },
+  "skillPickerEmpty": "没有匹配的技能。",
+  "@skillPickerEmpty": {
+    "description": "Shown in the / picker when nothing matches the query"
   }
 }

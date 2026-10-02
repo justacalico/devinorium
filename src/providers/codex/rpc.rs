@@ -91,7 +91,13 @@ pub struct AppServer {
 
 impl AppServer {
     /// Spawn `bin app-server --stdio` rooted at `cwd` and start the reader.
-    pub async fn spawn(bin: &str, cwd: &Path) -> anyhow::Result<Arc<Self>> {
+    /// `env` adds process-level variables such as the merged `CODEX_HOME`
+    /// the MCP config builds.
+    pub async fn spawn(
+        bin: &str,
+        cwd: &Path,
+        env: &[(String, String)],
+    ) -> anyhow::Result<Arc<Self>> {
         let mut child = {
             let mut last_err = None;
             let mut spawned = None;
@@ -100,6 +106,7 @@ impl AppServer {
             for _ in 0..5 {
                 let mut cmd = Command::new(bin);
                 cmd.args(["app-server", "--stdio"])
+                    .envs(env.iter().cloned())
                     .current_dir(cwd)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
@@ -365,7 +372,7 @@ done
     async fn request_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         let bin = fake_codex(dir.path());
-        let server = AppServer::spawn(&bin, dir.path()).await.unwrap();
+        let server = AppServer::spawn(&bin, dir.path(), &[]).await.unwrap();
         let resp = server.request("ping", json!({})).await.unwrap();
         assert_eq!(resp["pong"], true);
     }
@@ -401,7 +408,7 @@ done
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let server = AppServer::spawn(&path.to_string_lossy(), dir.path())
+        let server = AppServer::spawn(&path.to_string_lossy(), dir.path(), &[])
             .await
             .unwrap();
         let err = server
@@ -430,7 +437,7 @@ done
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let server = AppServer::spawn(&path.to_string_lossy(), dir.path())
+        let server = AppServer::spawn(&path.to_string_lossy(), dir.path(), &[])
             .await
             .unwrap();
         let mut gpid = None;
@@ -466,7 +473,7 @@ done
     async fn server_request_and_notification_arrive() {
         let dir = tempfile::tempdir().unwrap();
         let bin = fake_codex(dir.path());
-        let server = AppServer::spawn(&bin, dir.path()).await.unwrap();
+        let server = AppServer::spawn(&bin, dir.path(), &[]).await.unwrap();
         server.notify("askme").await.unwrap();
 
         match server.next_event().await {

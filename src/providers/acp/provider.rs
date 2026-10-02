@@ -20,7 +20,7 @@ use agent_client_protocol::{
     schema::v1::{
         ClientCapabilities, ContentBlock, CreateElicitationRequest, CreateElicitationResponse,
         ElicitationAction, ElicitationCapabilities, ElicitationFormCapabilities, ImageContent,
-        InitializeRequest, LoadSessionRequest, NewSessionRequest, NewSessionResponse,
+        InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, NewSessionResponse,
         PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
         RequestPermissionResponse, SessionConfigOption, SessionId, SessionNotification,
         SessionUpdate, SetSessionModeRequest, TextContent,
@@ -62,32 +62,50 @@ impl AcpProvider {
             .collect()
     }
 
-    /// The thread's permission allowlist reaches the Devin agent through its
-    /// user config: the child gets `XDG_CONFIG_HOME` pointing at a temp root
-    /// whose `devin/config.json` is the user's real config plus the thread
-    /// rules, and every other entry under the real config root is symlinked
-    /// in so nothing else changes. The temp root self-cleans when the turn
-    /// ends. Returns the env args to prepend and the guard holding the dir.
-    async fn permission_config_env(
+    /// The thread's permission allowlist and the user's MCP servers reach
+    /// the Devin agent through its config files: the child gets
+    /// `XDG_CONFIG_HOME` pointing at a temp root whose `devin/config.json`
+    /// and `devin/mcp_config.json` are the user's real files with the
+    /// thread's additions merged in, and every other entry under the real
+    /// config root is symlinked in so nothing else changes. The temp root
+    /// self-cleans when the turn ends, after new child files sync back to
+    /// the real dir. Returns the env args to prepend and the guard holding
+    /// the dir.
+    async fn agent_config_env(
         &self,
         options: &SendOptions,
-    ) -> anyhow::Result<(Vec<String>, Option<tempfile::TempDir>)> {
+    ) -> anyhow::Result<(Vec<String>, Option<DevinConfigRoot>)> {
         if self.kind != AgentKind::Devin {
             return Ok((Vec::new(), None));
         }
         let rules = parse_permission_rules(options.permissions.as_deref());
-        if rules.is_empty() {
+        if rules.is_empty() && options.mcp_servers.is_empty() {
             return Ok((Vec::new(), None));
         }
         let Some(real_root) = real_config_root() else {
             return Ok((Vec::new(), None));
         };
-        let Some(temp) = write_permission_config(&real_root, &rules).await? else {
+        // A broken symlink loop or a vanishing config dir must not abort
+        // the send; run without the injection instead.
+        let root = match write_devin_config_root(&real_root, &rules, &options.mcp_servers).await {
+            Ok(root) => root,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "could not build the devin config mirror; running without it"
+                );
+                None
+            }
+        };
+        let Some((temp, real_devin)) = root else {
             return Ok((Vec::new(), None));
         };
         Ok((
             vec![format!("XDG_CONFIG_HOME={}", temp.path().display())],
-            Some(temp),
+            Some(DevinConfigRoot {
+                _temp: temp,
+                real_devin,
+            }),
         ))
     }
 
@@ -160,7 +178,7 @@ impl AcpProvider {
         let cancel_signal = options.cancel_signal.clone();
         let replaying = Arc::new(AtomicBool::new(maybe_session.is_some()));
 
-        let (env_args, _perm_cfg) = self.permission_config_env(options).await?;
+        let (env_args, config_root) = self.agent_config_env(options).await?;
         let agent_args: Vec<String> = env_args.into_iter().chain(self.agent_args()).collect();
 
         let result = Client
@@ -254,13 +272,39 @@ impl AcpProvider {
                         );
                     }
 
+                    // MCP servers go on the session request. Devin is
+                    // covered by the merged mcp_config.json instead — its
+                    // richer per-server fields (oauthClientId etc.) do not
+                    // map onto the ACP transport structs.
+                    let mcp_servers: Vec<McpServer> = if self.kind == AgentKind::Devin {
+                        Vec::new()
+                    } else {
+                        let caps = &init_response.agent_capabilities.mcp_capabilities;
+                        crate::mcp::enabled_servers(&options.mcp_servers)
+                            .filter_map(|s| {
+                                let acp = s.to_acp(caps);
+                                if acp.is_none() {
+                                    tracing::warn!(
+                                        server = %s.name,
+                                        transport = %s.transport,
+                                        "agent does not support this MCP transport; skipped"
+                                    );
+                                }
+                                acp
+                            })
+                            .collect()
+                    };
+
                     let (session_id, config_options) = if can_load {
                         let sid = maybe_session.as_deref().unwrap();
                         match connection
-                            .send_request(LoadSessionRequest::new(
-                                SessionId::new(sid.to_string()),
-                                cwd.clone(),
-                            ))
+                            .send_request(
+                                LoadSessionRequest::new(
+                                    SessionId::new(sid.to_string()),
+                                    cwd.clone(),
+                                )
+                                .mcp_servers(mcp_servers.clone()),
+                            )
                             .block_task()
                             .await
                         {
@@ -271,11 +315,11 @@ impl AcpProvider {
                                     error = %e,
                                     "acp session/load failed; starting a new session"
                                 );
-                                new_session(&connection, &cwd).await?
+                                new_session(&connection, &cwd, mcp_servers.clone()).await?
                             }
                         }
                     } else {
-                        new_session(&connection, &cwd).await?
+                        new_session(&connection, &cwd, mcp_servers).await?
                     };
 
                     // Persist the session id when it differs from the stored
@@ -386,6 +430,22 @@ impl AcpProvider {
             )
             .await
             .map_err(|e| anyhow::anyhow!("acp connection failed: {e}"));
+
+        // The mirror holds devin's rewritten config files; anything else
+        // the child created under it (MCP OAuth state, caches) syncs back
+        // to the real dir before the temp root is dropped.
+        if let Some(root) = &config_root {
+            let fake = root._temp.path().join("devin");
+            if let Err(e) = crate::providers::sync_back_mirrored_dir(
+                &fake,
+                &root.real_devin,
+                &["config.json", "mcp_config.json"],
+            )
+            .await
+            {
+                tracing::warn!(error = %e, "could not sync the devin config mirror back");
+            }
+        }
 
         result
     }
@@ -588,9 +648,10 @@ pub(crate) fn client_capabilities() -> ClientCapabilities {
 async fn new_session(
     connection: &ConnectionTo<Agent>,
     cwd: &Path,
+    mcp_servers: Vec<McpServer>,
 ) -> anyhow::Result<(String, Option<Vec<SessionConfigOption>>)> {
     let resp: NewSessionResponse = connection
-        .send_request(NewSessionRequest::new(cwd.to_path_buf()))
+        .send_request(NewSessionRequest::new(cwd.to_path_buf()).mcp_servers(mcp_servers))
         .block_task()
         .await?;
     Ok((resp.session_id.to_string(), resp.config_options))
@@ -648,34 +709,103 @@ fn merge_permission_rules(config: &mut serde_json::Value, rules: &[String]) -> b
     true
 }
 
-/// Build the temp config root for a Devin child: mirrors the real config
-/// root with symlinks, writes a `devin/config.json` that merges the thread
-/// allowlist into the user's own. Returns None when the existing config
-/// cannot be merged without losing it.
-#[cfg(unix)]
-async fn write_permission_config(
-    real_root: &Path,
-    rules: &[String],
-) -> anyhow::Result<Option<tempfile::TempDir>> {
-    let real_devin = real_root.join("devin");
-    let mut config = match tokio::fs::read(real_devin.join("config.json")).await {
+/// The merged `devin/mcp_config.json` contents, or `None` when the existing
+/// file cannot be merged without losing it. Devinorium's entries win on a
+/// name clash — the settings list is the source of truth for the names it
+/// covers — while entries the user only has on disk are preserved.
+async fn merged_mcp_config(
+    real_devin: &Path,
+    servers: &[crate::mcp::McpServerConfig],
+) -> Option<serde_json::Value> {
+    let mut doc = match tokio::fs::read(real_devin.join("mcp_config.json")).await {
         Ok(bytes) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
             Ok(v) => v,
             Err(e) => {
                 tracing::warn!(
                     error = %e,
-                    "devin config is not plain JSON; thread permissions not applied"
+                    "devin mcp_config.json is not plain JSON; devinorium servers not applied"
                 );
-                return Ok(None);
+                return None;
             }
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
-        Err(e) => return Err(e.into()),
+        Err(e) => {
+            tracing::warn!(error = %e, "cannot read devin mcp_config.json");
+            return None;
+        }
     };
-    if !merge_permission_rules(&mut config, rules) {
-        tracing::warn!(
-            "devin config permissions are not an object; thread permissions not applied"
-        );
+    if !doc.is_object() {
+        tracing::warn!("devin mcp_config.json is not an object; devinorium servers not applied");
+        return None;
+    }
+    let root = doc.as_object_mut().unwrap();
+    let map = root
+        .entry("mcpServers".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !map.is_object() {
+        tracing::warn!("devin mcpServers is not an object; devinorium servers not applied");
+        return None;
+    }
+    let map = map.as_object_mut().unwrap();
+    for server in servers {
+        map.insert(server.name.trim().to_string(), server.to_devin_entry());
+    }
+    Some(doc)
+}
+
+/// A temp Devin config root handed to a child process: the tempdir keeps
+/// the mirror alive and `real_devin` records the dir it mirrors so files
+/// the child writes can sync back when the run ends.
+struct DevinConfigRoot {
+    _temp: tempfile::TempDir,
+    real_devin: PathBuf,
+}
+
+/// Build the temp config root for a Devin child: mirrors the real config
+/// root with symlinks, and writes a merged `devin/config.json` (thread
+/// allowlist) and/or `devin/mcp_config.json` (user's MCP servers) when
+/// either applies. Returns the tempdir and the real `devin/` dir path, or
+/// None when nothing needs merging or a file cannot be merged without
+/// losing it.
+#[cfg(unix)]
+async fn write_devin_config_root(
+    real_root: &Path,
+    rules: &[String],
+    mcp_servers: &[crate::mcp::McpServerConfig],
+) -> anyhow::Result<Option<(tempfile::TempDir, PathBuf)>> {
+    let real_devin = real_root.join("devin");
+    let mut config = None;
+    if !rules.is_empty() {
+        let mut c = match tokio::fs::read(real_devin.join("config.json")).await {
+            Ok(bytes) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "devin config is not plain JSON; thread permissions not applied"
+                    );
+                    serde_json::Value::Null
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
+            Err(e) => return Err(e.into()),
+        };
+        if c.is_null() || !merge_permission_rules(&mut c, rules) {
+            tracing::warn!(
+                "devin config permissions are not an object; thread permissions not applied"
+            );
+        } else {
+            config = Some(c);
+        }
+    }
+
+    let mcp_doc = if mcp_servers.is_empty() {
+        None
+    } else {
+        merged_mcp_config(&real_devin, mcp_servers).await
+    };
+
+    if config.is_none() && mcp_doc.is_none() {
         return Ok(None);
     }
 
@@ -692,34 +822,51 @@ async fn write_permission_config(
         }
     }
 
+    // Files we replaced are written fresh; everything else is symlinked so
+    // credentials, skills, and other config keep working untouched.
     let fake_devin = xdg.join("devin");
     tokio::fs::create_dir_all(&fake_devin).await?;
     if real_devin.is_dir() {
         let mut entries = tokio::fs::read_dir(&real_devin).await?;
         while let Some(entry) = entries.next_entry().await? {
-            if entry.file_name() == "config.json" {
+            let replaced = (config.is_some() && entry.file_name() == "config.json")
+                || (mcp_doc.is_some() && entry.file_name() == "mcp_config.json");
+            if replaced {
                 continue;
             }
             std::os::unix::fs::symlink(entry.path(), fake_devin.join(entry.file_name()))?;
         }
     }
-    tokio::fs::write(
-        fake_devin.join("config.json"),
-        serde_json::to_vec_pretty(&config)?,
-    )
-    .await?;
-    Ok(Some(temp))
+    if let Some(config) = config {
+        tokio::fs::write(
+            fake_devin.join("config.json"),
+            serde_json::to_vec_pretty(&config)?,
+        )
+        .await?;
+    }
+    if let Some(mcp_doc) = mcp_doc {
+        tokio::fs::write(
+            fake_devin.join("mcp_config.json"),
+            serde_json::to_vec_pretty(&mcp_doc)?,
+        )
+        .await?;
+    }
+    Ok(Some((temp, real_devin)))
 }
 
 #[cfg(not(unix))]
-async fn write_permission_config(
+async fn write_devin_config_root(
     _real_root: &Path,
     rules: &[String],
-) -> anyhow::Result<Option<tempfile::TempDir>> {
+    mcp_servers: &[crate::mcp::McpServerConfig],
+) -> anyhow::Result<Option<(tempfile::TempDir, PathBuf)>> {
     if !rules.is_empty() {
         tracing::warn!(
             "thread permission rules cannot be injected into devin acp on this platform"
         );
+    }
+    if !mcp_servers.is_empty() {
+        tracing::warn!("mcp servers cannot be injected into devin acp on this platform");
     }
     Ok(None)
 }
@@ -841,6 +988,7 @@ mod tests {
             interaction_mode: "code".into(),
             cancel_signal: None,
             max_output_tokens: None,
+            mcp_servers: Vec::new(),
         }
     }
 
@@ -1041,6 +1189,89 @@ mod tests {
         assert!(sessions.lock().await.is_empty());
     }
 
+    #[cfg(unix)]
+    fn stdio_mcp_server(name: &str) -> crate::mcp::McpServerConfig {
+        crate::mcp::McpServerConfig {
+            name: name.into(),
+            enabled: true,
+            transport: "stdio".into(),
+            command: "npx".into(),
+            args: vec!["-y".into(), "pkg".into()],
+            env: Default::default(),
+            url: String::new(),
+            headers: Default::default(),
+        }
+    }
+
+    /// The `mcpServers` array on the logged `session/new` request.
+    #[cfg(unix)]
+    fn logged_mcp_servers(log: &Path) -> serde_json::Value {
+        fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .find(|v| v["method"] == "session/new")
+            .map(|v| v["params"]["mcpServers"].clone())
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    /// ACP agents get enabled MCP servers on `session/new`; stdio is
+    /// mandatory so it survives the capability filter even when the agent
+    /// advertises no remote transports.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn mcp_servers_reach_session_new() {
+        let (_dir, bin, log) = fake_acp_agent_load(false, true);
+        let provider = AcpProvider::new(AgentKind::Grok, bin, "grok-4.6".into());
+        let workdir = tempfile::tempdir().unwrap();
+        let mut opts = send_options(workdir.path().to_path_buf(), None);
+        let mut disabled = stdio_mcp_server("off");
+        disabled.enabled = false;
+        opts.mcp_servers = vec![stdio_mcp_server("tools"), disabled];
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
+
+        let servers = logged_mcp_servers(&log);
+        assert_eq!(servers.as_array().map(Vec::len), Some(1), "{servers}");
+        assert_eq!(servers[0]["name"], "tools");
+        assert_eq!(servers[0]["command"], "npx");
+    }
+
+    /// Devin's own config file carries its MCP list; the ACP field stays
+    /// empty so the two channels cannot double-register a server.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn devin_skips_acp_mcp_servers() {
+        let (_dir, bin, log) = fake_acp_agent_load(false, true);
+        let provider = AcpProvider::new(AgentKind::Devin, bin, "m".into());
+        let workdir = tempfile::tempdir().unwrap();
+        let mut opts = send_options(workdir.path().to_path_buf(), None);
+        opts.mcp_servers = vec![stdio_mcp_server("tools")];
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.start(StartRequest {
+                prompt: "hi".into(),
+                options: opts,
+            }),
+        )
+        .await
+        .expect("prompt timed out")
+        .unwrap();
+
+        let servers = logged_mcp_servers(&log);
+        assert_eq!(servers.as_array().map(Vec::len), Some(0), "{servers}");
+    }
+
     #[test]
     fn permission_rules_split_on_commas_and_newlines() {
         assert_eq!(
@@ -1096,10 +1327,11 @@ mod tests {
         fs::create_dir(devin.join("skills")).unwrap();
         fs::create_dir(root.path().join("otherapp")).unwrap();
 
-        let temp = write_permission_config(root.path(), &["Exec(curl)".into(), "Fetch(**)".into()])
-            .await
-            .unwrap()
-            .unwrap();
+        let (temp, _real) =
+            write_devin_config_root(root.path(), &["Exec(curl)".into(), "Fetch(**)".into()], &[])
+                .await
+                .unwrap()
+                .unwrap();
         let xdg = temp.path();
 
         let written: serde_json::Value =
@@ -1142,7 +1374,55 @@ mod tests {
         let devin = root.path().join("devin");
         fs::create_dir(&devin).unwrap();
         fs::write(devin.join("config.json"), b"// jsonc comment").unwrap();
-        assert!(write_permission_config(root.path(), &["Exec(ls)".into()])
+        assert!(
+            write_devin_config_root(root.path(), &["Exec(ls)".into()], &[])
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// A devinorium entry overrides the same-named user entry while
+    /// user-only entries survive untouched; `config.json` is left alone
+    /// when no permission rules are in play.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn mcp_config_merges_with_user_file() {
+        let root = tempfile::tempdir().unwrap();
+        let devin = root.path().join("devin");
+        fs::create_dir(&devin).unwrap();
+        fs::write(
+            devin.join("mcp_config.json"),
+            r#"{"mcpServers":{"mine":{"url":"https://a"},"other":{"command":"x"}}}"#,
+        )
+        .unwrap();
+        fs::write(devin.join("config.json"), r#"{"agent":{"model":"x"}}"#).unwrap();
+
+        let (temp, _real) = write_devin_config_root(root.path(), &[], &[stdio_mcp_server("mine")])
+            .await
+            .unwrap()
+            .unwrap();
+        let written: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(temp.path().join("devin/mcp_config.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(written["mcpServers"]["mine"]["command"], "npx");
+        assert_eq!(written["mcpServers"]["other"]["command"], "x");
+        // config.json was not rewritten — it stays a symlink to the real one.
+        assert!(temp
+            .path()
+            .join("devin/config.json")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn devin_config_root_noop_without_rules_or_mcp() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(write_devin_config_root(root.path(), &[], &[])
             .await
             .unwrap()
             .is_none());
@@ -1150,20 +1430,20 @@ mod tests {
 
     #[tokio::test]
     #[cfg(unix)]
-    async fn permission_config_env_only_for_devin_with_rules() {
+    async fn agent_config_env_only_for_devin_with_rules() {
         let mut opts = send_options(std::env::temp_dir(), None);
         let devin = AcpProvider::new(AgentKind::Devin, "devin".into(), "m".into());
         let grok = AcpProvider::new(AgentKind::Grok, "grok".into(), "m".into());
 
         opts.permissions = None;
-        let (env, cfg) = devin.permission_config_env(&opts).await.unwrap();
+        let (env, cfg) = devin.agent_config_env(&opts).await.unwrap();
         assert!(env.is_empty() && cfg.is_none());
 
         opts.permissions = Some("Exec(ls)".into());
-        let (env, cfg) = grok.permission_config_env(&opts).await.unwrap();
+        let (env, cfg) = grok.agent_config_env(&opts).await.unwrap();
         assert!(env.is_empty() && cfg.is_none());
 
-        let (env, cfg) = devin.permission_config_env(&opts).await.unwrap();
+        let (env, cfg) = devin.agent_config_env(&opts).await.unwrap();
         assert_eq!(env.len(), 1);
         assert!(env[0].starts_with("XDG_CONFIG_HOME="));
         assert!(cfg.is_some());

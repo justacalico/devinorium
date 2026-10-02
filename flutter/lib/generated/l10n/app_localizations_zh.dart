@@ -2022,4 +2022,73 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get webSocketClosed => 'WebSocket 已关闭';
+
+  @override
+  String get mcpServers => 'MCP 服务器';
+
+  @override
+  String get mcpServersHint =>
+      '运行开始时代理连接的工具服务器。stdio 运行本地命令，HTTP 和 SSE 连接远程地址。已启用的服务器对所有提供方生效。';
+
+  @override
+  String get mcpServersEmpty => '未配置 MCP 服务器。';
+
+  @override
+  String get mcpServerAdd => '添加服务器';
+
+  @override
+  String get mcpServerEdit => '编辑服务器';
+
+  @override
+  String mcpServerDeleteConfirm(String name) {
+    return '删除 \"$name\"？代理将无法再连接它。';
+  }
+
+  @override
+  String get mcpServerName => '名称';
+
+  @override
+  String get mcpServerNameInvalid => '使用 1-64 个字母、数字、-、_ 或 .，且以字母或数字开头';
+
+  @override
+  String get mcpServerNameTaken => '已存在同名服务器';
+
+  @override
+  String get mcpServerCommand => '命令';
+
+  @override
+  String get mcpServerArgs => '参数';
+
+  @override
+  String get mcpServerArgsHint => '每行一个参数';
+
+  @override
+  String get mcpServerEnv => '环境变量';
+
+  @override
+  String get mcpServerUrl => 'URL';
+
+  @override
+  String get mcpServerUrlInvalid => 'URL 必须以 http:// 或 https:// 开头';
+
+  @override
+  String get mcpServerHeaders => '请求头';
+
+  @override
+  String get mcpServerPairsHint => '每行一个 KEY=VALUE';
+
+  @override
+  String get mcpServerEnabled => '启用';
+
+  @override
+  String get mcpServerDisabled => '已禁用';
+
+  @override
+  String get skillPickerHint => '选择技能';
+
+  @override
+  String get skillsEmpty => '此线程没有可用的技能。';
+
+  @override
+  String get skillPickerEmpty => '没有匹配的技能。';
 }
