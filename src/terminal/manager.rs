@@ -4,7 +4,7 @@
 //! they are idle longer than the configured TTL.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -70,8 +70,8 @@ impl TerminalManager {
     }
 
     /// Spawn a new PTY session for `user_id` and `thread_id`. If `shell` is
-    /// provided it is used as the shell program; otherwise `bash` is preferred
-    /// with a fallback to `sh`. `cwd` sets the shell's starting directory —
+    /// provided it is used as the shell program; otherwise the user's default
+    /// shell is resolved. `cwd` sets the shell's starting directory —
     /// pass the thread's working directory so the terminal opens where the
     /// files are.
     pub async fn spawn(
@@ -161,12 +161,102 @@ impl TerminalManager {
     }
 }
 
+/// Resolve the shell to spawn when the caller does not name one. The user's
+/// configured shell wins; platform fallbacks cover hosts where it is unset or
+/// points at a binary that is not installed.
 fn default_shell_program() -> String {
+    user_shell().unwrap_or_else(fallback_shell)
+}
+
+#[cfg(unix)]
+fn user_shell() -> Option<String> {
+    let env_shell = std::env::var("SHELL").ok();
+    let uid = rustix::process::getuid().as_raw();
+    let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
+    resolve_user_shell(env_shell.as_deref(), &passwd, uid)
+}
+
+#[cfg(windows)]
+fn user_shell() -> Option<String> {
+    let comspec = std::env::var("COMSPEC").ok()?;
+    let comspec = comspec.trim();
+    if comspec.is_empty() {
+        return None;
+    }
+    which::which(comspec)
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn user_shell() -> Option<String> {
+    None
+}
+
+#[cfg(unix)]
+fn fallback_shell() -> String {
     if which::which("bash").is_ok() {
         "bash".to_string()
     } else {
         "sh".to_string()
     }
+}
+
+#[cfg(windows)]
+fn fallback_shell() -> String {
+    if which::which("powershell.exe").is_ok() {
+        "powershell.exe".to_string()
+    } else {
+        "cmd.exe".to_string()
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn fallback_shell() -> String {
+    "sh".to_string()
+}
+
+/// Pick the first usable shell out of `$SHELL` and the user's passwd entry.
+/// `$SHELL` is not always exported (daemons, containers, systemd units), so
+/// the passwd entry is the fallback for the same account; accounts managed
+/// outside /etc/passwd (NSS, macOS) fall through to the platform default.
+#[cfg(unix)]
+fn resolve_user_shell(env_shell: Option<&str>, passwd: &str, uid: u32) -> Option<String> {
+    [env_shell.map(String::from), shell_from_passwd(passwd, uid)]
+        .into_iter()
+        .flatten()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && is_interactive_shell(s))
+        .find_map(|s| which::which(&s).ok())
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Service accounts are commonly created with a non-interactive shell like
+/// nologin; spawning one would give a terminal that exits instantly.
+#[cfg(unix)]
+fn is_interactive_shell(path: &str) -> bool {
+    let name = Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path);
+    !matches!(
+        name,
+        "nologin" | "false" | "true" | "sync" | "shutdown" | "halt"
+    )
+}
+
+#[cfg(unix)]
+fn shell_from_passwd(passwd: &str, uid: u32) -> Option<String> {
+    for line in passwd.lines() {
+        let fields: Vec<&str> = line.split(':').collect();
+        if fields.len() >= 7 && fields[2].parse::<u32>().ok() == Some(uid) {
+            let shell = fields[6].trim();
+            if !shell.is_empty() {
+                return Some(shell.to_string());
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -243,6 +333,108 @@ mod tests {
         }
         let _ = manager.kill(&session.id).await;
         assert!(saw_pwd, "expected pwd to print {want}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn spawn_without_shell_uses_default_shell() {
+        let manager = TerminalManager::new(Duration::from_secs(60), Duration::from_secs(10));
+        let session = manager
+            .spawn(1, "t1".into(), None, None)
+            .await
+            .expect("spawn default shell");
+
+        let mut rx = session.subscribe();
+        session
+            .write_input("echo default-shell-marker\n")
+            .expect("write");
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut saw_marker = false;
+        while tokio::time::Instant::now() < deadline {
+            if let Ok(Ok(TerminalEvent::Output(bytes))) =
+                tokio::time::timeout(Duration::from_millis(100), rx.recv()).await
+            {
+                if String::from_utf8_lossy(&bytes).contains("default-shell-marker") {
+                    saw_marker = true;
+                    break;
+                }
+            }
+        }
+        let _ = manager.kill(&session.id).await;
+        assert!(saw_marker, "expected echo from resolved default shell");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shell_from_passwd_returns_shell_for_matching_uid() {
+        let passwd = "\
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+alice:x:1000:1000:Alice:/home/alice:/usr/bin/fish
+";
+        assert_eq!(
+            shell_from_passwd(passwd, 1000),
+            Some("/usr/bin/fish".to_string())
+        );
+        assert_eq!(shell_from_passwd(passwd, 0), Some("/bin/bash".to_string()));
+        assert_eq!(shell_from_passwd(passwd, 4242), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shell_from_passwd_skips_malformed_and_empty_shell_lines() {
+        let passwd = "\
+not enough fields
+bob:x:1001
+carol:x:notauid:1002:Carol:/home/carol:/bin/zsh
+dave:x:1002:1002:Dave:/home/dave:
+erin:x:1002:1002:Erin:/home/erin:/bin/tcsh:extra
+";
+        assert_eq!(
+            shell_from_passwd(passwd, 1002),
+            Some("/bin/tcsh".to_string())
+        );
+        assert_eq!(shell_from_passwd("", 0), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_user_shell_prefers_env_shell() {
+        // passwd says zsh, env says sh: env wins.
+        let passwd = "me:x:1000:1000:Me:/home/me:/bin/zsh\n";
+        let sh = which::which("sh").unwrap().to_string_lossy().into_owned();
+        assert_eq!(resolve_user_shell(Some("sh"), passwd, 1000), Some(sh));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_user_shell_uses_passwd_when_env_missing_or_uninstalled() {
+        let passwd = "me:x:1000:1000:Me:/home/me:sh\n";
+        let sh = which::which("sh").unwrap().to_string_lossy().into_owned();
+        assert_eq!(resolve_user_shell(None, passwd, 1000), Some(sh.clone()));
+        assert_eq!(
+            resolve_user_shell(Some("/nonexistent/shell"), passwd, 1000),
+            Some(sh.clone())
+        );
+        assert_eq!(resolve_user_shell(Some("  sh  "), passwd, 1000), Some(sh));
+        assert_eq!(resolve_user_shell(None, "", 1000), None);
+        assert_eq!(resolve_user_shell(Some("   "), "", 1000), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_user_shell_skips_non_interactive_shells() {
+        let nologin = "svc:x:1000:1000:Svc:/home/svc:/usr/sbin/nologin\n";
+        let sh = which::which("sh").unwrap().to_string_lossy().into_owned();
+        assert_eq!(resolve_user_shell(None, nologin, 1000), None);
+        assert_eq!(resolve_user_shell(Some("/bin/false"), nologin, 1000), None);
+        // A non-interactive env shell falls through to the passwd entry.
+        let passwd = "me:x:1000:1000:Me:/home/me:sh\n";
+        assert_eq!(
+            resolve_user_shell(Some("/bin/false"), passwd, 1000),
+            Some(sh)
+        );
     }
 
     #[tokio::test]
