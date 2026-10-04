@@ -7,6 +7,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
+import 'package:devinorium_frontend/servers/server_profile.dart';
 import 'package:devinorium_frontend/services/local_server.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:fake_async/fake_async.dart';
@@ -590,9 +591,7 @@ void main() {
     test('bootstrap keeps the token on a real 403', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(
-        api: ApiService(
-          client: _clientFor([http.Response('forbidden', 403)]),
-        ),
+        api: ApiService(client: _clientFor([http.Response('forbidden', 403)])),
       );
       await state.bootstrap();
       expect(state.view, AppView.app);
@@ -639,8 +638,7 @@ void main() {
       expect(prefs.getString('devinorium_selected_permission'), isNull);
     });
 
-    test('changePassword logs out after the server revokes sessions',
-        () async {
+    test('changePassword logs out after the server revokes sessions', () async {
       SharedPreferences.setMockInitialValues({});
       var patchCalls = 0;
       final state = AppState(
@@ -659,8 +657,10 @@ void main() {
           ),
         ),
       );
-      final error =
-          await state.changePassword('old-password-1', 'new-password-1');
+      final error = await state.changePassword(
+        'old-password-1',
+        'new-password-1',
+      );
       expect(error, isNull);
       expect(patchCalls, 1);
       expect(state.user, isNull);
@@ -671,11 +671,15 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final state = AppState(
         api: ApiService(
-          client: _clientFor([_json(401, {'error': 'wrong password'})]),
+          client: _clientFor([
+            _json(401, {'error': 'wrong password'}),
+          ]),
         ),
       );
-      final error =
-          await state.changePassword('bad-password-1', 'new-password-1');
+      final error = await state.changePassword(
+        'bad-password-1',
+        'new-password-1',
+      );
       expect(error, isNotNull);
     });
 
@@ -989,9 +993,24 @@ void main() {
       final refresh = state.refreshThreadsAndGroups();
       expect(api.listThreadsCalls, 1);
 
-      // A node switch runs the same reset as a server switch; the post-
-      // switch data load unwinds through the fallback when me() 404s.
-      final switching = state.switchNode('n1');
+      // A server switch resets thread state; the post-switch data load
+      // unwinds when me() 404s.
+      state.multiServerState.addTestConnection(
+        ServerProfile(
+          id: 'other',
+          label: 'other',
+          baseUrl: 'http://other',
+          username: 'owner',
+          token: 'token',
+          createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+        ),
+        ApiService(
+          client: _clientFor([
+            _json(404, {'error': 'none'}),
+          ]),
+        ),
+      );
+      final switching = state.switchServer('other');
       pending.complete([
         Thread(
           id: 'stale',
@@ -1009,8 +1028,10 @@ void main() {
       expect(state.threads, isEmpty);
 
       // The loading flag must also be cleared so the next target can load
-      // instead of early-returning on a stuck flag.
+      // instead of early-returning on a stuck flag. Switching back to the
+      // original server puts the same api under test again.
       api.listThreadsBuilder = () async => [];
+      await state.switchServer('test');
       await state.loadMoreThreads();
       expect(api.listThreadsCalls, 2);
     });
@@ -1018,9 +1039,7 @@ void main() {
     test('mid-session 401 clears the token', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState.test(
-        api: ApiService(
-          client: _clientFor([http.Response('expired', 401)]),
-        ),
+        api: ApiService(client: _clientFor([http.Response('expired', 401)])),
         activeProjectId: 1,
       );
       await state.openThread('a');
@@ -1031,13 +1050,10 @@ void main() {
       );
     });
 
-    test('mid-session 403 from an owner-gated route keeps the token',
-        () async {
+    test('mid-session 403 from an owner-gated route keeps the token', () async {
       SharedPreferences.setMockInitialValues({});
       final state = AppState.test(
-        api: ApiService(
-          client: _clientFor([http.Response('forbidden', 403)]),
-        ),
+        api: ApiService(client: _clientFor([http.Response('forbidden', 403)])),
         activeProjectId: 1,
       );
       await state.openThread('a');
@@ -1052,9 +1068,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var fail = true;
       final api = _StreamableApiService(
-        ApiClient.withClient(
-          MockClient((_) async => _json(200, [])),
-        ),
+        ApiClient.withClient(MockClient((_) async => _json(200, []))),
       );
       api.listThreadsBuilder = () async {
         if (fail) throw ApiException('list down', 500);

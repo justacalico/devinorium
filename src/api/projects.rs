@@ -38,19 +38,26 @@ pub struct ProjectOut {
     pub branch: String,
     pub project_type: String,
     pub group_id: Option<i64>,
+    /// Paired node the project lives on, if remote.
+    pub node_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
 impl ProjectOut {
     pub async fn from_row(state: &AppState, p: ProjectRow) -> Self {
-        let (is_repo, branch) = match state
-            .git
-            .repo_status(std::path::Path::new(&p.path), false)
-            .await
-        {
-            Ok(s) => (s.is_repo, s.branch),
-            Err(_) => (false, String::new()),
+        // Remote projects skip the local probe: a coincidental path match
+        // would report this server's repo state for another machine.
+        let (is_repo, branch) = match p.node_id {
+            Some(_) => (false, String::new()),
+            None => match state
+                .git
+                .repo_status(std::path::Path::new(&p.path), false)
+                .await
+            {
+                Ok(s) => (s.is_repo, s.branch),
+                Err(_) => (false, String::new()),
+            },
         };
         Self {
             id: p.id,
@@ -62,6 +69,7 @@ impl ProjectOut {
             branch,
             project_type: p.project_type,
             group_id: p.group_id,
+            node_id: p.node_id,
             created_at: p.created_at,
             updated_at: p.updated_at,
         }
@@ -72,11 +80,17 @@ impl ProjectOut {
 pub struct CreateProject {
     pub name: String,
     pub path: String,
+    /// Paired node the path lives on; absent registers a local project.
+    #[serde(default)]
+    pub node_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateNewProject {
     pub name: String,
+    /// Paired node to create the folder on; absent creates it locally.
+    #[serde(default)]
+    pub node_id: Option<String>,
 }
 
 async fn list(
@@ -118,6 +132,16 @@ async fn create(
     // An empty path is interpreted as the user's home directory so the
     // project picker can select the home root.
 
+    if let Some(nid) = req
+        .node_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        // The path lives on the satellite; validate it there.
+        return create_remote(&state, &user, name, path, nid).await;
+    }
+
     let abs = if user.is_owner {
         // Owners may register any directory.
         match resolve_and_ensure_dir(&state, path).await {
@@ -138,7 +162,7 @@ async fn create(
         }
     };
 
-    insert_project(&state, user.id, name, abs).await
+    insert_project(&state, user.id, name, abs, None).await
 }
 
 /// Resolve a non-owner's project path. The path must land strictly inside
@@ -219,6 +243,15 @@ async fn create_new(
             .into_response();
     }
 
+    if let Some(nid) = req
+        .node_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return create_new_remote(&state, &user, name, nid).await;
+    }
+
     let root = match crate::api::settings::project_root(&state, user.id).await {
         Ok(r) => r,
         Err(e) => return crate::api::map_err_internal(e).into_response(),
@@ -272,7 +305,7 @@ async fn create_new(
         )
             .into_response();
     }
-    insert_project(&state, user.id, name, abs).await
+    insert_project(&state, user.id, name, abs, None).await
 }
 
 /// Check that `name` works as a single folder name: no separators, no
@@ -340,7 +373,13 @@ async fn project_conflict(
 
 /// Insert a project once `name` and the canonical absolute `abs` path are
 /// validated, translating duplicate races into 409s.
-async fn insert_project(state: &AppState, user_id: i64, name: &str, abs: PathBuf) -> Response {
+async fn insert_project(
+    state: &AppState,
+    user_id: i64,
+    name: &str,
+    abs: PathBuf,
+    node_id: Option<String>,
+) -> Response {
     let path_str = match abs.to_str() {
         Some(s) => s.to_string(),
         None => {
@@ -361,7 +400,11 @@ async fn insert_project(state: &AppState, user_id: i64, name: &str, abs: PathBuf
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
 
-    let project_type = crate::projects::detect::detect_project_type(&abs);
+    let project_type = if node_id.is_some() {
+        "other"
+    } else {
+        crate::projects::detect::detect_project_type(&abs)
+    };
 
     let new = NewProject {
         user_id,
@@ -369,6 +412,7 @@ async fn insert_project(state: &AppState, user_id: i64, name: &str, abs: PathBuf
         path: path_str,
         position,
         project_type: project_type.to_string(),
+        node_id,
     };
 
     match state.db.create_project(new).await {
@@ -605,13 +649,15 @@ async fn delete_one(
     CurrentUser(user): CurrentUser,
     Path(id): Path<i64>,
 ) -> Response {
-    let project_path = state
-        .db
-        .get_project(id, user.id)
-        .await
-        .ok()
-        .flatten()
-        .map(|p| PathBuf::from(p.path));
+    // The node row must be captured before the delete: bound projects
+    // lose their machine binding the moment the row is gone, and remote
+    // worktrees need it to clean up on the satellite.
+    let project = state.db.get_project(id, user.id).await.ok().flatten();
+    let project_node = match &project {
+        Some(p) => crate::node_client::node_for_project(&state, p).await,
+        None => None,
+    };
+    let project_path = project.map(|p| PathBuf::from(p.path));
 
     // Threads are deleted in the same transaction as the project, so the
     // returned rows are exactly the ones that went away.
@@ -634,6 +680,7 @@ async fn delete_one(
             &state,
             thread,
             project_path.as_deref(),
+            project_node.as_ref(),
         )
         .await;
     }
@@ -658,6 +705,21 @@ async fn icon(
         }
         Err(e) => return crate::api::map_err_internal(e).into_response(),
     };
+
+    let node = match crate::node_client::bound_node(&state, &project).await {
+        Ok(n) => n,
+        Err(e) => return crate::node_client::node_bad_gateway(e.to_string()),
+    };
+    if let Some(node) = node {
+        if !user.is_owner {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(crate::api::ApiError::new("paired machines are owner-only")),
+            )
+                .into_response();
+        }
+        return icon_remote(&state, &project, &node).await;
+    }
 
     // Discovery walks the filesystem; keep it off the async executor.
     let path = project.path.clone();
@@ -743,4 +805,170 @@ async fn resolve_and_ensure_dir(state: &AppState, path: &str) -> anyhow::Result<
 
     // Canonicalize so the stored path is stable.
     Ok(tokio::fs::canonicalize(&resolved).await.unwrap_or(resolved))
+}
+
+/// Fetch a remote project's icon: stat the usual candidate names in one
+/// call, then read the first hit. `None` fields map to the same 404 the
+/// local handler returns.
+async fn icon_remote(
+    state: &AppState,
+    project: &ProjectRow,
+    node: &crate::db::federation_nodes::FederationNodeRow,
+) -> Response {
+    let Some(client) = crate::node_client::NodeClient::for_node(state, node) else {
+        return crate::node_client::node_bad_gateway("node unreachable");
+    };
+    const CANDIDATES: &[&str] = &[
+        "favicon.svg",
+        "favicon.png",
+        "favicon.ico",
+        "icon.svg",
+        "icon.png",
+        "logo.svg",
+        "logo.png",
+        "public/favicon.svg",
+        "public/favicon.png",
+        "public/icon.svg",
+        "public/icon.png",
+        "public/logo.svg",
+        "public/logo.png",
+    ];
+    let stats = client
+        .fs_stat(
+            Some(&project.path),
+            &CANDIDATES.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
+        )
+        .await
+        .unwrap_or_default();
+    for name in CANDIDATES {
+        if !stats
+            .get(*name)
+            .map(|s| s.exists && !s.is_dir)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        if let Some((mime, bytes)) = client.fs_read(&project.path, name).await {
+            if bytes.len() <= 4 * 1024 * 1024 {
+                use base64::Engine;
+                return Json(serde_json::json!({
+                    "mime": mime,
+                    "size": bytes.len(),
+                    "base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+                }))
+                .into_response();
+            }
+        }
+    }
+    (
+        StatusCode::NOT_FOUND,
+        Json(crate::api::ApiError::new("no icon")),
+    )
+        .into_response()
+}
+
+/// Register a project whose path lives on a paired node. Relative paths
+/// resolve under the satellite's home directory; absolute paths are taken
+/// as-is.
+async fn create_remote(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    name: &str,
+    path: &str,
+    node_id: &str,
+) -> Response {
+    let invalid = || {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(crate::api::ApiError::new("invalid project path")),
+        )
+            .into_response()
+    };
+    if !user.is_owner {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(crate::api::ApiError::new("paired machines are owner-only")),
+        )
+            .into_response();
+    }
+    if path.trim().is_empty() {
+        return invalid();
+    }
+    let node = match state.db.get_federation_node(node_id).await {
+        Ok(Some(n)) => n,
+        _ => return invalid(),
+    };
+    let Some(client) = crate::node_client::NodeClient::for_node(state, &node) else {
+        return crate::node_client::node_bad_gateway("node unreachable");
+    };
+    // Create the directory if missing, then take the node's canonical
+    // spelling as the project path.
+    let raw = path.to_string();
+    let exists = client
+        .fs_stat(None, std::slice::from_ref(&raw))
+        .await
+        .ok()
+        .and_then(|mut m| m.remove(&raw));
+    let abs = match exists {
+        Some(s) if s.is_dir => s
+            .canonical
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(path)),
+        Some(s) if s.exists => return invalid(),
+        Some(_) | None => {
+            if client.fs_mkdir(None, path).await.is_err() {
+                return crate::node_client::node_bad_gateway("cannot create project folder");
+            }
+            client
+                .fs_stat(None, std::slice::from_ref(&raw))
+                .await
+                .ok()
+                .and_then(|mut m| m.remove(&raw))
+                .and_then(|s| s.canonical.map(PathBuf::from))
+                .unwrap_or_else(|| PathBuf::from(path))
+        }
+    };
+    insert_project(state, user.id, name, abs, Some(node.id.clone())).await
+}
+
+/// Create `<node home>/.devinorium/projects/<name>` on the satellite and
+/// register it.
+async fn create_new_remote(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    name: &str,
+    node_id: &str,
+) -> Response {
+    if !user.is_owner {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(crate::api::ApiError::new("paired machines are owner-only")),
+        )
+            .into_response();
+    }
+    let node = match state.db.get_federation_node(node_id).await {
+        Ok(Some(n)) => n,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid node_id")),
+            )
+                .into_response()
+        }
+    };
+    let Some(client) = crate::node_client::NodeClient::for_node(state, &node) else {
+        return crate::node_client::node_bad_gateway("node unreachable");
+    };
+    let rel = format!(".devinorium/projects/{name}");
+    if client.fs_mkdir(None, &rel).await.is_err() {
+        return crate::node_client::node_bad_gateway("cannot create project folder");
+    }
+    let abs = client
+        .fs_stat(None, std::slice::from_ref(&rel))
+        .await
+        .ok()
+        .and_then(|mut m| m.remove(&rel))
+        .and_then(|s| s.canonical.map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from(&rel));
+    insert_project(state, user.id, name, abs, Some(node.id.clone())).await
 }

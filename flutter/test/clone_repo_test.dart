@@ -44,8 +44,7 @@ class _ThrowingClient extends BaseApiClient {
     Map<String, String> fields = const {},
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       throw UnimplementedError();
@@ -87,7 +86,7 @@ class _PendingCloneApi extends _FakeApiService {
   _PendingCloneApi(this.completer);
 
   @override
-  Future<String> cloneRepo(String url) {
+  Future<String> cloneRepo(String url, {String? nodeId}) {
     _cloneRepoCalls.add(url);
     return completer.future;
   }
@@ -116,7 +115,7 @@ class _FakeApiService extends ApiService {
   List<String> get cloneRepoCalls => List.unmodifiable(_cloneRepoCalls);
 
   @override
-  Future<String> cloneRepo(String url) {
+  Future<String> cloneRepo(String url, {String? nodeId}) {
     _cloneRepoCalls.add(url);
     if (_cloneRepoThrows.containsKey(url)) {
       throw _cloneRepoThrows[url]!;
@@ -224,42 +223,44 @@ void main() {
     expect(_findTextContaining('502'), findsOneWidget);
   });
 
-  testWidgets('a clone finishing after the dialog was abandoned does not leak its result',
-      (tester) async {
-    final completer = Completer<String>();
-    final api = _PendingCloneApi(completer);
-    const url = 'https://gitlab.com/owner/repo.git';
-    final state = AppState.test(api: api, dialog: DialogKind.cloneRepo);
+  testWidgets(
+    'a clone finishing after the dialog was abandoned does not leak its result',
+    (tester) async {
+      final completer = Completer<String>();
+      final api = _PendingCloneApi(completer);
+      const url = 'https://gitlab.com/owner/repo.git';
+      final state = AppState.test(api: api, dialog: DialogKind.cloneRepo);
 
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), url);
-    await tester.tap(find.text('Clone'));
-    await tester.pump();
+      await tester.enterText(find.byType(TextField), url);
+      await tester.tap(find.text('Clone'));
+      await tester.pump();
 
-    expect(state.cloningRepo, true);
+      expect(state.cloningRepo, true);
 
-    // Back to the picker, then into the clone dialog again.
-    await tester.tap(find.byTooltip('Back'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Clone repository'));
-    await tester.pumpAndSettle();
+      // Back to the picker, then into the clone dialog again.
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clone repository'));
+      await tester.pumpAndSettle();
 
-    completer.complete('/clone/$url');
-    await tester.pumpAndSettle();
+      completer.complete('/clone/$url');
+      await tester.pumpAndSettle();
 
-    // The abandoned clone must not overwrite the reopened dialog's state.
-    expect(state.cloneRepoResult, isNull);
-    expect(state.cloningRepo, false);
-    expect(find.text('/clone/$url'), findsNothing);
-    expect(
-      find.byWidgetPredicate(
-        (w) => w is TextField && w.decoration?.labelText == 'Remote URL',
-      ),
-      findsOneWidget,
-    );
-  });
+      // The abandoned clone must not overwrite the reopened dialog's state.
+      expect(state.cloneRepoResult, isNull);
+      expect(state.cloningRepo, false);
+      expect(find.text('/clone/$url'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Remote URL',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('open project button selects the cloned project', (tester) async {
     final api = _FakeApiService();

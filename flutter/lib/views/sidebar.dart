@@ -36,7 +36,6 @@ part 'sidebar/thread_tile.dart';
 part 'sidebar/section_header.dart';
 part 'sidebar/settings_nav.dart';
 part 'sidebar/server_switcher.dart';
-part 'sidebar/node_switcher.dart';
 part 'sidebar/status_filter.dart';
 
 Color _projectColor(String name) {
@@ -276,7 +275,6 @@ class _SidebarState extends State<Sidebar> {
                   if (isSettings) const _SettingsHeader(),
                   if (!isSettings) const _ModeSwitch(),
                   const _ServerSwitcher(),
-                  if (!isSettings) const _NodeSwitcher(),
                   if (!isSettings && !filesOpen && !gitOpen) ...[
                     _SearchField(
                       controller: _searchController,

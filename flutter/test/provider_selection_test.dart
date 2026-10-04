@@ -22,6 +22,7 @@ class _ProviderApi extends ApiService {
   String? lastSettingsProvider;
   String? lastSettingsReasoning;
   final modelsProviders = <String?>[];
+  final modelsNodeIds = <String?>[];
   List<ModelInfo> modelsToReturn = const [];
   String threadProviderId = 'devin-cli';
   Thread? createdThread;
@@ -102,8 +103,9 @@ class _ProviderApi extends ApiService {
   Future<List<String>> getThreadRuns() => Future.value(const []);
 
   @override
-  Future<List<ModelInfo>> listModels({String? provider}) {
+  Future<List<ModelInfo>> listModels({String? provider, String? nodeId}) {
     modelsProviders.add(provider);
+    modelsNodeIds.add(nodeId);
     return Future.value(modelsToReturn);
   }
 
@@ -595,5 +597,36 @@ void main() {
 
     expect(api.lastSettingsProvider, 'codex');
     expect(api.lastSettingsReasoning, 'high');
+  });
+
+  test('model catalog is cached per node', () async {
+    final api = _ProviderApi()
+      ..modelsToReturn = [
+        ModelInfo(id: 'm1', label: 'm1', costTier: 'free', family: 'f'),
+      ];
+    final state = AppState.test(
+      api: api,
+      selectedProvider: 'opencode',
+      projects: [
+        Project(id: 1, name: 'a', path: '/a', nodeId: 'n1',
+            createdAt: '', updatedAt: ''),
+        Project(id: 2, name: 'b', path: '/b',
+            createdAt: '', updatedAt: ''),
+      ],
+      activeProjectId: 2,
+    );
+    addTearDown(state.dispose);
+
+    // Local project: hub catalog, cached under no node.
+    await state.ensureModelsFor('opencode');
+    expect(api.modelsNodeIds, [null]);
+    await state.ensureModelsFor('opencode');
+    expect(api.modelsNodeIds, [null]);
+
+    // Switching to a node project must refetch on that machine, not reuse
+    // the hub catalog.
+    await state.selectProject(1);
+    await state.ensureModelsFor('opencode');
+    expect(api.modelsNodeIds, [null, 'n1']);
   });
 }

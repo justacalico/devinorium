@@ -219,6 +219,7 @@ class _FakeApiService extends ApiService {
     String? path,
     int? projectId,
     String? threadId,
+    String? nodeId,
     int? limit,
     int? offset,
   }) async {
@@ -891,11 +892,7 @@ void main() {
       ),
     ];
     final fake = _FakeApiService(users: users);
-    final state = AppState.test(
-      api: fake,
-      user: users[0],
-      users: users,
-    );
+    final state = AppState.test(api: fake, user: users[0], users: users);
 
     await tester.pumpWidget(_buildWithState(state));
     await tester.pumpAndSettle();
@@ -961,8 +958,10 @@ void main() {
 
     expect(find.widgetWithText(TextField, 'Current password'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'New password'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'Confirm new password'),
-        findsOneWidget);
+    expect(
+      find.widgetWithText(TextField, 'Confirm new password'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Change password row is hidden on the local profile', (
@@ -1872,10 +1871,7 @@ void main() {
     state.setSettingsTopicIndex(4);
     await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byType(TextField).at(1),
-      '/srv/new-worktrees',
-    );
+    await tester.enterText(find.byType(TextField).at(1), '/srv/new-worktrees');
     await tester.tap(find.widgetWithText(FilledButton, 'Save').at(1));
     await tester.pumpAndSettle();
 
@@ -1957,10 +1953,7 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.enterText(
-      find.byType(TextField).last,
-      '/srv/new-projects',
-    );
+    await tester.enterText(find.byType(TextField).last, '/srv/new-projects');
     final save = find.widgetWithText(FilledButton, 'Save').last;
     await tester.ensureVisible(save);
     await tester.pumpAndSettle();

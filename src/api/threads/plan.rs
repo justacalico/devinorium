@@ -82,43 +82,117 @@ pub(super) async fn get_project_path(
     }
 }
 
-/// Return the filesystem working directory for a thread.
+/// Where a thread's working directory lives: a local path or a path on a
+/// paired satellite node (with the resolved node row).
+pub(crate) struct ThreadTarget {
+    pub node: Option<crate::db::federation_nodes::FederationNodeRow>,
+    pub dir: PathBuf,
+}
+
+/// Resolve a thread's working directory and the machine it lives on.
 ///
-/// If the thread belongs to a project, use the project's canonical path.
-/// Otherwise fall back to the user's home directory.
-pub(crate) async fn project_working_dir_for_thread(
+/// For a node-bound project the path is a satellite path; the worktree
+/// sanity check runs against the node's git service instead of the local
+/// one. A missing node row or unreachable node degrades to the project
+/// root, never to a local path that would silently run on the wrong host.
+pub(crate) async fn thread_target(
     state: &AppState,
     thread: &ThreadRow,
-) -> anyhow::Result<PathBuf> {
-    if let Some(pid) = thread.project_id {
-        if let Ok(Some(p)) = state.db.get_project(pid, thread.user_id).await {
-            let project_path = tokio::fs::canonicalize(&p.path)
-                .await
-                .unwrap_or_else(|_| PathBuf::from(&p.path));
-            if thread.env_mode == "worktree" {
-                if let Some(wt) = &thread.worktree_path {
-                    let path = PathBuf::from(wt);
-                    if path.is_absolute() {
-                        if let Ok(canonical) = tokio::fs::canonicalize(&path).await {
-                            if let (Ok(project_repo), Ok(worktree_repo)) = (
-                                state.git.repo_status(&project_path, false).await,
-                                state.git.repo_status(&canonical, false).await,
-                            ) {
-                                if project_repo.is_repo
-                                    && worktree_repo.is_repo
-                                    && project_repo.common_dir == worktree_repo.common_dir
-                                {
-                                    return Ok(canonical);
-                                }
-                            }
+) -> anyhow::Result<ThreadTarget> {
+    let Some(pid) = thread.project_id else {
+        return Ok(ThreadTarget {
+            node: None,
+            dir: state.config.home_dir.clone(),
+        });
+    };
+    let Ok(Some(project)) = state.db.get_project(pid, thread.user_id).await else {
+        return Ok(ThreadTarget {
+            node: None,
+            dir: state.config.home_dir.clone(),
+        });
+    };
+
+    if let Some(node_id) = project.node_id.as_deref() {
+        let node = state.db.get_federation_node(node_id).await.ok().flatten();
+        let Some(node) = node else {
+            anyhow::bail!("project is bound to a node that is no longer paired");
+        };
+        let Some(client) = crate::node_client::NodeClient::for_node(state, &node) else {
+            anyhow::bail!("node has no pairing credential");
+        };
+        let git =
+            crate::node_client::GitBackend::Remote(crate::node_client::RemoteGit::new(client));
+        let project_path = PathBuf::from(&project.path);
+        if thread.env_mode == "worktree" {
+            if let Some(wt) = &thread.worktree_path {
+                let path = PathBuf::from(wt);
+                if path.is_absolute() {
+                    if let (Ok(project_repo), Ok(worktree_repo)) = (
+                        git.repo_status(&project_path, false).await,
+                        git.repo_status(&path, false).await,
+                    ) {
+                        if project_repo.is_repo
+                            && worktree_repo.is_repo
+                            && project_repo.common_dir == worktree_repo.common_dir
+                        {
+                            return Ok(ThreadTarget {
+                                node: Some(node),
+                                dir: path,
+                            });
                         }
                     }
                 }
             }
-            return Ok(project_path);
+        }
+        return Ok(ThreadTarget {
+            node: Some(node),
+            dir: project_path,
+        });
+    }
+
+    let project_path = tokio::fs::canonicalize(&project.path)
+        .await
+        .unwrap_or_else(|_| PathBuf::from(&project.path));
+    if thread.env_mode == "worktree" {
+        if let Some(wt) = &thread.worktree_path {
+            let path = PathBuf::from(wt);
+            if path.is_absolute() {
+                if let Ok(canonical) = tokio::fs::canonicalize(&path).await {
+                    if let (Ok(project_repo), Ok(worktree_repo)) = (
+                        state.git.repo_status(&project_path, false).await,
+                        state.git.repo_status(&canonical, false).await,
+                    ) {
+                        if project_repo.is_repo
+                            && worktree_repo.is_repo
+                            && project_repo.common_dir == worktree_repo.common_dir
+                        {
+                            return Ok(ThreadTarget {
+                                node: None,
+                                dir: canonical,
+                            });
+                        }
+                    }
+                }
+            }
         }
     }
-    Ok(state.config.home_dir.clone())
+    Ok(ThreadTarget {
+        node: None,
+        dir: project_path,
+    })
+}
+
+/// Return the filesystem working directory for a thread.
+///
+/// If the thread belongs to a project, use the project's canonical path.
+/// Otherwise fall back to the user's home directory. For node-bound
+/// threads the returned path lives on the satellite — callers that touch
+/// the filesystem must go through [`thread_target`] instead.
+pub(crate) async fn project_working_dir_for_thread(
+    state: &AppState,
+    thread: &ThreadRow,
+) -> anyhow::Result<PathBuf> {
+    Ok(thread_target(state, thread).await?.dir)
 }
 
 pub(crate) fn normalize_mode(raw: &str) -> String {

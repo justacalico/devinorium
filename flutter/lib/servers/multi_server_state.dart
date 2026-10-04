@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 
 import '../api/api_service.dart';
 import '../api/client_factory.dart';
-import '../api/prefixing_client.dart';
 import 'server_profile.dart';
 import 'server_registry.dart';
 
@@ -23,18 +22,19 @@ class MultiServerState extends ChangeNotifier {
   String? _activeServerId;
 
   MultiServerState({ServerRegistry? registry})
-      : _registry = registry ?? ServerRegistry();
+    : _registry = registry ?? ServerRegistry();
 
   /// Load saved profiles and build an [ApiService] for each. On web, an
   /// implicit same-origin profile is created if none exists.
   Future<void> loadFromRegistry() async {
     _apis.clear();
-    _nodeApis.clear();
     _profiles.clear();
     _activeServerId = null;
 
     final loaded = await _registry.loadProfiles();
-    final profiles = loaded.isEmpty && kIsWeb ? await _ensureWebProfile() : loaded;
+    final profiles = loaded.isEmpty && kIsWeb
+        ? await _ensureWebProfile()
+        : loaded;
 
     for (final p in profiles) {
       _profiles[p.id] = p;
@@ -42,10 +42,9 @@ class MultiServerState extends ChangeNotifier {
     }
 
     if (profiles.isNotEmpty) {
-      _activeServerId = profiles.firstWhere(
-        (p) => p.isPrimary,
-        orElse: () => profiles.first,
-      ).id;
+      _activeServerId = profiles
+          .firstWhere((p) => p.isPrimary, orElse: () => profiles.first)
+          .id;
     }
 
     notifyListeners();
@@ -56,25 +55,6 @@ class MultiServerState extends ChangeNotifier {
   ApiService? get activeApi {
     final id = _activeServerId;
     return id != null ? _apis[id] : null;
-  }
-
-  final Map<String, ApiService> _nodeApis = {};
-
-  /// The hub proxy prefix for a federation node.
-  static String nodePrefix(String nodeId) =>
-      '/api/federation/nodes/$nodeId/proxy';
-
-  /// An [ApiService] that routes every call on [serverId] through the
-  /// federation proxy for [nodeId]. The hub client stays shared; only the
-  /// path prefix differs, so credentials and cookies carry over unchanged.
-  ApiService? nodeApi(String serverId, String nodeId) {
-    final base = _apis[serverId];
-    if (base == null) return null;
-    final key = '$serverId:$nodeId';
-    return _nodeApis.putIfAbsent(
-      key,
-      () => ApiService(client: PrefixingClient(base.client, nodePrefix(nodeId))),
-    );
   }
 
   /// The currently active server profile, or `null`.
@@ -120,15 +100,14 @@ class MultiServerState extends ChangeNotifier {
     _applyProfiles(updated);
     // Rebuild the client only when the endpoint actually changed — disposing
     // the shared ApiService would orphan open thread stores.
-    final unchanged = existing != null &&
+    final unchanged =
+        existing != null &&
         existing.baseUrl == profile.baseUrl &&
         existing.token == profile.token &&
         api == null;
     if (!unchanged || !_apis.containsKey(profile.id)) {
       _apis[profile.id]?.dispose();
       _apis[profile.id] = api ?? ApiService(client: createApiClient(profile));
-      // Node services wrap the old client; drop them so they rebind.
-      _dropNodeApis(profile.id);
     }
     if (setActive) {
       _activeServerId = profile.id;
@@ -153,9 +132,8 @@ class MultiServerState extends ChangeNotifier {
   void _applyProfiles(List<ServerProfile> profiles) {
     for (final p in profiles) {
       final existing = _profiles[p.id];
-      _profiles[p.id] = p.isLocal &&
-              p.token.isEmpty &&
-              (existing?.token.isNotEmpty ?? false)
+      _profiles[p.id] =
+          p.isLocal && p.token.isEmpty && (existing?.token.isNotEmpty ?? false)
           ? p.copyWith(token: existing!.token)
           : p;
     }
@@ -201,17 +179,13 @@ class MultiServerState extends ChangeNotifier {
     );
     _applyProfiles(remaining);
     _apis.remove(id)?.dispose();
-    _dropNodeApis(id);
     _profiles.remove(id);
     if (_activeServerId == id) {
       _activeServerId = remaining.isEmpty
           ? null
           : remaining
-              .firstWhere(
-                (p) => p.isPrimary,
-                orElse: () => remaining.first,
-              )
-              .id;
+                .firstWhere((p) => p.isPrimary, orElse: () => remaining.first)
+                .id;
     }
     notifyListeners();
   }
@@ -228,19 +202,8 @@ class MultiServerState extends ChangeNotifier {
     _profiles[id] = cleared;
     _apis[id]?.dispose();
     _apis[id] = ApiService(client: createApiClient(cleared));
-    _dropNodeApis(id);
     await _registry.upsert(cleared);
     notifyListeners();
-  }
-
-  /// Drop all node services derived from [serverId]'s client. Called when the
-  /// hub client is rebuilt or removed so stale wrappers cannot linger.
-  void _dropNodeApis(String serverId) {
-    _nodeApis.removeWhere((key, api) {
-      if (!key.startsWith('$serverId:')) return false;
-      api.dispose();
-      return true;
-    });
   }
 
   /// Add a test API service bound to a synthetic profile. Used by

@@ -1,12 +1,14 @@
-//! Federation routes: satellite registration, the node list, and removal.
+//! Federation routes: pairing satellites and managing the node list.
 //!
-//! `register` sits outside session auth on purpose — a satellite has no
-//! user account on the hub, it authenticates with the shared federation
-//! token instead. Everything else in this module is owner-only: a proxied
-//! call runs as the satellite's `local` owner, so letting a non-owner hub
-//! user reach it would hand them owner-level access to another machine.
+//! All routes are owner-only: a paired node is a remote shell on another
+//! machine, and the node token is as sensitive as an owner session.
+//!
+//! There is no satellite-initiated registration: a satellite stays dumb and
+//! just answers `/api/node/*`. The hub pairs by calling the satellite's
+//! `info` and `pair` endpoints with the code the satellite printed, then
+//! stores the returned credential against the node row.
 
-use axum::extract::{FromRequest, Path, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, Router};
@@ -14,33 +16,30 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{map_err_internal, ApiError};
-use crate::auth::session::{extract_bearer_token, CurrentUser};
+use crate::auth::session::CurrentUser;
 use crate::db::federation_nodes::FederationNodeRow;
 use crate::federation::{clean_node_base_url, ONLINE_WINDOW};
+use crate::node_client::NodeClient;
 use crate::AppState;
 
-const MAX_NODE_ID_LEN: usize = 64;
 const MAX_NODE_NAME_LEN: usize = 128;
-const MAX_VERSION_LEN: usize = 64;
 
-/// Routes that authenticate with the federation token, not a session.
-pub fn public_router() -> Router<AppState> {
-    Router::new().route("/api/federation/register", post(register))
+/// Strip control characters and clamp a satellite-supplied string.
+fn clamp_node_string(s: &str, max: usize) -> String {
+    s.chars()
+        .filter(|c| !c.is_control())
+        .take(max)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
-/// Session-authenticated routes; the handlers still gate on `is_owner`.
+/// Node management routes; every handler still gates on `is_owner`.
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/federation/nodes", get(list_nodes))
+        .route("/api/federation/nodes/pair", post(pair_node))
         .route("/api/federation/nodes/:id", delete(remove_node))
-        .route(
-            "/api/federation/nodes/:id/proxy",
-            axum::routing::any(super::federation_proxy::proxy),
-        )
-        .route(
-            "/api/federation/nodes/:id/proxy/*path",
-            axum::routing::any(super::federation_proxy::proxy),
-        )
 }
 
 fn forbidden() -> Response {
@@ -59,123 +58,11 @@ fn bad_request(msg: &str) -> Response {
         .into_response()
 }
 
-fn unauthorized() -> Response {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(ApiError::new("invalid token")),
-    )
-        .into_response()
+fn bad_gateway(msg: impl Into<String>) -> Response {
+    (StatusCode::BAD_GATEWAY, Json(ApiError::new(msg.into()))).into_response()
 }
 
-/// Whether the request carries the configured federation token. When no
-/// token is configured the federation endpoints stay closed entirely.
-fn has_federation_token(state: &AppState, req: &axum::extract::Request) -> bool {
-    let Some(expected) = state.config.federation_token.as_deref() else {
-        return false;
-    };
-    let Some(token) = extract_bearer_token(req) else {
-        return false;
-    };
-    constant_time_eq::constant_time_eq(token.as_bytes(), expected.as_bytes())
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterRequest {
-    id: String,
-    name: String,
-    base_url: String,
-    #[serde(default)]
-    version: String,
-}
-
-#[derive(Debug, Serialize)]
-struct RegisterResponse {
-    ok: bool,
-    hub: String,
-    /// Per-node credential the hub will send on proxied requests. The
-    /// satellite stores it and accepts it in place of the shared token.
-    node_token: String,
-}
-
-/// A satellite announcing itself. Doubles as the heartbeat: the node calls
-/// it every [`crate::federation::HEARTBEAT_INTERVAL`] and `last_seen_at`
-/// drives the online flag.
-async fn register(State(state): State<AppState>, req: axum::extract::Request) -> Response {
-    if !has_federation_token(&state, &req) {
-        // Same probe price as session-auth failures: a bogus Bearer on this
-        // public route must not ride the cheap write classification.
-        let upfront = crate::security::rate_limit::classify(&req).cost();
-        let ip = crate::security::ip::from_req(&req);
-        if !crate::security::rate_limit::charge_auth_failure(&state.rate_limiter, &ip, upfront)
-            .await
-        {
-            return (StatusCode::TOO_MANY_REQUESTS, "rate limited").into_response();
-        }
-        return unauthorized();
-    }
-    let Ok(Json(body)) = Json::<RegisterRequest>::from_request(req, &state).await else {
-        return bad_request("invalid registration");
-    };
-
-    let id = body.id.trim();
-    let name = body.name.trim();
-    if id.is_empty()
-        || id.len() > MAX_NODE_ID_LEN
-        || !id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-    {
-        return bad_request("invalid id");
-    }
-    if name.is_empty()
-        || name.chars().count() > MAX_NODE_NAME_LEN
-        || name.chars().any(|c| c.is_control())
-    {
-        return bad_request("invalid name");
-    }
-    let version = body.version.trim();
-    if version.chars().count() > MAX_VERSION_LEN || version.chars().any(|c| c.is_control()) {
-        return bad_request("invalid version");
-    }
-    let base_url = match clean_node_base_url(&body.base_url) {
-        Some(u) => u,
-        None => return bad_request("invalid base_url"),
-    };
-
-    // Audit only the first sighting; the 30s heartbeat re-registers forever
-    // and would otherwise drown the log.
-    let is_new = matches!(state.db.get_federation_node(id).await, Ok(None));
-    match state
-        .db
-        .upsert_federation_node(id, name, &base_url, version)
-        .await
-    {
-        Ok(node) => {
-            tracing::info!(node = %node.name, base_url = %node.base_url, "federation node registered");
-            if is_new {
-                let _ = state
-                    .db
-                    .audit(
-                        None,
-                        "federation.register",
-                        &serde_json::json!({"node_id": id, "name": name, "base_url": base_url}),
-                        None,
-                    )
-                    .await;
-            }
-            Json(RegisterResponse {
-                ok: true,
-                hub: state.config.display_node_name(),
-                node_token: node.token.clone().unwrap_or_default(),
-            })
-            .into_response()
-        }
-        Err(e) => map_err_internal(e).into_response(),
-    }
-}
-
-/// Node as reported to the UI. `online` is computed from the last
-/// heartbeat rather than probed on read so listing stays cheap.
+/// Node as reported to the UI. `online` reflects the last successful probe.
 #[derive(Debug, Serialize)]
 pub struct NodeOut {
     pub id: String,
@@ -186,18 +73,8 @@ pub struct NodeOut {
     pub last_seen_at: String,
 }
 
-impl From<FederationNodeRow> for NodeOut {
-    fn from(n: FederationNodeRow) -> Self {
-        // Negative age means the hub clock moved backwards since the last
-        // heartbeat; count it as fresh within the same window either way.
-        let online = chrono::DateTime::parse_from_rfc3339(&n.last_seen_at)
-            .map(|t| {
-                let secs = chrono::Utc::now()
-                    .signed_duration_since(t.with_timezone(&chrono::Utc))
-                    .num_seconds();
-                secs.unsigned_abs() <= ONLINE_WINDOW.as_secs()
-            })
-            .unwrap_or(false);
+impl NodeOut {
+    fn from_row(n: FederationNodeRow, online: bool) -> Self {
         Self {
             id: n.id,
             name: n.name,
@@ -222,19 +99,176 @@ struct SelfNode {
     version: String,
 }
 
+/// Whether a stored `last_seen_at` is fresh enough to still mean online.
+fn last_seen_fresh(last_seen_at: &str) -> bool {
+    chrono::DateTime::parse_from_rfc3339(last_seen_at)
+        .map(|t| {
+            let secs = chrono::Utc::now()
+                .signed_duration_since(t.with_timezone(&chrono::Utc))
+                .num_seconds();
+            secs.unsigned_abs() <= ONLINE_WINDOW.as_secs()
+        })
+        .unwrap_or(false)
+}
+
+/// Probe one node for liveness and refresh its row on success. Runs with a
+/// short timeout so a dead node cannot stall the list.
+async fn probe_node(state: AppState, node: FederationNodeRow) -> bool {
+    let Some(client) = NodeClient::for_node_short(&state, &node) else {
+        return false;
+    };
+    match client.info().await {
+        Ok(info) => {
+            state
+                .db
+                .touch_federation_node(
+                    &node.id,
+                    &clamp_node_string(&info.name, MAX_NODE_NAME_LEN),
+                    &clamp_node_string(&info.version, 64),
+                )
+                .await;
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 async fn list_nodes(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     if !user.is_owner {
         return forbidden();
     }
-    match state.db.list_federation_nodes().await {
-        Ok(nodes) => Json(NodesResponse {
-            self_node: SelfNode {
-                name: state.config.display_node_name(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-            },
-            nodes: nodes.into_iter().map(NodeOut::from).collect(),
-        })
-        .into_response(),
+    let nodes = match state.db.list_federation_nodes().await {
+        Ok(n) => n,
+        Err(e) => return map_err_internal(e).into_response(),
+    };
+
+    // Probe every node concurrently; a node that answered within the last
+    // ONLINE_WINDOW counts as online without a fresh probe.
+    let mut out = Vec::with_capacity(nodes.len());
+    let mut probes = Vec::new();
+    for node in nodes {
+        if last_seen_fresh(&node.last_seen_at) {
+            out.push(NodeOut::from_row(node, true));
+        } else {
+            probes.push(node);
+        }
+    }
+    let results =
+        futures::future::join_all(probes.iter().map(|n| probe_node(state.clone(), n.clone())))
+            .await;
+    for (node, online) in probes.into_iter().zip(results) {
+        out.push(NodeOut::from_row(node, online));
+    }
+
+    Json(NodesResponse {
+        self_node: SelfNode {
+            name: state.config.display_node_name(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        nodes: out,
+    })
+    .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PairNodeRequest {
+    /// The satellite's base URL, e.g. `http://workstation:7878`.
+    pub url: String,
+    /// The code the satellite printed at startup.
+    pub code: String,
+    /// Optional display name override stored on the hub.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Pair with a satellite: verify it is one, exchange the code for a token,
+/// and store the node. Re-pairing the same node id refreshes the row —
+/// that is how a moved or renamed satellite heals.
+async fn pair_node(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Json(req): Json<PairNodeRequest>,
+) -> Response {
+    if !user.is_owner {
+        return forbidden();
+    }
+    let Some(base_url) = clean_node_base_url(&req.url) else {
+        return bad_request("invalid url");
+    };
+    if req.code.trim().is_empty() {
+        return bad_request("pairing code is required");
+    }
+    if let Some(name) = req.name.as_deref() {
+        if name.chars().count() > MAX_NODE_NAME_LEN || name.chars().any(|c| c.is_control()) {
+            return bad_request("invalid name");
+        }
+    }
+
+    let client = crate::federation::short_http_client();
+
+    // Confirm the target is actually a satellite before sending the code,
+    // so a wrong URL does not leak it to an arbitrary server.
+    let info_url = format!("{base_url}/api/node/info");
+    let info = match client.get(&info_url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<crate::node::NodeInfo>().await {
+                Ok(i) => i,
+                Err(_) => return bad_request("target is not a devinorium satellite"),
+            }
+        }
+        Ok(_) => return bad_request("target is not a devinorium satellite"),
+        Err(_) => return bad_gateway("node unreachable"),
+    };
+    if !info.satellite {
+        return bad_request("target is not running in satellite mode");
+    }
+
+    let pair = match NodeClient::pair(&client, &base_url, req.code.trim()).await {
+        Ok(p) => p,
+        Err(crate::node_client::NodeCallError::Remote { kind, message })
+            if kind == "unauthorized" || kind == "rate_limited" || kind == "consumed" =>
+        {
+            return bad_request(&message);
+        }
+        Err(e) => return bad_gateway(format!("pairing failed: {e}")),
+    };
+
+    // The paired node's id must match the identity probe; a mismatch means
+    // the URL serves different satellites behind info and pair.
+    if pair.node_id != info.node_id {
+        return bad_gateway("node identity mismatch between info and pair");
+    }
+
+    // Satellite-supplied strings get the same hygiene as user input:
+    // length cap, no control characters.
+    let pair_name = clamp_node_string(&pair.name, MAX_NODE_NAME_LEN);
+    let version = clamp_node_string(&pair.version, 64);
+    let name = req
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or(pair_name);
+
+    match state
+        .db
+        .upsert_federation_node(&pair.node_id, &name, &base_url, &version, &pair.token)
+        .await
+    {
+        Ok(node) => {
+            tracing::info!(node = %node.name, base_url = %node.base_url, "satellite node paired");
+            let _ = state
+                .db
+                .audit(
+                    Some(user.id),
+                    "federation.pair",
+                    &serde_json::json!({"node_id": pair.node_id, "name": name, "base_url": base_url}),
+                    None,
+                )
+                .await;
+            (StatusCode::CREATED, Json(NodeOut::from_row(node, true))).into_response()
+        }
         Err(e) => map_err_internal(e).into_response(),
     }
 }

@@ -244,12 +244,135 @@ async fn resolve(
     }
 }
 
+/// Where a file request runs: the local filesystem or a paired node.
+enum FileTarget {
+    Local,
+    Remote {
+        client: crate::node_client::NodeClient,
+        root: String,
+    },
+}
+
+/// Decide whether a file request belongs to a node-bound project/thread.
+/// `node_id` in the query or body opts into node browsing directly (the
+/// project-creation directory picker uses it without a project). Remote
+/// operations stay owner-only, matching every other node call.
+async fn file_target(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    project_id: Option<i64>,
+    thread_id: Option<&str>,
+    node_id: Option<&str>,
+) -> Result<FileTarget, Response> {
+    let owner_only = || {
+        (
+            StatusCode::FORBIDDEN,
+            Json(crate::api::ApiError::new("paired machines are owner-only")),
+        )
+            .into_response()
+    };
+
+    if let Some(tid) = thread_id.map(str::trim).filter(|s| !s.is_empty()) {
+        let target = match state.db.get_thread(tid, user.id).await {
+            Ok(Some(t)) => crate::api::threads::plan::thread_target(state, &t)
+                .await
+                .map_err(|e| crate::api::map_err_internal(e).into_response())?,
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid thread_id")),
+                )
+                    .into_response())
+            }
+        };
+        if let Some(node) = target.node {
+            if !user.is_owner {
+                return Err(owner_only());
+            }
+            return match crate::node_client::NodeClient::for_node(state, &node) {
+                Some(client) => Ok(FileTarget::Remote {
+                    client: client.with_proxy_user(&user.username),
+                    root: target.dir.to_string_lossy().to_string(),
+                }),
+                None => Err(crate::node_client::node_bad_gateway("node unreachable")),
+            };
+        }
+        return Ok(FileTarget::Local);
+    }
+
+    if let Some(pid) = project_id {
+        match state.db.get_project(pid, user.id).await {
+            Ok(Some(p)) => {
+                let node = match crate::node_client::bound_node(state, &p).await {
+                    Ok(n) => n,
+                    Err(e) => return Err(crate::node_client::node_bad_gateway(e.to_string())),
+                };
+                if let Some(node) = node {
+                    if !user.is_owner {
+                        return Err(owner_only());
+                    }
+                    return match crate::node_client::NodeClient::for_node(state, &node) {
+                        Some(client) => Ok(FileTarget::Remote {
+                            client: client.with_proxy_user(&user.username),
+                            root: p.path.clone(),
+                        }),
+                        None => Err(crate::node_client::node_bad_gateway("node unreachable")),
+                    };
+                }
+            }
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid project_id")),
+                )
+                    .into_response())
+            }
+        }
+        return Ok(FileTarget::Local);
+    }
+
+    if let Some(nid) = node_id.map(str::trim).filter(|s| !s.is_empty()) {
+        if !user.is_owner {
+            return Err(owner_only());
+        }
+        let node = match state.db.get_federation_node(nid).await {
+            Ok(Some(n)) => n,
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("invalid node_id")),
+                )
+                    .into_response())
+            }
+        };
+        return match crate::node_client::NodeClient::for_node(state, &node) {
+            Some(client) => Ok(FileTarget::Remote {
+                client,
+                root: String::new(),
+            }),
+            None => Err(crate::node_client::node_bad_gateway("node unreachable")),
+        };
+    }
+
+    Ok(FileTarget::Local)
+}
+
+/// `root` query pair for a remote call: absent means the satellite's home.
+fn root_query(root: &str) -> Vec<(String, String)> {
+    if root.is_empty() {
+        Vec::new()
+    } else {
+        vec![("root".into(), root.to_string())]
+    }
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct ListQuery {
     path: Option<String>,
     project_id: Option<i64>,
     thread_id: Option<String>,
+    node_id: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 }
@@ -260,6 +383,7 @@ struct ReadQuery {
     path: Option<String>,
     project_id: Option<i64>,
     thread_id: Option<String>,
+    node_id: Option<String>,
     #[serde(default)]
     diff: bool,
 }
@@ -278,6 +402,34 @@ async fn list_dir(
     CurrentUser(user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> Response {
+    match file_target(
+        &state,
+        &user,
+        q.project_id,
+        q.thread_id.as_deref(),
+        q.node_id.as_deref(),
+    )
+    .await
+    {
+        Ok(FileTarget::Remote { client, root }) => {
+            let mut query = root_query(&root);
+            if let Some(p) = &q.path {
+                query.push(("path".into(), p.clone()));
+            }
+            if let Some(l) = q.limit {
+                query.push(("limit".into(), l.to_string()));
+            }
+            if let Some(o) = q.offset {
+                query.push(("offset".into(), o.to_string()));
+            }
+            return match client.forward_get("files", &query).await {
+                Ok(r) => r,
+                Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
+            };
+        }
+        Ok(FileTarget::Local) => {}
+        Err(r) => return r,
+    }
     let (target, _root) = match resolve(
         &state,
         &user,
@@ -356,6 +508,31 @@ async fn read_file(
     CurrentUser(user): CurrentUser,
     Query(q): Query<ReadQuery>,
 ) -> Response {
+    match file_target(
+        &state,
+        &user,
+        q.project_id,
+        q.thread_id.as_deref(),
+        q.node_id.as_deref(),
+    )
+    .await
+    {
+        Ok(FileTarget::Remote { client, root }) => {
+            let mut query = root_query(&root);
+            if let Some(p) = &q.path {
+                query.push(("path".into(), p.clone()));
+            }
+            if q.diff {
+                query.push(("diff".into(), "true".into()));
+            }
+            return match client.forward_get("files/content", &query).await {
+                Ok(r) => r,
+                Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
+            };
+        }
+        Ok(FileTarget::Local) => {}
+        Err(r) => return r,
+    }
     let (target, _root) = match resolve(
         &state,
         &user,
@@ -440,6 +617,8 @@ struct WriteReq {
     project_id: Option<i64>,
     #[serde(default)]
     thread_id: Option<String>,
+    #[serde(default)]
+    node_id: Option<String>,
     content: String,
     #[serde(default)]
     expected_sha256: Option<String>,
@@ -456,6 +635,39 @@ async fn write_file(
     CurrentUser(user): CurrentUser,
     Json(req): Json<WriteReq>,
 ) -> Response {
+    match file_target(
+        &state,
+        &user,
+        req.project_id,
+        req.thread_id.as_deref(),
+        req.node_id.as_deref(),
+    )
+    .await
+    {
+        Ok(FileTarget::Remote { client, root }) => {
+            let body = serde_json::json!({
+                "root": if root.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(root) },
+                "path": req.path,
+                "content": req.content,
+                "expected_sha256": req.expected_sha256,
+            });
+            return match client
+                .forward_body(
+                    reqwest::Method::PUT,
+                    "files/content",
+                    &[],
+                    Some("application/json".into()),
+                    serde_json::to_vec(&body).unwrap_or_default(),
+                )
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
+            };
+        }
+        Ok(FileTarget::Local) => {}
+        Err(r) => return r,
+    }
     let (target, _root) = match resolve(
         &state,
         &user,
@@ -591,6 +803,7 @@ async fn upload(
     let mut dest_dir_rel: Option<String> = None;
     let mut project_id: Option<i64> = None;
     let mut thread_id: Option<String> = None;
+    let mut node_id: Option<String> = None;
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
     loop {
@@ -618,6 +831,11 @@ async fn upload(
             thread_id = Some(raw);
             continue;
         }
+        if name == "node_id" {
+            let raw = String::from_utf8_lossy(&bytes).to_string();
+            node_id = Some(raw);
+            continue;
+        }
         if filename.is_empty() || filename.len() > 255 {
             continue;
         }
@@ -631,6 +849,37 @@ async fn upload(
         files.push((filename, bytes.to_vec()));
     }
 
+    match file_target(
+        &state,
+        &user,
+        project_id,
+        thread_id.as_deref(),
+        node_id.as_deref(),
+    )
+    .await
+    {
+        Ok(FileTarget::Remote { client, root }) => {
+            let mut form = reqwest::multipart::Form::new();
+            if !root.is_empty() {
+                form = form.text("root", root);
+            }
+            if let Some(dir) = &dest_dir_rel {
+                form = form.text("path", dir.clone());
+            }
+            for (name, bytes) in files {
+                form = form.part(
+                    "files",
+                    reqwest::multipart::Part::bytes(bytes).file_name(name),
+                );
+            }
+            return match client.post_multipart("files", &[], form).await {
+                Ok(r) => r,
+                Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
+            };
+        }
+        Ok(FileTarget::Local) => {}
+        Err(r) => return r,
+    }
     let (root_base, _root) =
         match resolve(&state, &user, None, project_id, thread_id.as_deref()).await {
             Ok(v) => v,
@@ -709,6 +958,8 @@ struct MkdirReq {
     project_id: Option<i64>,
     #[serde(default)]
     thread_id: Option<String>,
+    #[serde(default)]
+    node_id: Option<String>,
 }
 
 async fn mkdir(
@@ -716,6 +967,37 @@ async fn mkdir(
     CurrentUser(user): CurrentUser,
     Json(req): Json<MkdirReq>,
 ) -> Response {
+    match file_target(
+        &state,
+        &user,
+        req.project_id,
+        req.thread_id.as_deref(),
+        req.node_id.as_deref(),
+    )
+    .await
+    {
+        Ok(FileTarget::Remote { client, root }) => {
+            let body = serde_json::json!({
+                "root": if root.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(root) },
+                "path": req.path,
+            });
+            return match client
+                .forward_body(
+                    reqwest::Method::POST,
+                    "files/dir",
+                    &[],
+                    Some("application/json".into()),
+                    serde_json::to_vec(&body).unwrap_or_default(),
+                )
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
+            };
+        }
+        Ok(FileTarget::Local) => {}
+        Err(r) => return r,
+    }
     let (target, _root) = match resolve(
         &state,
         &user,
@@ -740,6 +1022,35 @@ async fn delete(
     Query(q): Query<ListQuery>,
 ) -> Response {
     let rel = q.path.as_deref().unwrap_or("").trim_end_matches('/');
+    match file_target(
+        &state,
+        &user,
+        q.project_id,
+        q.thread_id.as_deref(),
+        q.node_id.as_deref(),
+    )
+    .await
+    {
+        Ok(FileTarget::Remote { client, root }) => {
+            let mut query = root_query(&root);
+            query.push(("path".into(), rel.to_string()));
+            return match client
+                .forward_body(
+                    reqwest::Method::DELETE,
+                    "files/delete",
+                    &query,
+                    None,
+                    Vec::new(),
+                )
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
+            };
+        }
+        Ok(FileTarget::Local) => {}
+        Err(r) => return r,
+    }
     let (_resolved, root) = match resolve(
         &state,
         &user,

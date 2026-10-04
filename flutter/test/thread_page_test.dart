@@ -194,7 +194,7 @@ class _BlockingApi extends _FakeApiService {
       Future.value(const {'status': 'idle'});
 
   @override
-  Future<List<ModelInfo>> listModels({String? provider}) =>
+  Future<List<ModelInfo>> listModels({String? provider, String? nodeId}) =>
       Future.value(const []);
 
   @override
@@ -1193,78 +1193,77 @@ void main() {
     expect(textCenter.dy, lessThan(secondThinking.dy));
   });
 
-  testWidgets(
-    'tool calls render as their own rows when interleaved',
-    (tester) async {
-      final state = AppState.test(
-        user: User(
-          id: 1,
-          username: 'owner',
-          role: 'user',
-          totpEnabled: false,
-          isOwner: true,
-          providerId: 'devin-cli',
-          providerCommand: 'devin',
+  testWidgets('tool calls render as their own rows when interleaved', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
         ),
-        activeThreadId: 't1',
-        activeThreadDetail: ThreadDetail(
-          thread: Thread(
-            id: 't1',
-            title: 'Test thread',
-            projectId: 1,
-            model: 'm1',
-            permissionMode: 'normal',
-            createdAt: '',
-            updatedAt: '',
+        messages: [
+          Message(
+            role: 'assistant',
+            content: '',
+            parts: [
+              MessagePart.thinking(content: 'first think'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-1',
+                  title: 'Run a',
+                  kind: 'search',
+                  status: 'completed',
+                  command: 'echo a',
+                ),
+              ),
+              MessagePart.text(content: 'middle text'),
+              MessagePart.thinking(content: 'second think'),
+              MessagePart.toolCall(
+                toolCall: ToolCallData(
+                  id: 'tc-2',
+                  title: 'Run b',
+                  kind: 'search',
+                  status: 'completed',
+                  command: 'echo b',
+                ),
+              ),
+            ],
           ),
-          messages: [
-            Message(
-              role: 'assistant',
-              content: '',
-              parts: [
-                MessagePart.thinking(content: 'first think'),
-                MessagePart.toolCall(
-                  toolCall: ToolCallData(
-                    id: 'tc-1',
-                    title: 'Run a',
-                    kind: 'search',
-                    status: 'completed',
-                    command: 'echo a',
-                  ),
-                ),
-                MessagePart.text(content: 'middle text'),
-                MessagePart.thinking(content: 'second think'),
-                MessagePart.toolCall(
-                  toolCall: ToolCallData(
-                    id: 'tc-2',
-                    title: 'Run b',
-                    kind: 'search',
-                    status: 'completed',
-                    command: 'echo b',
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
+        ],
+      ),
+    );
 
-      await tester.pumpWidget(_buildWithState(state));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
 
-      expect(find.byType(AnimatedCrossFade), findsNWidgets(2));
-      expect(find.byType(MarkdownBody), findsOneWidget);
+    expect(find.byType(AnimatedCrossFade), findsNWidgets(2));
+    expect(find.byType(MarkdownBody), findsOneWidget);
 
-      final firstPill = tester.getCenter(find.text('Show thinking').first);
-      final runA = tester.getCenter(find.text('Run a'));
-      final textCenter = tester.getCenter(find.byType(MarkdownBody));
-      final runB = tester.getCenter(find.text('Run b'));
+    final firstPill = tester.getCenter(find.text('Show thinking').first);
+    final runA = tester.getCenter(find.text('Run a'));
+    final textCenter = tester.getCenter(find.byType(MarkdownBody));
+    final runB = tester.getCenter(find.text('Run b'));
 
-      expect(firstPill.dy, lessThan(runA.dy));
-      expect(runA.dy, lessThan(textCenter.dy));
-      expect(textCenter.dy, lessThan(runB.dy));
-    },
-  );
+    expect(firstPill.dy, lessThan(runA.dy));
+    expect(runA.dy, lessThan(textCenter.dy));
+    expect(textCenter.dy, lessThan(runB.dy));
+  });
 
   testWidgets('each thinking block expands and collapses independently', (
     tester,

@@ -17,7 +17,7 @@ pub const TEMP_WORKTREE_BRANCH_PREFIX: &str = "devinorium";
 pub const TEMP_WORKTREE_BRANCH_PATTERN: &str = r"^devinorium/[0-9a-f]{8}$";
 
 /// A worktree.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Worktree {
     pub path: PathBuf,
     pub head: String,

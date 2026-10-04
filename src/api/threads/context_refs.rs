@@ -130,6 +130,76 @@ async fn context_root(
     }
 }
 
+/// Resolve `input.context_paths` for a node-bound thread: paths are
+/// normalized lexically (canonicalizing here would consult the wrong
+/// filesystem) and existence/dir flags come from the satellite's stat
+/// endpoint.
+async fn resolve_refs_remote(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    node: &crate::db::federation_nodes::FederationNodeRow,
+    root: &Path,
+    input: &mut SendInput,
+) {
+    let Some(client) = crate::node_client::NodeClient::for_node_short(state, node) else {
+        input.context_paths.clear();
+        return;
+    };
+    let client = client.with_proxy_user(&user.username);
+    let mut seen = HashSet::new();
+    let mut resolved: Vec<(ContextPathIn, PathBuf)> = Vec::new();
+    for raw in std::mem::take(&mut input.context_paths) {
+        let rel = raw.path.trim();
+        if rel.is_empty() {
+            continue;
+        }
+        let abs = if Path::new(rel).is_absolute() {
+            paths::normalize_lexical(Path::new(rel))
+        } else {
+            let joined = paths::normalize_lexical(&root.join(rel));
+            if !paths::is_within(&joined, root) {
+                continue;
+            }
+            joined
+        };
+        if paths::is_hidden_within(root, &abs) {
+            continue;
+        }
+        if seen.insert(abs.clone()) {
+            resolved.push((raw, abs));
+        }
+    }
+    let stats = client
+        .fs_stat(
+            None,
+            &resolved
+                .iter()
+                .map(|(_, p)| p.to_string_lossy().to_string())
+                .collect::<Vec<_>>(),
+        )
+        .await
+        .unwrap_or_default();
+    for (raw, abs) in resolved {
+        let rel = raw.path.trim().to_string();
+        let stat = stats.get(&abs.to_string_lossy().to_string());
+        let exists = stat.map(|s| s.exists).unwrap_or(false);
+        let is_dir = stat.map(|s| s.is_dir).unwrap_or(raw.is_dir);
+        input.att_meta.push(serde_json::json!({
+            "filename": rel,
+            "mime": "application/x-devinorium-path",
+            "size": 0,
+            "kind": "path",
+            "is_dir": is_dir,
+        }));
+        input.context_refs.push(ContextRef {
+            rel,
+            abs,
+            is_dir,
+            exists,
+        });
+    }
+}
+
 /// Resolve the raw client paths against `root`, dropping empties, traversal,
 /// and protected paths, deduplicating by resolved path.
 fn resolve_refs(
@@ -161,6 +231,24 @@ pub(crate) async fn resolve_context_refs(
 ) {
     if input.context_paths.is_empty() {
         return;
+    }
+    match crate::node_client::bound_node_for_thread(state, thread).await {
+        Ok(Some(node)) => {
+            let target = match super::plan::thread_target(state, thread).await {
+                Ok(t) => t,
+                Err(_) => {
+                    input.context_paths.clear();
+                    return;
+                }
+            };
+            resolve_refs_remote(state, user, &node, &target.dir, input).await;
+            return;
+        }
+        Err(_) => {
+            input.context_paths.clear();
+            return;
+        }
+        Ok(None) => {}
     }
     let Some(root) = context_root(state, user, thread).await else {
         input.context_paths.clear();

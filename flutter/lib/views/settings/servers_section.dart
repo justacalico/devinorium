@@ -396,9 +396,8 @@ class _ServerUpdateSectionState extends State<_ServerUpdateSection> {
   ServerUpdateCheck? _check;
   String? _applyError;
 
-  /// The target the last check ran against, `<serverId>:<nodeId>`; switching
-  /// either resets the card so a result cannot leak onto a different
-  /// machine.
+  /// The server the last check ran against; switching resets the card so a
+  /// result cannot leak onto a different machine.
   String? _checkedTarget;
 
   /// Set once the connection drops after an update; clearing
@@ -406,8 +405,7 @@ class _ServerUpdateSectionState extends State<_ServerUpdateSection> {
   /// vanish before the restart even starts.
   bool _sawDrop = false;
 
-  String _targetKey(AppState state) =>
-      '${state.activeServerId}:${state.activeNodeId ?? ''}';
+  String _targetKey(AppState state) => state.activeServerId ?? '';
 
   Future<void> _checkForUpdate(AppState state) async {
     if (_checking || _applying || _appliedVersion != null) return;
@@ -437,8 +435,8 @@ class _ServerUpdateSectionState extends State<_ServerUpdateSection> {
   Future<void> _apply(AppState state) async {
     final check = _check;
     if (_applying || check == null || !check.updateAvailable) return;
-    // The apply runs against the machine it was confirmed for even if the
-    // user switches servers or nodes while the dialog is open.
+    // The apply runs against the server it was confirmed for even if the
+    // user switches servers while the dialog is open.
     final target = _targetKey(state);
     final api = state.api;
     final l = l10n(context);
@@ -501,7 +499,6 @@ class _ServerUpdateSectionState extends State<_ServerUpdateSection> {
       ({
         bool isOwner,
         String? activeServerId,
-        String? activeNodeId,
         ConnectionStatus connection,
         String? serverVersion,
       })
@@ -509,7 +506,6 @@ class _ServerUpdateSectionState extends State<_ServerUpdateSection> {
       selector: (_, s) => (
         isOwner: s.isOwner,
         activeServerId: s.activeServerId,
-        activeNodeId: s.activeNodeId,
         connection: s.connectionStatus,
         serverVersion: s.serverVersion,
       ),
@@ -517,7 +513,7 @@ class _ServerUpdateSectionState extends State<_ServerUpdateSection> {
         // The endpoints are owner-only; hide the card instead of showing a
         // button that always 403s.
         if (!model.isOwner) return const SizedBox.shrink();
-        final targetKey = '${model.activeServerId}:${model.activeNodeId ?? ''}';
+        final targetKey = model.activeServerId ?? '';
         if (targetKey != _checkedTarget) {
           _checkedTarget = targetKey;
           _check = null;

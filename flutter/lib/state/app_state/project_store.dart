@@ -48,6 +48,7 @@ mixin ProjectStore on AppStateBase {
     await loadProjectGroups();
     notifyListeners();
   }
+
   @override
   Future<void> loadMoreProjects() async {
     if (!_projectsHasMore || _loadingMoreProjects) return;
@@ -68,6 +69,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> selectProject(int id) async {
     final willSwitch = _activeThreadId == null && _activeProjectId != id;
@@ -88,6 +90,7 @@ mixin ProjectStore on AppStateBase {
     notifyListeners();
     unawaited(loadGitRepoInfo(id));
   }
+
   @override
   Future<void> selectAllProjects() async {
     if (_activeThreadId == null && _activeProjectId != null) {
@@ -104,14 +107,18 @@ mixin ProjectStore on AppStateBase {
     notifyListeners();
     await refreshThreadsAndGroups();
   }
+
   @override
   Future<void> createProject({
     required String name,
     required String path,
-  }) => _addProject(() => api.createProject(name: name, path: path));
+    String? nodeId,
+  }) => _addProject(
+    () => api.createProject(name: name, path: path, nodeId: nodeId),
+  );
   @override
-  Future<void> createNewProject(String name) =>
-      _addProject(() => api.createNewProject(name: name));
+  Future<void> createNewProject(String name, {String? nodeId}) =>
+      _addProject(() => api.createNewProject(name: name, nodeId: nodeId));
   Future<void> _addProject(Future<Project> Function() create) async {
     _globalError = '';
     notifyListeners();
@@ -138,6 +145,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> openClonedProjectByPath(String path) async {
     final project = _projects.firstWhere(
@@ -170,6 +178,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> deleteProject(int id) async {
     if (_activeProjectId == id && hasDirtyEditorTabs) {
@@ -195,6 +204,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> reorderProjects(List<int> ids) async {
     final oldProjects = _projects;
@@ -223,6 +233,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> openNewProjectDialog() async {
     _dialog = DialogKind.newProject;
@@ -231,6 +242,7 @@ mixin ProjectStore on AppStateBase {
     _userMenuOpen = false;
     notifyListeners();
   }
+
   @override
   void openCreateProjectDialog() {
     _dialog = DialogKind.createProject;
@@ -240,6 +252,7 @@ mixin ProjectStore on AppStateBase {
     // Loaded lazily so the dialog can show where the folder will land.
     unawaited(loadProjectRoot());
   }
+
   @override
   Future<void> loadProjectRoot() async {
     _loadingProjectRoot = true;
@@ -254,6 +267,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> setProjectRoot(String? path) async {
     _loadingProjectRoot = true;
@@ -268,6 +282,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> openRenameProjectDialog(int id, String name) async {
     _renameProjectId = id;
@@ -277,6 +292,7 @@ mixin ProjectStore on AppStateBase {
     _userMenuOpen = false;
     notifyListeners();
   }
+
   @override
   Future<void> renameProject(int id, String name) async {
     _globalError = '';
@@ -300,6 +316,7 @@ mixin ProjectStore on AppStateBase {
       notifyListeners();
     }
   }
+
   @override
   Future<void> pinProject(int id, bool pinned) async {
     _globalError = '';

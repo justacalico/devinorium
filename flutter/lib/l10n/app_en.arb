@@ -978,21 +978,13 @@
   "@federationNodes": {
     "description": "Federation satellites section title in settings"
   },
-  "federationNodesHint": "Satellite machines registered with this server. Pick one to run the app against that machine through this server.",
+  "federationNodesHint": "Satellite machines paired with this server. Projects created on a node run their agents, files, git and terminals on that machine.",
   "@federationNodesHint": {
-    "description": "Description under the federation nodes settings title"
+    "description": "Hint text under the nodes section title"
   },
-  "noNodesRegistered": "No satellites registered.",
+  "noNodesRegistered": "No machines paired yet.",
   "@noNodesRegistered": {
-    "description": "Empty state when the active server has no federation satellites"
-  },
-  "switchNode": "Switch node",
-  "@switchNode": {
-    "description": "Tooltip for the federation node switcher"
-  },
-  "thisHub": "This hub",
-  "@thisHub": {
-    "description": "Label for the hub itself in the node switcher"
+    "description": "No machines paired yet."
   },
   "nodeOnline": "online",
   "@nodeOnline": {
@@ -1006,7 +998,7 @@
   "@removeNode": {
     "description": "Button to deregister a federation satellite"
   },
-  "removeNodeConfirm": "Remove \"{name}\"? The satellite will appear again the next time it heartbeats unless it is stopped.",
+  "removeNodeConfirm": "Remove \"{name}\"? Projects on this node will stop working until it is paired again.",
   "@removeNodeConfirm": {
     "description": "Confirmation before deregistering a federation satellite",
     "placeholders": {
@@ -1739,5 +1731,53 @@
   "skillPickerEmpty": "No matching skills.",
   "@skillPickerEmpty": {
     "description": "Shown in the / picker when nothing matches the query"
+  },
+  "pairNode": "Pair a machine",
+  "@pairNode": {
+    "description": "Pair a machine"
+  },
+  "pairNodeTitle": "Pair a machine",
+  "@pairNodeTitle": {
+    "description": "Pair a machine"
+  },
+  "pairNodeHint": "A Devinorium server started with DEVINORIUM_SATELLITE=1 prints a pairing code on startup. Enter its address and code here.",
+  "@pairNodeHint": {
+    "description": "Explains where the pairing code comes from"
+  },
+  "nodeUrl": "Server URL",
+  "@nodeUrl": {
+    "description": "Server URL"
+  },
+  "pairingCode": "Pairing code",
+  "@pairingCode": {
+    "description": "Pairing code"
+  },
+  "nodeNameOptional": "Name (optional)",
+  "@nodeNameOptional": {
+    "description": "Name (optional)"
+  },
+  "pair": "Pair",
+  "@pair": {
+    "description": "Pair"
+  },
+  "nodePairFieldsRequired": "URL and pairing code are required.",
+  "@nodePairFieldsRequired": {
+    "description": "URL and pairing code are required."
+  },
+  "projectTargetMachine": "Machine",
+  "@projectTargetMachine": {
+    "description": "Label for the dropdown choosing which machine a project lives on"
+  },
+  "thisServer": "This server",
+  "@thisServer": {
+    "description": "This server"
+  },
+  "createProjectDestinationNode": "Will be created under ~/.devinorium/projects/{name} on {node}",
+  "@createProjectDestinationNode": {
+    "description": "Shown in the new-project dialog when a node is picked",
+    "placeholders": {
+      "name": {},
+      "node": {}
+    }
   }
 }

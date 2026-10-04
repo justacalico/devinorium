@@ -8,7 +8,7 @@ use serde::Serialize;
 use super::{GitError, GitService};
 
 /// A changed file in the index or the working tree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct ChangeEntry {
     pub path: String,
     pub status: String,
@@ -18,7 +18,7 @@ pub struct ChangeEntry {
 }
 
 /// Staged and unstaged changes plus tracking state for a repository.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct ChangeList {
     pub branch: String,
     pub ahead: i64,
@@ -27,12 +27,12 @@ pub struct ChangeList {
     pub unstaged: Vec<ChangeEntry>,
     /// Whether porcelain emitted a `# branch.ab` header. Absent means no
     /// upstream is configured; only then do we fall back to cached counts.
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     pub(crate) has_ab_header: bool,
 }
 
 /// The result of a successful `git commit`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct CommitResult {
     pub sha: String,
     pub subject: String,

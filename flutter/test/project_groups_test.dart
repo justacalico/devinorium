@@ -44,8 +44,7 @@ class _ThrowingClient extends BaseApiClient {
     Map<String, String> fields = const {},
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       throw UnimplementedError();
@@ -66,8 +65,7 @@ class _ThrowingClient extends BaseApiClient {
     String path,
     Map<String, String> fields,
     List<({String filename, String mime, Uint8List bytes})> files,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
   @override
   Stream<SseEvent> sendStream({
     required String path,
@@ -79,8 +77,7 @@ class _ThrowingClient extends BaseApiClient {
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
     List<int> machineIds = const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 class _FakeApiService extends ApiService {
@@ -110,7 +107,11 @@ class _FakeApiService extends ApiService {
   }
 
   @override
-  Future<Project> createProject({required String name, required String path}) {
+  Future<Project> createProject({
+    required String name,
+    required String path,
+    String? nodeId,
+  }) {
     final p = Project(
       id: nextProjectId++,
       name: name,
@@ -144,8 +145,7 @@ class _FakeApiService extends ApiService {
   Future<void> renameProjectGroup(int id, String name) {
     renamedGroups[id] = name;
     groupsResult = [
-      for (final g in groupsResult)
-        g.id == id ? g.copyWith(name: name) : g,
+      for (final g in groupsResult) g.id == id ? g.copyWith(name: name) : g,
     ];
     return Future.value();
   }
@@ -181,8 +181,7 @@ class _FakeApiService extends ApiService {
     int id, {
     int? limit,
     int? offset,
-  }) =>
-      Future.value([]);
+  }) => Future.value([]);
 
   @override
   Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
@@ -199,8 +198,7 @@ class _FakeApiService extends ApiService {
     int projectId, {
     bool force = false,
     String? threadId,
-  }) =>
-      Future.value(GitRepoInfo());
+  }) => Future.value(GitRepoInfo());
 }
 
 User _user() => User(
@@ -264,23 +262,26 @@ void main() {
     expect(state.projects.single.groupId, 7);
   });
 
-  test('createProjectGroup adds the group and assigns pending project', () async {
-    final api = _FakeApiService();
-    final state = AppState.test(
-      api: api,
-      user: _user(),
-      projects: [_project(1)],
-    );
+  test(
+    'createProjectGroup adds the group and assigns pending project',
+    () async {
+      final api = _FakeApiService();
+      final state = AppState.test(
+        api: api,
+        user: _user(),
+        projects: [_project(1)],
+      );
 
-    state.openNewProjectGroupDialog(projectId: 1);
-    expect(state.dialog, DialogKind.newProjectGroup);
+      state.openNewProjectGroupDialog(projectId: 1);
+      expect(state.dialog, DialogKind.newProjectGroup);
 
-    await state.createProjectGroup('facebook');
+      await state.createProjectGroup('facebook');
 
-    expect(state.projectGroups.single.name, 'facebook');
-    expect(state.projects.single.groupId, state.projectGroups.single.id);
-    expect(state.dialog, DialogKind.none);
-  });
+      expect(state.projectGroups.single.name, 'facebook');
+      expect(state.projects.single.groupId, state.projectGroups.single.id);
+      expect(state.dialog, DialogKind.none);
+    },
+  );
 
   test('deleteProjectGroup ungroups projects and clears selection', () async {
     final api = _FakeApiService()
@@ -414,9 +415,7 @@ void main() {
       ChangeNotifierProvider<AppState>.value(
         value: state,
         child: const MaterialApp(
-          home: Scaffold(
-            body: Stack(children: [Sidebar(), DialogLayer()]),
-          ),
+          home: Scaffold(body: Stack(children: [Sidebar(), DialogLayer()])),
         ),
       ),
     );
@@ -427,10 +426,7 @@ void main() {
 
     expect(state.dialog, DialogKind.newProjectGroup);
 
-    await tester.enterText(
-      find.byKey(const Key('new_group_name')),
-      'facebook',
-    );
+    await tester.enterText(find.byKey(const Key('new_group_name')), 'facebook');
     await tester.pump();
     await tester.tap(find.byKey(const Key('new_group_create')));
     await tester.pumpAndSettle();
@@ -458,9 +454,7 @@ void main() {
       ChangeNotifierProvider<AppState>.value(
         value: state,
         child: const MaterialApp(
-          home: Scaffold(
-            body: Stack(children: [Sidebar(), DialogLayer()]),
-          ),
+          home: Scaffold(body: Stack(children: [Sidebar(), DialogLayer()])),
         ),
       ),
     );
@@ -529,9 +523,7 @@ void main() {
     expect(state.selectedProjectGroupId, 5);
   });
 
-  testWidgets('a backend without the route hides the group UI', (
-    tester,
-  ) async {
+  testWidgets('a backend without the route hides the group UI', (tester) async {
     final api = _FakeApiService()
       ..projectsResult = [_project(1)]
       ..groupsError = ApiException('Not Found', 404);

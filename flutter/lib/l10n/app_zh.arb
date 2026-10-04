@@ -957,21 +957,13 @@
   "@federationNodes": {
     "description": "Federation satellites section title in settings"
   },
-  "federationNodesHint": "注册到此服务器的卫星机器。选择一个节点后应用将通过此服务器在该机器上运行。",
+  "federationNodesHint": "与此服务器配对的卫星机器。在节点上创建的项目会在该机器上运行代理、文件、Git 和终端。",
   "@federationNodesHint": {
-    "description": "Description under the federation nodes settings title"
+    "description": "与此服务器配对的卫星机器。在节点上创建的项目会在该机器上运行代理、文件、Git 和终端。"
   },
-  "noNodesRegistered": "未注册任何卫星节点",
+  "noNodesRegistered": "尚未配对任何机器",
   "@noNodesRegistered": {
-    "description": "Empty state when the active server has no federation satellites"
-  },
-  "switchNode": "切换节点",
-  "@switchNode": {
-    "description": "Tooltip for the federation node switcher"
-  },
-  "thisHub": "本枢纽",
-  "@thisHub": {
-    "description": "Label for the hub itself in the node switcher"
+    "description": "尚未配对任何机器"
   },
   "nodeOnline": "在线",
   "@nodeOnline": {
@@ -985,7 +977,7 @@
   "@removeNode": {
     "description": "Button to deregister a federation satellite"
   },
-  "removeNodeConfirm": "移除“{name}”？除非停止该卫星节点，否则它会在下次心跳时再次出现。",
+  "removeNodeConfirm": "移除“{name}”？该节点上的项目将停止工作，直到重新配对。",
   "@removeNodeConfirm": {
     "description": "Confirmation before deregistering a federation satellite",
     "placeholders": {
@@ -1718,5 +1710,53 @@
   "skillPickerEmpty": "没有匹配的技能。",
   "@skillPickerEmpty": {
     "description": "Shown in the / picker when nothing matches the query"
+  },
+  "pairNode": "配对机器",
+  "@pairNode": {
+    "description": "配对机器"
+  },
+  "pairNodeTitle": "配对机器",
+  "@pairNodeTitle": {
+    "description": "配对机器"
+  },
+  "pairNodeHint": "以 DEVINORIUM_SATELLITE=1 启动的 Devinorium 服务器会在启动时打印配对码。在此输入它的地址和配对码。",
+  "@pairNodeHint": {
+    "description": "以 DEVINORIUM_SATELLITE=1 启动的 Devinorium 服务器会在启动时打印配对码。在此输入它的地址和配对码。"
+  },
+  "nodeUrl": "服务器地址",
+  "@nodeUrl": {
+    "description": "服务器地址"
+  },
+  "pairingCode": "配对码",
+  "@pairingCode": {
+    "description": "配对码"
+  },
+  "nodeNameOptional": "名称（可选）",
+  "@nodeNameOptional": {
+    "description": "名称（可选）"
+  },
+  "pair": "配对",
+  "@pair": {
+    "description": "配对"
+  },
+  "nodePairFieldsRequired": "需要填写地址和配对码",
+  "@nodePairFieldsRequired": {
+    "description": "需要填写地址和配对码"
+  },
+  "projectTargetMachine": "机器",
+  "@projectTargetMachine": {
+    "description": "机器"
+  },
+  "thisServer": "本服务器",
+  "@thisServer": {
+    "description": "本服务器"
+  },
+  "createProjectDestinationNode": "将在 {node} 的 ~/.devinorium/projects/{name} 下创建",
+  "@createProjectDestinationNode": {
+    "description": "Shown in the new-project dialog when a node is picked",
+    "placeholders": {
+      "name": {},
+      "node": {}
+    }
   }
 }

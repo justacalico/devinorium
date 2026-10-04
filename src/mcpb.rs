@@ -1215,10 +1215,8 @@ mod tests {
             tailscale_bin: "tailscale".into(),
             dev_mode: false,
             push_contact: "mailto:t@localhost".into(),
-            federation_token: None,
-            hub_url: None,
+            satellite: false,
             node_name: String::new(),
-            node_url: None,
         };
         let root = bundle_root(&cfg);
         assert!(root.is_absolute(), "{root:?}");

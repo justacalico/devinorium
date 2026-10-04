@@ -1,16 +1,17 @@
-//! Integration tests for hub/satellite federation: registration auth, the
-//! node list, and request proxying (including a real TCP hop to a live
-//! "satellite" server and a WebSocket tunnel).
+//! Integration tests for satellite pairing: the node protocol surface
+//! (`/api/node/*`), the pairing-code handshake, and the hub-side node
+//! endpoints (`/api/federation/*`).
 
 #![cfg(test)]
 
 use std::sync::Arc;
 
 use axum::body::{to_bytes, Body};
-use axum::http::{header, Request, Response, StatusCode};
+use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use tower::ServiceExt;
 
+use devinorium::satellite::SatelliteState;
 use devinorium::{
     auth,
     config::Config,
@@ -19,29 +20,13 @@ use devinorium::{
     providers, AppState,
 };
 
-const FED_TOKEN: &str = "test-federation-token-0123456789";
-
-async fn make_state(federation_token: Option<&str>) -> (AppState, db::Db) {
-    make_state_as(federation_token, None).await
-}
-
-/// `hub_url` marks the instance as a satellite so the shared federation
-/// token keeps working until the hub issues a node token.
-async fn make_state_as(
-    federation_token: Option<&str>,
-    hub_url: Option<&str>,
-) -> (AppState, db::Db) {
+async fn make_state() -> (AppState, db::Db) {
     let dir = tempfile::tempdir().expect("tempdir").keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("fed.db").display());
     let database = db::Db::connect(&db_url).await.expect("db connect");
     auth::bootstrap::run(&database, "owner", "supersecret123")
         .await
         .expect("bootstrap");
-    if federation_token.is_some() {
-        auth::bootstrap::run_local(&database)
-            .await
-            .expect("local bootstrap");
-    }
     sqlx::query("UPDATE users SET provider_command = ''")
         .execute(database.pool())
         .await
@@ -64,10 +49,8 @@ async fn make_state_as(
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
         push_contact: "mailto:test@localhost".into(),
-        federation_token: federation_token.map(str::to_string),
-        hub_url: hub_url.map(str::to_string),
+        satellite: false,
         node_name: "test-hub".into(),
-        node_url: None,
     };
 
     let provider = providers::build_provider(providers::ProviderConfig {
@@ -98,26 +81,48 @@ async fn make_state_as(
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: devinorium::federation::http_client(),
+        remote_terminals: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
         rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (state, database)
 }
 
-async fn make_hub(federation_token: Option<&str>) -> (Router, db::Db) {
-    let (state, database) = make_state(federation_token).await;
-    (devinorium::build_app(state), database)
+fn test_config(dir: &std::path::Path, satellite: bool) -> Config {
+    Config {
+        host: "127.0.0.1".into(),
+        port: 0,
+        session_key: b"test-key-test-key-test-key-test-key".to_vec(),
+        db_url: format!("sqlite:{}?mode=rwc", dir.join("x.db").display()),
+        bootstrap_username: "owner".into(),
+        bootstrap_password: "supersecret123".into(),
+        home_dir: dir.join("home"),
+        default_model: "stub-1".into(),
+        trust_proxy: false,
+        max_body_bytes: 1024 * 1024,
+        secure_cookie: false,
+        allowed_origin: None,
+        local_token: None,
+        tailscale_bin: "tailscale".into(),
+        dev_mode: false,
+        push_contact: "mailto:test@localhost".into(),
+        satellite,
+        node_name: "test-sat".into(),
+    }
 }
 
-/// Serve an app on a real loopback socket and return its base URL. The
-/// proxy path dials out over TCP, so a satellite under test must really
-/// listen.
 async fn serve(app: Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
+        let _ = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await;
     });
     format!("http://{addr}")
 }
@@ -152,597 +157,503 @@ async fn login(app: &Router) -> String {
 }
 
 async fn body_str(b: Body) -> String {
-    let bytes = to_bytes(b, 1024 * 1024).await.unwrap();
+    let bytes = to_bytes(b, 8 * 1024 * 1024).await.unwrap();
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
-fn register_req(token: Option<&str>, body: &str) -> Request<Body> {
+fn authed(method: &str, uri: &str, cookie: &str, body: &str) -> Request<Body> {
     let mut b = Request::builder()
-        .method("POST")
-        .uri("/api/federation/register")
-        .header("content-type", "application/json");
-    if let Some(t) = token {
-        b = b.header("authorization", format!("Bearer {t}"));
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, "localhost")
+        .header(header::ORIGIN, "http://localhost")
+        .header(header::COOKIE, cookie);
+    if !body.is_empty() {
+        b = b.header("content-type", "application/json");
     }
     b.body(Body::from(body.to_string())).unwrap()
 }
 
-const REGISTER_BODY: &str =
-    r#"{"id":"node-1","name":"oss box","base_url":"http://127.0.0.1:9999","version":"1.0.0"}"#;
+/// A satellite app on a temp home dir plus its URL. Keeps the tempdir and
+/// state alive for the test via the returned guards.
+struct Satellite {
+    url: String,
+    code: String,
+    state: std::sync::Arc<SatelliteState>,
+    _dir: tempfile::TempDir,
+}
+
+async fn start_satellite() -> Satellite {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg = test_config(dir.path(), true);
+    let state = SatelliteState::load(&cfg).await;
+    let code = state.pairing_code.read().await.clone();
+    let app = devinorium::satellite::build_app(state.clone());
+    let url = serve(app).await;
+    Satellite {
+        url,
+        code,
+        state,
+        _dir: dir,
+    }
+}
+
+// ---------------------------------------------------------------------
+// Satellite surface
+// ---------------------------------------------------------------------
 
 #[tokio::test]
-async fn register_requires_valid_federation_token() {
-    let (app, _db) = make_hub(Some(FED_TOKEN)).await;
-
-    // No token at all: the CSRF layer rejects origin-less writes before
-    // the handler even sees them.
-    let resp = app
-        .clone()
-        .oneshot(register_req(None, REGISTER_BODY))
+async fn satellite_info_reports_satellite_mode() {
+    let sat = start_satellite().await;
+    let resp = reqwest::get(format!("{}/api/node/info", sat.url))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-
-    // Wrong token.
-    let resp = app
-        .clone()
-        .oneshot(register_req(Some("wrong-token"), REGISTER_BODY))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-
-    // Right token.
-    let resp = app
-        .clone()
-        .oneshot(register_req(Some(FED_TOKEN), REGISTER_BODY))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), 200);
+    let v: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(v["satellite"], true);
+    assert_eq!(v["node_id"], sat.state.node_id);
+    assert_eq!(v["name"], "test-sat");
 }
 
 #[tokio::test]
-async fn register_is_closed_without_federation_token() {
-    let (app, _db) = make_hub(None).await;
-    let resp = app
-        .clone()
-        .oneshot(register_req(Some(FED_TOKEN), REGISTER_BODY))
+async fn satellite_pair_issues_token_and_gates_api() {
+    let sat = start_satellite().await;
+    let client = reqwest::Client::new();
+
+    // Without a token every protected endpoint rejects.
+    for path in ["files/stat", "terminal/sessions"] {
+        let resp = client
+            .post(format!("{}/api/node/{path}", sat.url))
+            .body("{}")
+            .header("content-type", "application/json")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 401, "{path}");
+    }
+
+    // Wrong code: 401.
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": "XXXX-XXXX-XXXX-XXXX"}))
+        .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(resp.status(), 401);
+
+    // Correct code (with dashes stripped on input): issues a token.
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": sat.code.replace('-', "")}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let v: serde_json::Value = resp.json().await.unwrap();
+    let token = v["token"].as_str().unwrap().to_string();
+    assert_eq!(token.len(), 64);
+    assert_eq!(v["node_id"], sat.state.node_id);
+
+    // The issued token unlocks the API.
+    let resp = client
+        .post(format!("{}/api/node/files/stat", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"paths": ["/tmp"]}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let v: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(v["results"]["/tmp"]["exists"], true);
 }
 
 #[tokio::test]
-async fn register_validates_fields() {
-    let (app, _db) = make_hub(Some(FED_TOKEN)).await;
-    for body in [
-        r#"{"id":"","name":"x","base_url":"http://a:1"}"#,
-        r#"{"id":"has space","name":"x","base_url":"http://a:1"}"#,
-        r#"{"id":"ok","name":"","base_url":"http://a:1"}"#,
-        r#"{"id":"ok","name":"x","base_url":"ftp://a"}"#,
-        r#"{"id":"ok","name":"x","base_url":"http://a:1/path"}"#,
-        r#"{"id":"ok","name":"x","base_url":"http://a:1/?q=1"}"#,
-        "not json",
+async fn satellite_pair_locks_out_after_failed_attempts() {
+    let sat = start_satellite().await;
+    let client = reqwest::Client::new();
+    for _ in 0..10 {
+        let resp = client
+            .post(format!("{}/api/node/pair", sat.url))
+            .json(&serde_json::json!({"code": "AAAA-AAAA-AAAA-AAAA"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 401);
+    }
+    // Even the right code is locked out now.
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": sat.code}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 429);
+}
+
+#[tokio::test]
+async fn satellite_identity_survives_reload() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg = test_config(dir.path(), true);
+    let first = SatelliteState::load(&cfg).await;
+    let first_id = first.node_id.clone();
+    let token = first.issue_token().await;
+    drop(first);
+
+    let second = SatelliteState::load(&cfg).await;
+    assert_eq!(second.node_id, first_id);
+    assert!(second.has_token(&token).await);
+    // The pairing code rotates every boot.
+    assert_ne!(*second.pairing_code.read().await, "");
+}
+
+#[tokio::test]
+async fn satellite_files_and_git_dispatch() {
+    let sat = start_satellite().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": sat.code}))
+        .send()
+        .await
+        .unwrap();
+    let token = resp.json::<serde_json::Value>().await.unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // File write + read round trip.
+    let resp = client
+        .put(format!("{}/api/node/files/content", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "root": sat.state.home_dir.to_string_lossy(),
+            "path": "hello.txt",
+            "content": "hi there",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let resp = client
+        .post(format!("{}/api/node/files/stat", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"root": sat.state.home_dir.to_string_lossy(), "paths": ["hello.txt"]}))
+        .send()
+        .await
+        .unwrap();
+    let v: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(v["results"]["hello.txt"]["exists"], true);
+
+    // Git dispatch on a non-repo reports not_repo, not a server error.
+    let resp = client
+        .post(format!("{}/api/node/git/repo_status", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"repo": sat.state.home_dir.to_string_lossy()}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let v: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(v["is_repo"], false);
+}
+
+#[tokio::test]
+async fn satellite_run_rejects_bad_requests() {
+    let sat = start_satellite().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": sat.code}))
+        .send()
+        .await
+        .unwrap();
+    let token = resp.json::<serde_json::Value>().await.unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Unknown provider: 400.
+    let resp = client
+        .post(format!("{}/api/node/run", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "run_id": "r1",
+            "prompt": "hi",
+            "provider": {"id": "no-such-provider", "command": "x", "default_model": "m"},
+            "options": {"working_dir": "/tmp", "model": "m", "permission_mode": "normal", "interaction_mode": "code"},
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // Invalid run id: 400.
+    let resp = client
+        .post(format!("{}/api/node/run", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "run_id": "bad id!",
+            "prompt": "hi",
+            "provider": {"id": "devin-cli", "command": "devin", "default_model": "m"},
+            "options": {"working_dir": "/tmp", "model": "m", "permission_mode": "normal", "interaction_mode": "code"},
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // Unknown callback: 404.
+    let resp = client
+        .post(format!("{}/api/node/callback", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "request_id": "nope",
+            "outcome": {"type": "permission_cancel"},
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}
+
+// ---------------------------------------------------------------------
+// Hub endpoints
+// ---------------------------------------------------------------------
+
+#[tokio::test]
+async fn hub_nodes_endpoints_owner_only() {
+    let (state, _db) = make_state().await;
+    let app = devinorium::build_app(state);
+
+    for (method, uri) in [
+        ("GET", "/api/federation/nodes"),
+        ("POST", "/api/federation/nodes/pair"),
+        ("DELETE", "/api/federation/nodes/node-1"),
     ] {
         let resp = app
             .clone()
-            .oneshot(register_req(Some(FED_TOKEN), body))
+            .oneshot(authed(method, uri, "", "{}"))
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "body: {body}");
+        assert!(
+            matches!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+            ),
+            "{method} {uri} -> {}",
+            resp.status()
+        );
     }
 }
 
 #[tokio::test]
-async fn nodes_list_is_owner_only_and_reports_online() {
-    let (app, db) = make_hub(Some(FED_TOKEN)).await;
+async fn hub_pair_validates_input() {
+    let (state, _db) = make_state().await;
+    let app = devinorium::build_app(state);
     let cookie = login(&app).await;
 
-    // Register a node via the endpoint.
-    let resp = app
-        .clone()
-        .oneshot(register_req(Some(FED_TOKEN), REGISTER_BODY))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let _ = db; // node row already asserted through the list below
+    for body in [
+        r#"{"url":"not-a-url","code":"ABCD-EFGH"}"#,
+        r#"{"url":"http://x/path","code":"ABCD-EFGH"}"#,
+        r#"{"url":"ftp://host:7878","code":"ABCD-EFGH"}"#,
+        r#"{"url":"http://host:7878","code":""}"#,
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(authed("POST", "/api/federation/nodes/pair", &cookie, body))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{body}");
+    }
+}
 
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let json: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    assert_eq!(json["self"]["name"], "test-hub");
-    let nodes = json["nodes"].as_array().unwrap();
-    assert_eq!(nodes.len(), 1);
-    assert_eq!(nodes[0]["id"], "node-1");
-    assert_eq!(nodes[0]["name"], "oss box");
-    assert_eq!(nodes[0]["online"], true);
-    assert_eq!(nodes[0]["version"], "1.0.0");
+#[tokio::test]
+async fn hub_pair_lists_and_removes_satellite() {
+    let sat = start_satellite().await;
+    let (state, db) = make_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
 
-    // A non-owner account cannot list nodes.
+    // Pair against the live satellite.
+    let body = format!(
+        r#"{{"url":"{}","code":"{}","name":"My node"}}"#,
+        sat.url, sat.code
+    );
     let resp = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/users")
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("content-type", "application/json")
-                .header("cookie", &cookie)
-                .body(Body::from(
-                    r#"{"username":"guest","password":"guestpass123"}"#,
-                ))
-                .unwrap(),
-        )
+        .oneshot(authed("POST", "/api/federation/nodes/pair", &cookie, &body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let guest = {
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/auth/login")
-                    .header(header::HOST, "localhost")
-                    .header(header::ORIGIN, "http://localhost")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"username":"guest","password":"guestpass123"}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        resp.headers()
-            .get("set-cookie")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .split(';')
-            .next()
-            .unwrap()
-            .to_string()
-    };
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes")
-                .header("cookie", &guest)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let node_id = v["id"].as_str().unwrap().to_string();
+    assert_eq!(node_id, sat.state.node_id);
+    assert_eq!(v["name"], "My node");
+    assert_eq!(v["online"], true);
 
-#[tokio::test]
-async fn remove_node_requires_owner_and_deletes() {
-    let (app, db) = make_hub(Some(FED_TOKEN)).await;
-    let cookie = login(&app).await;
-    db.upsert_federation_node("n1", "box", "http://127.0.0.1:1", "")
-        .await
-        .unwrap();
+    // The token landed on the row, but the list payload does not leak it.
+    let row = db.get_federation_node(&node_id).await.unwrap().unwrap();
+    let token = row.token.clone().unwrap();
+    assert_eq!(token.len(), 64);
 
     let resp = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/federation/nodes/n1")
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(authed("GET", "/api/federation/nodes", &cookie, ""))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
-    assert!(db.get_federation_node("n1").await.unwrap().is_none());
+    let listing = body_str(resp.into_body()).await;
+    assert!(listing.contains(&node_id));
+    assert!(!listing.contains(&token));
 
+    // The stored credential works against the satellite directly.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/node/files/stat", sat.url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"paths": ["/tmp"]}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Remove the node.
     let resp = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/federation/nodes/n1")
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn proxy_forwards_requests_to_the_node() {
-    // A live satellite: the same app, marked as a satellite of this hub and
-    // holding the shared token until registration provisions a node token.
-    let (sat_state, sat_db) = make_state_as(Some(FED_TOKEN), Some("http://hub")).await;
-    let sat_url = serve(devinorium::build_app(sat_state)).await;
-
-    let (app, db) = make_hub(Some(FED_TOKEN)).await;
-    let cookie = login(&app).await;
-    let node = db
-        .upsert_federation_node("sat-1", "satellite", &sat_url, "")
-        .await
-        .unwrap();
-    // The hub now proxies with the per-node token; the satellite knows it
-    // only after registration, so the first call exercises the shared-token
-    // fallback (pre-upgrade satellite), and a second call after seeding
-    // exercises the node token directly.
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/sat-1/proxy/api/auth/me")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let json: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    assert_eq!(json["username"], "local");
-    assert_eq!(json["is_owner"], true);
-
-    // Once the satellite has persisted its node token, the proxied call
-    // authenticates with it directly — no fallback round trip.
-    sat_db
-        .set_server_setting(
-            devinorium::federation::NODE_TOKEN_KEY,
-            node.token.as_deref().unwrap(),
-        )
-        .await
-        .unwrap();
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/sat-1/proxy/api/auth/me")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    // The query string rides along.
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/sat-1/proxy/api/federation/nodes")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    // POST bodies stream through; the satellite answers with its own auth
-    // decision (bad login -> 401 proves the request reached and ran there).
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/federation/nodes/sat-1/proxy/api/auth/login")
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"username":"nobody","password":"nope"}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn proxy_replaces_credentials_and_tags_the_user() {
-    use axum::routing::get as axum_get;
-
-    // Satellite that reports which headers actually arrived.
-    let echo = Router::new().route(
-        "/headers",
-        axum_get(|req: Request<Body>| async move {
-            let h = req.headers();
-            let pick = |k: &str| h.get(k).and_then(|v| v.to_str().ok().map(str::to_string));
-            serde_json::json!({
-                "authorization": pick("authorization"),
-                "cookie": pick("cookie"),
-                "origin": pick("origin"),
-                "proxy_user": pick("x-devinorium-proxy-user"),
-            })
-            .to_string()
-        }),
-    );
-    let sat_url = serve(echo).await;
-
-    let (app, db) = make_hub(Some(FED_TOKEN)).await;
-    let cookie = login(&app).await;
-    let node = db
-        .upsert_federation_node("sat-1", "satellite", &sat_url, "")
-        .await
-        .unwrap();
-
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/sat-1/proxy/headers")
-                .header(header::HOST, "localhost")
-                .header(header::ORIGIN, "http://localhost")
-                .header("cookie", &cookie)
-                // A spoofed attribution header must not survive either.
-                .header("x-devinorium-proxy-user", "mallory")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let json: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    // Proxied calls carry the per-node token issued at registration, never
-    // the shared federation secret.
-    assert_eq!(
-        json["authorization"],
-        serde_json::json!(format!("Bearer {}", node.token.unwrap()))
-    );
-    assert_eq!(json["proxy_user"], "owner");
-    // The caller's session cookie and browser origin never cross over.
-    assert_eq!(json["cookie"], serde_json::Value::Null);
-    assert_eq!(json["origin"], serde_json::Value::Null);
-}
-
-#[tokio::test]
-async fn proxy_strips_satellite_origin_headers() {
-    use axum::routing::get as axum_get;
-
-    // Satellite answering with headers that would act on the hub origin.
-    let evil = Router::new().route(
-        "/cookie",
-        axum_get(|| async move {
-            Response::builder()
-                .header("set-cookie", "devinorium_session=stolen; Path=/")
-                .header("location", "http://satellite.internal/")
-                .header("www-authenticate", "Basic realm=\"sat\"")
-                .header("clear-site-data", "\"cookies\"")
-                .header("content-security-policy", "default-src *")
-                .header("x-frame-options", "ALLOWALL")
-                .header("cache-control", "public, max-age=3600")
-                .header("etag", "\"sat-etag\"")
-                .body(Body::from("ok"))
-                .unwrap()
-        }),
-    );
-    let sat_url = serve(evil).await;
-
-    let (app, db) = make_hub(Some(FED_TOKEN)).await;
-    let cookie = login(&app).await;
-    db.upsert_federation_node("sat-1", "satellite", &sat_url, "")
-        .await
-        .unwrap();
-
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/sat-1/proxy/cookie")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    for h in [
-        "set-cookie",
-        "location",
-        "www-authenticate",
-        "clear-site-data",
-        "etag",
-    ] {
-        assert!(resp.headers().get(h).is_none(), "{h} leaked");
-    }
-    // Satellite policy headers never override the hub's own posture:
-    // proxied documents are sandboxed and never cached.
-    assert_eq!(
-        resp.headers().get("content-security-policy").unwrap(),
-        "sandbox"
-    );
-    assert_eq!(resp.headers().get("cache-control").unwrap(), "no-store");
-    assert_ne!(resp.headers().get("x-frame-options").unwrap(), "ALLOWALL");
-    assert_eq!(body_str(resp.into_body()).await, "ok");
-}
-
-#[tokio::test]
-async fn proxy_rejects_unknown_node_and_excess_hops() {
-    let (app, _db) = make_hub(Some(FED_TOKEN)).await;
-    let cookie = login(&app).await;
-
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/ghost/proxy/healthz")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-
-    // Hop limit guards against forwarding rings.
-    db_register(&app, "hopper").await;
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/hopper/proxy/healthz")
-                .header("cookie", &cookie)
-                .header("x-devinorium-proxy-hop", "4")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::LOOP_DETECTED);
-}
-
-async fn db_register(app: &Router, id: &str) {
-    let resp = app
-        .clone()
-        .oneshot(register_req(
-            Some(FED_TOKEN),
-            &format!(r#"{{"id":"{id}","name":"n","base_url":"http://127.0.0.1:1"}}"#),
+        .oneshot(authed(
+            "DELETE",
+            &format!("/api/federation/nodes/{node_id}"),
+            &cookie,
+            "",
         ))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert!(db.get_federation_node(&node_id).await.unwrap().is_none());
 }
 
 #[tokio::test]
-async fn proxy_to_offline_node_is_bad_gateway() {
-    let (app, db) = make_hub(Some(FED_TOKEN)).await;
+async fn hub_pair_wrong_code_and_dead_node() {
+    let sat = start_satellite().await;
+    let (state, _db) = make_state().await;
+    let app = devinorium::build_app(state);
     let cookie = login(&app).await;
-    // Nothing listens on this port.
-    db.upsert_federation_node("dead", "dead box", "http://127.0.0.1:9", "")
-        .await
-        .unwrap();
 
+    let body = format!(r#"{{"url":"{}","code":"AAAA-BBBB-CCCC-DDDD"}}"#, sat.url);
     let resp = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/dead/proxy/healthz")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(authed("POST", "/api/federation/nodes/pair", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let body = r#"{"url":"http://127.0.0.1:1","code":"AAAA-BBBB-CCCC-DDDD"}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/federation/nodes/pair", &cookie, body))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
 
 #[tokio::test]
-async fn proxy_requires_owner() {
-    let (app, db) = make_hub(Some(FED_TOKEN)).await;
-    db.upsert_federation_node("sat-1", "sat", "http://127.0.0.1:1", "")
-        .await
-        .unwrap();
-
-    // Not signed in at all.
+async fn hub_delete_missing_node_is_404() {
+    let (state, _db) = make_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
     let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/federation/nodes/sat-1/proxy/healthz")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(authed("DELETE", "/api/federation/nodes/nope", &cookie, ""))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn websocket_tunnels_through_the_hub() {
-    use axum::extract::WebSocketUpgrade;
-    use axum::routing::get as axum_get;
-    use futures_util::{SinkExt, StreamExt};
-    use tokio_tungstenite::tungstenite::Message;
-
-    // Satellite: a bare echo socket on /echo.
-    let echo = Router::new().route(
-        "/echo",
-        axum_get(|ws: WebSocketUpgrade| async move {
-            ws.on_upgrade(|mut socket| async move {
-                while let Some(Ok(msg)) = socket.recv().await {
-                    if socket.send(msg).await.is_err() {
-                        break;
-                    }
-                }
-            })
-        }),
-    );
-    let sat_url = serve(echo).await;
-
-    // Hub on a real socket too: WS upgrade needs an actual connection.
-    let (hub_state, hub_db) = make_state(Some(FED_TOKEN)).await;
-    hub_db
-        .upsert_federation_node("sat-1", "sat", &sat_url, "")
-        .await
-        .unwrap();
-    let hub_url = serve(devinorium::build_app(hub_state)).await;
-
-    // Log in on the hub over HTTP to get a session cookie for the upgrade.
+async fn pairing_code_is_single_use() {
+    let sat = start_satellite().await;
     let client = reqwest::Client::new();
-    let login = client
-        .post(format!("{hub_url}/api/auth/login"))
-        .header("content-type", "application/json")
-        .header("origin", &hub_url)
-        .body(r#"{"username":"owner","password":"supersecret123"}"#)
+
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": sat.code}))
         .send()
         .await
         .unwrap();
-    assert_eq!(login.status(), StatusCode::OK);
-    let cookie = login
-        .headers()
-        .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_string();
+    assert_eq!(resp.status(), 200);
 
-    let ws_url = format!(
-        "{}/api/federation/nodes/sat-1/proxy/echo",
-        hub_url.replacen("http://", "ws://", 1)
-    );
-    let host = hub_url.strip_prefix("http://").unwrap().to_string();
-    let ws_key = tokio_tungstenite::tungstenite::handshake::client::generate_key();
-    let req = Request::builder()
-        .uri(&ws_url)
-        .header("Host", &host)
-        .header("Connection", "Upgrade")
-        .header("Upgrade", "websocket")
-        .header("Sec-WebSocket-Version", "13")
-        .header("Sec-WebSocket-Key", &ws_key)
-        .header("Cookie", &cookie)
-        .header("Origin", &hub_url)
-        .body(())
-        .unwrap();
-    let (mut socket, _) = tokio_tungstenite::connect_async(req).await.unwrap();
-
-    socket
-        .send(Message::Text("hello federation".into()))
+    // The printed code pairs one hub; a second attempt gets 410 even with
+    // the right code.
+    let resp = client
+        .post(format!("{}/api/node/pair", sat.url))
+        .json(&serde_json::json!({"code": sat.code}))
+        .send()
         .await
         .unwrap();
-    let echoed = socket.next().await.unwrap().unwrap();
-    assert_eq!(echoed, Message::Text("hello federation".into()));
-    let _ = socket.close(None).await;
+    assert_eq!(resp.status(), 410);
+    let v: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(v["kind"], "consumed");
+}
+
+#[tokio::test]
+async fn unpaired_node_project_does_not_fall_back_to_local() {
+    let sat = start_satellite().await;
+    let (state, db) = make_state().await;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    // Pair and create a project on the node.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let proj_path = dir.path().join("nodeproj");
+    let body = format!(r#"{{"url":"{}","code":"{}"}}"#, sat.url, sat.code);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/federation/nodes/pair", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let node_id = v["id"].as_str().unwrap().to_string();
+
+    let body = serde_json::json!({
+        "name": "remote",
+        "path": proj_path.to_string_lossy(),
+        "node_id": node_id,
+    });
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/projects", &cookie, &body.to_string()))
+        .await
+        .unwrap();
+    if resp.status() != StatusCode::CREATED {
+        panic!("create failed: {}", body_str(resp.into_body()).await);
+    }
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
+    let project_id = v["id"].as_i64().unwrap();
+
+    // Unpair the node. The project must fail loudly, never touch the
+    // local filesystem.
+    assert!(db.delete_federation_node(&node_id).await.unwrap());
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/files?project_id={project_id}&path="),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "GET",
+            &format!("/api/projects/{project_id}/git/status"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }

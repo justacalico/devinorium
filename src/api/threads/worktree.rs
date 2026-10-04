@@ -1,13 +1,141 @@
 //! Auto worktree creation for threads.
+//!
+//! Every operation goes through a [`GitBackend`] plus (for node-bound
+//! threads) a [`NodeClient`] for filesystem checks, so worktrees work the
+//! same whether the repo is local or on a paired satellite.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::api::settings;
-use crate::db::{ThreadRow, UserRow};
+use crate::db::{ProjectRow, ThreadRow, UserRow};
 use crate::git::service::worktree as wt;
 use crate::git::GitError;
+use crate::node_client::{GitBackend, NodeClient, RemoteGit};
 use crate::AppState;
+
+/// The git backend for a thread's project plus the node client when the
+/// project lives on a satellite.
+struct Target {
+    git: GitBackend,
+    node: Option<NodeClient>,
+}
+
+impl Target {
+    fn is_remote(&self) -> bool {
+        self.node.is_some()
+    }
+}
+
+/// Resolve the backend pair for a project. `Ok(None)` keeps the caller on
+/// the local service.
+async fn target_for(state: &AppState, project: &ProjectRow) -> anyhow::Result<Target> {
+    match crate::node_client::bound_node(state, project).await {
+        Ok(Some(node)) => {
+            let Some(client) = NodeClient::for_node(state, &node) else {
+                anyhow::bail!("node has no pairing credential");
+            };
+            Ok(Target {
+                git: GitBackend::Remote(RemoteGit::new(client.clone())),
+                node: Some(client),
+            })
+        }
+        Ok(None) => Ok(Target {
+            git: GitBackend::Local(state.git.clone()),
+            node: None,
+        }),
+        Err(e) => Err(e),
+    }
+}
+
+/// Stat a path wherever it lives. Returns `(exists, is_dir, is_symlink,
+/// canonical, mtime_secs)`.
+async fn fs_stat(target: &Target, path: &Path) -> (bool, bool, bool, Option<PathBuf>, Option<i64>) {
+    match &target.node {
+        Some(client) => {
+            let raw = path.to_string_lossy().to_string();
+            match client.fs_stat(None, &[raw.clone()]).await {
+                Ok(mut map) => match map.remove(&raw) {
+                    Some(s) => (
+                        s.exists,
+                        s.is_dir,
+                        s.is_symlink,
+                        s.canonical.map(PathBuf::from),
+                        s.modified,
+                    ),
+                    None => (false, false, false, None, None),
+                },
+                Err(_) => (false, false, false, None, None),
+            }
+        }
+        None => {
+            let meta = tokio::fs::symlink_metadata(path).await;
+            match meta {
+                Ok(m) => {
+                    let canon = tokio::fs::canonicalize(path).await.ok();
+                    let modified = m
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64);
+                    (
+                        true,
+                        m.is_dir(),
+                        m.file_type().is_symlink(),
+                        canon,
+                        modified,
+                    )
+                }
+                Err(_) => (false, false, false, None, None),
+            }
+        }
+    }
+}
+
+/// Canonicalize a path on its host filesystem, falling back to the input.
+async fn fs_canonicalize(target: &Target, path: &Path) -> PathBuf {
+    fs_stat(target, path)
+        .await
+        .3
+        .unwrap_or_else(|| path.to_path_buf())
+}
+
+/// Whether the path is a real (non-symlink) directory on its host.
+async fn fs_is_real_dir(target: &Target, path: &Path) -> bool {
+    let (exists, is_dir, is_symlink, _, _) = fs_stat(target, path).await;
+    exists && is_dir && !is_symlink
+}
+
+/// Whether the path is a symlink on its host.
+async fn fs_is_symlink(target: &Target, path: &Path) -> bool {
+    fs_stat(target, path).await.2
+}
+
+/// Recursive directory removal on whichever host holds the path.
+async fn fs_remove_dir(target: &Target, path: &Path) {
+    match &target.node {
+        Some(client) => {
+            let _ = client.fs_delete(None, &path.to_string_lossy()).await;
+        }
+        None => {
+            let _ = tokio::fs::remove_dir_all(path).await;
+        }
+    }
+}
+
+/// The directory managed worktrees are created under: the configured
+/// worktree root locally, the repo's parent directory on a satellite.
+async fn worktree_root(
+    target: &Target,
+    state: &AppState,
+    user_id: i64,
+    toplevel: &Path,
+) -> anyhow::Result<PathBuf> {
+    if target.is_remote() {
+        return Ok(toplevel.parent().unwrap_or(toplevel).to_path_buf());
+    }
+    settings::worktree_root(state, user_id).await
+}
 
 /// If the thread is in worktree mode and has no worktree yet, create one
 /// under the project's managed worktree directory and persist it to the
@@ -52,9 +180,10 @@ pub(crate) async fn ensure_thread_worktree(
         Some(p) => p,
         None => anyhow::bail!("project not found"),
     };
+    let target = target_for(state, &project).await?;
     let project_path = std::path::PathBuf::from(&project.path);
 
-    let status = match state.git.repo_status(&project_path, true).await {
+    let status = match target.git.repo_status(&project_path, true).await {
         Ok(s) if s.is_repo => s,
         _ => return Ok(()),
     };
@@ -65,15 +194,19 @@ pub(crate) async fn ensure_thread_worktree(
         status.branch
     };
 
-    let worktree_root = settings::worktree_root(state, user.id).await?;
+    let worktree_root = worktree_root(&target, state, user.id, &status.toplevel).await?;
 
     // A root inside the repository would nest managed worktrees in the
     // working tree, where they show up as untracked noise and agent-visible
     // checkouts.
-    let top_canon = status
-        .toplevel
-        .canonicalize()
-        .unwrap_or_else(|_| status.toplevel.clone());
+    let top_canon = if target.is_remote() {
+        status.toplevel.clone()
+    } else {
+        status
+            .toplevel
+            .canonicalize()
+            .unwrap_or_else(|_| status.toplevel.clone())
+    };
     if worktree_root == top_canon || worktree_root.starts_with(&top_canon) {
         anyhow::bail!("worktree root must not be inside the repository");
     }
@@ -81,10 +214,8 @@ pub(crate) async fn ensure_thread_worktree(
     // A planted `.<repo>-worktrees` symlink would redirect `git worktree add`
     // into whatever it points at.
     let managed_root = wt::managed_worktrees_root(&status.toplevel, &worktree_root);
-    if let Ok(meta) = tokio::fs::symlink_metadata(&managed_root).await {
-        if meta.file_type().is_symlink() {
-            anyhow::bail!("managed worktree root is a symlink");
-        }
+    if fs_is_symlink(&target, &managed_root).await {
+        anyhow::bail!("managed worktree root is a symlink");
     }
 
     let mut attempts = 0;
@@ -92,7 +223,7 @@ pub(crate) async fn ensure_thread_worktree(
         let branch = wt::temporary_worktree_branch_name();
         let worktree_path = wt::managed_worktree_path(&status.toplevel, &branch, &worktree_root);
 
-        match state
+        match target
             .git
             .create_worktree_at(&status.toplevel, &branch, &base, &worktree_path, true)
             .await
@@ -117,30 +248,30 @@ pub(crate) async fn ensure_thread_worktree(
         Ok(0) => {
             // The thread was deleted while `git worktree add` was in
             // flight; undo the worktree and its branch so they do not leak.
-            let _ = state
+            let _ = target
                 .git
                 .remove_worktree(&status.toplevel, &worktree.1.path)
                 .await;
-            let _ = state.git.prune_worktrees(&status.toplevel).await;
-            let _ = state.git.delete_branch(&status.toplevel, &branch).await;
+            let _ = target.git.prune_worktrees(&status.toplevel).await;
+            let _ = target.git.delete_branch(&status.toplevel, &branch).await;
             anyhow::bail!("thread was deleted");
         }
         Ok(_) => {}
         Err(e) => {
             // Same rollback: the row never learned about the worktree, so
             // no cleanup path would ever find it again.
-            let _ = state
+            let _ = target
                 .git
                 .remove_worktree(&status.toplevel, &worktree.1.path)
                 .await;
-            let _ = state.git.prune_worktrees(&status.toplevel).await;
-            let _ = state.git.delete_branch(&status.toplevel, &branch).await;
+            let _ = target.git.prune_worktrees(&status.toplevel).await;
+            let _ = target.git.delete_branch(&status.toplevel, &branch).await;
             return Err(e);
         }
     }
 
     // Refresh the worktree list under the project path so the UI picks it up.
-    let _ = state.git.worktrees(&project_path, true).await;
+    let _ = target.git.worktrees(&project_path, true).await;
 
     thread.branch = Some(branch);
     thread.worktree_path = Some(worktree_path);
@@ -162,8 +293,9 @@ pub(crate) async fn snapshot_worktree_paths(
         .get_project(project_id, thread.user_id)
         .await
         .ok()??;
+    let target = target_for(state, &project).await.ok()?;
     let project_path = PathBuf::from(&project.path);
-    state
+    target
         .git
         .worktrees(&project_path, true)
         .await
@@ -212,9 +344,10 @@ pub(crate) async fn sync_agent_created_worktree(
         Some(p) => p,
         None => return Ok(false),
     };
+    let target = target_for(state, &project).await?;
     let project_path = PathBuf::from(&project.path);
 
-    let worktrees = match state.git.worktrees(&project_path, true).await {
+    let worktrees = match target.git.worktrees(&project_path, true).await {
         Ok(wts) => wts,
         Err(e) => {
             tracing::warn!(error = %e, "git worktree list failed during agent sync");
@@ -233,16 +366,12 @@ pub(crate) async fn sync_agent_created_worktree(
 
     // Prefer the most recently created worktree when several appear, since the
     // agent may set up a scratch worktree before the one it actually works in.
-    // mtime is a heuristic; the filesystem call is blocking so offload it.
-    let paths_for_mtime: Vec<_> = new_wts.iter().map(|w| w.path.clone()).collect();
-    let mtimes = tokio::task::spawn_blocking(move || {
-        paths_for_mtime
-            .into_iter()
-            .map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok())
-            .collect::<Vec<_>>()
-    })
-    .await
-    .unwrap_or_default();
+    // mtime is a heuristic; on a node it comes from the remote stat.
+    let mut mtimes = Vec::with_capacity(new_wts.len());
+    for w in &new_wts {
+        let mtime = fs_stat(&target, &w.path).await.4;
+        mtimes.push(mtime);
+    }
     // Pair each worktree with its mtime, sort ascending, take the newest.
     let mut paired: Vec<_> = new_wts
         .into_iter()
@@ -250,9 +379,9 @@ pub(crate) async fn sync_agent_created_worktree(
         .map(|(i, w)| (mtimes.get(i).cloned().flatten(), w))
         .collect();
     paired.sort_by_key(|(mtime, _)| *mtime);
-    let target = paired.last().expect("filtered list is non-empty").1.clone();
-    let worktree_path = target.path.to_string_lossy().into_owned();
-    let branch = target.branch.clone();
+    let target_wt = paired.last().expect("filtered list is non-empty").1.clone();
+    let worktree_path = target_wt.path.to_string_lossy().into_owned();
+    let branch = target_wt.branch.clone();
 
     state
         .db
@@ -264,7 +393,7 @@ pub(crate) async fn sync_agent_created_worktree(
         .await?;
 
     // Refresh the cached worktree list so the UI menu includes the new entry.
-    let _ = state.git.worktrees(&project_path, true).await;
+    let _ = target.git.worktrees(&project_path, true).await;
 
     thread.worktree_path = Some(worktree_path);
     thread.branch = branch;
@@ -287,6 +416,7 @@ pub(crate) async fn cleanup_thread_worktree(
     state: &AppState,
     thread: &ThreadRow,
     repo_hint: Option<&Path>,
+    node_hint: Option<&crate::db::federation_nodes::FederationNodeRow>,
 ) {
     let branch = thread
         .branch
@@ -304,15 +434,52 @@ pub(crate) async fn cleanup_thread_worktree(
         .filter(|p| !p.is_empty())
         .map(PathBuf::from);
 
+    // Resolve the machine first so remote worktrees clean up on the node
+    // they were created on. The project row may already be deleted (the
+    // project-delete path removes threads in the same transaction), so the
+    // caller's node_hint is the fallback.
+    let project = match thread.project_id {
+        Some(pid) => state
+            .db
+            .get_project(pid, thread.user_id)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    let target = match &project {
+        Some(p) => match target_for(state, p).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(error = %e, thread_id = %thread.id, "worktree cleanup: node unreachable");
+                return;
+            }
+        },
+        None => match node_hint {
+            Some(node) => match NodeClient::for_node(state, node) {
+                Some(client) => Target {
+                    git: GitBackend::Remote(RemoteGit::new(client.clone())),
+                    node: Some(client),
+                },
+                None => {
+                    tracing::warn!(thread_id = %thread.id, "worktree cleanup: node has no credential");
+                    return;
+                }
+            },
+            None => Target {
+                git: GitBackend::Local(state.git.clone()),
+                node: None,
+            },
+        },
+    };
+
     // The repo to run cleanup in: the project checkout while the project
     // row still resolves, then the caller's hint, then the thread's stored
     // worktree path. `git worktree list` yields the main checkout as its
     // first entry, which anchors the managed root for linked worktrees.
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(project_id) = thread.project_id {
-        if let Ok(Some(project)) = state.db.get_project(project_id, thread.user_id).await {
-            candidates.push(PathBuf::from(project.path));
-        }
+    if let Some(project) = &project {
+        candidates.push(PathBuf::from(&project.path));
     }
     if let Some(hint) = repo_hint {
         candidates.push(hint.to_path_buf());
@@ -322,7 +489,7 @@ pub(crate) async fn cleanup_thread_worktree(
     }
     let mut resolved = None;
     for cand in candidates {
-        if let Ok(worktrees) = state.git.worktrees(&cand, true).await {
+        if let Ok(worktrees) = target.git.worktrees(&cand, true).await {
             if let Some(main) = worktrees.iter().find(|w| w.is_main) {
                 resolved = Some((main.path.clone(), worktrees));
                 break;
@@ -337,15 +504,17 @@ pub(crate) async fn cleanup_thread_worktree(
     // can sit under the configured root or the repo-sibling location used
     // before the root became a setting.
     let mut candidate_roots: Vec<PathBuf> = Vec::new();
-    match settings::worktree_root(state, thread.user_id).await {
-        Ok(root) => candidate_roots.push(wt::managed_worktrees_root(&repo, &root)),
-        Err(e) => {
-            tracing::warn!(error = %e, thread_id = %thread.id, "worktree root lookup failed during cleanup")
+    if !target.is_remote() {
+        match settings::worktree_root(state, thread.user_id).await {
+            Ok(root) => candidate_roots.push(wt::managed_worktrees_root(&repo, &root)),
+            Err(e) => {
+                tracing::warn!(error = %e, thread_id = %thread.id, "worktree root lookup failed during cleanup")
+            }
         }
     }
-    let legacy_root = wt::managed_worktrees_root(&repo, repo.parent().unwrap_or(repo.as_path()));
-    if !candidate_roots.contains(&legacy_root) {
-        candidate_roots.push(legacy_root);
+    let sibling_root = wt::managed_worktrees_root(&repo, repo.parent().unwrap_or(repo.as_path()));
+    if !candidate_roots.contains(&sibling_root) {
+        candidate_roots.push(sibling_root);
     }
 
     // Only sweep real, non-symlink directories: `worktree_path` is writable
@@ -355,17 +524,12 @@ pub(crate) async fn cleanup_thread_worktree(
     // below compares resolved paths.
     let mut managed_roots: Vec<PathBuf> = Vec::new();
     for root in candidate_roots {
-        let is_real_dir = tokio::fs::symlink_metadata(&root)
-            .await
-            .map(|m| m.is_dir())
-            .unwrap_or(false);
-        if !is_real_dir {
+        if !fs_is_real_dir(&target, &root).await {
             continue;
         }
-        if let Ok(canon) = tokio::fs::canonicalize(&root).await {
-            if !managed_roots.contains(&canon) {
-                managed_roots.push(canon);
-            }
+        let canon = fs_canonicalize(&target, &root).await;
+        if !managed_roots.contains(&canon) {
+            managed_roots.push(canon);
         }
     }
 
@@ -374,7 +538,7 @@ pub(crate) async fn cleanup_thread_worktree(
     // path that diverged from the deterministic managed location.
     for w in &worktrees {
         if !w.is_main && w.branch.as_deref() == Some(branch) {
-            if let Err(e) = state.git.remove_worktree(&repo, &w.path).await {
+            if let Err(e) = target.git.remove_worktree(&repo, &w.path).await {
                 tracing::warn!(error = %e, thread_id = %thread.id, path = %w.path.display(), "thread worktree removal failed");
             }
         }
@@ -386,7 +550,7 @@ pub(crate) async fn cleanup_thread_worktree(
     // since the snapshot above belongs to someone else and must survive.
     // When the re-list fails the stale snapshot cannot tell them apart, so
     // the sweep is skipped; the branch delete below still runs.
-    if let Ok(worktrees_now) = state.git.worktrees(&repo, true).await {
+    if let Ok(worktrees_now) = target.git.worktrees(&repo, true).await {
         let managed_paths = managed_roots
             .iter()
             .map(|root| root.join(wt::sanitize_branch_for_path(branch)));
@@ -396,9 +560,7 @@ pub(crate) async fn cleanup_thread_worktree(
             // managed root only through a symlinked component must not pass,
             // and the registered-worktree check compares resolved paths so
             // a differently spelled entry is still recognized.
-            let Ok(canon) = tokio::fs::canonicalize(path).await else {
-                continue;
-            };
+            let canon = fs_canonicalize(&target, path).await;
             if !managed_roots
                 .iter()
                 .any(|root| canon.parent() == Some(root.as_path()))
@@ -406,16 +568,16 @@ pub(crate) async fn cleanup_thread_worktree(
             {
                 continue;
             }
-            let _ = tokio::fs::remove_dir_all(path).await;
+            fs_remove_dir(&target, path).await;
         }
     }
 
     // Clear stale registrations so the branch delete cannot fail with
     // "checked out at" for a worktree whose directory is already gone.
-    let _ = state.git.prune_worktrees(&repo).await;
-    if let Err(e) = state.git.delete_branch(&repo, branch).await {
+    let _ = target.git.prune_worktrees(&repo).await;
+    if let Err(e) = target.git.delete_branch(&repo, branch).await {
         tracing::warn!(error = %e, thread_id = %thread.id, "thread branch removal failed");
     }
 
-    let _ = state.git.worktrees(&repo, true).await;
+    let _ = target.git.worktrees(&repo, true).await;
 }

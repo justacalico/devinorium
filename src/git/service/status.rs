@@ -7,7 +7,7 @@ use std::time::Duration;
 use super::{GitError, GitService};
 
 /// Lightweight repository status for a project path.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RepoStatus {
     pub is_repo: bool,
     pub toplevel: PathBuf,

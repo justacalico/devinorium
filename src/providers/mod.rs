@@ -17,6 +17,7 @@ pub mod acp;
 pub mod ask;
 pub mod codex;
 pub mod parts;
+pub mod remote;
 pub mod status;
 pub mod version;
 
@@ -25,6 +26,7 @@ pub use parts::{
     collect_text, collect_thinking, strip_plan_markup_from_parts, MessagePart, PartCallback,
     PartEvent,
 };
+pub use remote::RemoteProvider;
 pub use status::{ProviderStatus, ProviderStatusCache};
 pub use version::ProviderVersion;
 
@@ -49,7 +51,7 @@ pub struct Attachment {
 }
 
 /// A single option presented for an interactive permission request.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionOption {
     pub id: String,
     pub kind: String,
@@ -58,7 +60,7 @@ pub struct PermissionOption {
 
 /// An interactive permission request that the provider wants the user to
 /// decide on (allow/skip/etc.).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionRequest {
     pub request_id: String,
     pub scope: String,

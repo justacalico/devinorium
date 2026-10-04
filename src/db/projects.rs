@@ -8,13 +8,15 @@ pub struct NewProject {
     pub path: String,
     pub position: i64,
     pub project_type: String,
+    /// Paired satellite the project lives on, when remote.
+    pub node_id: Option<String>,
 }
 
 impl Db {
     pub async fn create_project(&self, new: NewProject) -> anyhow::Result<ProjectRow> {
         sqlx::query_as::<_, ProjectRow>(
-            "INSERT INTO projects (user_id, name, path, position, project_type)
-             VALUES (?, ?, ?, ?, ?)
+            "INSERT INTO projects (user_id, name, path, position, project_type, node_id)
+             VALUES (?, ?, ?, ?, ?, ?)
              RETURNING *",
         )
         .bind(new.user_id)
@@ -22,6 +24,7 @@ impl Db {
         .bind(&new.path)
         .bind(new.position)
         .bind(&new.project_type)
+        .bind(&new.node_id)
         .fetch_one(self.pool())
         .await
         .map_err(Into::into)
