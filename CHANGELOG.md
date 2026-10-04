@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.98.0 - 2026-10-04
+#### Features
+- 终端默认使用用户的登录 shell - (85d8c00) - HttpAnimations
+
+- - -
+
 ## v0.97.0 - 2026-10-04
 #### Features
 - 克隆导入的项目自动加入当前选中分组 - (7be719a) - HttpAnimations
