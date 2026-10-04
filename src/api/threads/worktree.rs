@@ -54,7 +54,7 @@ async fn fs_stat(target: &Target, path: &Path) -> (bool, bool, bool, Option<Path
     match &target.node {
         Some(client) => {
             let raw = path.to_string_lossy().to_string();
-            match client.fs_stat(None, &[raw.clone()]).await {
+            match client.fs_stat(None, std::slice::from_ref(&raw)).await {
                 Ok(mut map) => match map.remove(&raw) {
                     Some(s) => (
                         s.exists,

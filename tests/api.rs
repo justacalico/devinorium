@@ -9994,8 +9994,6 @@ async fn git_connections_merge_request_action_requires_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// Bearer-token request without a session cookie, as federation calls use.
-
 fn git_cli(args: &[&str], cwd: &std::path::Path) {
     let out = std::process::Command::new("git")
         .args(args)

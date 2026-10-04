@@ -291,7 +291,7 @@ async fn resolve_linked_mr(
         }
     };
 
-    let git = match crate::node_client::git_backend_for_project(&state, &project).await {
+    let git = match crate::node_client::git_backend_for_project(state, &project).await {
         Ok(g) => g,
         Err(e) => {
             tracing::warn!(error = %e, "failed to resolve git backend for mr link");
