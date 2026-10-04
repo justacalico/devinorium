@@ -21,6 +21,8 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 pub struct CloneRequest {
     pub url: String,
+    /// Group the new project joins; must belong to the caller.
+    pub group_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +44,20 @@ async fn clone(
             .into_response();
     }
 
+    if let Some(gid) = req.group_id {
+        match state.db.get_project_group(gid, user.id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("group not found")),
+                )
+                    .into_response()
+            }
+            Err(e) => return crate::api::map_err_internal(e).into_response(),
+        }
+    }
+
     match clone_repo(
         &state.git,
         &state.git_remote,
@@ -50,6 +66,7 @@ async fn clone(
         user.id,
         user.is_owner,
         url,
+        req.group_id,
     )
     .await
     {
