@@ -86,7 +86,7 @@ class _PendingCloneApi extends _FakeApiService {
   _PendingCloneApi(this.completer);
 
   @override
-  Future<String> cloneRepo(String url, {String? nodeId}) {
+  Future<String> cloneRepo(String url, {String? nodeId, int? groupId}) {
     _cloneRepoCalls.add(url);
     return completer.future;
   }
@@ -115,7 +115,7 @@ class _FakeApiService extends ApiService {
   List<String> get cloneRepoCalls => List.unmodifiable(_cloneRepoCalls);
 
   @override
-  Future<String> cloneRepo(String url, {String? nodeId}) {
+  Future<String> cloneRepo(String url, {String? nodeId, int? groupId}) {
     _cloneRepoCalls.add(url);
     if (_cloneRepoThrows.containsKey(url)) {
       throw _cloneRepoThrows[url]!;

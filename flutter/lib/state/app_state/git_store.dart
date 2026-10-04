@@ -101,10 +101,27 @@ mixin GitStore on AppStateBase {
     _globalError = '';
     notifyListeners();
     try {
-      final path = await api.cloneRepo(url, nodeId: nodeId);
+      final gid = _selectedProjectGroupId;
+      final path = await api.cloneRepo(url, nodeId: nodeId, groupId: gid);
       // The clone already landed on the server, so the project list refresh
       // runs even if the user navigated away mid-request.
       await loadProjects();
+      // Backends that predate clone group assignment leave the row
+      // ungrouped; patch it here so the project stays visible under an
+      // active filter. The check runs against the group captured at call
+      // time — the filter may have moved on while the clone was in flight.
+      if (gid != null) {
+        var match = _projects.where((p) => p.path == path).firstOrNull;
+        if (match == null) {
+          // The clone sorts to the end of the list, so it can sit past the
+          // first page that loadProjects fetched.
+          await _ensureAllProjectsLoaded();
+          match = _projects.where((p) => p.path == path).firstOrNull;
+        }
+        if (match != null && match.groupId != gid) {
+          await setProjectGroup(match.id, gid);
+        }
+      }
       if (seq != _cloneRepoSeq) return null;
       _cloneRepoResult = path;
       return path;

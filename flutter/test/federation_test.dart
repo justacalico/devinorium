@@ -59,7 +59,7 @@ class _HubMock {
 
   http.BaseClient get client => MockClient((req) async {
     requests.add((req.method, req.url.path));
-    if (req.url.path == '/api/federation/nodes/pair' && req is http.Request) {
+    if (req.url.path == '/api/federation/nodes/pair') {
       pairBody = req.body;
     }
     final path = req.url.path;

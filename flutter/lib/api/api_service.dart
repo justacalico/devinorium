@@ -1130,8 +1130,11 @@ class ApiService {
 
   /// Clone a remote repository into the clone root on this server or on a
   /// paired node when [nodeId] is set. Returns the path on that machine.
-  Future<String> cloneRepo(String url, {String? nodeId}) async {
-    final body = <String, dynamic>{'url': url};
+  Future<String> cloneRepo(String url, {String? nodeId, int? groupId}) async {
+    final body = <String, dynamic>{
+      'url': url,
+      'group_id': ?groupId,
+    };
     if (nodeId != null && nodeId.isNotEmpty) body['node_id'] = nodeId;
     final j = await _client.post('/api/clones', body);
     return j['path'] as String;

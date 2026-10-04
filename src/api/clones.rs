@@ -24,6 +24,8 @@ pub struct CloneRequest {
     /// Paired node to clone on; absent or `local` clones on this server.
     #[serde(default)]
     pub node_id: Option<String>,
+    /// Group the new project joins; must belong to the caller.
+    pub group_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,6 +47,20 @@ async fn clone(
             .into_response();
     }
 
+    if let Some(gid) = req.group_id {
+        match state.db.get_project_group(gid, user.id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("group not found")),
+                )
+                    .into_response()
+            }
+            Err(e) => return crate::api::map_err_internal(e).into_response(),
+        }
+    }
+
     if let Some(nid) = req
         .node_id
         .as_deref()
@@ -53,7 +69,7 @@ async fn clone(
     {
         // The satellite owns the clone and reports the path back; the hub
         // only writes the project row against the node.
-        return match clone_remote(&state, &user, nid, url).await {
+        return match clone_remote(&state, &user, nid, url, req.group_id).await {
             Ok(path) => (
                 StatusCode::CREATED,
                 Json(CloneResponse {
@@ -83,6 +99,7 @@ async fn clone(
         user.id,
         user.is_owner,
         url,
+        req.group_id,
     )
     .await
     {
@@ -111,6 +128,7 @@ async fn clone_remote(
     user: &crate::db::UserRow,
     node_id: &str,
     url: &str,
+    group_id: Option<i64>,
 ) -> Result<std::path::PathBuf, CloneError> {
     if !user.is_owner {
         return Err(CloneError::MalformedUrl);
@@ -158,7 +176,7 @@ async fn clone_remote(
         .next_project_position(user.id)
         .await
         .map_err(|e| CloneError::CloneFailed(format!("database error: {e}")))?;
-    if let Err(e) = state
+    let project = match state
         .db
         .create_project(crate::db::NewProject {
             user_id: user.id,
@@ -170,8 +188,24 @@ async fn clone_remote(
         })
         .await
     {
-        cleanup(&client, &path).await;
-        return Err(CloneError::CloneFailed(e.to_string()));
+        Ok(p) => p,
+        Err(e) => {
+            cleanup(&client, &path).await;
+            return Err(CloneError::CloneFailed(e.to_string()));
+        }
+    };
+    if group_id.is_some() {
+        if let Err(e) = state
+            .db
+            .set_project_group(project.id, user.id, group_id)
+            .await
+        {
+            let _ = state.db.delete_project(project.id, user.id).await;
+            cleanup(&client, &path).await;
+            return Err(CloneError::CloneFailed(format!(
+                "failed to assign group: {e}"
+            )));
+        }
     }
     Ok(path_buf)
 }

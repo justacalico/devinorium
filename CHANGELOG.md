@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.97.0 - 2026-10-04
+#### Features
+- 克隆导入的项目自动加入当前选中分组 - (7be719a) - HttpAnimations
+
+- - -
+
+## v0.96.0 - 2026-10-02
+#### Features
+- 支持通过 .mcpb 包安装 MCP 服务器 - (0233a61) - HttpAnimations
+
+- - -
+
 ## v0.95.0 - 2026-10-02
 #### Features
 - 添加 MCP 服务器配置和 / 技能调用 - (b984dad) - HttpAnimations
