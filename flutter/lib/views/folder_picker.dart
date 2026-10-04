@@ -16,12 +16,16 @@ class FolderPicker extends StatefulWidget {
   final String homePrefix;
   final void Function(String path, bool isHomeRoot)? onSelect;
 
+  /// Paired node to browse, or null for this server's filesystem.
+  final String? nodeId;
+
   const FolderPicker({
     super.key,
     required this.api,
     this.controller,
     this.initialPath,
     this.homePrefix = '~',
+    this.nodeId,
     this.onSelect,
   });
 
@@ -83,6 +87,7 @@ class _FolderPickerState extends State<FolderPicker> {
       final entries = await widget.api.listFiles(
         path: path,
         projectId: null,
+        nodeId: widget.nodeId,
       );
       if (!mounted) return;
       setState(() {
@@ -151,10 +156,12 @@ class _FolderPickerState extends State<FolderPicker> {
       }
       _pathSegments
         ..clear()
-        ..addAll(rest
-            .split(RegExp(r'[/\\]'))
-            .where((s) => s.isNotEmpty && s != '.')
-            .toList());
+        ..addAll(
+          rest
+              .split(RegExp(r'[/\\]'))
+              .where((s) => s.isNotEmpty && s != '.')
+              .toList(),
+        );
       _controller.text = _displayPath;
       _load();
       return;
@@ -168,10 +175,7 @@ class _FolderPickerState extends State<FolderPicker> {
     _isAbsolute = text.startsWith('/');
     _pathSegments
       ..clear()
-      ..addAll(text
-          .split('/')
-          .where((s) => s.isNotEmpty && s != '.')
-          .toList());
+      ..addAll(text.split('/').where((s) => s.isNotEmpty && s != '.').toList());
     _controller.text = _displayPath;
     _load();
   }
@@ -234,10 +238,7 @@ class _FolderPickerState extends State<FolderPicker> {
         ],
         if (_error != null) ...[
           const SizedBox(height: 8),
-          Text(
-            _error!,
-            style: TextStyle(color: theme.colorScheme.error),
-          ),
+          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
         ],
       ],
     );
@@ -265,8 +266,9 @@ class _FolderPickerState extends State<FolderPicker> {
           padding: const EdgeInsets.all(16),
           child: Text(
             l10n(context).noSubfoldersHere,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
@@ -277,8 +279,11 @@ class _FolderPickerState extends State<FolderPicker> {
       itemBuilder: (context, index) {
         final e = _entries[index];
         return ListTile(
-          leading: Icon(Icons.folder,
-              color: theme.colorScheme.primary, size: 20),
+          leading: Icon(
+            Icons.folder,
+            color: theme.colorScheme.primary,
+            size: 20,
+          ),
           title: Text(e.name, style: theme.textTheme.bodyMedium),
           dense: true,
           onTap: _loading ? null : () => _enter(e.name),
@@ -306,10 +311,7 @@ class _BrowserHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final segs = path
-        .split('/')
-        .where((s) => s.isNotEmpty)
-        .toList();
+    final segs = path.split('/').where((s) => s.isNotEmpty).toList();
     final rootLabel = isAbsolute ? l10n(context).root : l10n(context).home;
     final crumbs = <String>[rootLabel, ...segs];
 
@@ -328,20 +330,22 @@ class _BrowserHeader extends StatelessWidget {
               children: [
                 for (var i = 0; i < crumbs.length; i++) ...[
                   if (i > 0)
-                    Text(l10n(context).breadcrumbSeparator,
-                        style: theme.textTheme.labelMedium),
+                    Text(
+                      l10n(context).breadcrumbSeparator,
+                      style: theme.textTheme.labelMedium,
+                    ),
                   InkWell(
                     onTap: enabled ? () => onCrumb(i - 1) : null,
                     child: Text(
                       crumbs[i],
                       style: theme.textTheme.labelMedium?.copyWith(
-                            color: enabled
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant,
-                            fontWeight: i == crumbs.length - 1
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          ),
+                        color: enabled
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
+                        fontWeight: i == crumbs.length - 1
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
                     ),
                   ),
                 ],

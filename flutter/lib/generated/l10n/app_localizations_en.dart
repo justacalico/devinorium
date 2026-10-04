@@ -1611,16 +1611,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get federationNodesHint =>
-      'Satellite machines registered with this server. Pick one to run the app against that machine through this server.';
+      'Satellite machines paired with this server. Projects created on a node run their agents, files, git and terminals on that machine.';
 
   @override
-  String get noNodesRegistered => 'No satellites registered.';
-
-  @override
-  String get switchNode => 'Switch node';
-
-  @override
-  String get thisHub => 'This hub';
+  String get noNodesRegistered => 'No machines paired yet.';
 
   @override
   String get nodeOnline => 'online';
@@ -1633,7 +1627,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String removeNodeConfirm(String name) {
-    return 'Remove \"$name\"? The satellite will appear again the next time it heartbeats unless it is stopped.';
+    return 'Remove \"$name\"? Projects on this node will stop working until it is paired again.';
   }
 
   @override
@@ -2204,4 +2198,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get skillPickerEmpty => 'No matching skills.';
+
+  @override
+  String get pairNode => 'Pair a machine';
+
+  @override
+  String get pairNodeTitle => 'Pair a machine';
+
+  @override
+  String get pairNodeHint =>
+      'A Devinorium server started with DEVINORIUM_SATELLITE=1 prints a pairing code on startup. Enter its address and code here.';
+
+  @override
+  String get nodeUrl => 'Server URL';
+
+  @override
+  String get pairingCode => 'Pairing code';
+
+  @override
+  String get nodeNameOptional => 'Name (optional)';
+
+  @override
+  String get pair => 'Pair';
+
+  @override
+  String get nodePairFieldsRequired => 'URL and pairing code are required.';
+
+  @override
+  String get projectTargetMachine => 'Machine';
+
+  @override
+  String get thisServer => 'This server';
+
+  @override
+  String createProjectDestinationNode(Object name, Object node) {
+    return 'Will be created under ~/.devinorium/projects/$name on $node';
+  }
 }

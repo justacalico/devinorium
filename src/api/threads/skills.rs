@@ -10,7 +10,7 @@ use crate::api::{map_err_internal, ApiError};
 use crate::auth::session::CurrentUser;
 use crate::AppState;
 
-use super::plan::project_working_dir_for_thread;
+use super::plan::thread_target;
 
 pub(super) async fn list_skills(
     State(state): State<AppState>,
@@ -26,11 +26,31 @@ pub(super) async fn list_skills(
     };
     // The same directory the agent runs in, so the picker offers exactly the
     // project skills the provider can see (worktree mode included).
-    let cwd = match project_working_dir_for_thread(&state, &thread).await {
-        Ok(p) => p,
+    let target = match thread_target(&state, &thread).await {
+        Ok(t) => t,
         Err(e) => return map_err_internal(e).into_response(),
     };
-    let skills = crate::skills::discover_skills(&cwd, &state.config.home_dir).await;
+    if let Some(node) = target.node {
+        if !user.is_owner {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(ApiError::new("paired machines are owner-only")),
+            )
+                .into_response();
+        }
+        let Some(client) = crate::node_client::NodeClient::for_node(&state, &node) else {
+            return crate::node_client::node_bad_gateway("node unreachable");
+        };
+        return match client
+            .with_proxy_user(&user.username)
+            .skills_list(&target.dir)
+            .await
+        {
+            Ok(v) => Json(v).into_response(),
+            Err(e) => crate::node_client::node_bad_gateway(e.to_string()),
+        };
+    }
+    let skills = crate::skills::discover_skills(&target.dir, &state.config.home_dir).await;
     Json(serde_json::json!({
         "skills": skills.iter().map(|s| &s.info).collect::<Vec<_>>(),
     }))

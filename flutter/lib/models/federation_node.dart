@@ -1,8 +1,8 @@
-/// A satellite backend registered with this server (the hub).
+/// A satellite machine paired with this server (the hub).
 ///
-/// Selecting a node routes every API call through the hub's
-/// `/api/federation/nodes/<id>/proxy` prefix, so the satellite's own
-/// threads, projects, and providers answer instead of the hub's.
+/// Projects bound to a node run their agent sessions, files, git, and
+/// terminals on that machine; the hub routes those calls with the
+/// credential issued at pairing.
 class FederationNode {
   final String id;
   final String name;

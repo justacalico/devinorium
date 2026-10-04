@@ -21,6 +21,9 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 pub struct CloneRequest {
     pub url: String,
+    /// Paired node to clone on; absent or `local` clones on this server.
+    #[serde(default)]
+    pub node_id: Option<String>,
     /// Group the new project joins; must belong to the caller.
     pub group_id: Option<i64>,
 }
@@ -58,6 +61,36 @@ async fn clone(
         }
     }
 
+    if let Some(nid) = req
+        .node_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        // The satellite owns the clone and reports the path back; the hub
+        // only writes the project row against the node.
+        return match clone_remote(&state, &user, nid, url, req.group_id).await {
+            Ok(path) => (
+                StatusCode::CREATED,
+                Json(CloneResponse {
+                    path: path.to_string_lossy().to_string(),
+                }),
+            )
+                .into_response(),
+            Err(CloneError::NotEnabled) => (
+                StatusCode::NOT_FOUND,
+                Json(crate::api::ApiError::new(
+                    "git support is not enabled on this backend",
+                )),
+            )
+                .into_response(),
+            Err(e) => {
+                let status = e.status_code();
+                (status, Json(crate::api::ApiError::new(e.to_string()))).into_response()
+            }
+        };
+    }
+
     match clone_repo(
         &state.git,
         &state.git_remote,
@@ -87,4 +120,92 @@ async fn clone(
             (status, Json(crate::api::ApiError::new(msg))).into_response()
         }
     }
+}
+
+/// Clone a remote on a paired satellite and record the project row.
+async fn clone_remote(
+    state: &AppState,
+    user: &crate::db::UserRow,
+    node_id: &str,
+    url: &str,
+    group_id: Option<i64>,
+) -> Result<std::path::PathBuf, CloneError> {
+    if !user.is_owner {
+        return Err(CloneError::MalformedUrl);
+    }
+    let node = state
+        .db
+        .get_federation_node(node_id)
+        .await
+        .ok()
+        .flatten()
+        .ok_or(CloneError::NotEnabled)?;
+    let client = crate::node_client::NodeClient::for_node(state, &node)
+        .ok_or(CloneError::NotEnabled)?
+        .with_proxy_user(&user.username);
+    let parsed = crate::git::clone::parse_remote_url(url)?;
+    let path = client
+        .clone_repo(url)
+        .await
+        .map_err(|e| CloneError::CloneFailed(e.to_string()))?;
+    // Any failure below leaves an orphaned clone on the satellite; try to
+    // remove it before reporting the error.
+    let cleanup = |client: &crate::node_client::NodeClient, path: &str| {
+        let client = client.clone();
+        let path = path.to_string();
+        async move {
+            let _ = client.fs_delete(None, &path).await;
+        }
+    };
+    let path_buf = std::path::PathBuf::from(&path);
+    if state
+        .db
+        .get_project_by_path(user.id, &path)
+        .await
+        .map_err(|e| CloneError::CloneFailed(format!("database error: {e}")))?
+        .is_some()
+    {
+        cleanup(&client, &path).await;
+        return Err(CloneError::AlreadyExists);
+    }
+    let project_name =
+        crate::git::clone::unique_project_name(&state.db, user.id, &parsed.owner, &parsed.repo)
+            .await?;
+    let position = state
+        .db
+        .next_project_position(user.id)
+        .await
+        .map_err(|e| CloneError::CloneFailed(format!("database error: {e}")))?;
+    let project = match state
+        .db
+        .create_project(crate::db::NewProject {
+            user_id: user.id,
+            name: project_name,
+            path: path_buf.to_string_lossy().to_string(),
+            position,
+            project_type: "git".into(),
+            node_id: Some(node.id.clone()),
+        })
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            cleanup(&client, &path).await;
+            return Err(CloneError::CloneFailed(e.to_string()));
+        }
+    };
+    if group_id.is_some() {
+        if let Err(e) = state
+            .db
+            .set_project_group(project.id, user.id, group_id)
+            .await
+        {
+            let _ = state.db.delete_project(project.id, user.id).await;
+            cleanup(&client, &path).await;
+            return Err(CloneError::CloneFailed(format!(
+                "failed to assign group: {e}"
+            )));
+        }
+    }
+    Ok(path_buf)
 }

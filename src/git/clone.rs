@@ -141,6 +141,7 @@ pub async fn clone_repo(
             path: resolved_target.to_string_lossy().to_string(),
             position,
             project_type: "generic".to_string(),
+            node_id: None,
         })
         .await
         .map_err(|e| CloneError::CloneFailed(format!("failed to create project: {e}")))?;
@@ -237,7 +238,7 @@ pub async fn clone_repo(
     Ok(final_path)
 }
 
-fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
+pub(crate) fn parse_remote_url(url: &str) -> Result<ParsedRemote, CloneError> {
     let raw = url.trim().to_string();
     if raw.is_empty() {
         return Err(CloneError::MalformedUrl);
@@ -451,7 +452,7 @@ async fn clone_auth(
     Some(format!("Authorization: Basic {basic}"))
 }
 
-async fn unique_project_name(
+pub(crate) async fn unique_project_name(
     db: &crate::db::Db,
     user_id: i64,
     owner: &str,
@@ -482,7 +483,7 @@ async fn unique_project_name(
     ))
 }
 
-async fn run_git_clone(cmd: &mut Command, max: Duration) -> Result<(), CloneError> {
+pub(crate) async fn run_git_clone(cmd: &mut Command, max: Duration) -> Result<(), CloneError> {
     let mut child = cmd
         .spawn()
         .map_err(|e| CloneError::CloneFailed(format!("failed to spawn git: {e}")))?;

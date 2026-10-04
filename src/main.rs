@@ -33,6 +33,11 @@ async fn main() -> Result<()> {
         .init();
 
     let mut cfg = config::Config::from_env()?;
+    if cfg.is_satellite() {
+        // A satellite is a stateless agent runner: no database, no
+        // accounts, no UI. Dev-mode flags are meaningless here.
+        return devinorium::satellite::run(cfg).await;
+    }
     if dev_mode {
         cfg.apply_dev_mode(local_only)?;
     }
@@ -59,10 +64,7 @@ async fn main() -> Result<()> {
     } else {
         // First-run bootstrap: create the initial owner account if none exist.
         auth::bootstrap::run(&database, &cfg.bootstrap_username, &cfg.bootstrap_password).await?;
-        if cfg.is_local_mode() || cfg.federation_token.is_some() {
-            // Bundled mode and satellites both need the passwordless `local`
-            // account: local-mode requests and a hub's proxied calls alike
-            // authenticate onto it via bearer token.
+        if cfg.is_local_mode() {
             auth::bootstrap::run_local(&database).await?;
         }
         if cfg.is_local_mode() {
@@ -173,6 +175,7 @@ async fn main() -> Result<()> {
         bound_addr: Arc::new(std::sync::OnceLock::new()),
         rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
         http_client: devinorium::federation::http_client(),
+        remote_terminals: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     // Turn run lifecycle transitions into pushes for closed clients.
@@ -183,9 +186,6 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     let addr = listener.local_addr()?;
     let _ = state.bound_addr.set(addr);
-    // Satellite mode: register with the hub now that the bound address is
-    // known, then keep the registration fresh on a heartbeat.
-    devinorium::federation::spawn_satellite_loop(state.clone());
     if dev_mode {
         if local_only {
             tracing::info!("--dev --local: serving http://{addr} (loopback only) with no authentication and a throwaway in-memory database");

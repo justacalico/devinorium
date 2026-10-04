@@ -1,53 +1,26 @@
-//! Hub/satellite federation.
+//! Shared helpers for hub/satellite federation.
 //!
-//! A hub accepts registrations from satellites and proxies API requests to
-//! them; a satellite registers itself with a hub and answers proxied calls
-//! authenticated by the shared `DEVINORIUM_FEDERATION_TOKEN`.
-//!
-//! Satellites push: each one POSTs `register` on a heartbeat, so a hub
-//! never needs network reachability configured in advance and a node that
-//! changes address heals on the next beat. The hub only needs the shared
-//! token to gate who may join.
+//! A hub pairs with satellites (see [`crate::api::federation`]) and calls
+//! their `/api/node/*` surface through [`crate::node_client`]; a satellite
+//! is a stateless runner serving that surface (see [`crate::satellite`]).
 
 use std::time::Duration;
 
-use serde::Serialize;
+/// A node counts as online while its last successful probe is this fresh.
+/// The hub probes lazily when the node list is read, so this only needs to
+/// cover the window between list calls.
+pub const ONLINE_WINDOW: Duration = Duration::from_secs(30);
 
-use crate::AppState;
-
-/// How often a satellite re-registers with its hub.
-pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
-
-/// A node counts as online while its last registration is this fresh. It
-/// is ~3 missed heartbeats, so a brief network blip does not flap the UI.
-pub const ONLINE_WINDOW: Duration = Duration::from_secs(90);
-
-/// Header carried by proxied requests; incremented at every hop so a
-/// misconfigured ring of hubs fails fast instead of looping forever.
-pub const PROXY_HOP_HEADER: &str = "x-devinorium-proxy-hop";
-
-/// Header set by a hub on proxied requests naming the hub user who made
-/// the call, so satellite logs can attribute actions. Only meaningful when
-/// set by a trusted hub; inbound copies are stripped at the boundary.
+/// Header set by a hub on node calls naming the hub user who made the
+/// call, so satellite logs can attribute actions. Only meaningful from a
+/// trusted hub; the node API never trusts it for authorization.
 pub const PROXY_USER_HEADER: &str = "x-devinorium-proxy-user";
 
-/// Hard cap on how many times a request may be proxied between nodes.
-pub const MAX_PROXY_HOPS: u32 = 4;
-
-/// server_settings key for the satellite's self-issued stable node id.
-const NODE_ID_KEY: &str = "federation_node_id";
-
-/// server_settings key for the per-node token the hub issued at
-/// registration. Once set, proxied calls authenticate with it and the
-/// shared federation token stops owning this node's API.
-pub const NODE_TOKEN_KEY: &str = "federation_node_token";
-
 /// Normalize and validate a node base URL: it must be a plain http(s)
-/// origin with no userinfo, path, query, or fragment, since proxied paths
-/// are appended verbatim. Anything reachable from the hub is allowed by
-/// design — the shared token is the gate, and LAN addresses are the point
-/// of the feature. Shared by hub-side registration checks and satellite
-/// config validation so both ends agree on what is legal.
+/// origin with no userinfo, path, query, or fragment, since API paths are
+/// appended verbatim. Anything reachable from the hub is allowed by
+/// design — the pairing code and issued token are the gate, and LAN
+/// addresses are the point of the feature.
 pub fn clean_node_base_url(raw: &str) -> Option<String> {
     let url = raw.trim().trim_end_matches('/');
     if url.len() > 512 {
@@ -69,10 +42,9 @@ pub fn clean_node_base_url(raw: &str) -> Option<String> {
     Some(url.to_string())
 }
 
-/// Build the HTTP client shared by satellite registration and the hub's
-/// request proxying. There is deliberately no overall timeout: SSE message
-/// streams proxied through the hub stay open indefinitely. The connect
-/// timeout is enough to fail dead nodes quickly.
+/// Build the HTTP client used for node calls. There is deliberately no
+/// overall timeout: run streams proxied through the hub stay open
+/// indefinitely. The connect timeout is enough to fail dead nodes quickly.
 pub fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
@@ -81,112 +53,27 @@ pub fn http_client() -> reqwest::Client {
         .expect("federation http client")
 }
 
-/// The node id this satellite advertises, generating and persisting one on
-/// first use so re-registrations collapse onto the same hub-side row.
-pub async fn node_id(db: &crate::db::Db) -> anyhow::Result<String> {
-    if let Some(id) = db.get_server_setting(NODE_ID_KEY).await? {
-        if !id.is_empty() {
-            return Ok(id);
-        }
-    }
-    let id = uuid::Uuid::new_v4().to_string();
-    db.set_server_setting(NODE_ID_KEY, &id).await?;
-    Ok(id)
+/// Bounded client for regular node calls (files, git, clone, terminal):
+/// generous enough for a slow clone or worktree create, but a wedged node
+/// cannot hold a hub request handler open forever.
+pub fn bounded_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(600))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("federation bounded http client")
 }
 
-/// Spawn the satellite registration loop when `DEVINORIUM_HUB_URL` is set.
-/// The task runs until the process exits; registration failures are logged
-/// and retried on the next beat rather than fatal.
-///
-/// Must be called after the listener is bound so a default node URL
-/// derived from the bound address reports the real port.
-pub fn spawn_satellite_loop(state: AppState) -> Option<tokio::task::JoinHandle<()>> {
-    if !state.config.is_satellite() {
-        return None;
-    }
-    if state.config.dev_mode {
-        // A dev instance has a throwaway in-memory database; registering it
-        // would leave a permanently-offline ghost node on the hub.
-        tracing::warn!("federation: DEVINORIUM_HUB_URL ignored in dev mode");
-        return None;
-    }
-    Some(tokio::spawn(async move {
-        let mut self_id: Option<String> = None;
-        loop {
-            if self_id.is_none() {
-                match node_id(&state.db).await {
-                    Ok(id) => self_id = Some(id),
-                    Err(e) => {
-                        tracing::warn!("federation: failed to allocate node id, retrying: {e:#}");
-                        tokio::time::sleep(HEARTBEAT_INTERVAL).await;
-                        continue;
-                    }
-                }
-            }
-            if let Err(e) = register_once(&state, self_id.as_deref().unwrap_or_default()).await {
-                tracing::warn!("federation: registration with hub failed: {e:#}");
-            }
-            tokio::time::sleep(HEARTBEAT_INTERVAL).await;
-        }
-    }))
-}
-
-#[derive(Serialize)]
-struct RegisterBody<'a> {
-    id: &'a str,
-    name: &'a str,
-    base_url: &'a str,
-    version: &'a str,
-}
-
-async fn register_once(state: &AppState, node_id: &str) -> anyhow::Result<()> {
-    let cfg = &state.config;
-    let hub = cfg.hub_url.as_deref().unwrap_or_default();
-    let token = cfg.federation_token.as_deref().unwrap_or_default();
-    let base_url = cfg
-        .node_url
-        .clone()
-        .unwrap_or_else(|| state.agent_base_url());
-    let name = cfg.display_node_name();
-
-    let resp = state
-        .http_client
-        .post(format!("{hub}/api/federation/register"))
-        .bearer_auth(token)
+/// Short-timeout client for node probes and lightweight calls where a dead
+/// node must not stall a request: 3s connect, 15s total.
+pub fn short_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
         .timeout(Duration::from_secs(15))
-        .json(&RegisterBody {
-            id: node_id,
-            name: &name,
-            base_url: &base_url,
-            version: env!("CARGO_PKG_VERSION"),
-        })
-        .send()
-        .await?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "hub returned {status}: {}",
-            body.chars().take(200).collect::<String>()
-        );
-    }
-
-    // Newer hubs issue a per-node token for proxied calls; persist it so
-    // the next requests authenticate with it instead of the shared secret.
-    #[derive(serde::Deserialize)]
-    struct RegisterReply {
-        node_token: Option<String>,
-    }
-    if let Ok(reply) = resp.json::<RegisterReply>().await {
-        if let Some(token) = reply.node_token.filter(|t| !t.is_empty()) {
-            if let Err(e) = state.db.set_server_setting(NODE_TOKEN_KEY, &token).await {
-                tracing::warn!("federation: failed to persist node token: {e:#}");
-            }
-        }
-    }
-
-    tracing::debug!(%hub, %base_url, "federation: registered with hub");
-    Ok(())
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("federation short http client")
 }
 
 #[cfg(test)]

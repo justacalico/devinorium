@@ -8,7 +8,7 @@ use super::runner::parse_track;
 use super::{GitError, GitService};
 
 /// A branch or remote ref.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Branch {
     pub name: String,
     pub refname: String,

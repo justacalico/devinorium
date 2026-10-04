@@ -1,128 +1,109 @@
-# Federation: one public hub, many machines
+# Federation: one hub, many execution machines
 
-Federation lets a single publicly reachable Devinorium instance (the *hub*)
-front any number of private machines (*satellites*). Satellites register
-with the hub over outbound HTTP; the owner picks a node in the sidebar and
-the app proxies every API call to that machine through the hub. Only the
-hub needs a public address; satellites can sit on a LAN, behind NAT, or on
-a laptop that roams.
-
-Each satellite is a full Devinorium server with its own database, projects,
-threads, and agents. The hub keeps no copy of satellite state; it is a
-registry plus a reverse proxy.
+Federation lets a normal Devinorium server (the *hub*) run agents on any
+number of remote machines (*satellites*). A satellite is the same binary
+started in satellite mode: stateless, no database, no accounts, no UI. It
+exists only to execute agents and machine-local services (files, git,
+terminals, clones) for the hubs that paired with it.
 
 ## Concepts
 
-- **Hub**: a normal Devinorium server with `DEVINORIUM_FEDERATION_TOKEN`
-  set. It accepts satellite registrations and proxies authenticated owner
-  requests to the chosen node.
-- **Satellite**: a normal Devinorium server with the same
-  `DEVINORIUM_FEDERATION_TOKEN` plus `DEVINORIUM_HUB_URL` pointing at the
-  hub. On startup it registers itself and re-registers every 30 seconds;
-  that re-registration doubles as the online heartbeat.
-- **Node**: a registered satellite as the hub sees it: id, name, base URL,
-  version, and an online flag derived from the last heartbeat (a node
-  counts as online for 90 s after its last beat).
+- **Hub**: your normal Devinorium instance with its database, accounts,
+  projects, and UI. It pairs with satellites and routes work to them.
+- **Satellite**: a Devinorium binary started with `DEVINORIUM_SATELLITE=1`.
+  It keeps a node identity and issued tokens in a single state file under
+  its data directory; losing the file only means re-pairing. Everything
+  else is in-memory.
+- **Node**: a paired satellite as the hub sees it: id, name, base URL,
+  version, and an online flag from a live probe.
+- **Pairing**: a one-time exchange. The satellite prints a pairing code on
+  startup; the hub owner enters the satellite's URL and code; the hub
+  receives a per-node bearer token it stores and uses for every later
+  call.
 
 ## Setup
 
-Generate one shared secret and use it on every machine:
+### Satellite
+
+On each machine that should run agents:
 
 ```sh
-openssl rand -base64 48
+DEVINORIUM_SATELLITE=1
+DEVINORIUM_NODE_NAME=workstation   # optional; defaults to hostname
+DEVINORIUM_HOST=0.0.0.0            # default in satellite mode
+DEVINORIUM_PORT=7878               # default port
 ```
+
+On startup the satellite prints:
+
+```
+Devinorium satellite (workstation) listening on 0.0.0.0:7878
+
+  Pairing code: ABCD-EFGH-IJKL-MNOP
+
+  In your main instance go to Settings -> Nodes, enter
+  this server's URL and the code above, then pair.
+```
+
+The code pairs exactly one hub and rotates on every boot; re-pairing
+after a hub change needs a satellite restart for a fresh code. The hub
+must be able to reach the
+satellite's address; nothing dials outbound from the satellite, so it can
+sit anywhere the hub can connect to (LAN, Tailnet, a tunnel).
 
 ### Hub
 
-On the public machine:
-
-```sh
-DEVINORIUM_FEDERATION_TOKEN=<shared-secret>
-```
-
-plus the usual public-facing settings (`DEVINORIUM_SECURE_COOKIE=true`,
-a reverse proxy terminating TLS, and so on).
-
-### Satellite
-
-On each private machine:
-
-```sh
-DEVINORIUM_FEDERATION_TOKEN=<shared-secret>
-DEVINORIUM_HUB_URL=https://hub.example
-DEVINORIUM_NODE_NAME=workstation          # optional; defaults to hostname
-DEVINORIUM_NODE_URL=http://192.168.1.10:7878  # optional; see below
-```
-
-`DEVINORIUM_NODE_URL` is the address the **hub** dials to reach the
-satellite. If unset, the satellite reports its bound address (fine when the
-hub is on the same LAN). Set it when the hub cannot reach the satellite's
-bind address directly, for example a Tailscale address, a tunnel endpoint,
-or a port-forward. The satellite keeps working standalone; the hub just
-cannot proxy to it until the URL is reachable.
-
-Satellites never need inbound connectivity from the public internet. They
-do need to reach the hub (to register) and the hub needs to reach them (to
-proxy). If the hub cannot reach the satellite at all, use a tunnel both
-ways, for example put the satellite on the same Tailnet as the hub and
-advertise `DEVINORIUM_NODE_URL=https://<machine>.tailnet.ts.net` (see
-`docs/deployment.md` for Tailscale serve).
+On the hub, go to Settings -> Servers -> Nodes, press "Pair a machine",
+and enter the satellite's URL (for example `http://192.168.1.10:7878`) and
+the code it printed. The hub verifies the address is a satellite, exchanges
+the code for a node token, and stores the pairing.
 
 ## Using it
 
-The owner sees a node picker in the sidebar once at least one satellite is
-registered. Selecting a node switches the whole app (threads, projects,
-files, git, terminal, composer) to that machine, the same way switching
-servers does. Choosing the hub entry switches back.
+When creating a project (existing path, new folder, or git clone) the
+dialog offers a machine picker: this server or any paired node. All work
+for that project runs on the chosen machine: agents, files, git
+operations, worktrees, terminals, and model listings.
 
-A satellite that misses heartbeats shows as offline; requests to it return
-`502` until it re-registers. Nodes can be deregistered under Settings →
-Servers → Nodes. Deregistration only removes the hub's row: a still-running
-satellite re-registers on its next heartbeat (within 30 s). To remove a
-node for good, stop its `DEVINORIUM_HUB_URL` config first; to evict a
-compromised one, rotate `DEVINORIUM_FEDERATION_TOKEN` on every machine.
+A node that stops answering shows as offline in the node list; requests to
+it fail until it comes back. Removing a node drops the stored token; the
+satellite forgets the pairing on its next restart, or immediately if you
+delete its state file.
 
-Non-owner accounts never see federation data: listing nodes and every
-proxied call are owner-only.
+Non-owner accounts never see federation data: pairing, listing, and any
+project bound to a node are owner-only.
 
 ## How it works
 
-- `POST /api/federation/register`: satellites announce themselves with
-  `Authorization: Bearer <federation-token>`. No session needed; the shared
-  token is the credential.
-- `GET /api/federation/nodes`: owner-only node list.
-- `DELETE /api/federation/nodes/:id`: owner-only deregistration.
-- `ANY /api/federation/nodes/:id/proxy/*`: the hub forwards the request to
-  the satellite's `base_url`, replacing the caller's credentials with the
-  federation token (which the satellite maps onto its local owner account)
-  and tagging the caller's username in `x-devinorium-proxy-user` for the
-  satellite's logs. Plain requests stream both ways, so SSE message streams
-  work; WebSocket upgrades are tunneled frame-for-frame so remote terminals
-  work, including `wss://` when the satellite serves TLS.
-- A hop-count header caps forwarding so a misconfigured ring of hubs fails
-  fast instead of looping.
-- Satellite response headers that would act on the hub's origin
-  (`Set-Cookie`, `Location`, `WWW-Authenticate`, `Clear-Site-Data`,
-  `Alt-Svc`, security policy headers, and cache validators) are dropped
-  before relaying, so a node cannot overwrite the caller's hub session or
-  weaken the hub's security posture. Proxied responses are also marked
-  `Content-Security-Policy: sandbox` and `Cache-Control: no-store`, so
-  satellite-served documents can never run script in the hub's origin and
-  one node's cached response is never replayed while another is selected.
-- Request bodies through the proxy are bounded by the hub's
-  `DEVINORIUM_MAX_BODY_BYTES` (default 16 MiB); raise it on the hub if
-  uploads to satellites must be larger.
+- `GET /api/node/info`: unauthenticated identity probe (`satellite: true`,
+  node id, name, version).
+- `POST /api/node/pair`: exchanges the printed code for a node token.
+  Wrong codes are rate-limited per client address and lock out briefly
+  after repeated failures.
+- Everything else under `/api/node/*` requires
+  `Authorization: Bearer <node-token>`: runs (with server-sent events for
+  session updates), provider operations, files, git, terminals, and
+  clones.
+- Hub-side: `GET /api/federation/nodes` (owner-only list, with a live
+  online probe), `POST /api/federation/nodes/pair`, and
+  `DELETE /api/federation/nodes/:id`.
+- `projects.node_id` binds a project to a node. The hub resolves that
+  binding at request time and forwards the call to the satellite with the
+  stored token; the caller's username rides along in
+  `x-devinorium-proxy-user` for the satellite's logs.
 
 ## Security notes
 
-- Treat `DEVINORIUM_FEDERATION_TOKEN` like a root password for the whole
-  fleet: anyone holding it can register a node and authenticate as owner on
-  any machine configured with it, hub included. Keep it out of version
-  control and out of logs.
-- The token is a bearer credential, so proxy hops must run over TLS or a
-  trusted private path (Tailnet). Never proxy over plain public HTTP.
-- A satellite trusts any request carrying the token: firewall it so only
-  the hub (or your tailnet) can reach it.
-- Session cookies never cross the proxy: the hub strips `Cookie`,
-  `Authorization`, `Origin`, and forwarding headers before contacting the
-  satellite and injects the federation token instead.
+- The pairing code is printed in the satellite's stderr once per boot, is
+  consumed by the first successful pair, and is never persisted. Keep the satellite's port firewalled to machines
+  that may pair: anyone who can reach it while it is unpaired can claim it
+  with a guessed code (the code is ~64 bits and guesses are rate-limited,
+  but pairing is an admin operation).
+- The node token is a bearer credential granting full control of the
+  satellite's machine-local services. It lives in the hub's database and
+  in the satellite's state file (hashed there). Proxy traffic should run
+  over TLS or a trusted private path such as a Tailnet.
+- A paired node has no concept of hub accounts: the hub enforces
+  owner-only access before forwarding, then the satellite trusts the
+  token. Revoke by deleting the node on the hub, or wipe the satellite's
+  state file to drop all pairings.

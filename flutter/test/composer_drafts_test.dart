@@ -61,7 +61,7 @@ class _DraftApi extends ApiService {
       Future.value([ProviderInfo(id: 'devin-cli', name: 'Devin CLI')]);
 
   @override
-  Future<List<ModelInfo>> listModels({String? provider}) =>
+  Future<List<ModelInfo>> listModels({String? provider, String? nodeId}) =>
       Future.value(const []);
 
   @override
@@ -349,35 +349,37 @@ void main() {
     expect(drafts['test:t2'], 't2 draft');
   });
 
-  test('switching mid-send restores the text and does not wedge resend',
-      () async {
-    // A send stream that never emits keeps the turn in flight.
-    final api = _DraftApi()
-      ..sendHandler = (_) =>
-          Stream<SseEvent>.fromFuture(Completer<SseEvent>().future);
-    final state = _state(api);
-    addTearDown(state.dispose);
+  test(
+    'switching mid-send restores the text and does not wedge resend',
+    () async {
+      // A send stream that never emits keeps the turn in flight.
+      final api = _DraftApi()
+        ..sendHandler = (_) =>
+            Stream<SseEvent>.fromFuture(Completer<SseEvent>().future);
+      final state = _state(api);
+      addTearDown(state.dispose);
 
-    await state.openThread('t1');
-    state.setComposerText('still sending');
-    await state.sendMessage();
-    expect(api.sentPrompts, ['still sending']);
+      await state.openThread('t1');
+      state.setComposerText('still sending');
+      await state.sendMessage();
+      expect(api.sentPrompts, ['still sending']);
 
-    // The switch cancels the unacked stream; the text must come back as a
-    // draft rather than vanish.
-    await state.openThread('t2');
-    await _flush();
-    expect((await _storedDrafts())['test:t1'], 'still sending');
+      // The switch cancels the unacked stream; the text must come back as a
+      // draft rather than vanish.
+      await state.openThread('t2');
+      await _flush();
+      expect((await _storedDrafts())['test:t1'], 'still sending');
 
-    // resumeThread reuses the cached store; it must not be stuck on the
-    // orphaned pending send.
-    await state.resumeThread('t1');
-    expect(state.composerText, 'still sending');
+      // resumeThread reuses the cached store; it must not be stuck on the
+      // orphaned pending send.
+      await state.resumeThread('t1');
+      expect(state.composerText, 'still sending');
 
-    api.sendHandler = null;
-    await state.sendMessage();
-    expect(api.sentPrompts, ['still sending', 'still sending']);
-  });
+      api.sendHandler = null;
+      await state.sendMessage();
+      expect(api.sentPrompts, ['still sending', 'still sending']);
+    },
+  );
 
   test('deleting a thread drops its draft', () async {
     final api = _DraftApi();

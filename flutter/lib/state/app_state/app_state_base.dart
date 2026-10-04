@@ -192,8 +192,6 @@ abstract class AppStateBase extends ChangeNotifier {
   set _federationSelfName(String value);
   bool get _federationSupported;
   set _federationSupported(bool value);
-  String? get _activeNodeId;
-  set _activeNodeId(String? value);
   int get _federationSeq;
   set _federationSeq(int value);
   String get _selectedModel;
@@ -206,6 +204,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _selectedProvider(String value);
   String get _modelsProvider;
   set _modelsProvider(String value);
+  String get _modelsNode;
+  set _modelsNode(String value);
   int get _modelsRequestSeq;
   set _modelsRequestSeq(int value);
   ComposerMode get _composerMode;
@@ -296,8 +296,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _resumeThreadFuture(Future<void>? value);
   Future<void>? get _ongoingCheck;
   set _ongoingCheck(Future<void>? value);
-  (String?, String?)? get _ongoingCheckTarget;
-  set _ongoingCheckTarget((String?, String?)? value);
+  String? get _ongoingCheckTarget;
+  set _ongoingCheckTarget(String? value);
   bool get _wantsResume;
   set _wantsResume(bool value);
   bool get _isResuming;
@@ -386,14 +386,14 @@ abstract class AppStateBase extends ChangeNotifier {
   List<FederationNode> get federationNodes;
   String get federationSelfName;
   bool get federationSupported;
-  String? get activeNodeId;
-  FederationNode? get activeNode;
   ApiService get hubApi;
   Future<void> refreshFederationNodes();
-  Future<void> switchNode(String? nodeId);
+  Future<String?> pairFederationNode({
+    required String url,
+    required String code,
+    String? name,
+  });
   Future<String?> removeFederationNode(String nodeId);
-  Future<void> restoreNodeSelection();
-  void dropNodeSelectionFor(String serverId);
   String get selectedModel;
   String get selectedReasoning;
   String get selectedPermission;
@@ -586,7 +586,7 @@ abstract class AppStateBase extends ChangeNotifier {
   bool _checkAuthFailure(Object e);
   Future<void> _routeToLogin();
   Future<void> _loadUserAndData();
-  Future<void> _loadUserAndDataWithNodeFallback();
+  String? get _activeProjectNodeId;
   Future<void> _loadUserThreadsChunk({bool reset = false});
   Future<void> _loadProjectThreadsChunk(int projectId, {bool reset = false});
   void _mergeThreads(List<Thread> incoming);
@@ -615,11 +615,15 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> logout();
   Future<void> selectProject(int id);
   Future<void> selectAllProjects();
-  Future<void> createProject({required String name, required String path});
-  Future<void> createNewProject(String name);
+  Future<void> createProject({
+    required String name,
+    required String path,
+    String? nodeId,
+  });
+  Future<void> createNewProject(String name, {String? nodeId});
   void openAddProjectDialog();
   void openCloneRepoDialog();
-  Future<String?> cloneRepo(String url);
+  Future<String?> cloneRepo(String url, {String? nodeId});
   Future<void> openClonedProjectByPath(String path);
   Future<void> deleteProject(int id);
   Future<void> reorderProjects(List<int> ids);

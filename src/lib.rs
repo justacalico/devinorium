@@ -14,10 +14,13 @@ pub mod lock;
 pub mod machine_grants;
 pub mod mcp;
 pub mod mcpb;
+pub mod node;
+pub mod node_client;
 pub mod plan;
 pub mod projects;
 pub mod providers;
 pub mod push;
+pub mod satellite;
 pub mod security;
 pub mod skills;
 pub mod ssh;
@@ -76,10 +79,14 @@ pub struct AppState {
     /// Machine-control instructions point agents at this so `--dev`'s
     /// random port and wildcard binds resolve to a reachable URL.
     pub bound_addr: Arc<std::sync::OnceLock<std::net::SocketAddr>>,
-    /// Outbound HTTP client for federation: satellite registration
-    /// heartbeats and hub-side request proxying. Has no overall timeout so
-    /// proxied SSE streams can run indefinitely.
+    /// Outbound HTTP client for calls to paired satellite nodes. Has no
+    /// overall timeout so run event streams can stay open indefinitely.
     pub http_client: reqwest::Client,
+    /// Terminal sessions hosted on a satellite node, keyed by the session id
+    /// the node returned. Entries die with the session or a hub restart;
+    /// the satellite's own idle sweep reclaims strays.
+    pub remote_terminals:
+        Arc<std::sync::Mutex<HashMap<String, db::federation_nodes::FederationNodeRow>>>,
     /// Shared weighted token bucket. The global middleware charges by
     /// endpoint class; auth/login code debits extra on failures so probes
     /// cannot hide behind header tricks or rotating source IPs.
@@ -196,12 +203,10 @@ pub fn build_app(state: AppState) -> Router {
     let limiter = state.rate_limiter.clone();
 
     // Public routes (no auth). Machine-control endpoints authenticate
-    // with per-run capability tokens inside their handlers; the federation
-    // register endpoint authenticates with the shared federation token.
+    // with per-run capability tokens inside their handlers.
     let public = api::auth::router()
         .merge(api::server::router())
         .merge(api::machine_control::router())
-        .merge(api::federation::public_router())
         .route_layer(RequestBodyLimitLayer::new(max_body));
 
     // Protected routes (require auth + role=user).

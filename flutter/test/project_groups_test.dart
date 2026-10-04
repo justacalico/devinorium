@@ -108,7 +108,11 @@ class _FakeApiService extends ApiService {
   }
 
   @override
-  Future<Project> createProject({required String name, required String path}) {
+  Future<Project> createProject({
+    required String name,
+    required String path,
+    String? nodeId,
+  }) {
     final p = Project(
       id: nextProjectId++,
       name: name,
@@ -158,7 +162,7 @@ class _FakeApiService extends ApiService {
   Completer<String>? cloneRepoCompleter;
 
   @override
-  Future<String> cloneRepo(String url, {int? groupId}) {
+  Future<String> cloneRepo(String url, {String? nodeId, int? groupId}) {
     cloneRepoCalls.add((url, groupId));
     final completer = cloneRepoCompleter;
     if (completer != null) return completer.future;

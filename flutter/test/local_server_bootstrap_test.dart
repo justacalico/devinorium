@@ -12,36 +12,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeApi extends ApiService {
   _FakeApi()
-      : super(
-          client: ApiClient.withClient(
-            MockClient((_) async => http.Response('{}', 200)),
-          ),
-        );
-
-  @override
-  Future<User> me() async => User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
+    : super(
+        client: ApiClient.withClient(
+          MockClient((_) async => http.Response('{}', 200)),
+        ),
       );
 
   @override
-  Future<List<ProviderInfo>> listProviders() async =>
-      [ProviderInfo(id: 'devin-cli', name: 'Devin CLI')];
+  Future<User> me() async => User(
+    id: 1,
+    username: 'owner',
+    role: 'user',
+    totpEnabled: false,
+    isOwner: true,
+    providerId: 'devin-cli',
+    providerCommand: 'devin',
+  );
 
   @override
-  Future<List<ModelInfo>> listModels({String? provider}) async => [
-        ModelInfo(
-          id: 'glm-5-2',
-          label: 'GLM',
-          costTier: 'free',
-          family: 'glm',
-        ),
-      ];
+  Future<List<ProviderInfo>> listProviders() async => [
+    ProviderInfo(id: 'devin-cli', name: 'Devin CLI'),
+  ];
+
+  @override
+  Future<List<ModelInfo>> listModels({
+    String? provider,
+    String? nodeId,
+  }) async => [
+    ModelInfo(id: 'glm-5-2', label: 'GLM', costTier: 'free', family: 'glm'),
+  ];
 
   @override
   Future<List<Project>> listProjects({int? limit, int? offset}) async => [];
@@ -104,180 +103,181 @@ void main() {
   });
 
   group('bundled local server', () {
-    test('bootstrap registers the local profile when the server starts',
-        () async {
-      final manager = _FakeLocalManager(
-        supported: true,
-        endpointToReturn: const LocalServerEndpoint(
-          baseUrl: 'http://127.0.0.1:43210',
-          token: 'tok',
-        ),
-      );
-      final state = AppState.test(
-        localServerManager: manager,
-        api: null,
-      );
-      addTearDown(state.dispose);
+    test(
+      'bootstrap registers the local profile when the server starts',
+      () async {
+        final manager = _FakeLocalManager(
+          supported: true,
+          endpointToReturn: const LocalServerEndpoint(
+            baseUrl: 'http://127.0.0.1:43210',
+            token: 'tok',
+          ),
+        );
+        final state = AppState.test(localServerManager: manager, api: null);
+        addTearDown(state.dispose);
 
-      await state.bootstrap();
+        await state.bootstrap();
 
-      expect(manager.ensureCalls, 1);
-      final profile =
-          state.multiServerState.profileById(MultiServerState.localProfileId);
-      expect(profile, isNotNull);
-      expect(profile!.isLocal, isTrue);
-      expect(profile.baseUrl, 'http://127.0.0.1:43210');
-      expect(profile.token, 'tok');
-      expect(state.activeServerId, MultiServerState.localProfileId);
-    });
+        expect(manager.ensureCalls, 1);
+        final profile = state.multiServerState.profileById(
+          MultiServerState.localProfileId,
+        );
+        expect(profile, isNotNull);
+        expect(profile!.isLocal, isTrue);
+        expect(profile.baseUrl, 'http://127.0.0.1:43210');
+        expect(profile.token, 'tok');
+        expect(state.activeServerId, MultiServerState.localProfileId);
+      },
+    );
 
-    test('bootstrap keeps a remote server active when one is configured',
-        () async {
-      final multi = MultiServerState();
-      multi.addTestConnection(
-        ServerProfile(
-          id: 'remote',
-          label: 'remote',
-          baseUrl: 'http://remote:7878',
-          token: 't',
-          username: 'owner',
-          createdAt: DateTime(2024, 1, 1).toUtc(),
-          isPrimary: true,
-        ),
-        _FakeApi(),
-      );
-      final manager = _FakeLocalManager(
-        supported: true,
-        endpointToReturn: const LocalServerEndpoint(
-          baseUrl: 'http://127.0.0.1:43210',
-          token: 'tok',
-        ),
-      );
-      final state = AppState.test(
-        multiServerState: multi,
-        localServerManager: manager,
-      );
-      addTearDown(state.dispose);
+    test(
+      'bootstrap keeps a remote server active when one is configured',
+      () async {
+        final multi = MultiServerState();
+        multi.addTestConnection(
+          ServerProfile(
+            id: 'remote',
+            label: 'remote',
+            baseUrl: 'http://remote:7878',
+            token: 't',
+            username: 'owner',
+            createdAt: DateTime(2024, 1, 1).toUtc(),
+            isPrimary: true,
+          ),
+          _FakeApi(),
+        );
+        final manager = _FakeLocalManager(
+          supported: true,
+          endpointToReturn: const LocalServerEndpoint(
+            baseUrl: 'http://127.0.0.1:43210',
+            token: 'tok',
+          ),
+        );
+        final state = AppState.test(
+          multiServerState: multi,
+          localServerManager: manager,
+        );
+        addTearDown(state.dispose);
 
-      await state.bootstrap();
+        await state.bootstrap();
 
-      expect(state.activeServerId, 'remote');
-      expect(
-        multi.profileById(MultiServerState.localProfileId)!.isPrimary,
-        isFalse,
-      );
-      // The remote profile's own api still serves the session.
-      expect(state.user?.username, 'owner');
-    });
+        expect(state.activeServerId, 'remote');
+        expect(
+          multi.profileById(MultiServerState.localProfileId)!.isPrimary,
+          isFalse,
+        );
+        // The remote profile's own api still serves the session.
+        expect(state.user?.username, 'owner');
+      },
+    );
 
-    test('bootstrap drops a stale local profile when no binary is bundled',
-        () async {
-      final multi = MultiServerState();
-      multi.addTestConnection(
-        ServerProfile(
-          id: MultiServerState.localProfileId,
-          label: 'local',
-          baseUrl: 'http://127.0.0.1:43210',
-          token: 'stale',
-          username: 'local',
-          createdAt: DateTime(2024, 1, 1).toUtc(),
-          isPrimary: true,
-          isLocal: true,
-        ),
-        _FakeApi(),
-      );
-      final manager =
-          _FakeLocalManager(supported: true, binaryAvailable: false);
-      final state = AppState.test(
-        multiServerState: multi,
-        localServerManager: manager,
-      );
-      addTearDown(state.dispose);
+    test(
+      'bootstrap drops a stale local profile when no binary is bundled',
+      () async {
+        final multi = MultiServerState();
+        multi.addTestConnection(
+          ServerProfile(
+            id: MultiServerState.localProfileId,
+            label: 'local',
+            baseUrl: 'http://127.0.0.1:43210',
+            token: 'stale',
+            username: 'local',
+            createdAt: DateTime(2024, 1, 1).toUtc(),
+            isPrimary: true,
+            isLocal: true,
+          ),
+          _FakeApi(),
+        );
+        final manager = _FakeLocalManager(
+          supported: true,
+          binaryAvailable: false,
+        );
+        final state = AppState.test(
+          multiServerState: multi,
+          localServerManager: manager,
+        );
+        addTearDown(state.dispose);
 
-      await state.bootstrap();
+        await state.bootstrap();
 
-      expect(
-        multi.profileById(MultiServerState.localProfileId),
-        isNull,
-      );
-    });
+        expect(multi.profileById(MultiServerState.localProfileId), isNull);
+      },
+    );
 
-    test('bootstrap keeps the local profile on a transient start failure',
-        () async {
-      final multi = MultiServerState();
-      multi.addTestConnection(
-        ServerProfile(
-          id: MultiServerState.localProfileId,
-          label: 'local',
-          baseUrl: 'http://127.0.0.1:43210',
-          token: 'stale',
-          username: 'local',
-          createdAt: DateTime(2024, 1, 1).toUtc(),
-          isPrimary: true,
-          isLocal: true,
-        ),
-        _FakeApi(),
-      );
-      // Binary present, but ensureRunning could not get a healthy server.
-      final manager = _FakeLocalManager(supported: true);
-      final state = AppState.test(
-        multiServerState: multi,
-        localServerManager: manager,
-      );
-      addTearDown(state.dispose);
+    test(
+      'bootstrap keeps the local profile on a transient start failure',
+      () async {
+        final multi = MultiServerState();
+        multi.addTestConnection(
+          ServerProfile(
+            id: MultiServerState.localProfileId,
+            label: 'local',
+            baseUrl: 'http://127.0.0.1:43210',
+            token: 'stale',
+            username: 'local',
+            createdAt: DateTime(2024, 1, 1).toUtc(),
+            isPrimary: true,
+            isLocal: true,
+          ),
+          _FakeApi(),
+        );
+        // Binary present, but ensureRunning could not get a healthy server.
+        final manager = _FakeLocalManager(supported: true);
+        final state = AppState.test(
+          multiServerState: multi,
+          localServerManager: manager,
+        );
+        addTearDown(state.dispose);
 
-      await state.bootstrap();
+        await state.bootstrap();
 
-      expect(
-        multi.profileById(MultiServerState.localProfileId),
-        isNotNull,
-      );
-    });
+        expect(multi.profileById(MultiServerState.localProfileId), isNotNull);
+      },
+    );
 
-    test('switchServer back to the local profile re-ensures the server',
-        () async {
-      final multi = MultiServerState();
-      multi.addTestConnection(
-        ServerProfile(
-          id: 'remote',
-          label: 'remote',
-          baseUrl: 'http://remote:7878',
-          token: 't',
-          username: 'owner',
-          createdAt: DateTime(2024, 1, 1).toUtc(),
-          isPrimary: true,
-        ),
-        _FakeApi(),
-      );
-      final manager = _FakeLocalManager(
-        supported: true,
-        endpointToReturn: const LocalServerEndpoint(
-          baseUrl: 'http://127.0.0.1:43210',
-          token: 'tok',
-        ),
-      );
-      final state = AppState.test(
-        multiServerState: multi,
-        localServerManager: manager,
-      );
-      addTearDown(state.dispose);
-      await state.bootstrap();
-      expect(state.activeServerId, 'remote');
-      final callsAfterBoot = manager.ensureCalls;
+    test(
+      'switchServer back to the local profile re-ensures the server',
+      () async {
+        final multi = MultiServerState();
+        multi.addTestConnection(
+          ServerProfile(
+            id: 'remote',
+            label: 'remote',
+            baseUrl: 'http://remote:7878',
+            token: 't',
+            username: 'owner',
+            createdAt: DateTime(2024, 1, 1).toUtc(),
+            isPrimary: true,
+          ),
+          _FakeApi(),
+        );
+        final manager = _FakeLocalManager(
+          supported: true,
+          endpointToReturn: const LocalServerEndpoint(
+            baseUrl: 'http://127.0.0.1:43210',
+            token: 'tok',
+          ),
+        );
+        final state = AppState.test(
+          multiServerState: multi,
+          localServerManager: manager,
+        );
+        addTearDown(state.dispose);
+        await state.bootstrap();
+        expect(state.activeServerId, 'remote');
+        final callsAfterBoot = manager.ensureCalls;
 
-      // The stored local endpoint is stale; switching must re-ensure first.
-      await state.switchServer(MultiServerState.localProfileId);
+        // The stored local endpoint is stale; switching must re-ensure first.
+        await state.switchServer(MultiServerState.localProfileId);
 
-      expect(state.activeServerId, MultiServerState.localProfileId);
-      expect(manager.ensureCalls, greaterThan(callsAfterBoot));
-    });
+        expect(state.activeServerId, MultiServerState.localProfileId);
+        expect(manager.ensureCalls, greaterThan(callsAfterBoot));
+      },
+    );
 
     test('unsupported platforms never touch the manager', () async {
       final manager = _FakeLocalManager(supported: false);
-      final state = AppState.test(
-        localServerManager: manager,
-        api: null,
-      );
+      final state = AppState.test(localServerManager: manager, api: null);
       addTearDown(state.dispose);
 
       await state.bootstrap();
@@ -286,44 +286,42 @@ void main() {
       expect(state.multiServerState.hasAnyServer, isFalse);
     });
 
-    test('an unexpected exit while active re-registers a fresh endpoint',
-        () async {
-      final manager = _FakeLocalManager(
-        supported: true,
-        endpointToReturn: const LocalServerEndpoint(
-          baseUrl: 'http://127.0.0.1:43210',
-          token: 'tok',
-        ),
-      );
-      final state = AppState.test(
-        localServerManager: manager,
-        api: null,
-      );
-      addTearDown(state.dispose);
-      await state.bootstrap();
-      expect(state.activeServerId, MultiServerState.localProfileId);
+    test(
+      'an unexpected exit while active re-registers a fresh endpoint',
+      () async {
+        final manager = _FakeLocalManager(
+          supported: true,
+          endpointToReturn: const LocalServerEndpoint(
+            baseUrl: 'http://127.0.0.1:43210',
+            token: 'tok',
+          ),
+        );
+        final state = AppState.test(localServerManager: manager, api: null);
+        addTearDown(state.dispose);
+        await state.bootstrap();
+        expect(state.activeServerId, MultiServerState.localProfileId);
 
-      // Second ensure returns the rotated endpoint.
-      manager.endpointToReturn = const LocalServerEndpoint(
-        baseUrl: 'http://127.0.0.1:45678',
-        token: 'tok2',
-      );
-      manager.onExit?.call(1);
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+        // Second ensure returns the rotated endpoint.
+        manager.endpointToReturn = const LocalServerEndpoint(
+          baseUrl: 'http://127.0.0.1:45678',
+          token: 'tok2',
+        );
+        manager.onExit?.call(1);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      // The dead endpoint also fails the next health check, which re-runs
-      // ensure again — all paths converge on re-registering the server.
-      expect(manager.ensureCalls, greaterThanOrEqualTo(2));
-      expect(
-        state.multiServerState
-            .profileById(MultiServerState.localProfileId)!
-            .baseUrl,
-        'http://127.0.0.1:45678',
-      );
-    });
+        // The dead endpoint also fails the next health check, which re-runs
+        // ensure again — all paths converge on re-registering the server.
+        expect(manager.ensureCalls, greaterThanOrEqualTo(2));
+        expect(
+          state.multiServerState
+              .profileById(MultiServerState.localProfileId)!
+              .baseUrl,
+          'http://127.0.0.1:45678',
+        );
+      },
+    );
 
-    test('an exit while a remote server is active does not restart',
-        () async {
+    test('an exit while a remote server is active does not restart', () async {
       final multi = MultiServerState();
       multi.addTestConnection(
         ServerProfile(

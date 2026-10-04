@@ -1536,16 +1536,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get federationNodes => '节点';
 
   @override
-  String get federationNodesHint => '注册到此服务器的卫星机器。选择一个节点后应用将通过此服务器在该机器上运行。';
+  String get federationNodesHint =>
+      '与此服务器配对的卫星机器。在节点上创建的项目会在该机器上运行代理、文件、Git 和终端。';
 
   @override
-  String get noNodesRegistered => '未注册任何卫星节点';
-
-  @override
-  String get switchNode => '切换节点';
-
-  @override
-  String get thisHub => '本枢纽';
+  String get noNodesRegistered => '尚未配对任何机器';
 
   @override
   String get nodeOnline => '在线';
@@ -1558,7 +1553,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String removeNodeConfirm(String name) {
-    return '移除“$name”？除非停止该卫星节点，否则它会在下次心跳时再次出现。';
+    return '移除“$name”？该节点上的项目将停止工作，直到重新配对。';
   }
 
   @override
@@ -2114,4 +2109,40 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get skillPickerEmpty => '没有匹配的技能。';
+
+  @override
+  String get pairNode => '配对机器';
+
+  @override
+  String get pairNodeTitle => '配对机器';
+
+  @override
+  String get pairNodeHint =>
+      '以 DEVINORIUM_SATELLITE=1 启动的 Devinorium 服务器会在启动时打印配对码。在此输入它的地址和配对码。';
+
+  @override
+  String get nodeUrl => '服务器地址';
+
+  @override
+  String get pairingCode => '配对码';
+
+  @override
+  String get nodeNameOptional => '名称（可选）';
+
+  @override
+  String get pair => '配对';
+
+  @override
+  String get nodePairFieldsRequired => '需要填写地址和配对码';
+
+  @override
+  String get projectTargetMachine => '机器';
+
+  @override
+  String get thisServer => '本服务器';
+
+  @override
+  String createProjectDestinationNode(Object name, Object node) {
+    return '将在 $node 的 ~/.devinorium/projects/$name 下创建';
+  }
 }

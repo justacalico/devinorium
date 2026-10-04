@@ -118,7 +118,15 @@ async fn auto_link_thread_merge_request(
         }
     };
 
-    let remote_url = match state.git.remote_url(Path::new(&project.path)).await {
+    let git = match crate::node_client::git_backend_for_project(state, &project).await {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to resolve git backend for auto-link");
+            return None;
+        }
+    };
+
+    let remote_url = match git.remote_url(Path::new(&project.path)).await {
         Ok(u) => u,
         Err(crate::git::GitError::NotEnabled | crate::git::GitError::NotRepo) => return None,
         Err(e) => {

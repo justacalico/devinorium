@@ -20,6 +20,9 @@ class Project {
   final String gitBranch;
   final String projectType;
   final int? groupId;
+
+  /// Paired node this project lives on; null means this server.
+  final String? nodeId;
   final String createdAt;
   final String updatedAt;
 
@@ -33,6 +36,7 @@ class Project {
     this.gitBranch = '',
     this.projectType = 'generic',
     this.groupId,
+    this.nodeId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -47,6 +51,7 @@ class Project {
     gitBranch: j['branch'] as String? ?? '',
     projectType: j['project_type'] as String? ?? 'generic',
     groupId: (j['group_id'] as num?)?.toInt(),
+    nodeId: j['node_id'] as String?,
     createdAt: j['created_at'] as String? ?? '',
     updatedAt: j['updated_at'] as String? ?? '',
   );
@@ -61,6 +66,7 @@ class Project {
     String? gitBranch,
     String? projectType,
     Object? groupId = _unset,
+    Object? nodeId = _unset,
     String? createdAt,
     String? updatedAt,
   }) => Project(
@@ -73,6 +79,7 @@ class Project {
     gitBranch: gitBranch ?? this.gitBranch,
     projectType: projectType ?? this.projectType,
     groupId: groupId is _Unset ? this.groupId : (groupId as int?),
+    nodeId: nodeId is _Unset ? this.nodeId : (nodeId as String?),
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -90,12 +97,13 @@ class Project {
         gitBranch == other.gitBranch &&
         projectType == other.projectType &&
         groupId == other.groupId &&
+        nodeId == other.nodeId &&
         createdAt == other.createdAt &&
         updatedAt == other.updatedAt;
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     name,
     path,
@@ -105,9 +113,10 @@ class Project {
     gitBranch,
     projectType,
     groupId,
+    nodeId,
     createdAt,
     updatedAt,
-  );
+  ]);
 }
 
 LinkedMergeRequestRef? _parseLinkedMr(Object? raw) {
@@ -281,7 +290,7 @@ class Thread {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     title,
     threadGroupId,
@@ -302,7 +311,7 @@ class Thread {
     maxOutputTokens,
     lastMessageRole,
     unread,
-  );
+  ]);
 }
 
 /// A thread dropped into the composer so its history is sent along as

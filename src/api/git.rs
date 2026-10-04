@@ -67,26 +67,46 @@ fn default_limit() -> usize {
     100
 }
 
-/// Resolve the directory git commands run in for a request.
+/// Resolve the machine and directory git commands run against for a
+/// request.
 ///
 /// A non-empty `thread_id` takes precedence over the project: the root
 /// becomes the thread's working directory — its worktree in worktree mode,
-/// or the project root otherwise — matching the file API's scoping.
-async fn repo_path(
+/// or the project root otherwise — matching the file API's scoping. When
+/// the resolved project is bound to a satellite node the returned backend
+/// is the node's remote git service and the path lives on that machine;
+/// remote operations stay owner-only.
+async fn git_target(
     state: &AppState,
-    user_id: i64,
+    user: &crate::db::UserRow,
     project_id: i64,
     thread_id: Option<&str>,
-) -> Result<PathBuf, Response> {
+) -> Result<(crate::node_client::GitBackend, PathBuf), Response> {
+    let local = || crate::node_client::GitBackend::Local(state.git.clone());
+    let remote = |node: &crate::db::federation_nodes::FederationNodeRow| {
+        crate::node_client::NodeClient::for_node(state, node).map(|c| {
+            crate::node_client::GitBackend::Remote(crate::node_client::RemoteGit::new(
+                c.with_proxy_user(&user.username),
+            ))
+        })
+    };
+    let owner_only = || {
+        (
+            StatusCode::FORBIDDEN,
+            Json(crate::api::ApiError::new("paired machines are owner-only")),
+        )
+            .into_response()
+    };
+
     if let Some(tid) = thread_id.map(str::trim).filter(|s| !s.is_empty()) {
-        return match state.db.get_thread(tid, user_id).await {
+        return match state.db.get_thread(tid, user.id).await {
             Ok(Some(t)) => {
                 // A thread with no project — or whose project row was
                 // deleted — would fall back to the home dir, where git
                 // mutations must never run. Reject instead.
                 let project_exists = match t.project_id {
                     Some(pid) => {
-                        matches!(state.db.get_project(pid, user_id).await, Ok(Some(_)))
+                        matches!(state.db.get_project(pid, user.id).await, Ok(Some(_)))
                     }
                     None => false,
                 };
@@ -97,9 +117,26 @@ async fn repo_path(
                     )
                         .into_response());
                 }
-                crate::api::threads::plan::project_working_dir_for_thread(state, &t)
-                    .await
-                    .map_err(|e| crate::api::map_err_internal(e).into_response())
+                let target = match crate::api::threads::plan::thread_target(state, &t).await {
+                    Ok(t) => t,
+                    Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
+                };
+                match target.node {
+                    Some(node) => {
+                        if !user.is_owner {
+                            return Err(owner_only());
+                        }
+                        match remote(&node) {
+                            Some(backend) => Ok((backend, target.dir)),
+                            None => Err((
+                                StatusCode::BAD_GATEWAY,
+                                Json(crate::api::ApiError::new("node unreachable")),
+                            )
+                                .into_response()),
+                        }
+                    }
+                    None => Ok((local(), target.dir)),
+                }
             }
             _ => Err((
                 StatusCode::BAD_REQUEST,
@@ -108,8 +145,27 @@ async fn repo_path(
                 .into_response()),
         };
     }
-    match state.db.get_project(project_id, user_id).await {
-        Ok(Some(p)) => Ok(PathBuf::from(&p.path)),
+    match state.db.get_project(project_id, user.id).await {
+        Ok(Some(p)) => {
+            let node = match crate::node_client::bound_node(state, &p).await {
+                Ok(n) => n,
+                Err(e) => return Err(crate::node_client::node_bad_gateway(e.to_string())),
+            };
+            if let Some(node) = node {
+                if !user.is_owner {
+                    return Err(owner_only());
+                }
+                return match remote(&node) {
+                    Some(backend) => Ok((backend, PathBuf::from(&p.path))),
+                    None => Err((
+                        StatusCode::BAD_GATEWAY,
+                        Json(crate::api::ApiError::new("node unreachable")),
+                    )
+                        .into_response()),
+                };
+            }
+            Ok((local(), PathBuf::from(&p.path)))
+        }
         _ => Err((
             StatusCode::NOT_FOUND,
             Json(crate::api::ApiError::new("project not found")),
@@ -262,12 +318,12 @@ async fn status(
     Path(id): Path<i64>,
     Query(q): Query<RepoQuery>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.repo_status(path.as_path(), q.force).await {
+    match git.repo_status(path.as_path(), q.force).await {
         Ok(s) => Json(RepoStatusOut {
             is_repo: s.is_repo,
             branch: s.branch,
@@ -290,12 +346,12 @@ async fn status_summary(
     Path(id): Path<i64>,
     Query(q): Query<RepoQuery>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.status(path.as_path(), q.force).await {
+    match git.status(path.as_path(), q.force).await {
         Ok(v) => Json(v).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -309,12 +365,12 @@ async fn changes(
     Path(id): Path<i64>,
     Query(q): Query<RepoQuery>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.changes(path.as_path(), q.force).await {
+    match git.changes(path.as_path(), q.force).await {
         Ok(v) => Json(v).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -342,13 +398,12 @@ async fn change_diff(
         )
             .into_response();
     }
-    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
+    match git
         .change_diff(
             path.as_path(),
             rel,
@@ -388,16 +443,12 @@ async fn discard(
         )
             .into_response();
     }
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
-        .discard(path.as_path(), &req.paths, req.staged)
-        .await
-    {
+    match git.discard(path.as_path(), &req.paths, req.staged).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -412,17 +463,13 @@ async fn log(
     Path(id): Path<i64>,
     Query(q): Query<LogQuery>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
     let limit = q.limit.clamp(1, MAX_LOG_LIMIT);
 
-    match state
-        .git
-        .log(path.as_path(), limit, q.offset, q.force)
-        .await
-    {
+    match git.log(path.as_path(), limit, q.offset, q.force).await {
         Ok(page) => Json(page).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -436,12 +483,12 @@ async fn stage(
     Path(id): Path<i64>,
     Json(req): Json<StageRequest>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.stage(path.as_path(), &req.paths, req.all).await {
+    match git.stage(path.as_path(), &req.paths, req.all).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -455,12 +502,12 @@ async fn unstage(
     Path(id): Path<i64>,
     Json(req): Json<StageRequest>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.unstage(path.as_path(), &req.paths, req.all).await {
+    match git.unstage(path.as_path(), &req.paths, req.all).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -481,16 +528,12 @@ async fn commit(
         )
             .into_response();
     }
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
-        .commit(path.as_path(), &req.message, req.all)
-        .await
-    {
+    match git.commit(path.as_path(), &req.message, req.all).await {
         Ok(r) => Json(r).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -504,13 +547,12 @@ async fn list_branches(
     Path(id): Path<i64>,
     Query(q): Query<BranchQuery>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
+    match git
         .branches(path.as_path(), q.query.as_deref(), Some(q.limit), q.force)
         .await
     {
@@ -552,13 +594,12 @@ async fn create_branch(
         )
             .into_response();
     }
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
+    match git
         .create_branch(path.as_path(), name, req.base.as_deref(), req.switch)
         .await
     {
@@ -583,16 +624,12 @@ async fn checkout(
         )
             .into_response();
     }
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
-        .checkout(path.as_path(), ref_name, req.track)
-        .await
-    {
+    match git.checkout(path.as_path(), ref_name, req.track).await {
         Ok(name) => Json(serde_json::json!({"name": name})).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -607,12 +644,12 @@ async fn pull(
     body: Option<Json<ScopedRequest>>,
 ) -> Response {
     let thread_id = body.and_then(|b| b.0.thread_id);
-    let path = match repo_path(&state, user.id, id, thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.pull(path.as_path()).await {
+    match git.pull(path.as_path()).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -634,12 +671,12 @@ async fn pull_branch(
         )
             .into_response();
     }
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.pull_branch(path.as_path(), name).await {
+    match git.pull_branch(path.as_path(), name).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -654,12 +691,12 @@ async fn push(
     body: Option<Json<ScopedRequest>>,
 ) -> Response {
     let thread_id = body.and_then(|b| b.0.thread_id);
-    let path = match repo_path(&state, user.id, id, thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.push(path.as_path()).await {
+    match git.push(path.as_path()).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -673,12 +710,12 @@ async fn list_worktrees(
     Path(id): Path<i64>,
     Query(q): Query<RepoQuery>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, q.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, q.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state.git.worktrees(path.as_path(), q.force).await {
+    match git.worktrees(path.as_path(), q.force).await {
         Ok(worktrees) => Json(worktrees).into_response(),
         Err(GitError::NotEnabled) => not_enabled(),
         Err(GitError::NotRepo) => not_repo(),
@@ -708,13 +745,12 @@ async fn create_worktree(
         )
             .into_response();
     }
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
+    match git
         .create_worktree(path.as_path(), name, base, req.new_branch)
         .await
     {
@@ -731,13 +767,12 @@ async fn delete_worktree(
     Path(id): Path<i64>,
     Json(req): Json<DeleteWorktreeRequest>,
 ) -> Response {
-    let path = match repo_path(&state, user.id, id, req.thread_id.as_deref()).await {
+    let (git, path) = match git_target(&state, &user, id, req.thread_id.as_deref()).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    match state
-        .git
+    match git
         .remove_worktree(path.as_path(), PathBuf::from(&req.worktree_path).as_path())
         .await
     {
@@ -785,12 +820,12 @@ async fn merge_request_for_branch(
             .into_response();
     }
 
-    let path = match repo_path(&state, user.id, id, None).await {
+    let (git, path) = match git_target(&state, &user, id, None).await {
         Ok(p) => p,
         Err(r) => return r,
     };
 
-    let url = match state.git.remote_url(path.as_path()).await {
+    let url = match git.remote_url(path.as_path()).await {
         Ok(url) => url,
         Err(GitError::NotEnabled) => return not_enabled(),
         Err(GitError::NotRepo) => return not_repo(),

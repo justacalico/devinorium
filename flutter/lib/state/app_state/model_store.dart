@@ -11,6 +11,7 @@ mixin ModelStore on AppStateBase {
   List<ModelInfo> _models = [];
   @override
   List<ProviderInfo> _providers = [];
+
   /// Installed/latest version per provider id. Revisited on settings open
   /// and whenever a provider command changes.
   @override
@@ -24,7 +25,14 @@ mixin ModelStore on AppStateBase {
   @override
   String _selectedProvider = '';
   @override
+  /// Cache key of the catalog currently held in `_models`: provider id
+  /// plus the node the catalog came from ('' = this server).
   String _modelsProvider = '';
+  @override
+  String _modelsNode = '';
+  String _catalogKey(String providerId, String? nodeId) =>
+      '$providerId@${nodeId ?? ''}';
+  String get _modelsCatalogKey => '$_modelsProvider@$_modelsNode';
   @override
   int _modelsRequestSeq = 0;
 
@@ -60,11 +68,13 @@ mixin ModelStore on AppStateBase {
       } catch (_) {}
       return;
     }
-    await Future.wait(ids.map((id) async {
-      try {
-        _providerVersions[id] = await api.providerVersion(provider: id);
-      } catch (_) {}
-    }));
+    await Future.wait(
+      ids.map((id) async {
+        try {
+          _providerVersions[id] = await api.providerVersion(provider: id);
+        } catch (_) {}
+      }),
+    );
     notifyListeners();
   }
 
@@ -196,24 +206,32 @@ mixin ModelStore on AppStateBase {
   Future<void> ensureModelsFor(String providerId) async {
     if (providerId.isEmpty) return;
 
-    // A provider whose CLI is missing has no catalog to list.
-    for (final p in _providers) {
-      if (p.id == providerId && !p.isAvailable) {
-        ++_modelsRequestSeq;
-        _models = [];
-        _modelsProvider = providerId;
-        notifyListeners();
-        return;
+    // A provider whose CLI is missing has no catalog to list. On a
+    // node-bound project the check is meaningless: availability was probed
+    // on the hub, and the satellite's CLI is a different install.
+    if (_activeProjectNodeId == null) {
+      for (final p in _providers) {
+        if (p.id == providerId && !p.isAvailable) {
+          ++_modelsRequestSeq;
+          _models = [];
+          _modelsProvider = providerId;
+          _modelsNode = _activeProjectNodeId ?? '';
+          notifyListeners();
+          return;
+        }
       }
     }
 
-    // Serve from in-memory cache first so switching providers in the picker
-    // does not hit the network more than once per provider.
-    final cached = _modelsByProvider[providerId];
+    // The catalog lives on the machine the project runs on; cache entries
+    // are keyed by provider+node so a node project never gets hub models.
+    final nodeId = _activeProjectNodeId;
+    final key = _catalogKey(providerId, nodeId);
+    final cached = _modelsByProvider[key];
     if (cached != null) {
       ++_modelsRequestSeq;
       _models = List.of(cached);
       _modelsProvider = providerId;
+      _modelsNode = nodeId ?? '';
       _revalidateSelectedModel();
       _revalidateSelectedReasoning();
       notifyListeners();
@@ -222,11 +240,12 @@ mixin ModelStore on AppStateBase {
 
     final seq = ++_modelsRequestSeq;
     try {
-      final models = await api.listModels(provider: providerId);
+      final models = await api.listModels(provider: providerId, nodeId: nodeId);
       if (seq != _modelsRequestSeq) return;
-      _modelsByProvider[providerId] = models;
+      _modelsByProvider[key] = models;
       _models = models;
       _modelsProvider = providerId;
+      _modelsNode = nodeId ?? '';
       _revalidateSelectedModel();
       _revalidateSelectedReasoning();
       notifyListeners();
@@ -385,7 +404,8 @@ mixin ModelStore on AppStateBase {
     } else if (firstAvailable != null) {
       effectiveProvider = firstAvailable.id;
     } else {
-      effectiveProvider = selected?.id ?? (_providers.isNotEmpty ? _providers.first.id : '');
+      effectiveProvider =
+          selected?.id ?? (_providers.isNotEmpty ? _providers.first.id : '');
     }
 
     final effectiveEntry = findProvider(effectiveProvider);
@@ -396,20 +416,29 @@ mixin ModelStore on AppStateBase {
       // there.
       _models = [];
       _modelsProvider = '';
-    } else if (effectiveProvider == _modelsProvider && _models.isNotEmpty) {
+      _modelsNode = '';
+    } else if (_modelsCatalogKey ==
+            _catalogKey(effectiveProvider, _activeProjectNodeId) &&
+        _models.isNotEmpty) {
       _revalidateSelectedModel();
     } else {
+      final nodeId = _activeProjectNodeId;
       try {
-        final models = await api.listModels(provider: effectiveProvider);
+        final models = await api.listModels(
+          provider: effectiveProvider,
+          nodeId: nodeId,
+        );
         if (seq != _modelsRequestSeq) return;
-        _modelsByProvider[effectiveProvider] = models;
+        _modelsByProvider[_catalogKey(effectiveProvider, nodeId)] = models;
         _models = models;
         _modelsProvider = effectiveProvider;
+        _modelsNode = nodeId ?? '';
         _revalidateSelectedModel();
       } catch (_) {
         if (seq != _modelsRequestSeq) return;
         _models = [];
         _modelsProvider = '';
+        _modelsNode = '';
       }
     }
 

@@ -17,11 +17,10 @@ class DialogLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, ({
-      DialogKind dialog,
-      String? mergeRequestUrl,
-      String? issueUrl,
-    })>(
+    return Selector<
+      AppState,
+      ({DialogKind dialog, String? mergeRequestUrl, String? issueUrl})
+    >(
       selector: (_, s) => (
         dialog: s.dialog,
         mergeRequestUrl: s.mergeRequestUrl,
@@ -46,11 +45,9 @@ class DialogLayer extends StatelessWidget {
                 : IssuePanel(url: model.issueUrl!),
           DialogKind.renameProject ||
           DialogKind.renameThread ||
-          DialogKind.renameProjectGroup =>
-            const _RenameDialog(),
+          DialogKind.renameProjectGroup => const _RenameDialog(),
           DialogKind.newProjectGroup => const _NewProjectGroupDialog(),
-          DialogKind.manageProjectGroups =>
-            const _ManageProjectGroupsDialog(),
+          DialogKind.manageProjectGroups => const _ManageProjectGroupsDialog(),
           DialogKind.webLogin => const WebLoginDialog(),
         };
         // Remount per dialog kind so focus is re-established for each dialog.
@@ -162,74 +159,80 @@ class _TotpSetupDialogState extends State<_TotpSetupDialog> {
       selector: (_, s) => s.totpSecret,
       builder: (context, totpSecret, _) {
         return Stack(
-      children: [
-        ModalBarrier(color: Colors.black.withValues(alpha: 0.5), dismissible: false),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(l10n(context).enable2fa, style: theme.textTheme.headlineSmall),
-                    const SizedBox(height: 12),
-                    Text(
-                      l10n(context).totpSetupInstructions,
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: SelectableText(
-                        totpSecret,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(fontFamily: 'monospace'),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _codeController,
-                      decoration: InputDecoration(
-                        labelText: l10n(context).totpCode,
-                        hintText: l10n(context).totpHint,
-                        border: const OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            ModalBarrier(
+              color: Colors.black.withValues(alpha: 0.5),
+              dismissible: false,
+            ),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Card(
+                  margin: const EdgeInsets.all(24),
+                  elevation: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextButton(
-                          onPressed: state.closeDialog,
-                          child: Text(l10n(context).cancel),
+                        Text(
+                          l10n(context).enable2fa,
+                          style: theme.textTheme.headlineSmall,
                         ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: () {
-                            state.verifyTotp(_codeController.text.trim());
-                          },
-                          child: Text(l10n(context).verify),
+                        const SizedBox(height: 12),
+                        Text(l10n(context).totpSetupInstructions),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: SelectableText(
+                            totpSecret,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _codeController,
+                          decoration: InputDecoration(
+                            labelText: l10n(context).totpCode,
+                            hintText: l10n(context).totpHint,
+                            border: const OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: state.closeDialog,
+                              child: Text(l10n(context).cancel),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: () {
+                                state.verifyTotp(_codeController.text.trim());
+                              },
+                              child: Text(l10n(context).verify),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
-  });
   }
 }
 
@@ -379,8 +382,9 @@ class _AddProjectSourceTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -414,6 +418,7 @@ class _NewProjectDialog extends StatefulWidget {
 class _NewProjectDialogState extends State<_NewProjectDialog> {
   final _nameController = TextEditingController();
   final _pathController = TextEditingController();
+  String? _nodeId;
   var _submitting = false;
   String? _error;
 
@@ -445,7 +450,11 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     setState(() => _submitting = true);
     try {
       final state = context.read<AppState>();
-      await state.createProject(name: name, path: path);
+      await state.createProject(
+        name: name,
+        path: path,
+        nodeId: _validNodeId(state, _nodeId),
+      );
       if (mounted) {
         setState(() => _submitting = false);
       }
@@ -477,8 +486,9 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
     return Stack(
       children: [
         ModalBarrier(
-            color: theme.colorScheme.scrim.withValues(alpha: 0.4),
-            dismissible: false),
+          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+          dismissible: false,
+        ),
         Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
@@ -508,11 +518,18 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                       onChanged: (_) => setState(() => _error = null),
                     ),
                     const SizedBox(height: 12),
+                    _NodeTargetPicker(
+                      nodeId: _nodeId,
+                      enabled: !_submitting,
+                      onChanged: (v) => setState(() => _nodeId = v),
+                    ),
                     Expanded(
                       child: FolderPicker(
+                        key: ValueKey(_nodeId ?? 'local'),
                         api: context.read<AppState>().api,
                         controller: _pathController,
                         homePrefix: '.',
+                        nodeId: _nodeId,
                         onSelect: _onPathSelected,
                       ),
                     ),
@@ -537,13 +554,17 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
-                          onPressed: (canSubmit && !_submitting) ? _submit : null,
+                          onPressed: (canSubmit && !_submitting)
+                              ? _submit
+                              : null,
                           child: _submitting
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2))
+                                    strokeWidth: 2,
+                                  ),
+                                )
                               : Text(l10n(context).create),
                         ),
                       ],
@@ -570,6 +591,7 @@ class _CreateProjectDialog extends StatefulWidget {
 
 class _CreateProjectDialogState extends State<_CreateProjectDialog> {
   final _nameController = TextEditingController();
+  String? _nodeId;
   var _submitting = false;
 
   @override
@@ -586,7 +608,7 @@ class _CreateProjectDialogState extends State<_CreateProjectDialog> {
     setState(() => _submitting = true);
     final state = context.read<AppState>();
     try {
-      await state.createNewProject(name);
+      await state.createNewProject(name, nodeId: _validNodeId(state, _nodeId));
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -608,100 +630,116 @@ class _CreateProjectDialogState extends State<_CreateProjectDialog> {
     final canSubmit = name.isNotEmpty && !_submitting;
 
     return Selector<AppState, ({String? projectRoot, String globalError})>(
-      selector: (_, s) => (projectRoot: s.projectRoot, globalError: s.globalError),
+      selector: (_, s) =>
+          (projectRoot: s.projectRoot, globalError: s.globalError),
       builder: (context, model, _) {
+        final nodeName = _nodeId == null
+            ? null
+            : state.federationNodes
+                  .where((n) => n.id == _nodeId)
+                  .firstOrNull
+                  ?.name;
         final root = model.projectRoot;
-        final destination = (root == null || root.isEmpty)
+        final destination = nodeName != null
+            ? l.createProjectDestinationNode(nodeName, name)
+            : (root == null || root.isEmpty)
             ? null
             : name.isEmpty
             ? root
             : '$root/$name';
 
         return Stack(
-      children: [
-        ModalBarrier(
-          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
-          dismissible: false,
-        ),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _AddProjectDialogTitle(title: l.createProjectTitle),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _nameController,
-                      enabled: !_submitting,
-                      decoration: InputDecoration(
-                        labelText: l.name,
-                        hintText: l.myProjectHint,
-                        border: const OutlineInputBorder(),
-                      ),
-                      textInputAction: TextInputAction.done,
-                      onChanged: (_) => setState(() {}),
-                      onSubmitted: (_) {
-                        if (canSubmit) _submit();
-                      },
-                    ),
-                    if (destination != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        l.createProjectDestination(destination),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    if (model.globalError.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Semantics(
-                        liveRegion: true,
-                        label: l.error,
-                        child: Text(
-                          model.globalError,
-                          style: TextStyle(color: theme.colorScheme.error),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            ModalBarrier(
+              color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+              dismissible: false,
+            ),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Card(
+                  margin: const EdgeInsets.all(24),
+                  elevation: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextButton(
-                          onPressed: state.closeDialog,
-                          child: Text(l.cancel),
+                        _AddProjectDialogTitle(title: l.createProjectTitle),
+                        const SizedBox(height: 16),
+                        _NodeTargetPicker(
+                          nodeId: _nodeId,
+                          enabled: !_submitting,
+                          onChanged: (v) => setState(() => _nodeId = v),
                         ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: canSubmit ? _submit : null,
-                          child: _submitting
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2))
-                              : Text(l.create),
+                        TextField(
+                          controller: _nameController,
+                          enabled: !_submitting,
+                          decoration: InputDecoration(
+                            labelText: l.name,
+                            hintText: l.myProjectHint,
+                            border: const OutlineInputBorder(),
+                          ),
+                          textInputAction: TextInputAction.done,
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) {
+                            if (canSubmit) _submit();
+                          },
+                        ),
+                        if (destination != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            l.createProjectDestination(destination),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        if (model.globalError.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Semantics(
+                            liveRegion: true,
+                            label: l.error,
+                            child: Text(
+                              model.globalError,
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: state.closeDialog,
+                              child: Text(l.cancel),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: canSubmit ? _submit : null,
+                              child: _submitting
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text(l.create),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
-    );
+          ],
+        );
       },
     );
   }
@@ -724,97 +762,110 @@ class _PermissionRequestDialog extends StatelessWidget {
           state.respondToPermissionRequest(null);
           return const SizedBox.shrink();
         }
-    final allowOnce = req.options.firstWhere(
-      (o) => o.kind == 'AllowOnce',
-      orElse: () => req.options.first,
-    );
-    final otherOptions = req.options.where((o) => o.id != allowOnce.id).toList();
+        final allowOnce = req.options.firstWhere(
+          (o) => o.kind == 'AllowOnce',
+          orElse: () => req.options.first,
+        );
+        final otherOptions = req.options
+            .where((o) => o.id != allowOnce.id)
+            .toList();
 
-    return Stack(
-      children: [
-        ModalBarrier(
-          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
-          dismissible: false,
-        ),
-        Center(
-          child: AlertDialog(
-            title: Text(l10n(context).permissionRequest),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420, maxHeight: 500),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      req.title,
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    if (req.input != null && req.input!.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(8),
+        return Stack(
+          children: [
+            ModalBarrier(
+              color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+              dismissible: false,
+            ),
+            Center(
+              child: AlertDialog(
+                title: Text(l10n(context).permissionRequest),
+                content: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 420,
+                    maxHeight: 500,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          req.title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        child: Text(
-                          req.input!,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(fontFamily: 'monospace'),
+                        if (req.input != null && req.input!.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              req.input!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        Text(
+                          l10n(context).allowThisAction,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      FilledButton(
+                        onPressed: () =>
+                            state.respondToPermissionRequest(allowOnce.id),
+                        child: Text(allowOnce.label ?? l10n(context).allowOnce),
+                      ),
+                      const SizedBox(height: 8),
+                      if (otherOptions.isNotEmpty)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final option in otherOptions)
+                              OutlinedButton(
+                                onPressed: () =>
+                                    state.respondToPermissionRequest(option.id),
+                                child: Text(
+                                  option.label ??
+                                      _displayKind(context, option.kind),
+                                ),
+                              ),
+                          ],
+                        ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () =>
+                              state.respondToPermissionRequest(null),
+                          child: Text(l10n(context).cancel),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 20),
-                    Text(
-                      l10n(context).allowThisAction,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  FilledButton(
-                    onPressed: () => state.respondToPermissionRequest(allowOnce.id),
-                    child: Text(allowOnce.label ?? l10n(context).allowOnce),
-                  ),
-                  const SizedBox(height: 8),
-                  if (otherOptions.isNotEmpty)
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final option in otherOptions)
-                          OutlinedButton(
-                            onPressed: () =>
-                                state.respondToPermissionRequest(option.id),
-                            child: Text(option.label ?? _displayKind(context, option.kind)),
-                          ),
-                      ],
-                    ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => state.respondToPermissionRequest(null),
-                      child: Text(l10n(context).cancel),
-                    ),
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
-  });
   }
 
   String _displayKind(BuildContext context, String kind) {
@@ -861,9 +912,11 @@ class _RenameDialogState extends State<_RenameDialog> {
     if (value.isEmpty || value == state.renameInitialName) return;
 
     setState(() => _submitting = true);
-    if (state.dialog == DialogKind.renameProject && state.renameProjectId != null) {
+    if (state.dialog == DialogKind.renameProject &&
+        state.renameProjectId != null) {
       await state.renameProject(state.renameProjectId!, value);
-    } else if (state.dialog == DialogKind.renameThread && state.renameThreadId != null) {
+    } else if (state.dialog == DialogKind.renameThread &&
+        state.renameThreadId != null) {
       await state.renameThread(state.renameThreadId!, value);
     } else if (state.dialog == DialogKind.renameProjectGroup &&
         state.renameProjectGroupId != null) {
@@ -878,11 +931,10 @@ class _RenameDialogState extends State<_RenameDialog> {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({
-      DialogKind dialog,
-      String renameInitialName,
-      String globalError,
-    })>(
+    return Selector<
+      AppState,
+      ({DialogKind dialog, String renameInitialName, String globalError})
+    >(
       selector: (_, s) => (
         dialog: s.dialog,
         renameInitialName: s.renameInitialName,
@@ -895,80 +947,86 @@ class _RenameDialogState extends State<_RenameDialog> {
           _ => l.renameThread,
         };
         final value = _controller.text.trim();
-        final canSubmit = value.isNotEmpty &&
+        final canSubmit =
+            value.isNotEmpty &&
             value != model.renameInitialName &&
             !_submitting;
 
         return Stack(
-      children: [
-        ModalBarrier(
-          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
-          dismissible: false,
-        ),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(title, style: theme.textTheme.headlineSmall),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      enabled: !_submitting,
-                      decoration: InputDecoration(
-                        labelText: l.newName,
-                        hintText: model.renameInitialName,
-                        border: const OutlineInputBorder(),
-                      ),
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _submit(state),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    if (model.globalError.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        model.globalError,
-                        style: TextStyle(color: theme.colorScheme.error),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            ModalBarrier(
+              color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+              dismissible: false,
+            ),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Card(
+                  margin: const EdgeInsets.all(24),
+                  elevation: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextButton(
-                          onPressed: _submitting ? null : state.closeDialog,
-                          child: Text(l.cancel),
+                        Text(title, style: theme.textTheme.headlineSmall),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _controller,
+                          autofocus: true,
+                          enabled: !_submitting,
+                          decoration: InputDecoration(
+                            labelText: l.newName,
+                            hintText: model.renameInitialName,
+                            border: const OutlineInputBorder(),
+                          ),
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _submit(state),
+                          onChanged: (_) => setState(() {}),
                         ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: canSubmit ? () => _submit(state) : null,
-                          child: _submitting
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Text(l.save),
+                        if (model.globalError.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            model.globalError,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: _submitting ? null : state.closeDialog,
+                              child: Text(l.cancel),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: canSubmit
+                                  ? () => _submit(state)
+                                  : null,
+                              child: _submitting
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text(l.save),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
-  });
   }
 }
 
@@ -981,6 +1039,7 @@ class _CloneRepoDialog extends StatefulWidget {
 
 class _CloneRepoDialogState extends State<_CloneRepoDialog> {
   final _urlController = TextEditingController();
+  String? _nodeId;
 
   @override
   void dispose() {
@@ -994,11 +1053,10 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
     final l = l10n(context);
     final state = context.read<AppState>();
 
-    return Selector<AppState, ({
-      String? cloneRepoResult,
-      bool cloningRepo,
-      String globalError,
-    })>(
+    return Selector<
+      AppState,
+      ({String? cloneRepoResult, bool cloningRepo, String globalError})
+    >(
       selector: (_, s) => (
         cloneRepoResult: s.cloneRepoResult,
         cloningRepo: s.cloningRepo,
@@ -1009,96 +1067,105 @@ class _CloneRepoDialogState extends State<_CloneRepoDialog> {
         final hasResult = result != null && result.isNotEmpty;
 
         return Stack(
-      children: [
-        ModalBarrier(
-          color: theme.colorScheme.scrim.withValues(alpha: 0.4),
-          dismissible: false,
-        ),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _AddProjectDialogTitle(title: l.cloneRepo),
-                    const SizedBox(height: 8),
-                    Text(l.cloneRepoDescription),
-                    const SizedBox(height: 16),
-                    if (!hasResult)
-                      TextField(
-                        controller: _urlController,
-                        enabled: !model.cloningRepo,
-                        decoration: InputDecoration(
-                          labelText: l.cloneRepoUrlLabel,
-                          hintText: 'https://gitlab.com/owner/repo.git',
-                          border: const OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.url,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _clone(state),
-                      ),
-                    if (hasResult) ...[
-                      const SizedBox(height: 8),
-                      SelectableText(result),
-                    ],
-                    if (model.globalError.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        model.globalError,
-                        style: TextStyle(color: theme.colorScheme.error),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            ModalBarrier(
+              color: theme.colorScheme.scrim.withValues(alpha: 0.4),
+              dismissible: false,
+            ),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Card(
+                  margin: const EdgeInsets.all(24),
+                  elevation: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextButton(
-                          onPressed: state.closeDialog,
-                          child: Text(hasResult ? l.close : l.cancel),
-                        ),
-                        const SizedBox(width: 8),
-                        if (hasResult)
-                          FilledButton(
-                            onPressed: () =>
-                                state.openClonedProjectByPath(result),
-                            child: Text(l.cloneRepoOpenProject),
-                          )
-                        else
-                          FilledButton(
-                            onPressed:
-                                model.cloningRepo ? null : () => _clone(state),
-                            child: model.cloningRepo
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : Text(l.cloneRepoButton),
+                        _AddProjectDialogTitle(title: l.cloneRepo),
+                        const SizedBox(height: 8),
+                        Text(l.cloneRepoDescription),
+                        const SizedBox(height: 16),
+                        if (!hasResult)
+                          _NodeTargetPicker(
+                            nodeId: _nodeId,
+                            enabled: !model.cloningRepo,
+                            onChanged: (v) => setState(() => _nodeId = v),
                           ),
+                        if (!hasResult)
+                          TextField(
+                            controller: _urlController,
+                            enabled: !model.cloningRepo,
+                            decoration: InputDecoration(
+                              labelText: l.cloneRepoUrlLabel,
+                              hintText: 'https://gitlab.com/owner/repo.git',
+                              border: const OutlineInputBorder(),
+                            ),
+                            keyboardType: TextInputType.url,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _clone(state),
+                          ),
+                        if (hasResult) ...[
+                          const SizedBox(height: 8),
+                          SelectableText(result),
+                        ],
+                        if (model.globalError.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            model.globalError,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: state.closeDialog,
+                              child: Text(hasResult ? l.close : l.cancel),
+                            ),
+                            const SizedBox(width: 8),
+                            if (hasResult)
+                              FilledButton(
+                                onPressed: () =>
+                                    state.openClonedProjectByPath(result),
+                                child: Text(l.cloneRepoOpenProject),
+                              )
+                            else
+                              FilledButton(
+                                onPressed: model.cloningRepo
+                                    ? null
+                                    : () => _clone(state),
+                                child: model.cloningRepo
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Text(l.cloneRepoButton),
+                              ),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
-  });
   }
 
   Future<void> _clone(AppState state) async {
     final url = _urlController.text.trim();
     if (url.isEmpty) return;
-    await state.cloneRepo(url);
+    await state.cloneRepo(url, nodeId: _validNodeId(state, _nodeId));
   }
 }
 
@@ -1193,7 +1260,8 @@ class _NewProjectGroupDialogState extends State<_NewProjectGroupDialog> {
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : Text(l.create),
                         ),
@@ -1268,12 +1336,12 @@ class _ManageProjectGroupsDialog extends StatelessWidget {
                   children: [
                     Text(l.groups, style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 16),
-                    Selector<AppState,
-                        ({List<ProjectGroup> groups, List<Project> projects})>(
-                      selector: (_, s) => (
-                        groups: s.projectGroups,
-                        projects: s.projects,
-                      ),
+                    Selector<
+                      AppState,
+                      ({List<ProjectGroup> groups, List<Project> projects})
+                    >(
+                      selector: (_, s) =>
+                          (groups: s.projectGroups, projects: s.projects),
                       builder: (context, model, _) {
                         return Flexible(
                           child: ListView(
@@ -1286,8 +1354,7 @@ class _ManageProjectGroupsDialog extends StatelessWidget {
                                   contentPadding: EdgeInsets.zero,
                                   leading: Icon(
                                     Icons.folder_outlined,
-                                    color:
-                                        theme.colorScheme.onSurfaceVariant,
+                                    color: theme.colorScheme.onSurfaceVariant,
                                   ),
                                   title: Text(
                                     g.name,
@@ -1295,9 +1362,11 @@ class _ManageProjectGroupsDialog extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Text(
-                                    l.groupProjectsCount(model.projects
-                                        .where((p) => p.groupId == g.id)
-                                        .length),
+                                    l.groupProjectsCount(
+                                      model.projects
+                                          .where((p) => p.groupId == g.id)
+                                          .length,
+                                    ),
                                   ),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1306,13 +1375,15 @@ class _ManageProjectGroupsDialog extends StatelessWidget {
                                         key: Key('rename_group_${g.id}'),
                                         tooltip: l.renameGroup,
                                         icon: const Icon(
-                                            Icons.edit_outlined,
-                                            size: 18),
-                                        visualDensity:
-                                            VisualDensity.compact,
-                                        onPressed: () => state
-                                            .openRenameProjectGroupDialog(
-                                                g.id, g.name),
+                                          Icons.edit_outlined,
+                                          size: 18,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () =>
+                                            state.openRenameProjectGroupDialog(
+                                              g.id,
+                                              g.name,
+                                            ),
                                       ),
                                       IconButton(
                                         key: Key('delete_group_${g.id}'),
@@ -1322,10 +1393,9 @@ class _ManageProjectGroupsDialog extends StatelessWidget {
                                           size: 18,
                                           color: theme.colorScheme.error,
                                         ),
-                                        visualDensity:
-                                            VisualDensity.compact,
-                                        onPressed: () => _confirmDelete(
-                                            context, state, g),
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () =>
+                                            _confirmDelete(context, state, g),
                                       ),
                                     ],
                                   ),
@@ -1370,6 +1440,78 @@ class _ManageProjectGroupsDialog extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A submitted node id is only valid while it still exists in the current
+/// list; a node removed mid-dialog must not be sent.
+String? _validNodeId(AppState s, String? id) {
+  return id != null && s.federationNodes.any((n) => n.id == id) ? id : null;
+}
+
+/// Dropdown that picks which machine an operation targets: this server or
+/// one of the paired satellite nodes. Hidden entirely when no nodes are
+/// paired.
+class _NodeTargetPicker extends StatelessWidget {
+  const _NodeTargetPicker({
+    required this.nodeId,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final String? nodeId;
+  final ValueChanged<String?> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = l10n(context);
+    final nodes = context.select<AppState, List<FederationNode>>(
+      (s) => s.federationNodes,
+    );
+    if (nodes.isEmpty) return const SizedBox.shrink();
+    // A node removed while a dialog is open must not stay selected:
+    // submitting a dead id fails server-side anyway.
+    final effectiveId = nodeId != null && nodes.any((n) => n.id == nodeId)
+        ? nodeId
+        : null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String?>(
+        initialValue: effectiveId,
+        decoration: InputDecoration(
+          labelText: l.projectTargetMachine,
+          border: const OutlineInputBorder(),
+        ),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(l.thisServer)),
+          for (final n in nodes)
+            DropdownMenuItem<String?>(
+              // Offline nodes cannot be targeted: every call would fail
+              // with "node unreachable" anyway.
+              enabled: n.online,
+              value: n.id,
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(n.name, overflow: TextOverflow.ellipsis),
+                  ),
+                  if (!n.online) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      l.nodeOffline,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
+        onChanged: enabled ? onChanged : null,
+      ),
     );
   }
 }

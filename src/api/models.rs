@@ -18,6 +18,9 @@ pub struct ListModels {
     /// Provider whose models to list. Defaults to the user's configured
     /// provider.
     pub provider: Option<String>,
+    /// Paired node to list models on. Absent lists this server's models.
+    #[serde(default)]
+    pub node_id: Option<String>,
 }
 
 async fn list(
@@ -38,7 +41,53 @@ async fn list(
         )
             .into_response();
     }
-    let provider = state.provider_for(&user, provider_id);
+
+    let provider: std::sync::Arc<dyn crate::providers::Provider> = match query
+        .node_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(nid) => {
+            if !user.is_owner {
+                return (
+                    axum::http::StatusCode::FORBIDDEN,
+                    axum::Json(crate::api::ApiError::new("paired machines are owner-only")),
+                )
+                    .into_response();
+            }
+            let node = match state.db.get_federation_node(nid).await {
+                Ok(Some(n)) => n,
+                _ => {
+                    return (
+                        axum::http::StatusCode::BAD_REQUEST,
+                        axum::Json(crate::api::ApiError::new("invalid node_id")),
+                    )
+                        .into_response()
+                }
+            };
+            let Some(client) = crate::node_client::NodeClient::for_node_stream(&state, &node)
+            else {
+                return crate::node_client::node_bad_gateway("node unreachable");
+            };
+            let command = {
+                let c = user.command_for_provider(provider_id);
+                if c.is_empty() {
+                    crate::providers::default_command(provider_id).to_string()
+                } else {
+                    c
+                }
+            };
+            std::sync::Arc::new(crate::providers::RemoteProvider::new(
+                client.with_proxy_user(&user.username),
+                provider_id,
+                &command,
+                &state.config.default_model,
+            ))
+        }
+        None => state.provider_for(&user, provider_id),
+    };
+
     match provider.list_models().await {
         Ok(models) => axum::Json(models).into_response(),
         Err(e) => crate::api::map_err_internal(e).into_response(),

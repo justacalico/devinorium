@@ -5,7 +5,6 @@ pub mod audit;
 pub mod auth;
 pub mod clones;
 pub mod federation;
-pub mod federation_proxy;
 pub mod files;
 pub mod git;
 pub mod git_connections;

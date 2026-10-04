@@ -22,7 +22,7 @@ use crate::AppState;
 use super::context_refs::{prompt_with_refs, resolve_context_refs, ContextPathIn, ContextRef};
 use super::machine_refs::{parse_machine_ids, prompt_with_machine_refs, resolve_machine_refs};
 use super::persistence::persist_user_message;
-use super::plan::{normalize_mode, project_working_dir_for_thread};
+use super::plan::normalize_mode;
 use super::runs::{events_stream, run_thread};
 use super::thread_refs::{prompt_with_thread_refs, resolve_thread_refs, ThreadRef};
 use super::worktree::ensure_thread_worktree;
@@ -362,8 +362,43 @@ pub(crate) async fn call_provider(
     part_callback: Option<PartCallback>,
     cancel_signal: Arc<std::sync::atomic::AtomicBool>,
 ) -> anyhow::Result<ProviderOutcome> {
-    let provider = state.provider_for(user, &thread.provider_id);
-    let working_dir = project_working_dir_for_thread(state, thread).await?;
+    let target = super::plan::thread_target(state, thread).await?;
+    let node = target.node;
+    let working_dir = target.dir;
+
+    // A node-bound thread runs its provider on the paired satellite. Node
+    // credentials grant owner-level control of that machine, so remote
+    // execution stays behind the owner boundary like every other node call.
+    let provider: Arc<dyn crate::providers::Provider> = match &node {
+        Some(node) => {
+            if !user.is_owner {
+                anyhow::bail!("threads on paired machines are owner-only");
+            }
+            // Machine-control refs point the agent back at *this* hub's
+            // address, which on the satellite resolves to an unrelated
+            // loopback listener. Reject rather than leak the grant token.
+            if !input.machine_refs.is_empty() {
+                anyhow::bail!("machine references are not supported on paired machines");
+            }
+            let client = crate::node_client::NodeClient::for_node_stream(state, node)
+                .ok_or_else(|| anyhow::anyhow!("node has no pairing credential"))?;
+            let command = {
+                let c = user.command_for_provider(&thread.provider_id);
+                if c.is_empty() {
+                    crate::providers::default_command(&thread.provider_id).to_string()
+                } else {
+                    c
+                }
+            };
+            Arc::new(crate::providers::RemoteProvider::new(
+                client.with_proxy_user(&user.username),
+                &thread.provider_id,
+                &command,
+                &state.config.default_model,
+            ))
+        }
+        None => state.provider_for(user, &thread.provider_id),
+    };
 
     // The callback stays attached for follow-ups too: some providers (codex)
     // only learn the durable session id after the first turn runs, so a
@@ -430,17 +465,20 @@ pub(crate) async fn call_provider(
     // server resolves slash commands natively. Other providers get the
     // skill body expanded inline so the workflow still applies. Expansion
     // runs on the user's text alone so the context/machine blocks appended
-    // below land after the skill body instead of inside its args.
-    let user_prompt = if thread.provider_id == crate::providers::acp::AgentKind::Devin.id() {
-        input.prompt.clone()
-    } else {
-        crate::skills::expand_skill_prompt(
-            &input.prompt,
-            &options.working_dir,
-            &state.config.home_dir,
-        )
-        .await
-    };
+    // below land after the skill body instead of inside its args. For
+    // node-bound threads the skill files live on the satellite, so the
+    // wire request carries an expand flag instead of expanding here.
+    let user_prompt =
+        if node.is_some() || thread.provider_id == crate::providers::acp::AgentKind::Devin.id() {
+            input.prompt.clone()
+        } else {
+            crate::skills::expand_skill_prompt(
+                &input.prompt,
+                &options.working_dir,
+                &state.config.home_dir,
+            )
+            .await
+        };
     let prompt = prompt_with_machine_refs(
         &prompt_with_thread_refs(
             &prompt_with_refs(&user_prompt, &input.context_refs),

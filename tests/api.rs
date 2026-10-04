@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
-use axum::http::{header, HeaderMap, Request, StatusCode};
+use axum::http::{header, Request, StatusCode};
 use axum::Router;
 
 use tower::ServiceExt;
@@ -416,10 +416,8 @@ async fn app_state() -> (AppState, db::Db) {
         tailscale_bin: "tailscale".into(),
         dev_mode: false,
         push_contact: "mailto:test@localhost".into(),
-        federation_token: None,
-        hub_url: None,
+        satellite: false,
         node_name: String::new(),
-        node_url: None,
     };
 
     let state = AppState {
@@ -443,6 +441,9 @@ async fn app_state() -> (AppState, db::Db) {
         push: devinorium::push::PushService::disabled(),
         bound_addr: std::sync::Arc::new(std::sync::OnceLock::new()),
         http_client: reqwest::Client::new(),
+        remote_terminals: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
         rate_limiter: devinorium::security::RateLimiter::new(500, 2.0),
     };
     (state, database)
@@ -9993,147 +9994,6 @@ async fn git_connections_merge_request_action_requires_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// Bearer-token request without a session cookie, as federation calls use.
-fn bearer(method: &str, uri: &str, token: &str, body: &str) -> Request<Body> {
-    let mut b = Request::builder()
-        .method(method)
-        .uri(uri)
-        .header(header::HOST, "localhost")
-        .header(header::AUTHORIZATION, format!("Bearer {token}"));
-    if !body.is_empty() {
-        b = b.header("content-type", "application/json");
-    }
-    b.body(Body::from(body.to_string())).unwrap()
-}
-
-#[tokio::test]
-async fn federation_register_issues_stable_node_token() {
-    let (mut state, db) = app_state().await;
-    let mut cfg = (*state.config).clone();
-    cfg.federation_token = Some("shared-secret-token-16".into());
-    state.config = Arc::new(cfg);
-    let app = devinorium::build_app(state);
-
-    let body = r#"{"id":"node-1","name":"box","base_url":"http://10.0.0.2:7878"}"#;
-    let resp = app
-        .clone()
-        .oneshot(bearer(
-            "POST",
-            "/api/federation/register",
-            "shared-secret-token-16",
-            body,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    let token = v["node_token"].as_str().unwrap().to_string();
-    assert_eq!(token.len(), 64);
-
-    // Heartbeat re-registration keeps the same token.
-    let resp = app
-        .clone()
-        .oneshot(bearer(
-            "POST",
-            "/api/federation/register",
-            "shared-secret-token-16",
-            body,
-        ))
-        .await
-        .unwrap();
-    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    assert_eq!(v["node_token"].as_str().unwrap(), token);
-
-    // The token lands on the node row for the proxy to use, and the node
-    // list payload does not leak it.
-    let node = db.get_federation_node("node-1").await.unwrap().unwrap();
-    assert_eq!(node.token.as_deref(), Some(token.as_str()));
-    let cookie = login(&app).await;
-    let resp = app
-        .clone()
-        .oneshot(authed("GET", "/api/federation/nodes", &cookie, ""))
-        .await
-        .unwrap();
-    let listing = body_str(resp.into_body()).await;
-    assert!(!listing.contains(&token));
-
-    // A wrong shared token cannot register.
-    let resp = app
-        .oneshot(bearer(
-            "POST",
-            "/api/federation/register",
-            "wrong-token-00000000",
-            body,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn federation_shared_token_does_not_own_hub_api() {
-    // On a node that is not a satellite, the shared federation token must
-    // not authenticate the general API — it only gates registration.
-    let (mut state, _db) = app_state().await;
-    let mut cfg = (*state.config).clone();
-    cfg.federation_token = Some("shared-secret-token-16".into());
-    state.config = Arc::new(cfg);
-    let app = devinorium::build_app(state);
-
-    for (method, uri) in [
-        ("GET", "/api/auth/me"),
-        ("GET", "/api/threads"),
-        ("POST", "/api/projects"),
-        ("GET", "/api/machines"),
-    ] {
-        let resp = app
-            .clone()
-            .oneshot(bearer(method, uri, "shared-secret-token-16", "{}"))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "{method} {uri}");
-    }
-}
-
-#[tokio::test]
-async fn federation_node_token_scopes_satellite_access() {
-    let (mut state, db) = app_state().await;
-    devinorium::auth::bootstrap::run_local(&db).await.unwrap();
-    let mut cfg = (*state.config).clone();
-    cfg.federation_token = Some("shared-secret-token-16".into());
-    cfg.hub_url = Some("http://hub.example.com".into());
-    state.config = Arc::new(cfg);
-    let app = devinorium::build_app(state);
-
-    // Unprovisioned satellite: the shared token still authenticates
-    // proxied calls as the local owner.
-    let resp = app
-        .clone()
-        .oneshot(bearer("GET", "/api/auth/me", "shared-secret-token-16", ""))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let v: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
-    assert_eq!(v["username"], "local");
-
-    // Once the hub has issued a node token the shared secret is dead on
-    // this node's API.
-    db.set_server_setting("federation_node_token", "node-secret-abc")
-        .await
-        .unwrap();
-    let resp = app
-        .clone()
-        .oneshot(bearer("GET", "/api/auth/me", "shared-secret-token-16", ""))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-    let resp = app
-        .oneshot(bearer("GET", "/api/auth/me", "node-secret-abc", ""))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-}
-
 fn git_cli(args: &[&str], cwd: &std::path::Path) {
     let out = std::process::Command::new("git")
         .args(args)
@@ -15150,54 +15010,6 @@ async fn file_manager_delete_rejects_midpath_symlink() {
     assert!(!work.join("doomed.txt").exists());
 }
 #[tokio::test]
-async fn federation_proxy_retries_shared_token_on_upstream_403() {
-    const SHARED: &str = "shared-secret-token-16";
-
-    // Satellite stub: 403s the node token, accepts the shared credential.
-    let satellite = axum::Router::new().route(
-        "/healthz",
-        axum::routing::get(|headers: HeaderMap| async move {
-            match headers
-                .get(header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|t| t.strip_prefix("Bearer "))
-            {
-                Some(SHARED) => StatusCode::OK,
-                _ => StatusCode::FORBIDDEN,
-            }
-        }),
-    );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, satellite).await.unwrap();
-    });
-
-    let (mut state, db) = app_state().await;
-    let mut cfg = (*state.config).clone();
-    cfg.federation_token = Some(SHARED.into());
-    state.config = Arc::new(cfg);
-    let app = devinorium::build_app(state);
-    let cookie = login(&app).await;
-
-    let node = db
-        .upsert_federation_node("sat-1", "sat", &format!("http://{addr}"), "1.0")
-        .await
-        .unwrap();
-    assert!(node.token.is_some());
-
-    let resp = app
-        .oneshot(authed(
-            "GET",
-            "/api/federation/nodes/sat-1/proxy/healthz",
-            &cookie,
-            "",
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-}
-#[tokio::test]
 async fn bootstrap_rejects_password_outside_policy() {
     let dir = tempfile::tempdir().unwrap().keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
@@ -15212,42 +15024,6 @@ async fn bootstrap_rejects_password_outside_policy() {
         .await
         .unwrap();
     assert_eq!(database.count_users().await.unwrap(), 1);
-}
-
-#[tokio::test]
-async fn node_token_is_cached_and_invalidated_on_change() {
-    let dir = tempfile::tempdir().unwrap().keep();
-    let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
-    let database = db::Db::connect(&db_url).await.unwrap();
-
-    database
-        .set_server_setting("federation_node_token", "tok-a")
-        .await
-        .unwrap();
-    assert_eq!(
-        database.node_token().await.unwrap().as_deref(),
-        Some("tok-a")
-    );
-
-    // A write that bypasses Db stays hidden behind the cache.
-    sqlx::query("UPDATE server_settings SET value = 'tok-b' WHERE key = 'federation_node_token'")
-        .execute(database.pool())
-        .await
-        .unwrap();
-    assert_eq!(
-        database.node_token().await.unwrap().as_deref(),
-        Some("tok-a")
-    );
-
-    // A write through Db drops the cache and the new value is read.
-    database
-        .set_server_setting("federation_node_token", "tok-c")
-        .await
-        .unwrap();
-    assert_eq!(
-        database.node_token().await.unwrap().as_deref(),
-        Some("tok-c")
-    );
 }
 
 // ---------- .mcpb bundle install ----------

@@ -34,12 +34,6 @@ mixin AuthStore on AppStateBase {
         await multiServerState.loadFromRegistry();
       }
       await _ensureLocalServer();
-      await restoreNodeSelection();
-      // A remembered satellite may have been deregistered while the app was
-      // away; prune it before the data load binds calls to a dead route.
-      if (_activeNodeId != null) {
-        await refreshFederationNodes();
-      }
       final active = multiServerState.activeApi;
       if (active == null || !(await active.client.isConfigured)) {
         // A local profile whose bundled server failed to start would
@@ -52,7 +46,7 @@ mixin AuthStore on AppStateBase {
         notifyListeners();
         return;
       }
-      await _loadUserAndDataWithNodeFallback();
+      await _loadUserAndData();
     } catch (e) {
       if (e is ApiException && _isUnauthenticated(e)) {
         if (multiServerState.activeProfile?.isLocal == true) {
@@ -60,7 +54,7 @@ mixin AuthStore on AppStateBase {
           // stale profile survived — re-ensure once before giving up.
           await _ensureLocalServer();
           try {
-            await _loadUserAndDataWithNodeFallback();
+            await _loadUserAndData();
             return;
           } catch (_) {}
         }
@@ -108,10 +102,9 @@ mixin AuthStore on AppStateBase {
         api: _apiForNewProfile(),
       );
       if (makeActive) {
-        await restoreNodeSelection();
         _view = AppView.app;
         notifyListeners();
-        await _loadUserAndDataWithNodeFallback();
+        await _loadUserAndData();
       }
       _globalError = '';
       notifyListeners();
@@ -168,10 +161,9 @@ mixin AuthStore on AppStateBase {
         setActive: true,
         api: _apiForNewProfile(),
       );
-      await restoreNodeSelection();
       _view = AppView.app;
       notifyListeners();
-      await _loadUserAndDataWithNodeFallback();
+      await _loadUserAndData();
       closeDialog();
       _globalError = '';
       notifyListeners();
@@ -246,7 +238,6 @@ mixin AuthStore on AppStateBase {
   }
 
   bool _isRealNativeClient(BaseApiClient client) {
-    if (client is PrefixingClient) return _isRealNativeClient(client.inner);
     if (client is NativeApiClient) return true;
     if (client is PreloaderClient) return client.inner is NativeApiClient;
     return false;
@@ -303,7 +294,6 @@ mixin AuthStore on AppStateBase {
           MultiServerState.localProfileId,
           force: true,
         );
-        dropNodeSelectionFor(MultiServerState.localProfileId);
         if (wasActive) {
           await _resetServerState();
         }
@@ -461,8 +451,7 @@ mixin AuthStore on AppStateBase {
   Future<void> switchServer(String serverId) async {
     if (_switchingServer) return;
     if (hasDirtyEditorTabs) {
-      _globalError =
-          appL10n.editorUnsavedSwitch;
+      _globalError = appL10n.editorUnsavedSwitch;
       notifyListeners();
       return;
     }
@@ -483,17 +472,11 @@ mixin AuthStore on AppStateBase {
       if (multiServerState.activeProfile?.isLocal == true) {
         await _ensureLocalServer();
       }
-      await restoreNodeSelection();
       await _resetServerState();
-      // Prune a remembered node that no longer exists on the new hub before
-      // the data load binds calls to a dead proxy route.
-      if (_activeNodeId != null) {
-        await refreshFederationNodes();
-      }
       // Refresh the Tailscale card for the new server even if the rest of
       // the user data load fails below.
       unawaited(loadTailscaleStatus());
-      await _loadUserAndDataWithNodeFallback();
+      await _loadUserAndData();
     } catch (e) {
       _globalError = '$e';
       // The bundled server is app-managed — keep retrying it even when the
@@ -522,16 +505,14 @@ mixin AuthStore on AppStateBase {
         await _teardownPushSubscription();
       }
       await multiServerState.removeServer(serverId);
-      dropNodeSelectionFor(serverId);
       if (wasActive) {
-        await restoreNodeSelection();
         await _resetServerState();
         unawaited(loadTailscaleStatus());
         if (multiServerState.activeProfile?.isLocal == true) {
           await _ensureLocalServer();
         }
         if (multiServerState.activeApi != null) {
-          await _loadUserAndDataWithNodeFallback();
+          await _loadUserAndData();
         } else {
           if (multiServerState.activeProfile?.isLocal == true) {
             startHealthChecks();
@@ -565,8 +546,9 @@ mixin AuthStore on AppStateBase {
       final commands = user.isOwner;
       _user = await api.updateMe(
         providerId: providerId ?? user.providerId,
-        providerCommand:
-            commands ? (providerCommand ?? user.providerCommand) : null,
+        providerCommand: commands
+            ? (providerCommand ?? user.providerCommand)
+            : null,
         providerCommands: commands ? providerCommands : null,
       );
       if (providerId != null && providerId != user.providerId) {
@@ -575,6 +557,8 @@ mixin AuthStore on AppStateBase {
         _selectedProvider = '';
         _selectedModel = '';
         _modelsProvider = '';
+        _modelsNode = '';
+        _modelsNode = '';
         _models = [];
         await _saveSelectedProvider('');
         await _saveSelectedModel('');
@@ -796,9 +780,7 @@ mixin AuthStore on AppStateBase {
     _tailscaleSeq++;
     _machines = [];
     _machinesSeq++;
-    // The node list belongs to the previous target (a node switch keeps the
-    // hub but drops its data; a server switch drops the list too). The
-    // selection itself is managed by the caller via restoreNodeSelection.
+    // The node list belongs to the previous hub.
     _federationNodes = [];
     _federationSelfName = '';
     _federationSupported = false;
@@ -814,6 +796,7 @@ mixin AuthStore on AppStateBase {
     _selectedPermission = 'normal';
     _selectedProvider = '';
     _modelsProvider = '';
+    _modelsNode = '';
     _models = [];
     _modelsByProvider.clear();
     _providers = [];
@@ -861,4 +844,3 @@ mixin AuthStore on AppStateBase {
     notifyListeners();
   }
 }
-

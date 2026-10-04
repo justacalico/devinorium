@@ -8,7 +8,7 @@ use serde::Serialize;
 use super::{GitError, GitService};
 
 /// A single commit in `git log` output.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct CommitEntry {
     pub sha: String,
     pub subject: String,
@@ -22,7 +22,7 @@ pub struct CommitEntry {
 }
 
 /// One page of history plus whether more commits exist past it.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, serde::Deserialize)]
 pub struct CommitPage {
     pub commits: Vec<CommitEntry>,
     pub has_more: bool,

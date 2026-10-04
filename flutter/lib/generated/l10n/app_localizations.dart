@@ -2876,29 +2876,17 @@ abstract class AppLocalizations {
   /// **'Nodes'**
   String get federationNodes;
 
-  /// Description under the federation nodes settings title
+  /// Hint text under the nodes section title
   ///
   /// In en, this message translates to:
-  /// **'Satellite machines registered with this server. Pick one to run the app against that machine through this server.'**
+  /// **'Satellite machines paired with this server. Projects created on a node run their agents, files, git and terminals on that machine.'**
   String get federationNodesHint;
 
-  /// Empty state when the active server has no federation satellites
+  /// No machines paired yet.
   ///
   /// In en, this message translates to:
-  /// **'No satellites registered.'**
+  /// **'No machines paired yet.'**
   String get noNodesRegistered;
-
-  /// Tooltip for the federation node switcher
-  ///
-  /// In en, this message translates to:
-  /// **'Switch node'**
-  String get switchNode;
-
-  /// Label for the hub itself in the node switcher
-  ///
-  /// In en, this message translates to:
-  /// **'This hub'**
-  String get thisHub;
 
   /// Badge for a federation node that heartbeats normally
   ///
@@ -2921,7 +2909,7 @@ abstract class AppLocalizations {
   /// Confirmation before deregistering a federation satellite
   ///
   /// In en, this message translates to:
-  /// **'Remove \"{name}\"? The satellite will appear again the next time it heartbeats unless it is stopped.'**
+  /// **'Remove \"{name}\"? Projects on this node will stop working until it is paired again.'**
   String removeNodeConfirm(String name);
 
   /// Help text in the Tailscale settings card
@@ -3901,6 +3889,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No matching skills.'**
   String get skillPickerEmpty;
+
+  /// Pair a machine
+  ///
+  /// In en, this message translates to:
+  /// **'Pair a machine'**
+  String get pairNode;
+
+  /// Pair a machine
+  ///
+  /// In en, this message translates to:
+  /// **'Pair a machine'**
+  String get pairNodeTitle;
+
+  /// Explains where the pairing code comes from
+  ///
+  /// In en, this message translates to:
+  /// **'A Devinorium server started with DEVINORIUM_SATELLITE=1 prints a pairing code on startup. Enter its address and code here.'**
+  String get pairNodeHint;
+
+  /// Server URL
+  ///
+  /// In en, this message translates to:
+  /// **'Server URL'**
+  String get nodeUrl;
+
+  /// Pairing code
+  ///
+  /// In en, this message translates to:
+  /// **'Pairing code'**
+  String get pairingCode;
+
+  /// Name (optional)
+  ///
+  /// In en, this message translates to:
+  /// **'Name (optional)'**
+  String get nodeNameOptional;
+
+  /// Pair
+  ///
+  /// In en, this message translates to:
+  /// **'Pair'**
+  String get pair;
+
+  /// URL and pairing code are required.
+  ///
+  /// In en, this message translates to:
+  /// **'URL and pairing code are required.'**
+  String get nodePairFieldsRequired;
+
+  /// Label for the dropdown choosing which machine a project lives on
+  ///
+  /// In en, this message translates to:
+  /// **'Machine'**
+  String get projectTargetMachine;
+
+  /// This server
+  ///
+  /// In en, this message translates to:
+  /// **'This server'**
+  String get thisServer;
+
+  /// Shown in the new-project dialog when a node is picked
+  ///
+  /// In en, this message translates to:
+  /// **'Will be created under ~/.devinorium/projects/{name} on {node}'**
+  String createProjectDestinationNode(Object name, Object node);
 }
 
 class _AppLocalizationsDelegate

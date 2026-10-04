@@ -376,18 +376,23 @@ class ApiService {
   Future<Project> createProject({
     required String name,
     required String path,
+    String? nodeId,
   }) async {
-    final j = await _client.post('/api/projects', {
-      'name': name.trim(),
-      'path': path.trim(),
-    });
+    final body = <String, dynamic>{'name': name.trim(), 'path': path.trim()};
+    if (nodeId != null && nodeId.isNotEmpty) body['node_id'] = nodeId;
+    final j = await _client.post('/api/projects', body);
     return Project.fromJson(j);
   }
 
   /// Create a fresh project folder under the configured project root and
   /// register it. The name doubles as the folder name.
-  Future<Project> createNewProject({required String name}) async {
-    final j = await _client.post('/api/projects/new', {'name': name.trim()});
+  Future<Project> createNewProject({
+    required String name,
+    String? nodeId,
+  }) async {
+    final body = <String, dynamic>{'name': name.trim()};
+    if (nodeId != null && nodeId.isNotEmpty) body['node_id'] = nodeId;
+    final j = await _client.post('/api/projects/new', body);
     return Project.fromJson(j);
   }
 
@@ -696,10 +701,13 @@ class ApiService {
 
   // ---- Models ----
 
-  Future<List<ModelInfo>> listModels({String? provider}) async {
+  Future<List<ModelInfo>> listModels({String? provider, String? nodeId}) async {
     final params = <String, String>{};
     if (provider != null && provider.isNotEmpty) {
       params['provider'] = provider;
+    }
+    if (nodeId != null && nodeId.isNotEmpty) {
+      params['node_id'] = nodeId;
     }
     final uri = _buildPath('/api/models', params);
     final list = await _client.getList(uri);
@@ -801,6 +809,7 @@ class ApiService {
     String? path,
     int? projectId,
     String? threadId,
+    String? nodeId,
     int? limit,
     int? offset,
   }) async {
@@ -810,6 +819,7 @@ class ApiService {
     if (threadId != null && threadId.isNotEmpty) {
       params['thread_id'] = threadId;
     }
+    if (nodeId != null && nodeId.isNotEmpty) params['node_id'] = nodeId;
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null && offset > 0) params['offset'] = offset.toString();
     final uri = _buildPath('/api/files', params);
@@ -1118,13 +1128,15 @@ class ApiService {
 
   // ---- Clone ----
 
-  /// Clone a remote repository into the configured clone root.
-  /// Returns the absolute local path on success.
-  Future<String> cloneRepo(String url, {int? groupId}) async {
-    final j = await _client.post('/api/clones', {
+  /// Clone a remote repository into the clone root on this server or on a
+  /// paired node when [nodeId] is set. Returns the path on that machine.
+  Future<String> cloneRepo(String url, {String? nodeId, int? groupId}) async {
+    final body = <String, dynamic>{
       'url': url,
       'group_id': ?groupId,
-    });
+    };
+    if (nodeId != null && nodeId.isNotEmpty) body['node_id'] = nodeId;
+    final j = await _client.post('/api/clones', body);
     return j['path'] as String;
   }
 
@@ -1300,12 +1312,23 @@ class ApiService {
 
   // ---- Federation ----
 
-  /// Satellite nodes registered with this hub (owner only). Always queried
-  /// against the hub itself, so callers should use the unprefixed base
-  /// service even when a node is selected.
+  /// Satellite nodes paired with this hub (owner only).
   Future<FederationNodesResponse> federationNodes() async {
     final j = await _client.get('/api/federation/nodes');
     return FederationNodesResponse.fromJson(j);
+  }
+
+  /// Pair a satellite: exchange its printed pairing code for a node
+  /// credential and register it with this hub (owner only).
+  Future<FederationNode> pairFederationNode({
+    required String url,
+    required String code,
+    String? name,
+  }) async {
+    final body = <String, dynamic>{'url': url.trim(), 'code': code.trim()};
+    if (name != null && name.trim().isNotEmpty) body['name'] = name.trim();
+    final j = await _client.post('/api/federation/nodes/pair', body);
+    return FederationNode.fromJson(j);
   }
 
   /// Remove a satellite registration from this hub (owner only).

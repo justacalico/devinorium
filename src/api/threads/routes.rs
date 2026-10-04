@@ -54,7 +54,7 @@ pub(super) async fn create(
     // cleaning up any managed worktrees they still reference.
     if let Ok(empties) = state.db.delete_empty_threads(user.id, req.project_id).await {
         for thread in &empties {
-            cleanup_thread_worktree(&state, thread, None).await;
+            cleanup_thread_worktree(&state, thread, None, None).await;
         }
     }
 
@@ -291,11 +291,18 @@ async fn resolve_linked_mr(
         }
     };
 
-    let remote_url = match state
-        .git
-        .remote_url(PathBuf::from(&project.path).as_path())
-        .await
-    {
+    let git = match crate::node_client::git_backend_for_project(state, &project).await {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to resolve git backend for mr link");
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                Json(crate::api::ApiError::new("node unreachable")),
+            )
+                .into_response());
+        }
+    };
+    let remote_url = match git.remote_url(PathBuf::from(&project.path).as_path()).await {
         Ok(u) => u,
         Err(crate::git::GitError::NotEnabled) => {
             return Err((
@@ -607,7 +614,7 @@ pub(super) async fn delete(
                 .thread_runner
                 .wait_finished(&id, std::time::Duration::from_secs(15))
                 .await;
-            cleanup_thread_worktree(&state, &thread, None).await;
+            cleanup_thread_worktree(&state, &thread, None, None).await;
             Json(serde_json::json!({"ok": true})).into_response()
         }
         Ok(None) => Json(serde_json::json!({"ok": true})).into_response(),

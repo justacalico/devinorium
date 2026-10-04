@@ -94,7 +94,7 @@ mixin GitStore on AppStateBase {
   }
 
   @override
-  Future<String?> cloneRepo(String url) async {
+  Future<String?> cloneRepo(String url, {String? nodeId}) async {
     final seq = ++_cloneRepoSeq;
     _cloningRepo = true;
     _cloneRepoResult = null;
@@ -102,7 +102,7 @@ mixin GitStore on AppStateBase {
     notifyListeners();
     try {
       final gid = _selectedProjectGroupId;
-      final path = await api.cloneRepo(url, groupId: gid);
+      final path = await api.cloneRepo(url, nodeId: nodeId, groupId: gid);
       // The clone already landed on the server, so the project list refresh
       // runs even if the user navigated away mid-request.
       await loadProjects();
