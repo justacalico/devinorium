@@ -13433,6 +13433,74 @@ async fn clone_non_gitlab_host_fails_cleanly() {
 }
 
 #[tokio::test]
+async fn clone_assigns_group() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    let gid = create_project_group(&app, &cookie, "work").await;
+
+    let fixture = tempfile::tempdir().unwrap().keep();
+    let bare = make_bare_repo(&fixture);
+    let url = format!("file://{}", bare.to_string_lossy());
+
+    let body = serde_json::json!({"url": url, "group_id": gid}).to_string();
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let path = v["path"].as_str().unwrap();
+
+    let project = _db.get_project_by_path(1, path).await.unwrap().unwrap();
+    assert_eq!(project.group_id, Some(gid));
+}
+
+#[tokio::test]
+async fn clone_unknown_group_rejected() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    let body = r#"{"url":"https://gitlab.com/owner/repo.git","group_id":99999}"#;
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &cookie, body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn clone_foreign_group_rejected() {
+    let (app, _db) = make_app().await;
+    let cookie = login(&app).await;
+    create_user(&app, &cookie, "alice", "alicepass123").await;
+    let alice_cookie = login_as(&app, "alice", "alicepass123").await;
+
+    let root = tempfile::tempdir().unwrap().keep();
+    set_clone_root(&app, &cookie, &root).await;
+
+    // Alice cannot clone into a group owned by someone else.
+    let gid = create_project_group(&app, &cookie, "owner-only").await;
+    let body = format!(r#"{{"url":"https://gitlab.com/owner/repo.git","group_id":{gid}}}"#);
+    let resp = app
+        .clone()
+        .oneshot(authed("POST", "/api/clones", &alice_cookie, &body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn thread_messages_turn_windowed_pagination() {
     let (app, _db) = make_app().await;
     let cookie = login(&app).await;

@@ -576,6 +576,7 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> renameProjectGroup(int id, String name);
   Future<void> deleteProjectGroup(int id);
   Future<void> setProjectGroup(int projectId, int? groupId);
+  Future<void> _ensureAllProjectsLoaded();
   bool get _switchingServer;
   set _switchingServer(bool value);
   Future<void> _resetServerState();

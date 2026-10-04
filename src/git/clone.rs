@@ -82,6 +82,7 @@ pub struct ParsedRemote {
 /// The destination is always under the owner-configured clone root, even for
 /// non-owner users. The function returns the canonical absolute path of the
 /// newly cloned repository.
+#[allow(clippy::too_many_arguments)]
 pub async fn clone_repo(
     git: &GitService,
     git_remote: &GitRemoteService,
@@ -90,6 +91,7 @@ pub async fn clone_repo(
     user_id: i64,
     is_owner: bool,
     remote_url: &str,
+    group_id: Option<i64>,
 ) -> Result<PathBuf, CloneError> {
     let parsed = parse_remote_url(remote_url)?;
 
@@ -142,6 +144,15 @@ pub async fn clone_repo(
         })
         .await
         .map_err(|e| CloneError::CloneFailed(format!("failed to create project: {e}")))?;
+
+    if group_id.is_some() {
+        if let Err(e) = db.set_project_group(project.id, user_id, group_id).await {
+            let _ = db.delete_project(project.id, user_id).await;
+            return Err(CloneError::CloneFailed(format!(
+                "failed to assign group: {e}"
+            )));
+        }
+    }
 
     // Create parent directories so git clone has a place to write the repo.
     if let Some(parent) = resolved_target.parent() {

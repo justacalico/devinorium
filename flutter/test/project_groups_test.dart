@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
@@ -44,8 +45,7 @@ class _ThrowingClient extends BaseApiClient {
     Map<String, String> fields = const {},
     List<({String filename, String mime, Uint8List bytes})> attachments =
         const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
   @override
   Future<Map<String, dynamic>> post(String path, [Object? body]) =>
       throw UnimplementedError();
@@ -66,8 +66,7 @@ class _ThrowingClient extends BaseApiClient {
     String path,
     Map<String, String> fields,
     List<({String filename, String mime, Uint8List bytes})> files,
-  ) =>
-      throw UnimplementedError();
+  ) => throw UnimplementedError();
   @override
   Stream<SseEvent> sendStream({
     required String path,
@@ -79,8 +78,7 @@ class _ThrowingClient extends BaseApiClient {
     List<PathRef> contextPaths = const [],
     List<String> referencedThreadIds = const [],
     List<int> machineIds = const [],
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 }
 
 class _FakeApiService extends ApiService {
@@ -144,8 +142,7 @@ class _FakeApiService extends ApiService {
   Future<void> renameProjectGroup(int id, String name) {
     renamedGroups[id] = name;
     groupsResult = [
-      for (final g in groupsResult)
-        g.id == id ? g.copyWith(name: name) : g,
+      for (final g in groupsResult) g.id == id ? g.copyWith(name: name) : g,
     ];
     return Future.value();
   }
@@ -155,6 +152,17 @@ class _FakeApiService extends ApiService {
     deletedGroupIds.add(id);
     groupsResult = groupsResult.where((g) => g.id != id).toList();
     return Future.value();
+  }
+
+  final cloneRepoCalls = <(String, int?)>[];
+  Completer<String>? cloneRepoCompleter;
+
+  @override
+  Future<String> cloneRepo(String url, {int? groupId}) {
+    cloneRepoCalls.add((url, groupId));
+    final completer = cloneRepoCompleter;
+    if (completer != null) return completer.future;
+    return Future.value('/clone/$url');
   }
 
   @override
@@ -181,8 +189,7 @@ class _FakeApiService extends ApiService {
     int id, {
     int? limit,
     int? offset,
-  }) =>
-      Future.value([]);
+  }) => Future.value([]);
 
   @override
   Future<List<ThreadGroup>> listThreadGroups({int? limit, int? offset}) =>
@@ -199,8 +206,7 @@ class _FakeApiService extends ApiService {
     int projectId, {
     bool force = false,
     String? threadId,
-  }) =>
-      Future.value(GitRepoInfo());
+  }) => Future.value(GitRepoInfo());
 }
 
 User _user() => User(
@@ -264,23 +270,26 @@ void main() {
     expect(state.projects.single.groupId, 7);
   });
 
-  test('createProjectGroup adds the group and assigns pending project', () async {
-    final api = _FakeApiService();
-    final state = AppState.test(
-      api: api,
-      user: _user(),
-      projects: [_project(1)],
-    );
+  test(
+    'createProjectGroup adds the group and assigns pending project',
+    () async {
+      final api = _FakeApiService();
+      final state = AppState.test(
+        api: api,
+        user: _user(),
+        projects: [_project(1)],
+      );
 
-    state.openNewProjectGroupDialog(projectId: 1);
-    expect(state.dialog, DialogKind.newProjectGroup);
+      state.openNewProjectGroupDialog(projectId: 1);
+      expect(state.dialog, DialogKind.newProjectGroup);
 
-    await state.createProjectGroup('facebook');
+      await state.createProjectGroup('facebook');
 
-    expect(state.projectGroups.single.name, 'facebook');
-    expect(state.projects.single.groupId, state.projectGroups.single.id);
-    expect(state.dialog, DialogKind.none);
-  });
+      expect(state.projectGroups.single.name, 'facebook');
+      expect(state.projects.single.groupId, state.projectGroups.single.id);
+      expect(state.dialog, DialogKind.none);
+    },
+  );
 
   test('deleteProjectGroup ungroups projects and clears selection', () async {
     final api = _FakeApiService()
@@ -414,9 +423,7 @@ void main() {
       ChangeNotifierProvider<AppState>.value(
         value: state,
         child: const MaterialApp(
-          home: Scaffold(
-            body: Stack(children: [Sidebar(), DialogLayer()]),
-          ),
+          home: Scaffold(body: Stack(children: [Sidebar(), DialogLayer()])),
         ),
       ),
     );
@@ -427,10 +434,7 @@ void main() {
 
     expect(state.dialog, DialogKind.newProjectGroup);
 
-    await tester.enterText(
-      find.byKey(const Key('new_group_name')),
-      'facebook',
-    );
+    await tester.enterText(find.byKey(const Key('new_group_name')), 'facebook');
     await tester.pump();
     await tester.tap(find.byKey(const Key('new_group_create')));
     await tester.pumpAndSettle();
@@ -458,9 +462,7 @@ void main() {
       ChangeNotifierProvider<AppState>.value(
         value: state,
         child: const MaterialApp(
-          home: Scaffold(
-            body: Stack(children: [Sidebar(), DialogLayer()]),
-          ),
+          home: Scaffold(body: Stack(children: [Sidebar(), DialogLayer()])),
         ),
       ),
     );
@@ -529,9 +531,7 @@ void main() {
     expect(state.selectedProjectGroupId, 5);
   });
 
-  testWidgets('a backend without the route hides the group UI', (
-    tester,
-  ) async {
+  testWidgets('a backend without the route hides the group UI', (tester) async {
     final api = _FakeApiService()
       ..projectsResult = [_project(1)]
       ..groupsError = ApiException('Not Found', 404);
@@ -573,6 +573,93 @@ void main() {
     final created = state.projects.single;
     expect(api.groupAssignments[created.id], 5);
     expect(created.groupId, 5);
+  });
+
+  test('cloneRepo sends the selected group', () async {
+    final api = _FakeApiService()
+      ..groupsResult = [
+        ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+      ];
+    api.projectsResult = [_project(1, groupId: 5).copyWith(path: '/clone/u')];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      projectGroups: api.groupsResult,
+    );
+
+    state.selectProjectGroup(5);
+    await state.cloneRepo('u');
+
+    expect(api.cloneRepoCalls.single.$2, 5);
+    // The backend already grouped the project, so no patch ran.
+    expect(api.groupAssignments, isEmpty);
+  });
+
+  test('cloneRepo groups a project the backend left ungrouped', () async {
+    final api = _FakeApiService()
+      ..groupsResult = [
+        ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+      ];
+    api.projectsResult = [_project(1).copyWith(path: '/clone/u')];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      projectGroups: api.groupsResult,
+    );
+
+    state.selectProjectGroup(5);
+    await state.cloneRepo('u');
+
+    expect(api.groupAssignments[1], 5);
+  });
+
+  test(
+    'cloneRepo keeps the requested group when the filter moves on',
+    () async {
+      final api = _FakeApiService()
+        ..groupsResult = [
+          ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+          ProjectGroup(id: 6, name: 'work', position: 1, createdAt: ''),
+        ];
+      // The server already grouped the clone into 5 by the time it lands.
+      api.projectsResult = [_project(1, groupId: 5).copyWith(path: '/clone/u')];
+      api.cloneRepoCompleter = Completer<String>();
+      final state = AppState.test(
+        api: api,
+        user: _user(),
+        projectGroups: api.groupsResult,
+      );
+
+      state.selectProjectGroup(5);
+      final pending = state.cloneRepo('u');
+      state.selectProjectGroup(6);
+      api.cloneRepoCompleter!.complete('/clone/u');
+      await pending;
+
+      expect(api.cloneRepoCalls.single.$2, 5);
+      expect(api.groupAssignments, isEmpty);
+    },
+  );
+
+  test('cloneRepo finds the project past the first page', () async {
+    final api = _FakeApiService()
+      ..groupsResult = [
+        ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+      ];
+    api.projectsResult = [
+      for (var i = 0; i < 60; i++) _project(1000 + i),
+      _project(1).copyWith(path: '/clone/u'),
+    ];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      projectGroups: api.groupsResult,
+    );
+
+    state.selectProjectGroup(5);
+    await state.cloneRepo('u');
+
+    expect(api.groupAssignments[1], 5);
   });
 
   test('new group opened from manage returns to the manage dialog', () async {

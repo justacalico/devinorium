@@ -15,7 +15,7 @@ mixin ProjectGroupStore on AppStateBase {
   bool _projectGroupsUnsupported = false;
   @override
   bool _newGroupFromManage = false;
-  bool _loadingAllProjects = false;
+  Future<void>? _allProjectsLoad;
 
   @override
   List<ProjectGroup> get projectGroups => _projectGroups;
@@ -54,10 +54,16 @@ mixin ProjectGroupStore on AppStateBase {
   }
 
   /// Filtering is client-side, so selecting a group pulls in any project
-  /// pages that are not loaded yet.
-  Future<void> _ensureAllProjectsLoaded() async {
-    if (_loadingAllProjects) return;
-    _loadingAllProjects = true;
+  /// pages that are not loaded yet. Concurrent callers share the in-flight
+  /// page-through so awaiting this means the list really is complete.
+  @override
+  Future<void> _ensureAllProjectsLoaded() {
+    return _allProjectsLoad ??= _loadAllProjectPages().whenComplete(
+      () => _allProjectsLoad = null,
+    );
+  }
+
+  Future<void> _loadAllProjectPages() async {
     try {
       while (_projectsHasMore) {
         final before = _projectsOffset;
@@ -68,8 +74,6 @@ mixin ProjectGroupStore on AppStateBase {
       }
     } catch (_) {
       // Keep whatever pages loaded; the filter just covers those.
-    } finally {
-      _loadingAllProjects = false;
     }
   }
 
