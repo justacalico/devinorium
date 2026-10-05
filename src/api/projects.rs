@@ -158,7 +158,7 @@ async fn create(
     } else {
         match resolve_non_owner_dir(&state, &user, path).await {
             Ok(p) => p,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         }
     };
 
@@ -173,20 +173,21 @@ async fn resolve_non_owner_dir(
     state: &AppState,
     user: &crate::db::UserRow,
     path: &str,
-) -> Result<PathBuf, Response> {
+) -> Result<PathBuf, Box<Response>> {
     let invalid = || {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("invalid project path")),
+        Box::new(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid project path")),
+            )
+                .into_response(),
         )
-            .into_response()
     };
     let normalized = paths::normalize_path(path, &state.config.home_dir);
     let roots = crate::api::scope::non_owner_managed_roots(state, user.id).await;
     let project_root = crate::api::settings::project_root(state, user.id)
         .await
-        .map_err(crate::api::map_err_internal)
-        .map_err(IntoResponse::into_response)?;
+        .map_err(|e| Box::new(crate::api::map_err_internal(e).into_response()))?;
 
     let candidate = if std::path::Path::new(&normalized).is_absolute() {
         PathBuf::from(&normalized)

@@ -51,12 +51,12 @@ pub(super) async fn send_stream(
 
     let mut input = match parse_send_multipart(multipart).await {
         Ok(parsed) => parsed,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     resolve_context_refs(&state, &user, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
     if let Err(resp) = resolve_machine_refs(&state, &user, &mut input).await {
-        return resp;
+        return *resp;
     }
     if input.prompt.trim().is_empty()
         && input.context_refs.is_empty()
@@ -166,7 +166,9 @@ pub(crate) struct SendFields {
     pub machine_ids: Vec<i64>,
 }
 
-pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFields, Response> {
+pub(crate) async fn read_send_fields(
+    mut multipart: Multipart,
+) -> Result<SendFields, Box<Response>> {
     let mut fields = SendFields::default();
 
     let mut attachments_total = 0usize;
@@ -177,7 +179,7 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
             // A truncated body must not be mistaken for missing fields; on
             // the resend endpoint "no prompt" means regenerate and deletes
             // the tail.
-            Err(e) => return Err(crate::api::files::multipart_err(e)),
+            Err(e) => return Err(Box::new(crate::api::files::multipart_err(e))),
         };
         let name = field.name().unwrap_or("").to_string();
         let filename = field.file_name().unwrap_or("").to_string();
@@ -191,25 +193,29 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
                 match field.chunk().await {
                     Ok(Some(chunk)) => {
                         if data.len() + chunk.len() > MAX_ATTACHMENT_BYTES {
-                            return Err((
-                                StatusCode::PAYLOAD_TOO_LARGE,
-                                Json(ApiError::new("attachment too large (max 8 MiB)")),
-                            )
-                                .into_response());
+                            return Err(Box::new(
+                                (
+                                    StatusCode::PAYLOAD_TOO_LARGE,
+                                    Json(ApiError::new("attachment too large (max 8 MiB)")),
+                                )
+                                    .into_response(),
+                            ));
                         }
                         data.extend_from_slice(&chunk);
                     }
                     Ok(None) => break,
-                    Err(e) => return Err(crate::api::files::multipart_err(e)),
+                    Err(e) => return Err(Box::new(crate::api::files::multipart_err(e))),
                 }
             }
             attachments_total += data.len();
             if attachments_total > MAX_ATTACHMENTS_TOTAL_BYTES {
-                return Err((
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    Json(ApiError::new("attachments too large (max 64 MiB total)")),
-                )
-                    .into_response());
+                return Err(Box::new(
+                    (
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        Json(ApiError::new("attachments too large (max 64 MiB total)")),
+                    )
+                        .into_response(),
+                ));
             }
             fields.att_meta.push(serde_json::json!({
                 "filename": filename,
@@ -240,7 +246,7 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
                     match field.chunk().await {
                         Ok(Some(_)) => {}
                         Ok(None) => break,
-                        Err(e) => return Err(crate::api::files::multipart_err(e)),
+                        Err(e) => return Err(Box::new(crate::api::files::multipart_err(e))),
                     }
                 }
                 continue;
@@ -248,7 +254,7 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
         }
         let bytes = match field.bytes().await {
             Ok(b) => b,
-            Err(e) => return Err(crate::api::files::multipart_err(e)),
+            Err(e) => return Err(Box::new(crate::api::files::multipart_err(e))),
         };
         if name == "prompt" {
             fields.prompt = Some(String::from_utf8_lossy(&bytes).to_string());
@@ -258,11 +264,13 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
         } else if name == "client_message_id" {
             let s = String::from_utf8_lossy(&bytes).to_string();
             if s.len() > MAX_CLIENT_MESSAGE_ID_LEN {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ApiError::new("client_message_id too long")),
-                )
-                    .into_response());
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ApiError::new("client_message_id too long")),
+                    )
+                        .into_response(),
+                ));
             }
             if !s.is_empty() {
                 fields.client_message_id = Some(s);
@@ -272,7 +280,9 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
             match super::context_refs::parse_context_paths(&raw) {
                 Ok(paths) => fields.context_paths.extend(paths),
                 Err(e) => {
-                    return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
+                    return Err(Box::new(
+                        (StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response(),
+                    ))
                 }
             }
         } else if name == "referenced_thread_ids" {
@@ -280,7 +290,9 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
             match super::thread_refs::parse_referenced_thread_ids(&raw) {
                 Ok(ids) => fields.referenced_thread_ids.extend(ids),
                 Err(e) => {
-                    return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
+                    return Err(Box::new(
+                        (StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response(),
+                    ))
                 }
             }
         } else if name == "machine_ids" {
@@ -288,7 +300,9 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
             match parse_machine_ids(&raw) {
                 Ok(ids) => fields.machine_ids.extend(ids),
                 Err(e) => {
-                    return Err((StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response())
+                    return Err(Box::new(
+                        (StatusCode::BAD_REQUEST, Json(ApiError::new(&e))).into_response(),
+                    ))
                 }
             }
         }
@@ -301,8 +315,7 @@ pub(crate) async fn read_send_fields(mut multipart: Multipart) -> Result<SendFie
 
 /// Validate raw send fields into a [SendInput]. Requires a non-empty prompt
 /// or at least one context/thread reference.
-#[allow(clippy::result_large_err)]
-pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Response> {
+pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Box<Response>> {
     let prompt = match fields.prompt {
         Some(p) if !p.trim().is_empty() => p,
         // References alone are a valid message: the context block makes up
@@ -314,11 +327,13 @@ pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Re
             String::new()
         }
         _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ApiError::new("prompt is required")),
-            )
-                .into_response())
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiError::new("prompt is required")),
+                )
+                    .into_response(),
+            ))
         }
     };
     Ok(SendInput {
@@ -337,7 +352,7 @@ pub(crate) fn send_input_from_fields(fields: SendFields) -> Result<SendInput, Re
     })
 }
 
-pub(crate) async fn parse_send_multipart(multipart: Multipart) -> Result<SendInput, Response> {
+pub(crate) async fn parse_send_multipart(multipart: Multipart) -> Result<SendInput, Box<Response>> {
     send_input_from_fields(read_send_fields(multipart).await?)
 }
 

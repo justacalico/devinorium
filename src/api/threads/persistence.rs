@@ -192,15 +192,19 @@ pub(crate) async fn persist_assistant_reply(
     new_session_id: Option<String>,
     new_title: Option<String>,
     run: &RunState,
-) -> Result<MessageRow, Response> {
+) -> Result<MessageRow, Box<Response>> {
     if run.cancelled.load(Ordering::SeqCst) {
-        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+        return Err(Box::new(
+            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
+        ));
     }
 
     let session_id_for_audit = new_session_id.clone();
     if let Some(sid) = new_session_id {
         if run.cancelled.load(Ordering::SeqCst) {
-            return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+            return Err(Box::new(
+                map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
+            ));
         }
         if let Err(e) = state
             .db
@@ -212,12 +216,16 @@ pub(crate) async fn persist_assistant_reply(
     }
 
     if run.cancelled.load(Ordering::SeqCst) {
-        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+        return Err(Box::new(
+            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
+        ));
     }
     let _ = state.db.touch_thread(&thread.id).await;
 
     if run.cancelled.load(Ordering::SeqCst) {
-        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+        return Err(Box::new(
+            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
+        ));
     }
 
     // Strip plan XML from persisted parts so the final assistant message does
@@ -242,11 +250,13 @@ pub(crate) async fn persist_assistant_reply(
             client_message_id: None,
         })
         .await
-        .map_err(|e| map_err_internal(e).into_response())?;
+        .map_err(|e| Box::new(map_err_internal(e).into_response()))?;
 
     if run.cancelled.load(Ordering::SeqCst) {
         let _ = state.db.delete_message(assistant_msg.id).await;
-        return Err(map_err_internal(anyhow::anyhow!("stopped by user")).into_response());
+        return Err(Box::new(
+            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
+        ));
     }
 
     if !run.cancelled.load(Ordering::SeqCst) {

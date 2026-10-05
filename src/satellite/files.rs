@@ -40,12 +40,15 @@ fn invalid() -> Response {
 /// Resolve the browse root: the caller-supplied absolute path, or the
 /// satellite's home directory. A root that does not exist still resolves
 /// lexically so `mkdir`-style calls can create it.
-async fn resolve_root(state: &SatelliteState, root: Option<&str>) -> Result<PathBuf, Response> {
+async fn resolve_root(
+    state: &SatelliteState,
+    root: Option<&str>,
+) -> Result<PathBuf, Box<Response>> {
     let base = match root.map(str::trim).filter(|s| !s.is_empty()) {
         Some(r) => {
             let p = PathBuf::from(r);
             if !p.is_absolute() {
-                return Err(bad_request("root must be an absolute path"));
+                return Err(Box::new(bad_request("root must be an absolute path")));
             }
             p
         }
@@ -54,7 +57,7 @@ async fn resolve_root(state: &SatelliteState, root: Option<&str>) -> Result<Path
     match tokio::fs::canonicalize(&base).await {
         Ok(c) => Ok(c),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(paths::normalize_lexical(&base)),
-        Err(e) => Err(internal(e)),
+        Err(e) => Err(Box::new(internal(e))),
     }
 }
 
@@ -64,7 +67,7 @@ async fn resolve(
     state: &SatelliteState,
     root: Option<&str>,
     rel: Option<&str>,
-) -> Result<(PathBuf, PathBuf), Response> {
+) -> Result<(PathBuf, PathBuf), Box<Response>> {
     let root_canon = resolve_root(state, root).await?;
     let rel = rel.unwrap_or("");
     let target = if rel.is_empty() {
@@ -87,9 +90,9 @@ async fn resolve(
         paths::resolve(&target, None, None)
     };
     match resolved {
-        Some(p) if paths::is_hidden_within(&root_canon, &p) => Err(invalid()),
+        Some(p) if paths::is_hidden_within(&root_canon, &p) => Err(Box::new(invalid())),
         Some(p) => Ok((p, root_canon)),
-        None => Err(invalid()),
+        None => Err(Box::new(invalid())),
     }
 }
 
@@ -117,7 +120,7 @@ async fn list_dir(
 ) -> Response {
     let (target, _root) = match resolve(&state, q.root.as_deref(), q.path.as_deref()).await {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let mut entries = match tokio::fs::read_dir(&target).await {
         Ok(rd) => rd,
@@ -189,7 +192,7 @@ async fn read_file(
 ) -> Response {
     let (target, _root) = match resolve(&state, q.root.as_deref(), q.path.as_deref()).await {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let meta = match tokio::fs::metadata(&target).await {
         Ok(m) => m,
@@ -265,7 +268,7 @@ async fn write_file(
 ) -> Response {
     let (target, _root) = match resolve(&state, req.root.as_deref(), Some(&req.path)).await {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
 
     let content_bytes = req.content.as_bytes();
@@ -363,7 +366,7 @@ struct MkdirReq {
 async fn mkdir(State(state): State<Arc<SatelliteState>>, Json(req): Json<MkdirReq>) -> Response {
     let (target, _root) = match resolve(&state, req.root.as_deref(), Some(&req.path)).await {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if let Err(e) = tokio::fs::create_dir_all(&target).await {
         return internal(e).into_response();
@@ -388,7 +391,7 @@ async fn delete(
     }
     let (_resolved, root) = match resolve(&state, q.root.as_deref(), Some(rel)).await {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let target = if Path::new(rel).is_absolute() {
         PathBuf::from(rel)
@@ -465,12 +468,12 @@ async fn upload(State(state): State<Arc<SatelliteState>>, mut multipart: Multipa
 
     let root_canon = match resolve_root(&state, root.as_deref()).await {
         Ok(r) => r,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let dest_dir = match dest_dir_rel.as_deref() {
         Some(rel) => match resolve(&state, Some(&root_canon.to_string_lossy()), Some(rel)).await {
             Ok((p, _)) => p,
-            Err(r) => return r,
+            Err(r) => return *r,
         },
         None => root_canon.clone(),
     };

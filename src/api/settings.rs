@@ -78,26 +78,30 @@ struct SetProjectRootRequest {
 /// Validate a user-supplied directory path for a path setting: expand `~`,
 /// require an absolute path without traversal, resolve symlinks, and create
 /// the directory when missing. Returns the canonical path to store.
-async fn checked_dir_path(state: &AppState, path: &str) -> Result<String, Response> {
+async fn checked_dir_path(state: &AppState, path: &str) -> Result<String, Box<Response>> {
     // Expand `~` to the home directory while still validating the final string.
     let path = paths::normalize_path(path, &state.config.home_dir);
     let p = Path::new(&path);
     if !p.is_absolute() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("path must be absolute")),
-        )
-            .into_response());
+        return Err(Box::new(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError::new("path must be absolute")),
+            )
+                .into_response(),
+        ));
     }
 
     // Reject `..` and other traversal components.
     for c in p.components() {
         if matches!(c, std::path::Component::ParentDir) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ApiError::new("path traversal is not allowed")),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiError::new("path traversal is not allowed")),
+                )
+                    .into_response(),
+            ));
         }
     }
 
@@ -107,9 +111,9 @@ async fn checked_dir_path(state: &AppState, path: &str) -> Result<String, Respon
     let resolved = match paths::resolve(p, None, None) {
         Some(r) => r,
         None => {
-            return Err(
+            return Err(Box::new(
                 (StatusCode::BAD_REQUEST, Json(ApiError::new("invalid path"))).into_response(),
-            );
+            ));
         }
     };
 
@@ -117,36 +121,44 @@ async fn checked_dir_path(state: &AppState, path: &str) -> Result<String, Respon
     match tokio::fs::try_exists(&resolved).await {
         Ok(true) => match tokio::fs::metadata(&resolved).await {
             Ok(meta) if !meta.is_dir() => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ApiError::new("path is not a directory")),
-                )
-                    .into_response());
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ApiError::new("path is not a directory")),
+                    )
+                        .into_response(),
+                ));
             }
             Ok(_) => {}
             Err(e) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ApiError::new(format!("cannot access path: {e}"))),
-                )
-                    .into_response());
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ApiError::new(format!("cannot access path: {e}"))),
+                    )
+                        .into_response(),
+                ));
             }
         },
         Ok(false) => {
             if let Err(e) = tokio::fs::create_dir_all(&resolved).await {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ApiError::new(format!("cannot create directory: {e}"))),
-                )
-                    .into_response());
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ApiError::new(format!("cannot create directory: {e}"))),
+                    )
+                        .into_response(),
+                ));
             }
         }
         Err(e) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ApiError::new(format!("cannot check path: {e}"))),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiError::new(format!("cannot check path: {e}"))),
+                )
+                    .into_response(),
+            ));
         }
     }
 
@@ -196,7 +208,7 @@ async fn set_clone_root(
 
     let path = match checked_dir_path(&state, path).await {
         Ok(p) => p,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     if let Err(e) = state.db.set_clone_root(user.id, Some(&path)).await {
@@ -251,7 +263,7 @@ async fn set_worktree_root(
         None | Some("") | Some("~") | Some("~/") | Some("~\\") => "~".to_string(),
         Some(p) => match checked_dir_path(&state, p).await {
             Ok(p) => p,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         },
     };
 
@@ -317,7 +329,7 @@ async fn set_project_root(
         None | Some("") | Some("~") | Some("~/") | Some("~\\") => "~".to_string(),
         Some(p) => match checked_dir_path(&state, p).await {
             Ok(p) => p,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         },
     };
 
@@ -410,26 +422,28 @@ async fn set_mcp_servers(
 /// JSON field out of a bundle multipart body.
 async fn read_mcpb_multipart(
     mut multipart: Multipart,
-) -> Result<(Vec<u8>, serde_json::Map<String, serde_json::Value>), Response> {
+) -> Result<(Vec<u8>, serde_json::Map<String, serde_json::Value>), Box<Response>> {
     let mut file = None;
     let mut config = serde_json::Map::new();
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(crate::api::files::multipart_err)?
+        .map_err(|e| Box::new(crate::api::files::multipart_err(e)))?
     {
         match field.name().unwrap_or("") {
             "file" => {
                 let bytes = field
                     .bytes()
                     .await
-                    .map_err(crate::api::files::multipart_err)?;
+                    .map_err(|e| Box::new(crate::api::files::multipart_err(e)))?;
                 if bytes.len() > mcpb::MAX_MCPB_BYTES {
-                    return Err((
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        Json(ApiError::new("bundle too large")),
-                    )
-                        .into_response());
+                    return Err(Box::new(
+                        (
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            Json(ApiError::new("bundle too large")),
+                        )
+                            .into_response(),
+                    ));
                 }
                 file = Some(bytes.to_vec());
             }
@@ -437,15 +451,17 @@ async fn read_mcpb_multipart(
                 let text = field
                     .text()
                     .await
-                    .map_err(crate::api::files::multipart_err)?;
+                    .map_err(|e| Box::new(crate::api::files::multipart_err(e)))?;
                 match serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text) {
                     Ok(map) => config = map,
                     Err(_) => {
-                        return Err((
-                            StatusCode::BAD_REQUEST,
-                            Json(ApiError::new("config must be a JSON object")),
-                        )
-                            .into_response())
+                        return Err(Box::new(
+                            (
+                                StatusCode::BAD_REQUEST,
+                                Json(ApiError::new("config must be a JSON object")),
+                            )
+                                .into_response(),
+                        ))
                     }
                 }
             }
@@ -453,11 +469,13 @@ async fn read_mcpb_multipart(
         }
     }
     let file = file.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError::new("no .mcpb file uploaded")),
+        Box::new(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError::new("no .mcpb file uploaded")),
+            )
+                .into_response(),
         )
-            .into_response()
     })?;
     Ok((file, config))
 }
@@ -478,7 +496,7 @@ async fn inspect_mcpb(
     }
     let (bytes, _) = match read_mcpb_multipart(multipart).await {
         Ok(v) => v,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     match tokio::task::spawn_blocking(move || mcpb::inspect_bundle(&bytes)).await {
         Ok(Ok(info)) => Json(info).into_response(),
@@ -501,7 +519,7 @@ async fn install_mcpb(
     }
     let (bytes, config) = match read_mcpb_multipart(multipart).await {
         Ok(v) => v,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     let _guard = MCP_SERVERS_LOCK.lock().await;
     let root = mcpb::bundle_root(&state.config);

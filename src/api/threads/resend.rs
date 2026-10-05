@@ -66,7 +66,7 @@ pub(super) async fn resend(
 
     let fields = match read_send_fields(multipart).await {
         Ok(f) => f,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     let editing = fields.prompt.is_some();
 
@@ -108,7 +108,7 @@ pub(super) async fn resend(
         fields.machine_ids.extend(mids);
         let mut input = match send_input_from_fields(fields) {
             Ok(i) => i,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
         match reattach_stored_files(&state, &anchor, &mut input).await {
             Ok(()) => input,
@@ -120,7 +120,7 @@ pub(super) async fn resend(
     resolve_context_refs(&state, &user, &thread, &mut input).await;
     resolve_thread_refs(&state, user.id, &thread, &mut input).await;
     if let Err(resp) = resolve_machine_refs(&state, &user, &mut input).await {
-        return resp;
+        return *resp;
     }
 
     // Nothing to send: the resolved prompt and every reference came up

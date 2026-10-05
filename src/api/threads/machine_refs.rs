@@ -63,14 +63,16 @@ pub(crate) async fn resolve_machine_refs(
     state: &AppState,
     user: &UserRow,
     input: &mut SendInput,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     if !input.machine_ids.is_empty() && !user.is_owner {
         input.machine_ids.clear();
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ApiError::new("machine references are owner-only")),
-        )
-            .into_response());
+        return Err(Box::new(
+            (
+                StatusCode::FORBIDDEN,
+                Json(ApiError::new("machine references are owner-only")),
+            )
+                .into_response(),
+        ));
     }
     // Dedupe and cap again: a multipart body may repeat the field and skip
     // the per-field limit in the parser.

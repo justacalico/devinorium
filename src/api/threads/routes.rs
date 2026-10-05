@@ -250,7 +250,7 @@ async fn resolve_linked_mr(
     thread: &crate::db::ThreadRow,
     url: &str,
     user_id: i64,
-) -> Result<Option<String>, Response> {
+) -> Result<Option<String>, Box<Response>> {
     let url = url.trim();
     if url.is_empty() {
         return Ok(None);
@@ -259,35 +259,41 @@ async fn resolve_linked_mr(
     let linked = match crate::git::parse_gitlab_merge_request_url(url) {
         Some(l) => l,
         None => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new(
-                    "not a valid GitLab merge request URL",
-                )),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new(
+                        "not a valid GitLab merge request URL",
+                    )),
+                )
+                    .into_response(),
+            ));
         }
     };
 
     let project_id = match thread.project_id {
         Some(pid) => pid,
         None => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("thread has no project")),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("thread has no project")),
+                )
+                    .into_response(),
+            ));
         }
     };
 
     let project = match state.db.get_project(project_id, user_id).await {
         Ok(Some(p)) => p,
         _ => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(crate::api::ApiError::new("project not found")),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(crate::api::ApiError::new("project not found")),
+                )
+                    .into_response(),
+            ));
         }
     };
 
@@ -295,61 +301,73 @@ async fn resolve_linked_mr(
         Ok(g) => g,
         Err(e) => {
             tracing::warn!(error = %e, "failed to resolve git backend for mr link");
-            return Err((
-                StatusCode::BAD_GATEWAY,
-                Json(crate::api::ApiError::new("node unreachable")),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(crate::api::ApiError::new("node unreachable")),
+                )
+                    .into_response(),
+            ));
         }
     };
     let remote_url = match git.remote_url(PathBuf::from(&project.path).as_path()).await {
         Ok(u) => u,
         Err(crate::git::GitError::NotEnabled) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new(
-                    "git support is not enabled on this backend",
-                )),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new(
+                        "git support is not enabled on this backend",
+                    )),
+                )
+                    .into_response(),
+            ));
         }
         Err(crate::git::GitError::NotRepo) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new("project is not a git repository")),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new("project is not a git repository")),
+                )
+                    .into_response(),
+            ));
         }
         Err(e) => {
-            return Err((
-                e.status_code(),
-                Json(crate::api::ApiError::new(e.to_string())),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    e.status_code(),
+                    Json(crate::api::ApiError::new(e.to_string())),
+                )
+                    .into_response(),
+            ));
         }
     };
 
     let remote = match crate::git::parse_gitlab_remote_url(&remote_url) {
         Some(r) => r,
         None => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(crate::api::ApiError::new(
-                    "project remote is not a GitLab repository",
-                )),
-            )
-                .into_response());
+            return Err(Box::new(
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(crate::api::ApiError::new(
+                        "project remote is not a GitLab repository",
+                    )),
+                )
+                    .into_response(),
+            ));
         }
     };
 
     if linked.hostname != remote.hostname || linked.project_path != remote.project_path {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new(
-                "merge request URL does not match project remote",
-            )),
-        )
-            .into_response());
+        return Err(Box::new(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new(
+                    "merge request URL does not match project remote",
+                )),
+            )
+                .into_response(),
+        ));
     }
 
     Ok(Some(serde_json::to_string(&linked).unwrap()))
@@ -461,7 +479,7 @@ pub(super) async fn rename(
         Some(Some(url)) => match resolve_linked_mr(&state, &thread, url, user.id).await {
             Ok(Some(json)) => Some(Some(json)),
             Ok(None) => Some(None),
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         },
     };
 

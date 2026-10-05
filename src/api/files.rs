@@ -123,7 +123,7 @@ async fn resolve(
     rel: Option<&str>,
     project_id: Option<i64>,
     thread_id: Option<&str>,
-) -> Result<(PathBuf, PathBuf), Response> {
+) -> Result<(PathBuf, PathBuf), Box<Response>> {
     let home_dir = &state.config.home_dir;
 
     let project_root = if let Some(tid) = thread_id.filter(|s| !s.trim().is_empty()) {
@@ -133,37 +133,42 @@ async fn resolve(
                 // root; reject instead of falling back to the home dir.
                 if let Some(pid) = t.project_id {
                     if !matches!(state.db.get_project(pid, user.id).await, Ok(Some(_))) {
-                        return Err((
-                            StatusCode::BAD_REQUEST,
-                            Json(crate::api::ApiError::new("invalid thread_id")),
-                        )
-                            .into_response());
+                        return Err(Box::new(
+                            (
+                                StatusCode::BAD_REQUEST,
+                                Json(crate::api::ApiError::new("invalid thread_id")),
+                            )
+                                .into_response(),
+                        ));
                     }
                 }
                 Some(
                     crate::api::threads::plan::project_working_dir_for_thread(state, &t)
                         .await
-                        .map_err(crate::api::map_err_internal)
-                        .map_err(IntoResponse::into_response)?,
+                        .map_err(|e| Box::new(crate::api::map_err_internal(e).into_response()))?,
                 )
             }
             _ => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new("invalid thread_id")),
-                )
-                    .into_response())
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(crate::api::ApiError::new("invalid thread_id")),
+                    )
+                        .into_response(),
+                ))
             }
         }
     } else if let Some(pid) = project_id {
         match state.db.get_project(pid, user.id).await {
             Ok(Some(p)) => Some(PathBuf::from(p.path)),
             _ => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new("invalid project_id")),
-                )
-                    .into_response())
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(crate::api::ApiError::new("invalid project_id")),
+                    )
+                        .into_response(),
+                ))
             }
         }
     } else {
@@ -179,11 +184,11 @@ async fn resolve(
         // is the managed project root.
         None if !user.is_owner => match crate::api::settings::project_root(state, user.id).await {
             Ok(root) => root,
-            Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
+            Err(e) => return Err(Box::new(crate::api::map_err_internal(e).into_response())),
         },
         None => match home_dir.canonicalize() {
             Ok(c) => c,
-            Err(e) => return Err(crate::api::map_err_internal(e).into_response()),
+            Err(e) => return Err(Box::new(crate::api::map_err_internal(e).into_response())),
         },
     };
 
@@ -227,11 +232,13 @@ async fn resolve(
     };
 
     let invalid = || {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(crate::api::ApiError::new("invalid path")),
+        Box::new(
+            (
+                StatusCode::BAD_REQUEST,
+                Json(crate::api::ApiError::new("invalid path")),
+            )
+                .into_response(),
         )
-            .into_response()
     };
 
     match resolved {
@@ -263,26 +270,30 @@ async fn file_target(
     project_id: Option<i64>,
     thread_id: Option<&str>,
     node_id: Option<&str>,
-) -> Result<FileTarget, Response> {
+) -> Result<FileTarget, Box<Response>> {
     let owner_only = || {
-        (
-            StatusCode::FORBIDDEN,
-            Json(crate::api::ApiError::new("paired machines are owner-only")),
+        Box::new(
+            (
+                StatusCode::FORBIDDEN,
+                Json(crate::api::ApiError::new("paired machines are owner-only")),
+            )
+                .into_response(),
         )
-            .into_response()
     };
 
     if let Some(tid) = thread_id.map(str::trim).filter(|s| !s.is_empty()) {
         let target = match state.db.get_thread(tid, user.id).await {
             Ok(Some(t)) => crate::api::threads::plan::thread_target(state, &t)
                 .await
-                .map_err(|e| crate::api::map_err_internal(e).into_response())?,
+                .map_err(|e| Box::new(crate::api::map_err_internal(e).into_response()))?,
             _ => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new("invalid thread_id")),
-                )
-                    .into_response())
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(crate::api::ApiError::new("invalid thread_id")),
+                    )
+                        .into_response(),
+                ))
             }
         };
         if let Some(node) = target.node {
@@ -294,7 +305,9 @@ async fn file_target(
                     client: client.with_proxy_user(&user.username),
                     root: target.dir.to_string_lossy().to_string(),
                 }),
-                None => Err(crate::node_client::node_bad_gateway("node unreachable")),
+                None => Err(Box::new(crate::node_client::node_bad_gateway(
+                    "node unreachable",
+                ))),
             };
         }
         return Ok(FileTarget::Local);
@@ -305,7 +318,11 @@ async fn file_target(
             Ok(Some(p)) => {
                 let node = match crate::node_client::bound_node(state, &p).await {
                     Ok(n) => n,
-                    Err(e) => return Err(crate::node_client::node_bad_gateway(e.to_string())),
+                    Err(e) => {
+                        return Err(Box::new(crate::node_client::node_bad_gateway(
+                            e.to_string(),
+                        )))
+                    }
                 };
                 if let Some(node) = node {
                     if !user.is_owner {
@@ -316,16 +333,20 @@ async fn file_target(
                             client: client.with_proxy_user(&user.username),
                             root: p.path.clone(),
                         }),
-                        None => Err(crate::node_client::node_bad_gateway("node unreachable")),
+                        None => Err(Box::new(crate::node_client::node_bad_gateway(
+                            "node unreachable",
+                        ))),
                     };
                 }
             }
             _ => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new("invalid project_id")),
-                )
-                    .into_response())
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(crate::api::ApiError::new("invalid project_id")),
+                    )
+                        .into_response(),
+                ))
             }
         }
         return Ok(FileTarget::Local);
@@ -338,11 +359,13 @@ async fn file_target(
         let node = match state.db.get_federation_node(nid).await {
             Ok(Some(n)) => n,
             _ => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(crate::api::ApiError::new("invalid node_id")),
-                )
-                    .into_response())
+                return Err(Box::new(
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(crate::api::ApiError::new("invalid node_id")),
+                    )
+                        .into_response(),
+                ))
             }
         };
         return match crate::node_client::NodeClient::for_node(state, &node) {
@@ -350,7 +373,9 @@ async fn file_target(
                 client,
                 root: String::new(),
             }),
-            None => Err(crate::node_client::node_bad_gateway("node unreachable")),
+            None => Err(Box::new(crate::node_client::node_bad_gateway(
+                "node unreachable",
+            ))),
         };
     }
 
@@ -428,7 +453,7 @@ async fn list_dir(
             };
         }
         Ok(FileTarget::Local) => {}
-        Err(r) => return r,
+        Err(r) => return *r,
     }
     let (target, _root) = match resolve(
         &state,
@@ -440,7 +465,7 @@ async fn list_dir(
     .await
     {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let mut entries = match tokio::fs::read_dir(&target).await {
         Ok(rd) => rd,
@@ -531,7 +556,7 @@ async fn read_file(
             };
         }
         Ok(FileTarget::Local) => {}
-        Err(r) => return r,
+        Err(r) => return *r,
     }
     let (target, _root) = match resolve(
         &state,
@@ -543,7 +568,7 @@ async fn read_file(
     .await
     {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let meta = match tokio::fs::metadata(&target).await {
         Ok(m) => m,
@@ -666,7 +691,7 @@ async fn write_file(
             };
         }
         Ok(FileTarget::Local) => {}
-        Err(r) => return r,
+        Err(r) => return *r,
     }
     let (target, _root) = match resolve(
         &state,
@@ -678,7 +703,7 @@ async fn write_file(
     .await
     {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
 
     let file_lock = file_write_lock(&target);
@@ -878,12 +903,12 @@ async fn upload(
             };
         }
         Ok(FileTarget::Local) => {}
-        Err(r) => return r,
+        Err(r) => return *r,
     }
     let (root_base, _root) =
         match resolve(&state, &user, None, project_id, thread_id.as_deref()).await {
             Ok(v) => v,
-            Err(r) => return r,
+            Err(r) => return *r,
         };
 
     // Same scope rules as `resolve`: absolute destination dirs for
@@ -996,7 +1021,7 @@ async fn mkdir(
             };
         }
         Ok(FileTarget::Local) => {}
-        Err(r) => return r,
+        Err(r) => return *r,
     }
     let (target, _root) = match resolve(
         &state,
@@ -1008,7 +1033,7 @@ async fn mkdir(
     .await
     {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     if let Err(e) = tokio::fs::create_dir_all(&target).await {
         return crate::api::map_err_internal(e).into_response();
@@ -1049,7 +1074,7 @@ async fn delete(
             };
         }
         Ok(FileTarget::Local) => {}
-        Err(r) => return r,
+        Err(r) => return *r,
     }
     let (_resolved, root) = match resolve(
         &state,
@@ -1061,7 +1086,7 @@ async fn delete(
     .await
     {
         Ok(v) => v,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let invalid = || {
         (
