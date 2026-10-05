@@ -163,7 +163,7 @@ fn live_message_stream(
                         *last_seq.lock().await = max;
                     }
                     Err(e) => {
-                        eprintln!("live_message_stream db error: {e}");
+                        tracing::error!("live_message_stream db error: {e}");
                     }
                 }
                 stream::iter(batch)
