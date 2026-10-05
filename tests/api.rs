@@ -12944,6 +12944,10 @@ async fn terminal_create_with_unknown_thread_id_is_rejected() {
 /// Spawn a terminal for `tid`, run `pwd`, and report whether the shell's
 /// output ever contained `want`.
 async fn terminal_pwd_shows(port: u16, origin: &str, cookie: &str, tid: &str, want: &str) -> bool {
+    // Pin a bare POSIX shell: fancier shells (e.g. fish) run terminal feature
+    // negotiation at startup, which delays the prompt and can swallow early
+    // input, making the cwd check depend on the host's $SHELL.
+    std::env::set_var("SHELL", "/bin/sh");
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://127.0.0.1:{port}/api/terminal/sessions"))
@@ -12977,15 +12981,21 @@ async fn terminal_pwd_shows(port: u16, origin: &str, cookie: &str, tid: &str, wa
         .unwrap();
     let (mut ws, _resp) = tokio_tungstenite::connect_async(req).await.unwrap();
 
-    let _ = ws
-        .send(Message::Text(
-            r#"{"type":"input","data":"pwd\n"}"#.to_string(),
-        ))
-        .await;
-
+    // Shells that negotiate terminal features at startup (e.g. fish) can eat
+    // input written before their line editor is ready, so keep resending pwd
+    // until its output shows up.
     let mut out = String::new();
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
+    let mut resend_at = tokio::time::Instant::now();
     while tokio::time::Instant::now() < deadline && !out.contains(want) {
+        if tokio::time::Instant::now() >= resend_at {
+            let _ = ws
+                .send(Message::Text(
+                    r#"{"type":"input","data":"pwd\n"}"#.to_string(),
+                ))
+                .await;
+            resend_at = tokio::time::Instant::now() + tokio::time::Duration::from_millis(500);
+        }
         match tokio::time::timeout(tokio::time::Duration::from_millis(200), ws.next()).await {
             Ok(Some(Ok(Message::Binary(bytes)))) => {
                 out.push_str(&String::from_utf8_lossy(&bytes));

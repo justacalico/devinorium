@@ -375,6 +375,9 @@ jobs:
           mkdir -p "$pkgdir/opt/devinorium" "$pkgdir/usr/bin" "$pkgdir/DEBIAN"
           cp -r "$BUNDLE/." "$pkgdir/opt/devinorium/"
           ln -sf /opt/devinorium/devinorium_frontend "$pkgdir/usr/bin/devinorium"
+          install -Dm644 ../packaging/linux/devinorium.desktop "$pkgdir/usr/share/applications/gitlab.openlyst.devinorium.desktop"
+          install -Dm644 ../packaging/linux/devinorium.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/devinorium.svg"
+          install -Dm644 ../LICENSE "$pkgdir/usr/share/doc/devinorium/copyright"
           {
             echo "Package: devinorium"
             echo "Version: $VERSION"
@@ -382,6 +385,8 @@ jobs:
             echo "Priority: optional"
             echo "Architecture: $DEB_ARCH"
             echo "Maintainer: Devinorium CI <ci@gitlab.com>"
+            echo "Depends: libgtk-3-0, libepoxy0, git"
+            echo "Suggests: xdg-utils, zenity"
             echo "Description: Devinorium desktop client"
           } > "$pkgdir/DEBIAN/control"
           dpkg-deb --build "$pkgdir" "$ARTIFACTS_DIR/devinorium-linux-$OUT_ARCH.deb" >/dev/null
@@ -723,11 +728,12 @@ jobs:
               su aur-builder -s /bin/bash -c "
                 set -e
                 bash -n scripts/aur-publish.sh
+                test -f packaging/linux/devinorium.desktop -a -f packaging/linux/devinorium.svg || { echo \"missing packaging/linux assets\" >&2; exit 1; }
                 for d in packaging/aur/*/; do
                   [ -f \"\$d/PKGBUILD\" ] || continue
                   stage=\$(mktemp -d)
                   cp \"\$d/PKGBUILD\" \"\$stage/\"
-                  cp packaging/aur/files/* \"\$stage/\" 2>/dev/null || true
+                  cp packaging/aur/files/* packaging/linux/* \"\$stage/\" 2>/dev/null || true
                   (cd \"\$stage\" && makepkg --printsrcinfo > /dev/null)
                   echo \"\$d OK\"
                   rm -rf \"\$stage\"

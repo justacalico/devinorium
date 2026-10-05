@@ -16,6 +16,7 @@ MODE="${1:?usage: aur-publish.sh <stable|git> [tag]}"
 TAG="${2:-${RELEASE_TAG:-}}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG_DIR="$ROOT/packaging/aur"
+LINUX_DIR="$ROOT/packaging/linux"
 AUR_URL_BASE="ssh://aur@aur.archlinux.org"
 DRYRUN="${AUR_PUBLISH_DRYRUN:-}"
 
@@ -119,11 +120,11 @@ publish() {
 
   local aux=()
   case "$pkgbase" in
-    *server*) aux=(devinorium.service devinorium.sysusers devinorium.env) ;;
-    *)        aux=(devinorium.desktop devinorium.svg) ;;
+    *server*) aux=("$PKG_DIR/files/devinorium.service" "$PKG_DIR/files/devinorium.sysusers" "$PKG_DIR/files/devinorium.env") ;;
+    *)        aux=("$LINUX_DIR/devinorium.desktop" "$LINUX_DIR/devinorium.svg") ;;
   esac
   for f in "${aux[@]}"; do
-    cp "$PKG_DIR/files/$f" "$repo/$f"
+    cp "$f" "$repo/"
   done
 
   if [ "$MODE" = stable ]; then

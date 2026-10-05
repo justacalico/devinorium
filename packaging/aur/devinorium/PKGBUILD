@@ -46,7 +46,7 @@ package() {
   install -d "$pkgdir/usr/bin"
   ln -s /opt/devinorium/devinorium_frontend "$pkgdir/usr/bin/devinorium"
 
-  install -Dm644 "$srcdir/devinorium.desktop" "$pkgdir/usr/share/applications/devinorium.desktop"
+  install -Dm644 "$srcdir/devinorium.desktop" "$pkgdir/usr/share/applications/gitlab.openlyst.devinorium.desktop"
   install -Dm644 "$srcdir/devinorium.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/devinorium.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
