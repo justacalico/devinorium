@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.99.1 - 2026-10-05
+#### Bug Fixes
+- 修正节点配对码输入框的格式提示 - (5432d9b) - HttpAnimations
+- 附件选择中的异步错误未被 catch 捕获 - (a1a691d) - HttpAnimations
+
+- - -
+
 ## v0.99.0 - 2026-10-05
 #### Features
 - 卫星模式改为配对式无状态执行节点 - (afee22d) - HttpAnimations
