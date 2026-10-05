@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.99.0 - 2026-10-05
+#### Features
+- 卫星模式改为配对式无状态执行节点 - (afee22d) - HttpAnimations
+#### Bug Fixes
+- 为 Linux 桌面包补齐启动器项、图标与依赖声明 - (b3dfb18) - HttpAnimations
+- 修 clippy 警告 - (f9f18d6) - HttpAnimations
+
+- - -
+
 ## v0.98.0 - 2026-10-04
 #### Features
 - 终端默认使用用户的登录 shell - (85d8c00) - HttpAnimations
