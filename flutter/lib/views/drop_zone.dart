@@ -80,12 +80,12 @@ class _DropZoneState extends State<DropZone> {
       if (!mounted || source == null) return [];
       switch (source) {
         case AttachSource.browse:
-          return _pickNativeFiles(multiple: multiple);
+          return await _pickNativeFiles(multiple: multiple);
         case AttachSource.photoLibrary:
           final files = await _mediaPicker.pickGalleryMedia(
             multiple: multiple,
           );
-          return _readMediaFiles(files);
+          return await _readMediaFiles(files);
         case AttachSource.camera:
           final mode = await showCameraCaptureSheet(context);
           if (!mounted || mode == null) return [];
@@ -94,7 +94,7 @@ class _DropZoneState extends State<DropZone> {
             CameraCapture.video => await _mediaPicker.captureVideo(),
           };
           if (file == null) return [];
-          return _readMediaFiles([file]);
+          return await _readMediaFiles([file]);
       }
     } catch (e) {
       if (mounted) {
@@ -121,7 +121,7 @@ class _DropZoneState extends State<DropZone> {
       final results = await Future.wait(
         files.map((f) => _readWebFile(f)),
       );
-      return _collect(results);
+      return await _collect(results);
     } catch (e) {
       if (mounted) {
         context
@@ -155,7 +155,7 @@ class _DropZoneState extends State<DropZone> {
       final results = await Future.wait(
         files.map((f) => readAttachment(_PlatformFileSource(f), maxSize: _maxSize)),
       );
-      return _collect(results);
+      return await _collect(results);
     } catch (e) {
       if (mounted) {
         context
