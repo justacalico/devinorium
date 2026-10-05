@@ -380,7 +380,8 @@ class _PlatformFileSource implements AttachmentSource {
   String? get mimeType => null;
 
   @override
-  Future<int> length() => file.length();
+  Future<int> length() async =>
+      await file.length() ?? (await file.readAsBytes()).length;
 
   @override
   Future<Uint8List> readAsBytes() => file.readAsBytes();
