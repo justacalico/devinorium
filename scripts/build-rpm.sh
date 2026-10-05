@@ -28,6 +28,17 @@ if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "aarch64" ]; then
   exit 1
 fi
 
+# Desktop integration assets shared across Linux packages live in
+# packaging/linux/ (the AUR packages pull the same files via aur-publish.sh).
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
+LINUX_ASSETS="$REPO_ROOT/packaging/linux"
+for f in "$LINUX_ASSETS/devinorium.desktop" "$LINUX_ASSETS/devinorium.svg" "$REPO_ROOT/LICENSE"; do
+  if [ ! -f "$f" ]; then
+    echo "build-rpm: missing packaging asset: $f" >&2
+    exit 1
+  fi
+done
+
 # rpm forbids '-' in Version; '~' is the rpm convention for prereleases and
 # sorts before the final release.
 RPM_VERSION="$(printf '%s' "$VERSION" | tr '-' '~')"
@@ -64,12 +75,20 @@ A secure, self-hostable Material 3 client for managing Devin work.
 
 %install
 mkdir -p %{buildroot}/opt/devinorium %{buildroot}/usr/bin
-cp -a %{bundle_dir}/. %{buildroot}/opt/devinorium/
+cp -a "%{bundle_dir}/." %{buildroot}/opt/devinorium/
 ln -sf /opt/devinorium/devinorium_frontend %{buildroot}/usr/bin/devinorium
+# The desktop file is named after the app id so Wayland/GNOME can match the
+# running window to the launcher without relying on StartupWMClass alone.
+install -Dm644 "%{linux_assets}/devinorium.desktop" %{buildroot}/usr/share/applications/gitlab.openlyst.devinorium.desktop
+install -Dm644 "%{linux_assets}/devinorium.svg" %{buildroot}/usr/share/icons/hicolor/scalable/apps/devinorium.svg
+install -Dm644 "%{license_file}" %{buildroot}/usr/share/licenses/devinorium/LICENSE
 
 %files
 /opt/devinorium
 /usr/bin/devinorium
+/usr/share/applications/gitlab.openlyst.devinorium.desktop
+/usr/share/icons/hicolor/scalable/apps/devinorium.svg
+%license /usr/share/licenses/devinorium/LICENSE
 EOF
 
 rpmbuild -bb \
@@ -78,6 +97,8 @@ rpmbuild -bb \
   --define "pkg_version $RPM_VERSION" \
   --define "pkg_release $RELEASE" \
   --define "bundle_dir $(realpath "$BUNDLE_DIR")" \
+  --define "linux_assets $LINUX_ASSETS" \
+  --define "license_file $REPO_ROOT/LICENSE" \
   --define "requires_exclude $REQUIRES_EXCLUDE" \
   "$TOPDIR/SPECS/devinorium.spec"
 
