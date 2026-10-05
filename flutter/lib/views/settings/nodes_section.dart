@@ -258,7 +258,7 @@ class _PairNodeDialogState extends State<_PairNodeDialog> {
               enabled: !_submitting,
               decoration: InputDecoration(
                 labelText: l.pairingCode,
-                hintText: 'XXXX-XXXX-XXXX-XXXX',
+                hintText: 'XXXX-XXXX-XXXX',
                 border: const OutlineInputBorder(),
               ),
               autocorrect: false,
