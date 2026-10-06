@@ -278,6 +278,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get groupFilterAll => '全部';
 
   @override
+  String get groupFilterUncategorized => '未分组';
+
+  @override
   String get newGroup => '新建分组';
 
   @override
@@ -302,6 +305,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get groupEmpty => '此分组中没有项目';
+
+  @override
+  String get uncategorizedEmpty => '没有未分组的项目';
 
   @override
   String get projectGroupMenu => '分组';

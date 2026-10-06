@@ -837,6 +837,8 @@ void main() {
         Project(id: 2, name: 'p2', path: '/x/2', createdAt: '', updatedAt: ''),
         Project(id: 3, name: 'p3', path: '/x/3', createdAt: '', updatedAt: ''),
       ],
+      // Reordering is only enabled under the "All" filter.
+      selectedProjectGroupId: null,
     );
 
     await tester.pumpWidget(_buildWithState(state));

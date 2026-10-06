@@ -131,9 +131,11 @@ mixin ProjectStore on AppStateBase {
       final p = await create();
       _projects = [..._projects, p];
       // A project created while a group filter is active joins that group,
-      // otherwise it would be invisible in the sidebar.
-      if (_selectedProjectGroupId != null) {
-        await setProjectGroup(p.id, _selectedProjectGroupId);
+      // otherwise it would be invisible in the sidebar. The uncategorized
+      // sentinel isn't a real group — new projects are ungrouped anyway.
+      final gid = _selectedProjectGroupId;
+      if (gid != null && gid != kUncategorizedProjectGroupId) {
+        await setProjectGroup(p.id, gid);
       }
       closeAllEditorTabs();
       _activeProjectId = p.id;

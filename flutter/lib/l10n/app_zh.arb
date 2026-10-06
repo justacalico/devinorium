@@ -186,7 +186,11 @@
   },
   "groupFilterAll": "全部",
   "@groupFilterAll": {
-    "description": "侧边栏分组筛选默认项，显示所有项目"
+    "description": "侧边栏分组筛选项，显示所有项目"
+  },
+  "groupFilterUncategorized": "未分组",
+  "@groupFilterUncategorized": {
+    "description": "侧边栏分组筛选项，只显示未分组的项目"
   },
   "newGroup": "新建分组",
   "manageGroups": "管理分组",
@@ -206,6 +210,7 @@
     "description": "将项目移出分组的菜单项"
   },
   "groupEmpty": "此分组中没有项目",
+  "uncategorizedEmpty": "没有未分组的项目",
   "projectGroupMenu": "分组",
   "@projectGroupMenu": {
     "description": "将项目加入分组的子菜单标签"

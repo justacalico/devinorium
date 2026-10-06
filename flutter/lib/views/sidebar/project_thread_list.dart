@@ -120,19 +120,30 @@ class _ProjectThreadListState extends State<_ProjectThreadList> {
       ),
       builder: (context, model, _) {
         // A selection that no longer exists (deleted by another session)
-        // falls back to showing every project.
-        final groupId = model.groups.any((g) => g.id == model.selectedGroupId)
-            ? model.selectedGroupId
+        // falls back to showing every project. The uncategorized sentinel
+        // is a built-in filter, so it never goes stale.
+        final selectedGroupId = model.selectedGroupId;
+        final groupId = selectedGroupId == kUncategorizedProjectGroupId ||
+                model.groups.any((g) => g.id == selectedGroupId)
+            ? selectedGroupId
             : null;
         final projects = groupId == null
             ? model.projects
+            : groupId == kUncategorizedProjectGroupId
+            ? model.projects.where((p) => p.groupId == null).toList()
             : model.projects.where((p) => p.groupId == groupId).toList();
         final threads = model.threads;
         final activeThreadId = model.activeThreadId;
 
         if (projects.isEmpty) {
-          if (groupId != null) {
-            return _EmptyGroup(message: l10n(context).groupEmpty);
+          // No projects at all gets the plain empty state, whatever the
+          // active filter is.
+          if (groupId != null && model.projects.isNotEmpty) {
+            return _EmptyGroup(
+              message: groupId == kUncategorizedProjectGroupId
+                  ? l10n(context).uncategorizedEmpty
+                  : l10n(context).groupEmpty,
+            );
           }
           return const _NoProjects();
         }

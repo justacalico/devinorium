@@ -326,7 +326,198 @@ void main() {
     expect(state.selectedProjectGroupId, isNull);
   });
 
-  testWidgets('group filter dropdown defaults to All and filters projects', (
+  test('the filter defaults to uncategorized', () {
+    final state = AppState.test(user: _user());
+    expect(
+      state.selectedProjectGroupId,
+      kUncategorizedProjectGroupId,
+    );
+  });
+
+  test('loadProjectGroups keeps the uncategorized selection', () async {
+    final api = _FakeApiService()
+      ..groupsResult = [
+        ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+      ];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      projectGroups: api.groupsResult,
+    );
+
+    await state.loadProjectGroups();
+
+    // The sentinel is not a real group id but must survive the staleness
+    // check that clears selections missing from the group list.
+    expect(
+      state.selectedProjectGroupId,
+      kUncategorizedProjectGroupId,
+    );
+  });
+
+  test('createProject under the uncategorized filter stays ungrouped', () async {
+    final api = _FakeApiService()
+      ..groupsResult = [
+        ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+      ];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      projectGroups: api.groupsResult,
+      selectedProjectGroupId: kUncategorizedProjectGroupId,
+    );
+
+    await state.createProject(name: 'new', path: '/new');
+
+    expect(api.groupAssignments, isEmpty);
+    expect(state.projects.single.groupId, isNull);
+  });
+
+  test('loadProjects pages through every project under a filter', () async {
+    final api = _FakeApiService()
+      ..projectsResult = [
+        for (var i = 0; i < 60; i++) _project(1000 + i),
+      ];
+    final state = AppState.test(api: api, user: _user());
+
+    // The default uncategorized filter needs all pages, not just the
+    // first chunk, since filtering happens client-side.
+    await state.loadProjects();
+    await pumpEventQueue();
+
+    expect(state.projects, hasLength(60));
+    expect(state.hasMoreProjects, isFalse);
+  });
+
+  test('loadProjects keeps lazy pagination under the All filter', () async {
+    final api = _FakeApiService()
+      ..projectsResult = [
+        for (var i = 0; i < 60; i++) _project(1000 + i),
+      ];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      selectedProjectGroupId: null,
+    );
+
+    await state.loadProjects();
+    await pumpEventQueue();
+
+    expect(state.projects, hasLength(50));
+    expect(state.hasMoreProjects, isTrue);
+  });
+
+  test('deleteProjectGroup keeps the uncategorized selection', () async {
+    final api = _FakeApiService()
+      ..groupsResult = [
+        ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+      ];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      projects: [_project(1, groupId: 5)],
+      projectGroups: api.groupsResult,
+      selectedProjectGroupId: kUncategorizedProjectGroupId,
+    );
+
+    await state.deleteProjectGroup(5);
+
+    expect(
+      state.selectedProjectGroupId,
+      kUncategorizedProjectGroupId,
+    );
+    // The deleted group's projects resurface under the filter.
+    expect(state.projects.single.groupId, isNull);
+  });
+
+  test('cloneRepo under the uncategorized filter sends no group', () async {
+    final api = _FakeApiService();
+    api.projectsResult = [_project(1).copyWith(path: '/clone/u')];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      selectedProjectGroupId: kUncategorizedProjectGroupId,
+    );
+
+    await state.cloneRepo('u');
+
+    expect(api.cloneRepoCalls.single.$2, isNull);
+    expect(api.groupAssignments, isEmpty);
+  });
+
+  testWidgets(
+    'group filter dropdown defaults to Uncategorized and filters projects',
+    (tester) async {
+      final api = _FakeApiService()
+        ..groupsResult = [
+          ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+        ];
+      final state = AppState.test(
+        api: api,
+        user: _user(),
+        projects: [_project(1, groupId: 5), _project(2)],
+        projectGroups: api.groupsResult,
+      );
+
+      await tester.pumpWidget(_buildWithState(state));
+      await _openDrawer(tester);
+
+      // The uncategorized default shows only projects with no group.
+      expect(state.selectedProjectGroupId, kUncategorizedProjectGroupId);
+      expect(find.text('project-1'), findsNothing);
+      expect(find.text('project-2'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('group_filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('group_filter_5')));
+      await tester.pumpAndSettle();
+
+      expect(state.selectedProjectGroupId, 5);
+      expect(find.text('project-1'), findsOneWidget);
+      expect(find.text('project-2'), findsNothing);
+    },
+  );
+
+  testWidgets('project drag is disabled under the uncategorized filter', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      api: _FakeApiService(),
+      user: _user(),
+      projects: [_project(1)],
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    final listener = tester.widget<ReorderableDelayedDragStartListener>(
+      find.byType(ReorderableDelayedDragStartListener),
+    );
+    expect(listener.enabled, isFalse);
+  });
+
+  testWidgets('the uncategorized filter shows its own empty state', (
+    tester,
+  ) async {
+    final api = _FakeApiService()
+      ..groupsResult = [
+        ProjectGroup(id: 5, name: 'facebook', position: 0, createdAt: ''),
+      ];
+    final state = AppState.test(
+      api: api,
+      user: _user(),
+      projects: [_project(1, groupId: 5)],
+      projectGroups: api.groupsResult,
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await _openDrawer(tester);
+
+    expect(find.text('project-1'), findsNothing);
+    expect(find.text('No uncategorized projects.'), findsOneWidget);
+  });
+
+  testWidgets('the uncategorized option filters out grouped projects', (
     tester,
   ) async {
     final api = _FakeApiService()
@@ -338,23 +529,22 @@ void main() {
       user: _user(),
       projects: [_project(1, groupId: 5), _project(2)],
       projectGroups: api.groupsResult,
+      selectedProjectGroupId: 5,
     );
 
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
 
-    // Default shows every project.
-    expect(find.text('project-1'), findsOneWidget);
-    expect(find.text('project-2'), findsOneWidget);
+    expect(find.text('project-2'), findsNothing);
 
     await tester.tap(find.byKey(const Key('group_filter')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('group_filter_5')));
+    await tester.tap(find.byKey(const Key('group_filter_uncategorized')));
     await tester.pumpAndSettle();
 
-    expect(state.selectedProjectGroupId, 5);
-    expect(find.text('project-1'), findsOneWidget);
-    expect(find.text('project-2'), findsNothing);
+    expect(state.selectedProjectGroupId, kUncategorizedProjectGroupId);
+    expect(find.text('project-1'), findsNothing);
+    expect(find.text('project-2'), findsOneWidget);
   });
 
   testWidgets('selecting All from the filter restores every project', (
@@ -549,6 +739,7 @@ void main() {
 
     expect(state.projectGroupsUnsupported, isTrue);
     expect(state.projectGroups, isEmpty);
+    expect(state.selectedProjectGroupId, kUncategorizedProjectGroupId);
 
     await tester.pumpWidget(_buildWithState(state));
     await _openDrawer(tester);
