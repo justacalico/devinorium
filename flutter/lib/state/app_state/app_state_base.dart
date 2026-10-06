@@ -46,6 +46,8 @@ abstract class AppStateBase extends ChangeNotifier {
   set _projectsHasMore(bool value);
   bool get _loadingMoreProjects;
   set _loadingMoreProjects(bool value);
+  Future<void>? get _allProjectsLoad;
+  set _allProjectsLoad(Future<void>? value);
   int get _userThreadsOffset;
   set _userThreadsOffset(int value);
   bool get _userThreadsHasMore;

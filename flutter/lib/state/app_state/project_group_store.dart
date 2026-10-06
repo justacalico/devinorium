@@ -1,12 +1,18 @@
 part of 'package:devinorium_frontend/state/app_state.dart';
 
+/// Sentinel [AppStateBase.selectedProjectGroupId] value that filters the
+/// sidebar to projects with no group. `null` still means "All" — group ids
+/// are autoincremented from 1, so -1 can never collide.
+const int kUncategorizedProjectGroupId = -1;
+
 /// Project groups: named buckets that filter the sidebar project list.
-/// `null` selection means "All" — every project is shown.
+/// `null` selection means "All" — every project is shown — while the
+/// [kUncategorizedProjectGroupId] sentinel shows only ungrouped projects.
 mixin ProjectGroupStore on AppStateBase {
   @override
   List<ProjectGroup> _projectGroups = [];
   @override
-  int? _selectedProjectGroupId;
+  int? _selectedProjectGroupId = kUncategorizedProjectGroupId;
   @override
   int? _groupAssignProjectId;
   @override
@@ -15,6 +21,7 @@ mixin ProjectGroupStore on AppStateBase {
   bool _projectGroupsUnsupported = false;
   @override
   bool _newGroupFromManage = false;
+  @override
   Future<void>? _allProjectsLoad;
 
   @override
@@ -33,6 +40,7 @@ mixin ProjectGroupStore on AppStateBase {
     try {
       _projectGroups = await api.listProjectGroups();
       if (_selectedProjectGroupId != null &&
+          _selectedProjectGroupId != kUncategorizedProjectGroupId &&
           !_projectGroups.any((g) => g.id == _selectedProjectGroupId)) {
         _selectedProjectGroupId = null;
       }
@@ -43,12 +51,18 @@ mixin ProjectGroupStore on AppStateBase {
       if (e.statusCode == 404 && e.data == null) {
         _projectGroupsUnsupported = true;
         _projectGroups = [];
-        _selectedProjectGroupId = null;
+        _selectedProjectGroupId = kUncategorizedProjectGroupId;
       } else {
         debugLogFailure('projectGroups.load', e);
       }
     } catch (e) {
       debugLogFailure('projectGroups.load', e);
+    }
+    // Any active filter — a group or the uncategorized default — applies
+    // client-side, so it needs every project page, not just the first. A
+    // backend without groups shows the full list anyway, so skip it there.
+    if (_selectedProjectGroupId != null && !_projectGroupsUnsupported) {
+      unawaited(_ensureAllProjectsLoaded());
     }
     notifyListeners();
   }
@@ -64,8 +78,11 @@ mixin ProjectGroupStore on AppStateBase {
   }
 
   Future<void> _loadAllProjectPages() async {
+    // A server switch mid-page-through must not keep pulling the old
+    // server's list into the reset state.
+    final seq = _serverSeq;
     try {
-      while (_projectsHasMore) {
+      while (_projectsHasMore && _serverSeq == seq) {
         final before = _projectsOffset;
         await loadMoreProjects();
         // A scroll-triggered load may already be in flight; stop rather

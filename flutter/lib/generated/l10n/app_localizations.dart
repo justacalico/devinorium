@@ -602,11 +602,17 @@ abstract class AppLocalizations {
   /// **'Groups'**
   String get groups;
 
-  /// Default sidebar group filter showing every project
+  /// Sidebar group filter showing every project
   ///
   /// In en, this message translates to:
   /// **'All'**
   String get groupFilterAll;
+
+  /// Sidebar group filter showing only projects with no group
+  ///
+  /// In en, this message translates to:
+  /// **'Uncategorized'**
+  String get groupFilterUncategorized;
 
   /// No description provided for @newGroup.
   ///
@@ -655,6 +661,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No projects in this group.'**
   String get groupEmpty;
+
+  /// No description provided for @uncategorizedEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No uncategorized projects.'**
+  String get uncategorizedEmpty;
 
   /// Submenu label for assigning a project to a group
   ///

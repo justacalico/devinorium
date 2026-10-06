@@ -280,6 +280,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupFilterAll => 'All';
 
   @override
+  String get groupFilterUncategorized => 'Uncategorized';
+
+  @override
   String get newGroup => 'New group';
 
   @override
@@ -304,6 +307,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupEmpty => 'No projects in this group.';
+
+  @override
+  String get uncategorizedEmpty => 'No uncategorized projects.';
 
   @override
   String get projectGroupMenu => 'Group';

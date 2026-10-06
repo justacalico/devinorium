@@ -1270,7 +1270,9 @@ void main() {
           ]),
         ),
       );
-      final base = AppState.test(api: state.api);
+      // The default uncategorized filter eagerly pages every project; the
+      // "All" filter keeps lazy pagination so chunk appending is visible.
+      final base = AppState.test(api: state.api, selectedProjectGroupId: null);
       base.setView(AppView.app);
       await base.loadProjects();
       expect(base.projects, hasLength(50));

@@ -185,7 +185,7 @@ class AppState extends AppStateBase
     List<Thread> threads = const [],
     List<ThreadGroup> groups = const [],
     List<ProjectGroup> projectGroups = const [],
-    int? selectedProjectGroupId,
+    int? selectedProjectGroupId = kUncategorizedProjectGroupId,
     List<ModelInfo> models = const [],
     List<ProviderInfo> providers = const [],
     Map<String, ProviderVersion> providerVersions = const {},

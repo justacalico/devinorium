@@ -186,7 +186,11 @@
   },
   "groupFilterAll": "All",
   "@groupFilterAll": {
-    "description": "Default sidebar group filter showing every project"
+    "description": "Sidebar group filter showing every project"
+  },
+  "groupFilterUncategorized": "Uncategorized",
+  "@groupFilterUncategorized": {
+    "description": "Sidebar group filter showing only projects with no group"
   },
   "newGroup": "New group",
   "manageGroups": "Manage groups",
@@ -206,6 +210,7 @@
     "description": "Menu item that removes a project from its group"
   },
   "groupEmpty": "No projects in this group.",
+  "uncategorizedEmpty": "No uncategorized projects.",
   "projectGroupMenu": "Group",
   "@projectGroupMenu": {
     "description": "Submenu label for assigning a project to a group"

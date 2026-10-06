@@ -1,7 +1,8 @@
 part of '../sidebar.dart';
 
 /// Dropdown that filters the sidebar project list by group.
-/// A null selection means "All" — every project is shown.
+/// A null selection means "All" — every project is shown — while
+/// [kUncategorizedProjectGroupId] shows only projects with no group.
 class _GroupFilter extends StatelessWidget {
   const _GroupFilter();
 
@@ -26,7 +27,9 @@ class _GroupFilter extends StatelessWidget {
             .where((g) => g.id == model.selectedId)
             .map((g) => g.name)
             .firstOrNull;
-        final label = selectedName ?? l.groupFilterAll;
+        final label = model.selectedId == kUncategorizedProjectGroupId
+            ? l.groupFilterUncategorized
+            : selectedName ?? l.groupFilterAll;
 
         return MenuAnchor(
           menuChildren: [
@@ -37,6 +40,15 @@ class _GroupFilter extends StatelessWidget {
                   : null,
               onPressed: () => state.selectProjectGroup(null),
               child: Text(l.groupFilterAll),
+            ),
+            MenuItemButton(
+              key: const Key('group_filter_uncategorized'),
+              trailingIcon: model.selectedId == kUncategorizedProjectGroupId
+                  ? const Icon(Icons.check, size: 18)
+                  : null,
+              onPressed: () =>
+                  state.selectProjectGroup(kUncategorizedProjectGroupId),
+              child: Text(l.groupFilterUncategorized),
             ),
             for (final g in model.groups)
               MenuItemButton(

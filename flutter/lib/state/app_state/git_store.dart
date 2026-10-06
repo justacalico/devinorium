@@ -101,7 +101,11 @@ mixin GitStore on AppStateBase {
     _globalError = '';
     notifyListeners();
     try {
-      final gid = _selectedProjectGroupId;
+      // The uncategorized sentinel isn't a real group, so clones requested
+      // under it land ungrouped, same as under "All".
+      final gid = _selectedProjectGroupId == kUncategorizedProjectGroupId
+          ? null
+          : _selectedProjectGroupId;
       final path = await api.cloneRepo(url, nodeId: nodeId, groupId: gid);
       // The clone already landed on the server, so the project list refresh
       // runs even if the user navigated away mid-request.
