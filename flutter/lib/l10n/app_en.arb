@@ -835,6 +835,28 @@
   "noJobLog": "No log output yet.",
   "jobLogLive": "LIVE",
   "openInBrowser": "Open in browser",
+  "openInEditor": "Open in {editor}",
+  "@openInEditor": {
+    "description": "Tooltip for the button that opens the thread's folder in the preferred editor",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "openInMenu": "Open in…",
+  "@openInMenu": {
+    "description": "Tooltip for the menu that lists detected editors"
+  },
+  "openInFailed": "Could not open in {editor}",
+  "@openInFailed": {
+    "description": "Error shown when launching an editor fails",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
   "openLink": "Open link",
   "copyLink": "Copy link",
   "linkToThread": "Link to thread",

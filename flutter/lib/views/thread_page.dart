@@ -23,8 +23,10 @@ import '../utils/path_attachment.dart';
 import '../utils/permission_modes.dart';
 import '../utils/plan_markup.dart';
 import '../utils/thread_status.dart';
+import '../services/editor_launcher.dart';
 import '../widgets/attachment_thumbnail.dart';
 import '../widgets/message_view.dart';
+import '../widgets/open_in_button.dart';
 import '../widgets/provider_icons.dart';
 import '../widgets/thread_tag.dart';
 import 'ask_request_panel.dart';
@@ -60,7 +62,11 @@ part 'thread/linked_mr_chip.dart';
 part 'thread/plan_overlay.dart';
 
 class ThreadPage extends StatelessWidget {
-  const ThreadPage({super.key});
+  const ThreadPage({super.key, this.openInLauncher});
+
+  /// Injectable editor launcher for tests; the real one probes the desktop
+  /// for installed editors.
+  final EditorLauncher? openInLauncher;
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +82,7 @@ class ThreadPage extends StatelessWidget {
         MergeRequestLink? linkedMergeRequest,
         Plan? activePlan,
         bool planOverlayVisible,
+        String? openInPath,
       })
     >(
       selector: (_, s) {
@@ -84,6 +91,7 @@ class ThreadPage extends StatelessWidget {
         final messages = detail?.messages ?? const [];
         return (
           thread: thread,
+          openInPath: _openInPath(s, thread),
           tag: thread != null
               ? activeThreadTag(
                   sending: s.sending,
@@ -130,6 +138,8 @@ class ThreadPage extends StatelessWidget {
             actions: [
               if (model.linkedMergeRequest != null)
                 LinkedMergeRequestChip(mr: model.linkedMergeRequest!),
+              if (model.openInPath != null)
+                OpenInButton(path: model.openInPath!, launcher: openInLauncher),
               if (model.activePlan != null)
                 IconButton(
                   tooltip: model.planOverlayVisible
@@ -157,6 +167,29 @@ class ThreadPage extends StatelessWidget {
       },
     );
   }
+}
+
+/// The local directory an "Open in" action should target: the thread's
+/// worktree when it has one, otherwise its project's path. Only the bundled
+/// server runs on this machine, so the button is hidden for remote profiles
+/// and for projects that live on a satellite node.
+String? _openInPath(AppState s, Thread? thread) {
+  if (thread == null) return null;
+  if (s.multiServerState.activeProfile?.isLocal != true) return null;
+  Project? project;
+  for (final p in s.projects) {
+    if (p.id == thread.projectId) {
+      project = p;
+      break;
+    }
+  }
+  // The project list is paginated — if the thread's project has not loaded
+  // yet, nodeId cannot be checked, so fail closed rather than open a path
+  // that lives on a satellite's filesystem.
+  if (project == null || project.nodeId != null) return null;
+  final worktree = thread.worktreePath;
+  if (worktree != null && worktree.isNotEmpty) return worktree;
+  return project.path.isEmpty ? null : project.path;
 }
 
 (IconData, Color) _toolIconAndColor(String kind, ThemeData theme) {

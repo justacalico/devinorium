@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1295,6 +1296,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get openInBrowser => '在浏览器中打开';
+
+  @override
+  String openInEditor(String editor) {
+    return '在 $editor 中打开';
+  }
+
+  @override
+  String get openInMenu => '打开方式…';
+
+  @override
+  String openInFailed(String editor) {
+    return '无法在 $editor 中打开';
+  }
 
   @override
   String get openLink => '打开链接';
