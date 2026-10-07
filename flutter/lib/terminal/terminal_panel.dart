@@ -185,6 +185,7 @@ class TerminalPanel extends StatelessWidget {
                     onAddRemote: allowRemote
                         ? () => _addSession(context, local: false)
                         : null,
+                    onAddTab: store.addTab,
                     onClose: onClose ?? () => store.setOpen(false),
                   ),
                   Expanded(
@@ -192,7 +193,6 @@ class TerminalPanel extends StatelessWidget {
                       tabs: store.tabs,
                       activeTabIndex: store.activeTabIndex,
                       onTabChanged: store.setActiveTab,
-                      onAddTab: store.addTab,
                       onCloseSession: (s) => _confirmCloseSession(context, s),
                       onCloseTab: (t) => _confirmCloseTab(context, t),
                       onRenameTab: (t) => _renameTab(context, t),
@@ -247,6 +247,7 @@ class _Header extends StatelessWidget {
     required this.local,
     required this.remote,
     required this.busy,
+    required this.onAddTab,
     this.onAddLocal,
     this.onAddRemote,
     this.onClose,
@@ -256,6 +257,7 @@ class _Header extends StatelessWidget {
   final bool local;
   final bool remote;
   final bool busy;
+  final VoidCallback onAddTab;
   final VoidCallback? onAddLocal;
   final VoidCallback? onAddRemote;
   final VoidCallback? onClose;
@@ -284,6 +286,12 @@ class _Header extends StatelessWidget {
               tooltip: l10n(context).terminalRemote,
               onPressed: busy ? null : onAddRemote,
             ),
+          IconButton(
+            key: const ValueKey('addTerminalTab'),
+            icon: const Icon(Icons.add, size: 20),
+            tooltip: l10n(context).terminalNewTab,
+            onPressed: onAddTab,
+          ),
           if (onClose != null)
             IconButton(
               icon: const Icon(Icons.keyboard_arrow_down, size: 20),

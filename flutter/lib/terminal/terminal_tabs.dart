@@ -13,7 +13,6 @@ class TerminalTabs extends StatelessWidget {
     required this.tabs,
     required this.activeTabIndex,
     required this.onTabChanged,
-    required this.onAddTab,
     required this.onCloseSession,
     required this.onCloseTab,
     required this.onRenameTab,
@@ -22,7 +21,6 @@ class TerminalTabs extends StatelessWidget {
   final List<TerminalTab> tabs;
   final int activeTabIndex;
   final ValueChanged<int> onTabChanged;
-  final VoidCallback onAddTab;
   final ValueChanged<TerminalSession> onCloseSession;
   final ValueChanged<TerminalTab> onCloseTab;
   final ValueChanged<TerminalTab> onRenameTab;
@@ -34,14 +32,14 @@ class TerminalTabs extends StatelessWidget {
 
     return Column(
       children: [
-        _TabBar(
-          tabs: tabs,
-          activeIndex: index,
-          onTap: onTabChanged,
-          onClose: onCloseTab,
-          onAddTab: onAddTab,
-          onRename: onRenameTab,
-        ),
+        if (tabs.isNotEmpty)
+          _TabBar(
+            tabs: tabs,
+            activeIndex: index,
+            onTap: onTabChanged,
+            onClose: onCloseTab,
+            onRename: onRenameTab,
+          ),
         Expanded(
           child: tab == null
               ? Center(child: Text(l10n(context).terminalNoSessions))
@@ -58,7 +56,6 @@ class _TabBar extends StatelessWidget {
     required this.activeIndex,
     required this.onTap,
     required this.onClose,
-    required this.onAddTab,
     required this.onRename,
   });
 
@@ -66,7 +63,6 @@ class _TabBar extends StatelessWidget {
   final int activeIndex;
   final ValueChanged<int> onTap;
   final ValueChanged<TerminalTab> onClose;
-  final VoidCallback onAddTab;
   final ValueChanged<TerminalTab> onRename;
 
   @override
@@ -79,27 +75,20 @@ class _TabBar extends StatelessWidget {
         color: colorScheme.surface,
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: tabs.length,
-              itemBuilder: (context, index) {
-                final tab = tabs[index];
-                return _Tab(
-                  index: index,
-                  tab: tab,
-                  active: index == activeIndex,
-                  onTap: () => onTap(index),
-                  onClose: () => onClose(tab),
-                  onRename: () => onRename(tab),
-                );
-              },
-            ),
-          ),
-          _AddTabButton(onTap: onAddTab),
-        ],
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: tabs.length,
+        itemBuilder: (context, index) {
+          final tab = tabs[index];
+          return _Tab(
+            index: index,
+            tab: tab,
+            active: index == activeIndex,
+            onTap: () => onTap(index),
+            onClose: () => onClose(tab),
+            onRename: () => onRename(tab),
+          );
+        },
       ),
     );
   }
@@ -166,29 +155,6 @@ class _Tab extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _AddTabButton extends StatelessWidget {
-  const _AddTabButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return IconButton(
-      key: const ValueKey('addTerminalTab'),
-      style: IconButton.styleFrom(
-        padding: EdgeInsets.zero,
-        minimumSize: const Size(36, 36),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      icon: Icon(Icons.add, size: 18, color: colorScheme.onSurfaceVariant),
-      onPressed: onTap,
-      tooltip: l10n(context).terminalNewTab,
     );
   }
 }

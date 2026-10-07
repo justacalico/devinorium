@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -62,7 +63,7 @@ class TerminalStore extends ChangeNotifier {
   /// still reach the right backend after a server switch.
   final _sessionApis = <TerminalSession, ApiService>{};
 
-  List<TerminalTab> get tabs => _tabs;
+  List<TerminalTab> get tabs => UnmodifiableListView(_tabs);
   int get activeTabIndex => _activeTabIndex;
   bool get busy => _inFlight > 0;
   bool get open => _open;
@@ -99,12 +100,16 @@ class TerminalStore extends ChangeNotifier {
     _notify();
   }
 
-  /// Spawn a session in the active tab, creating a tab if needed.
+  /// Spawn a session in the tab that is active when the spawn begins,
+  /// creating a tab if needed.
   ///
   /// Rethrows factory errors so callers can surface them in the UI.
   Future<void> addSession({required bool local}) async {
     if (_inFlight > 0 || _disposed) return;
     if (_tabs.isEmpty) addTab();
+    // The session belongs to the tab it was spawned from — capture it now so
+    // switching tabs while the factory is in flight doesn't move it.
+    final tab = _tabs[_activeTabIndex];
 
     _inFlight++;
     _notify();
@@ -119,16 +124,13 @@ class TerminalStore extends ChangeNotifier {
       );
       // The store may have been cleared or disposed while the factory was in
       // flight — kill the session instead of writing to a stale workspace.
-      if (_disposed ||
-          generation != _generation ||
-          _tabs.isEmpty ||
-          _activeTabIndex >= _tabs.length) {
+      if (_disposed || generation != _generation || !_tabs.contains(tab)) {
         unawaited(_disposeSession(session, api: api));
         return;
       }
       session.addListener(_notify);
       _sessionApis[session] = api;
-      _tabs[_activeTabIndex].sessions.add(session);
+      tab.sessions.add(session);
     } finally {
       _inFlight--;
       _notify();
