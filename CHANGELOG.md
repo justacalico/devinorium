@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.101.0 - 2026-10-07
+#### Features
+- 会话页新增在编辑器中打开按钮 - (f7a671a) - HttpAnimations
+
+- - -
+
 ## v0.100.0 - 2026-10-07
 #### Features
 - 侧边栏分组筛选新增未分组选项并设为默认 - (3c5999b) - HttpAnimations
