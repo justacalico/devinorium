@@ -2468,6 +2468,24 @@ abstract class AppLocalizations {
   /// **'Open in browser'**
   String get openInBrowser;
 
+  /// Tooltip for the button that opens the thread's folder in the preferred editor
+  ///
+  /// In en, this message translates to:
+  /// **'Open in {editor}'**
+  String openInEditor(String editor);
+
+  /// Tooltip for the menu that lists detected editors
+  ///
+  /// In en, this message translates to:
+  /// **'Open in…'**
+  String get openInMenu;
+
+  /// Error shown when launching an editor fails
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open in {editor}'**
+  String openInFailed(String editor);
+
   /// No description provided for @openLink.
   ///
   /// In en, this message translates to:

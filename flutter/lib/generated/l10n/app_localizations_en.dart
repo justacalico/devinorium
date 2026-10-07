@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1390,6 +1391,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openInBrowser => 'Open in browser';
+
+  @override
+  String openInEditor(String editor) {
+    return 'Open in $editor';
+  }
+
+  @override
+  String get openInMenu => 'Open in…';
+
+  @override
+  String openInFailed(String editor) {
+    return 'Could not open in $editor';
+  }
 
   @override
   String get openLink => 'Open link';
