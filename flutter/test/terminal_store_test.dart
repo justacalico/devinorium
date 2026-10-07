@@ -342,6 +342,64 @@ void main() {
       expect(api.killed, ['s-1']);
     });
 
+    test('an in-flight session lands in the tab it was spawned from', () async {
+      final gate = Completer<void>();
+      final store = _store(
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+              String? workingDir,
+            }) async {
+              await gate.future;
+              return TerminalSession(id: 's-1', isLocal: local);
+            },
+      );
+      addTearDown(store.dispose);
+
+      final pending = store.addSession(local: false);
+      // Switch to a fresh tab while the spawn is still in flight.
+      store.addTab();
+      gate.complete();
+      await pending;
+
+      expect(store.tabs, hasLength(2));
+      expect(store.tabs[0].sessions.single.id, 's-1');
+      expect(store.tabs[1].sessions, isEmpty);
+    });
+
+    test('drops an in-flight session whose tab was closed', () async {
+      final gate = Completer<void>();
+      final api = _RecordingApi();
+      final store = TerminalStore(
+        api: () => api,
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+              String? workingDir,
+            }) async {
+              await gate.future;
+              return TerminalSession(id: 's-1', isLocal: local);
+            },
+      );
+      addTearDown(store.dispose);
+
+      final pending = store.addSession(local: false);
+      // A sibling tab outlives the spawn tab — the finished session must be
+      // dropped, not appended to the survivor.
+      final spawnTab = store.tabs.single;
+      store.addTab();
+      store.removeTab(spawnTab);
+      gate.complete();
+      await pending;
+
+      expect(store.tabs.single.sessions, isEmpty);
+      expect(api.killed, ['s-1']);
+    });
+
     test('addSession is a no-op after dispose', () async {
       var calls = 0;
       final store = TerminalStore(
