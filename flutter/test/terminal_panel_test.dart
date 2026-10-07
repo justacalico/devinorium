@@ -29,6 +29,27 @@ void main() {
     expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
   });
 
+  testWidgets('shows the new tab button on the header row', (tester) async {
+    final store = _openStore();
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+
+    final addTab = find.byKey(const ValueKey('addTerminalTab'));
+    final addRemote = find.byKey(const ValueKey('addRemoteTerminal'));
+    final hide = find.byIcon(Icons.keyboard_arrow_down);
+    expect(addTab, findsOneWidget);
+    // Same vertical center as the other header controls means same row, and
+    // it sits between the add-remote button and the hide chevron.
+    expect(tester.getCenter(addTab).dy, tester.getCenter(addRemote).dy);
+    expect(
+      tester.getCenter(addTab).dx,
+      greaterThan(tester.getCenter(addRemote).dx),
+    );
+    expect(tester.getCenter(addTab).dx, lessThan(tester.getCenter(hide).dx));
+  });
+
   testWidgets('hides the cloud terminal button when remote is not allowed', (
     tester,
   ) async {
