@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.100.0 - 2026-10-07
+#### Features
+- 侧边栏分组筛选新增未分组选项并设为默认 - (3c5999b) - HttpAnimations
+#### Bug Fixes
+- 将新建标签页按钮移入终端面板标题栏 - (8ffa795) - HttpAnimations
+- 终端会话固定落在生成时所属的标签页 - (b648f05) - HttpAnimations
+
+- - -
+
 ## v0.99.1 - 2026-10-05
 #### Bug Fixes
 - 修正节点配对码输入框的格式提示 - (5432d9b) - HttpAnimations
