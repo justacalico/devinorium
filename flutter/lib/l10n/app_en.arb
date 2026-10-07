@@ -700,38 +700,12 @@
   "createBranch": "Create branch",
   "branchName": "Branch name",
   "baseBranchOptional": "Base branch (optional)",
-  "createWorktree": "Create worktree",
-  "worktreeName": "Worktree name",
-  "baseBranch": "Base branch",
-  "newBranchInWorktree": "Create new branch in worktree",
-  "worktrees": "Worktrees",
-  "mainWorktree": "Main worktree",
-  "worktreeBranchLocked": "Switch back to the main worktree to change branches",
+  "worktreeBranchLocked": "Switch the run mode back to local to change branches",
   "envModeTooltip": "Run mode",
   "localMode": "Local",
   "localModeShort": "local",
   "worktreeMode": "Worktree",
   "worktreeModeShort": "worktree",
-  "deleteWorktree": "Delete worktree",
-  "deleteWorktreeConfirm": "Delete the worktree at {path}? Any uncommitted changes in it will be lost.",
-  "@deleteWorktreeConfirm": {
-    "placeholders": {
-      "path": {
-        "type": "String"
-      }
-    }
-  },
-  "deleteWorktreeThreadsConfirm": "{count, plural, =1{The thread \"{names}\" uses this worktree. Deleting it will delete the thread too. Are you sure?} other{{count} threads use this worktree ({names}). Deleting it will delete them too. Are you sure?}}",
-  "@deleteWorktreeThreadsConfirm": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      },
-      "names": {
-        "type": "String"
-      }
-    }
-  },
   "git": "Git",
   "gitConnections": "Connections",
   "gitlab": "GitLab",

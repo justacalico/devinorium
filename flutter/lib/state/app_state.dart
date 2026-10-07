@@ -498,8 +498,8 @@ class AppState extends AppStateBase
       final projectId = store.projectId;
       if (projectId > 0) {
         // Refresh branches and worktrees too, not just the repo status: a
-        // run may have auto-created a worktree/branch that the toolbar's
-        // worktree menu needs to list.
+        // run may have auto-created a worktree/branch that the toolbar
+        // needs to display.
         unawaited(loadGitBranchData(projectId));
       }
       unawaited(loadProjects());

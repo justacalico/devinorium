@@ -1994,46 +1994,10 @@ abstract class AppLocalizations {
   /// **'Base branch (optional)'**
   String get baseBranchOptional;
 
-  /// No description provided for @createWorktree.
-  ///
-  /// In en, this message translates to:
-  /// **'Create worktree'**
-  String get createWorktree;
-
-  /// No description provided for @worktreeName.
-  ///
-  /// In en, this message translates to:
-  /// **'Worktree name'**
-  String get worktreeName;
-
-  /// No description provided for @baseBranch.
-  ///
-  /// In en, this message translates to:
-  /// **'Base branch'**
-  String get baseBranch;
-
-  /// No description provided for @newBranchInWorktree.
-  ///
-  /// In en, this message translates to:
-  /// **'Create new branch in worktree'**
-  String get newBranchInWorktree;
-
-  /// No description provided for @worktrees.
-  ///
-  /// In en, this message translates to:
-  /// **'Worktrees'**
-  String get worktrees;
-
-  /// No description provided for @mainWorktree.
-  ///
-  /// In en, this message translates to:
-  /// **'Main worktree'**
-  String get mainWorktree;
-
   /// No description provided for @worktreeBranchLocked.
   ///
   /// In en, this message translates to:
-  /// **'Switch back to the main worktree to change branches'**
+  /// **'Switch the run mode back to local to change branches'**
   String get worktreeBranchLocked;
 
   /// No description provided for @envModeTooltip.
@@ -2065,24 +2029,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'worktree'**
   String get worktreeModeShort;
-
-  /// No description provided for @deleteWorktree.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete worktree'**
-  String get deleteWorktree;
-
-  /// No description provided for @deleteWorktreeConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete the worktree at {path}? Any uncommitted changes in it will be lost.'**
-  String deleteWorktreeConfirm(String path);
-
-  /// No description provided for @deleteWorktreeThreadsConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{The thread \"{names}\" uses this worktree. Deleting it will delete the thread too. Are you sure?} other{{count} threads use this worktree ({names}). Deleting it will delete them too. Are you sure?}}'**
-  String deleteWorktreeThreadsConfirm(int count, String names);
 
   /// No description provided for @git.
   ///
