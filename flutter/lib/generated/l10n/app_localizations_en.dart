@@ -1112,26 +1112,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get baseBranchOptional => 'Base branch (optional)';
 
   @override
-  String get createWorktree => 'Create worktree';
-
-  @override
-  String get worktreeName => 'Worktree name';
-
-  @override
-  String get baseBranch => 'Base branch';
-
-  @override
-  String get newBranchInWorktree => 'Create new branch in worktree';
-
-  @override
-  String get worktrees => 'Worktrees';
-
-  @override
-  String get mainWorktree => 'Main worktree';
-
-  @override
   String get worktreeBranchLocked =>
-      'Switch back to the main worktree to change branches';
+      'Switch the run mode back to local to change branches';
 
   @override
   String get envModeTooltip => 'Run mode';
@@ -1147,27 +1129,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get worktreeModeShort => 'worktree';
-
-  @override
-  String get deleteWorktree => 'Delete worktree';
-
-  @override
-  String deleteWorktreeConfirm(String path) {
-    return 'Delete the worktree at $path? Any uncommitted changes in it will be lost.';
-  }
-
-  @override
-  String deleteWorktreeThreadsConfirm(int count, String names) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other:
-          '$count threads use this worktree ($names). Deleting it will delete them too. Are you sure?',
-      one:
-          'The thread \"$names\" uses this worktree. Deleting it will delete the thread too. Are you sure?',
-    );
-    return '$_temp0';
-  }
 
   @override
   String get git => 'Git';

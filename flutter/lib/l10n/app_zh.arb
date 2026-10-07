@@ -679,38 +679,12 @@
   "createBranch": "创建分支",
   "branchName": "分支名称",
   "baseBranchOptional": "基础分支（可选）",
-  "createWorktree": "创建工作树",
-  "worktreeName": "工作树名称",
-  "baseBranch": "基础分支",
-  "newBranchInWorktree": "在工作树中创建新分支",
-  "worktrees": "工作树",
-  "mainWorktree": "主工作树",
-  "worktreeBranchLocked": "切换回主工作树以更改分支",
+  "worktreeBranchLocked": "将运行模式切换回本地以更改分支",
   "envModeTooltip": "运行模式",
   "localMode": "本地",
   "localModeShort": "本地",
   "worktreeMode": "工作树",
   "worktreeModeShort": "工作树",
-  "deleteWorktree": "删除工作树",
-  "deleteWorktreeConfirm": "删除位于 {path} 的工作树？其中未提交的修改将丢失。",
-  "@deleteWorktreeConfirm": {
-    "placeholders": {
-      "path": {
-        "type": "String"
-      }
-    }
-  },
-  "deleteWorktreeThreadsConfirm": "{count, plural, =1{会话「{names}」正在使用此工作树。删除工作树将同时删除该会话。确定吗？} other{{count} 个会话正在使用此工作树（{names}）。删除工作树将同时删除这些会话。确定吗？}}",
-  "@deleteWorktreeThreadsConfirm": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      },
-      "names": {
-        "type": "String"
-      }
-    }
-  },
   "git": "Git",
   "gitConnections": "连接",
   "gitlab": "GitLab",
