@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import '../api/api_client.dart';
 import '../models/models.dart' show LinkedMergeRequestRef;
 import '../state/async_value.dart';
@@ -20,6 +23,14 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
   /// Incremented on every load so a slow fetch cannot overwrite newer data.
   int _generation = 0;
   bool _disposed = false;
+
+  /// Cached file bytes for image diffs, keyed by `ref` + NUL + `path`.
+  /// Cleared whenever a different merge request is loaded.
+  final Map<String, Uint8List?> _fileCache = {};
+
+  /// Largest repository file that gets loaded for an inline image diff.
+  /// Bigger payloads fall back to the text placeholder.
+  static const _maxImageFileSize = 10 * 1024 * 1024;
 
   GitLabMergeRequestProvider(this._client);
 
@@ -49,6 +60,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
       return;
     }
 
+    if (!identical(ref, _ref)) _fileCache.clear();
     _ref = ref;
     _url = url;
     _emit(const AsyncValue.loading());
@@ -135,6 +147,52 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     return JobLog.fromJson(response);
   }
 
+  /// Load the raw bytes of a repository file at a git ref.
+  ///
+  /// Uses the repository files API through the `glab` proxy, which returns
+  /// the file base64-encoded inside JSON — binary-safe without a raw
+  /// download endpoint. Returns `null` whenever the file cannot be fetched
+  /// (missing at that ref, API failure), so callers fall back to the text
+  /// diff.
+  @override
+  Future<Uint8List?> loadFile(String path, String ref) async {
+    final r = _ref;
+    if (r == null) {
+      throw StateError('No merge request loaded');
+    }
+    if (path.isEmpty || ref.isEmpty) return null;
+
+    final key = '$ref\x00$path';
+    if (_fileCache.containsKey(key)) return _fileCache[key];
+
+    final gitlabPath =
+        'projects/${Uri.encodeComponent(r.projectPath)}'
+        '/repository/files/${Uri.encodeComponent(path)}'
+        '?ref=${Uri.encodeComponent(ref)}';
+
+    try {
+      final response = await _proxy(r, gitlabPath);
+      // The declared size and the base64 payload length both bound the
+      // decoded size; skip decoding anything unreasonably large.
+      final size = response['size'];
+      if (size is num && size > _maxImageFileSize) {
+        return _fileCache[key] = null;
+      }
+      final content = response['content'];
+      if (content is! String || content.isEmpty) {
+        return _fileCache[key] = null;
+      }
+      if (content.length > _maxImageFileSize * 2) {
+        return _fileCache[key] = null;
+      }
+      return _fileCache[key] = base64Decode(
+        content.replaceAll(RegExp(r'\s'), ''),
+      );
+    } catch (_) {
+      return _fileCache[key] = null;
+    }
+  }
+
   Future<void> _refresh(
     _MergeRequestRef ref,
     String url,
@@ -170,7 +228,7 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
     final mr = await _proxy(ref, mrPath);
 
     final futures = [
-      _proxyOrEmpty(ref, '$mrPath/diffs'),
+      _proxyOrEmpty(ref, '$mrPath/diffs?per_page=100'),
       _proxyOrEmpty(ref, '$mrPath/notes?per_page=100'),
       _pipeline(ref).catchError((_) => <String, dynamic>{'_list': <dynamic>[]}),
     ];
@@ -196,6 +254,14 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
         .map(MergeRequestPipeline.fromJson)
         .toList();
 
+    final diffRefs = mr['diff_refs'];
+    final (baseSha, headSha) = diffRefs is Map<String, dynamic>
+        ? (
+            _string(diffRefs, 'base_sha') ?? '',
+            _string(diffRefs, 'head_sha') ?? '',
+          )
+        : ('', '');
+
     return MergeRequestDetail(
       title: _string(mr, 'title') ?? 'Untitled merge request',
       description: _string(mr, 'description') ?? '',
@@ -213,6 +279,8 @@ class GitLabMergeRequestProvider extends MergeRequestProvider {
           : null,
       createdAt: _string(mr, 'created_at') ?? '',
       updatedAt: _string(mr, 'updated_at') ?? '',
+      diffBaseSha: baseSha,
+      diffHeadSha: headSha,
       changes: changes,
       comments: comments,
       pipelines: pipelines,

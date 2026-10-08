@@ -39,4 +39,14 @@ abstract class MergeRequestProvider extends ChangeNotifier {
   Future<JobLog> loadJobLog(MergeRequestPipelineJob job) {
     throw UnsupportedError('Job logs are not supported by this provider');
   }
+
+  /// Load the raw bytes of the repository file at [path] on git [ref], used
+  /// to render image diffs. Returns `null` when the file does not exist at
+  /// that ref or cannot be fetched.
+  ///
+  /// Throws [UnsupportedError] by default; providers that can read repository
+  /// files (GitLab) should override this.
+  Future<Uint8List?> loadFile(String path, String ref) async {
+    throw UnsupportedError('File loading is not supported by this provider');
+  }
 }

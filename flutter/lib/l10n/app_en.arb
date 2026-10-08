@@ -834,6 +834,9 @@
   "noJobs": "No jobs yet.",
   "noJobLog": "No log output yet.",
   "jobLogLive": "LIVE",
+  "diffImageBefore": "Before",
+  "diffImageAfter": "After",
+  "diffImageUnavailable": "Image could not be loaded.",
   "openInBrowser": "Open in browser",
   "openInEditor": "Open in {editor}",
   "@openInEditor": {

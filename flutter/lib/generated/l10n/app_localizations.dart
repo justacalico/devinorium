@@ -2420,6 +2420,24 @@ abstract class AppLocalizations {
   /// **'LIVE'**
   String get jobLogLive;
 
+  /// No description provided for @diffImageBefore.
+  ///
+  /// In en, this message translates to:
+  /// **'Before'**
+  String get diffImageBefore;
+
+  /// No description provided for @diffImageAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'After'**
+  String get diffImageAfter;
+
+  /// No description provided for @diffImageUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Image could not be loaded.'**
+  String get diffImageUnavailable;
+
   /// No description provided for @openInBrowser.
   ///
   /// In en, this message translates to:

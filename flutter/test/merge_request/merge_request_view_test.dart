@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:devinorium_frontend/generated/l10n/app_localizations.dart';
 import 'package:devinorium_frontend/merge_request/merge_request_models.dart';
 import 'package:devinorium_frontend/state/async_value.dart';
@@ -184,6 +187,297 @@ void main() {
       expect(find.text('+2 -1', findRichText: true), findsOneWidget);
       expect(find.text('+1 -1', findRichText: true), findsOneWidget);
       expect(find.text('+0 -0', findRichText: true), findsNothing);
+    });
+
+    testWidgets('renders binary image changes as inline images', (
+      tester,
+    ) async {
+      // A 1x1 transparent PNG.
+      final pngBytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      );
+      const detailWithImages = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        diffBaseSha: 'base1',
+        diffHeadSha: 'head2',
+        changes: [
+          MergeRequestChange(
+            oldPath: 'icon.png',
+            newPath: 'icon.png',
+            diff: 'Binary files a/icon.png and b/icon.png differ',
+          ),
+          MergeRequestChange(
+            oldPath: 'logo.png',
+            newPath: 'logo.png',
+            diff: 'Binary files /dev/null and b/logo.png differ',
+            newFile: true,
+          ),
+        ],
+      );
+
+      final calls = <(String, String)>[];
+      Future<Uint8List?> loadFile(String path, String ref) async {
+        calls.add((path, ref));
+        return pngBytes;
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithImages),
+              url: '',
+              onLoadFile: loadFile,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Changes (2)'));
+      await tester.pumpAndSettle();
+
+      // A modified image loads both sides and labels them.
+      await tester.tap(find.text('icon.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNWidgets(2));
+      expect(find.text('Before'), findsOneWidget);
+      expect(find.text('After'), findsOneWidget);
+      expect(
+        find.text('Binary files a/icon.png and b/icon.png differ'),
+        findsNothing,
+      );
+      expect(calls, [('icon.png', 'base1'), ('icon.png', 'head2')]);
+
+      // A new image only loads the head side, and expanding it collapses
+      // the previous file.
+      await tester.tap(find.text('logo.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('Before'), findsNothing);
+      expect(find.text('After'), findsNothing);
+      expect(calls, hasLength(3));
+      expect(calls.last, ('logo.png', 'head2'));
+    });
+
+    testWidgets('renamed and deleted images load the right sides', (
+      tester,
+    ) async {
+      final pngBytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      );
+      const detailWithImages = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        diffBaseSha: 'base1',
+        diffHeadSha: 'head2',
+        changes: [
+          MergeRequestChange(
+            oldPath: 'old.png',
+            newPath: 'new.png',
+            diff: 'Binary files a/old.png and b/new.png differ',
+            renamedFile: true,
+          ),
+          MergeRequestChange(
+            oldPath: 'gone.png',
+            newPath: 'gone.png',
+            diff: 'Binary files a/gone.png and /dev/null differ',
+            deletedFile: true,
+          ),
+        ],
+      );
+
+      final calls = <(String, String)>[];
+      Future<Uint8List?> loadFile(String path, String ref) async {
+        calls.add((path, ref));
+        return pngBytes;
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithImages),
+              url: '',
+              onLoadFile: loadFile,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Changes (2)'));
+      await tester.pumpAndSettle();
+
+      // A renamed image shows old.png at the base sha and new.png at head.
+      await tester.tap(find.text('new.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNWidgets(2));
+      expect(calls, [('old.png', 'base1'), ('new.png', 'head2')]);
+
+      // A deleted image only shows the old side.
+      await tester.tap(find.text('gone.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('Before'), findsNothing);
+      expect(find.text('After'), findsNothing);
+      expect(calls, hasLength(3));
+      expect(calls.last, ('gone.png', 'base1'));
+    });
+
+    testWidgets('expands an image whose diff text was elided', (tester) async {
+      final pngBytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      );
+      const detailWithImages = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        diffBaseSha: 'base1',
+        diffHeadSha: 'head2',
+        changes: [
+          MergeRequestChange(oldPath: 'big.png', newPath: 'big.png', diff: ''),
+        ],
+      );
+
+      Future<Uint8List?> loadFile(String path, String ref) async => pngBytes;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithImages),
+              url: '',
+              onLoadFile: loadFile,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Changes (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('big.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNWidgets(2));
+    });
+
+    testWidgets('falls back to the diff text when image loading fails', (
+      tester,
+    ) async {
+      const detailWithImage = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        diffBaseSha: 'base1',
+        diffHeadSha: 'head2',
+        changes: [
+          MergeRequestChange(
+            oldPath: 'icon.png',
+            newPath: 'icon.png',
+            diff: 'Binary files a/icon.png and b/icon.png differ',
+          ),
+        ],
+      );
+
+      Future<Uint8List?> loadFile(String path, String ref) async => null;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MergeRequestView(
+              detail: const AsyncValue.ready(detailWithImage),
+              url: '',
+              onLoadFile: loadFile,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Changes (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('icon.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNothing);
+      expect(
+        find.text('Binary files a/icon.png and b/icon.png differ'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('keeps the text placeholder without a file loader', (
+      tester,
+    ) async {
+      const detailWithImage = MergeRequestDetail(
+        title: 'Add feature',
+        state: 'opened',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        iid: 1,
+        webUrl: '',
+        changes: [
+          MergeRequestChange(
+            oldPath: 'icon.png',
+            newPath: 'icon.png',
+            diff: 'Binary files a/icon.png and b/icon.png differ',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(
+            body: MergeRequestView(
+              detail: AsyncValue.ready(detailWithImage),
+              url: '',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Changes (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('icon.png'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Image), findsNothing);
+      expect(
+        find.text('Binary files a/icon.png and b/icon.png differ'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('switches to comments tab', (tester) async {

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
     hide SyntaxHighlighter;
@@ -35,6 +37,10 @@ class MergeRequestView extends StatelessWidget {
   /// buttons are shown.
   final Future<void> Function(MergeRequestAction action)? onAction;
 
+  /// Loads the raw bytes of a changed file at a git ref. When null, binary
+  /// image diffs fall back to the text diff placeholder.
+  final MergeRequestFileLoader? onLoadFile;
+
   const MergeRequestView({
     super.key,
     required this.detail,
@@ -44,6 +50,7 @@ class MergeRequestView extends StatelessWidget {
     this.onLoadJobs,
     this.onJobTap,
     this.onAction,
+    this.onLoadFile,
   });
 
   @override
@@ -56,6 +63,7 @@ class MergeRequestView extends StatelessWidget {
         onLoadJobs: onLoadJobs,
         onJobTap: onJobTap,
         onAction: onAction,
+        onLoadFile: onLoadFile,
       );
     }
     if (detail.isLoading) {
@@ -75,6 +83,7 @@ class _MergeRequestBody extends StatefulWidget {
   final PipelineJobsLoader? onLoadJobs;
   final PipelineJobTap? onJobTap;
   final Future<void> Function(MergeRequestAction action)? onAction;
+  final MergeRequestFileLoader? onLoadFile;
 
   const _MergeRequestBody({
     required this.detail,
@@ -83,6 +92,7 @@ class _MergeRequestBody extends StatefulWidget {
     this.onLoadJobs,
     this.onJobTap,
     this.onAction,
+    this.onLoadFile,
   });
 
   @override
@@ -137,7 +147,19 @@ class _MergeRequestBodyState extends State<_MergeRequestBody>
                 onLoadJobs: widget.onLoadJobs,
                 onJobTap: widget.onJobTap,
               ),
-              _ChangesTab(changes: detail.changes),
+              _ChangesTab(
+                changes: detail.changes,
+                onLoadFile: widget.onLoadFile,
+                // The diff refs pin the exact commits the diff was computed
+                // against; fall back to the branch names when they are
+                // absent (older GitLab versions, partial responses).
+                oldRef: detail.diffBaseSha.isNotEmpty
+                    ? detail.diffBaseSha
+                    : detail.targetBranch,
+                newRef: detail.diffHeadSha.isNotEmpty
+                    ? detail.diffHeadSha
+                    : detail.sourceBranch,
+              ),
               _CommentsTab(
                 comments: detail.comments,
                 onLinkTap: widget.onLinkTap,
@@ -731,7 +753,22 @@ class _PipelinesTab extends StatelessWidget {
 class _ChangesTab extends StatefulWidget {
   final List<MergeRequestChange> changes;
 
-  const _ChangesTab({required this.changes});
+  /// Loads file bytes at a git ref for inline image diffs. When null, binary
+  /// image files keep the text diff placeholder.
+  final MergeRequestFileLoader? onLoadFile;
+
+  /// Git ref the "old" side of the diff is based on.
+  final String oldRef;
+
+  /// Git ref the "new" side of the diff was generated from.
+  final String newRef;
+
+  const _ChangesTab({
+    required this.changes,
+    this.onLoadFile,
+    this.oldRef = '',
+    this.newRef = '',
+  });
 
   @override
   State<_ChangesTab> createState() => _ChangesTabState();
@@ -850,9 +887,20 @@ class _ChangesTabState extends State<_ChangesTab> {
                             ),
                           ],
                         ),
-                        if (isExpanded && change.diff.isNotEmpty) ...[
+                        if (isExpanded &&
+                            (change.diff.isNotEmpty ||
+                                (change.isBinaryImage &&
+                                    widget.onLoadFile != null))) ...[
                           const SizedBox(height: 8),
-                          _DiffView(diff: change.diff),
+                          if (change.isBinaryImage && widget.onLoadFile != null)
+                            _ImageDiffView(
+                              change: change,
+                              oldRef: widget.oldRef,
+                              newRef: widget.newRef,
+                              loadFile: widget.onLoadFile!,
+                            )
+                          else
+                            _DiffView(diff: change.diff),
                         ],
                       ],
                     ),
@@ -998,6 +1046,169 @@ class _DiffStatsText extends StatelessWidget {
   }
 }
 
+/// Renders a binary image change by loading both sides of the diff and
+/// showing the pictures inline. Falls back to the raw diff text when the
+/// bytes cannot be fetched or decoded.
+class _ImageDiffView extends StatefulWidget {
+  final MergeRequestChange change;
+  final String oldRef;
+  final String newRef;
+  final MergeRequestFileLoader loadFile;
+
+  const _ImageDiffView({
+    required this.change,
+    required this.oldRef,
+    required this.newRef,
+    required this.loadFile,
+  });
+
+  @override
+  State<_ImageDiffView> createState() => _ImageDiffViewState();
+}
+
+class _ImageDiffViewState extends State<_ImageDiffView> {
+  /// (old bytes, new bytes); a null entry means that side does not exist or
+  /// could not be loaded.
+  late Future<(Uint8List?, Uint8List?)> _images;
+
+  @override
+  void initState() {
+    super.initState();
+    _images = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ImageDiffView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // MergeRequestChange has no equality; compare the fields that select
+    // which blobs get loaded so a refresh with identical changes does not
+    // refetch the images.
+    final old = oldWidget.change;
+    final change = widget.change;
+    if (old.oldPath != change.oldPath ||
+        old.newPath != change.newPath ||
+        old.newFile != change.newFile ||
+        old.deletedFile != change.deletedFile ||
+        oldWidget.oldRef != widget.oldRef ||
+        oldWidget.newRef != widget.newRef ||
+        oldWidget.loadFile != widget.loadFile) {
+      _images = _load();
+    }
+  }
+
+  Future<(Uint8List?, Uint8List?)> _load() {
+    final change = widget.change;
+    return Future.wait([
+      if (change.newFile)
+        Future<Uint8List?>.value()
+      else
+        widget.loadFile(change.oldPath, widget.oldRef),
+      if (change.deletedFile)
+        Future<Uint8List?>.value()
+      else
+        widget.loadFile(change.newPath, widget.newRef),
+    ]).then((r) => (r[0], r[1]));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<(Uint8List?, Uint8List?)>(
+      future: _images,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+
+        final oldBytes = snapshot.data?.$1;
+        final newBytes = snapshot.data?.$2;
+        if (oldBytes == null && newBytes == null) {
+          return _DiffView(diff: widget.change.diff);
+        }
+
+        final showLabels = oldBytes != null && newBytes != null;
+        return Wrap(
+          spacing: 16,
+          runSpacing: 12,
+          children: [
+            if (oldBytes != null)
+              _ImageSide(
+                label: showLabels ? l10n(context).diffImageBefore : null,
+                bytes: oldBytes,
+              ),
+            if (newBytes != null)
+              _ImageSide(
+                label: showLabels ? l10n(context).diffImageAfter : null,
+                bytes: newBytes,
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ImageSide extends StatelessWidget {
+  final String? label;
+  final Uint8List bytes;
+
+  const _ImageSide({this.label, required this.bytes});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final unavailable = Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        l10n(context).diffImageUnavailable,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (label != null) ...[
+          Text(
+            label!,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+        Container(
+          constraints: const BoxConstraints(maxWidth: 440, maxHeight: 440),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(7),
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) => unavailable,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _DiffView extends StatelessWidget {
   final String diff;
 
@@ -1035,16 +1246,16 @@ class _DiffView extends StatelessWidget {
         theme.extension<SemanticColors>() ??
         SemanticColors.fallback(theme.brightness);
     Color color;
-    if (line.startsWith('+')) {
-      color = semantic.success;
-    } else if (line.startsWith('-')) {
-      color = theme.colorScheme.error;
-    } else if (line.startsWith('@@') ||
+    if (line.startsWith('@@') ||
         line.startsWith('---') ||
         line.startsWith('+++') ||
         line.startsWith('diff ') ||
         line.startsWith('index ')) {
       color = theme.colorScheme.primary;
+    } else if (line.startsWith('+')) {
+      color = semantic.success;
+    } else if (line.startsWith('-')) {
+      color = theme.colorScheme.error;
     } else {
       color = theme.colorScheme.onSurface;
     }
