@@ -567,13 +567,35 @@ jobs:
             **Commit:** ${{ github.sha }}
 
             > This release is automatically updated on every push. Artifacts are untested nightly builds.
-          files: |
-            release-assets/*
-            SHA256SUMS.txt
           prerelease: true
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Assets upload one at a time with retries: a single dropped
+      # connection must not fail the whole release.
+      - name: Upload nightly assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for file in release-assets/* SHA256SUMS.txt; do
+            uploaded=false
+            for attempt in 1 2 3 4 5; do
+              if gh release upload nightly -R "$GITHUB_REPOSITORY" "$file" --clobber; then
+                uploaded=true
+                break
+              fi
+              if [ "$attempt" -lt 5 ]; then
+                echo "Upload of $file failed (attempt $attempt), retrying in $((attempt * 15))s" >&2
+                sleep $((attempt * 15))
+              fi
+            done
+            if [ "$uploaded" != true ]; then
+              echo "Failed to upload $file after 5 attempts" >&2
+              exit 1
+            fi
+          done
 
   release:
     name: Release
@@ -677,12 +699,35 @@ jobs:
 
             ### Verification
             SHA256 checksums are in `SHA256SUMS.txt`.
-          files: |
-            release-assets/*
-            SHA256SUMS.txt
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Assets upload one at a time with retries: a single dropped
+      # connection must not fail the whole release.
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          for file in release-assets/* SHA256SUMS.txt; do
+            uploaded=false
+            for attempt in 1 2 3 4 5; do
+              if gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" "$file" --clobber; then
+                uploaded=true
+                break
+              fi
+              if [ "$attempt" -lt 5 ]; then
+                echo "Upload of $file failed (attempt $attempt), retrying in $((attempt * 15))s" >&2
+                sleep $((attempt * 15))
+              fi
+            done
+            if [ "$uploaded" != true ]; then
+              echo "Failed to upload $file after 5 attempts" >&2
+              exit 1
+            fi
+          done
 
   gitlab-sync:
     name: Trigger GitLab sync
