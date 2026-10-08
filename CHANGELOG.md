@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.104.1 - 2026-10-08
+#### Bug Fixes
+- 修复深色模式下侧边栏与系统栏区域残留纯黑的问题 - (dc7e4a7) - HttpAnimations
+
+- - -
+
 ## v0.104.0 - 2026-10-08
 #### Features
 - 添加多窗口设置以跳过桌面端单实例检查 - (b4c6c82) - HttpAnimations
