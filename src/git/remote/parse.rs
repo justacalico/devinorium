@@ -203,7 +203,12 @@ impl GitRemoteService {
                 "only project api paths are supported".into(),
             ));
         }
-        if decoded.contains("..") || decoded.contains('\n') || decoded.contains('\r') {
+        // `..` is only traversal as a whole path segment; repo file names may
+        // legitimately contain it (`logo..v2.png`) without leaving the API.
+        let has_traversal = decoded
+            .split(['/', '?', '#'])
+            .any(|segment| segment == "..");
+        if has_traversal || decoded.contains('\n') || decoded.contains('\r') {
             return Err(RemoteError::StatusFailed(
                 "invalid characters in api path".into(),
             ));
@@ -358,6 +363,24 @@ mod tests {
             deep = deep.replace('%', "%25");
         }
         assert!(GitRemoteService::check_api_path(&format!("projects/{deep}/x")).is_err());
+    }
+
+    #[test]
+    fn check_api_path_allows_dots_inside_file_names() {
+        // `..` inside a path segment is a legal git file name, not traversal.
+        assert!(GitRemoteService::check_api_path(
+            "projects/g%2Fp/repository/files/icons%2Flogo..v2.png?ref=abc123"
+        )
+        .is_ok());
+        assert!(GitRemoteService::check_api_path(
+            "projects/g%2Fp/repository/files/a%2Fb.png?ref=x"
+        )
+        .is_ok());
+        // Whole `..` segments are still rejected, including inside the query,
+        // while a `..` query value alone is harmless and passes through.
+        assert!(GitRemoteService::check_api_path("projects/x/files/../y").is_err());
+        assert!(GitRemoteService::check_api_path("projects/g%2Fp/files/a?ref=a/../b").is_err());
+        assert!(GitRemoteService::check_api_path("projects/g%2Fp/files/a?ref=..").is_ok());
     }
 
     #[test]
