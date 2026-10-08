@@ -14,6 +14,33 @@ set -euo pipefail
 REPO="justacalico/devinorium"
 WORKFLOW="build.yml"
 
+# Wait out a GitHub API rate-limit window (capped) so retries are not
+# spent inside a window where every call would be rejected anyway. The
+# rate_limit endpoint itself does not count against the limit. Pass the
+# stderr of the failed call so secondary limits (which leave the core
+# quota untouched) are detected too.
+rate_limit_wait() {
+  local err="${1:-}" remaining reset now delay=0
+  remaining=$(gh api rate_limit -q '.resources.core.remaining' 2>/dev/null || true)
+  if [ "$remaining" = "0" ]; then
+    reset=$(gh api rate_limit -q '.resources.core.reset' 2>/dev/null || true)
+    now=$(date +%s)
+    if [ -n "${reset:-}" ] && [ "$reset" -gt "$now" ] 2>/dev/null; then
+      delay=$((reset - now + 10))
+      if [ "$delay" -gt 900 ]; then
+        delay=900
+      fi
+    fi
+  elif printf '%s' "$err" | grep -qi 'rate limit'; then
+    # Secondary/abuse limits keep remaining > 0; back off generously.
+    delay=60
+  fi
+  if [ "$delay" -gt 0 ]; then
+    echo "GitHub API rate limited; waiting ${delay}s" >&2
+    sleep "$delay"
+  fi
+}
+
 find_run() {
   local sha="$1" event="$2" branch="$3" since="$4" run_id="" runs=""
   local -a args=(-f "head_sha=$sha" -f per_page=10)
@@ -21,10 +48,15 @@ find_run() {
   [ -n "$branch" ] && args+=(-f "branch=$branch")
 
   echo "Looking for GitHub run (sha=$sha event=${event:-any})..." >&2
+  local err_file
+  err_file=$(mktemp)
   for _ in {1..60}; do
     sleep 5
-    runs=$(gh api --method GET "repos/$REPO/actions/workflows/$WORKFLOW/runs" "${args[@]}" \
-      -q '.workflow_runs[] | "\(.id) \(.created_at)"' 2>/dev/null || true)
+    if ! runs=$(gh api --method GET "repos/$REPO/actions/workflows/$WORKFLOW/runs" "${args[@]}" \
+      -q '.workflow_runs[] | "\(.id) \(.created_at)"' 2>"$err_file"); then
+      runs=""
+      rate_limit_wait "$(cat "$err_file")"
+    fi
     if [ -n "$since" ]; then
       # Skip runs created before the trigger so a stale run for the same
       # commit is not picked up while the new one is still registering.
@@ -33,22 +65,31 @@ find_run() {
       run_id=$(printf '%s\n' "$runs" | awk 'NR == 1 {print $1}')
     fi
     if [ -n "$run_id" ]; then
+      rm -f "$err_file"
       echo "$run_id"
       return 0
     fi
   done
+  rm -f "$err_file"
   return 1
 }
 
 watch_run() {
-  local run_id="$1" conclusion=""
+  local run_id="$1" conclusion="" attempt err_file api_err
   echo "Watching GitHub run $run_id..."
-  for attempt in 1 2 3; do
+  for attempt in $(seq 1 8); do
     # --exit-status does not treat every non-success conclusion as a
     # failure, so always verify the conclusion from the API afterwards.
     gh run watch "$run_id" -R "$REPO" --exit-status 2>&1 || true
 
-    conclusion=$(gh api "repos/$REPO/actions/runs/$run_id" -q '.conclusion' 2>/dev/null || true)
+    err_file=$(mktemp)
+    if conclusion=$(gh api "repos/$REPO/actions/runs/$run_id" -q '.conclusion' 2>"$err_file"); then
+      api_err=""
+    else
+      api_err=$(cat "$err_file")
+      conclusion=""
+    fi
+    rm -f "$err_file"
     case "$conclusion" in
       success)
         return 0
@@ -58,8 +99,11 @@ watch_run() {
         return 1
         ;;
       *)
-        echo "gh run watch lost connection (attempt $attempt), retrying..."
-        sleep 10
+        if [ "$attempt" -lt 8 ]; then
+          echo "gh run watch lost connection (attempt $attempt), retrying..." >&2
+          rate_limit_wait "$api_err"
+          sleep 10
+        fi
         ;;
     esac
   done
