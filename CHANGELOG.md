@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.103.0 - 2026-10-08
+#### Features
+- 合并请求变更页内联显示二进制图片 - (7fad364) - HttpAnimations
+#### Bug Fixes
+- 修复 API 代理误拒文件名中包含连续点号的合法路径 - (d1f8adb) - HttpAnimations
+
+- - -
+
 ## v0.102.0 - 2026-10-08
 #### Features
 - Shift+点击终端按钮在新标签页打开终端 - (a88bbf4) - HttpAnimations
