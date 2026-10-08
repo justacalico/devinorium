@@ -2222,6 +2222,18 @@ abstract class AppLocalizations {
   /// **'Test notification sent.'**
   String get testNotificationSent;
 
+  /// No description provided for @multipleWindows.
+  ///
+  /// In en, this message translates to:
+  /// **'Multiple windows'**
+  String get multipleWindows;
+
+  /// No description provided for @multipleWindowsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Launching Devinorium again opens a new window instead of focusing the existing one. All windows share the bundled server.'**
+  String get multipleWindowsDescription;
+
   /// No description provided for @testNotificationFailed.
   ///
   /// In en, this message translates to:

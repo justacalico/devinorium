@@ -738,6 +738,8 @@
   "notificationPermissionDenied": "通知已被阻止。请在浏览器或系统设置中允许通知后再开启。",
   "sendTestNotification": "发送测试通知",
   "testNotificationSent": "测试通知已发送。",
+  "multipleWindows": "多窗口",
+  "multipleWindowsDescription": "再次启动 Devinorium 时打开新窗口，而不是聚焦已有窗口。所有窗口共享内置服务器。",
   "testNotificationFailed": "没有推送订阅接收测试通知。",
   "notificationChannelRuns": "会话运行",
   "notificationChannelAlerts": "需要处理",

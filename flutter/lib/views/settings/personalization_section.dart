@@ -124,6 +124,13 @@ class _PersonalizationSection extends StatelessWidget {
           onChanged: (v) => state.setNotificationsEnabled(v),
         ),
         _NotificationPermissionHint(state: state),
+        if (state.multiWindowSupported)
+          SwitchListTile(
+            title: Text(l.multipleWindows),
+            subtitle: Text(l.multipleWindowsDescription),
+            value: state.multiWindowEnabled,
+            onChanged: (v) => state.setMultiWindowEnabled(v),
+          ),
         if (state.pushSupported)
           _PushTile(state: state)
         else if (!kIsWeb)

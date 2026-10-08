@@ -759,6 +759,8 @@
   "notificationPermissionDenied": "Notifications are blocked. Allow them in your browser or system settings to enable them.",
   "sendTestNotification": "Send test notification",
   "testNotificationSent": "Test notification sent.",
+  "multipleWindows": "Multiple windows",
+  "multipleWindowsDescription": "Launching Devinorium again opens a new window instead of focusing the existing one. All windows share the bundled server.",
   "testNotificationFailed": "No push subscription accepted the test notification.",
   "notificationChannelRuns": "Thread runs",
   "notificationChannelAlerts": "Attention requests",

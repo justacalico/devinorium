@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1176,6 +1175,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get testNotificationSent => '测试通知已发送。';
+
+  @override
+  String get multipleWindows => '多窗口';
+
+  @override
+  String get multipleWindowsDescription =>
+      '再次启动 Devinorium 时打开新窗口，而不是聚焦已有窗口。所有窗口共享内置服务器。';
 
   @override
   String get testNotificationFailed => '没有推送订阅接收测试通知。';

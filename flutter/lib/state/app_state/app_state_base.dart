@@ -232,6 +232,10 @@ abstract class AppStateBase extends ChangeNotifier {
   set _settingsTopicIndex(int value);
   NotificationService get _notifications;
   set _notifications(NotificationService value);
+  MultiWindowStore get _multiWindow;
+  set _multiWindow(MultiWindowStore value);
+  bool get _multiWindowEnabled;
+  set _multiWindowEnabled(bool value);
   bool get _pushEnabled;
   set _pushEnabled(bool value);
   Set<String> get _notifiedRunKeys;
@@ -417,6 +421,8 @@ abstract class AppStateBase extends ChangeNotifier {
   String get language;
   int get settingsTopicIndex;
   bool get notificationsEnabled;
+  bool get multiWindowEnabled;
+  bool get multiWindowSupported;
   bool get pushEnabled;
   bool get pushSupported;
   String get pushStatus;
@@ -510,10 +516,12 @@ abstract class AppStateBase extends ChangeNotifier {
   Future<void> setLanguage(String language);
   Future<void> _loadLanguage();
   Future<void> setNotificationsEnabled(bool enabled);
+  Future<void> setMultiWindowEnabled(bool enabled);
   Future<void> setPushEnabled(bool enabled);
   Future<String> notificationPermissionState();
   Future<int> sendTestPushNotification();
   Future<void> _loadNotificationPrefs();
+  Future<void> _loadMultiWindowPref();
   Future<void> _syncPushSubscription();
   Future<void> _teardownPushSubscription();
   void noteLifecycleState(AppLifecycleState state);
