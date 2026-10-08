@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.102.0 - 2026-10-08
+#### Features
+- Shift+点击终端按钮在新标签页打开终端 - (a88bbf4) - HttpAnimations
+
+- - -
+
 ## v0.101.0 - 2026-10-07
 #### Features
 - 会话页新增在编辑器中打开按钮 - (f7a671a) - HttpAnimations
