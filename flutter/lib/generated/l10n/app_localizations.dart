@@ -3329,13 +3329,13 @@ abstract class AppLocalizations {
   /// Tooltip for adding a local terminal
   ///
   /// In en, this message translates to:
-  /// **'Local terminal'**
+  /// **'Local terminal (Shift+click opens a new tab)'**
   String get terminalLocal;
 
   /// Tooltip for adding a remote terminal
   ///
   /// In en, this message translates to:
-  /// **'Remote terminal'**
+  /// **'Remote terminal (Shift+click opens a new tab)'**
   String get terminalRemote;
 
   /// Tooltip for hiding the terminal panel

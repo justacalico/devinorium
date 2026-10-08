@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
 import 'terminal_session.dart';
@@ -41,7 +42,10 @@ class TerminalPanel extends StatelessWidget {
 
   Future<void> _addSession(BuildContext context, {required bool local}) async {
     try {
-      await store.addSession(local: local);
+      await store.addSession(
+        local: local,
+        newTab: HardwareKeyboard.instance.isShiftPressed,
+      );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

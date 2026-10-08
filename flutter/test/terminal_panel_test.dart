@@ -4,6 +4,7 @@ import 'package:devinorium_frontend/terminal/terminal_session.dart';
 import 'package:devinorium_frontend/terminal/terminal_store.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 TerminalStore _openStore({TerminalSessionFactory? sessionFactory}) =>
@@ -263,6 +264,55 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('s-3'), findsNothing);
     expect(find.text('s-1'), findsOneWidget);
+  });
+
+  testWidgets('shift+click on the cloud terminal button opens a new tab', (
+    tester,
+  ) async {
+    var callCount = 0;
+    Future<TerminalSession> sessionFactory({
+      required ApiService api,
+      required String? threadId,
+      required bool local,
+      String? workingDir,
+    }) async {
+      callCount++;
+      return TerminalSession(id: 's-$callCount', isLocal: local);
+    }
+
+    final store = _openStore(sessionFactory: sessionFactory);
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+
+    // A plain click adds a session to the active tab.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(store.tabs, hasLength(1));
+    expect(find.text('s-1'), findsOneWidget);
+
+    // Shift+click creates a fresh tab for the new session.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    addTearDown(() => tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft));
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    expect(store.tabs, hasLength(2));
+    expect(store.activeTabIndex, 1);
+    expect(store.tabs[1].sessions.single.id, 's-2');
+    expect(find.text('Tab 2'), findsOneWidget);
+    expect(find.text('s-2'), findsOneWidget);
+    expect(find.text('s-1'), findsNothing);
+
+    // Back to a plain click: the session joins the active tab.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(store.tabs, hasLength(2));
+    expect(store.tabs[1].sessions, hasLength(2));
+    expect(find.text('s-2'), findsOneWidget);
+    expect(find.text('s-3'), findsOneWidget);
   });
 
   testWidgets('right-click on a tab opens the rename dialog', (tester) async {

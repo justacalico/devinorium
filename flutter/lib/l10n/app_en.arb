@@ -1333,11 +1333,11 @@
   "@terminalClose": {
     "description": "Tooltip for closing a terminal session"
   },
-  "terminalLocal": "Local terminal",
+  "terminalLocal": "Local terminal (Shift+click opens a new tab)",
   "@terminalLocal": {
     "description": "Tooltip for adding a local terminal"
   },
-  "terminalRemote": "Remote terminal",
+  "terminalRemote": "Remote terminal (Shift+click opens a new tab)",
   "@terminalRemote": {
     "description": "Tooltip for adding a remote terminal"
   },
