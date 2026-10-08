@@ -187,6 +187,21 @@ docker-image:
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
+    # The dind service takes a moment to accept connections; docker login
+    # does not need the daemon, so wait before the first daemon command.
+    - |
+      ready=""
+      for _ in $(seq 1 90); do
+        if docker info >/dev/null 2>&1; then
+          ready=1
+          break
+        fi
+        sleep 2
+      done
+      if [ -z "$ready" ]; then
+        echo "Docker daemon did not become ready" >&2
+        exit 1
+      fi
     - docker build --pull --tag "$IMAGE:$CI_COMMIT_TAG" --tag "$IMAGE:latest" .
     - docker push "$IMAGE:$CI_COMMIT_TAG"
     - docker push "$IMAGE:latest"
