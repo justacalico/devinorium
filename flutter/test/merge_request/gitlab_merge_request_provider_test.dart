@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:devinorium_frontend/api/api_client.dart';
 import 'package:devinorium_frontend/merge_request/gitlab_merge_request_provider.dart';
@@ -705,8 +706,7 @@ void main() {
       final mock = MockClient((req) async {
         final query = req.url.queryParameters;
 
-        if (req.url.path ==
-            '/api/git-connections/gitlab/pipelines/jobs/logs') {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines/jobs/logs') {
           expect(query['project'], 'group/project');
           expect(query['job_id'], '101');
           expect(query['hostname'], 'gitlab.com');
@@ -780,7 +780,9 @@ void main() {
       );
 
       await expectLater(
-        provider.loadJobLog(const MergeRequestPipelineJob(id: 0, status: 'running')),
+        provider.loadJobLog(
+          const MergeRequestPipelineJob(id: 0, status: 'running'),
+        ),
         throwsA(isA<ArgumentError>()),
       );
     });
@@ -791,7 +793,245 @@ void main() {
       );
 
       await expectLater(
-        provider.loadJobLog(const MergeRequestPipelineJob(id: 1, status: 'running')),
+        provider.loadJobLog(
+          const MergeRequestPipelineJob(id: 1, status: 'running'),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('parses diff_refs into the detail', () async {
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'title': 'Add feature',
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+            'diff_refs': {'base_sha': 'base1', 'head_sha': 'head2'},
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      final detail = provider.value.valueOrNull!;
+      expect(detail.diffBaseSha, 'base1');
+      expect(detail.diffHeadSha, 'head2');
+    });
+
+    test('loadFile fetches and decodes repository file bytes', () async {
+      final bytes = Uint8List.fromList([137, 80, 78, 71, 1, 2, 3, 255]);
+      final encoded = base64Encode(bytes);
+      String? requestedPath;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.contains('/repository/files/')) {
+          requestedPath = path;
+          // GitLab may return the base64 content chunked with newlines.
+          return _json(200, {
+            'file_path': 'icons/app.png',
+            'encoding': 'base64',
+            'content': '${encoded.substring(0, 4)}\n${encoded.substring(4)}',
+          });
+        }
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      final loaded = await provider.loadFile('icons/app.png', 'abc123');
+
+      expect(loaded, bytes);
+      expect(
+        requestedPath,
+        'projects/group%2Fproject/repository/files/icons%2Fapp.png?ref=abc123',
+      );
+    });
+
+    test('loadFile returns null when the file is missing or empty', () async {
+      var fail = true;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.contains('/repository/files/')) {
+          if (fail) return _json(400, {'error': '404 File Not Found'});
+          return _json(200, {'file_path': 'icons/app.png', 'content': ''});
+        }
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      expect(await provider.loadFile('icons/app.png', 'abc123'), isNull);
+
+      fail = false;
+      expect(await provider.loadFile('icons/app.png', 'abc123'), isNull);
+    });
+
+    test('loadFile skips decoding files over the size limit', () async {
+      var requests = 0;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.contains('/repository/files/')) {
+          requests++;
+          return _json(200, {
+            'file_path': 'huge.png',
+            'size': 20 * 1024 * 1024,
+            'content': base64Encode(Uint8List(4)),
+          });
+        }
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      expect(await provider.loadFile('huge.png', 'abc123'), isNull);
+      expect(requests, 1);
+    });
+
+    test('loadFile caches results per path and ref', () async {
+      var requests = 0;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.contains('/repository/files/')) {
+          requests++;
+          return _json(200, {
+            'file_path': 'icon.png',
+            'content': base64Encode(Uint8List.fromList([1, 2, 3])),
+          });
+        }
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      await provider.loadFile('icon.png', 'abc123');
+      await provider.loadFile('icon.png', 'abc123');
+      await provider.loadFile('icon.png', 'def456');
+
+      expect(requests, 2);
+    });
+
+    test('loadFile encodes paths with spaces and unicode', () async {
+      String? requestedPath;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/api/git-connections/gitlab/pipelines') {
+          return _json(200, []);
+        }
+        final path = req.url.queryParameters['path'] ?? '';
+        if (path.contains('/repository/files/')) {
+          requestedPath = path;
+          return _json(200, {'content': base64Encode(Uint8List(2))});
+        }
+        if (path.endsWith('/merge_requests/1')) {
+          return _json(200, {
+            'iid': 1,
+            'state': 'opened',
+            'source_branch': 'feature',
+            'target_branch': 'main',
+          });
+        }
+        return _json(200, {'_list': []});
+      });
+
+      final provider = GitLabMergeRequestProvider(ApiClient.withClient(mock));
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      await provider.loadFile('dir/my 图标.png', 'feature/x');
+
+      expect(
+        requestedPath,
+        'projects/group%2Fproject/repository/files/'
+        'dir%2Fmy%20%E5%9B%BE%E6%A0%87.png?ref=feature%2Fx',
+      );
+    });
+
+    test('loadFile returns null for empty arguments', () async {
+      final provider = GitLabMergeRequestProvider(
+        ApiClient.withClient(MockClient((_) async => _json(200, {}))),
+      );
+      await provider.load(
+        'https://gitlab.com/group/project/-/merge_requests/1',
+      );
+
+      expect(await provider.loadFile('', 'abc123'), isNull);
+      expect(await provider.loadFile('icons/app.png', ''), isNull);
+    });
+
+    test('throws for loadFile when no merge request is loaded', () async {
+      final provider = GitLabMergeRequestProvider(
+        ApiClient.withClient(MockClient((_) async => _json(200, {}))),
+      );
+
+      await expectLater(
+        provider.loadFile('icons/app.png', 'abc123'),
         throwsA(isA<StateError>()),
       );
     });

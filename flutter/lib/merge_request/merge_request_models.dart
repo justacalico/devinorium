@@ -1,8 +1,17 @@
+import 'dart:typed_data';
+
 /// Loads CI/CD jobs for a single pipeline.
 typedef PipelineJobsLoader =
     Future<List<MergeRequestPipelineJob>> Function(
       MergeRequestPipeline pipeline,
     );
+
+/// Loads the raw bytes of a repository file at a git ref.
+///
+/// Returns `null` when the file does not exist at that ref or cannot be
+/// fetched. Used to render image diffs inline.
+typedef MergeRequestFileLoader =
+    Future<Uint8List?> Function(String path, String ref);
 
 /// Opens the live log view for a single CI/CD job.
 typedef PipelineJobTap = void Function(MergeRequestPipelineJob job);
@@ -78,6 +87,38 @@ class MergeRequestChange {
   });
 
   String get displayPath => newPath.isNotEmpty ? newPath : oldPath;
+
+  /// Image extensions [Image.memory] can decode.
+  static const _imageExtensions = {
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.webp',
+    '.bmp',
+  };
+
+  /// Whether git could not produce text hunks for this file.
+  bool get isBinary => diff
+      .split('\n')
+      .any(
+        (line) =>
+            line.startsWith('Binary files') ||
+            line.startsWith('GIT binary patch'),
+      );
+
+  /// Whether this is a binary change to an image the app can render inline.
+  ///
+  /// An empty [diff] counts as binary: GitLab elides the diff text for
+  /// collapsed or too-large files, and images are always binary.
+  bool get isBinaryImage {
+    if (!isBinary && diff.trim().isNotEmpty) return false;
+    return _imageExtensions.any(
+      (ext) =>
+          oldPath.toLowerCase().endsWith(ext) ||
+          newPath.toLowerCase().endsWith(ext),
+    );
+  }
 
   factory MergeRequestChange.fromJson(Map<String, dynamic> j) =>
       MergeRequestChange(
@@ -229,6 +270,13 @@ class MergeRequestDetail {
   final MergeRequestAuthor? author;
   final String createdAt;
   final String updatedAt;
+
+  /// The commit sha the diff's "old" side is based on (merge base).
+  final String diffBaseSha;
+
+  /// The source branch head sha the diff's "new" side was generated from.
+  final String diffHeadSha;
+
   final List<MergeRequestChange> changes;
   final List<MergeRequestComment> comments;
   final List<MergeRequestPipeline> pipelines;
@@ -247,6 +295,8 @@ class MergeRequestDetail {
     this.author,
     this.createdAt = '',
     this.updatedAt = '',
+    this.diffBaseSha = '',
+    this.diffHeadSha = '',
     this.changes = const [],
     this.comments = const [],
     this.pipelines = const [],

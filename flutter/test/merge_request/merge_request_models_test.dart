@@ -115,6 +115,75 @@ void main() {
     });
   });
 
+  group('MergeRequestChange', () {
+    test('detects binary image diffs', () {
+      const change = MergeRequestChange(
+        oldPath: 'icons/app.png',
+        newPath: 'icons/app.png',
+        diff: 'Binary files a/icons/app.png and b/icons/app.png differ',
+      );
+
+      expect(change.isBinary, isTrue);
+      expect(change.isBinaryImage, isTrue);
+    });
+
+    test('detects a new image file', () {
+      const change = MergeRequestChange(
+        oldPath: 'icons/app.png',
+        newPath: 'icons/app.png',
+        diff: 'Binary files /dev/null and b/icons/app.png differ',
+        newFile: true,
+      );
+
+      expect(change.isBinary, isTrue);
+      expect(change.isBinaryImage, isTrue);
+    });
+
+    test('text diffs are not binary', () {
+      const change = MergeRequestChange(
+        oldPath: 'a.txt',
+        newPath: 'a.txt',
+        diff: '@@ -1 +1 @@\n-old\n+new',
+      );
+
+      expect(change.isBinary, isFalse);
+      expect(change.isBinaryImage, isFalse);
+    });
+
+    test('binary diffs of unsupported extensions are not images', () {
+      const change = MergeRequestChange(
+        oldPath: 'bundle.zip',
+        newPath: 'bundle.zip',
+        diff: 'Binary files a/bundle.zip and b/bundle.zip differ',
+      );
+
+      expect(change.isBinary, isTrue);
+      expect(change.isBinaryImage, isFalse);
+    });
+
+    test('image extension matching is case-insensitive', () {
+      const change = MergeRequestChange(
+        oldPath: 'icons/Logo.PNG',
+        newPath: 'icons/Logo.PNG',
+        diff: 'Binary files a/icons/Logo.PNG and b/icons/Logo.PNG differ',
+      );
+
+      expect(change.isBinaryImage, isTrue);
+    });
+
+    test('falls back to the old path when the new path is empty', () {
+      const change = MergeRequestChange(
+        oldPath: 'icons/gone.png',
+        newPath: '',
+        diff: 'Binary files a/icons/gone.png and /dev/null differ',
+        deletedFile: true,
+      );
+
+      expect(change.displayPath, 'icons/gone.png');
+      expect(change.isBinaryImage, isTrue);
+    });
+  });
+
   group('MergeRequestAction', () {
     test('uses the wire names the backend expects', () {
       expect(MergeRequestAction.close.wire, 'close');

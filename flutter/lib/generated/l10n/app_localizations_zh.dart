@@ -1295,6 +1295,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get jobLogLive => '实时';
 
   @override
+  String get diffImageBefore => '修改前';
+
+  @override
+  String get diffImageAfter => '修改后';
+
+  @override
+  String get diffImageUnavailable => '图片加载失败';
+
+  @override
   String get openInBrowser => '在浏览器中打开';
 
   @override

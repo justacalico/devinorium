@@ -127,6 +127,9 @@ class _MergeRequestPanelState extends State<MergeRequestPanel> {
                           onJobTap: _provider! is GitLabMergeRequestProvider
                               ? (job) => _showJobLog(context, job)
                               : null,
+                          onLoadFile: _provider! is GitLabMergeRequestProvider
+                              ? _provider!.loadFile
+                              : null,
                           onAction: _provider!.perform,
                         ),
                       ),

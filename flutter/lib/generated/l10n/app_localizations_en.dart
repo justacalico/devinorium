@@ -1357,6 +1357,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get jobLogLive => 'LIVE';
 
   @override
+  String get diffImageBefore => 'Before';
+
+  @override
+  String get diffImageAfter => 'After';
+
+  @override
+  String get diffImageUnavailable => 'Image could not be loaded.';
+
+  @override
   String get openInBrowser => 'Open in browser';
 
   @override
