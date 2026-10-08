@@ -174,34 +174,25 @@ github-release-sync:
 docker-image:
   stage: release
   tags: [linux-truenas]
-  image: docker:29
-  services:
-    - docker:29-dind
+  # Kaniko builds and pushes without a Docker daemon, so no privileged
+  # dind service is required.
+  image:
+    name: martizih/kaniko:v1.28.5-debug
+    entrypoint: [""]
   resource_group: docker-image
   timeout: 2h
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   variables:
-    DOCKER_BUILDKIT: "1"
     IMAGE: $CI_REGISTRY_IMAGE/devinorium
-  before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
-    # The dind service takes a moment to accept connections; docker login
-    # does not need the daemon, so wait before the first daemon command.
+    - mkdir -p /kaniko/.docker
     - |
-      ready=""
-      for _ in $(seq 1 90); do
-        if docker info >/dev/null 2>&1; then
-          ready=1
-          break
-        fi
-        sleep 2
-      done
-      if [ -z "$ready" ]; then
-        echo "Docker daemon did not become ready" >&2
-        exit 1
-      fi
-    - docker build --pull --tag "$IMAGE:$CI_COMMIT_TAG" --tag "$IMAGE:latest" .
-    - docker push "$IMAGE:$CI_COMMIT_TAG"
-    - docker push "$IMAGE:latest"
+      printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}\n' \
+        "$CI_REGISTRY" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" \
+        > /kaniko/.docker/config.json
+    - /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile "$CI_PROJECT_DIR/Dockerfile"
+      --destination "$IMAGE:$CI_COMMIT_TAG"
+      --destination "$IMAGE:latest"
