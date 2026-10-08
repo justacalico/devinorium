@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.104.0 - 2026-10-08
+#### Features
+- 添加多窗口设置以跳过桌面端单实例检查 - (b4c6c82) - HttpAnimations
+
+- - -
+
 ## v0.103.0 - 2026-10-08
 #### Features
 - 合并请求变更页内联显示二进制图片 - (7fad364) - HttpAnimations
