@@ -104,9 +104,9 @@ class BuiltInThemes {
   --on-inverse-surface: #000000;
   --inverse-primary: #6750A4;
   --surface-tint: #D0BCFF;
-  --surface-dim: #000000;
+  --surface-dim: #070707;
   --surface-bright: #161616;
-  --surface-container-lowest: #000000;
+  --surface-container-lowest: #050505;
   --surface-container-low: #0A0A0A;
   --surface-container: #111111;
   --surface-container-high: #171717;

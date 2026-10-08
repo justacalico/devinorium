@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'l10n/l10n.dart';
@@ -156,27 +157,46 @@ class RootScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, AppView>(
-      selector: (_, state) => state.view,
-      builder: (context, view, _) {
-        final Widget body = switch (view) {
-          AppView.loading => const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          ),
-          AppView.app => const AppShell(),
-        };
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+        statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarColor: theme.scaffoldBackgroundColor,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarIconBrightness: dark
+            ? Brightness.light
+            : Brightness.dark,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: ColoredBox(
+        color: theme.scaffoldBackgroundColor,
+        child: Selector<AppState, AppView>(
+          selector: (_, state) => state.view,
+          builder: (context, view, _) {
+            final Widget body = switch (view) {
+              AppView.loading => const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              ),
+              AppView.app => const AppShell(),
+            };
 
-        return SafeArea(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              body,
-              const _DialogOverlay(),
-              const _GlobalErrorBanner(),
-            ],
-          ),
-        );
-      },
+            return SafeArea(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  body,
+                  const _DialogOverlay(),
+                  const _GlobalErrorBanner(),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }

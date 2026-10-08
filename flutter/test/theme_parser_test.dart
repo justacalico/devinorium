@@ -223,14 +223,14 @@ body { color: red; }
     });
 
     test(
-      'dark theme uses deep black surfaces and progressively lighter containers',
+      'dark theme uses near-black surfaces and progressively lighter containers',
       () {
         final scheme = BuiltInThemes.dark.toColorScheme(Brightness.dark);
 
         expect(scheme.surface, const Color(0xFF0A0A0A));
-        expect(scheme.surfaceDim, Colors.black);
+        expect(scheme.surfaceDim, const Color(0xFF070707));
         expect(scheme.surfaceBright, const Color(0xFF161616));
-        expect(scheme.surfaceContainerLowest, Colors.black);
+        expect(scheme.surfaceContainerLowest, const Color(0xFF050505));
         expect(scheme.surfaceContainerLow, const Color(0xFF0A0A0A));
         expect(scheme.surfaceContainer, const Color(0xFF111111));
         expect(scheme.surfaceContainerHigh, const Color(0xFF171717));
@@ -238,6 +238,29 @@ body { color: red; }
         expect(scheme.onSurface, Colors.white);
       },
     );
+
+    test('dark theme surfaces stay above pure black, unlike OLED', () {
+      final dark = BuiltInThemes.dark.toColorScheme(Brightness.dark);
+      final oled = BuiltInThemes.oled.toColorScheme(Brightness.dark);
+
+      final darkSurfaces = [
+        dark.surface,
+        dark.surfaceDim,
+        dark.surfaceBright,
+        dark.surfaceContainerLowest,
+        dark.surfaceContainerLow,
+        dark.surfaceContainer,
+        dark.surfaceContainerHigh,
+        dark.surfaceContainerHighest,
+      ];
+      for (final surface in darkSurfaces) {
+        expect(surface, isNot(Colors.black));
+      }
+
+      expect(oled.surface, Colors.black);
+      expect(oled.surfaceDim, Colors.black);
+      expect(oled.surfaceContainerLowest, Colors.black);
+    });
 
     test('dark theme greys remain visible on near-black surfaces', () {
       final scheme = BuiltInThemes.dark.toColorScheme(Brightness.dark);

@@ -102,6 +102,7 @@ class ColorTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      scaffoldBackgroundColor: scheme.surface,
       brightness: brightness,
       extensions: <ThemeExtension<dynamic>>[toSemanticColors(brightness)],
     );
