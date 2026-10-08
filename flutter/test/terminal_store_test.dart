@@ -60,6 +60,48 @@ void main() {
       expect(store.busy, isFalse);
     });
 
+    test('addSession with newTab spawns into a fresh tab', () async {
+      final store = _store(sessionFactory: _fakeFactory());
+      addTearDown(store.dispose);
+
+      await store.addSession(local: false);
+      await store.addSession(local: true, newTab: true);
+
+      expect(store.tabs, hasLength(2));
+      expect(store.activeTabIndex, 1);
+      expect(store.tabs[0].sessions.single.id, 's-1');
+      expect(store.tabs[1].sessions.single.id, 's-2');
+      expect(store.tabs[1].sessions.single.isLocal, isTrue);
+    });
+
+    test('a busy store ignores addSession(newTab) without leaving a tab', () async {
+      final gate = Completer<void>();
+      var calls = 0;
+      final store = _store(
+        sessionFactory:
+            ({
+              required ApiService api,
+              required String? threadId,
+              required bool local,
+              String? workingDir,
+            }) async {
+              calls++;
+              await gate.future;
+              return TerminalSession(id: 's-$calls', isLocal: local);
+            },
+      );
+      addTearDown(store.dispose);
+
+      final pending = store.addSession(local: false);
+      await store.addSession(local: false, newTab: true);
+      gate.complete();
+      await pending;
+
+      expect(calls, 1);
+      expect(store.tabs, hasLength(1));
+      expect(store.tabs.single.sessions, hasLength(1));
+    });
+
     test('passes the current active thread to the factory', () async {
       var current = 't1';
       final seen = <String?>[];

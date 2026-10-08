@@ -1293,11 +1293,11 @@
   "@terminalClose": {
     "description": "Tooltip for closing a terminal session"
   },
-  "terminalLocal": "本地终端",
+  "terminalLocal": "本地终端（Shift+点击打开新标签页）",
   "@terminalLocal": {
     "description": "Tooltip for adding a local terminal"
   },
-  "terminalRemote": "远程终端",
+  "terminalRemote": "远程终端（Shift+点击打开新标签页）",
   "@terminalRemote": {
     "description": "Tooltip for adding a remote terminal"
   },

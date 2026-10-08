@@ -101,12 +101,13 @@ class TerminalStore extends ChangeNotifier {
   }
 
   /// Spawn a session in the tab that is active when the spawn begins,
-  /// creating a tab if needed.
+  /// creating a tab if needed. With [newTab] the session always gets a fresh
+  /// tab instead of joining the active one.
   ///
   /// Rethrows factory errors so callers can surface them in the UI.
-  Future<void> addSession({required bool local}) async {
+  Future<void> addSession({required bool local, bool newTab = false}) async {
     if (_inFlight > 0 || _disposed) return;
-    if (_tabs.isEmpty) addTab();
+    if (_tabs.isEmpty || newTab) addTab();
     // The session belongs to the tab it was spawned from — capture it now so
     // switching tabs while the factory is in flight doesn't move it.
     final tab = _tabs[_activeTabIndex];

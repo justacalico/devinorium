@@ -1860,10 +1860,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalClose => 'Close terminal';
 
   @override
-  String get terminalLocal => 'Local terminal';
+  String get terminalLocal => 'Local terminal (Shift+click opens a new tab)';
 
   @override
-  String get terminalRemote => 'Remote terminal';
+  String get terminalRemote => 'Remote terminal (Shift+click opens a new tab)';
 
   @override
   String get terminalHide => 'Hide terminal';

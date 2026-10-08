@@ -1783,10 +1783,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get terminalClose => '关闭终端';
 
   @override
-  String get terminalLocal => '本地终端';
+  String get terminalLocal => '本地终端（Shift+点击打开新标签页）';
 
   @override
-  String get terminalRemote => '远程终端';
+  String get terminalRemote => '远程终端（Shift+点击打开新标签页）';
 
   @override
   String get terminalHide => '隐藏终端';

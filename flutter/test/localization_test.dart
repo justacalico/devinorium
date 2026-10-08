@@ -13,8 +13,11 @@ void main() {
     expect(l10n.terminalNewTab, 'New tab');
     expect(l10n.terminalCloseTab, 'Close tab');
     expect(l10n.terminalClose, 'Close terminal');
-    expect(l10n.terminalLocal, 'Local terminal');
-    expect(l10n.terminalRemote, 'Remote terminal');
+    expect(l10n.terminalLocal, 'Local terminal (Shift+click opens a new tab)');
+    expect(
+      l10n.terminalRemote,
+      'Remote terminal (Shift+click opens a new tab)',
+    );
     expect(l10n.terminalHide, 'Hide terminal');
     expect(l10n.terminalStartFailed('boom'), 'Failed to start terminal: boom');
     expect(l10n.terminalCloseTitle, 'Close terminal?');
