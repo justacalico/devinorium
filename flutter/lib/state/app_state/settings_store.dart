@@ -7,10 +7,19 @@ mixin SettingsStore on AppStateBase {
   String _language = 'system';
   @override
   int _settingsTopicIndex = 0;
-  static final _supportedLanguageCodes =
-      AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet();
+  static final _supportedLanguageCodes = AppLocalizations.supportedLocales
+      .map((l) => l.languageCode)
+      .toSet();
   @override
   NotificationService _notifications = NotificationService();
+  @override
+  MultiWindowStore _multiWindow = MultiWindowPreference();
+  @override
+  bool _multiWindowEnabled = false;
+  @override
+  bool get multiWindowEnabled => _multiWindowEnabled;
+  @override
+  bool get multiWindowSupported => _multiWindow.isSupported;
   @override
   Locale get locale => _locale;
   @override
@@ -25,6 +34,7 @@ mixin SettingsStore on AppStateBase {
     _settingsTopicIndex = index;
     notifyListeners();
   }
+
   @override
   Future<void> setLanguage(String language) async {
     _language = language;
@@ -36,6 +46,7 @@ mixin SettingsStore on AppStateBase {
       await prefs.setString('devinorium_language', language);
     } catch (_) {}
   }
+
   @override
   Future<void> _loadLanguage() async {
     var value = 'system';
@@ -111,6 +122,32 @@ mixin SettingsStore on AppStateBase {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('devinorium_notifications', enabled);
     } catch (_) {}
+  }
+
+  /// Toggle the marker file the desktop runners check before enforcing
+  /// single-instance. The choice only affects windows launched afterwards.
+  /// The state only updates once the write lands so a failed write never
+  /// desyncs the switch from what the runner will see.
+  @override
+  Future<void> setMultiWindowEnabled(bool enabled) async {
+    if (!_multiWindow.isSupported) return;
+    try {
+      await _multiWindow.setEnabled(enabled);
+    } catch (_) {
+      return;
+    }
+    _multiWindowEnabled = enabled;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> _loadMultiWindowPref() async {
+    var enabled = false;
+    try {
+      enabled = await _multiWindow.load();
+    } catch (_) {}
+    _multiWindowEnabled = enabled;
+    notifyListeners();
   }
 
   @override

@@ -92,6 +92,7 @@ class _SettingsPageState extends State<SettingsPage> {
         Locale locale,
         String language,
         bool notificationsEnabled,
+        bool multiWindowEnabled,
       })
     >(
       selector: (_, s) => (
@@ -103,6 +104,7 @@ class _SettingsPageState extends State<SettingsPage> {
         // locale/notifications outcome is unchanged.
         language: s.language,
         notificationsEnabled: s.notificationsEnabled,
+        multiWindowEnabled: s.multiWindowEnabled,
       ),
       builder: (context, model, _) {
         final l = l10n(context);

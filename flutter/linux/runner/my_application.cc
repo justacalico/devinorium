@@ -24,9 +24,10 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
 
-  // Single instance: when a second launch forwards activation to the
-  // primary process, raise the existing window instead of creating a new
-  // one.
+  // Single instance (the default): when a second launch forwards
+  // activation to the primary process, raise the existing window instead
+  // of creating a new one. With G_APPLICATION_NON_UNIQUE each launch is
+  // its own process, so this only fires for in-process re-activation.
   GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
   if (windows != nullptr) {
     gtk_window_present(GTK_WINDOW(windows->data));
@@ -132,6 +133,36 @@ static void my_application_class_init(MyApplicationClass* klass) {
 
 static void my_application_init(MyApplication* self) {}
 
+// Whether the "multiple windows" marker file exists. Mirrors
+// LocalServerManager.dataDirPath in Dart so the setting can be checked
+// before this process claims the unique application name.
+static gboolean multi_window_enabled() {
+  const gchar* xdg = g_getenv("XDG_DATA_HOME");
+  const gchar* home = g_getenv("HOME");
+  if (home == nullptr) home = g_getenv("USERPROFILE");
+  g_autofree gchar* dir = nullptr;
+  if (xdg != nullptr && xdg[0] != '\0') {
+    dir = g_build_filename(xdg, "devinorium", nullptr);
+  } else if (home != nullptr && home[0] != '\0') {
+    dir = g_build_filename(home, ".local", "share", "devinorium", nullptr);
+  } else {
+    // Dart's `??` picks the first set variable, even when it is empty.
+    const gchar* user = g_getenv("USER");
+    if (user == nullptr) user = g_getenv("LOGNAME");
+    if (user == nullptr) user = g_getenv("USERNAME");
+    if (user == nullptr) user = "shared";
+    // Directory.systemTemp consults TMPDIR, then TMP, then /tmp — again
+    // only unset variables fall through, a set-but-empty value is used.
+    const gchar* tmp = g_getenv("TMPDIR");
+    if (tmp == nullptr) tmp = g_getenv("TMP");
+    if (tmp == nullptr) tmp = "/tmp";
+    g_autofree gchar* dirname = g_strdup_printf("devinorium-%s", user);
+    dir = g_build_filename(tmp, dirname, nullptr);
+  }
+  g_autofree gchar* marker = g_build_filename(dir, "multi_window", nullptr);
+  return g_file_test(marker, G_FILE_TEST_IS_REGULAR);
+}
+
 MyApplication* my_application_new() {
   // Set the program name to the application ID, which helps various systems
   // like GTK and desktop environments map this running application to its
@@ -142,10 +173,17 @@ MyApplication* my_application_new() {
   // G_APPLICATION_FLAGS_NONE is deprecated since GLib 2.74 and the build
   // uses -Werror, so use its replacement when the headers provide it.
 #if GLIB_CHECK_VERSION(2, 74, 0)
-  const GApplicationFlags app_flags = G_APPLICATION_DEFAULT_FLAGS;
+  GApplicationFlags app_flags = G_APPLICATION_DEFAULT_FLAGS;
 #else
-  const GApplicationFlags app_flags = G_APPLICATION_FLAGS_NONE;
+  GApplicationFlags app_flags = G_APPLICATION_FLAGS_NONE;
 #endif
+
+  // Multiple windows enabled: give up the unique application name so every
+  // launch registers independently and opens its own window.
+  if (multi_window_enabled()) {
+    app_flags =
+        static_cast<GApplicationFlags>(app_flags | G_APPLICATION_NON_UNIQUE);
+  }
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",

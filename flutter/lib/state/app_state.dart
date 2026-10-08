@@ -15,6 +15,7 @@ import '../api/preloader_client.dart';
 import '../servers/multi_server_state.dart';
 import '../servers/server_profile.dart';
 import '../services/local_server.dart';
+import '../services/multi_window.dart';
 import '../issue/gitlab_issue_provider.dart';
 import '../generated/l10n/app_localizations.dart';
 import '../l10n/global_l10n.dart';
@@ -235,6 +236,7 @@ class AppState extends AppStateBase
     String? serverVersion,
     LocalServerController? localServerManager,
     NotificationService? notifications,
+    MultiWindowStore? multiWindow,
   }) : multiServerState = multiServerState ?? MultiServerState(),
        localServerManager =
            localServerManager ?? LocalServerManager.disabled() {
@@ -242,6 +244,7 @@ class AppState extends AppStateBase
     this.localServerManager.onExit = _onLocalServerExit;
     _versionChecker = versionChecker ?? _NoNetworkVersionChecker();
     if (notifications != null) _notifications = notifications;
+    _multiWindow = multiWindow ?? MultiWindowPreference.disabled();
     if (api != null) {
       this.multiServerState.addTestConnection(
         ServerProfile(

@@ -12709,6 +12709,10 @@ fn session_cookie(resp: &reqwest::Response) -> String {
 
 #[tokio::test]
 async fn terminal_create_kill_and_ws_round_trip() {
+    // Pin a bare POSIX shell: fancier shells (e.g. fish) run terminal feature
+    // negotiation at startup, which delays the prompt and can swallow early
+    // input — same reason terminal_pwd_shows pins SHELL.
+    std::env::set_var("SHELL", "/bin/sh");
     let (app, _db) = make_app().await;
     let (port, shutdown) = spawn_router(app).await;
     let base = format!("http://127.0.0.1:{port}");
@@ -12760,7 +12764,7 @@ async fn terminal_create_kill_and_ws_round_trip() {
         .unwrap();
     let tid = thread["id"].as_str().unwrap().to_string();
 
-    // Spawn a terminal session using "cat" for a round-trip echo test.
+    // Spawn a terminal session for a round-trip echo test.
     let term: serde_json::Value = client
         .post(format!("{base}/api/terminal/sessions"))
         .header(axum::http::header::ORIGIN, &origin)
@@ -12791,22 +12795,27 @@ async fn terminal_create_kill_and_ws_round_trip() {
         .unwrap();
     let (mut ws, _resp) = tokio_tungstenite::connect_async(req).await.unwrap();
 
-    // Send a resize and some input; "cat" will echo the input.
+    // Send a resize, then some input that the shell echoes back.
     let _ = ws
         .send(Message::Text(
             r#"{"type":"resize","cols":120,"rows":30}"#.to_string(),
         ))
         .await;
-    let _ = ws
-        .send(Message::Text(
-            r#"{"type":"input","data":"ping"}"#.to_string(),
-        ))
-        .await;
-
-    // Wait for the echoed output; keep reading until we see "ping".
+    // Shells that negotiate terminal features at startup can eat input
+    // written before their line editor is ready, so keep resending until the
+    // echo shows up.
     let mut saw_ping = false;
-    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(5);
-    while tokio::time::Instant::now() < deadline {
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
+    let mut resend_at = tokio::time::Instant::now();
+    while tokio::time::Instant::now() < deadline && !saw_ping {
+        if tokio::time::Instant::now() >= resend_at {
+            let _ = ws
+                .send(Message::Text(
+                    r#"{"type":"input","data":"ping"}"#.to_string(),
+                ))
+                .await;
+            resend_at = tokio::time::Instant::now() + tokio::time::Duration::from_millis(500);
+        }
         match tokio::time::timeout(tokio::time::Duration::from_millis(100), ws.next()).await {
             Ok(Some(Ok(Message::Binary(bytes)))) => {
                 let text = String::from_utf8_lossy(&bytes);
@@ -12821,7 +12830,7 @@ async fn terminal_create_kill_and_ws_round_trip() {
             Err(_) => {}
         }
     }
-    assert!(saw_ping, "expected 'ping' echoed by cat");
+    assert!(saw_ping, "expected 'ping' echoed by the shell");
 
     // Kill the terminal via the API.
     let kill = client
