@@ -221,21 +221,42 @@ class _DefaultPermissionDropdown extends StatelessWidget {
 /// the permission hard-denied — the toggle alone cannot turn them back on —
 /// and, with notifications enabled, when permission was never requested so
 /// the toggle reads on but nothing can be delivered until the user allows it.
-class _NotificationPermissionHint extends StatelessWidget {
+class _NotificationPermissionHint extends StatefulWidget {
   final AppState state;
 
   const _NotificationPermissionHint({required this.state});
+
+  @override
+  State<_NotificationPermissionHint> createState() =>
+      _NotificationPermissionHintState();
+}
+
+class _NotificationPermissionHintState
+    extends State<_NotificationPermissionHint> {
+  late Future<String> _permission = widget.state.notificationPermissionState();
+
+  Future<void> _request() async {
+    // The tap is a user gesture, so re-applying the setting may raise the
+    // browser permission prompt. Re-read the outcome so the hint switches to
+    // the denied variant or disappears once granted.
+    await widget.state.setNotificationsEnabled(true);
+    if (mounted) {
+      setState(() {
+        _permission = widget.state.notificationPermissionState();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l = l10n(context);
     final theme = Theme.of(context);
     return FutureBuilder<String>(
-      future: state.notificationPermissionState(),
+      future: _permission,
       builder: (context, snapshot) {
         final permission = snapshot.data;
         final canPrompt =
-            permission == 'default' && state.notificationsEnabled;
+            permission == 'default' && widget.state.notificationsEnabled;
         if (permission != 'denied' && !canPrompt) {
           return const SizedBox.shrink();
         }
@@ -262,9 +283,7 @@ class _NotificationPermissionHint extends StatelessWidget {
               ),
               if (canPrompt)
                 TextButton(
-                  // The tap is a user gesture, so re-applying the setting may
-                  // raise the browser permission prompt.
-                  onPressed: () => state.setNotificationsEnabled(true),
+                  onPressed: _request,
                   child: Text(l.notificationPermissionAllow),
                 ),
             ],

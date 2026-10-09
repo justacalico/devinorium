@@ -243,10 +243,15 @@ class _FakeAppState extends AppState {
 }
 
 class _FakeNotifications extends NotificationService {
-  _FakeNotifications({this.enabled = true, this.permission = 'granted'});
+  _FakeNotifications({
+    this.enabled = true,
+    this.permission = 'granted',
+    this.permissionAfterEnable,
+  });
 
   bool enabled;
-  final String permission;
+  String permission;
+  final String? permissionAfterEnable;
   int enableCalls = 0;
 
   @override
@@ -262,6 +267,8 @@ class _FakeNotifications extends NotificationService {
   }) async {
     enableCalls++;
     this.enabled = enabled;
+    final after = permissionAfterEnable;
+    if (after != null) permission = after;
   }
 }
 
@@ -1345,7 +1352,10 @@ void main() {
   testWidgets('Notification hint offers Allow when permission is default', (
     tester,
   ) async {
-    final fake = _FakeNotifications(permission: 'default');
+    final fake = _FakeNotifications(
+      permission: 'default',
+      permissionAfterEnable: 'granted',
+    );
     final state = AppState.test(
       notifications: fake,
       user: User(
@@ -1374,6 +1384,11 @@ void main() {
     await tester.tap(find.text('Allow'));
     await tester.pumpAndSettle();
     expect(fake.enableCalls, 1);
+    // Permission granted during the request — the hint must go away.
+    expect(
+      find.text('Notifications are on but need your permission to appear.'),
+      findsNothing,
+    );
   });
 
   testWidgets('Notification hint hides Allow when notifications are off', (
