@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.105.0 - 2026-10-09
+#### Features
+- 按住 Shift 点击关闭终端或标签页时跳过确认对话框 - (e99d1d1) - HttpAnimations
+
+- - -
+
 ## v0.104.1 - 2026-10-08
 #### Bug Fixes
 - 修复深色模式下侧边栏与系统栏区域残留纯黑的问题 - (dc7e4a7) - HttpAnimations
