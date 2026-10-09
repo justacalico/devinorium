@@ -6,6 +6,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/composer_mode.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/state/async_value.dart';
+import 'package:devinorium_frontend/state/streaming_state.dart';
 import 'package:devinorium_frontend/state/thread_store.dart';
 import 'package:devinorium_frontend/utils/debug_log.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
@@ -179,6 +180,61 @@ class _ResendApiService extends _ControlledApiService {
     lastResendMessageId = messageId;
     lastEditedPrompt = editedPrompt;
     return resendController.stream;
+  }
+}
+
+/// API double for stream-drop recovery tests: the send and watch streams are
+/// driven by hand, the run snapshot is configurable, and the persisted tail
+/// can be seeded to emulate a message that did or did not land.
+class _RecoverableApiService extends _TestApiService {
+  final sendController = StreamController<SseEvent>();
+  final eventsController = StreamController<SseEvent>();
+  var getThreadRunCalls = 0;
+  var watchCalls = 0;
+  Map<String, dynamic> runResponse = {'status': 'idle', 'parts': []};
+  Object? runError;
+  List<Message> tailMessages = [];
+
+  @override
+  Stream<SseEvent> sendMessageStream({
+    required String threadId,
+    required String prompt,
+    String? mode,
+    String? clientMessageId,
+    List<({String filename, String mime, Uint8List bytes})> attachments =
+        const [],
+    List<PathRef> contextPaths = const [],
+    List<String> referencedThreadIds = const [],
+    List<int> machineIds = const [],
+  }) => sendController.stream;
+
+  @override
+  Stream<SseEvent> watchThreadEvents(String id) {
+    watchCalls++;
+    return eventsController.stream;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getThreadRun(String id) {
+    getThreadRunCalls++;
+    final err = runError;
+    return err != null ? Future.error(err) : Future.value(runResponse);
+  }
+
+  @override
+  Future<MessagePage> getThreadMessages(
+    String id, {
+    int? beforeId,
+    int? afterId,
+    int? turnLimit,
+    String? beforeCursor,
+    int limit = 50,
+  }) {
+    getThreadMessagesCalls++;
+    final msgs = tailMessages
+        .where((m) => afterId == null || (m.id ?? 0) > afterId)
+        .toList();
+    return Future.value(MessagePage(messages: msgs, total: msgs.length));
   }
 }
 
@@ -673,7 +729,9 @@ void main() {
         expect(store.attachments, isEmpty);
 
         await api.controller.close();
-        await Future.delayed(const Duration(milliseconds: 10));
+        // The store first probes the run status and resyncs the tail to
+        // confirm the send never landed before restoring the composer.
+        await Future.delayed(const Duration(milliseconds: 800));
 
         expect(store.composerText, '/ask  hello');
         expect(store.attachments, hasLength(1));
@@ -714,7 +772,7 @@ void main() {
         expect(store.threadReferences, isEmpty);
 
         await api.controller.close();
-        await Future.delayed(const Duration(milliseconds: 10));
+        await Future.delayed(const Duration(milliseconds: 800));
 
         expect(store.composerText, 'hello');
         expect(store.threadReferences.single.id, 'other');
@@ -2114,6 +2172,250 @@ void main() {
       expect(store.displayDetail?.messages.map((m) => m.id), [1, 2, 3, 4]);
       expect(store.composerText, 'two edited');
     });
+  });
+
+  group('stream recovery', () {
+    ThreadStore storeFor(ApiService api) => ThreadStore(
+      api: api,
+      threadId: 't1',
+      projectId: 1,
+      composerText: 'hello',
+      detail: AsyncValue.ready(
+        ThreadDetail(
+          thread: Thread(
+            id: 't1',
+            title: 'Test',
+            projectId: 1,
+            model: 'm1',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: const [],
+        ),
+      ),
+    );
+
+    Future<void> ackSend(_RecoverableApiService api, ThreadStore store) async {
+      final clientId = store.displayDetail?.messages.last.clientMessageId;
+      api.sendController.add(
+        SseEvent(
+          'user_message',
+          '{"id":2,"role":"user","content":"hello",'
+              '"client_message_id":"$clientId"}',
+          id: '1',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
+    test(
+      'transport error while running resubscribes instead of failing',
+      () async {
+        final api = _RecoverableApiService();
+        api.runResponse = {'status': 'running', 'parts': [], 'last_seq': 2};
+        final store = storeFor(api);
+        store.onStateChanged = () {};
+        final finished = <bool>[];
+        store.onRunFinished = finished.add;
+        await store.sendMessage();
+        await ackSend(api, store);
+        expect(store.streaming.phase, StreamPhase.running);
+
+        // A proxy idle timeout kills the socket: the fetcher reports an
+        // error and then closes, like a real drop.
+        api.sendController.addError(ApiException('connection reset', 0));
+        await api.sendController.close();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(store.streaming.phase, StreamPhase.running);
+        // The error/close pair shares a single recovery probe.
+        expect(api.getThreadRunCalls, 1);
+        expect(api.watchCalls, 1);
+        expect(finished, isEmpty);
+
+        api.eventsController.add(
+          SseEvent(
+            'done',
+            '{"id":3,"role":"assistant","content":"Final"}',
+            id: '3',
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        expect(store.streaming.phase, StreamPhase.completed);
+        expect(finished, [false]);
+      },
+    );
+
+    test('stream end while running resubscribes', () async {
+      final api = _RecoverableApiService();
+      api.runResponse = {'status': 'running', 'parts': []};
+      final store = storeFor(api);
+      store.onStateChanged = () {};
+      await store.sendMessage();
+      await ackSend(api, store);
+
+      await api.sendController.close();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(store.streaming.phase, StreamPhase.running);
+      expect(api.watchCalls, 1);
+    });
+
+    test(
+      'stream end mid-send applies the real outcome when the send landed',
+      () async {
+        final api = _RecoverableApiService();
+        api.runResponse = {'status': 'completed', 'parts': []};
+        final store = storeFor(api);
+        store.onStateChanged = () {};
+        final finished = <bool>[];
+        store.onRunFinished = finished.add;
+        await store.sendMessage();
+        final clientId = store.displayDetail?.messages.last.clientMessageId;
+        api.tailMessages = [
+          Message(
+            id: 2,
+            role: 'user',
+            content: 'hello',
+            clientMessageId: clientId,
+          ),
+          Message(id: 3, role: 'assistant', content: 'done'),
+        ];
+
+        // The socket dies before the user_message echo arrives, but the
+        // server persisted the message and the run finished.
+        await api.sendController.close();
+        // The resync fetches twice, ~400ms apart.
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+
+        expect(store.streaming.phase, StreamPhase.completed);
+        expect(store.composerText, '');
+        expect(store.displayDetail?.messages.map((m) => m.id), [2, 3]);
+        expect(finished, [false]);
+      },
+    );
+
+    test(
+      'stream end mid-send with no persisted message fails and restores',
+      () async {
+        final api = _RecoverableApiService();
+        final store = storeFor(api);
+        store.onStateChanged = () {};
+        final finished = <bool>[];
+        store.onRunFinished = finished.add;
+        await store.sendMessage();
+
+        await api.sendController.close();
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+
+        expect(store.streaming.phase, StreamPhase.failed);
+        expect(store.composerText, 'hello');
+        expect(finished, [true]);
+      },
+    );
+
+    test(
+      'terminal state snapshot followed by close still finalizes',
+      () async {
+        final api = _RecoverableApiService();
+        api.runResponse = {'status': 'running', 'parts': []};
+        final store = storeFor(api);
+        store.onStateChanged = () {};
+        final finished = <bool>[];
+        store.onRunFinished = finished.add;
+        await store.sendMessage();
+        await ackSend(api, store);
+
+        // The socket drops; the probe reports the run still alive so the
+        // store resubscribes.
+        await api.sendController.close();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(api.watchCalls, 1);
+
+        // The run finishes in the gap: the new stream opens with a terminal
+        // snapshot and immediately closes.
+        api.runResponse = {'status': 'completed', 'parts': []};
+        api.tailMessages = [
+          Message(id: 2, role: 'user', content: 'hello'),
+          Message(id: 3, role: 'assistant', content: 'late reply'),
+        ];
+        api.eventsController.add(
+          SseEvent('state', '{"status":"completed","parts":[]}'),
+        );
+        await api.eventsController.close();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        expect(store.streaming.phase, StreamPhase.completed);
+        // Finalization must still pull the persisted reply and report the
+        // finished run — a bare stream close must not swallow them.
+        expect(store.displayDetail?.messages.map((m) => m.id), [2, 3]);
+        expect(finished, [false]);
+      },
+    );
+
+    test('stream drop adopts the real failed status from the server', () async {
+      final api = _RecoverableApiService();
+      api.runResponse = {
+        'status': 'failed',
+        'parts': [],
+        'error': 'provider exploded',
+      };
+      final store = storeFor(api);
+      store.onStateChanged = () {};
+      final finished = <bool>[];
+      store.onRunFinished = finished.add;
+      await store.sendMessage();
+      await ackSend(api, store);
+
+      api.sendController.addError(ApiException('connection reset', 0));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(store.streaming.phase, StreamPhase.failed);
+      expect(store.streaming.error, 'provider exploded');
+      expect(finished, [true]);
+      // The composer must not be restored: the user message landed and is
+      // part of the failed turn.
+      expect(store.composerText, '');
+    });
+
+    test(
+      'client errors still fail immediately without probing run status',
+      () async {
+        final api = _RecoverableApiService();
+        final store = storeFor(api);
+        store.onStateChanged = () {};
+        await store.sendMessage();
+
+        api.sendController.addError(ApiException('prompt is required', 400));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(store.streaming.phase, StreamPhase.failed);
+        expect(api.getThreadRunCalls, 0);
+        expect(store.composerText, 'hello');
+      },
+    );
+
+    test(
+      'unreachable server falls back to failed after retries',
+      () async {
+        final api = _RecoverableApiService();
+        api.runError = Exception('offline');
+        final store = storeFor(api);
+        store.onStateChanged = () {};
+        await store.sendMessage();
+        await ackSend(api, store);
+
+        api.sendController.addError(ApiException('connection reset', 0));
+        // Probes retry at ~500ms, 1s and 2s before giving up.
+        await Future<void>.delayed(const Duration(milliseconds: 4500));
+
+        expect(store.streaming.phase, StreamPhase.failed);
+        expect(api.getThreadRunCalls, 4);
+      },
+      timeout: const Timeout(Duration(seconds: 15)),
+    );
   });
 }
 

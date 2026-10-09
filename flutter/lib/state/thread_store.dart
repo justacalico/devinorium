@@ -877,10 +877,14 @@ class ThreadStore {
   int _nextStreamToken() {
     _cancelStream();
     _streamToken += 1;
+    // The send/resend subscriptions are assigned directly rather than via
+    // _startStream, so the event flag resets here to cover every epoch.
+    _streamDeliveredEvent = false;
     return _streamToken;
   }
 
   void _startStream(int token) {
+    _streamDeliveredEvent = false;
     _subscription = api
         .watchThreadEvents(threadId)
         .listen(
@@ -890,8 +894,16 @@ class ThreadStore {
         );
   }
 
+  /// Whether the current stream delivered at least one event. A drop before
+  /// the first event is qualitatively worse — something is resetting the
+  /// connection outright — so those drops are capped instead of resubscribed
+  /// forever.
+  bool _streamDeliveredEvent = false;
+
   void _handleEvent(SseEvent ev, int token) {
     if (token != _streamToken) return;
+    _streamDeliveredEvent = true;
+    _eventlessStreamDrops = 0;
     // A resend on another client deleted this thread's tail server-side;
     // resync the loaded window instead of keeping ghost rows around.
     if (ev.event == 'messages_truncated') {
@@ -1145,7 +1157,15 @@ class ThreadStore {
       return;
     }
     debugLogFailure('thread.stream', e, threadId: threadId);
-    _finishStream(error: '$e', phase: StreamPhase.failed);
+    if (e is ApiException && e.statusCode >= 400 && e.statusCode < 500) {
+      // A clean rejection (bad request, thread gone): no run to resume, so
+      // surface it instead of probing the run status.
+      _finishStream(error: '$e', phase: StreamPhase.failed);
+      return;
+    }
+    // Transport errors do not mean the run failed — it outlives the
+    // connection by design. Ask the server what actually happened.
+    _beginStreamRecovery(token, '$e');
   }
 
   void _handleStreamDone(int token) {
@@ -1156,21 +1176,235 @@ class ThreadStore {
       _resendAnchorId = null;
       unawaited(_resyncMessages());
     }
-    // Stream closed without an explicit done/error event. If we are still
-    // waiting for a user message acknowledgement, treat it as a failure and
-    // restore the composer so the user can retry.
-    if (_pendingSend != null) {
-      debugLogFailure(
-        'thread.stream.done',
-        appL10n.connectionFailed,
-        threadId: threadId,
-      );
-      _finishStream(phase: StreamPhase.failed, error: appL10n.connectionFailed);
+    final settled = !_streaming.isActive &&
+        _pendingSend == null &&
+        (_streaming.phase == StreamPhase.idle || _runFinishedFired);
+    if (settled) {
+      // Nothing is in flight — e.g. a rejection already settled the turn —
+      // so a late close must not overwrite the outcome. A terminal phase the
+      // stream delivered but never finalized (no done event, no refreshTail,
+      // no onRunFinished) still goes through recovery below.
       return;
     }
-    if (_streaming.isActive) {
-      _finishStream(phase: StreamPhase.completed);
+    // The stream closed without an explicit done/error event. The run may
+    // still be alive server-side, so ask instead of guessing a terminal
+    // phase.
+    _beginStreamRecovery(token, null);
+  }
+
+  /// Delays between run-status probes after a stream drop. Kept short — the
+  /// common case is a proxy idle timeout where the server answers instantly.
+  static const _streamRecoveryDelays = [
+    Duration(milliseconds: 500),
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+  ];
+
+  /// Token currently being recovered, so an error/done pair for the same
+  /// drop does not run two recoveries at once.
+  int? _recoveringToken;
+
+  /// Consecutive stream drops that delivered no events. Resubscribing against
+  /// a connection that resets instantly would spin forever, so those cycles
+  /// are capped — the probed status is still shown and the next
+  /// resume/reconnect tries again.
+  int _eventlessStreamDrops = 0;
+  static const _maxEventlessStreamDrops = 4;
+
+  void _beginStreamRecovery(int token, String? error) {
+    if (token != _streamToken || _recoveringToken == token) return;
+    if (_streamDeliveredEvent) {
+      _eventlessStreamDrops = 0;
+    } else {
+      _eventlessStreamDrops += 1;
     }
+    _recoveringToken = token;
+    unawaited(
+      _recoverStream(token, error)
+          .catchError((Object e) {
+            debugLogFailure(
+              'thread.stream.recover',
+              e,
+              threadId: threadId,
+            );
+          })
+          .whenComplete(() {
+            if (_recoveringToken == token) _recoveringToken = null;
+          }),
+    );
+  }
+
+  /// Reconcile local state with the authoritative run snapshot after the
+  /// event stream dropped. Still-running runs are resubscribed; terminal or
+  /// missing runs are applied as-is. Only an unreachable server falls back
+  /// to the old "stream died means failed" behavior.
+  Future<void> _recoverStream(int token, String? error) async {
+    Map<String, dynamic>? run;
+    String? probeError;
+    for (var attempt = 0; attempt <= _streamRecoveryDelays.length; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(_streamRecoveryDelays[attempt - 1]);
+      }
+      if (token != _streamToken ||
+          _status == ThreadStoreStatus.deleted ||
+          onStateChanged == null) {
+        return;
+      }
+      try {
+        run = await api
+            .getThreadRun(threadId)
+            .timeout(const Duration(seconds: 15));
+        break;
+      } catch (e) {
+        debugLogFailure(
+          'thread.stream.recover',
+          e,
+          threadId: threadId,
+        );
+        if (e is ApiException) {
+          // Auth failures are handled upstream by onAuthFailure; probing
+          // further just delays the inevitable login redirect.
+          if (e.statusCode == 401) {
+            onAuthFailure?.call();
+            return;
+          }
+          // A definitive answer (thread deleted, forbidden) is not a blip;
+          // retrying cannot change it. Keep its message for the give-up.
+          if (e.statusCode >= 400 && e.statusCode < 500) {
+            probeError = '$e';
+            break;
+          }
+        }
+      }
+    }
+    if (token != _streamToken ||
+        _status == ThreadStoreStatus.deleted ||
+        onStateChanged == null) {
+      return;
+    }
+    if (run == null) {
+      // The server is unreachable; there is no way to learn whether the run
+      // is still going. Keep the previous behavior so the composer draft is
+      // restored and the failure is visible. A definitive 4xx surfaces its
+      // own message rather than a generic connection error.
+      _finishStream(
+        error: error ?? probeError ?? appL10n.connectionFailed,
+        phase: StreamPhase.failed,
+      );
+      return;
+    }
+
+    // If a send was in flight, find out whether its user message actually
+    // persisted before interpreting the run status.
+    await _reconcilePendingSend();
+    if (token != _streamToken ||
+        _status == ThreadStoreStatus.deleted ||
+        onStateChanged == null) {
+      return;
+    }
+
+    final status = run['status'] as String? ?? 'idle';
+    if (status == 'running') {
+      // The server persists the user message before the run starts, so a
+      // live run that never acknowledged the send is not ours: the send
+      // never landed. Hand the draft back while still resubscribing to the
+      // foreign run.
+      if (_pendingSend != null) _restorePendingSend();
+      if (_eventlessStreamDrops > _maxEventlessStreamDrops) {
+        // The event stream keeps dying before it can deliver a single event
+        // (e.g. a middlebox resets it on sight). Show the probed status as-is
+        // and stop reconnecting — the next resume or reconnect cycle retries.
+        debugLogFailure(
+          'thread.stream.recover',
+          'event stream closed before delivering events',
+          threadId: threadId,
+        );
+        _applyRunSnapshot(run);
+        return;
+      }
+      // The drop was only the socket. Resubscribe first — an emitting
+      // callback that throws must not leave the run streamless — then
+      // rehydrate the live snapshot. The run never noticed.
+      _startStream(_nextStreamToken());
+      _applyRunSnapshot(run);
+      _runFinishedFired = false;
+      return;
+    }
+    if (_pendingSend != null) {
+      // The run is terminal or gone and the server never acknowledged the
+      // message: the send genuinely did not land.
+      _finishStream(
+        phase: StreamPhase.failed,
+        error: error ?? appL10n.connectionFailed,
+      );
+      return;
+    }
+    if (status == 'stopped') {
+      // Keep the live parts visible while the persisted partial message is
+      // still being written, matching the 'stopped' event path.
+      final streamedPlan = _streaming.plan;
+      _streaming = runSnapshotFromJson(run);
+      _lastRunStatus = status;
+      _status = ThreadStoreStatus.ready;
+      _persistFinalPlan(streamedPlan, run);
+      _emit();
+      _refreshThreadsList();
+      unawaited(_refreshTailAfterStop());
+    } else {
+      final streamedPlan = _streaming.plan;
+      _finishResume(run);
+      _persistFinalPlan(streamedPlan, run);
+      _emit();
+      unawaited(refreshTail());
+    }
+    unawaited(refreshContextUsage());
+    if (!_runFinishedFired &&
+        (_streaming.phase == StreamPhase.completed ||
+            _streaming.phase == StreamPhase.failed)) {
+      _runFinishedFired = true;
+      onRunFinished?.call(_streaming.phase == StreamPhase.failed);
+    }
+  }
+
+  /// Mirror `_finishStream`'s plan handling: fold the run's last plan into
+  /// the persisted detail so the sidebar/overlay does not lose it when the
+  /// stream ends.
+  void _persistFinalPlan(Plan? streamedPlan, Map<String, dynamic> run) {
+    final plan = runSnapshotFromJson(run).plan ?? streamedPlan;
+    final d = _detail.valueOrNull;
+    if (d == null) return;
+    _detail = AsyncValue.ready(
+      d.copyWith(plan: plan, clearPlan: plan == null),
+    );
+  }
+
+  /// A stream that dropped mid-send may have missed the `user_message`
+  /// acknowledgement even though the server persisted it. Refetch the tail
+  /// and clear the pending snapshot when the message is found so recovery
+  /// does not mistake an acknowledged send for a failed one.
+  Future<void> _reconcilePendingSend() async {
+    final pending = _pendingSend;
+    if (pending == null) return;
+    if (_hasPersistedClientMessage(pending.clientMessageId)) {
+      _removeOptimisticMessage(pending.clientMessageId);
+      return;
+    }
+    if (_detail.valueOrNull == null) {
+      await reloadDetail();
+      await _loadInitialMessages();
+    } else {
+      await _resyncMessages();
+    }
+    final still = _pendingSend;
+    if (still != null && _hasPersistedClientMessage(still.clientMessageId)) {
+      _removeOptimisticMessage(still.clientMessageId);
+    }
+  }
+
+  bool _hasPersistedClientMessage(String clientMessageId) {
+    final d = _detail.valueOrNull;
+    if (d == null) return false;
+    return d.messages.any((m) => m.clientMessageId == clientMessageId);
   }
 
   bool _runFinishedFired = false;

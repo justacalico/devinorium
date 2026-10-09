@@ -46,7 +46,10 @@ class _RecordingApiService extends ApiService {
   @override
   Stream<SseEvent> watchThreadEvents(String id) {
     watchThreadEventsCalls++;
-    return Stream<SseEvent>.empty();
+    // A stream that never closes: the store now treats an instant EOF as a
+    // dropped connection and probes the run status to recover, which would
+    // inflate the counters these tests assert on.
+    return StreamController<SseEvent>().stream;
   }
 
   @override

@@ -319,6 +319,9 @@ void main() {
     await state.openThread('t1');
     state.setComposerText('retry me');
     await state.sendMessage();
+    // The store probes the run status and resyncs the tail to confirm the
+    // send never landed before putting the draft back.
+    await Future<void>.delayed(const Duration(milliseconds: 800));
     await _flush();
 
     expect(state.composerText, 'retry me');

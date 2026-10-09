@@ -252,9 +252,16 @@ pub(crate) async fn events_stream(
         Ok::<_, std::convert::Infallible>(Event::default().event("state").data(state_json));
     let initial = tokio_stream::once(state_event);
 
+    // Keep-alive comments matter here even though run events can stream
+    // constantly: thinking and long tool calls leave the socket idle, and
+    // proxies/NATs drop silent connections. A dropped stream made clients
+    // mark still-running turns as failed.
     Sse::new(FuturesStreamExt::boxed(FuturesStreamExt::chain(
         initial, live,
     )))
+    .keep_alive(
+        axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
+    )
 }
 
 pub(crate) async fn run_thread(
@@ -631,6 +638,7 @@ mod tests {
     use crate::thread_runner::ThreadRunner;
     use axum::body::to_bytes;
     use axum::response::IntoResponse;
+    use futures::StreamExt;
     use std::time::Duration;
 
     #[tokio::test]
@@ -656,6 +664,46 @@ mod tests {
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("event: state"), "body: {text}");
         assert!(text.contains("event: done"), "body: {text}");
+    }
+
+    /// A run that produces no events for a while must still emit SSE
+    /// keep-alive comments so proxies/NATs do not drop the connection —
+    /// a dropped stream made clients report still-running turns as failed.
+    #[tokio::test(start_paused = true)]
+    async fn events_stream_emits_keepalive_when_idle() {
+        let runner = ThreadRunner::new();
+        let run = runner
+            .start("t1".into(), 1, |_run| async move {
+                tokio::time::sleep(Duration::from_secs(3600)).await;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        let response = events_stream(run).await.into_response();
+        let mut body = response.into_body().into_data_stream();
+        // The first frame is the subscribe-time `state` snapshot.
+        let first = body.next().await.unwrap().unwrap();
+        assert!(
+            String::from_utf8_lossy(&first).contains("event: state"),
+            "first frame: {}",
+            String::from_utf8_lossy(&first)
+        );
+
+        let next = tokio::spawn(async move { body.next().await });
+        for _ in 0..8 {
+            if next.is_finished() {
+                break;
+            }
+            tokio::task::yield_now().await;
+            tokio::time::advance(Duration::from_secs(4)).await;
+        }
+        let frame = next.await.unwrap().unwrap().unwrap();
+        let text = String::from_utf8_lossy(&frame);
+        assert!(
+            text.starts_with(':'),
+            "expected a keep-alive comment frame, got: {text}"
+        );
     }
 
     #[tokio::test]
