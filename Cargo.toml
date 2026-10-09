@@ -97,6 +97,7 @@ windows-sys = { version = "0.52", features = [
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+tokio = { version = "1", features = ["test-util"] }
 
 [profile.release]
 opt-level = 3

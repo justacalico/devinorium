@@ -3425,6 +3425,9 @@ void main() {
             '{"status":"completed","parts":[{"type":"text","content":"done"}]}',
           ),
         );
+        // The run really did finish: the recovery probe after the stream
+        // closes reads the terminal status back.
+        api.runResponse = {'status': 'completed', 'parts': []};
         await eventsController.close();
         await pumpEventQueue();
 
@@ -3467,7 +3470,6 @@ void main() {
             'options': [],
           },
         };
-
         final state = AppState.test(api: api, activeProjectId: 1);
         await state.openThread('a');
 
@@ -3480,12 +3482,13 @@ void main() {
           SseEvent('state', '{"status":"completed","parts":[]}'),
         );
         await pumpEventQueue();
-        await eventsController.close();
 
         expect(state.sending, isFalse);
         expect(state.globalError, isEmpty);
         expect(state.pendingPermissionRequest, isNull);
         expect(state.dialog, DialogKind.none);
+
+        await eventsController.close();
       },
     );
 
