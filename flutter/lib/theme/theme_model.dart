@@ -2,53 +2,20 @@ import 'package:flutter/material.dart';
 
 import 'semantic_colors.dart';
 
-/// Metadata parsed from a CSS-like theme file's `@theme` block.
-@immutable
-class ThemeMetadata {
-  final String version;
-  final String creator;
-  final String description;
-
-  const ThemeMetadata({
-    this.version = '1.0.0',
-    this.creator = '',
-    this.description = '',
-  });
-
-  Map<String, dynamic> toJson() => {
-    'version': version,
-    'creator': creator,
-    'description': description,
-  };
-
-  factory ThemeMetadata.fromJson(Map<String, dynamic> json) => ThemeMetadata(
-    version: json['version'] as String? ?? '1.0.0',
-    creator: json['creator'] as String? ?? '',
-    description: json['description'] as String? ?? '',
-  );
-}
-
-/// A parsed color-only theme.
+/// A color-only theme.
 ///
-/// [colors] maps kebab-case CSS custom property names (without the `--`
-/// prefix) to [Color] values.
+/// [colors] maps kebab-case token names to [Color] values.
 @immutable
 class ColorTheme {
   final Map<String, Color> colors;
-  final ThemeMetadata metadata;
-  final String? name;
 
-  const ColorTheme({
-    required this.colors,
-    this.metadata = const ThemeMetadata(),
-    this.name,
-  });
+  const ColorTheme({required this.colors});
 
   static const _defaultSeed = Color(0xFF6750A4);
 
   Color? operator [](String token) => colors[token];
 
-  /// Builds a [ColorScheme] from the parsed colors.
+  /// Builds a [ColorScheme] from the theme colors.
   ///
   /// Missing colors are derived from the theme's `primary` color (or the
   /// default seed) using [ColorScheme.fromSeed]. Explicit colors always win.
@@ -107,16 +74,6 @@ class ColorTheme {
       extensions: <ThemeExtension<dynamic>>[toSemanticColors(brightness)],
     );
   }
-
-  ColorTheme copyWith({
-    Map<String, Color>? colors,
-    ThemeMetadata? metadata,
-    String? name,
-  }) => ColorTheme(
-    colors: colors ?? this.colors,
-    metadata: metadata ?? this.metadata,
-    name: name ?? this.name,
-  );
 }
 
 /// The user's active theme choice.
@@ -132,18 +89,12 @@ sealed class ThemeChoice {
       case 'builtIn':
         final id = json['id'] as String? ?? 'light';
         return BuiltInThemeChoice(id);
-      case 'custom':
-        final css = json['css'] as String? ?? '';
-        final name = json['name'] as String?;
-        return CustomThemeChoice(css, name: name);
       default:
         return const SystemThemeChoice();
     }
   }
 
   String get type;
-  String? get builtInId;
-  String? get customCss;
 
   Map<String, dynamic> toJson();
 }
@@ -153,12 +104,6 @@ class SystemThemeChoice extends ThemeChoice {
 
   @override
   String get type => 'system';
-
-  @override
-  String? get builtInId => null;
-
-  @override
-  String? get customCss => null;
 
   @override
   Map<String, dynamic> toJson() => {'type': type};
@@ -179,12 +124,6 @@ class BuiltInThemeChoice extends ThemeChoice {
   String get type => 'builtIn';
 
   @override
-  String? get builtInId => id;
-
-  @override
-  String? get customCss => null;
-
-  @override
   Map<String, dynamic> toJson() => {'type': type, 'id': id};
 
   @override
@@ -193,34 +132,4 @@ class BuiltInThemeChoice extends ThemeChoice {
 
   @override
   int get hashCode => Object.hash(type, id);
-}
-
-class CustomThemeChoice extends ThemeChoice {
-  final String css;
-  final String? name;
-
-  const CustomThemeChoice(this.css, {this.name});
-
-  @override
-  String get type => 'custom';
-
-  @override
-  String? get builtInId => null;
-
-  @override
-  String? get customCss => css;
-
-  @override
-  Map<String, dynamic> toJson() => {
-    'type': type,
-    'css': css,
-    if (name != null) 'name': name,
-  };
-
-  @override
-  bool operator ==(Object other) =>
-      other is CustomThemeChoice && other.css == css && other.name == name;
-
-  @override
-  int get hashCode => Object.hash(type, css, name);
 }

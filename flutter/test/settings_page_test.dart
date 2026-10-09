@@ -1070,7 +1070,6 @@ void main() {
     // the rest of the built-in themes when opened. The language selector
     // shows a second "System", so scope to the theme row's copy.
     expect(find.text('System'), findsNWidgets(2));
-    expect(find.text('Import custom'), findsOneWidget);
 
     await tester.tap(find.text('System').first);
     await tester.pumpAndSettle();
@@ -1116,76 +1115,6 @@ void main() {
     expect((provider.choice as BuiltInThemeChoice).id, BuiltInThemes.lightId);
     // The closed dropdown now reflects the newly selected theme.
     expect(find.text('Light'), findsOneWidget);
-  });
-
-  testWidgets(
-    'Theme dropdown shows custom hint when a custom theme is loaded',
-    (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      const css = ':root { --primary: #ff0000; }';
-      final state = AppState.test(
-        user: User(
-          id: 1,
-          username: 'owner',
-          role: 'user',
-          totpEnabled: false,
-          isOwner: true,
-          providerId: 'devin-cli',
-          providerCommand: 'devin',
-        ),
-      );
-
-      await tester.pumpWidget(_buildWithState(state));
-      await tester.pumpAndSettle();
-
-      state.setSettingsTopicIndex(2);
-      await tester.pumpAndSettle();
-
-      final provider = Provider.of<ThemeProvider>(
-        tester.element(find.byType(SettingsPage)),
-        listen: false,
-      );
-      await provider.loadCustom(css, name: 'Sunset');
-      await tester.pumpAndSettle();
-
-      expect(find.text('Custom: Sunset'), findsOneWidget);
-    },
-  );
-
-  testWidgets('Theme dropdown falls back to bare Custom label without a name', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    const css = ':root { --primary: #ff0000; }';
-    final state = AppState.test(
-      user: User(
-        id: 1,
-        username: 'owner',
-        role: 'user',
-        totpEnabled: false,
-        isOwner: true,
-        providerId: 'devin-cli',
-        providerCommand: 'devin',
-      ),
-    );
-
-    await tester.pumpWidget(_buildWithState(state));
-    await tester.pumpAndSettle();
-
-    state.setSettingsTopicIndex(2);
-    await tester.pumpAndSettle();
-
-    final provider = Provider.of<ThemeProvider>(
-      tester.element(find.byType(SettingsPage)),
-      listen: false,
-    );
-    await provider.loadCustom(css);
-    await tester.pumpAndSettle();
-
-    // No name was supplied, so the dropdown hint is just "Custom". The
-    // custom-theme info card also renders a "Custom" heading, so both the
-    // hint and the heading are present (i.e. the selector is not blank).
-    expect(find.text('Custom'), findsNWidgets(2));
   });
 
   testWidgets('Personalization tab has language selector', (tester) async {

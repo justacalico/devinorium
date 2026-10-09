@@ -1695,27 +1695,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get oledTheme => 'OLED';
 
   @override
-  String get themeCustom => '自定义';
-
-  @override
-  String get themeImport => '导入自定义';
-
-  @override
-  String get themeImportHint => '在下方粘贴受限 CSS 文件。仅允许 :root 和颜色值。';
-
-  @override
-  String get themeImportError => '导入主题失败';
-
-  @override
-  String get themeCreator => '创作者';
-
-  @override
-  String get themeVersion => '版本';
-
-  @override
-  String get themeDescription => '描述';
-
-  @override
   String get fileViewerContent => '内容';
 
   @override
