@@ -217,21 +217,52 @@ class _DefaultPermissionDropdown extends StatelessWidget {
   }
 }
 
-/// Warning line under the notifications switch when the platform has the
-/// permission hard-denied — the toggle alone cannot turn them back on.
-class _NotificationPermissionHint extends StatelessWidget {
+/// Warning line under the notifications switch. Shown when the platform has
+/// the permission hard-denied — the toggle alone cannot turn them back on —
+/// and, with notifications enabled, when permission was never requested so
+/// the toggle reads on but nothing can be delivered until the user allows it.
+class _NotificationPermissionHint extends StatefulWidget {
   final AppState state;
 
   const _NotificationPermissionHint({required this.state});
+
+  @override
+  State<_NotificationPermissionHint> createState() =>
+      _NotificationPermissionHintState();
+}
+
+class _NotificationPermissionHintState
+    extends State<_NotificationPermissionHint> {
+  late Future<String> _permission = widget.state.notificationPermissionState();
+
+  Future<void> _request() async {
+    // The tap is a user gesture, so re-applying the setting may raise the
+    // browser permission prompt. Re-read the outcome so the hint switches to
+    // the denied variant or disappears once granted.
+    await widget.state.setNotificationsEnabled(true);
+    if (mounted) {
+      setState(() {
+        _permission = widget.state.notificationPermissionState();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l = l10n(context);
     final theme = Theme.of(context);
     return FutureBuilder<String>(
-      future: state.notificationPermissionState(),
+      future: _permission,
       builder: (context, snapshot) {
-        if (snapshot.data != 'denied') return const SizedBox.shrink();
+        final permission = snapshot.data;
+        final canPrompt =
+            permission == 'default' && widget.state.notificationsEnabled;
+        if (permission != 'denied' && !canPrompt) {
+          return const SizedBox.shrink();
+        }
+        final color = canPrompt
+            ? theme.colorScheme.onSurfaceVariant
+            : theme.colorScheme.error;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
@@ -239,17 +270,22 @@ class _NotificationPermissionHint extends StatelessWidget {
               Icon(
                 Icons.notifications_off_outlined,
                 size: 16,
-                color: theme.colorScheme.error,
+                color: color,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  l.notificationPermissionDenied,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
+                  canPrompt
+                      ? l.notificationPermissionRequest
+                      : l.notificationPermissionDenied,
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
                 ),
               ),
+              if (canPrompt)
+                TextButton(
+                  onPressed: _request,
+                  child: Text(l.notificationPermissionAllow),
+                ),
             ],
           ),
         );

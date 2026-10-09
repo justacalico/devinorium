@@ -4734,8 +4734,24 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('defaults to disabled', () {
+    test('starts disabled until prefs load', () {
       final state = AppState.test();
+      expect(state.notificationsEnabled, isFalse);
+    });
+
+    test('bootstrap enables notifications when no pref is stored', () async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState.test();
+      await state.bootstrap();
+      expect(state.notificationsEnabled, isTrue);
+    });
+
+    test('bootstrap respects a stored disabled pref', () async {
+      SharedPreferences.setMockInitialValues({
+        'devinorium_notifications': false,
+      });
+      final state = AppState.test();
+      await state.bootstrap();
       expect(state.notificationsEnabled, isFalse);
     });
 

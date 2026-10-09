@@ -1171,6 +1171,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notificationPermissionDenied => '通知已被阻止。请在浏览器或系统设置中允许通知后再开启。';
 
   @override
+  String get notificationPermissionRequest => '通知已开启，但需要您的授权才能显示。';
+
+  @override
+  String get notificationPermissionAllow => '允许';
+
+  @override
   String get sendTestNotification => '发送测试通知';
 
   @override

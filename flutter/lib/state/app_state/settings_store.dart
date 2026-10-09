@@ -195,11 +195,11 @@ mixin SettingsStore on AppStateBase {
 
   @override
   Future<void> _loadNotificationPrefs() async {
-    var enabled = false;
+    var enabled = true;
     var push = false;
     try {
       final prefs = await SharedPreferences.getInstance();
-      enabled = prefs.getBool('devinorium_notifications') ?? false;
+      enabled = prefs.getBool('devinorium_notifications') ?? true;
       push = prefs.getBool('devinorium_push') ?? false;
     } catch (_) {}
     _pushEnabled = push;
