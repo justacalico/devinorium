@@ -460,6 +460,71 @@ void main() {
     expect(find.text('No terminal sessions'), findsOneWidget);
   });
 
+  testWidgets('shift+click closes non-blank terminal or tab without confirm', (
+    tester,
+  ) async {
+    var callCount = 0;
+    Future<TerminalSession> sessionFactory({
+      required ApiService api,
+      required String? threadId,
+      required bool local,
+      String? workingDir,
+    }) async {
+      callCount++;
+      final session = TerminalSession(id: 's-$callCount', isLocal: local);
+      session.terminal.write('hello');
+      return session;
+    }
+
+    final store = _openStore(sessionFactory: sessionFactory);
+    addTearDown(store.dispose);
+
+    await tester.pumpWidget(_panel(store));
+    await tester.pumpAndSettle();
+
+    // Add a tab with a non-blank terminal.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-1'), findsOneWidget);
+
+    // Shift+click closes the terminal immediately, no dialog.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    addTearDown(() => tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft));
+    await tester.tap(find.byTooltip('Close terminal'));
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    expect(find.text('Close terminal?'), findsNothing);
+    expect(find.text('s-1'), findsNothing);
+    expect(find.text('No terminal sessions'), findsOneWidget);
+
+    // Add a second tab with a non-blank terminal. Shift must be up here:
+    // shift+click on the add button means "open in a new tab".
+    await tester.tap(find.byKey(const ValueKey('addTerminalTab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-2'), findsOneWidget);
+
+    // Shift+click on the tab's close button skips the dialog too.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byTooltip('Close tab').last);
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    expect(find.text('Close tab?'), findsNothing);
+    expect(find.text('Tab 2'), findsNothing);
+    expect(find.text('s-2'), findsNothing);
+
+    // Without shift the confirmation dialog still appears.
+    await tester.tap(find.byKey(const ValueKey('addRemoteTerminal')));
+    await tester.pumpAndSettle();
+    expect(find.text('s-3'), findsOneWidget);
+    await tester.tap(find.byTooltip('Close terminal'));
+    await tester.pumpAndSettle();
+    expect(find.text('Close terminal?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('session start failure shows a snackbar', (tester) async {
     Future<TerminalSession> sessionFactory({
       required ApiService api,
