@@ -1174,34 +1174,6 @@
   "@oledTheme": {
     "description": "OLED built-in theme option"
   },
-  "themeCustom": "自定义",
-  "@themeCustom": {
-    "description": "Label for a user-supplied custom theme"
-  },
-  "themeImport": "导入自定义",
-  "@themeImport": {
-    "description": "Button to open the custom theme import dialog"
-  },
-  "themeImportHint": "在下方粘贴受限 CSS 文件。仅允许 :root 和颜色值。",
-  "@themeImportHint": {
-    "description": "Hint text in the custom theme import dialog"
-  },
-  "themeImportError": "导入主题失败",
-  "@themeImportError": {
-    "description": "Error shown when a custom theme file cannot be parsed"
-  },
-  "themeCreator": "创作者",
-  "@themeCreator": {
-    "description": "Label for the theme creator metadata field"
-  },
-  "themeVersion": "版本",
-  "@themeVersion": {
-    "description": "Label for the theme version metadata field"
-  },
-  "themeDescription": "描述",
-  "@themeDescription": {
-    "description": "Label for the theme description metadata field"
-  },
   "fileViewerContent": "内容",
   "@fileViewerContent": {
     "description": "Label for the content tab in the file viewer"
