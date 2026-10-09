@@ -59,7 +59,7 @@ class TerminalPanel extends StatelessWidget {
     BuildContext context,
     TerminalSession session,
   ) async {
-    if (session.isBlank) {
+    if (session.isBlank || HardwareKeyboard.instance.isShiftPressed) {
       store.removeSession(session);
       return;
     }
@@ -87,7 +87,7 @@ class TerminalPanel extends StatelessWidget {
 
   Future<void> _confirmCloseTab(BuildContext context, TerminalTab tab) async {
     final nonBlankCount = tab.sessions.where((s) => !s.isBlank).length;
-    if (nonBlankCount == 0) {
+    if (nonBlankCount == 0 || HardwareKeyboard.instance.isShiftPressed) {
       store.removeTab(tab);
       return;
     }
@@ -125,9 +125,7 @@ class TerminalPanel extends StatelessWidget {
           autofocus: true,
           decoration: InputDecoration(
             labelText: l10n(context).name,
-            hintText: index == -1
-                ? null
-                : l10n(context).terminalTab(index + 1),
+            hintText: index == -1 ? null : l10n(context).terminalTab(index + 1),
             border: const OutlineInputBorder(),
           ),
           textInputAction: TextInputAction.done,
