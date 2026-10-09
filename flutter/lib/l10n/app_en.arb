@@ -757,6 +757,8 @@
   "pushNotificationsDescription": "Deliver notifications to this device even when the app is closed.",
   "pushNotificationsUnsupported": "Background push is not supported by this browser or server.",
   "notificationPermissionDenied": "Notifications are blocked. Allow them in your browser or system settings to enable them.",
+  "notificationPermissionRequest": "Notifications are on but need your permission to appear.",
+  "notificationPermissionAllow": "Allow",
   "sendTestNotification": "Send test notification",
   "testNotificationSent": "Test notification sent.",
   "multipleWindows": "Multiple windows",

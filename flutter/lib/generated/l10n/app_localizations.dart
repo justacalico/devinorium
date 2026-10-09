@@ -2210,6 +2210,18 @@ abstract class AppLocalizations {
   /// **'Notifications are blocked. Allow them in your browser or system settings to enable them.'**
   String get notificationPermissionDenied;
 
+  /// No description provided for @notificationPermissionRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are on but need your permission to appear.'**
+  String get notificationPermissionRequest;
+
+  /// No description provided for @notificationPermissionAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get notificationPermissionAllow;
+
   /// No description provided for @sendTestNotification.
   ///
   /// In en, this message translates to:

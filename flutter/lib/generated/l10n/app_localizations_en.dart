@@ -1232,6 +1232,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Notifications are blocked. Allow them in your browser or system settings to enable them.';
 
   @override
+  String get notificationPermissionRequest =>
+      'Notifications are on but need your permission to appear.';
+
+  @override
+  String get notificationPermissionAllow => 'Allow';
+
+  @override
   String get sendTestNotification => 'Send test notification';
 
   @override

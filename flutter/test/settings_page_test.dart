@@ -5,6 +5,7 @@ import 'package:devinorium_frontend/api/api_service.dart';
 import 'package:devinorium_frontend/models/models.dart';
 import 'package:devinorium_frontend/servers/multi_server_state.dart';
 import 'package:devinorium_frontend/servers/server_profile.dart';
+import 'package:devinorium_frontend/services/notification_service.dart';
 import 'package:devinorium_frontend/services/version_checker.dart';
 import 'package:devinorium_frontend/state/app_state.dart';
 import 'package:devinorium_frontend/theme/theme.dart';
@@ -239,6 +240,29 @@ class _FakeAppState extends AppState {
 
   @override
   Future<PackageInfo> packageInfo() => packageInfoFuture ?? super.packageInfo();
+}
+
+class _FakeNotifications extends NotificationService {
+  _FakeNotifications({this.enabled = true, this.permission = 'granted'});
+
+  bool enabled;
+  final String permission;
+  int enableCalls = 0;
+
+  @override
+  bool get notificationsEnabled => enabled;
+
+  @override
+  Future<String> permissionState() async => permission;
+
+  @override
+  Future<void> setNotificationsEnabled(
+    bool enabled, {
+    bool allowPrompt = true,
+  }) async {
+    enableCalls++;
+    this.enabled = enabled;
+  }
 }
 
 class _FakeVersionChecker extends VersionChecker {
@@ -1316,6 +1340,103 @@ void main() {
     expect(find.text('简体中文'), findsOneWidget);
     expect(find.text('默认权限级别'), findsOneWidget);
     expect(find.text('应用于新会话'), findsOneWidget);
+  });
+
+  testWidgets('Notification hint offers Allow when permission is default', (
+    tester,
+  ) async {
+    final fake = _FakeNotifications(permission: 'default');
+    final state = AppState.test(
+      notifications: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Notifications are on but need your permission to appear.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Allow'));
+    await tester.pumpAndSettle();
+    expect(fake.enableCalls, 1);
+  });
+
+  testWidgets('Notification hint hides Allow when notifications are off', (
+    tester,
+  ) async {
+    final fake = _FakeNotifications(enabled: false, permission: 'default');
+    final state = AppState.test(
+      notifications: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Notifications are on but need your permission to appear.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Notification hint warns when permission is denied', (
+    tester,
+  ) async {
+    final fake = _FakeNotifications(permission: 'denied');
+    final state = AppState.test(
+      notifications: fake,
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+    );
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    state.setSettingsTopicIndex(2);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Notifications are blocked. Allow them in your browser or system '
+        'settings to enable them.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Personalization tab sets the default permission level', (
