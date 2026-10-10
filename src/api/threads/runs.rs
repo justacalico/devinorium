@@ -26,8 +26,8 @@ use crate::AppState;
 
 use super::permissions::{build_ask_callback, build_permission_callback};
 use super::persistence::{
-    persist_assistant_reply, persist_run_plan, save_partial_assistant_message,
-    update_thread_title_from_send,
+    persist_assistant_reply, persist_run_plan, persist_stopped_marker,
+    save_partial_assistant_message, update_thread_title_from_send,
 };
 use super::send::{call_provider, ProviderOutcome, SendInput};
 use super::worktree::{snapshot_worktree_paths, sync_agent_created_worktree};
@@ -175,7 +175,36 @@ pub(super) async fn stop(
     }
 
     match state.thread_runner.stop(&id).await {
-        Some(snapshot) => Json(snapshot).into_response(),
+        Some(snapshot) => {
+            // The run task normally closes the turn itself (partial reply or
+            // the stopped marker), but a provider that ignores cancellation
+            // is hard-aborted about ten seconds from now and never reaches
+            // that code — leaving the user message as the tail, which the UI
+            // reads as "working" forever. Once the task is gone, close the
+            // turn if it died before persisting a terminal row.
+            let watchdog = state.clone();
+            let tid = id.clone();
+            let uid = user.id;
+            tokio::spawn(async move {
+                watchdog
+                    .thread_runner
+                    .wait_finished(&tid, std::time::Duration::from_secs(15))
+                    .await;
+                // A newer run may own the thread by now; its user message is
+                // a legitimate tail, so leave it alone while it is live.
+                if let Some(current) = watchdog.thread_runner.get(&tid).await {
+                    if *current.status.read().await == RunStatus::Running {
+                        return;
+                    }
+                }
+                if let Ok(Some(thread)) = watchdog.db.get_thread(&tid, uid).await {
+                    if thread.last_message_role.as_deref() == Some("user") {
+                        persist_stopped_marker(&watchdog, &thread).await;
+                    }
+                }
+            });
+            Json(snapshot).into_response()
+        }
         None => (StatusCode::NOT_FOUND, Json(ApiError::new("no active run"))).into_response(),
     }
 }
@@ -446,6 +475,13 @@ pub(crate) async fn run_thread(
                 .await;
             let _ = state.db.touch_thread(&thread.id).await;
             persist_run_plan(&state.db, &thread.id, &run).await;
+        } else {
+            // A stop that lands before the model wrote anything must still
+            // close the turn: without a terminal row the trailing user
+            // message looks like a run in progress once the in-memory run
+            // record is gone, and the next boot would mislabel it as an
+            // interrupted run.
+            persist_stopped_marker(&state, &thread).await;
         }
         // Tokens spent by a stopped turn still count.
         if let Some(usage) = usage {
@@ -508,6 +544,11 @@ pub(crate) async fn run_thread(
     } = outcome;
 
     if run.cancelled.load(Ordering::SeqCst) {
+        // A stop that raced in after the provider returned still owes the
+        // turn a terminal row — the completed parts are discarded, so
+        // without the marker the trailing user message reads as a run in
+        // progress once the in-memory run record is gone.
+        persist_stopped_marker(&state, &thread).await;
         sync_agent_worktree_and_emit(&state, &user, &mut thread, worktree_before.as_ref(), &run)
             .await;
         if let Some(usage) = usage {

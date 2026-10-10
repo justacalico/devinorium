@@ -526,6 +526,7 @@
   "messageRoleYou": "你",
   "messageRoleAssistant": "助手",
   "messageRoleError": "错误",
+  "messageRoleSystem": "系统",
   "copyMessage": "复制消息",
   "regenerate": "重新生成",
   "editMessageTitle": "编辑消息",

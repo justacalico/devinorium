@@ -426,6 +426,11 @@ class _MessageItemState extends State<_MessageItem> {
         theme.colorScheme.secondaryContainer,
         theme.colorScheme.onSecondaryContainer,
       ),
+      'system' => (
+        l.messageRoleSystem,
+        theme.colorScheme.surfaceContainerHighest,
+        theme.colorScheme.onSurfaceVariant,
+      ),
       _ => (
         l.messageRoleError,
         theme.colorScheme.errorContainer,
@@ -439,6 +444,7 @@ class _MessageItemState extends State<_MessageItem> {
         color: avatarFg,
       ),
       'user' => const Icon(Icons.person_outline, size: 18),
+      'system' => const Icon(Icons.info_outline, size: 18),
       _ => const Icon(Icons.warning_amber_outlined, size: 18),
     };
 

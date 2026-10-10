@@ -793,6 +793,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get messageRoleError => '错误';
 
   @override
+  String get messageRoleSystem => '系统';
+
+  @override
   String get copyMessage => '复制消息';
 
   @override
