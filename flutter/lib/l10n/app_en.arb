@@ -526,6 +526,7 @@
   "messageRoleYou": "You",
   "messageRoleAssistant": "Assistant",
   "messageRoleError": "Error",
+  "messageRoleSystem": "System",
   "copyMessage": "Copy message",
   "regenerate": "Regenerate",
   "editMessageTitle": "Edit message",

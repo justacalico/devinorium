@@ -1,5 +1,6 @@
 //! Thread data access.
 
+use super::messages::NewMessage;
 use super::ThreadRow;
 
 pub struct NewThread {
@@ -164,6 +165,53 @@ impl super::Db {
         .execute(self.pool())
         .await?;
         Ok(())
+    }
+
+    /// Mark threads orphaned by a server shutdown as failed.
+    ///
+    /// Runs exist only in memory, so a crash, power loss, or SIGKILL leaves
+    /// an in-flight run's last persisted message as the user's prompt. With
+    /// no runner around to report otherwise the UI derives "working" from
+    /// that trailing user message forever. Called once at startup — before
+    /// any new run can start — this appends an error message to every such
+    /// thread so it surfaces as failed. Returns the reconciled thread ids.
+    /// A failure on one thread is logged and skipped so it cannot strand
+    /// the rest.
+    pub async fn fail_interrupted_runs(&self, detail: &str) -> anyhow::Result<Vec<String>> {
+        let ids: Vec<String> = sqlx::query_scalar(
+            "SELECT id FROM threads t
+             WHERE (SELECT role FROM messages WHERE messages.thread_id = t.id
+                    ORDER BY id DESC LIMIT 1) = 'user'
+             ORDER BY t.id",
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        let mut done = Vec::with_capacity(ids.len());
+        for id in ids {
+            let result = async {
+                self.add_message(NewMessage {
+                    thread_id: id.clone(),
+                    role: "error".into(),
+                    content: detail.to_string(),
+                    thinking: None,
+                    parts: "[]".into(),
+                    attachments: "[]".into(),
+                    model: String::new(),
+                    client_message_id: None,
+                })
+                .await?;
+                self.touch_thread(&id).await
+            }
+            .await;
+            match result {
+                Ok(()) => done.push(id),
+                Err(e) => {
+                    tracing::warn!(thread_id = %id, error = %e, "failed to mark interrupted run")
+                }
+            }
+        }
+        Ok(done)
     }
 
     pub async fn rename_thread(&self, id: &str, user_id: i64, title: &str) -> anyhow::Result<()> {
@@ -422,5 +470,153 @@ impl super::Db {
         .fetch_all(self.pool())
         .await
         .map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::messages::NewMessage;
+    use crate::db::users::NewUser;
+    use crate::db::Db;
+
+    async fn db() -> Db {
+        Db::connect("sqlite::memory:").await.unwrap()
+    }
+
+    async fn user(db: &Db) -> i64 {
+        db.create_user(NewUser {
+            username: "u".into(),
+            password_hash: "x".into(),
+            is_owner: true,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    async fn thread(db: &Db, id: &str, user_id: i64) {
+        let project_id = db
+            .create_project(crate::db::projects::NewProject {
+                user_id,
+                name: format!("p-{id}"),
+                path: format!("/tmp/p-{id}"),
+                position: 0,
+                project_type: "local".into(),
+                node_id: None,
+            })
+            .await
+            .unwrap()
+            .id;
+        db.create_thread(NewThread {
+            id: id.into(),
+            user_id,
+            project_id,
+            thread_group_id: None,
+            title: "t".into(),
+            title_user_set: false,
+            provider_id: "devin-cli".into(),
+            model: "m".into(),
+            permission_mode: "normal".into(),
+            reasoning_effort: String::new(),
+            permissions: None,
+            branch: None,
+            worktree_path: None,
+            env_mode: "local".into(),
+            linked_mr: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn message(db: &Db, thread_id: &str, role: &str) {
+        db.add_message(NewMessage {
+            thread_id: thread_id.into(),
+            role: role.into(),
+            content: "msg".into(),
+            thinking: None,
+            parts: "[]".into(),
+            attachments: "[]".into(),
+            model: String::new(),
+            client_message_id: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn last_role(db: &Db, user_id: i64, thread_id: &str) -> Option<String> {
+        db.get_thread(thread_id, user_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_message_role
+    }
+
+    #[tokio::test]
+    async fn fail_interrupted_runs_marks_orphaned_threads_failed() {
+        let db = db().await;
+        let uid = user(&db).await;
+        thread(&db, "orphan", uid).await;
+        thread(&db, "finished", uid).await;
+        thread(&db, "empty", uid).await;
+        message(&db, "orphan", "user").await;
+        message(&db, "finished", "user").await;
+        message(&db, "finished", "assistant").await;
+
+        let failed = db.fail_interrupted_runs("server stopped").await.unwrap();
+        assert_eq!(failed, vec!["orphan".to_string()]);
+
+        // The orphaned thread now ends in an error message, so the UI shows
+        // it as failed instead of stuck on "working".
+        assert_eq!(
+            last_role(&db, uid, "orphan").await.as_deref(),
+            Some("error")
+        );
+        let msgs = db.list_messages("orphan").await.unwrap();
+        assert_eq!(msgs.last().unwrap().role, "error");
+        assert_eq!(msgs.last().unwrap().content, "server stopped");
+        // The error joins the open turn rather than starting a new one.
+        assert_eq!(msgs.last().unwrap().turn_id, msgs[0].turn_id);
+
+        // Threads that already finished or never ran stay untouched.
+        assert_eq!(
+            last_role(&db, uid, "finished").await.as_deref(),
+            Some("assistant")
+        );
+        assert_eq!(last_role(&db, uid, "empty").await, None);
+        assert_eq!(db.list_messages("finished").await.unwrap().len(), 2);
+        assert!(db.list_messages("empty").await.unwrap().is_empty());
+
+        // A second pass is a no-op: nothing ends in a user message anymore.
+        assert!(db
+            .fail_interrupted_runs("server stopped")
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn fail_interrupted_runs_ignores_error_and_system_tails() {
+        let db = db().await;
+        let uid = user(&db).await;
+        thread(&db, "errored", uid).await;
+        thread(&db, "system", uid).await;
+        message(&db, "errored", "user").await;
+        message(&db, "errored", "error").await;
+        message(&db, "system", "system").await;
+
+        assert!(db
+            .fail_interrupted_runs("server stopped")
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            last_role(&db, uid, "errored").await.as_deref(),
+            Some("error")
+        );
+        assert_eq!(
+            last_role(&db, uid, "system").await.as_deref(),
+            Some("system")
+        );
     }
 }

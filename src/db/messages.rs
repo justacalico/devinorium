@@ -254,7 +254,7 @@ impl super::Db {
                 parts_length
             FROM (
                 SELECT * FROM messages
-                WHERE thread_id = ?
+                WHERE thread_id = ? AND role IN ('user', 'assistant')
                 ORDER BY id DESC
                 LIMIT ?
             ) ORDER BY id ASC",

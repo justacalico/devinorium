@@ -165,6 +165,46 @@ void main() {
     expect(find.text('Show more'), findsNothing);
   });
 
+  testWidgets('system message renders with a neutral label, not as an error', (
+    tester,
+  ) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(id: 1, role: 'user', content: 'hi'),
+          Message(id: 2, role: 'system', content: 'stopped by user'),
+        ],
+        totalMessages: 2,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const ThreadPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('System'), findsOneWidget);
+    expect(find.text('Error'), findsNothing);
+    expect(find.text('stopped by user'), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    expect(find.byIcon(Icons.warning_amber_outlined), findsNothing);
+  });
+
   testWidgets('thinking runs separated by tools render as distinct blocks', (
     tester,
   ) async {

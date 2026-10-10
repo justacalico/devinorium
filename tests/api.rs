@@ -380,6 +380,45 @@ impl Provider for FailingProvider {
     }
 }
 
+/// A provider that ignores the cancel signal and never returns, simulating a
+/// wedged agent process. The runner's hard-abort deadline is the only way the
+/// run task ends.
+struct UncancellableStubProvider;
+
+#[async_trait]
+impl Provider for UncancellableStubProvider {
+    fn id(&self) -> &str {
+        "uncancellable-stub"
+    }
+    fn name(&self) -> &str {
+        "Uncancellable Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "stub-1".into(),
+            label: "Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
+        }])
+    }
+    async fn start(&self, _req: StartRequest) -> anyhow::Result<StartResponse> {
+        std::future::pending().await
+    }
+    async fn send(&self, _req: SendRequest) -> anyhow::Result<SendResponse> {
+        std::future::pending().await
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 async fn app_state() -> (AppState, db::Db) {
     let dir = tempfile::tempdir().unwrap().keep();
     let db_url = format!("sqlite:{}?mode=rwc", dir.join("api.db").display());
@@ -2610,6 +2649,122 @@ async fn thread_stop_ends_active_run() {
     let body = body_str(resp.into_body()).await;
     assert!(body.contains(r#""role":"user""#), "body: {body}");
     assert!(!body.contains(r#""role":"assistant""#), "body: {body}");
+
+    // The turn is still closed out: a system marker keeps the trailing user
+    // message from reading as "working" once the run record is gone, and
+    // keeps the next boot's interrupted-run reconcile from mislabeling the
+    // stop as a crash. It is written by the run task, so poll for it.
+    let mut found = false;
+    for _ in 0..200 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/messages"),
+                &cookie,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_str(resp.into_body()).await;
+        if body.contains(r#""role":"system""#) && body.contains("stopped by user") {
+            found = true;
+            break;
+        }
+    }
+    assert!(
+        found,
+        "stopped run left the turn without a terminal message"
+    );
+}
+
+#[tokio::test]
+async fn thread_stop_closes_turn_when_provider_ignores_cancel() {
+    let (mut state, _database) = app_state().await;
+    state.provider = Arc::new(UncancellableStubProvider) as Arc<dyn Provider>;
+    let app = devinorium::build_app(state);
+    let cookie = login(&app).await;
+
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let boundary = "----wedgedboundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nHello world\r\n--{boundary}--\r\n"
+    );
+
+    let send_app = app.clone();
+    let send_cookie = cookie.clone();
+    let send_tid = tid.clone();
+    let send_task = tokio::spawn(async move {
+        send_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/threads/{send_tid}/send/stream"))
+                    .header(header::HOST, "localhost")
+                    .header(header::ORIGIN, "http://localhost")
+                    .header("cookie", &send_cookie)
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+
+    // Wait for the run to start, then stop it. The provider never answers
+    // the cancel, so the runner hard-aborts the task ~10s later — before it
+    // could persist a terminal row.
+    wait_for_run(&app, &cookie, &tid, |b| b.contains(r#""status":"running""#)).await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/stop"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = send_task.await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The stop watchdog notices the task died with the turn still open and
+    // writes the stopped marker itself. Without it the trailing user
+    // message would read as "working" forever. The abort deadline makes
+    // this slow: allow ~30s.
+    let mut found = false;
+    for _ in 0..600 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let resp = app
+            .clone()
+            .oneshot(authed(
+                "GET",
+                &format!("/api/threads/{tid}/messages"),
+                &cookie,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_str(resp.into_body()).await;
+        if body.contains(r#""role":"system""#) && body.contains("stopped by user") {
+            found = true;
+            break;
+        }
+    }
+    assert!(
+        found,
+        "hard-aborted run left the turn without a terminal message"
+    );
 }
 
 #[tokio::test]
@@ -10527,6 +10682,53 @@ async fn thread_list_includes_last_message_role() {
     assert_eq!(role_of(&t_empty), serde_json::Value::Null);
     assert_eq!(role_of(&t_user), "user");
     assert_eq!(role_of(&t_assistant), "assistant");
+}
+
+#[tokio::test]
+async fn startup_reconcile_marks_interrupted_runs_failed() {
+    let (app, db) = make_app().await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+
+    // A run orphaned by a server crash leaves its last persisted message as
+    // the user prompt; finished and empty threads must be left alone.
+    let crashed = make_thread(&app, &cookie, pid, "crashed").await;
+    seed_messages(&db, &crashed, 1, "m").await;
+    let finished = make_thread(&app, &cookie, pid, "finished").await;
+    seed_messages(&db, &finished, 2, "m").await;
+    let empty = make_thread(&app, &cookie, pid, "empty").await;
+
+    let failed = db.fail_interrupted_runs("interrupted").await.unwrap();
+    assert_eq!(failed, vec![crashed.clone()]);
+
+    // The reconciled thread now ends in an error row, so the list reports
+    // it as failed rather than leaving it stuck on the user prompt.
+    let msgs = db.list_messages(&crashed).await.unwrap();
+    assert_eq!(msgs.last().unwrap().role, "error");
+    assert_eq!(msgs.last().unwrap().content, "interrupted");
+
+    let resp = app
+        .clone()
+        .oneshot(authed("GET", "/api/threads", &cookie, ""))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_str(resp.into_body()).await;
+    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap();
+    let threads = v.as_array().unwrap();
+    let role_of = |tid: &str| {
+        threads
+            .iter()
+            .find(|t| t["id"] == tid)
+            .unwrap_or_else(|| panic!("thread {tid} missing"))["last_message_role"]
+            .clone()
+    };
+    assert_eq!(role_of(&crashed), "error");
+    assert_eq!(role_of(&finished), "assistant");
+    assert_eq!(role_of(&empty), serde_json::Value::Null);
+
+    // The failure counts as unseen output so the crashed thread surfaces.
+    assert!(thread_unread(&app, &cookie, &crashed).await);
 }
 
 #[tokio::test]

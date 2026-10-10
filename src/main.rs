@@ -50,6 +50,21 @@ async fn main() -> Result<()> {
     let bind = cfg.bind_addr();
     let database = db::Db::connect(&cfg.db_url).await?;
 
+    // A crash or power loss strands in-flight runs: their last persisted
+    // message stays the user's prompt, which the UI reads as "working"
+    // forever. No runner is alive at this point, so mark those threads as
+    // failed before serving requests.
+    match database
+        .fail_interrupted_runs("run interrupted: the server stopped before the run finished")
+        .await
+    {
+        Ok(ids) if !ids.is_empty() => {
+            tracing::warn!(count = ids.len(), "marked interrupted runs as failed")
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "failed to reconcile interrupted runs"),
+    }
+
     // The desktop app holds our stdin pipe; when it exits or crashes the
     // pipe closes and we shut down instead of lingering as an orphan. Not
     // wanted in dev mode: a detached run has no stdin.

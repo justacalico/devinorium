@@ -194,17 +194,13 @@ pub(crate) async fn persist_assistant_reply(
     run: &RunState,
 ) -> Result<MessageRow, Box<Response>> {
     if run.cancelled.load(Ordering::SeqCst) {
-        return Err(Box::new(
-            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
-        ));
+        return Err(stopped_response(state, thread).await);
     }
 
     let session_id_for_audit = new_session_id.clone();
     if let Some(sid) = new_session_id {
         if run.cancelled.load(Ordering::SeqCst) {
-            return Err(Box::new(
-                map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
-            ));
+            return Err(stopped_response(state, thread).await);
         }
         if let Err(e) = state
             .db
@@ -216,16 +212,12 @@ pub(crate) async fn persist_assistant_reply(
     }
 
     if run.cancelled.load(Ordering::SeqCst) {
-        return Err(Box::new(
-            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
-        ));
+        return Err(stopped_response(state, thread).await);
     }
     let _ = state.db.touch_thread(&thread.id).await;
 
     if run.cancelled.load(Ordering::SeqCst) {
-        return Err(Box::new(
-            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
-        ));
+        return Err(stopped_response(state, thread).await);
     }
 
     // Strip plan XML from persisted parts so the final assistant message does
@@ -254,9 +246,7 @@ pub(crate) async fn persist_assistant_reply(
 
     if run.cancelled.load(Ordering::SeqCst) {
         let _ = state.db.delete_message(assistant_msg.id).await;
-        return Err(Box::new(
-            map_err_internal(anyhow::anyhow!("stopped by user")).into_response(),
-        ));
+        return Err(stopped_response(state, thread).await);
     }
 
     if !run.cancelled.load(Ordering::SeqCst) {
@@ -318,6 +308,38 @@ pub(crate) async fn save_partial_assistant_message(
         .await?;
     let _ = state.db.touch_thread(&thread.id).await;
     Ok(msg)
+}
+
+/// Close out a turn whose run was stopped before it produced any output.
+///
+/// The marker is a `system` message rather than `error`: a user-initiated
+/// stop is not a failure, so the thread must not pick up the failed tag or
+/// the unread badge (`error` rows count as unseen). Without a terminal row
+/// the trailing user message reads as "working" once the in-memory run
+/// record is gone, and the next boot's interrupted-run reconciliation would
+/// mislabel it as a crashed run.
+pub(crate) async fn persist_stopped_marker(state: &AppState, thread: &ThreadRow) {
+    let _ = state
+        .db
+        .add_message(NewMessage {
+            thread_id: thread.id.clone(),
+            role: "system".into(),
+            content: "stopped by user".into(),
+            thinking: None,
+            parts: "[]".into(),
+            attachments: "[]".into(),
+            model: String::new(),
+            client_message_id: None,
+        })
+        .await;
+    let _ = state.db.touch_thread(&thread.id).await;
+}
+
+/// Write the stopped marker and return the shared "stopped by user" error
+/// response for the cancel early-returns in `persist_assistant_reply`.
+async fn stopped_response(state: &AppState, thread: &ThreadRow) -> Box<Response> {
+    persist_stopped_marker(state, thread).await;
+    Box::new(map_err_internal(anyhow::anyhow!("stopped by user")).into_response())
 }
 
 /// Persist the final active plan for a run to the database, if any.

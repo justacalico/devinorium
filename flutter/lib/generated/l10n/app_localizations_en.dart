@@ -816,6 +816,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageRoleError => 'Error';
 
   @override
+  String get messageRoleSystem => 'System';
+
+  @override
   String get copyMessage => 'Copy message';
 
   @override

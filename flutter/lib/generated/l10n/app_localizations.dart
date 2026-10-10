@@ -1550,6 +1550,12 @@ abstract class AppLocalizations {
   /// **'Error'**
   String get messageRoleError;
 
+  /// No description provided for @messageRoleSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get messageRoleSystem;
+
   /// No description provided for @copyMessage.
   ///
   /// In en, this message translates to:
