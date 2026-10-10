@@ -259,9 +259,7 @@ pub(crate) async fn events_stream(
     Sse::new(FuturesStreamExt::boxed(FuturesStreamExt::chain(
         initial, live,
     )))
-    .keep_alive(
-        axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
-    )
+    .keep_alive(axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)))
 }
 
 pub(crate) async fn run_thread(
