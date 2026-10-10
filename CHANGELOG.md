@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.106.1 - 2026-10-10
+#### Bug Fixes
+- 服务器停止时将中断运行的线程标记为失败 - (3a6bba2) - HttpAnimations
+
+- - -
+
 ## v0.106.0 - 2026-10-10
 #### Features
 - 通知默认开启时提示请求浏览器权限 - (5a54798) - HttpAnimations
