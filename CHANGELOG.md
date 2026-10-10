@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.106.0 - 2026-10-10
+#### Features
+- 通知默认开启时提示请求浏览器权限 - (5a54798) - HttpAnimations
+- 默认开启线程运行通知 - (ccd9632) - HttpAnimations
+#### Bug Fixes
+- 修复长时间运行的线程被误报为失败的问题 - (2f6ca5d) - HttpAnimations
+- 点击允许后刷新通知权限提示状态 - (d7f97c2) - HttpAnimations
+
+- - -
+
 ## v0.105.0 - 2026-10-09
 #### Features
 - 按住 Shift 点击关闭终端或标签页时跳过确认对话框 - (e99d1d1) - HttpAnimations
