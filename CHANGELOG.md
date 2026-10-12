@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.107.0 - 2026-10-12
+#### Features
+- 为 C 系列文件添加语法高亮 - (6a2b4eb) - HttpAnimations
+
+- - -
+
 ## v0.106.1 - 2026-10-10
 #### Bug Fixes
 - 服务器停止时将中断运行的线程标记为失败 - (3a6bba2) - HttpAnimations
