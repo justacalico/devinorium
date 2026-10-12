@@ -234,6 +234,11 @@ String _languageFor(String name) {
     'sh' || 'bash' || 'zsh' || 'fish' => 'bash',
     'sql' => 'sql',
     'java' || 'kt' || 'kts' => 'java',
+    'c' || 'h' || 'cpp' || 'cc' || 'cxx' || 'c++' || 'hpp' || 'hh' ||
+        'hxx' || 'h++' || 'tpp' || 'inl' || 'ipp' || 'ixx' || 'cppm' ||
+        'inc' || 'cu' || 'cuh' || 'ino' => 'c',
+    'm' || 'mm' => 'objc',
+    'cs' => 'csharp',
     _ => '',
   };
 }
