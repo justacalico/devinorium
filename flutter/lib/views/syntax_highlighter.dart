@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'styles/bash.dart';
+import 'styles/c.dart';
 import 'styles/css.dart';
 import 'styles/dart.dart';
 import 'styles/html.dart';
@@ -40,6 +41,11 @@ class SyntaxHighlighter {
       'html' || 'xml' => highlightHtml(code, _palette),
       'css' => highlightCss(code, _palette),
       'java' || 'kotlin' || 'kt' || 'kts' => highlightJava(code, _palette),
+      'c' || 'cpp' || 'c++' || 'cc' || 'cxx' || 'h' || 'hpp' || 'cu' || 'cuda' =>
+          highlightC(code, _palette),
+      'cs' || 'csharp' || 'c#' => highlightCSharp(code, _palette),
+      'objc' || 'objective-c' || 'obj-c' || 'objc++' || 'objective-c++' =>
+          highlightObjC(code, _palette),
       _ => TextSpan(
           text: code,
           style: TextStyle(color: _palette.base, fontFamily: 'monospace'),

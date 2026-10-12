@@ -318,7 +318,11 @@ String _languageFromPath(String path) {
     'sh' || 'bash' || 'zsh' || 'fish' => 'bash',
     'sql' => 'sql',
     'md' || 'markdown' => 'markdown',
-    'c' || 'h' || 'cpp' || 'cc' || 'hpp' => 'c',
+    'c' || 'h' || 'cpp' || 'cc' || 'cxx' || 'c++' || 'hpp' || 'hh' ||
+        'hxx' || 'h++' || 'tpp' || 'inl' || 'ipp' || 'ixx' || 'cppm' ||
+        'inc' || 'cu' || 'cuh' || 'ino' => 'c',
+    'm' || 'mm' => 'objc',
+    'cs' => 'csharp',
     'go' => 'go',
     'java' || 'kt' || 'kts' => 'java',
     'php' => 'php',
