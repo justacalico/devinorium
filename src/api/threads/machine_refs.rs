@@ -5,7 +5,7 @@
 //! JSON array of integers). Each id is resolved against the machines table
 //! and recorded in the message's attachment metadata so it renders as a
 //! chip. The provider prompt gains a control block with the endpoint URLs
-//! and the run-scoped token — never the stored secrets, which stay
+//! and the control token — never the stored secrets, which stay
 //! server-side in the control endpoints.
 
 use std::collections::HashSet;
@@ -58,7 +58,7 @@ pub(crate) fn parse_machine_ids(raw: &str) -> Result<Vec<i64>, String> {
 /// and each survivor is recorded in `input.att_meta` as a `machine` chip.
 ///
 /// Machine control is owner-only: the machines table holds the operator's
-/// hosts and a run-scoped grant would let any user drive them over VNC.
+/// hosts and a control grant would let any user drive them over VNC.
 pub(crate) async fn resolve_machine_refs(
     state: &AppState,
     user: &UserRow,
@@ -102,8 +102,8 @@ pub(crate) async fn resolve_machine_refs(
 /// Build the prompt sent to the provider: the user's text plus a block
 /// describing how to drive each referenced machine through the local
 /// machine-control API. Only the endpoint docs for the referenced kinds
-/// are included. The token authorizes exactly these machines and dies
-/// with the run.
+/// are included. The token authorizes exactly these machines and stays
+/// valid until the server restarts.
 pub(crate) fn prompt_with_machine_refs(
     prompt: &str,
     refs: &[MachineRow],
@@ -141,7 +141,7 @@ pub(crate) fn prompt_with_machine_refs(
         Some(token) => {
             out.push_str(
                 "\n\nControl them through the Devinorium machine-control API on this host. \
-                 The token below covers only the referenced machines and expires when this turn ends.\n",
+                 The token below covers only the referenced machines and stays valid until the server restarts.\n",
             );
             out.push_str(&format!(
                 "Authorization: Bearer {token}\nBase URL: {base_url}\n"
