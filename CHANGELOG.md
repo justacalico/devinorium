@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.107.1 - 2026-10-17
+#### Bug Fixes
+- 机器控制令牌不再过期 - (181ff0e) - HttpAnimations
+
+- - -
+
 ## v0.107.0 - 2026-10-12
 #### Features
 - 为 C 系列文件添加语法高亮 - (6a2b4eb) - HttpAnimations
