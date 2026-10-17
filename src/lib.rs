@@ -203,7 +203,7 @@ pub fn build_app(state: AppState) -> Router {
     let limiter = state.rate_limiter.clone();
 
     // Public routes (no auth). Machine-control endpoints authenticate
-    // with per-run capability tokens inside their handlers.
+    // with minted capability tokens inside their handlers.
     let public = api::auth::router()
         .merge(api::server::router())
         .merge(api::machine_control::router())

@@ -134,8 +134,8 @@ pub(crate) struct SendInput {
     /// Referenced machines; filled in by
     /// `machine_refs::resolve_machine_refs` before the message is persisted.
     pub machine_refs: Vec<crate::db::machines::MachineRow>,
-    /// Run-scoped machine-control token minted in `run_thread` when
-    /// `machine_refs` is non-empty. The prompt block points agents at it.
+    /// Machine-control token minted in `run_thread` when `machine_refs`
+    /// is non-empty. The prompt block points agents at it.
     pub machine_token: Option<String>,
 }
 

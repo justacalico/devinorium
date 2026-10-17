@@ -1,8 +1,8 @@
 //! Machine routes: the owner-managed list of machines an AI thread can
 //! remote-control over VNC (screen) or SSH (shell).
 //!
-//! All routes are owner-only: referencing a machine mints a run-scoped
-//! control grant, so even listing (the composer `@` picker's data source)
+//! All routes are owner-only: referencing a machine mints a control
+//! grant, so even listing (the composer `@` picker's data source)
 //! stays behind the owner boundary. Stored secrets — the VNC/SSH password
 //! and the SSH private key — are never serialized: responses carry
 //! `has_password`/`has_ssh_key` instead.
@@ -312,7 +312,7 @@ fn not_found() -> Response {
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
     // Owner-only: the list exists to feed the `@` machine picker, and
-    // referencing a machine mints a control grant — also owner-only.
+    // referencing a machine mints a control grant: also owner-only.
     if !user.is_owner {
         return forbidden();
     }

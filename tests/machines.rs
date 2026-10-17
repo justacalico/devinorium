@@ -856,32 +856,24 @@ async fn send_with_machine_ids_scopes_the_run_and_chips_the_message() {
     assert_eq!(atts[0]["machine_id"], machine.id);
     assert_eq!(atts[0]["filename"], "desktop");
 
-    // The grant died with the run: the minted token no longer works.
+    // The grant outlives the run: the minted token still works.
     let token = reply
         .split("Bearer ")
         .nth(1)
         .and_then(|s| s.split_whitespace().next())
         .expect("token in prompt")
         .to_string();
-    let mut status = StatusCode::OK;
-    for _ in 0..100 {
-        let resp = app
-            .clone()
-            .oneshot(grant_request(
-                "GET",
-                &format!("/api/machine-control/{}/screenshot", machine.id),
-                &token,
-                "",
-            ))
-            .await
-            .unwrap();
-        status = resp.status();
-        if status == StatusCode::UNAUTHORIZED {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let resp = app
+        .clone()
+        .oneshot(grant_request(
+            "GET",
+            &format!("/api/machine-control/{}/screenshot", machine.id),
+            &token,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 fn multipart(uri: String, cookie: &str, fields: &[(&str, &str)]) -> Request<Body> {
@@ -1044,27 +1036,19 @@ async fn resend_keeps_machine_refs_and_mints_a_fresh_grant() {
     assert_eq!(atts[0]["kind"], "machine");
     assert_eq!(atts[0]["machine_id"], machine.id);
 
-    // Both grants are dead once their runs end.
+    // Both grants stay valid after their runs end.
     for token in [first_token, second_token] {
-        let mut status = StatusCode::OK;
-        for _ in 0..100 {
-            let resp = app
-                .clone()
-                .oneshot(grant_request(
-                    "GET",
-                    &format!("/api/machine-control/{}/screenshot", machine.id),
-                    &token,
-                    "",
-                ))
-                .await
-                .unwrap();
-            status = resp.status();
-            if status == StatusCode::UNAUTHORIZED {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let resp = app
+            .clone()
+            .oneshot(grant_request(
+                "GET",
+                &format!("/api/machine-control/{}/screenshot", machine.id),
+                &token,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }
 

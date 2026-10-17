@@ -305,18 +305,12 @@ pub(crate) async fn run_thread(
         return Ok(());
     }
 
-    // Referenced machines get a run-scoped control token; the guard revokes
-    // it no matter which exit path the run takes, so a finished turn leaves
-    // no live credential behind.
-    let _machine_grant = if input.machine_refs.is_empty() {
-        None
-    } else {
+    // Referenced machines get a control token that stays valid for the
+    // life of the server, so later turns can keep driving them.
+    if !input.machine_refs.is_empty() {
         let ids: Vec<i64> = input.machine_refs.iter().map(|m| m.id).collect();
-        state.machine_grants.create(user.id, ids).map(|token| {
-            input.machine_token = Some(token.clone());
-            crate::machine_grants::GrantGuard::new(state.machine_grants.clone(), token)
-        })
-    };
+        input.machine_token = state.machine_grants.create(user.id, ids);
+    }
 
     match update_thread_title_from_send(&state, user.id, &mut thread, &input).await {
         Ok(true) => {
