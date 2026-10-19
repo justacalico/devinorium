@@ -3,6 +3,7 @@ part of '../thread_page.dart';
 typedef _ComposerModel = ({
   String? activeThreadId,
   bool sending,
+  bool sendPending,
   bool composerEmpty,
   bool hasStore,
   ComposerMode composerMode,
@@ -678,6 +679,7 @@ class _ComposerState extends State<_Composer> {
       selector: (_, s) => (
         activeThreadId: s.activeThreadId,
         sending: s.sending,
+        sendPending: s.sendPending,
         composerEmpty: s.composerText.isEmpty,
         hasStore: s.hasActiveThreadStore,
         composerMode: s.composerMode,
@@ -696,7 +698,7 @@ class _ComposerState extends State<_Composer> {
         providers: s.providers,
       ),
       builder: (context, model, _) {
-        final isSending = model.sending;
+        final isSending = model.sending || model.sendPending;
         final hasActiveThread = model.activeThreadId != null;
         final hasStore = model.hasStore;
         final mode = model.composerMode;
