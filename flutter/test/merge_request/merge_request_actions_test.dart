@@ -62,6 +62,9 @@ void main() {
       await tester.tap(find.text('Merge'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.widgetWithText(FilledButton, 'Merge').last);
+      await tester.pumpAndSettle();
+
       expect(performed, [MergeRequestAction.merge]);
     });
 
@@ -72,7 +75,24 @@ void main() {
       await tester.tap(find.text('Close merge request'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.widgetWithText(FilledButton, 'Close merge request'));
+      await tester.pumpAndSettle();
+
       expect(performed, [MergeRequestAction.close]);
+    });
+
+    testWidgets('cancelling the merge dialog performs no action',
+        (tester) async {
+      await tester.pumpWidget(wrap(_detail()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Merge'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(performed, isEmpty);
     });
 
     testWidgets('reopens a closed merge request', (tester) async {
@@ -186,6 +206,8 @@ void main() {
 
       await tester.tap(find.text('Merge'));
       await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Merge').last);
+      await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(
@@ -255,6 +277,9 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Merge'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Merge').last);
       await tester.pumpAndSettle();
 
       expect(find.text('Method Not Allowed'), findsOneWidget);

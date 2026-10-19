@@ -33,6 +33,31 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
   }
 
   Future<void> _run(MergeRequestAction action) async {
+    final l = l10n(context);
+    final (needsConfirm, confirmLabel) = switch (action) {
+      MergeRequestAction.merge => (l.mergeMergeRequestConfirm, l.merge),
+      MergeRequestAction.close => (l.closeMergeRequestConfirm, l.closeMergeRequest),
+      _ => (null, null),
+    };
+    if (needsConfirm != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          content: Text(needsConfirm),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(confirmLabel!),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     setState(() {
       _pending = action;
       _error = null;

@@ -871,6 +871,8 @@
   "unlinkFromThread": "Unlink from thread",
   "draft": "Draft",
   "retry": "Retry",
+  "mergeMergeRequestConfirm": "Merge this merge request? This cannot be undone.",
+  "closeMergeRequestConfirm": "Close this merge request without merging?",
   "merge": "Merge",
   "mergeWhenPipelineSucceeds": "Merge when pipeline succeeds",
   "cancelAutoMerge": "Cancel auto merge",
