@@ -3082,6 +3082,38 @@ void main() {
       expect(state.lastRunStatus, 'stopped');
     });
 
+    test('stopThread during the pending window cancels the send', () async {
+      final client = _clientFor([_json(200, {})]);
+      final api = _StreamableApiService(client);
+      final state = AppState.test(
+        api: api,
+        activeProjectId: 1,
+        activeThreadId: 'a',
+        activeThreadDetail: ThreadDetail(
+          thread: Thread(
+            id: 'a',
+            title: 't',
+            projectId: 1,
+            model: '',
+            permissionMode: 'normal',
+            createdAt: '',
+            updatedAt: '',
+          ),
+          messages: [],
+        ),
+      );
+      state.setComposerText('hello');
+
+      unawaited(state.sendMessage());
+      expect(state.sendPending, isTrue);
+      await state.stopThread();
+
+      expect(state.composerText, 'hello');
+      expect(state.sendPending, isFalse);
+      expect(state.sending, isFalse);
+      await state.sendMessage();
+    });
+
     test('stopThread calls the stop endpoint', () async {
       final client = _clientFor([
         _json(200, {'status': 'stopped'}),
