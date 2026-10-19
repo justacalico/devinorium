@@ -321,6 +321,12 @@ async fn pair(
             fails: 0,
             locked_until: None,
         });
+        // A lapsed lockout starts a fresh failure window; otherwise a single
+        // wrong code would re-lock the address immediately.
+        if entry.locked_until.is_some_and(|t| t <= Instant::now()) {
+            entry.fails = 0;
+            entry.locked_until = None;
+        }
         entry.fails += 1;
         if entry.fails >= PAIR_MAX_FAILS {
             entry.locked_until = Some(Instant::now() + PAIR_LOCKOUT);
@@ -442,6 +448,26 @@ mod tests {
         statuses.sort();
         assert_eq!(statuses, [StatusCode::OK, StatusCode::GONE]);
         assert!(state.pairing_code.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pair_lapsed_lockout_resets_the_failure_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state("AAAA-BBBB-CCCC", &dir);
+        let ip = addr().0.ip();
+        state.pair_attempts.lock().await.insert(
+            ip,
+            PairAttempts {
+                fails: PAIR_MAX_FAILS,
+                locked_until: Some(Instant::now() - Duration::from_secs(1)),
+            },
+        );
+
+        let res = pair(State(state.clone()), addr(), req("XXXX-YYYY-ZZZZ")).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        let entry = &state.pair_attempts.lock().await[&ip];
+        assert_eq!(entry.fails, 1);
+        assert!(entry.locked_until.is_none());
     }
 
     #[tokio::test]
