@@ -208,8 +208,8 @@ Future<Map<String, dynamic>> _storedDrafts() async {
   return Map<String, dynamic>.from(jsonDecode(raw) as Map);
 }
 
-/// Give the async SharedPreferences write a chance to land.
-Future<void> _flush() => Future<void>.delayed(const Duration(milliseconds: 20));
+/// Give the debounced SharedPreferences write a chance to land.
+Future<void> _flush() => Future<void>.delayed(const Duration(milliseconds: 600));
 
 AppState _state(_DraftApi api) => AppState.test(
   api: api,
@@ -234,6 +234,27 @@ void main() {
 
     final drafts = await _storedDrafts();
     expect(drafts['test:t1'], 'first draft');
+  });
+
+  test('draft writes throttle rapid typing to one write per window',
+      () async {
+    final state = _state(_DraftApi());
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+    final before = state.draftPersistWrites;
+    state.setComposerText('a');
+    state.setComposerText('ab');
+    state.setComposerText('abc');
+    expect(state.draftPersistWrites, before + 1);
+
+    await _flush();
+    expect((await _storedDrafts())['test:t1'], 'abc');
+
+    state.setComposerText('');
+    expect(state.draftPersistWrites, before + 2);
+    await _flush();
+    expect((await _storedDrafts()).containsKey('test:t1'), isFalse);
   });
 
   test('two threads keep independent drafts across switches', () async {

@@ -28,6 +28,13 @@ mixin ComposerStore on AppStateBase {
 
   bool _composerDraftsLoaded = false;
 
+  DateTime? _lastDraftPersist;
+  String? _lastDraftPersistKey;
+  bool _lastDraftPersistWasDelete = false;
+
+  @visibleForTesting
+  int draftPersistWrites = 0;
+
   @override
   String get composerText => _activeStore?.composerText ?? _composerText;
   @override
@@ -64,6 +71,23 @@ mixin ComposerStore on AppStateBase {
       _composerDrafts[key] = text;
       _removedDraftKeys.remove(key);
     }
+    // Deletes always flush right away; saves throttle to one write per
+    // 400ms per draft key so a fast typist does not hit SharedPreferences
+    // per keystroke. A save for another thread's key, or one right after a
+    // delete, flushes the whole map so switches and restores never strand
+    // a pending draft.
+    final now = DateTime.now();
+    final last = _lastDraftPersist;
+    final throttled = text.isNotEmpty &&
+        last != null &&
+        _lastDraftPersistKey == key &&
+        !_lastDraftPersistWasDelete &&
+        now.difference(last) < const Duration(milliseconds: 400);
+    if (throttled) return;
+    _lastDraftPersist = now;
+    _lastDraftPersistKey = key;
+    _lastDraftPersistWasDelete = text.isEmpty;
+    draftPersistWrites++;
     unawaited(_persistComposerDrafts());
   }
 
