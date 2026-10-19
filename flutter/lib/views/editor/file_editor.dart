@@ -22,6 +22,7 @@ class _FileEditorState extends State<FileEditor> {
   final _controllers = <String, _HighlightController>{};
   final _focusNode = FocusNode();
   SyntaxHighlighter? _syntaxHighlighter;
+  AppState? _appState;
 
   @override
   void didChangeDependencies() {
@@ -30,10 +31,31 @@ class _FileEditorState extends State<FileEditor> {
     for (final c in _controllers.values) {
       c.highlighter = _syntaxHighlighter!;
     }
+    final appState = context.read<AppState>();
+    if (!identical(appState, _appState)) {
+      _appState?.removeListener(_pruneControllers);
+      _appState = appState..addListener(_pruneControllers);
+    }
+  }
+
+  // Controllers are keyed by path and hold the full file text; dropping
+  // them when a tab closes keeps the map bounded to open files.
+  void _pruneControllers() {
+    final state = _appState;
+    if (state == null) return;
+    final openPaths = {for (final t in state.editorTabs) t.path};
+    final stale = [
+      for (final p in _controllers.keys)
+        if (!openPaths.contains(p)) p,
+    ];
+    for (final p in stale) {
+      _controllers.remove(p)?.dispose();
+    }
   }
 
   @override
   void dispose() {
+    _appState?.removeListener(_pruneControllers);
     _focusNode.dispose();
     for (final c in _controllers.values) {
       c.dispose();

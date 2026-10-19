@@ -77,5 +77,30 @@ void main() {
       expect(find.byType(Image), findsNothing);
       expect(find.textContaining('binary file'), findsOneWidget);
     });
+    testWidgets('closing a tab evicts its controller and reopening works',
+        (tester) async {
+      final state = stateFor({
+        'path': '/x/a.txt',
+        'mime': 'text/plain',
+        'size': 5,
+        'base64': null,
+        'text': 'hello',
+        'sha256': 'abc',
+      });
+      await state.openEditorFile('a.txt');
+
+      await tester.pumpWidget(_buildWithState(state));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+
+      state.closeEditorTab('a.txt');
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+
+      await state.openEditorFile('a.txt');
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+    });
   });
 }
+
