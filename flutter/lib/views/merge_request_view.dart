@@ -1231,6 +1231,9 @@ class _DiffView extends StatelessWidget {
     );
 
     final lines = diff.split('\n');
+    // A trailing newline splits into a phantom empty line; drop it so the
+    // count and the rendered tail match what the file actually holds.
+    if (lines.isNotEmpty && lines.last.isEmpty) lines.removeLast();
     final truncated = lines.length > _maxLines;
     final visible = truncated ? lines.sublist(0, _maxLines) : lines;
 
