@@ -135,7 +135,7 @@ void main() {
       await tester.tap(find.text('a.txt'));
       await tester.pumpAndSettle();
 
-      expect(find.text('+hello'), findsOneWidget);
+      expect(find.textContaining('+hello', findRichText: true), findsOneWidget);
     });
 
     testWidgets('shows line counts on the changes tab', (tester) async {
@@ -252,7 +252,7 @@ void main() {
       expect(find.text('Before'), findsOneWidget);
       expect(find.text('After'), findsOneWidget);
       expect(
-        find.text('Binary files a/icon.png and b/icon.png differ'),
+        find.textContaining('Binary files a/icon.png and b/icon.png differ', findRichText: true),
         findsNothing,
       );
       expect(calls, [('icon.png', 'base1'), ('icon.png', 'head2')]);
@@ -430,7 +430,7 @@ void main() {
 
       expect(find.byType(Image), findsNothing);
       expect(
-        find.text('Binary files a/icon.png and b/icon.png differ'),
+        find.textContaining('Binary files a/icon.png and b/icon.png differ', findRichText: true),
         findsOneWidget,
       );
     });
@@ -475,7 +475,7 @@ void main() {
 
       expect(find.byType(Image), findsNothing);
       expect(
-        find.text('Binary files a/icon.png and b/icon.png differ'),
+        find.textContaining('Binary files a/icon.png and b/icon.png differ', findRichText: true),
         findsOneWidget,
       );
     });
