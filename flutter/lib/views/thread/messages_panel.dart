@@ -7,6 +7,7 @@ class _MessagesPanel extends StatelessWidget {
   final int streamingDigest;
   final bool streamingThinkingActive;
   final bool sending;
+  final bool sendPending;
   final ScrollController controller;
   final bool hasServer;
   const _MessagesPanel({
@@ -16,6 +17,7 @@ class _MessagesPanel extends StatelessWidget {
     required this.streamingDigest,
     required this.streamingThinkingActive,
     required this.sending,
+    required this.sendPending,
     required this.controller,
     required this.hasServer,
   });
@@ -92,7 +94,7 @@ class _MessagesPanel extends StatelessWidget {
       (s) => s.user?.username ?? '',
     );
 
-    if (messages.isEmpty && !hasStreaming) {
+    if (messages.isEmpty && !hasStreaming && !sendPending) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(48),

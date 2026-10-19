@@ -569,7 +569,12 @@ mixin ThreadListStore on AppStateBase {
   @override
   Future<void> stopThread() async {
     final store = _activeStore;
-    if (store == null || !store.sending) return;
+    if (store == null) return;
+    if (store.sendPending) {
+      store.cancelPendingSend();
+      return;
+    }
+    if (!store.sending) return;
     await store.stop();
   }
 

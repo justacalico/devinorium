@@ -539,7 +539,8 @@ class _ComposerState extends State<_Composer> {
             state.threadReferences.isNotEmpty ||
             state.machineReferences.isNotEmpty) &&
         state.hasActiveThreadStore &&
-        !state.sending) {
+        !state.sending &&
+        !state.sendPending) {
       widget.controller.clear();
       state.sendMessage();
     }
@@ -1368,9 +1369,12 @@ class _ThreadRefDropTarget extends StatelessWidget {
       onWillAcceptWithDetails: (details) =>
           state.hasActiveThreadStore &&
           !state.sending &&
+          !state.sendPending &&
           details.data.id != state.activeThreadId,
       onAcceptWithDetails: (details) {
-        if (!state.hasActiveThreadStore || state.sending) return;
+        if (!state.hasActiveThreadStore || state.sending || state.sendPending) {
+          return;
+        }
         final thread = details.data;
         state.addThreadReference(
           ThreadReference(id: thread.id, title: thread.title),
@@ -1415,9 +1419,11 @@ class _PathRefDropTarget extends StatelessWidget {
     final state = context.read<AppState>();
     return DragTarget<FileTreeNode>(
       onWillAcceptWithDetails: (_) =>
-          state.hasActiveThreadStore && !state.sending,
+          state.hasActiveThreadStore && !state.sending && !state.sendPending,
       onAcceptWithDetails: (details) {
-        if (!state.hasActiveThreadStore || state.sending) return;
+        if (!state.hasActiveThreadStore || state.sending || state.sendPending) {
+          return;
+        }
         final node = details.data;
         state.addPathRef(node.fullPathString, isDir: node.entry.isDir);
       },

@@ -446,6 +446,12 @@ class ThreadStore {
         _emit();
         return;
       }
+      // A cancel while the send waited in the queue dropped the snapshot;
+      // bail before an optimistic row or stream subscription appears.
+      if (_pendingSend?.clientMessageId != clientMessageId) {
+        _emit();
+        return;
+      }
 
       // Show the message immediately, like t3code does. The optimistic row is
       // removed once the server echoes the same client id.
@@ -505,7 +511,12 @@ class ThreadStore {
   Future<void> resendMessage(Message message, {String? editedPrompt}) async {
     final d = _detail.valueOrNull;
     final messageId = message.id;
-    if (d == null || messageId == null || _streaming.isActive) return;
+    if (d == null ||
+        messageId == null ||
+        _streaming.isActive ||
+        _pendingSend != null) {
+      return;
+    }
 
     final editing = editedPrompt != null;
     final anchor = editing
@@ -627,6 +638,14 @@ class ThreadStore {
     if (composerText == value) return;
     composerText = value;
     onComposerTextChanged?.call(value);
+  }
+
+  /// Cancel a queued send that has not reached the stream yet. Puts the
+  /// draft back exactly like a failed send would.
+  void cancelPendingSend() {
+    if (_pendingSend == null) return;
+    _restorePendingSend();
+    _emit();
   }
 
   /// Ask the server to stop the current run.

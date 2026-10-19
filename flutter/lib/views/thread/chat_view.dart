@@ -262,6 +262,7 @@ class _ChatViewState extends State<ChatView> {
                     streamingDigest: model.streamingDigest,
                     streamingThinkingActive: model.streamingThinkingActive,
                     sending: model.sending,
+                    sendPending: model.sendPending,
                     controller: _scrollController,
                     hasServer: model.hasServer,
                   ),
