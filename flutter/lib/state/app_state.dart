@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart' show AppLifecycleState, Locale;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;

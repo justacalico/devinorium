@@ -257,6 +257,32 @@ void main() {
     expect((await _storedDrafts()).containsKey('test:t1'), isFalse);
   });
 
+  test('a throttled tail reaches disk after the window lapses', () async {
+    final binding = TestWidgetsFlutterBinding.ensureInitialized();
+    final state = _state(_DraftApi());
+    addTearDown(state.dispose);
+
+    await state.openThread('t1');
+    final before = state.draftPersistWrites;
+    state.setComposerText('a');
+    state.setComposerText('ab');
+    state.setComposerText('abc');
+    expect(state.draftPersistWrites, before + 1);
+
+    // Fire the scheduled frame: the window is still open so the flush
+    // reschedules without writing.
+    binding.handleBeginFrame(const Duration(milliseconds: 16));
+    binding.handleDrawFrame();
+    expect(state.draftPersistWrites, before + 1);
+
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    binding.handleBeginFrame(const Duration(milliseconds: 32));
+    binding.handleDrawFrame();
+    expect(state.draftPersistWrites, before + 2);
+    await _flush();
+    expect((await _storedDrafts())['test:t1'], 'abc');
+  });
+
   test('two threads keep independent drafts across switches', () async {
     final state = _state(_DraftApi());
     addTearDown(state.dispose);
