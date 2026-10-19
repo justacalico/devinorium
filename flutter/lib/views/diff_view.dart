@@ -200,6 +200,11 @@ class _DiffTextView extends StatelessWidget {
 /// Number of context lines to keep around each changed region.
 const _contextLines = 3;
 
+/// Largest LCS matrix the diff algorithm may allocate. Beyond this the
+/// O(n*m) dynamic program would cost hundreds of megabytes and block the
+/// isolate, so the view falls back to a coarse remove-all/add-all render.
+const _maxLcsCells = 4 * 1000 * 1000;
+
 /// Compute a simple unified diff using the classic LCS dynamic-programming
 /// approach, then trim to only the changed hunks with a small context
 /// window (like `git diff`). Result is cached by the caller so this only
@@ -213,6 +218,12 @@ List<_DiffLine> _computeUnifiedDiff(List<String> a, List<String> b) {
   }
   if (m == 0) {
     return [for (final line in a) _DiffLine(_LineKind.removed, line)];
+  }
+  if (n * m > _maxLcsCells) {
+    return _extractHunks([
+      for (final line in a) _DiffLine(_LineKind.removed, line),
+      for (final line in b) _DiffLine(_LineKind.added, line),
+    ]);
   }
 
   final dp = List<List<int>>.generate(

@@ -77,6 +77,28 @@ void main() {
       expect(find.textContaining('more lines not shown'), findsOneWidget);
     });
 
+    testWidgets('falls back to a coarse render when the LCS matrix is too large',
+        (tester) async {
+      final oldText = List.generate(2100, (i) => 'old $i').join('\n');
+      final newText = List.generate(2100, (i) => 'new $i').join('\n');
+      final diff = FileDiff(
+        path: '/x.dart',
+        oldText: oldText,
+        newText: newText,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DiffView(diff: diff),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('- old 0'), findsOneWidget);
+      expect(find.textContaining('more lines not shown'), findsOneWidget);
+    });
+
     testWidgets('renders empty new files without crashing', (tester) async {
       final diff = FileDiff(
         path: '/x.dart',
