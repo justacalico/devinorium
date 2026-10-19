@@ -23,6 +23,7 @@ class MergeRequestActionBar extends StatefulWidget {
 
 class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
   MergeRequestAction? _pending;
+  bool _confirming = false;
   String? _error;
 
   @override
@@ -39,7 +40,12 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
       MergeRequestAction.close => (l.closeMergeRequestConfirm, l.closeMergeRequest),
       _ => (null, null),
     };
+    if (_pending != null || _confirming) return;
     if (needsConfirm != null) {
+      setState(() {
+        _confirming = true;
+        _error = null;
+      });
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -56,6 +62,7 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
           ],
         ),
       );
+      if (mounted) setState(() => _confirming = false);
       if (confirmed != true || !mounted) return;
     }
     setState(() {
@@ -77,7 +84,7 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
     final detail = widget.detail;
     if (detail.isMerged || detail.state.isEmpty) return const SizedBox.shrink();
 
-    final busy = _pending != null;
+    final busy = _pending != null || _confirming;
     final latest = detail.pipelines.isNotEmpty ? detail.pipelines.first : null;
     final showAutoMerge = detail.canMerge &&
         !detail.mergeWhenPipelineSucceeds &&
@@ -178,7 +185,7 @@ class _MergeRequestActionBarState extends State<MergeRequestActionBar> {
               Expanded(
                 child: Wrap(spacing: 6, runSpacing: 6, children: buttons),
               ),
-              if (busy) ...[
+              if (_pending != null) ...[
                 const SizedBox(width: 12),
                 const SizedBox(
                   width: 18,
