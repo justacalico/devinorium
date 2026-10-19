@@ -53,6 +53,30 @@ AppState _stateWithEntries(List<DirEntry> entries) {
 }
 
 void main() {
+  group('FilesPanel filter', () {
+    testWidgets('typing a query narrows the file list by name',
+        (tester) async {
+      await tester.pumpWidget(
+        _buildWithState(
+          _stateWithEntries([
+            DirEntry(name: 'main.dart', isDir: false, size: 200),
+            DirEntry(name: 'logo.png', isDir: false, size: 4096),
+          ]),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('main.dart'), findsOneWidget);
+      expect(find.text('logo.png'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('files_filter')), 'logo');
+      await tester.pump();
+
+      expect(find.text('main.dart'), findsNothing);
+      expect(find.text('logo.png'), findsOneWidget);
+    });
+  });
+
   group('FilesPanel file icons', () {
     testWidgets('shows folder icon for directories', (tester) async {
       await tester.pumpWidget(
