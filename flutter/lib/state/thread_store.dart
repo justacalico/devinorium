@@ -213,6 +213,7 @@ class ThreadStore {
   String? get lastRunStatus => _lastRunStatus;
 
   bool get sending => _streaming.isActive;
+  bool get sendPending => _pendingSend != null;
   List<MessagePart> get streamingParts => _streaming.parts;
   int get streamingDigest => _streaming.digest;
   bool get streamingThinkingActive => _streaming.thinkingActive;

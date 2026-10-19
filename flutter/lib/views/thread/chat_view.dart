@@ -20,6 +20,7 @@ class _ChatModel {
   final bool streamingThinkingActive;
   final String? pendingAskRequestId;
   final bool sending;
+  final bool sendPending;
   final String? startedAt;
   final bool hasServer;
 
@@ -32,6 +33,7 @@ class _ChatModel {
     required this.streamingThinkingActive,
     required this.pendingAskRequestId,
     required this.sending,
+    required this.sendPending,
     required this.startedAt,
     required this.hasServer,
   });
@@ -48,6 +50,7 @@ class _ChatModel {
         streamingThinkingActive == other.streamingThinkingActive &&
         pendingAskRequestId == other.pendingAskRequestId &&
         sending == other.sending &&
+        sendPending == other.sendPending &&
         startedAt == other.startedAt &&
         hasServer == other.hasServer;
   }
@@ -62,6 +65,7 @@ class _ChatModel {
     streamingThinkingActive,
     pendingAskRequestId,
     sending,
+    sendPending,
     startedAt,
     hasServer,
   );
@@ -219,6 +223,7 @@ class _ChatViewState extends State<ChatView> {
         streamingThinkingActive: state.streamingThinkingActive,
         pendingAskRequestId: state.pendingAskRequest?.requestId,
         sending: state.sending,
+        sendPending: state.sendPending,
         startedAt: state.startedAt,
         hasServer: state.activeServerId != null,
       ),
@@ -260,6 +265,17 @@ class _ChatViewState extends State<ChatView> {
                     controller: _scrollController,
                     hasServer: model.hasServer,
                   ),
+                  // Between send and the first streamed part there is no
+                  // streaming row to pin the indicator to; float it at the
+                  // bottom so the list extent does not churn while the user
+                  // is scrolled up.
+                  if ((model.sending || model.sendPending) &&
+                      state.streamingParts.isEmpty)
+                    Positioned(
+                      bottom: 8,
+                      left: 24,
+                      child: _ThinkingIndicator(),
+                    ),
                   Positioned(
                     top: 16,
                     left: 16,
@@ -307,6 +323,37 @@ class _ChatViewState extends State<ChatView> {
           ],
         );
       },
+    );
+  }
+}
+
+class _ThinkingIndicator extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.psychology_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            l10n(context).thinking,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
