@@ -2079,7 +2079,17 @@ void main() {
     expect(state.composerText, 'last prompt');
     expect(tester.widget<TextField>(input).controller!.text, 'last prompt');
 
-    // With text present ArrowUp keeps its normal caret behavior.
+    // With text present ArrowUp keeps its normal caret behavior and does
+    // not clobber the draft.
+    await tester.enterText(input, 'different draft');
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(state.composerText, 'different draft');
+
+    // Clearing the field re-arms the recall.
+    await tester.enterText(input, '');
+    await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
     expect(state.composerText, 'last prompt');
