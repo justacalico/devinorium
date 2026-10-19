@@ -44,8 +44,22 @@ class _FilesPanelState extends State<FilesPanel> {
   }
 }
 
-class _FilesPanelBody extends StatelessWidget {
+class _FilesPanelBody extends StatefulWidget {
   const _FilesPanelBody();
+
+  @override
+  State<_FilesPanelBody> createState() => _FilesPanelBodyState();
+}
+
+class _FilesPanelBodyState extends State<_FilesPanelBody> {
+  final _filterController = TextEditingController();
+  String _filter = '';
+
+  @override
+  void dispose() {
+    _filterController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +103,14 @@ class _FilesPanelBody extends StatelessWidget {
             ? scopeKey.substring('worktree:'.length)
             : null;
 
+        final query = _filter.trim().toLowerCase();
+        final rows = query.isEmpty
+            ? model.rows
+            : [
+                for (final row in model.rows)
+                  if (row.node.name.toLowerCase().contains(query)) row,
+              ];
+
         return Column(
           children: [
             Padding(
@@ -131,6 +153,22 @@ class _FilesPanelBody extends StatelessWidget {
               ),
             ),
             const Divider(height: 1),
+            if (showTree && model.rows.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+                child: TextField(
+                  key: const Key('files_filter'),
+                  controller: _filterController,
+                  decoration: InputDecoration(
+                    hintText: l.searchHint,
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  style: theme.textTheme.bodySmall,
+                  onChanged: (v) => setState(() => _filter = v),
+                ),
+              ),
             if (model.error.isNotEmpty && showTree)
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -151,9 +189,9 @@ class _FilesPanelBody extends StatelessWidget {
                         ? const SizedBox.shrink()
                         : _EmptyPlaceholder(text: l.emptyFolder)
                   : ListView.builder(
-                      itemCount: model.rows.length,
+                      itemCount: rows.length,
                       itemBuilder: (context, index) =>
-                          _buildRow(context, state, model.rows[index], theme),
+                          _buildRow(context, state, rows[index], theme),
                     ),
             ),
           ],
