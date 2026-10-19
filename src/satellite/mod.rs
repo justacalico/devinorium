@@ -299,7 +299,9 @@ async fn pair(
         }
     }
 
-    let issued_code = state.pairing_code.read().await.clone();
+    // Verify and consume under one write lock: two concurrent pair calls
+    // must not both pass the check before either clears the code.
+    let mut issued_code = state.pairing_code.write().await;
     if !pairing_code_matches(&issued_code, &req.code) {
         let mut attempts = state.pair_attempts.lock().await;
         // Bound the map: a scanner could otherwise grow it one entry per
@@ -336,7 +338,8 @@ async fn pair(
 
     // The printed code pairs exactly one hub; a second hub needs a fresh
     // boot (and a fresh code).
-    state.pairing_code.write().await.clear();
+    issued_code.clear();
+    drop(issued_code);
 
     let token = state.issue_token().await;
     tracing::info!(%ip, "hub paired with this satellite");
@@ -377,4 +380,64 @@ pub async fn run(cfg: crate::config::Config) -> anyhow::Result<()> {
     )
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::PairRequest;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    fn state(code: &str, dir: &tempfile::TempDir) -> Arc<SatelliteState> {
+        Arc::new(SatelliteState {
+            home_dir: dir.path().to_path_buf(),
+            node_name: "test".into(),
+            max_body_bytes: 1024,
+            pairing_code: RwLock::new(code.into()),
+            node_id: "node".into(),
+            tokens: RwLock::new(std::collections::HashSet::new()),
+            runs: Mutex::new(HashMap::new()),
+            pending: Mutex::new(HashMap::new()),
+            git: Arc::new(crate::git::GitService::new()),
+            terminal_manager: crate::terminal::manager::TerminalManager::new(
+                Duration::from_secs(60),
+                Duration::from_secs(60),
+            ),
+            state_file: dir.path().join("state.json"),
+            pair_attempts: Mutex::new(HashMap::new()),
+        })
+    }
+
+    fn addr() -> ConnectInfo<SocketAddr> {
+        ConnectInfo(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 12345))
+    }
+
+    fn req(code: &str) -> Json<PairRequest> {
+        Json(PairRequest { code: code.into() })
+    }
+
+    #[tokio::test]
+    async fn pair_code_is_consumed_by_the_first_call_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state("AAAA-BBBB-CCCC", &dir);
+
+        let (a, b) = tokio::join!(
+            pair(State(state.clone()), addr(), req("AAAA-BBBB-CCCC")),
+            pair(State(state.clone()), addr(), req("AAAA-BBBB-CCCC")),
+        );
+
+        let mut statuses = [a.status(), b.status()];
+        statuses.sort();
+        assert_eq!(statuses, [StatusCode::OK, StatusCode::GONE]);
+        assert!(state.pairing_code.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pair_with_wrong_code_returns_unauthorized() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state("AAAA-BBBB-CCCC", &dir);
+        let res = pair(State(state.clone()), addr(), req("XXXX-YYYY-ZZZZ")).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(*state.pairing_code.read().await, "AAAA-BBBB-CCCC");
+    }
 }
