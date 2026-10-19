@@ -242,6 +242,10 @@ pub fn build_app(state: Arc<SatelliteState>) -> Router {
     let public = Router::new()
         .route("/api/node/info", get(info))
         .route("/api/node/pair", post(pair))
+        .route(
+            "/healthz",
+            get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }),
+        )
         .route_layer(RequestBodyLimitLayer::new(16 * 1024));
 
     // Run requests carry base64 attachments and stay open for the whole
@@ -378,7 +382,15 @@ pub async fn run(cfg: crate::config::Config) -> anyhow::Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(crate::shutdown_signal(None))
     .await?;
+
+    // Tell in-flight runs to stop gracefully so provider children are
+    // reaped, then kill any PTY sessions still open.
+    for run in state.runs.lock().await.values() {
+        run.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    state.terminal_manager.kill_all().await;
     Ok(())
 }
 

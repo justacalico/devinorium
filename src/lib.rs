@@ -325,3 +325,36 @@ pub fn build_app(state: AppState) -> Router {
 
     app.with_state(state)
 }
+
+/// Resolve on Ctrl-C, SIGTERM, or the bundled-mode stdin pipe closing, so
+/// `axum::serve` can drain and cleanup (run drain, PTY kill, tailscale
+/// disable) can run.
+pub async fn shutdown_signal(stdin_closed: Option<tokio::sync::oneshot::Receiver<()>>) {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    let stdin_eof = async move {
+        match stdin_closed {
+            Some(rx) => {
+                let _ = rx.await;
+            }
+            None => std::future::pending::<()>().await,
+        }
+    };
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+        _ = stdin_eof => {},
+    }
+}

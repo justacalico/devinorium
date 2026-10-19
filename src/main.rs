@@ -236,7 +236,7 @@ async fn main() -> Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal(stdin_closed))
+    .with_graceful_shutdown(devinorium::shutdown_signal(stdin_closed))
     .await?;
 
     // Drain active runs so provider children are reaped instead of orphaned,
@@ -269,39 +269,6 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Resolve on Ctrl-C, SIGTERM, or the bundled-mode stdin pipe closing, so
-/// `axum::serve` can drain and the startup-managed tailscale mapping can be
-/// removed.
-async fn shutdown_signal(stdin_closed: Option<tokio::sync::oneshot::Receiver<()>>) {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
-    #[cfg(unix)]
-    let terminate = async {
-        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut sig) => {
-                sig.recv().await;
-            }
-            Err(_) => std::future::pending::<()>().await,
-        }
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    let stdin_eof = async move {
-        match stdin_closed {
-            Some(rx) => {
-                let _ = rx.await;
-            }
-            None => std::future::pending::<()>().await,
-        }
-    };
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-        _ = stdin_eof => {},
-    }
 }
 
 /// Signal once stdin reaches EOF. Used in bundled local mode, where the
