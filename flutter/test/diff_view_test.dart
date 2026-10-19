@@ -99,6 +99,47 @@ void main() {
       expect(find.textContaining('more lines not shown'), findsOneWidget);
     });
 
+    testWidgets('identical large files render no diff', (tester) async {
+      final text = List.generate(2100, (i) => 'line $i').join('\n');
+      final diff = FileDiff(
+        path: '/x.dart',
+        oldText: text,
+        newText: text,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DiffView(diff: diff),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('- line 0'), findsNothing);
+      expect(find.textContaining('+ line 0'), findsNothing);
+    });
+
+    testWidgets('coarse fallback still shows added lines', (tester) async {
+      final oldText = List.generate(2100, (i) => 'old $i').join('\n');
+      final newText = List.generate(2100, (i) => 'new $i').join('\n');
+      final diff = FileDiff(
+        path: '/x.dart',
+        oldText: oldText,
+        newText: newText,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DiffView(diff: diff),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('- old 0'), findsOneWidget);
+      expect(find.textContaining('+ new 0'), findsOneWidget);
+    });
+
     testWidgets('renders empty new files without crashing', (tester) async {
       final diff = FileDiff(
         path: '/x.dart',
