@@ -54,6 +54,7 @@ class _FilesPanelBody extends StatefulWidget {
 class _FilesPanelBodyState extends State<_FilesPanelBody> {
   final _filterController = TextEditingController();
   String _filter = '';
+  String? _lastScopeKey;
 
   @override
   void dispose() {
@@ -98,6 +99,16 @@ class _FilesPanelBodyState extends State<_FilesPanelBody> {
           });
         }
         final scopeKey = model.scopeKey;
+        if (scopeKey != _lastScopeKey) {
+          _lastScopeKey = scopeKey;
+          if (_filter.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _filterController.clear();
+              setState(() => _filter = '');
+            });
+          }
+        }
         final worktreeScope =
             scopeKey != null && scopeKey.startsWith('worktree:')
             ? scopeKey.substring('worktree:'.length)

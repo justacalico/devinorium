@@ -44,6 +44,7 @@ class _FileEditorState extends State<FileEditor> {
     final state = _appState;
     if (state == null) return;
     final openPaths = {for (final t in state.editorTabs) t.path};
+    if (openPaths.containsAll(_controllers.keys)) return;
     final stale = [
       for (final p in _controllers.keys)
         if (!openPaths.contains(p)) p,
