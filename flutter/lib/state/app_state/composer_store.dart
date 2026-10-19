@@ -32,6 +32,12 @@ mixin ComposerStore on AppStateBase {
   String? _lastDraftPersistKey;
   bool _lastDraftPersistWasDelete = false;
 
+  /// A skipped write within the throttle window is the trailing tail of a
+  /// burst; without a delayed flush it would sit in memory until the next
+  /// qualifying save or dispose. The flush rides the frame loop instead of
+  /// a Timer so widget tests' pending-timer check is unaffected.
+  bool _draftTailFlushScheduled = false;
+
   @visibleForTesting
   int draftPersistWrites = 0;
 
@@ -83,12 +89,35 @@ mixin ComposerStore on AppStateBase {
         _lastDraftPersistKey == key &&
         !_lastDraftPersistWasDelete &&
         now.difference(last) < const Duration(milliseconds: 400);
-    if (throttled) return;
+    if (throttled) {
+      _scheduleDraftTailFlush(key);
+      return;
+    }
     _lastDraftPersist = now;
     _lastDraftPersistKey = key;
     _lastDraftPersistWasDelete = text.isEmpty;
     draftPersistWrites++;
     unawaited(_persistComposerDrafts());
+  }
+
+  void _scheduleDraftTailFlush(String key) {
+    if (_draftTailFlushScheduled) return;
+    _draftTailFlushScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _draftTailFlushScheduled = false;
+      final last = _lastDraftPersist;
+      if (last == null || !_composerDrafts.containsKey(key)) return;
+      if (DateTime.now().difference(last) <
+          const Duration(milliseconds: 400)) {
+        _scheduleDraftTailFlush(key);
+        return;
+      }
+      _lastDraftPersist = DateTime.now();
+      _lastDraftPersistKey = key;
+      _lastDraftPersistWasDelete = false;
+      draftPersistWrites++;
+      unawaited(_persistComposerDrafts());
+    });
   }
 
   Future<void> _persistComposerDrafts() async {
