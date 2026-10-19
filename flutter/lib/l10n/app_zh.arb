@@ -831,6 +831,8 @@
   "unlinkFromThread": "取消关联会话",
   "draft": "草稿",
   "retry": "重试",
+  "mergeMergeRequestConfirm": "确定要合并此合并请求吗？此操作无法撤销。",
+  "closeMergeRequestConfirm": "确定要关闭此合并请求而不合并吗？",
   "merge": "合并",
   "mergeWhenPipelineSucceeds": "流水线成功后合并",
   "cancelAutoMerge": "取消自动合并",

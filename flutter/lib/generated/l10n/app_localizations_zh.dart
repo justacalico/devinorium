@@ -1353,6 +1353,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get retry => '重试';
 
   @override
+  String get mergeMergeRequestConfirm => '确定要合并此合并请求吗？此操作无法撤销。';
+
+  @override
+  String get closeMergeRequestConfirm => '确定要关闭此合并请求而不合并吗？';
+
+  @override
   String get merge => '合并';
 
   @override

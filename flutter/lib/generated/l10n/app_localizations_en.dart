@@ -1416,6 +1416,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get retry => 'Retry';
 
   @override
+  String get mergeMergeRequestConfirm =>
+      'Merge this merge request? This cannot be undone.';
+
+  @override
+  String get closeMergeRequestConfirm =>
+      'Close this merge request without merging?';
+
+  @override
   String get merge => 'Merge';
 
   @override

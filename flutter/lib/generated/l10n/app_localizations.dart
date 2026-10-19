@@ -2528,6 +2528,18 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get retry;
 
+  /// No description provided for @mergeMergeRequestConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge this merge request? This cannot be undone.'**
+  String get mergeMergeRequestConfirm;
+
+  /// No description provided for @closeMergeRequestConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Close this merge request without merging?'**
+  String get closeMergeRequestConfirm;
+
   /// No description provided for @merge.
   ///
   /// In en, this message translates to:
