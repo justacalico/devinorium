@@ -1327,6 +1327,41 @@ void main() {
     expect(find.text('Hide thinking'), findsOneWidget);
   });
 
+  testWidgets('shows a placeholder between send and first part',
+      (tester) async {
+    final state = AppState.test(
+      user: User(
+        id: 1,
+        username: 'owner',
+        role: 'user',
+        totpEnabled: false,
+        isOwner: true,
+        providerId: 'devin-cli',
+        providerCommand: 'devin',
+      ),
+      sending: true,
+      streamingParts: const [],
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test thread',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [Message(id: 1, role: 'user', content: 'q')],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pump();
+
+    expect(find.text('...'), findsOneWidget);
+  });
+
   testWidgets('active thinking stays collapsed until tapped', (tester) async {
     final state = AppState.test(
       user: User(
