@@ -3,6 +3,7 @@ part of '../thread_page.dart';
 typedef _ComposerModel = ({
   String? activeThreadId,
   bool sending,
+  bool composerEmpty,
   bool hasStore,
   ComposerMode composerMode,
   List<({String filename, String mime, Uint8List bytes})> attachments,
@@ -677,6 +678,7 @@ class _ComposerState extends State<_Composer> {
       selector: (_, s) => (
         activeThreadId: s.activeThreadId,
         sending: s.sending,
+        composerEmpty: s.composerText.isEmpty,
         hasStore: s.hasActiveThreadStore,
         composerMode: s.composerMode,
         attachments: s.attachments,
@@ -981,7 +983,7 @@ class _ComposerState extends State<_Composer> {
                               },
                               _cycleModeShortcut: () =>
                                   _cycleComposerMode(state),
-                              if (widget.controller.text.isEmpty &&
+                              if (model.composerEmpty &&
                                   _machineQuery == null &&
                                   _skillQuery == null)
                                 const SingleActivator(
