@@ -53,6 +53,8 @@ mixin ThreadListStore on AppStateBase {
   @override
   bool get sending => _activeStore?.sending ?? false;
   @override
+  bool get sendPending => _activeStore?.sendPending ?? false;
+  @override
   String? get lastRunStatus => _activeStore?.lastRunStatus;
   @override
   List<MessagePart> get streamingParts =>

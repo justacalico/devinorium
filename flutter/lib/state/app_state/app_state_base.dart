@@ -380,6 +380,7 @@ abstract class AppStateBase extends ChangeNotifier {
   String get totpSecret;
   String get composerText;
   bool get sending;
+  bool get sendPending;
   ThreadContextUsage? get threadContextUsage;
   String? get lastRunStatus;
   List<({String filename, String mime, Uint8List bytes})> get attachments;

@@ -80,7 +80,7 @@ class _MessagesPanel extends StatelessWidget {
     }
 
     final messages = detail!.messages;
-    final hasStreaming = sending;
+    final hasStreaming = sending && streamingParts.isNotEmpty;
     // selectedProvider tracks the live picker value, so it stays correct when
     // the provider is switched on a thread that has no session yet; the
     // persisted thread.providerId would go stale until the next reload.

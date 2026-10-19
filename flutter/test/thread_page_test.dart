@@ -1359,7 +1359,7 @@ void main() {
     await tester.pumpWidget(_buildWithState(state));
     await tester.pump();
 
-    expect(find.text('...'), findsOneWidget);
+    expect(find.text('Thinking'), findsOneWidget);
   });
 
   testWidgets('active thinking stays collapsed until tapped', (tester) async {
