@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.108.1 - 2026-10-19
+#### Bug Fixes
+- 发送进行中禁用重复提交 - (af87d96) - HttpAnimations
+- diff 尾行计数与文件筛选与编辑器控制器清理细节 - (b9701b8) - HttpAnimations
+- 配对锁定期过期后重置失败计数 - (885b7b6) - HttpAnimations
+- resync 消息轮询在 dispose 后停止 - (40a4506) - HttpAnimations
+- MR 确认期间禁用按钮防止重复触发 - (40010e8) - HttpAnimations
+- 上箭头召回绑定随输入框是否为空实时更新 - (7bccaf6) - HttpAnimations
+- 思考占位改为悬浮指示器并覆盖 pending-send 窗口 - (87fd716) - HttpAnimations
+- 超大 diff 兜底渲染处理相同文件并交错两侧内容 - (7cdc833) - HttpAnimations
+
+- - -
+
 ## v0.108.0 - 2026-10-19
 #### Features
 - 空输入框按上箭头召回上一条提示词 - (bd69bbc) - HttpAnimations
