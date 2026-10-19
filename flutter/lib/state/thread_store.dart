@@ -1105,6 +1105,9 @@ class ThreadStore {
       if (attempt > 0) {
         await Future<void>.delayed(const Duration(milliseconds: 400));
       }
+      if (_status == ThreadStoreStatus.deleted || onStateChanged == null) {
+        return;
+      }
       final d = _detail.valueOrNull;
       if (d == null) return;
       try {
