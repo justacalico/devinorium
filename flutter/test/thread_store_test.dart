@@ -2263,6 +2263,25 @@ void main() {
       expect(api.watchCalls, 1);
     });
 
+    test('dispose stops the stop-tail message poll', () async {
+      final api = _RecoverableApiService();
+      api.runResponse = {'status': 'running', 'parts': []};
+      final store = storeFor(api);
+      store.onStateChanged = () {};
+      await store.sendMessage();
+      await ackSend(api, store);
+
+      api.runResponse = {'status': 'stopped', 'parts': []};
+      await api.sendController.close();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      final calls = api.getThreadMessagesCalls;
+      expect(calls, greaterThan(0));
+
+      store.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      expect(api.getThreadMessagesCalls, calls);
+    });
+
     test(
       'stream end mid-send applies the real outcome when the send landed',
       () async {
