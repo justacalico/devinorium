@@ -21,22 +21,33 @@ pub struct Branch {
     pub behind: i64,
 }
 
-/// Validate a branch/ref name without hitting the filesystem.
+/// Validate a branch/ref name without hitting the filesystem. Mirrors the
+/// `git check-ref-format` rules: no whitespace or control characters, none
+/// of `~ ^ : ? * [ \`, no `..` or `@{`, no empty or dot-leading path
+/// components, and no trailing slash, dot, or `.lock`.
 pub(super) fn is_safe_branch_name(name: &str) -> bool {
-    let name = name.trim();
-    if name.is_empty() {
+    if name.is_empty() || name == "@" {
         return false;
     }
-    if name.starts_with('/') || name.starts_with('~') || name.starts_with('-') {
+    if name.starts_with('/')
+        || name.starts_with('-')
+        || name.ends_with('/')
+        || name.ends_with('.')
+        || name.ends_with(".lock")
+        || name.contains("//")
+        || name.contains("..")
+        || name.contains("@{")
+    {
         return false;
     }
-    if name.contains("..") || name.contains('\0') {
+    if name.split('/').any(|part| part.starts_with('.')) {
         return false;
     }
-    if name == "." || name == ".." {
-        return false;
-    }
-    true
+    !name.chars().any(|c| {
+        c.is_ascii_control()
+            || c.is_ascii_whitespace()
+            || matches!(c, '~' | '^' | ':' | '?' | '*' | '[' | '\\')
+    })
 }
 
 impl GitService {
@@ -304,6 +315,25 @@ mod tests {
         assert!(!is_safe_branch_name(""));
         assert!(!is_safe_branch_name("-b"));
         assert!(!is_safe_branch_name("  "));
+        assert!(!is_safe_branch_name("has space"));
+        assert!(!is_safe_branch_name("tab\tname"));
+        assert!(!is_safe_branch_name("new\nline"));
+        assert!(!is_safe_branch_name("glob*"));
+        assert!(!is_safe_branch_name("glob?"));
+        assert!(!is_safe_branch_name("char[set"));
+        assert!(!is_safe_branch_name("colon:name"));
+        assert!(!is_safe_branch_name("caret^name"));
+        assert!(!is_safe_branch_name("tilde~name"));
+        assert!(!is_safe_branch_name("back\\slash"));
+        assert!(!is_safe_branch_name("double//slash"));
+        assert!(!is_safe_branch_name("trailing/"));
+        assert!(!is_safe_branch_name("trailing."));
+        assert!(!is_safe_branch_name("ends.lock"));
+        assert!(!is_safe_branch_name(".hidden"));
+        assert!(!is_safe_branch_name("mid/.hidden"));
+        assert!(!is_safe_branch_name("ref@{1}"));
+        assert!(!is_safe_branch_name("@"));
+        assert!(!is_safe_branch_name(" padded "));
     }
 
     #[test]
