@@ -115,6 +115,29 @@ async fn main() -> Result<()> {
         });
     }
 
+    // Periodic db housekeeping: drop expired sessions and audit rows older
+    // than the retention window. The first interval tick fires immediately
+    // so a startup prune always runs.
+    {
+        let db = database.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
+            loop {
+                interval.tick().await;
+                match db.purge_expired_sessions().await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("purged {n} expired sessions"),
+                    Err(e) => tracing::warn!("session purge failed: {e}"),
+                }
+                match db.prune_audit_logs(90).await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("pruned {n} old audit log entries"),
+                    Err(e) => tracing::warn!("audit log prune failed: {e}"),
+                }
+            }
+        });
+    }
+
     // Tailscale Serve lifecycle. The owner-managed setting lives in the
     // database so no env file is needed; it is ignored in bundled local
     // mode where the server must stay loopback-only.

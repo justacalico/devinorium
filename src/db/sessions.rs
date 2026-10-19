@@ -89,3 +89,36 @@ impl super::Db {
         Ok(res.rows_affected())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::db::users::NewUser;
+    use crate::db::Db;
+
+    async fn db() -> Db {
+        Db::connect("sqlite::memory:").await.unwrap()
+    }
+
+    async fn user(db: &Db) -> i64 {
+        db.create_user(NewUser {
+            username: "u".into(),
+            password_hash: "x".into(),
+            is_owner: true,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn purge_drops_expired_and_keeps_live_sessions() {
+        let db = db().await;
+        let user_id = user(&db).await;
+        let expired = db.create_session(user_id, -1, None, None).await.unwrap();
+        let live = db.create_session(user_id, 7, None, None).await.unwrap();
+
+        assert_eq!(db.purge_expired_sessions().await.unwrap(), 1);
+        assert!(db.get_session(&expired.token).await.unwrap().is_none());
+        assert!(db.get_session(&live.token).await.unwrap().is_some());
+    }
+}
