@@ -18,7 +18,7 @@ use axum::routing::{get, post, Router};
 use axum::Json;
 use serde::Deserialize;
 
-use crate::api::{map_err_internal, ApiError};
+use crate::api::{bad_request, map_err_internal, ApiError};
 use crate::db::machines::{MachineRow, KIND_SSH, KIND_VNC};
 use crate::machine_grants::GrantInfo;
 use crate::security::ip::ClientIp;
@@ -229,10 +229,6 @@ fn coord(v: i64, max: u16) -> Result<u16, Response> {
 const MAX_TYPE_LEN: usize = 64 * 1024;
 const MAX_SCROLL_CLICKS: i64 = 100;
 const MAX_KEY_LEN: usize = 64;
-
-fn bad_request(msg: &str) -> Response {
-    (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response()
-}
 
 /// Check every field that does not need framebuffer geometry. Runs before
 /// the VNC connection so a rejected input never touches the remote host.

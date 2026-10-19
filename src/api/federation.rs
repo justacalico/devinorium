@@ -15,7 +15,7 @@ use axum::routing::{delete, get, post, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{map_err_internal, ApiError};
+use crate::api::{bad_request, forbidden, map_err_internal, not_found, ApiError};
 use crate::auth::session::CurrentUser;
 use crate::db::federation_nodes::FederationNodeRow;
 use crate::federation::{clean_node_base_url, ONLINE_WINDOW};
@@ -40,22 +40,6 @@ pub fn router() -> Router<AppState> {
         .route("/api/federation/nodes", get(list_nodes))
         .route("/api/federation/nodes/pair", post(pair_node))
         .route("/api/federation/nodes/:id", delete(remove_node))
-}
-
-fn forbidden() -> Response {
-    (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response()
-}
-
-fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
-}
-
-fn bad_request(msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ApiError::new(msg.to_string())),
-    )
-        .into_response()
 }
 
 fn bad_gateway(msg: impl Into<String>) -> Response {
