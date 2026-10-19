@@ -1031,7 +1031,9 @@ class ThreadStore {
   Future<void> _refreshTailAfterStop() async {
     for (var i = 0; i < 20; i++) {
       await Future.delayed(const Duration(milliseconds: 200));
-      if (_status == ThreadStoreStatus.deleted) return;
+      if (_status == ThreadStoreStatus.deleted || onStateChanged == null) {
+        return;
+      }
       final d = _detail.valueOrNull;
       if (d == null || d.messages.isEmpty) continue;
       final newestId = d.messages.last.id;
