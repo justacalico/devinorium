@@ -775,7 +775,7 @@ class _ChangesTab extends StatefulWidget {
 }
 
 class _ChangesTabState extends State<_ChangesTab> {
-  int? _expanded;
+  String? _expandedPath;
   late List<DiffStats> _changeStats;
 
   @override
@@ -847,12 +847,14 @@ class _ChangesTabState extends State<_ChangesTab> {
             itemCount: widget.changes.length,
             itemBuilder: (context, index) {
               final change = widget.changes[index];
-              final isExpanded = _expanded == index;
+              final isExpanded = _expandedPath == change.displayPath;
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 child: InkWell(
-                  onTap: () =>
-                      setState(() => _expanded = isExpanded ? null : index),
+                  onTap: () => setState(
+                    () => _expandedPath =
+                        isExpanded ? null : change.displayPath,
+                  ),
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -1214,10 +1216,39 @@ class _DiffView extends StatelessWidget {
 
   const _DiffView({required this.diff});
 
+  static const _maxLines = 800;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final semantic =
+        theme.extension<SemanticColors>() ??
+        SemanticColors.fallback(theme.brightness);
+    final baseStyle = const TextStyle(
+      fontFamily: 'monospace',
+      fontSize: 12,
+      height: 1.4,
+    );
+
     final lines = diff.split('\n');
+    final truncated = lines.length > _maxLines;
+    final visible = truncated ? lines.sublist(0, _maxLines) : lines;
+
+    final spans = <TextSpan>[
+      for (final line in visible)
+        TextSpan(
+          text: '$line\n',
+          style: baseStyle.copyWith(color: _lineColor(line, theme, semantic)),
+        ),
+      if (truncated)
+        TextSpan(
+          text: '\n${l10n(context).diffViewMoreLines(lines.length - _maxLines)}',
+          style: baseStyle.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+    ];
 
     return Container(
       width: double.infinity,
@@ -1231,9 +1262,9 @@ class _DiffView extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: lines.map((line) => _diffLine(line, theme)).toList(),
+            child: SelectableText.rich(
+              TextSpan(children: spans),
+              style: baseStyle.copyWith(color: theme.colorScheme.onSurface),
             ),
           ),
         ),
@@ -1241,35 +1272,17 @@ class _DiffView extends StatelessWidget {
     );
   }
 
-  Widget _diffLine(String line, ThemeData theme) {
-    final semantic =
-        theme.extension<SemanticColors>() ??
-        SemanticColors.fallback(theme.brightness);
-    Color color;
+  Color _lineColor(String line, ThemeData theme, SemanticColors semantic) {
     if (line.startsWith('@@') ||
         line.startsWith('---') ||
         line.startsWith('+++') ||
         line.startsWith('diff ') ||
         line.startsWith('index ')) {
-      color = theme.colorScheme.primary;
-    } else if (line.startsWith('+')) {
-      color = semantic.success;
-    } else if (line.startsWith('-')) {
-      color = theme.colorScheme.error;
-    } else {
-      color = theme.colorScheme.onSurface;
+      return theme.colorScheme.primary;
     }
-
-    return Text(
-      line,
-      style: TextStyle(
-        color: color,
-        fontFamily: 'monospace',
-        fontSize: 12,
-        height: 1.4,
-      ),
-      softWrap: false,
-    );
+    if (line.startsWith('+')) return semantic.success;
+    if (line.startsWith('-')) return theme.colorScheme.error;
+    return theme.colorScheme.onSurface;
   }
 }
 
