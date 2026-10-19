@@ -219,10 +219,24 @@ List<_DiffLine> _computeUnifiedDiff(List<String> a, List<String> b) {
   if (m == 0) {
     return [for (final line in a) _DiffLine(_LineKind.removed, line)];
   }
+  if (n == m) {
+    var same = true;
+    for (var i = 0; i < n; i++) {
+      if (a[i] != b[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return const [];
+  }
   if (n * m > _maxLcsCells) {
+    // Interleave the two sides so the render cap still shows both removed
+    // and added content instead of only the first removed lines.
     return _extractHunks([
-      for (final line in a) _DiffLine(_LineKind.removed, line),
-      for (final line in b) _DiffLine(_LineKind.added, line),
+      for (var i = 0; i < n || i < m; i++) ...[
+        if (i < n) _DiffLine(_LineKind.removed, a[i]),
+        if (i < m) _DiffLine(_LineKind.added, b[i]),
+      ],
     ]);
   }
 
