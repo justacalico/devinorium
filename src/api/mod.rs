@@ -49,6 +49,18 @@ impl IntoResponse for ApiError {
     }
 }
 
+pub(crate) fn bad_request(msg: impl Into<String>) -> Response {
+    (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response()
+}
+
+pub(crate) fn forbidden() -> Response {
+    (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response()
+}
+
+pub(crate) fn not_found() -> Response {
+    (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
+}
+
 /// Convenience: map an anyhow error to an ApiError with a generic message
 /// that does not leak internals.
 pub fn map_err_internal<E: std::fmt::Display>(e: E) -> (StatusCode, Json<ApiError>) {

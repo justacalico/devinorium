@@ -12,7 +12,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::api::{map_err_internal, ApiError};
+use crate::api::{bad_request, map_err_internal, ApiError};
 use crate::auth::session::CurrentUser;
 use crate::mcp::{validate_servers, McpServerConfig};
 use crate::mcpb;
@@ -478,10 +478,6 @@ async fn read_mcpb_multipart(
         )
     })?;
     Ok((file, config))
-}
-
-fn bad_request(msg: String) -> Response {
-    (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response()
 }
 
 /// Inspect an uploaded `.mcpb` without installing it: returns the manifest

@@ -16,7 +16,7 @@ use axum::routing::{get, post, Router};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{map_err_internal, ApiError};
+use crate::api::{bad_request, forbidden, map_err_internal, not_found};
 use crate::auth::session::CurrentUser;
 use crate::db::machines::{MachineRow, MachineUpdate, KIND_SSH, KIND_VNC};
 use crate::AppState;
@@ -105,10 +105,6 @@ struct UpdateMachine {
     /// so the next connection re-pins). Set automatically when host or
     /// port changes.
     ssh_fingerprint: Option<String>,
-}
-
-fn bad_request(msg: &str) -> Response {
-    (StatusCode::BAD_REQUEST, Json(ApiError::new(msg))).into_response()
 }
 
 #[allow(clippy::result_large_err)]
@@ -300,14 +296,6 @@ fn clean_ssh_key(raw: Option<String>) -> Result<Option<String>, Response> {
         }
         None => Ok(None),
     }
-}
-
-fn forbidden() -> Response {
-    (StatusCode::FORBIDDEN, Json(ApiError::new("forbidden"))).into_response()
-}
-
-fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, Json(ApiError::new("not found"))).into_response()
 }
 
 async fn list(State(state): State<AppState>, CurrentUser(user): CurrentUser) -> Response {
