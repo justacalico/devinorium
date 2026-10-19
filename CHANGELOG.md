@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.108.2 - 2026-10-19
+#### Bug Fixes
+- 草稿节流后末尾落盘 - (6c9f64b) - HttpAnimations
+- MR diff 去除多余空行并隐藏空 diff - (8388a28) - HttpAnimations
+- 待发窗口期间停止按钮与重发与拖入引用的守卫 - (d2b495d) - HttpAnimations
+
+- - -
+
 ## v0.108.1 - 2026-10-19
 #### Bug Fixes
 - 发送进行中禁用重复提交 - (af87d96) - HttpAnimations
