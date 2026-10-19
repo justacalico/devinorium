@@ -147,6 +147,37 @@ const MAX_ATTACHMENT_BYTES: usize = 8 * 1024 * 1024;
 /// exhaust memory.
 const MAX_ATTACHMENTS_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 
+/// Cap for one named text field. Send routes opt out of the global body
+/// limit, so without a per-field bound an authenticated client could
+/// buffer an unbounded prompt or id list in memory. 32 MiB is far above
+/// any legitimate field.
+const MAX_FIELD_BYTES: usize = 32 * 1024 * 1024;
+
+/// Read a multipart field into memory with a hard cap.
+async fn read_field_capped(
+    field: &mut axum::extract::multipart::Field<'_>,
+) -> Result<Vec<u8>, Box<Response>> {
+    let mut data = Vec::new();
+    loop {
+        match field.chunk().await {
+            Ok(Some(chunk)) => {
+                if data.len() + chunk.len() > MAX_FIELD_BYTES {
+                    return Err(Box::new(
+                        (
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            Json(ApiError::new("text field too large")),
+                        )
+                            .into_response(),
+                    ));
+                }
+                data.extend_from_slice(&chunk);
+            }
+            Ok(None) => return Ok(data),
+            Err(e) => return Err(Box::new(crate::api::files::multipart_err(e))),
+        }
+    }
+}
+
 pub(crate) fn sanitize_sse_data(s: &str) -> String {
     s.replace("\r\n", "\n").replace('\r', "\n")
 }
@@ -252,10 +283,7 @@ pub(crate) async fn read_send_fields(
                 continue;
             }
         }
-        let bytes = match field.bytes().await {
-            Ok(b) => b,
-            Err(e) => return Err(Box::new(crate::api::files::multipart_err(e))),
-        };
+        let bytes = read_field_capped(&mut field).await?;
         if name == "prompt" {
             fields.prompt = Some(String::from_utf8_lossy(&bytes).to_string());
         } else if name == "mode" {
@@ -601,5 +629,24 @@ mod tests {
         let multipart = Multipart::from_request(req, &()).await.unwrap();
         let resp = parse_send_multipart(multipart).await.unwrap_err();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn parse_send_multipart_rejects_oversized_text_field() {
+        let big = "x".repeat(super::MAX_FIELD_BYTES + 1);
+        let body = format!(
+            "--boundary\r\n\
+            Content-Disposition: form-data; name=\"prompt\"\r\n\r\n\
+            {big}\r\n\
+            --boundary--\r\n"
+        );
+        let req = Request::builder()
+            .method("POST")
+            .header("content-type", "multipart/form-data; boundary=boundary")
+            .body(Body::from(body.into_bytes()))
+            .unwrap();
+        let multipart = Multipart::from_request(req, &()).await.unwrap();
+        let resp = parse_send_multipart(multipart).await.unwrap_err();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }
