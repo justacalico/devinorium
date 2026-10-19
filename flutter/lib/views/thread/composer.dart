@@ -556,6 +556,17 @@ class _ComposerState extends State<_Composer> {
     state.setComposerMode(state.composerMode.next);
   }
 
+  void _recallLastPrompt(AppState state) {
+    final messages = state.activeThreadDetail?.messages;
+    if (messages == null) return;
+    for (final m in messages.reversed) {
+      if (m.role == 'user' && m.content.isNotEmpty) {
+        state.setComposerText(m.content);
+        return;
+      }
+    }
+  }
+
   /// Keep the shared text controller in step with the active thread's draft.
   /// Typing already wrote through to state so this is a no-op then; it only
   /// applies text when the draft changed underneath the input — a thread
@@ -970,6 +981,12 @@ class _ComposerState extends State<_Composer> {
                               },
                               _cycleModeShortcut: () =>
                                   _cycleComposerMode(state),
+                              if (widget.controller.text.isEmpty &&
+                                  _machineQuery == null &&
+                                  _skillQuery == null)
+                                const SingleActivator(
+                                  LogicalKeyboardKey.arrowUp,
+                                ): () => _recallLastPrompt(state),
                               // The `@` and `/` pickers own navigation and
                               // dismiss keys while open; otherwise the
                               // field keeps its normal caret behavior.

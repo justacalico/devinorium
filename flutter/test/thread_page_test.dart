@@ -2044,6 +2044,47 @@ void main() {
     expect(state.composerMode, ComposerMode.code);
   });
 
+  testWidgets('arrow up on an empty composer recalls the last prompt',
+      (tester) async {
+    final state = AppState.test(
+      activeThreadId: 't1',
+      activeThreadDetail: ThreadDetail(
+        thread: Thread(
+          id: 't1',
+          title: 'Test',
+          projectId: 1,
+          model: 'm1',
+          permissionMode: 'normal',
+          createdAt: '',
+          updatedAt: '',
+        ),
+        messages: [
+          Message(id: 1, role: 'user', content: 'first'),
+          Message(id: 2, role: 'assistant', content: 'ok'),
+          Message(id: 3, role: 'user', content: 'last prompt'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(_buildWithState(state));
+    await tester.pumpAndSettle();
+
+    final input = find.byKey(const Key('composer_input'));
+    await tester.tap(input);
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+
+    expect(state.composerText, 'last prompt');
+    expect(tester.widget<TextField>(input).controller!.text, 'last prompt');
+
+    // With text present ArrowUp keeps its normal caret behavior.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(state.composerText, 'last prompt');
+  });
+
   testWidgets('stop button is shown while sending', (tester) async {
     final state = AppState.test(
       api: _FakeApiService(),
