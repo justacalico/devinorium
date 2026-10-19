@@ -92,12 +92,46 @@ impl Db {
             .await
             .context("running migrations")?;
 
+        // The db holds node tokens, machine credentials, push keys and TOTP
+        // secrets in plaintext; keep the file owner-only. WAL companions
+        // carry the same data and get the same treatment when present.
+        #[cfg(unix)]
+        if let Some(path) = db_path_from_url(url) {
+            use std::os::unix::fs::PermissionsExt;
+            if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            {
+                tracing::warn!("failed to restrict database file permissions: {e}");
+            }
+            for p in [path.with_extension("db-wal"), path.with_extension("db-shm")] {
+                let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+
         Ok(Self { pool })
     }
 
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }
+}
+
+/// Filesystem path behind an on-disk SQLite URL, or `None` for in-memory
+/// databases and unparsable URLs.
+pub(crate) fn db_path_from_url(url: &str) -> Option<std::path::PathBuf> {
+    if is_in_memory_url(url) {
+        return None;
+    }
+    let rest = url.strip_prefix("sqlite:")?;
+    let mut path_part = rest.split('?').next()?.to_string();
+    if path_part.starts_with("//") {
+        let without_leading = &path_part[2..];
+        let idx = without_leading.find('/')?;
+        path_part = without_leading[idx..].to_string();
+    }
+    if path_part.is_empty() {
+        return None;
+    }
+    Some(std::path::PathBuf::from(path_part))
 }
 
 /// Whether a SQLite URL points at a database that lives only in process
@@ -131,6 +165,31 @@ mod tests {
         assert!(!is_in_memory_url("sqlite:data/mode=memory.db?mode=rwc"));
         assert!(!is_in_memory_url("sqlite:data/app.db?xmode=memory"));
         assert!(!is_in_memory_url("not-a-sqlite-url"));
+    }
+
+    #[test]
+    fn db_path_parses_urls() {
+        assert_eq!(
+            super::db_path_from_url("sqlite:data/devinorium.db?mode=rwc"),
+            Some(std::path::PathBuf::from("data/devinorium.db"))
+        );
+        assert_eq!(
+            super::db_path_from_url("sqlite:///abs/dir/app.db"),
+            Some(std::path::PathBuf::from("/abs/dir/app.db"))
+        );
+        assert_eq!(super::db_path_from_url("sqlite::memory:"), None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn connect_creates_db_file_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.db");
+        let url = format!("sqlite:{}?mode=rwc", path.display());
+        let _db = super::Db::connect(&url).await.unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }
 

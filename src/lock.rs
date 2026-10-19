@@ -232,25 +232,7 @@ mod platform {
 ///
 /// Returns `None` for in-memory databases.
 pub fn lock_path_from_db_url(db_url: &str) -> Option<PathBuf> {
-    if crate::db::is_in_memory_url(db_url) {
-        return None;
-    }
-
-    let rest = db_url.strip_prefix("sqlite:")?;
-    let mut path_part = rest.split('?').next()?.to_string();
-
-    if path_part.starts_with("//") {
-        let without_leading = &path_part[2..];
-        let idx = without_leading.find('/')?;
-        path_part = without_leading[idx..].to_string();
-    }
-
-    if path_part.is_empty() {
-        return None;
-    }
-
-    let db_path = Path::new(&path_part);
-    Some(db_path.with_extension("lock"))
+    Some(crate::db::db_path_from_url(db_url)?.with_extension("lock"))
 }
 
 #[cfg(test)]
