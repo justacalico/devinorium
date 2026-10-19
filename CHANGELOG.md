@@ -2,6 +2,27 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v0.108.0 - 2026-10-19
+#### Features
+- 空输入框按上箭头召回上一条提示词 - (bd69bbc) - HttpAnimations
+- 发送后到首个响应前显示占位 - (84f65c4) - HttpAnimations
+- 文件面板加名称过滤输入框 - (f810865) - HttpAnimations
+#### Bug Fixes
+- 草稿写盘改为每 400ms 最多一次 - (4cfe7e8) - HttpAnimations
+- ThreadStore dispose 后停止尾部消息轮询 - (3180c9b) - HttpAnimations
+- 文件编辑器关闭标签页后释放其控制器 - (349e53d) - HttpAnimations
+- 合并和关闭 MR 前加确认对话框 - (74feeba) - HttpAnimations
+- MR changes tab 按路径展开并限制 diff 渲染行数 - (efc2212) - HttpAnimations
+- 大 diff 超出 LCS 矩阵上限时退化为粗粒度渲染 - (521dd4e) - HttpAnimations
+- 数据库文件权限收紧为 0600 - (1ecbcf2) - HttpAnimations
+- 卫星模式补 healthz 与优雅停机 - (aa91d82) - HttpAnimations
+- send 路由文本字段加 32 MiB 上限 - (ba2c244) - HttpAnimations
+- 分支名校验收紧到 git check-ref-format 规则 - (57e17c5) - HttpAnimations
+- 卫星配对码校验与消费加同一把写锁 - (e4fe616) - HttpAnimations
+- 定期清理过期会话和审计日志 - (44046b6) - HttpAnimations
+
+- - -
+
 ## v0.107.1 - 2026-10-17
 #### Bug Fixes
 - 机器控制令牌不再过期 - (181ff0e) - HttpAnimations
