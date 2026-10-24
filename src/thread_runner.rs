@@ -60,7 +60,25 @@ pub struct RunSnapshot {
     pub permission_request: Option<PermissionRequest>,
     pub ask_request: Option<AskRequest>,
     pub plan: Option<Plan>,
+    /// Pending rate-limit retry, while a run is parked waiting for the
+    /// provider's reported reset time. Clients render a countdown from it.
+    pub rate_limit: Option<RateLimitWait>,
     pub last_seq: u64,
+}
+
+/// A scheduled rate-limit retry. Serialized onto run snapshots and the
+/// `rate_limit` event so clients can show a countdown that survives a
+/// page reload or stream reconnect.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RateLimitWait {
+    /// RFC 3339 timestamp of when the retry fires.
+    pub retry_at: String,
+    /// 1-based retry attempt this wait precedes.
+    pub attempt: u32,
+    /// Maximum attempts before the error is surfaced normally.
+    pub max_attempts: u32,
+    /// First line of the provider error, for display.
+    pub message: String,
 }
 
 /// One run's status transition, broadcast runner-wide so a client can watch
@@ -110,6 +128,9 @@ pub struct RunState {
     pub permission_request: std::sync::Mutex<Option<PermissionRequest>>,
     pub ask_request: std::sync::Mutex<Option<AskRequest>>,
     pub plan: std::sync::Mutex<Option<Plan>>,
+    /// Pending rate-limit retry countdown; `Some` only while the run is
+    /// parked between a rate-limited call and its retry.
+    pub rate_limit: std::sync::Mutex<Option<RateLimitWait>>,
     /// Runner-wide lifecycle feed. Status transitions and attention changes
     /// are republished here so clients watching all threads see them.
     lifecycle: Option<broadcast::Sender<RunLifecycleEvent>>,
@@ -170,6 +191,27 @@ impl RunState {
     pub fn set_plan(&self, plan: Option<Plan>) {
         if let Ok(mut guard) = self.plan.lock() {
             *guard = plan;
+        }
+    }
+
+    /// Enter or leave the rate-limit wait. Lifecycle subscribers get an
+    /// `attention` update so background thread tiles can mark the pause.
+    pub fn set_rate_limit(self: &Arc<Self>, wait: Option<RateLimitWait>) {
+        if let Ok(mut guard) = self.rate_limit.lock() {
+            if *guard == wait {
+                return;
+            }
+            *guard = wait;
+        }
+        self.publish_attention();
+    }
+
+    /// Drop any pending rate-limit wait without touching lifecycle: callers
+    /// are the stop paths, whose terminal status event already carries no
+    /// attention flag.
+    pub fn clear_rate_limit(&self) {
+        if let Ok(mut guard) = self.rate_limit.lock() {
+            *guard = None;
         }
     }
 
@@ -235,8 +277,9 @@ impl RunState {
     }
 
     /// `Some("permission")` while a permission request is open,
-    /// `Some("ask")` while an ask request is open. Permission wins when both
-    /// are pending, matching the UI's tag priority.
+    /// `Some("ask")` while an ask request is open, `Some("rate_limit")`
+    /// while a rate-limit retry is pending. Permission wins when several
+    /// apply, matching the UI's tag priority.
     pub fn current_attention(&self) -> Option<&'static str> {
         if self
             .permission_request
@@ -253,6 +296,9 @@ impl RunState {
             .unwrap_or(false)
         {
             return Some("ask");
+        }
+        if self.rate_limit.lock().map(|g| g.is_some()).unwrap_or(false) {
+            return Some("rate_limit");
         }
         None
     }
@@ -353,6 +399,11 @@ impl RunState {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let plan = self.plan.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let rate_limit = self
+            .rate_limit
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         // Whitespace-only parts render nothing, so the flag tracks the last
         // visible part rather than the raw tail.
         let thinking_active = matches!(
@@ -379,6 +430,7 @@ impl RunState {
             permission_request,
             ask_request,
             plan,
+            rate_limit,
             last_seq,
         }
     }
@@ -493,6 +545,7 @@ impl ThreadRunner {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: Some(self.lifecycle.clone()),
         });
 
@@ -561,6 +614,7 @@ impl ThreadRunner {
         // prompt gracefully via ACP $/cancelRequest. This lets the agent
         // session preserve its context for subsequent messages.
         run.cancelled.store(true, Ordering::SeqCst);
+        run.clear_rate_limit();
         let _ = run.set_status(RunStatus::Stopped).await;
         run.emit("stopped", r#"{"status":"stopped"}"#);
         run.close();
@@ -599,6 +653,7 @@ impl ThreadRunner {
         for run in &runs {
             if *run.status.read().await == RunStatus::Running {
                 run.cancelled.store(true, Ordering::SeqCst);
+                run.clear_rate_limit();
                 let _ = run.set_status(RunStatus::Stopped).await;
                 run.emit("stopped", r#"{"status":"stopped"}"#);
                 run.close();
@@ -683,6 +738,7 @@ mod tests {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: None,
         };
 
@@ -746,6 +802,7 @@ mod tests {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: None,
         };
 
@@ -772,6 +829,7 @@ mod tests {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: None,
         };
 
@@ -832,6 +890,7 @@ mod tests {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: None,
         };
 
@@ -866,6 +925,7 @@ mod tests {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: None,
         };
 
@@ -900,6 +960,7 @@ mod tests {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: None,
         });
 
@@ -1089,6 +1150,7 @@ mod tests {
             permission_request: std::sync::Mutex::new(None),
             ask_request: std::sync::Mutex::new(None),
             plan: std::sync::Mutex::new(None),
+            rate_limit: std::sync::Mutex::new(None),
             lifecycle: Some(tx),
         });
 

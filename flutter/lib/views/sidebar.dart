@@ -95,7 +95,9 @@ String? _threadTag(AppState state, Thread thread) {
   final active = state.activeThreadDetail?.thread.id == thread.id;
 
   if (active) {
-    if (isRunning || state.sending) return 'running';
+    if (isRunning || state.sending) {
+      return state.rateLimit != null ? 'rate limited' : 'running';
+    }
     return activeThreadTag(
       sending: state.sending,
       messages: state.activeThreadDetail?.messages ?? const [],
@@ -121,7 +123,8 @@ bool _matchesStatusFilter(String? tag, _ThreadStatusFilter filter) {
       tag == 'running' ||
           tag == 'working' ||
           tag == 'needs approval' ||
-          tag == 'needs answer',
+          tag == 'needs answer' ||
+          tag == 'rate limited',
     _ThreadStatusFilter.done => tag == 'done',
     _ThreadStatusFilter.failed => tag == 'failed',
   };
@@ -145,6 +148,7 @@ bool _matchesStatusFilter(String? tag, _ThreadStatusFilter filter) {
     'needs approval' => (color: style.color, label: l.threadStatusApproval),
     'needs answer' => (color: style.color, label: l.threadStatusInput),
     'stopped' => (color: style.color, label: l.tagStopped),
+    'rate limited' => (color: style.color, label: l.tagRateLimited),
     _ => (color: style.color, label: l.threadStatusDone),
   };
 }

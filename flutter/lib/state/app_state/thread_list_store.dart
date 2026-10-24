@@ -72,6 +72,8 @@ mixin ThreadListStore on AppStateBase {
   @override
   String? get startedAt => _activeStore?.startedAt;
   @override
+  RateLimitWait? get rateLimit => _activeStore?.rateLimit;
+  @override
   bool get hasMoreThreads => _userThreadsHasMore;
   @override
   bool get isLoadingMoreThreads => _loadingMoreUserThreads;

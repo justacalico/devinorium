@@ -60,6 +60,7 @@ class ThreadTag extends StatelessWidget {
       'failed' => l.tagFailed,
       'done' || 'completed' => l.tagDone,
       'stopped' => l.tagStopped,
+      'rate limited' => l.tagRateLimited,
       _ => tag,
     };
   }

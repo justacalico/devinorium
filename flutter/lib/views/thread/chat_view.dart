@@ -22,6 +22,7 @@ class _ChatModel {
   final bool sending;
   final bool sendPending;
   final String? startedAt;
+  final RateLimitWait? rateLimit;
   final bool hasServer;
 
   const _ChatModel({
@@ -35,6 +36,7 @@ class _ChatModel {
     required this.sending,
     required this.sendPending,
     required this.startedAt,
+    required this.rateLimit,
     required this.hasServer,
   });
 
@@ -52,6 +54,7 @@ class _ChatModel {
         sending == other.sending &&
         sendPending == other.sendPending &&
         startedAt == other.startedAt &&
+        rateLimit == other.rateLimit &&
         hasServer == other.hasServer;
   }
 
@@ -67,6 +70,7 @@ class _ChatModel {
     sending,
     sendPending,
     startedAt,
+    rateLimit,
     hasServer,
   );
 }
@@ -225,6 +229,7 @@ class _ChatViewState extends State<ChatView> {
         sending: state.sending,
         sendPending: state.sendPending,
         startedAt: state.startedAt,
+        rateLimit: state.rateLimit,
         hasServer: state.activeServerId != null,
       ),
       shouldRebuild: (prev, next) => prev != next,
@@ -294,10 +299,22 @@ class _ChatViewState extends State<ChatView> {
                   padding: const EdgeInsets.fromLTRB(32, 0, 24, 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: ElapsedTimeIndicator(
-                      key: ValueKey(model.startedAt),
-                      startedAt: model.startedAt,
-                      active: model.sending,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ElapsedTimeIndicator(
+                          key: ValueKey(model.startedAt),
+                          startedAt: model.startedAt,
+                          active: model.sending,
+                        ),
+                        if (model.rateLimit != null) ...[
+                          const SizedBox(width: 8),
+                          RateLimitCountdown(
+                            key: ValueKey(model.rateLimit!.retryAt),
+                            wait: model.rateLimit!,
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),

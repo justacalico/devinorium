@@ -414,6 +414,7 @@ abstract class AppStateBase extends ChangeNotifier {
   PermissionRequest? get pendingPermissionRequest;
   AskRequest? get pendingAskRequest;
   String? get startedAt;
+  RateLimitWait? get rateLimit;
   String get globalError;
   ConnectionStatus get connectionStatus;
   String? get serverVersion;

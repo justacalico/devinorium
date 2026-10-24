@@ -231,6 +231,7 @@ class AppState extends AppStateBase
     String? selectedPermission,
     String? selectedProvider,
     String? startedAt,
+    RateLimitWait? rateLimit,
     bool threadLoading = false,
     ThreadContextUsage? threadContextUsage,
     ConnectionStatus connectionStatus = ConnectionStatus.connected,
@@ -322,6 +323,7 @@ class AppState extends AppStateBase
         pendingPermission: pendingPermissionRequest,
         pendingAsk: pendingAskRequest,
         startedAt: startedAt,
+        rateLimit: rateLimit,
       );
       final store = ThreadStore(
         api: this.api,

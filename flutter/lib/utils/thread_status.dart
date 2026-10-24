@@ -16,7 +16,7 @@ import '../theme/semantic_colors.dart';
       SemanticColors.fallback(theme.brightness);
   final scheme = theme.colorScheme;
   return switch (tag.toLowerCase()) {
-    'needs approval' => (
+    'needs approval' || 'rate limited' => (
       color: semantic.warning,
       background: semantic.warningContainer,
     ),
@@ -46,9 +46,11 @@ String? activeThreadTag({
   required PermissionRequest? pendingPermissionRequest,
   AskRequest? pendingAskRequest,
   String? runStatus,
+  bool rateLimited = false,
 }) {
   if (pendingPermissionRequest != null) return 'needs approval';
   if (pendingAskRequest != null) return 'needs answer';
+  if (rateLimited && sending) return 'rate limited';
   if (sending) return 'running';
   if (runStatus == 'stopped') return 'stopped';
   if (runStatus == 'failed') return 'failed';
@@ -82,6 +84,7 @@ String? backgroundThreadTag({
     return switch (attention) {
       'permission' => 'needs approval',
       'ask' => 'needs answer',
+      'rate_limit' => 'rate limited',
       _ => 'running',
     };
   }

@@ -15508,3 +15508,329 @@ async fn mcpb_reinstall_keeps_disabled_flag() {
     let body: serde_json::Value = serde_json::from_str(&body_str(resp.into_body()).await).unwrap();
     assert_eq!(body["servers"][0]["enabled"], false);
 }
+
+/// A provider that fails its first calls with a Devin-style rate-limit
+/// error, then echoes like the normal stub. Every prompt is recorded so
+/// tests can check whether a retry resent the original message or the
+/// "continue working" nudge.
+struct RateLimitStubProvider {
+    failures: std::sync::Mutex<usize>,
+    calls: std::sync::Mutex<Vec<String>>,
+    /// When true, `start` reports a session id via the session callback
+    /// before failing — mirroring `session/new` succeeding while
+    /// `session/prompt` hits the limit.
+    session_before_failure: bool,
+}
+
+const RATE_LIMIT_ERROR: &str = "acp connection failed: Reached free model rate limit. Upgrade to Max for higher limits, or switch to a different model. Your limit will reset in 1 seconds (at 18:04 UTC).";
+
+impl RateLimitStubProvider {
+    fn new(failures: usize) -> Self {
+        Self {
+            failures: std::sync::Mutex::new(failures),
+            calls: std::sync::Mutex::new(Vec::new()),
+            session_before_failure: false,
+        }
+    }
+
+    fn record(&self, prompt: &str) -> bool {
+        self.calls.lock().unwrap().push(prompt.to_string());
+        let mut left = self.failures.lock().unwrap();
+        if *left > 0 {
+            *left -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn calls(&self) -> Vec<String> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl Provider for RateLimitStubProvider {
+    fn id(&self) -> &str {
+        "stub"
+    }
+    fn name(&self) -> &str {
+        "Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![ModelInfo {
+            id: "stub-1".into(),
+            label: "Stub One".into(),
+            cost_tier: "free".into(),
+            family: "stub".into(),
+            cost_summary: "Free".into(),
+            max_context_tokens: 200_000,
+            max_output_tokens: 32_000,
+            is_new: false,
+            is_beta: false,
+            default_reasoning_effort: None,
+            supported_reasoning_efforts: vec![],
+        }])
+    }
+    async fn start(&self, req: StartRequest) -> anyhow::Result<StartResponse> {
+        if self.record(&req.prompt) {
+            if self.session_before_failure {
+                if let Some(cb) = &req.options.session_callback {
+                    cb("rate-limit-session".into()).await;
+                }
+            }
+            anyhow::bail!("{RATE_LIMIT_ERROR}");
+        }
+        if let Some(cb) = &req.options.session_callback {
+            cb("stub-session".into()).await;
+        }
+        Ok(StartResponse {
+            session_id: "stub-session".into(),
+            reply: format!("echo: {}", req.prompt),
+            thinking: String::new(),
+            parts: vec![MessagePart::text(format!("echo: {}", req.prompt))],
+            title: "Stub Thread".into(),
+            usage: None,
+        })
+    }
+    async fn send(&self, req: SendRequest) -> anyhow::Result<SendResponse> {
+        if self.record(&req.prompt) {
+            anyhow::bail!("{RATE_LIMIT_ERROR}");
+        }
+        Ok(SendResponse {
+            reply: format!("echo: {}", req.prompt),
+            thinking: String::new(),
+            parts: vec![MessagePart::text(format!("echo: {}", req.prompt))],
+            usage: None,
+        })
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn thread_send_retries_rate_limit_and_sends_continue_working() {
+    let provider = Arc::new(RateLimitStubProvider::new(1));
+    let (app, db) = make_app_with_provider(provider.clone()).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+    // Give the thread a session so the failed call goes through `send`.
+    db.update_thread_session(&tid, "devin-cli", "existing-session", None)
+        .await
+        .unwrap();
+
+    let body = send_and_wait(&app, &cookie, &tid, "keep going").await;
+    assert!(body.contains("event: rate_limit"), "body: {body}");
+    let wait = sse_json(&body, "rate_limit");
+    assert_eq!(wait["attempt"], 1);
+    assert_eq!(wait["max_attempts"], devinorium::rate_limit::MAX_RETRIES);
+    assert!(wait["retry_at"].as_str().unwrap().contains('T'));
+    assert!(body.contains("event: done"), "body: {body}");
+
+    let calls = provider.calls();
+    assert_eq!(calls.len(), 2, "calls: {calls:?}");
+    assert_eq!(calls[1], "continue working");
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let contents: Vec<_> = msgs
+        .iter()
+        .map(|m| (m.role.as_str(), m.content.as_str()))
+        .collect();
+    assert_eq!(
+        contents,
+        vec![
+            ("user", "keep going"),
+            ("user", "continue working"),
+            ("assistant", "echo: continue working"),
+        ]
+    );
+
+    // The countdown clears once the wait ends: the run snapshot reports no
+    // pending retry after completion.
+    let run = wait_for_run(&app, &cookie, &tid, |b| {
+        b.contains("\"status\":\"completed\"")
+    })
+    .await;
+    assert!(run.contains("\"rate_limit\":null"), "run: {run}");
+}
+
+#[tokio::test]
+async fn thread_send_rate_limit_resends_original_prompt_when_never_started() {
+    // `start` failing before a session exists must retry the original
+    // prompt — "continue working" would arrive with no task behind it.
+    let provider = Arc::new(RateLimitStubProvider::new(1));
+    let (app, db) = make_app_with_provider(provider.clone()).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let body = send_and_wait(&app, &cookie, &tid, "write tests").await;
+    assert!(body.contains("event: done"), "body: {body}");
+
+    let calls = provider.calls();
+    assert_eq!(calls.len(), 2, "calls: {calls:?}");
+    assert!(calls[0].contains("write tests"), "calls: {calls:?}");
+    assert!(calls[1].contains("write tests"), "calls: {calls:?}");
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let roles: Vec<_> = msgs.iter().map(|m| m.role.as_str()).collect();
+    // No synthetic "continue working" row: the retry replays the same turn.
+    assert_eq!(roles, vec!["user", "assistant"], "messages: {roles:?}");
+}
+
+#[tokio::test]
+async fn thread_send_rate_limit_sends_original_prompt_to_created_session() {
+    // `session/new` succeeded but `session/prompt` hit the limit: the
+    // session exists, the model never saw the task, so the retry resends
+    // the original prompt through `send` rather than "continue working".
+    let mut p = RateLimitStubProvider::new(1);
+    p.session_before_failure = true;
+    let provider = Arc::new(p);
+    let (app, db) = make_app_with_provider(provider.clone()).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+
+    let body = send_and_wait(&app, &cookie, &tid, "do the thing").await;
+    assert!(body.contains("event: done"), "body: {body}");
+
+    let calls = provider.calls();
+    assert_eq!(calls.len(), 2, "calls: {calls:?}");
+    assert!(calls[1].contains("do the thing"), "calls: {calls:?}");
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    let roles: Vec<_> = msgs.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(roles, vec!["user", "assistant"], "messages: {roles:?}");
+
+    let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
+    assert_eq!(
+        thread.devin_session_id.as_deref(),
+        Some("rate-limit-session")
+    );
+}
+
+#[tokio::test]
+async fn thread_send_rate_limit_not_retried_for_other_providers() {
+    let provider = Arc::new(RateLimitStubProvider::new(1));
+    let (app, db) = make_app_with_provider(provider.clone()).await;
+    // Make the user's default provider "opencode" so the new thread runs on
+    // it while `provider_for` still returns the injected stub (the command
+    // lookup only yields empty for the user's own provider).
+    sqlx::query("UPDATE users SET provider_id = 'opencode' WHERE username = 'owner'")
+        .execute(db.pool())
+        .await
+        .unwrap();
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+    let thread = db.get_thread(&tid, 1).await.unwrap().unwrap();
+    assert_eq!(thread.provider_id, "opencode");
+
+    let body = send_and_wait(&app, &cookie, &tid, "hi").await;
+    assert!(body.contains("event: error"), "body: {body}");
+    assert!(!body.contains("event: rate_limit"), "body: {body}");
+    assert_eq!(provider.calls().len(), 1);
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.last().unwrap().role, "error");
+    assert!(msgs.last().unwrap().content.contains("rate limit"));
+}
+
+#[tokio::test]
+async fn thread_send_rate_limit_gives_up_after_max_retries() {
+    let provider = Arc::new(RateLimitStubProvider::new(
+        devinorium::rate_limit::MAX_RETRIES as usize + 3,
+    ));
+    let (app, db) = make_app_with_provider(provider.clone()).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+    db.update_thread_session(&tid, "devin-cli", "existing-session", None)
+        .await
+        .unwrap();
+
+    let body = send_and_wait(&app, &cookie, &tid, "hi").await;
+    assert!(body.contains("event: error"), "body: {body}");
+    // One initial call plus MAX_RETRIES retries.
+    assert_eq!(
+        provider.calls().len(),
+        devinorium::rate_limit::MAX_RETRIES as usize + 1
+    );
+
+    let msgs = db.list_messages(&tid).await.unwrap();
+    assert_eq!(msgs.last().unwrap().role, "error");
+}
+
+#[tokio::test]
+async fn thread_stop_during_rate_limit_wait_cancels_retry() {
+    // The reset is far enough out that the only way the run ends is a stop.
+    let (app, db) = make_app_with_provider(Arc::new(LongWaitProvider)).await;
+    let cookie = login(&app).await;
+    let pid = create_project(&app, &cookie).await;
+    let tid = make_thread(&app, &cookie, pid, "T").await;
+    db.update_thread_session(&tid, "devin-cli", "existing-session", None)
+        .await
+        .unwrap();
+
+    let app2 = app.clone();
+    let cookie2 = cookie.clone();
+    let tid2 = tid.clone();
+    let send = tokio::spawn(async move { send_and_wait(&app2, &cookie2, &tid2, "hi").await });
+
+    // Wait until the run snapshot reports a pending retry, then stop it.
+    wait_for_run(&app, &cookie, &tid, |b| {
+        b.contains("\"rate_limit\":{\"retry_at\"")
+    })
+    .await;
+    let resp = app
+        .clone()
+        .oneshot(authed(
+            "POST",
+            &format!("/api/threads/{tid}/stop"),
+            &cookie,
+            "",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = send.await.unwrap();
+    assert!(body.contains("event: stopped"), "body: {body}");
+    assert_eq!(LONG_WAIT_CALLS.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    let run = wait_for_run(&app, &cookie, &tid, |b| {
+        b.contains("\"status\":\"stopped\"")
+    })
+    .await;
+    assert!(run.contains("\"rate_limit\":null"), "run: {run}");
+}
+
+static LONG_WAIT_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Fails once with a far-future reset so the only way out is a stop.
+struct LongWaitProvider;
+
+#[async_trait]
+impl Provider for LongWaitProvider {
+    fn id(&self) -> &str {
+        "stub"
+    }
+    fn name(&self) -> &str {
+        "Stub"
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(vec![])
+    }
+    async fn start(&self, _req: StartRequest) -> anyhow::Result<StartResponse> {
+        anyhow::bail!("never started")
+    }
+    async fn send(&self, _req: SendRequest) -> anyhow::Result<SendResponse> {
+        LONG_WAIT_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        anyhow::bail!("acp connection failed: Reached free model rate limit. Your limit will reset in 60 seconds (at 19:00 UTC).")
+    }
+    async fn health_check(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}

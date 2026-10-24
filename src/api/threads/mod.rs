@@ -10,6 +10,7 @@ pub(crate) mod machine_refs;
 pub(crate) mod permissions;
 pub(crate) mod persistence;
 pub(crate) mod plan;
+pub(crate) mod rate_limit;
 pub(crate) mod resend;
 pub(crate) mod routes;
 pub(crate) mod runs;

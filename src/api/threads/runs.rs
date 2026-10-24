@@ -29,7 +29,7 @@ use super::persistence::{
     persist_assistant_reply, persist_run_plan, persist_stopped_marker,
     save_partial_assistant_message, update_thread_title_from_send,
 };
-use super::send::{call_provider, ProviderOutcome, SendInput};
+use super::send::{ProviderOutcome, SendInput};
 use super::worktree::{snapshot_worktree_paths, sync_agent_created_worktree};
 use super::MessageOut;
 
@@ -61,6 +61,8 @@ pub(super) async fn get_run(
             "parts": [],
             "permission_request": null,
             "ask_request": null,
+            "plan": null,
+            "rate_limit": null,
             "last_seq": 0,
         }))
         .into_response(),
@@ -408,15 +410,15 @@ pub(crate) async fn run_thread(
         build_permission_callback(state.clone(), user.id, thread.id.clone(), run.clone());
     let ask_callback = build_ask_callback(state.clone(), user.id, thread.id.clone(), run.clone());
 
-    let provider_result = call_provider(
+    let provider_result = super::rate_limit::call_provider_with_retry(
         &state,
         &user,
-        &thread,
+        &mut thread,
         &input,
         Some(permission_callback),
         Some(ask_callback),
         Some(part_callback),
-        run.cancelled.clone(),
+        &run,
     )
     .await;
 
@@ -552,6 +554,17 @@ pub(crate) async fn run_thread(
     }
 
     let session_for_usage = new_session_id.clone();
+    // Retried rate-limit turns can stream output from an attempt that later
+    // failed; run.parts is what the client actually watched, so persist it
+    // rather than only the final call's parts.
+    let parts = {
+        let accumulated = run.parts.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if accumulated.is_empty() {
+            parts
+        } else {
+            accumulated
+        }
+    };
     let assistant_msg = match persist_assistant_reply(
         &state,
         &thread,
