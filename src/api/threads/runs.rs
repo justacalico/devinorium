@@ -29,7 +29,7 @@ use super::persistence::{
     persist_assistant_reply, persist_run_plan, persist_stopped_marker,
     save_partial_assistant_message, update_thread_title_from_send,
 };
-use super::send::{call_provider, ProviderOutcome, SendInput};
+use super::send::{ProviderOutcome, SendInput};
 use super::worktree::{snapshot_worktree_paths, sync_agent_created_worktree};
 use super::MessageOut;
 
@@ -408,15 +408,15 @@ pub(crate) async fn run_thread(
         build_permission_callback(state.clone(), user.id, thread.id.clone(), run.clone());
     let ask_callback = build_ask_callback(state.clone(), user.id, thread.id.clone(), run.clone());
 
-    let provider_result = call_provider(
+    let provider_result = super::rate_limit::call_provider_with_retry(
         &state,
         &user,
-        &thread,
+        &mut thread,
         &input,
         Some(permission_callback),
         Some(ask_callback),
         Some(part_callback),
-        run.cancelled.clone(),
+        &run,
     )
     .await;
 

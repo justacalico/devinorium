@@ -564,6 +564,8 @@
   "tagFailed": "失败",
   "tagDone": "完成",
   "tagStopped": "已停止",
+  "tagRateLimited": "限流中",
+  "rateLimitedRetryingIn": "已触发限流，{time} 后重试",
   "noValue": "—",
   "tokensMillionSuffix": "{count}M",
   "@tokensMillionSuffix": {

@@ -21,6 +21,7 @@ class StreamingSnapshot {
   final Plan? plan;
   final String? error;
   final String? startedAt;
+  final RateLimitWait? rateLimit;
   final int digest;
 
   const StreamingSnapshot({
@@ -33,6 +34,7 @@ class StreamingSnapshot {
     this.plan,
     this.error,
     this.startedAt,
+    this.rateLimit,
     this.digest = 0,
   });
 
@@ -61,6 +63,8 @@ class StreamingSnapshot {
     bool clearError = false,
     String? startedAt,
     bool clearStartedAt = false,
+    RateLimitWait? rateLimit,
+    bool clearRateLimit = false,
     int? digest,
   }) {
     final nextParts = parts ?? this.parts;
@@ -82,6 +86,7 @@ class StreamingSnapshot {
       plan: clearPlan ? null : (plan ?? this.plan),
       error: clearError ? null : (error ?? this.error),
       startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
+      rateLimit: clearRateLimit ? null : (rateLimit ?? this.rateLimit),
       digest: nextDigest,
     );
   }

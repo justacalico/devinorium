@@ -14,6 +14,7 @@ export 'skill.dart';
 export 'messages.dart';
 export 'permissions.dart';
 export 'provider.dart';
+export 'rate_limit.dart';
 export 'reasoning_effort.dart';
 export 'server_update.dart';
 export 'tailscale.dart';

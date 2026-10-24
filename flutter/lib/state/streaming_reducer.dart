@@ -81,6 +81,7 @@ StreamingReduceResult reduceStreamingEvent({
               clearPendingPermission: true,
               clearPendingAsk: true,
               clearError: true,
+              clearRateLimit: true,
               lastSeq: seq ?? snapshot.lastSeq,
               startedAt: DateTime.now().toUtc().toIso8601String(),
             )
@@ -138,6 +139,31 @@ StreamingReduceResult reduceStreamingEvent({
           ),
         );
       }
+
+    case 'rate_limit':
+      // The backend emits `null` when the parked run leaves its wait, and a
+      // full object while one is pending.
+      if (event.data.trim() == 'null') {
+        return StreamingReduceResult(
+          detail: detail,
+          snapshot: snapshot.copyWith(
+            clearRateLimit: true,
+            lastSeq: seq ?? snapshot.lastSeq,
+          ),
+        );
+      }
+      final wait = RateLimitWait.fromJson(tryDecodeJson(event.data));
+      if (wait == null) {
+        return StreamingReduceResult(detail: detail, snapshot: snapshot);
+      }
+      return StreamingReduceResult(
+        detail: detail,
+        snapshot: snapshot.copyWith(
+          phase: StreamPhase.running,
+          rateLimit: wait,
+          lastSeq: seq ?? snapshot.lastSeq,
+        ),
+      );
 
     case 'part':
       final decoded = tryDecodeJson(event.data);
@@ -304,6 +330,7 @@ StreamingReduceResult reduceStreamingEvent({
           clearPendingPermission: true,
           clearPendingAsk: true,
           clearError: true,
+          clearRateLimit: true,
         ),
       );
 
@@ -364,6 +391,7 @@ StreamingSnapshot _applyRunSnapshot({
     } catch (_) {}
   }
   final error = json['error'] as String?;
+  final rateLimit = RateLimitWait.fromJson(json['rate_limit']);
   final digest = StreamingSnapshot.digestForParts(parts);
 
   return snapshot.copyWith(
@@ -380,6 +408,8 @@ StreamingSnapshot _applyRunSnapshot({
     error: error,
     clearError: error == null,
     startedAt: json['started_at'] as String?,
+    rateLimit: rateLimit,
+    clearRateLimit: rateLimit == null,
   );
 }
 
@@ -423,6 +453,7 @@ StreamingSnapshot _finishSnapshot(StreamingSnapshot snapshot) {
     clearPendingPermission: true,
     clearPendingAsk: true,
     clearStartedAt: true,
+    clearRateLimit: true,
   );
 }
 

@@ -223,6 +223,7 @@ class ThreadStore {
   Plan? get plan =>
       _streaming.isActive ? _streaming.plan : _detail.valueOrNull?.plan;
   String? get startedAt => _streaming.startedAt;
+  RateLimitWait? get rateLimit => _streaming.rateLimit;
 
   /// Refresh the context usage estimate. Called on load and after each run;
   /// failures keep the stale value so a flaky network never blanks the meter.
@@ -1000,6 +1001,7 @@ class ThreadStore {
       case 'user_message':
       case 'permission_request':
       case 'ask_request':
+      case 'rate_limit':
         _emitNow();
         break;
       case 'done':

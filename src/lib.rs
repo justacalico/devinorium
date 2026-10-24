@@ -20,6 +20,7 @@ pub mod plan;
 pub mod projects;
 pub mod providers;
 pub mod push;
+pub mod rate_limit;
 pub mod satellite;
 pub mod security;
 pub mod skills;

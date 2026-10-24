@@ -952,6 +952,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tagStopped => 'Stopped';
 
   @override
+  String get tagRateLimited => 'Rate limited';
+
+  @override
+  String rateLimitedRetryingIn(String time) {
+    return 'Rate limited, retrying in $time';
+  }
+
+  @override
   String get noValue => '—';
 
   @override

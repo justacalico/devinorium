@@ -899,6 +899,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get tagStopped => '已停止';
 
   @override
+  String get tagRateLimited => '限流中';
+
+  @override
+  String rateLimitedRetryingIn(String time) {
+    return '已触发限流，$time 后重试';
+  }
+
+  @override
   String get noValue => '—';
 
   @override

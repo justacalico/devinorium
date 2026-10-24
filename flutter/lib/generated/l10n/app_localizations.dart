@@ -1742,6 +1742,18 @@ abstract class AppLocalizations {
   /// **'Stopped'**
   String get tagStopped;
 
+  /// No description provided for @tagRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate limited'**
+  String get tagRateLimited;
+
+  /// Countdown banner shown while a run waits out a provider rate limit
+  ///
+  /// In en, this message translates to:
+  /// **'Rate limited, retrying in {time}'**
+  String rateLimitedRetryingIn(String time);
+
   /// No description provided for @noValue.
   ///
   /// In en, this message translates to:

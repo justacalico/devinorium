@@ -564,6 +564,16 @@
   "tagFailed": "Failed",
   "tagDone": "Done",
   "tagStopped": "Stopped",
+  "tagRateLimited": "Rate limited",
+  "rateLimitedRetryingIn": "Rate limited, retrying in {time}",
+  "@rateLimitedRetryingIn": {
+    "description": "Countdown banner shown while a run waits out a provider rate limit",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "noValue": "—",
   "tokensMillionSuffix": "{count}M",
   "@tokensMillionSuffix": {
